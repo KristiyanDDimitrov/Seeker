@@ -3,10 +3,13 @@ name = "seeker"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.3",
+]
 
 [project.scripts]
-seeker = "seeker:main"
+seeker = "seeker.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

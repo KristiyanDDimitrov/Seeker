@@ -1,2 +1,2 @@
-def main() -> None:
-    print("Hello from seeker!")
+def main():
+    print("Seeker is running.")
