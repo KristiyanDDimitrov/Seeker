@@ -1,7 +1,7 @@
 [project]
 name = "seeker"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal DJ music library management assistant"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",
