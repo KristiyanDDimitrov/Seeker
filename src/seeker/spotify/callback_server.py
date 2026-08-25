@@ -1,0 +1,60 @@
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
+
+
+class SpotifyCallbackHandler(BaseHTTPRequestHandler):
+    authorization_code = None
+    returned_state = None
+    error = None
+
+    def do_GET(self):
+        parsed_url = urlparse(self.path)
+
+        if parsed_url.path != "/callback":
+            self.send_error(404)
+            return
+
+        query = parse_qs(parsed_url.query)
+
+        SpotifyCallbackHandler.authorization_code = query.get(
+            "code", [None]
+        )[0]
+
+        SpotifyCallbackHandler.returned_state = query.get(
+            "state", [None]
+        )[0]
+
+        SpotifyCallbackHandler.error = query.get(
+            "error", [None]
+        )[0]
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+
+        self.wfile.write(
+            b"""
+            <html>
+                <body>
+                    <h1>Spotify authorization complete.</h1>
+                    <p>You can close this window and return to Seeker.</p>
+                </body>
+            </html>
+            """
+        )
+
+    def log_message(self, format, *args):
+        return
+
+
+def wait_for_callback(port: int = 8888) -> tuple[str | None, str | None, str | None]:
+    server = HTTPServer(("127.0.0.1", port), SpotifyCallbackHandler)
+
+    server.handle_request()
+    server.server_close()
+
+    return (
+        SpotifyCallbackHandler.authorization_code,
+        SpotifyCallbackHandler.returned_state,
+        SpotifyCallbackHandler.error,
+    )
