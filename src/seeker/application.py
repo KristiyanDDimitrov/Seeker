@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from seeker import config
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -13,6 +14,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
 from seeker.library.service import LibraryService
+from seeker.soulseek.client import SoulseekClient
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
@@ -42,6 +44,7 @@ class Application:
         self._sync_service = None
         self._library_service = None
         self._track_matcher = None
+        self._soulseek_client = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -86,3 +89,19 @@ class Application:
             )
 
         return self._track_matcher
+
+    @property
+    def soulseek_client(self) -> SoulseekClient:
+        if self._soulseek_client is None:
+            if not config.SLSKD_BASE_URL:
+                raise RuntimeError("SLSKD_BASE_URL is not configured.")
+
+            if not config.SLSKD_API_KEY:
+                raise RuntimeError("SLSKD_API_KEY is not configured.")
+
+            self._soulseek_client = SoulseekClient(
+                config.SLSKD_BASE_URL,
+                config.SLSKD_API_KEY,
+            )
+
+        return self._soulseek_client
