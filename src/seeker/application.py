@@ -1,6 +1,13 @@
 from pathlib import Path
 
 from seeker.database.connection import Database
+from seeker.database.repositories.library_location_repository import (
+    LibraryLocationRepository,
+)
+from seeker.database.repositories.local_file_repository import (
+    LocalFileRepository,
+)
+from seeker.library.service import LibraryService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
@@ -28,6 +35,7 @@ class Application:
 
         self._spotify = None
         self._sync_service = None
+        self._library_service = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -49,3 +57,14 @@ class Application:
             )
 
         return self._sync_service
+
+    @property
+    def library_service(self) -> LibraryService:
+        if self._library_service is None:
+            self._library_service = LibraryService(
+                self.database,
+                LibraryLocationRepository(self.database),
+                LocalFileRepository(self.database),
+            )
+
+        return self._library_service

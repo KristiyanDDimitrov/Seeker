@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from seeker.application import Application
+from seeker.library.scanner import LibraryUnavailableError
 from seeker.spotify.client import SpotifyRateLimitedError
 
 
@@ -33,6 +34,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check Spotify tracks against the local library.",
     )
 
+    library_parser = subparsers.add_parser(
+        "library",
+        help="Manage local music library locations.",
+    )
+
+    library_subparsers = library_parser.add_subparsers(
+        dest="library_command",
+    )
+
+    add_parser = library_subparsers.add_parser(
+        "add",
+        help="Register a new library location.",
+    )
+    add_parser.add_argument("name")
+    add_parser.add_argument("path")
+
+    library_subparsers.add_parser(
+        "list",
+        help="List registered library locations.",
+    )
+
+    remove_parser = library_subparsers.add_parser(
+        "remove",
+        help="Remove a registered library location.",
+    )
+    remove_parser.add_argument("name")
+
+    library_subparsers.add_parser(
+        "scan",
+        help="Scan all registered library locations.",
+    )
+
     return parser
 
 def handle_playlists(application: Application) -> None:
@@ -58,6 +91,41 @@ def handle_sync(application: Application) -> None:
             playlist
         )
 
+def handle_library(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.library_command == "add":
+        application.library_service.add_location(
+            parsed.name,
+            parsed.path,
+        )
+
+    elif parsed.library_command == "list":
+        locations = application.library_service.list_locations()
+
+        if not locations:
+            print("No library locations registered.")
+            return
+
+        for location, is_reachable in locations:
+            status = "reachable" if is_reachable else "unreachable"
+
+            print(
+                f"{location.name}: {location.path} ({status})"
+            )
+
+    elif parsed.library_command == "remove":
+        application.library_service.remove_location(
+            parsed.name
+        )
+
+    elif parsed.library_command == "scan":
+        application.library_service.scan_all()
+
+    else:
+        print("Usage: seeker library {add,list,remove,scan} ...")
+
 def run(
     application: Application,
     args: list[str] | None = None,
@@ -80,6 +148,12 @@ def run(
             print(
                 "Local library checking is not implemented yet."
             )
+
+        elif parsed.command == "library":
+            handle_library(application, parsed)
     except SpotifyRateLimitedError as error:
+        print(str(error))
+        sys.exit(1)
+    except LibraryUnavailableError as error:
         print(str(error))
         sys.exit(1)

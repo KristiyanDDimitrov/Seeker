@@ -28,4 +28,32 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
     FOREIGN KEY (track_id)
         REFERENCES tracks(id)
 );
+
+CREATE TABLE IF NOT EXISTS library_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    path TEXT NOT NULL UNIQUE,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS local_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    location_id INTEGER NOT NULL,
+    relative_path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    format TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    tag_artist TEXT,
+    tag_title TEXT,
+    tag_album TEXT,
+    duration_ms INTEGER,
+    scanned_at TEXT NOT NULL,
+
+    UNIQUE (location_id, relative_path),
+
+    FOREIGN KEY (location_id)
+        REFERENCES library_locations(id)
+        ON DELETE CASCADE
+);
 """
