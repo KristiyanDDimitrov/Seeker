@@ -1,11 +1,71 @@
 import httpx
 import time
 
+from datetime import datetime, timedelta
+
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
 
 BASE_URL = "https://api.spotify.com/v1"
+
+
+def _format_duration(seconds: int) -> str:
+    hours, remainder = divmod(seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    if hours and minutes:
+        return f"{hours}h {minutes}m"
+
+    if hours:
+        return f"{hours}h"
+
+    if minutes:
+        return f"{minutes}m"
+
+    return f"{seconds}s"
+
+
+def _format_clock_time(when: datetime) -> str:
+    hour = when.hour % 12 or 12
+    period = "AM" if when.hour < 12 else "PM"
+
+    return f"{hour}:{when.minute:02d} {period}"
+
+
+class SpotifyRateLimitedError(RuntimeError):
+    def __init__(
+        self,
+        retry_after_seconds: int | None,
+        quota_exceeded: bool,
+    ):
+        self.retry_after_seconds = retry_after_seconds
+        self.quota_exceeded = quota_exceeded
+
+        reason = (
+            "Spotify development quota exceeded."
+            if quota_exceeded
+            else "Spotify rate limit exceeded."
+        )
+
+        if retry_after_seconds is None:
+            wait_description = (
+                "an unknown amount of time "
+                "(no Retry-After header returned)"
+            )
+        else:
+            retry_at = datetime.now() + timedelta(
+                seconds=retry_after_seconds
+            )
+
+            wait_description = (
+                f"{_format_duration(retry_after_seconds)} "
+                f"(around {_format_clock_time(retry_at)})"
+            )
+
+        super().__init__(
+            f"{reason} Try again in {wait_description}."
+        )
 
 
 class SpotifyClient:
@@ -25,28 +85,35 @@ class SpotifyClient:
 
             if response.status_code == 429:
                 error_data = response.json().get("error", {})
+                quota_exceeded = (
+                    error_data.get("reason") == "QUOTA_EXCEEDED"
+                )
 
-                if error_data.get("reason") == "QUOTA_EXCEEDED":
-                    raise RuntimeError(
-                        "Spotify development quota has been exceeded."
+                retry_after_header = response.headers.get(
+                    "Retry-After"
+                )
+                retry_after_seconds = (
+                    int(retry_after_header)
+                    if retry_after_header is not None
+                    else None
+                )
+
+                if (
+                        quota_exceeded
+                        or retry_after_seconds is None
+                        or retry_after_seconds > 60
+                ):
+                    raise SpotifyRateLimitedError(
+                        retry_after_seconds=retry_after_seconds,
+                        quota_exceeded=quota_exceeded,
                     )
-
-                retry_after = response.headers.get("Retry-After")
-
-                if retry_after is None:
-                    raise RuntimeError(
-                        "Spotify rate limit reached, but no Retry-After "
-                        "header was provided."
-                    )
-
-                wait_seconds = int(retry_after)
 
                 print(
                     f"Spotify rate limit reached. "
-                    f"Waiting {wait_seconds} seconds..."
+                    f"Waiting {retry_after_seconds} seconds..."
                 )
 
-                time.sleep(wait_seconds)
+                time.sleep(retry_after_seconds)
                 continue
 
             response.raise_for_status()

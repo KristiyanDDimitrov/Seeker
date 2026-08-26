@@ -1,9 +1,11 @@
 import argparse
+import sys
 
 from seeker.application import Application
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.spotify.client import SpotifyRateLimitedError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,13 +76,17 @@ def run(
         parser.print_help()
         return
 
-    if parsed.command == "sync":
-        handle_sync(application)
+    try:
+        if parsed.command == "sync":
+            handle_sync(application)
 
-    elif parsed.command == "playlists":
-        handle_playlists(application)
+        elif parsed.command == "playlists":
+            handle_playlists(application)
 
-    elif parsed.command == "check":
-        print(
-            "Local library checking is not implemented yet."
-        )
+        elif parsed.command == "check":
+            print(
+                "Local library checking is not implemented yet."
+            )
+    except SpotifyRateLimitedError as error:
+        print(str(error))
+        sys.exit(1)
