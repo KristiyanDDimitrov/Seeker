@@ -2,9 +2,6 @@ import argparse
 import sys
 
 from seeker.application import Application
-from seeker.database.repositories.playlist_repository import (
-    PlaylistRepository,
-)
 from seeker.spotify.client import SpotifyRateLimitedError
 
 
@@ -39,11 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 def handle_playlists(application: Application) -> None:
-    repository = PlaylistRepository(
-        application.database
-    )
-
-    playlists = repository.get_all()
+    playlists = application.sync_service.list_playlists()
 
     if not playlists:
         print("No Spotify playlists have been synchronized yet.")
@@ -56,13 +49,13 @@ def handle_playlists(application: Application) -> None:
         )
 
 def handle_sync(application: Application) -> None:
-    playlist_ids = (
+    playlists = (
         application.sync_service.sync_playlists()
     )
 
-    for playlist_id in playlist_ids:
+    for playlist in playlists:
         application.sync_service.sync_playlist_tracks(
-            playlist_id
+            playlist
         )
 
 def run(

@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from seeker.database.schema import SCHEMA
 
@@ -20,6 +21,19 @@ class Database:
         connection.execute("PRAGMA foreign_keys = ON")
 
         return connection
+
+    @contextmanager
+    def transaction(self):
+        connection = self.connect()
+
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def initialize(self) -> None:
         with self.connect() as connection:
