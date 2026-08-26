@@ -56,4 +56,14 @@ CREATE TABLE IF NOT EXISTS local_files (
         REFERENCES library_locations(id)
         ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS track_matches (
+    track_id TEXT NOT NULL PRIMARY KEY,
+    local_file_id INTEGER,
+    match_method TEXT,
+    score REAL,
+    matched_at TEXT NOT NULL,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+    FOREIGN KEY (local_file_id) REFERENCES local_files(id) ON DELETE SET NULL
+);
 """

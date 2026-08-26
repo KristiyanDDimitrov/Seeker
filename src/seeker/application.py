@@ -7,6 +7,11 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
+from seeker.database.repositories.track_repository import TrackRepository
+from seeker.library.matcher import TrackMatcher
 from seeker.library.service import LibraryService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
@@ -36,6 +41,7 @@ class Application:
         self._spotify = None
         self._sync_service = None
         self._library_service = None
+        self._track_matcher = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -68,3 +74,15 @@ class Application:
             )
 
         return self._library_service
+
+    @property
+    def track_matcher(self) -> TrackMatcher:
+        if self._track_matcher is None:
+            self._track_matcher = TrackMatcher(
+                self.database,
+                TrackRepository(self.database),
+                LocalFileRepository(self.database),
+                TrackMatchRepository(self.database),
+            )
+
+        return self._track_matcher

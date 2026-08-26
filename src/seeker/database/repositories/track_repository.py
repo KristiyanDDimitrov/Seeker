@@ -34,6 +34,30 @@ class TrackRepository:
             ),
         )
 
+    def get_all(self, connection: sqlite3.Connection) -> list[Track]:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                title,
+                artist,
+                album,
+                duration_ms
+            FROM tracks
+            """
+        ).fetchall()
+
+        return [
+            Track(
+                id=row["id"],
+                title=row["title"],
+                artist=row["artist"],
+                album=row["album"],
+                duration_ms=row["duration_ms"],
+            )
+            for row in rows
+        ]
+
     def save_playlist_track(
         self,
         playlist_id: str,

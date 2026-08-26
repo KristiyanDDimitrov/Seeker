@@ -66,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Scan all registered library locations.",
     )
 
+    library_subparsers.add_parser(
+        "match",
+        help="Match Spotify tracks against scanned local files.",
+    )
+
     return parser
 
 def handle_playlists(application: Application) -> None:
@@ -123,8 +128,28 @@ def handle_library(
     elif parsed.library_command == "scan":
         application.library_service.scan_all()
 
+    elif parsed.library_command == "match":
+        application.track_matcher.match_all()
+
     else:
-        print("Usage: seeker library {add,list,remove,scan} ...")
+        print("Usage: seeker library {add,list,remove,scan,match} ...")
+
+def handle_check(application: Application) -> None:
+    report = application.track_matcher.generate_match_report()
+
+    print(f"Auto-matched: {report['auto_count']}")
+
+    needs_review = report["needs_review"]
+    print(f"\nNeeds review ({len(needs_review)}):")
+
+    for artist, title, score in needs_review:
+        print(f"  {artist} - {title} (score: {score:.1f})")
+
+    unmatched = report["unmatched"]
+    print(f"\nUnmatched, needs a SoulSeek download ({len(unmatched)}):")
+
+    for artist, title in unmatched:
+        print(f"  {artist} - {title}")
 
 def run(
     application: Application,
@@ -145,9 +170,7 @@ def run(
             handle_playlists(application)
 
         elif parsed.command == "check":
-            print(
-                "Local library checking is not implemented yet."
-            )
+            handle_check(application)
 
         elif parsed.command == "library":
             handle_library(application, parsed)
