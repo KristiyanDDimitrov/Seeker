@@ -1,6 +1,8 @@
 import time
 from pathlib import Path
 
+import httpx
+
 from seeker.spotify.auth import (
     build_authorization_url,
     exchange_code_for_token,
@@ -32,10 +34,19 @@ class SpotifyAuthManager:
 
         if self._is_expired(token):
             print("Spotify access token expired. Refreshing...")
-            token = refresh_access_token(
-                self.client_id,
-                token.refresh_token,
-            )
+
+            try:
+                token = refresh_access_token(
+                    self.client_id,
+                    token.refresh_token,
+                )
+            except httpx.HTTPStatusError:
+                print(
+                    "Spotify token refresh failed. "
+                    "Starting a new authorization..."
+                )
+                return self._authorize()
+
             self._save_token(token)
 
         return token
