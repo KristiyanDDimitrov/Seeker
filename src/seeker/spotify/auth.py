@@ -4,6 +4,9 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
+import time
+
+from seeker.spotify.token import SpotifyToken
 
 
 AUTHORIZATION_URL = "https://accounts.spotify.com/authorize"
@@ -49,7 +52,7 @@ def exchange_code_for_token(
     redirect_uri: str,
     code: str,
     code_verifier: str,
-) -> dict:
+) -> SpotifyToken:
     response = httpx.post(
         TOKEN_URL,
         data={
@@ -63,4 +66,40 @@ def exchange_code_for_token(
     )
 
     response.raise_for_status()
-    return response.json()
+
+    data = response.json()
+
+    return SpotifyToken(
+        access_token=data["access_token"],
+        refresh_token=data["refresh_token"],
+        expires_at=time.time() + data["expires_in"],
+    )
+
+def refresh_access_token(
+    client_id: str,
+    refresh_token: str,
+) -> SpotifyToken:
+    response = httpx.post(
+        TOKEN_URL,
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+        },
+        timeout=10.0,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    new_refresh_token = data.get(
+        "refresh_token",
+        refresh_token,
+    )
+
+    return SpotifyToken(
+        access_token=data["access_token"],
+        refresh_token=new_refresh_token,
+        expires_at=time.time() + data["expires_in"],
+    )

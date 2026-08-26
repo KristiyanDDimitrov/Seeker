@@ -5,13 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="5be9df15-1c02-4f88-ad68-c189a6bb8c93" name="Changes" comment="Successfully used PKCE verifier and authorised token via Spotify.">
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/METADATA" beforeDir="false" afterPath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/METADATA" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/RECORD" beforeDir="false" afterPath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/RECORD" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/uv_cache.json" beforeDir="false" afterPath="$PROJECT_DIR$/.venv/lib/python3.13/site-packages/seeker-0.1.0.dist-info/uv_cache.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/seeker/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/seeker/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/seeker/models/playlist.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/seeker/models/playlist.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/seeker/spotify/auth.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/seeker/spotify/auth.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/seeker/spotify/client.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/seeker/spotify/client.py" afterDir="false" />
     </list>

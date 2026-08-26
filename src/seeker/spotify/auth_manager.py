@@ -1,0 +1,104 @@
+import time
+from pathlib import Path
+
+from seeker.spotify.auth import (
+    build_authorization_url,
+    exchange_code_for_token,
+    generate_code_challenge,
+    generate_code_verifier,
+    generate_state,
+    refresh_access_token,
+)
+from seeker.spotify.callback_server import wait_for_callback
+from seeker.spotify.token import SpotifyToken
+
+
+class SpotifyAuthManager:
+    def __init__(
+        self,
+        client_id: str,
+        redirect_uri: str,
+        token_path: Path,
+    ):
+        self.client_id = client_id
+        self.redirect_uri = redirect_uri
+        self.token_path = token_path
+
+    def get_valid_token(self) -> SpotifyToken:
+        token = self._load_token()
+
+        if token is None:
+            return self._authorize()
+
+        if self._is_expired(token):
+            print("Spotify access token expired. Refreshing...")
+            token = refresh_access_token(
+                self.client_id,
+                token.refresh_token,
+            )
+            self._save_token(token)
+
+        return token
+
+    def _is_expired(self, token: SpotifyToken) -> bool:
+        return time.time() >= token.expires_at - 60
+
+    def _load_token(self) -> SpotifyToken | None:
+        from seeker.spotify.token_store import TokenStore
+
+        return TokenStore(self.token_path).load()
+
+    def _save_token(self, token: SpotifyToken) -> None:
+        from seeker.spotify.token_store import TokenStore
+
+        self.token_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        TokenStore(self.token_path).save(token)
+
+    def _authorize(self) -> SpotifyToken:
+        code_verifier = generate_code_verifier()
+        code_challenge = generate_code_challenge(code_verifier)
+        state = generate_state()
+
+        authorization_url = build_authorization_url(
+            client_id=self.client_id,
+            redirect_uri=self.redirect_uri,
+            state=state,
+            code_challenge=code_challenge,
+        )
+
+        import webbrowser
+
+        print("Opening Spotify authorization page...")
+        webbrowser.open(authorization_url)
+
+        code, returned_state, error = wait_for_callback()
+
+        if error:
+            raise RuntimeError(
+                f"Spotify authorization failed: {error}"
+            )
+
+        if returned_state != state:
+            raise RuntimeError(
+                "Spotify state validation failed."
+            )
+
+        if not code:
+            raise RuntimeError(
+                "Spotify did not return an authorization code."
+            )
+
+        token = exchange_code_for_token(
+            client_id=self.client_id,
+            redirect_uri=self.redirect_uri,
+            code=code,
+            code_verifier=code_verifier,
+        )
+
+        self._save_token(token)
+
+        return token
