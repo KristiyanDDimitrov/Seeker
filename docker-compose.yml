@@ -1,0 +1,15 @@
+services:
+  slskd:
+    image: slskd/slskd
+    container_name: slskd
+    ports:
+      - "5030:5030"
+      - "5031:5031"
+      - "50300:50300"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - SLSKD_REMOTE_CONFIGURATION=true
+    volumes:
+      - ./slskd-data:/app
+    restart: always
