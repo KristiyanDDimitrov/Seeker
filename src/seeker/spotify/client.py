@@ -53,59 +53,66 @@ class SpotifyClient:
 
             return response.json()
 
-    def get_current_user_playlists(self) -> list[Playlist]:
-        playlists = []
-        url = f"{BASE_URL}/me/playlists"
-        params = {"limit": 50}
+    def _get_all_pages(
+            self,
+            url: str,
+            params: dict | None = None,
+    ) -> list[dict]:
+        items = []
 
         while url:
             data = self._get(url, params)
 
-            playlists.extend(
-                Playlist(
-                    id=playlist["id"],
-                    name=playlist["name"],
-                    track_count=playlist["items"]["total"],
-                    snapshot_id=playlist.get("snapshot_id"),
-                )
-                for playlist in data["items"]
-            )
+            items.extend(data.get("items", []))
 
-            url = data["next"]
+            url = data.get("next")
             params = None
 
-        return playlists
+        return items
+
+    def get_current_user_playlists(self) -> list[Playlist]:
+        items = self._get_all_pages(
+            f"{BASE_URL}/me/playlists",
+            {"limit": 50},
+        )
+
+        return [
+            Playlist(
+                id=playlist["id"],
+                name=playlist["name"],
+                track_count=playlist["tracks"]["total"],
+                snapshot_id=playlist.get("snapshot_id"),
+            )
+            for playlist in items
+        ]
 
     def get_playlist_tracks(self, playlist_id: str) -> list[Track]:
+        items = self._get_all_pages(
+            f"{BASE_URL}/playlists/{playlist_id}/tracks",
+            {"limit": 50},
+        )
+
         tracks = []
-        url = f"{BASE_URL}/playlists/{playlist_id}/items"
-        params = {"limit": 50}
 
-        while url:
-            data = self._get(url, params)
+        for item in items:
+            track = item.get("track")
 
-            for item in data["items"]:
-                track = item.get("item")
+            if not track:
+                continue
 
-                if not track:
-                    continue
+            artists = track.get("artists", [])
 
-                artists = track.get("artists", [])
+            if not artists:
+                continue
 
-                if not artists:
-                    continue
-
-                tracks.append(
-                    Track(
-                        id=track["id"],
-                        title=track["name"],
-                        artist=artists[0]["name"],
-                        album=track["album"]["name"],
-                        duration_ms=track["duration_ms"],
-                    )
+            tracks.append(
+                Track(
+                    id=track["id"],
+                    title=track["name"],
+                    artist=artists[0]["name"],
+                    album=track["album"]["name"],
+                    duration_ms=track["duration_ms"],
                 )
-
-            url = data["next"]
-            params = None
+            )
 
         return tracks
