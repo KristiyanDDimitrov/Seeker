@@ -297,6 +297,113 @@ def test_download_playlist_mid_batch_exception_does_not_abort_remaining_tracks(
     assert service.soulseek.search_calls == [query_t1, query_t2, query_t3]
 
 
+def test_download_playlist_requests_locked_only_candidate_as_upgrade(
+        tmp_path,
+):
+    # Real bug, found live against the real "Test" playlist (2026-08-27):
+    # a real slskd search for "Jade Venom - Scared Now? - DIVERGENCE VI"
+    # returned exactly one candidate passing filter_candidates (score
+    # 90.9, above AUTO_MATCH_THRESHOLD) — but it was locked, so
+    # select_downloads correctly returned (settled=None,
+    # shortlist=[that locked file]) per its own documented contract.
+    # download_playlist's `if settled is None: ... continue` branch never
+    # looked at upgrade_shortlist, silently discarding a real,
+    # above-threshold candidate instead of requesting it into
+    # poll_downloads' existing locked-retry cascade. Reproduces the exact
+    # real candidate data (username/filename/size/queue_length) captured
+    # from that live search, not a synthetic stand-in.
+    query = "Jade Venom Scared Now? - DIVERGENCE VI"
+
+    locked_candidate = make_soulseek_file(
+        username="ofoijacussa",
+        filename=(
+            "Music (unsorted)\\Labels\\Eatbrain [FLAC]\\"
+            "[EATBRAIN211] Jade Venom - Scared Now "
+            "(Divergence VI. Sampler) [2025]\\"
+            "01. Jade Venom - Scared Now (DIVERGENCE VI).flac"
+        ),
+        size=55_144_573,
+        queue_length=7,
+        upload_speed=228_249,
+        has_free_upload_slot=True,
+        length=242,
+        bit_depth=24,
+        sample_rate=44_100,
+        locked=True,
+    )
+
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={query: [locked_candidate]},
+    )
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir(exist_ok=True)
+
+    with service.database.transaction() as connection:
+        service.locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = service.locations.get_by_name("Main", connection)
+
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=1),
+            connection,
+        )
+        service.playlists.set_destination(
+            "p1", location.id, None, connection
+        )
+
+        service.tracks.save(
+            Track(
+                id="jade-venom-track",
+                title="Scared Now? - DIVERGENCE VI",
+                artist="Jade Venom",
+                album="",
+                duration_ms=242_000,
+            ),
+            connection,
+        )
+        service.tracks.save_playlist_track(
+            "p1", "jade-venom-track", connection
+        )
+
+    result = service.download_playlist("Test")
+
+    # A real download WAS requested (as an upgrade, not settled) — this
+    # must not be reported as "skipped, nothing found."
+    assert result["requested"] == 1
+    assert result["skipped"] == 0
+    assert result["failed"] == 0
+
+    assert service.soulseek.request_download_calls == [
+        (
+            "ofoijacussa",
+            locked_candidate.filename,
+            55_144_573,
+        )
+    ]
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id, role, rank, status, username, filename "
+            "FROM download_requests"
+        ).fetchall()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["track_id"] == "jade-venom-track"
+    assert row["role"] == "upgrade"
+    assert row["rank"] == 1
+    assert row["status"] == "queued"
+    assert row["username"] == "ofoijacussa"
+    assert row["filename"] == locked_candidate.filename
+
+
 def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
     service = make_service(
         tmp_path, {"t1": "Completed, Succeeded"}

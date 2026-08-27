@@ -192,8 +192,27 @@ class DownloadService:
                 settled, upgrade_shortlist = select_downloads(track, files)
 
                 if settled is None:
-                    print("  No candidates found.")
-                    skipped += 1
+                    if upgrade_shortlist:
+                        # Nothing practical/unlocked, but select_downloads
+                        # still found a real, above-threshold candidate —
+                        # e.g. every filtered match is locked. Request it
+                        # the same way an upgrade is normally requested
+                        # (role='upgrade') so it lands in poll_downloads'
+                        # existing locked-retry cascade instead of being
+                        # silently discarded. Counted as requested, not
+                        # skipped — a real download WAS requested, just
+                        # not a settled one.
+                        print(
+                            "  No practical candidate — requesting "
+                            "locked/upgrade-only candidate(s)."
+                        )
+                        self._request_upgrade_shortlist(
+                            track, upgrade_shortlist
+                        )
+                        requested += 1
+                    else:
+                        print("  No candidates found.")
+                        skipped += 1
                     continue
 
                 self._request_and_record(track, settled, role="settled")
@@ -204,26 +223,7 @@ class DownloadService:
                 requested += 1
 
                 if upgrade_shortlist:
-                    top = upgrade_shortlist[0]
-                    self._request_and_record(
-                        track, top, role="upgrade", rank=1,
-                    )
-                    print(
-                        f"  Also requested upgrade from {top.username}: "
-                        f"{top.filename} (rank 1)"
-                    )
-
-                    for rank, candidate in enumerate(
-                            upgrade_shortlist[1:], start=2,
-                    ):
-                        self._record_shortlisted(
-                            track, candidate, rank=rank
-                        )
-                        print(
-                            f"  Shortlisted upgrade candidate from "
-                            f"{candidate.username}: {candidate.filename} "
-                            f"(rank {rank})"
-                        )
+                    self._request_upgrade_shortlist(track, upgrade_shortlist)
             except Exception as error:
                 failed += 1
                 print(
@@ -236,6 +236,31 @@ class DownloadService:
             "failed": failed,
             "total": len(unmatched_tracks),
         }
+
+    def _request_upgrade_shortlist(
+            self,
+            track: Track,
+            upgrade_shortlist: list[SoulseekFile],
+    ) -> None:
+        # Shared by both call sites: the normal "settled found, plus a
+        # better upgrade exists" path, and the "nothing settled, but a
+        # real (possibly locked-only) candidate exists" path. Rank 1 is
+        # requested immediately; the rest are persisted but not sent to
+        # slskd until poll_downloads' cascade needs them.
+        top = upgrade_shortlist[0]
+        self._request_and_record(track, top, role="upgrade", rank=1)
+        print(
+            f"  Requested upgrade from {top.username}: "
+            f"{top.filename} (rank 1)"
+        )
+
+        for rank, candidate in enumerate(upgrade_shortlist[1:], start=2):
+            self._record_shortlisted(track, candidate, rank=rank)
+            print(
+                f"  Shortlisted upgrade candidate from "
+                f"{candidate.username}: {candidate.filename} "
+                f"(rank {rank})"
+            )
 
     def _request_and_record(
             self,
