@@ -71,7 +71,15 @@ class LibraryLocationNotFoundError(RuntimeError):
 
 
 def _build_search_query(track: Track) -> str:
-    return f"{track.artist} {track.title}"
+    # track.artist may credit multiple artists joined with ", " (e.g.
+    # "MK, Dom Dolla") — strip the comma for the actual search string
+    # rather than sending it literally. Soulseek search matching isn't
+    # guaranteed to ignore stray punctuation, so a literal "MK," glued to
+    # the first name risks not matching filenames that don't happen to
+    # have that exact comma placement.
+    artist_query = track.artist.replace(",", " ")
+
+    return " ".join(f"{artist_query} {track.title}".split())
 
 
 def _quality_descriptor(file: SoulseekFile) -> str:

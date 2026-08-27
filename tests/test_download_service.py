@@ -24,7 +24,25 @@ from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import SoulseekDownloadError
-from seeker.soulseek.download_service import DownloadService
+from seeker.soulseek.download_service import DownloadService, _build_search_query
+
+
+def test_build_search_query_strips_comma_from_multi_artist_track():
+    # track.artist may credit multiple artists joined with ", " (e.g.
+    # "MK, Dom Dolla") — the literal comma isn't a sane search string,
+    # so it must not appear in the built query.
+    track = Track(
+        id="track1",
+        title="Rhyme Dust",
+        artist="MK, Dom Dolla",
+        album="Rhyme Dust",
+        duration_ms=215_000,
+    )
+
+    query = _build_search_query(track)
+
+    assert "," not in query
+    assert query == "MK Dom Dolla Rhyme Dust"
 
 
 class FakeSoulseekClient:

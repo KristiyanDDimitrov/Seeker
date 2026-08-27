@@ -65,10 +65,20 @@ def artist_matches(spotify_artist: str, local_artist: str | None) -> bool:
     if local_artist is None:
         return False
 
-    normalized_spotify_artist = normalize_filename_text(spotify_artist)
     normalized_local_artist = normalize_filename_text(local_artist)
 
-    return normalized_spotify_artist in normalized_local_artist
+    # spotify_artist may credit multiple artists joined with ", " (e.g.
+    # "MK, Dom Dolla") — a local tag or filename crediting only one of
+    # them (e.g. just "MK") should still count as a match, so pass if
+    # ANY one name is contained, not all of them.
+    spotify_artist_names = [
+        name.strip() for name in spotify_artist.split(",") if name.strip()
+    ]
+
+    return any(
+        normalize_filename_text(name) in normalized_local_artist
+        for name in spotify_artist_names
+    )
 
 
 def score_title(
@@ -85,17 +95,33 @@ def score_title(
     # the clean-tag case instead (measured: 100 title-only vs. 73.2
     # combined on a real match) — so score both and take the better one
     # rather than guessing which shape the source is.
+    #
+    # spotify_artist may also credit multiple artists joined with ", "
+    # (e.g. "MK, Dom Dolla"), while the local source often credits only
+    # one of them — combining the FULL multi-artist string dilutes the
+    # ratio even when the credited one matches perfectly (measured: 92.9
+    # combined-with-"MK" vs. 71.8 combined-with-"MK, Dom Dolla" against
+    # the same "mk - rhyme dust" filename). So also try each individual
+    # artist name combined with the title, not just the joined string.
     normalized_local = normalize_filename_text(local_title_source)
+
+    artist_variants = [spotify_artist] + [
+        name.strip() for name in spotify_artist.split(",") if name.strip()
+    ]
 
     scores = [
         fuzz.token_sort_ratio(
             normalize_filename_text(spotify_title),
             normalized_local,
-        ),
-        fuzz.token_sort_ratio(
-            normalize_filename_text(f"{spotify_artist} {spotify_title}"),
-            normalized_local,
-        ),
+        )
     ]
+
+    for artist_variant in artist_variants:
+        scores.append(
+            fuzz.token_sort_ratio(
+                normalize_filename_text(f"{artist_variant} {spotify_title}"),
+                normalized_local,
+            )
+        )
 
     return max(scores)

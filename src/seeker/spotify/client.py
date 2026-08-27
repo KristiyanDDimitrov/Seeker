@@ -179,7 +179,11 @@ class SpotifyClient:
                 Track(
                     id=track_data["id"],
                     title=track_data["name"],
-                    artist=artists[0]["name"],
+                    # Spotify may credit multiple artists on one track
+                    # (e.g. a remix or collab) — join all of them rather
+                    # than keeping only artists[0], matching the
+                    # convention already seen in real local file tags.
+                    artist=", ".join(artist["name"] for artist in artists),
                     album=track_data["album"]["name"],
                     duration_ms=track_data["duration_ms"],
                 )

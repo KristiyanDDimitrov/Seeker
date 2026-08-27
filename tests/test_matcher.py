@@ -118,6 +118,23 @@ def test_wrong_artist_is_excluded_from_candidacy_despite_title_match():
     assert find_best_match(track, [candidate]) is None
 
 
+def test_multi_artist_track_matches_local_file_crediting_only_one():
+    # Spotify may credit multiple artists joined with ", " (e.g.
+    # "MK, Dom Dolla"); a local file crediting only one of them should
+    # still be found as a match.
+    track = make_track(artist="MK, Dom Dolla", title="Rhyme Dust")
+
+    candidate = make_local_file(
+        tag_artist="MK",
+        tag_title="Rhyme Dust",
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    assert match[0] is candidate
+
+
 def test_untagged_file_matches_via_filename_alone():
     # Real case: a WAV with no tags at all (mutagen extracted nothing),
     # matched purely off its "Artist - Title"-style filename. This used

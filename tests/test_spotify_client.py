@@ -79,6 +79,38 @@ def test_get_playlist_tracks_reads_item_field_from_correct_endpoint(monkeypatch)
     assert tracks[0].artist == "Artist"
 
 
+def test_get_playlist_tracks_joins_multiple_artists(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return FakeResponse(
+            {
+                "items": [
+                    {
+                        "item": {
+                            "type": "track",
+                            "track": True,
+                            "id": "track1",
+                            "name": "Rhyme Dust",
+                            "artists": [
+                                {"name": "MK"},
+                                {"name": "Dom Dolla"},
+                            ],
+                            "album": {"name": "Rhyme Dust"},
+                            "duration_ms": 12345,
+                        },
+                    },
+                ],
+                "next": None,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    tracks = SpotifyClient("token").get_playlist_tracks("playlist1")
+
+    assert len(tracks) == 1
+    assert tracks[0].artist == "MK, Dom Dolla"
+
+
 def test_get_playlist_tracks_skips_non_track_entries(monkeypatch):
     def fake_get(url, headers=None, params=None, timeout=None):
         return FakeResponse(
