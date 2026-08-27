@@ -12,4 +12,5 @@ services:
       - SLSKD_REMOTE_CONFIGURATION=true
     volumes:
       - ./slskd-data:/app
+      - "/Volumes/X9 Pro/Music:/shared/music:ro"
     restart: always
