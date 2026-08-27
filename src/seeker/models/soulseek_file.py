@@ -14,3 +14,5 @@ class SoulseekFile:
     bit_rate: int | None = None
     bit_depth: int | None = None
     sample_rate: int | None = None
+    is_variable_bitrate: bool | None = None
+    locked: bool = False
