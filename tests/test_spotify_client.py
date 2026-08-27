@@ -1,7 +1,11 @@
 import httpx
 import pytest
 
-from seeker.spotify.client import SpotifyClient, SpotifyRateLimitedError
+from seeker.spotify.client import (
+    MAX_RETRY_ATTEMPTS,
+    SpotifyClient,
+    SpotifyRateLimitedError,
+)
 
 
 class FakeResponse:
@@ -184,3 +188,43 @@ def test_quota_exceeded_429_raises_with_formatted_duration(monkeypatch):
     assert error.quota_exceeded is True
     assert error.retry_after_seconds == retry_after_seconds
     assert "3h 42m" in str(error)
+
+
+def test_short_429_retries_up_to_max_attempts_then_gives_up(monkeypatch):
+    # Without a ceiling, a server that keeps returning a short
+    # Retry-After forever would retry forever. Confirms _get gives up
+    # after MAX_RETRY_ATTEMPTS instead.
+    call_count = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        call_count["n"] += 1
+        return FakeRateLimitedResponse(retry_after="1", reason=None)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr("seeker.spotify.client.time.sleep", lambda s: None)
+
+    with pytest.raises(SpotifyRateLimitedError) as exc_info:
+        SpotifyClient("token").get_current_user_playlists()
+
+    assert call_count["n"] == MAX_RETRY_ATTEMPTS
+    assert exc_info.value.quota_exceeded is False
+
+
+def test_short_429_succeeds_after_retrying_within_the_limit(monkeypatch):
+    call_count = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        call_count["n"] += 1
+
+        if call_count["n"] < 3:
+            return FakeRateLimitedResponse(retry_after="1", reason=None)
+
+        return FakeResponse({"items": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr("seeker.spotify.client.time.sleep", lambda s: None)
+
+    playlists = SpotifyClient("token").get_current_user_playlists()
+
+    assert playlists == []
+    assert call_count["n"] == 3

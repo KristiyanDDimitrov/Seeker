@@ -176,50 +176,64 @@ class DownloadService:
 
         requested = 0
         skipped = 0
+        failed = 0
 
         for track in unmatched_tracks:
-            print(f"Searching: {track.artist} - {track.title}")
+            # One bad track (search timeout, malformed response, a
+            # transient network error — anything) must not silently
+            # abort every track after it in the batch. Every track ends
+            # up in exactly one bucket: requested, skipped (no real
+            # candidates), or failed (with a printed reason) — never
+            # dropped without being counted anywhere.
+            try:
+                print(f"Searching: {track.artist} - {track.title}")
 
-            files = self.soulseek.search(_build_search_query(track))
-            settled, upgrade_shortlist = select_downloads(track, files)
+                files = self.soulseek.search(_build_search_query(track))
+                settled, upgrade_shortlist = select_downloads(track, files)
 
-            if settled is None:
-                print("  No candidates found.")
-                skipped += 1
-                continue
+                if settled is None:
+                    print("  No candidates found.")
+                    skipped += 1
+                    continue
 
-            self._request_and_record(track, settled, role="settled")
-            print(
-                f"  Requested from {settled.username}: "
-                f"{settled.filename}"
-            )
-            requested += 1
-
-            if upgrade_shortlist:
-                top = upgrade_shortlist[0]
-                self._request_and_record(
-                    track, top, role="upgrade", rank=1,
-                )
+                self._request_and_record(track, settled, role="settled")
                 print(
-                    f"  Also requested upgrade from {top.username}: "
-                    f"{top.filename} (rank 1)"
+                    f"  Requested from {settled.username}: "
+                    f"{settled.filename}"
                 )
+                requested += 1
 
-                for rank, candidate in enumerate(
-                        upgrade_shortlist[1:], start=2,
-                ):
-                    self._record_shortlisted(
-                        track, candidate, rank=rank
+                if upgrade_shortlist:
+                    top = upgrade_shortlist[0]
+                    self._request_and_record(
+                        track, top, role="upgrade", rank=1,
                     )
                     print(
-                        f"  Shortlisted upgrade candidate from "
-                        f"{candidate.username}: {candidate.filename} "
-                        f"(rank {rank})"
+                        f"  Also requested upgrade from {top.username}: "
+                        f"{top.filename} (rank 1)"
                     )
+
+                    for rank, candidate in enumerate(
+                            upgrade_shortlist[1:], start=2,
+                    ):
+                        self._record_shortlisted(
+                            track, candidate, rank=rank
+                        )
+                        print(
+                            f"  Shortlisted upgrade candidate from "
+                            f"{candidate.username}: {candidate.filename} "
+                            f"(rank {rank})"
+                        )
+            except Exception as error:
+                failed += 1
+                print(
+                    f"  Failed: {track.artist} - {track.title}: {error}"
+                )
 
         return {
             "requested": requested,
             "skipped": skipped,
+            "failed": failed,
             "total": len(unmatched_tracks),
         }
 
@@ -300,65 +314,74 @@ class DownloadService:
             # nothing here ever is one.
             assert request.id is not None
 
-            if request.transfer_id is None:
-                counts[request.status] += 1
-                continue
-
-            state = self.soulseek.get_download_status(
-                request.username,
-                request.transfer_id,
-            )
-
-            if any(marker in state for marker in FAILED_STATE_MARKERS):
-                if request.role == "upgrade":
-                    status = self._resolve_rejection_status(
-                        state, request.username, request.transfer_id,
-                    )
-                    self._update_status(request.id, status)
-
-                    if status == "failed":
-                        counts["failed"] += 1
-
-                    # Phase 4 cascade: try the next shortlisted
-                    # candidate for this track immediately, in this
-                    # same run, regardless of why this one was
-                    # rejected (locked-pattern or otherwise) — the
-                    # exact same candidate has already failed either
-                    # way, so there's no reason to wait a day before
-                    # trying the next best one.
-                    self._cascade_upgrade(request.track_id, counts)
+            # Same principle as download_playlist(): one bad request (a
+            # network blip talking to slskd, anything) must not silently
+            # stop every request after it in this run from being polled.
+            try:
+                if request.transfer_id is None:
+                    counts[request.status] += 1
                     continue
 
-                self._update_status(request.id, "failed")
+                state = self.soulseek.get_download_status(
+                    request.username,
+                    request.transfer_id,
+                )
+
+                if any(marker in state for marker in FAILED_STATE_MARKERS):
+                    if request.role == "upgrade":
+                        status = self._resolve_rejection_status(
+                            state, request.username, request.transfer_id,
+                        )
+                        self._update_status(request.id, status)
+
+                        if status == "failed":
+                            counts["failed"] += 1
+
+                        # Phase 4 cascade: try the next shortlisted
+                        # candidate for this track immediately, in this
+                        # same run, regardless of why this one was
+                        # rejected (locked-pattern or otherwise) — the
+                        # exact same candidate has already failed either
+                        # way, so there's no reason to wait a day before
+                        # trying the next best one.
+                        self._cascade_upgrade(request.track_id, counts)
+                        continue
+
+                    self._update_status(request.id, "failed")
+                    counts["failed"] += 1
+                    continue
+
+                if "Succeeded" not in state:
+                    new_status = (
+                        "downloading" if state != "Requested" else "queued"
+                    )
+
+                    if new_status != request.status:
+                        self._update_status(request.id, new_status)
+
+                    counts[new_status] += 1
+                    continue
+
+                if request.role == "upgrade":
+                    # Leave the file in slskd's own download dir — it
+                    # only moves once the user confirms the replacement
+                    # below.
+                    self._update_status(request.id, "ready_for_review")
+                    self._supersede_others_for_track(
+                        request.track_id, request.id,
+                    )
+                    continue
+
+                if self._move_completed_file(request) is not None:
+                    self._update_status(request.id, "completed")
+                    counts["completed"] += 1
+                else:
+                    counts[request.status] += 1
+            except Exception as error:
                 counts["failed"] += 1
-                continue
-
-            if "Succeeded" not in state:
-                new_status = (
-                    "downloading" if state != "Requested" else "queued"
+                print(
+                    f"  Failed to poll '{request.filename}': {error}"
                 )
-
-                if new_status != request.status:
-                    self._update_status(request.id, new_status)
-
-                counts[new_status] += 1
-                continue
-
-            if request.role == "upgrade":
-                # Leave the file in slskd's own download dir — it
-                # only moves once the user confirms the replacement
-                # below.
-                self._update_status(request.id, "ready_for_review")
-                self._supersede_others_for_track(
-                    request.track_id, request.id,
-                )
-                continue
-
-            if self._move_completed_file(request) is not None:
-                self._update_status(request.id, "completed")
-                counts["completed"] += 1
-            else:
-                counts[request.status] += 1
 
         # Phase 3 retry, now covering the whole shortlist rather than a
         # single row per track: re-issue request_download for every
@@ -368,7 +391,15 @@ class DownloadService:
         # design). Same exact username+filename each time — retrying
         # access to the same candidate, not a fresh search.
         for request in locked:
-            self._retry_locked_request(request)
+            # Same principle as above — one bad retry must not stop the
+            # rest of the locked shortlist from being retried this run.
+            try:
+                self._retry_locked_request(request)
+            except Exception as error:
+                print(
+                    f"  Failed to retry locked '{request.filename}': "
+                    f"{error}"
+                )
 
         counts["ready_for_review"] = len(self._get_ready_for_review())
         counts["locked"] = len(self._get_locked())

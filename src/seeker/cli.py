@@ -275,7 +275,8 @@ def handle_download(
 
     print(
         f"Requested {result['requested']} download(s), "
-        f"skipped {result['skipped']} "
+        f"skipped {result['skipped']}, "
+        f"failed {result['failed']} "
         f"(of {result['total']} unmatched tracks)."
     )
 

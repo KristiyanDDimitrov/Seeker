@@ -10,6 +10,12 @@ from seeker.models.track import Track
 
 BASE_URL = "https://api.spotify.com/v1"
 
+# Bounds _get's 429-retry loop. Without this, a server that kept returning
+# a short Retry-After (e.g. 1s) indefinitely would retry forever — this
+# caps it at a fixed number of short waits before surfacing the same
+# SpotifyRateLimitedError callers already handle for "give up" cases.
+MAX_RETRY_ATTEMPTS = 5
+
 
 def _format_duration(seconds: int) -> str:
     hours, remainder = divmod(seconds, 3600)
@@ -78,6 +84,8 @@ class SpotifyClient:
             url: str,
             params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        attempts = 0
+
         while True:
             response = httpx.get(
                 url,
@@ -89,6 +97,8 @@ class SpotifyClient:
             )
 
             if response.status_code == 429:
+                attempts += 1
+
                 error_data = response.json().get("error", {})
                 quota_exceeded = (
                     error_data.get("reason") == "QUOTA_EXCEEDED"
@@ -107,6 +117,7 @@ class SpotifyClient:
                         quota_exceeded
                         or retry_after_seconds is None
                         or retry_after_seconds > 60
+                        or attempts >= MAX_RETRY_ATTEMPTS
                 ):
                     raise SpotifyRateLimitedError(
                         retry_after_seconds=retry_after_seconds,

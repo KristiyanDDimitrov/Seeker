@@ -21,6 +21,7 @@ from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
+from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import SoulseekDownloadError
@@ -51,6 +52,8 @@ class FakeSoulseekClient:
             states: dict[str, str],
             exceptions: dict[str, str] | None = None,
             retry_results: dict[str, "str | Exception"] | None = None,
+            search_results: dict[str, "list[SoulseekFile] | Exception"]
+            | None = None,
     ):
         self.states = states
         self.exceptions = exceptions or {}
@@ -60,6 +63,21 @@ class FakeSoulseekClient:
         # instance to raise (rejected again at the batch level).
         self.retry_results = retry_results or {}
         self.request_download_calls: list[tuple[str, str, int]] = []
+        # Keyed by the exact search query string — either a list of
+        # candidates, or an Exception to raise (simulating a real
+        # search failure for one track mid-batch).
+        self.search_results = search_results or {}
+        self.search_calls: list[str] = []
+
+    def search(self, query: str) -> list["SoulseekFile"]:
+        self.search_calls.append(query)
+
+        result = self.search_results.get(query)
+
+        if isinstance(result, Exception):
+            raise result
+
+        return result or []
 
     def get_download_status(self, username: str, transfer_id: str) -> str:
         return self.states[transfer_id]
@@ -85,13 +103,16 @@ def make_service(
         states: dict[str, str],
         exceptions: dict[str, str] | None = None,
         retry_results: dict | None = None,
+        search_results: dict | None = None,
 ) -> DownloadService:
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 
     return DownloadService(
         database,
-        FakeSoulseekClient(states, exceptions, retry_results),
+        FakeSoulseekClient(
+            states, exceptions, retry_results, search_results,
+        ),
         PlaylistRepository(database),
         TrackRepository(database),
         LibraryLocationRepository(database),
@@ -165,6 +186,117 @@ def get_status(service: DownloadService, transfer_id: str) -> str:
     return row["status"]
 
 
+def _seed_playlist_with_unmatched_tracks(
+        service: DownloadService,
+        tmp_path,
+        track_ids: list[str],
+) -> None:
+    lib_root = tmp_path / "music"
+    lib_root.mkdir(exist_ok=True)
+
+    with service.database.transaction() as connection:
+        service.locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = service.locations.get_by_name("Main", connection)
+
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=len(track_ids)),
+            connection,
+        )
+        service.playlists.set_destination(
+            "p1", location.id, None, connection
+        )
+
+        for track_id in track_ids:
+            service.tracks.save(
+                Track(
+                    id=track_id,
+                    title=f"Title {track_id}",
+                    artist="Dom Dolla",
+                    album="Album",
+                    duration_ms=200_000,
+                ),
+                connection,
+            )
+            service.tracks.save_playlist_track("p1", track_id, connection)
+
+
+def make_soulseek_file(**overrides) -> SoulseekFile:
+    defaults = dict(
+        username="peer1",
+        filename="Dom Dolla - Title.flac",
+        extension="flac",
+        size=1_000_000,
+        queue_length=2,
+        upload_speed=1_000_000,
+        has_free_upload_slot=True,
+    )
+    defaults.update(overrides)
+    return SoulseekFile(**defaults)
+
+
+def test_download_playlist_mid_batch_exception_does_not_abort_remaining_tracks(
+        tmp_path,
+):
+    # Real bug, found via a real "Test" playlist run: an uncaught
+    # exception during ONE track's search (a network blip, a malformed
+    # response — anything) used to propagate straight out of
+    # download_playlist(), silently aborting every track after it with
+    # no accounting at all. Every track must land in exactly one bucket:
+    # requested, skipped (no candidates), or failed (with a reason) —
+    # never silently dropped.
+    query_t1 = "Dom Dolla Title t1"
+    query_t2 = "Dom Dolla Title t2"
+    query_t3 = "Dom Dolla Title t3"
+
+    candidate = make_soulseek_file(
+        filename="Dom Dolla - Title t2.flac",
+        queue_length=2,
+    )
+
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={
+            query_t1: RuntimeError("simulated network failure"),
+            query_t2: [candidate],
+            query_t3: [],
+        },
+    )
+    _seed_playlist_with_unmatched_tracks(
+        service, tmp_path, ["t1", "t2", "t3"]
+    )
+
+    result = service.download_playlist("Test")
+
+    assert result["total"] == 3
+    assert result["requested"] == 1
+    assert result["skipped"] == 1
+    assert result["failed"] == 1
+    # Every track accounted for exactly once.
+    assert (
+        result["requested"] + result["skipped"] + result["failed"]
+        == result["total"]
+    )
+
+    # t2 (after the failing t1) was genuinely processed and requested —
+    # confirming the loop didn't just stop at t1.
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM download_requests"
+        ).fetchall()
+
+    assert [row["track_id"] for row in rows] == ["t2"]
+
+    # All three tracks were actually searched — the loop kept going past
+    # the failure, it didn't just silently stop.
+    assert service.soulseek.search_calls == [query_t1, query_t2, query_t3]
+
+
 def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
     service = make_service(
         tmp_path, {"t1": "Completed, Succeeded"}
@@ -184,6 +316,25 @@ def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
 
     assert counts["completed"] == 1
     assert get_status(service, "t1") == "completed"
+
+
+def test_poll_downloads_mid_batch_exception_does_not_abort_remaining_requests(
+        tmp_path,
+):
+    # Same class of bug as download_playlist's mid-batch fix — an
+    # unexpected exception polling ONE request (t1's transfer_id is
+    # deliberately not stubbed in `states`, triggering a real KeyError,
+    # standing in for any real unexpected failure talking to slskd) must
+    # not stop t2 from being polled in the same run.
+    service = make_service(tmp_path, {"t2": "InProgress"})
+    seed_pending_request(service, "t1", track_id="track1")
+    seed_pending_request(service, "t2", track_id="track2")
+
+    counts = service.poll_downloads()
+
+    assert counts["failed"] == 1
+    assert counts["downloading"] == 1
+    assert get_status(service, "t2") == "downloading"
 
 
 def test_errored_state_marks_failed_not_completed(tmp_path):
