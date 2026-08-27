@@ -47,16 +47,55 @@ class TrackRepository:
             """
         ).fetchall()
 
-        return [
-            Track(
-                id=row["id"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration_ms=row["duration_ms"],
-            )
-            for row in rows
-        ]
+        return [_row_to_track(row) for row in rows]
+
+    def get_by_id(
+            self,
+            track_id: str,
+            connection: sqlite3.Connection,
+    ) -> Track | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                title,
+                artist,
+                album,
+                duration_ms
+            FROM tracks
+            WHERE id = ?
+            """,
+            (track_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_track(row)
+
+    def get_unmatched_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[Track]:
+        rows = connection.execute(
+            """
+            SELECT
+                t.id,
+                t.title,
+                t.artist,
+                t.album,
+                t.duration_ms
+            FROM tracks t
+            JOIN playlist_tracks pt ON pt.track_id = t.id
+            LEFT JOIN track_matches tm ON tm.track_id = t.id
+            WHERE pt.playlist_id = ?
+            AND (tm.track_id IS NULL OR tm.match_method IS NULL)
+            """,
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_track(row) for row in rows]
 
     def save_playlist_track(
         self,
@@ -105,3 +144,13 @@ class TrackRepository:
                 for track_id in track_ids
             ],
         )
+
+
+def _row_to_track(row: sqlite3.Row) -> Track:
+    return Track(
+        id=row["id"],
+        title=row["title"],
+        artist=row["artist"],
+        album=row["album"],
+        duration_ms=row["duration_ms"],
+    )

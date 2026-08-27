@@ -14,6 +14,14 @@ SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI")
 SLSKD_BASE_URL = os.getenv("SLSKD_BASE_URL")
 SLSKD_API_KEY = os.getenv("SLSKD_API_KEY")
 
+# Host filesystem path to slskd's own configured download directory (e.g.
+# ./slskd-data/downloads). slskd's download-destination option only
+# accepts a subfolder relative to its own download root, not an arbitrary
+# path — so completed files are moved from here into a playlist's
+# configured library location by `seeker downloads status`. Only enforced
+# when that command needs to move a file.
+SLSKD_DOWNLOAD_DIR = os.getenv("SLSKD_DOWNLOAD_DIR")
+
 
 if not SPOTIFY_CLIENT_ID:
     raise RuntimeError("SPOTIFY_CLIENT_ID is not configured.")

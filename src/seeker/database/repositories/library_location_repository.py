@@ -81,6 +81,29 @@ class LibraryLocationRepository:
 
         return _row_to_location(row)
 
+    def get_by_id(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> LibraryLocation | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                path,
+                added_at
+            FROM library_locations
+            WHERE id = ?
+            """,
+            (location_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_location(row)
+
     def delete(
             self,
             location_id: int,

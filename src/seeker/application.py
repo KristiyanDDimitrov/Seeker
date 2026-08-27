@@ -2,11 +2,17 @@ from pathlib import Path
 
 from seeker import config
 from seeker.database.connection import Database
+from seeker.database.repositories.download_request_repository import (
+    DownloadRequestRepository,
+)
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
+)
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
 )
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
@@ -15,6 +21,7 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
 from seeker.library.service import LibraryService
 from seeker.soulseek.client import SoulseekClient
+from seeker.soulseek.download_service import DownloadService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
@@ -45,6 +52,7 @@ class Application:
         self._library_service = None
         self._track_matcher = None
         self._soulseek_client = None
+        self._download_service = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -105,3 +113,20 @@ class Application:
             )
 
         return self._soulseek_client
+
+    @property
+    def download_service(self) -> DownloadService:
+        if self._download_service is None:
+            self._download_service = DownloadService(
+                self.database,
+                self.soulseek_client,
+                PlaylistRepository(self.database),
+                TrackRepository(self.database),
+                LibraryLocationRepository(self.database),
+                DownloadRequestRepository(self.database),
+                TrackMatchRepository(self.database),
+                LocalFileRepository(self.database),
+                config.SLSKD_DOWNLOAD_DIR,
+            )
+
+        return self._download_service

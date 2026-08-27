@@ -1,18 +1,17 @@
 import os
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from mutagen import File as MutagenFile
 
+from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
-
-
-AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg"}
 
 
 class LibraryUnavailableError(RuntimeError):
@@ -76,14 +75,12 @@ class LibraryScanner:
                     unchanged += 1
                     continue
 
-                local_file = _read_local_file(
-                    location.id,
+                index_single_file(
+                    location,
                     relative_path,
-                    file_path,
-                    stat,
+                    self.local_files,
+                    connection,
                 )
-
-                self.local_files.upsert(local_file, connection)
 
                 if existing is None:
                     added += 1
@@ -113,6 +110,33 @@ class LibraryScanner:
         )
 
         return summary
+
+
+def index_single_file(
+        location: LibraryLocation,
+        relative_path: str,
+        local_file_repository: LocalFileRepository,
+        connection: sqlite3.Connection,
+) -> LocalFile:
+    file_path = Path(location.path) / relative_path
+    stat = file_path.stat()
+
+    local_file = _read_local_file(
+        location.id,
+        relative_path,
+        file_path,
+        stat,
+    )
+
+    local_file_repository.upsert(local_file, connection)
+
+    indexed = local_file_repository.get_by_location_and_relative_path(
+        location.id,
+        relative_path,
+        connection,
+    )
+
+    return indexed
 
 
 def _read_local_file(

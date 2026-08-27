@@ -7,7 +7,11 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
-from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
+from seeker.library.scanner import (
+    LibraryScanner,
+    LibraryUnavailableError,
+    index_single_file,
+)
 from seeker.models.library_location import LibraryLocation
 
 
@@ -68,3 +72,48 @@ def test_scan_skips_appledouble_sidecar_files(tmp_path):
     assert [local_file.relative_path for local_file in scanned] == [
         "song.mp3"
     ]
+
+
+def test_index_single_file_matches_scan_loop_result(tmp_path):
+    # index_single_file is the one place both the scan loop and the
+    # SoulSeek upgrade-confirmation flow read tags and upsert — this
+    # confirms a direct call produces the same row scan() would.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    (library_root / "song.mp3").write_bytes(b"")
+
+    local_files = LocalFileRepository(database)
+    locations = LibraryLocationRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="main",
+                path=str(library_root),
+                added_at="2026-01-01T00:00:00+00:00",
+            ),
+            connection,
+        )
+        location = locations.get_by_name("main", connection)
+
+    with database.transaction() as connection:
+        indexed = index_single_file(
+            location, "song.mp3", local_files, connection
+        )
+
+    assert indexed.id is not None
+    assert indexed.relative_path == "song.mp3"
+    assert indexed.format == "mp3"
+
+    scanner = LibraryScanner(local_files, database)
+    scanner.scan(location)
+
+    with database.transaction() as connection:
+        scanned = local_files.get_all(connection)
+
+    assert len(scanned) == 1
+    assert scanned[0].id == indexed.id
+    assert scanned[0].relative_path == indexed.relative_path

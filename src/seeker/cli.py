@@ -4,6 +4,12 @@ import sys
 from seeker.application import Application
 from seeker.library.scanner import LibraryUnavailableError
 from seeker.models.playlist import Playlist
+from seeker.soulseek.client import SoulseekDownloadError
+from seeker.soulseek.download_service import (
+    LibraryLocationNotFoundError,
+    NoDestinationConfiguredError,
+    PlaylistNotFoundError,
+)
 from seeker.spotify.client import SpotifyRateLimitedError
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
@@ -15,8 +21,8 @@ def resolve_playlist_or_offer_sync(
         name: str,
         application: Application,
 ) -> Playlist:
-    """Shared playlist-name resolution for CLI commands that take one
-    (currently just sync-tracks).
+    """Shared playlist-name resolution for every CLI command that takes
+    one (sync-tracks, playlists set-destination, download).
 
     Four real outcomes, in order:
       1. Found locally (case-insensitive) — returned immediately, no
@@ -92,9 +98,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_tracks_parser.add_argument("playlist_name")
 
-    subparsers.add_parser(
+    playlists_parser = subparsers.add_parser(
         "playlists",
         help="List locally stored Spotify playlists.",
+    )
+
+    playlists_subparsers = playlists_parser.add_subparsers(
+        dest="playlists_command",
+    )
+
+    set_destination_parser = playlists_subparsers.add_parser(
+        "set-destination",
+        help="Configure where a playlist's downloads should land.",
+    )
+    set_destination_parser.add_argument("playlist_name")
+    set_destination_parser.add_argument("location_name")
+    set_destination_parser.add_argument(
+        "subfolder",
+        nargs="?",
+        default=None,
     )
 
     check_parser = subparsers.add_parser(
@@ -105,6 +127,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Also list each auto-matched track with score and filename.",
+    )
+
+    download_parser = subparsers.add_parser(
+        "download",
+        help="Download a playlist's unmatched tracks via SoulSeek.",
+    )
+    download_parser.add_argument("playlist_name")
+
+    downloads_parser = subparsers.add_parser(
+        "downloads",
+        help="Manage in-flight SoulSeek downloads.",
+    )
+
+    downloads_subparsers = downloads_parser.add_subparsers(
+        dest="downloads_command",
+    )
+
+    downloads_subparsers.add_parser(
+        "status",
+        help=(
+            "Poll pending downloads and update their status. "
+            "Non-interactive — safe to automate."
+        ),
+    )
+
+    downloads_subparsers.add_parser(
+        "review",
+        help=(
+            "Interactively confirm or decline pending upgrade "
+            "replacements."
+        ),
     )
 
     library_parser = subparsers.add_parser(
@@ -146,9 +199,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-def handle_playlists(application: Application) -> None:
-    playlists = application.sync_service.list_playlists()
+def handle_playlists(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.playlists_command == "set-destination":
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
 
+        application.download_service.set_destination(
+            playlist.name,
+            parsed.location_name,
+            parsed.subfolder,
+        )
+        return
+
+    _print_playlists(application.sync_service.list_playlists())
+
+
+def _print_playlists(playlists: list[Playlist]) -> None:
     if not playlists:
         print("No Spotify playlists have been synchronized yet.")
         return
@@ -159,11 +229,54 @@ def handle_playlists(application: Application) -> None:
             f"({playlist.track_count} tracks)"
         )
 
+def handle_download(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
+    )
+
+    result = application.download_service.download_playlist(
+        playlist.name
+    )
+
+    print(
+        f"Requested {result['requested']} download(s), "
+        f"skipped {result['skipped']} "
+        f"(of {result['total']} unmatched tracks)."
+    )
+
+def handle_downloads(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.downloads_command == "status":
+        counts = application.download_service.poll_downloads()
+
+        print(
+            f"Queued: {counts['queued']}, "
+            f"Downloading: {counts['downloading']}, "
+            f"Completed: {counts['completed']}, "
+            f"Failed: {counts['failed']}, "
+            f"Ready for review: {counts['ready_for_review']}, "
+            f"Locked (retrying): {counts['locked']}, "
+            f"Shortlisted (pending): {counts['shortlisted']}, "
+            f"Superseded: {counts['superseded']}."
+        )
+        return
+
+    if parsed.downloads_command == "review":
+        application.download_service.review_pending_upgrades()
+        return
+
+    print("Usage: seeker downloads {status,review}")
+
 def handle_sync(application: Application) -> None:
     application.sync_service.sync_playlists()
 
     print()
-    handle_playlists(application)
+    _print_playlists(application.sync_service.list_playlists())
 
 
 def handle_sync_tracks(

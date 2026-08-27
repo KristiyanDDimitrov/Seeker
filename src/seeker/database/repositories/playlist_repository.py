@@ -48,7 +48,9 @@ class PlaylistRepository:
                 id,
                 name,
                 track_count,
-                snapshot_id
+                snapshot_id,
+                download_location_id,
+                download_subfolder
             FROM playlists
             WHERE id = ?
             """,
@@ -58,12 +60,32 @@ class PlaylistRepository:
         if row is None:
             return None
 
-        return Playlist(
-            id=row["id"],
-            name=row["name"],
-            track_count=row["track_count"],
-            snapshot_id=row["snapshot_id"],
-        )
+        return _row_to_playlist(row)
+
+    def get_by_name(
+            self,
+            name: str,
+            connection: sqlite3.Connection,
+    ) -> Playlist | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                track_count,
+                snapshot_id,
+                download_location_id,
+                download_subfolder
+            FROM playlists
+            WHERE name = ?
+            """,
+            (name,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_playlist(row)
 
     def get_all(self, connection: sqlite3.Connection) -> list[Playlist]:
         rows = connection.execute(
@@ -72,21 +94,56 @@ class PlaylistRepository:
                 id,
                 name,
                 track_count,
-                snapshot_id
+                snapshot_id,
+                download_location_id,
+                download_subfolder
             FROM playlists
             ORDER BY name
             """
         ).fetchall()
 
-        return [
-            Playlist(
-                id=row["id"],
-                name=row["name"],
-                track_count=row["track_count"],
-                snapshot_id=row["snapshot_id"],
-            )
-            for row in rows
-        ]
+        return [_row_to_playlist(row) for row in rows]
+
+    def get_by_track_id(
+            self,
+            track_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[Playlist]:
+        rows = connection.execute(
+            """
+            SELECT
+                p.id,
+                p.name,
+                p.track_count,
+                p.snapshot_id,
+                p.download_location_id,
+                p.download_subfolder
+            FROM playlists p
+            JOIN playlist_tracks pt ON pt.playlist_id = p.id
+            WHERE pt.track_id = ?
+            AND p.download_location_id IS NOT NULL
+            ORDER BY p.name
+            """,
+            (track_id,),
+        ).fetchall()
+
+        return [_row_to_playlist(row) for row in rows]
+
+    def set_destination(
+            self,
+            playlist_id: str,
+            location_id: int,
+            subfolder: str | None,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE playlists
+            SET download_location_id = ?, download_subfolder = ?
+            WHERE id = ?
+            """,
+            (location_id, subfolder, playlist_id),
+        )
 
     def delete(self, playlist_id: str, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -96,3 +153,14 @@ class PlaylistRepository:
             """,
             (playlist_id,),
         )
+
+
+def _row_to_playlist(row: sqlite3.Row) -> Playlist:
+    return Playlist(
+        id=row["id"],
+        name=row["name"],
+        track_count=row["track_count"],
+        snapshot_id=row["snapshot_id"],
+        download_location_id=row["download_location_id"],
+        download_subfolder=row["download_subfolder"],
+    )

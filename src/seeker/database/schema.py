@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS playlists (
     name TEXT NOT NULL,
     track_count INTEGER NOT NULL,
     snapshot_id TEXT,
-    synced_at TEXT
+    synced_at TEXT,
+    download_location_id INTEGER REFERENCES library_locations(id),
+    download_subfolder TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tracks (
@@ -65,5 +67,88 @@ CREATE TABLE IF NOT EXISTS track_matches (
     matched_at TEXT NOT NULL,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
     FOREIGN KEY (local_file_id) REFERENCES local_files(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS download_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    format TEXT NOT NULL,
+    quality_descriptor TEXT,
+    role TEXT NOT NULL DEFAULT 'settled',
+    -- status state machine. Eight values total:
+    --   queued          in slskd's queue, not transferring yet.
+    --   downloading     slskd is actively transferring it.
+    --   completed       role='settled': file moved into the library.
+    --                   role='upgrade': the user confirmed the
+    --                   replacement via `seeker downloads review`.
+    --                   Terminal.
+    --   failed          rejected/cancelled/errored/timed out/aborted,
+    --                   for role='settled', OR role='upgrade' rejected
+    --                   for any reason OTHER than the confirmed lock
+    --                   pattern. Terminal — never retried.
+    --   locked          role='upgrade' only: rejected specifically for
+    --                   being locked ("File not shared", confirmed
+    --                   live) — NOT terminal, retried automatically on
+    --                   every poll_downloads() run until it succeeds,
+    --                   fails for a different reason, or the track's
+    --                   entry is superseded.
+    --   ready_for_review role='upgrade' only: slskd reports success,
+    --                   but the file sits in slskd's own download dir
+    --                   until a human confirms via `seeker downloads
+    --                   review` — never auto-advances on its own.
+    --   shortlisted     role='upgrade', rank 2/3 only: a known
+    --                   candidate for this track, persisted at
+    --                   `download_playlist()` time but never sent to
+    --                   slskd — activated in place (same row,
+    --                   transfer_id + status updated, not a new row)
+    --                   only once every better-ranked entry for the
+    --                   same track has been rejected.
+    --   superseded      queued/downloading/locked/shortlisted, for a
+    --                   track where a DIFFERENT entry already reached
+    --                   ready_for_review first. Terminal — distinct
+    --                   from 'failed' so a genuinely-dead attempt isn't
+    --                   confused with one abandoned only because a
+    --                   better candidate already won.
+    --
+    -- Initial value: 'queued' for role='settled' and rank=1 upgrades
+    -- (both requested immediately); 'shortlisted' for rank 2/3.
+    --
+    -- Real transitions (poll_downloads(), see download_service.py):
+    --   queued/downloading -> completed/failed/ready_for_review/locked
+    --     (status polled from slskd; role='upgrade' rejections get the
+    --     locked-pattern check, role='settled' rejections always -> failed)
+    --   shortlisted -> queued/downloading/locked/failed
+    --     (Phase 4 cascade: activated the instant the next-higher-ranked
+    --     entry for the same track is rejected, same poll_downloads() run)
+    --   locked -> queued/downloading/locked
+    --     (Phase 3 retry: re-tried once per poll_downloads() run until
+    --     it moves on or a sibling entry supersedes it first)
+    --   any of {queued,downloading,locked,shortlisted} -> superseded
+    --     (the instant any OTHER entry for the same track reaches
+    --     ready_for_review — see _supersede_others_for_track)
+    --   ready_for_review -> completed
+    --     (seeker downloads review, on user confirmation only — declining
+    --     leaves it at ready_for_review, offered again next review run)
+    status TEXT NOT NULL DEFAULT 'queued',
+    -- slskd's own transfer UUID (from the batch-enqueue response), needed
+    -- because its status endpoint is GET .../{username}/{id} — there's no
+    -- documented way to look up a transfer by filename alone. Updated on
+    -- each Phase 3 locked-retry attempt to the new transfer's id. NULL
+    -- for a 'shortlisted' row until it's activated.
+    transfer_id TEXT,
+    -- File size in bytes, required to re-issue request_download on a
+    -- Phase 3 locked retry, or to activate a Phase 4 shortlist entry
+    -- (slskd's enqueue API requires it) — the exact same candidate, not
+    -- a fresh search.
+    size INTEGER,
+    -- Phase 4: 1 = immediately requested, 2/3 = shortlisted (persisted,
+    -- not yet sent to slskd until a higher rank is rejected). NULL for
+    -- role='settled' — ranking only applies to the upgrade shortlist.
+    rank INTEGER,
+    requested_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 """

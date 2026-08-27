@@ -77,6 +77,69 @@ class LocalFileRepository:
 
         return [_row_to_local_file(row) for row in rows]
 
+    def get_by_id(
+            self,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> LocalFile | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                location_id,
+                relative_path,
+                filename,
+                format,
+                size_bytes,
+                mtime,
+                tag_artist,
+                tag_title,
+                tag_album,
+                duration_ms,
+                scanned_at
+            FROM local_files
+            WHERE id = ?
+            """,
+            (local_file_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_local_file(row)
+
+    def get_by_location_and_relative_path(
+            self,
+            location_id: int,
+            relative_path: str,
+            connection: sqlite3.Connection,
+    ) -> LocalFile | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                location_id,
+                relative_path,
+                filename,
+                format,
+                size_bytes,
+                mtime,
+                tag_artist,
+                tag_title,
+                tag_album,
+                duration_ms,
+                scanned_at
+            FROM local_files
+            WHERE location_id = ? AND relative_path = ?
+            """,
+            (location_id, relative_path),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_local_file(row)
+
     def delete_missing(
             self,
             location_id: int,

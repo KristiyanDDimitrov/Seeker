@@ -1,0 +1,725 @@
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+from seeker.database.connection import Database
+from seeker.database.repositories.download_request_repository import (
+    DownloadRequestRepository,
+)
+from seeker.database.repositories.library_location_repository import (
+    LibraryLocationRepository,
+)
+from seeker.database.repositories.local_file_repository import (
+    LocalFileRepository,
+)
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
+)
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
+from seeker.database.repositories.track_repository import TrackRepository
+from seeker.library.scanner import index_single_file
+from seeker.models.download_request import DownloadRequest
+from seeker.models.library_location import LibraryLocation
+from seeker.models.soulseek_file import SoulseekFile
+from seeker.models.track import Track
+from seeker.models.track_match import TrackMatch
+from seeker.soulseek.client import SoulseekClient, SoulseekDownloadError
+from seeker.soulseek.quality import select_downloads
+
+
+# Soulseek.TransferStates is a [Flags] enum — slskd reports it as a
+# comma-joined string (e.g. "Completed, Succeeded"). Check failure markers
+# first since a transfer can be "Completed" without having succeeded.
+FAILED_STATE_MARKERS = (
+    "Cancelled",
+    "TimedOut",
+    "Errored",
+    "Rejected",
+    "Aborted",
+)
+
+# Phase 3: the real, confirmed rejection reason for a locked file
+# (2026-08-27 live investigation) is "Transfer rejected: File not
+# shared." — matched case-insensitively by substring in case wording
+# varies slightly across peers/slskd versions. Only this specific
+# rejection reason gets the automatic locked-retry treatment; any other
+# rejection reason still correctly terminates as 'failed'.
+LOCK_REJECTION_PATTERNS = ("not shared",)
+
+
+def _is_lock_rejection(exception_text: str | None) -> bool:
+    if not exception_text:
+        return False
+
+    lowered = exception_text.lower()
+
+    return any(pattern in lowered for pattern in LOCK_REJECTION_PATTERNS)
+
+
+class PlaylistNotFoundError(RuntimeError):
+    pass
+
+
+class NoDestinationConfiguredError(RuntimeError):
+    pass
+
+
+class LibraryLocationNotFoundError(RuntimeError):
+    pass
+
+
+def _build_search_query(track: Track) -> str:
+    return f"{track.artist} {track.title}"
+
+
+def _quality_descriptor(file: SoulseekFile) -> str:
+    descriptor = file.extension
+
+    if file.bit_rate:
+        descriptor += f" {file.bit_rate}kbps"
+
+    return descriptor
+
+
+class DownloadService:
+    def __init__(
+        self,
+        database: Database,
+        soulseek_client: SoulseekClient,
+        playlist_repository: PlaylistRepository,
+        track_repository: TrackRepository,
+        library_location_repository: LibraryLocationRepository,
+        download_request_repository: DownloadRequestRepository,
+        track_match_repository: TrackMatchRepository,
+        local_file_repository: LocalFileRepository,
+        slskd_download_dir: str | None,
+    ):
+        self.database = database
+        self.soulseek = soulseek_client
+        self.playlists = playlist_repository
+        self.tracks = track_repository
+        self.locations = library_location_repository
+        self.download_requests = download_request_repository
+        self.track_matches = track_match_repository
+        self.local_files = local_file_repository
+        self.slskd_download_dir = slskd_download_dir
+
+    def set_destination(
+        self,
+        playlist_name: str,
+        location_name: str,
+        subfolder: str | None = None,
+    ) -> None:
+        with self.database.transaction() as connection:
+            playlist = self.playlists.get_by_name(playlist_name, connection)
+
+            if playlist is None:
+                raise PlaylistNotFoundError(
+                    f"No playlist named '{playlist_name}' has been "
+                    f"synced."
+                )
+
+            location = self.locations.get_by_name(location_name, connection)
+
+            if location is None:
+                raise LibraryLocationNotFoundError(
+                    f"No library location named '{location_name}' is "
+                    f"registered."
+                )
+
+            # Loaded from the DB via get_by_name above, so .id is set.
+            assert location.id is not None
+
+            self.playlists.set_destination(
+                playlist.id,
+                location.id,
+                subfolder,
+                connection,
+            )
+
+        suffix = f"/{subfolder}" if subfolder else ""
+        print(
+            f"'{playlist_name}' will download to "
+            f"'{location_name}'{suffix}"
+        )
+
+    def download_playlist(self, playlist_name: str) -> dict[str, int]:
+        with self.database.transaction() as connection:
+            playlist = self.playlists.get_by_name(playlist_name, connection)
+
+            if playlist is None:
+                raise PlaylistNotFoundError(
+                    f"No playlist named '{playlist_name}' has been "
+                    f"synced."
+                )
+
+            if playlist.download_location_id is None:
+                raise NoDestinationConfiguredError(
+                    f"'{playlist_name}' has no configured destination. "
+                    f"Run 'seeker playlists set-destination' first."
+                )
+
+            unmatched_tracks = self.tracks.get_unmatched_for_playlist(
+                playlist.id,
+                connection,
+            )
+
+        requested = 0
+        skipped = 0
+
+        for track in unmatched_tracks:
+            print(f"Searching: {track.artist} - {track.title}")
+
+            files = self.soulseek.search(_build_search_query(track))
+            settled, upgrade_shortlist = select_downloads(track, files)
+
+            if settled is None:
+                print("  No candidates found.")
+                skipped += 1
+                continue
+
+            self._request_and_record(track, settled, role="settled")
+            print(
+                f"  Requested from {settled.username}: "
+                f"{settled.filename}"
+            )
+            requested += 1
+
+            if upgrade_shortlist:
+                top = upgrade_shortlist[0]
+                self._request_and_record(
+                    track, top, role="upgrade", rank=1,
+                )
+                print(
+                    f"  Also requested upgrade from {top.username}: "
+                    f"{top.filename} (rank 1)"
+                )
+
+                for rank, candidate in enumerate(
+                        upgrade_shortlist[1:], start=2,
+                ):
+                    self._record_shortlisted(
+                        track, candidate, rank=rank
+                    )
+                    print(
+                        f"  Shortlisted upgrade candidate from "
+                        f"{candidate.username}: {candidate.filename} "
+                        f"(rank {rank})"
+                    )
+
+        return {
+            "requested": requested,
+            "skipped": skipped,
+            "total": len(unmatched_tracks),
+        }
+
+    def _request_and_record(
+            self,
+            track: Track,
+            file: SoulseekFile,
+            role: str,
+            rank: int | None = None,
+    ) -> None:
+        # No destination is passed here for either role — the file lands
+        # in slskd's own download dir and is moved out by seeker, whether
+        # immediately (settled) or on user confirmation (upgrade).
+        transfer_id = self.soulseek.request_download(
+            file.username,
+            file.filename,
+            file.size,
+        )
+
+        with self.database.transaction() as connection:
+            self.download_requests.add(
+                DownloadRequest(
+                    track_id=track.id,
+                    username=file.username,
+                    filename=file.filename,
+                    format=file.extension,
+                    quality_descriptor=_quality_descriptor(file),
+                    role=role,
+                    rank=rank,
+                    transfer_id=transfer_id,
+                    size=file.size,
+                    requested_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
+            )
+
+    def _record_shortlisted(
+            self,
+            track: Track,
+            file: SoulseekFile,
+            rank: int,
+    ) -> None:
+        # Known and persisted, but not yet sent to slskd — request_download
+        # only happens once a higher-ranked entry for this track is
+        # rejected (see the poll_downloads cascade below).
+        with self.database.transaction() as connection:
+            self.download_requests.add(
+                DownloadRequest(
+                    track_id=track.id,
+                    username=file.username,
+                    filename=file.filename,
+                    format=file.extension,
+                    quality_descriptor=_quality_descriptor(file),
+                    role="upgrade",
+                    status="shortlisted",
+                    rank=rank,
+                    size=file.size,
+                    requested_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
+            )
+
+    def poll_downloads(self) -> dict[str, int]:
+        with self.database.transaction() as connection:
+            pending = self.download_requests.get_pending(connection)
+            locked = self.download_requests.get_locked(connection)
+
+        counts = {
+            "queued": 0,
+            "downloading": 0,
+            "completed": 0,
+            "failed": 0,
+        }
+
+        for request in pending:
+            # Loaded from the DB via get_pending() above, so .id is set —
+            # only a not-yet-persisted DownloadRequest has id=None, and
+            # nothing here ever is one.
+            assert request.id is not None
+
+            if request.transfer_id is None:
+                counts[request.status] += 1
+                continue
+
+            state = self.soulseek.get_download_status(
+                request.username,
+                request.transfer_id,
+            )
+
+            if any(marker in state for marker in FAILED_STATE_MARKERS):
+                if request.role == "upgrade":
+                    status = self._resolve_rejection_status(
+                        state, request.username, request.transfer_id,
+                    )
+                    self._update_status(request.id, status)
+
+                    if status == "failed":
+                        counts["failed"] += 1
+
+                    # Phase 4 cascade: try the next shortlisted
+                    # candidate for this track immediately, in this
+                    # same run, regardless of why this one was
+                    # rejected (locked-pattern or otherwise) — the
+                    # exact same candidate has already failed either
+                    # way, so there's no reason to wait a day before
+                    # trying the next best one.
+                    self._cascade_upgrade(request.track_id, counts)
+                    continue
+
+                self._update_status(request.id, "failed")
+                counts["failed"] += 1
+                continue
+
+            if "Succeeded" not in state:
+                new_status = (
+                    "downloading" if state != "Requested" else "queued"
+                )
+
+                if new_status != request.status:
+                    self._update_status(request.id, new_status)
+
+                counts[new_status] += 1
+                continue
+
+            if request.role == "upgrade":
+                # Leave the file in slskd's own download dir — it
+                # only moves once the user confirms the replacement
+                # below.
+                self._update_status(request.id, "ready_for_review")
+                self._supersede_others_for_track(
+                    request.track_id, request.id,
+                )
+                continue
+
+            if self._move_completed_file(request) is not None:
+                self._update_status(request.id, "completed")
+                counts["completed"] += 1
+            else:
+                counts[request.status] += 1
+
+        # Phase 3 retry, now covering the whole shortlist rather than a
+        # single row per track: re-issue request_download for every
+        # request that was ALREADY 'locked' before this run started (not
+        # ones that just became locked above, or via the cascade below —
+        # those wait for the next run, matching the "daily cadence"
+        # design). Same exact username+filename each time — retrying
+        # access to the same candidate, not a fresh search.
+        for request in locked:
+            self._retry_locked_request(request)
+
+        counts["ready_for_review"] = len(self._get_ready_for_review())
+        counts["locked"] = len(self._get_locked())
+        counts["shortlisted"] = len(self._get_shortlisted())
+        counts["superseded"] = len(self._get_superseded())
+
+        return counts
+
+    def _resolve_rejection_status(
+            self,
+            state: str,
+            username: str,
+            transfer_id: str,
+    ) -> str:
+        if "Rejected" in state:
+            exception_text = self.soulseek.get_download_exception(
+                username, transfer_id,
+            )
+
+            if _is_lock_rejection(exception_text):
+                return "locked"
+
+        return "failed"
+
+    def _cascade_upgrade(self, track_id: str, counts: dict[str, int]) -> None:
+        # Sequential, not simultaneous: try one candidate, and only move
+        # to the next once this one is confirmed unavailable — never
+        # multiple in-flight requests for the same track at once. See
+        # CLAUDE.md for why (the Soulseek protocol doesn't swarm-download
+        # the way BitTorrent does, and firing every shortlisted candidate
+        # at once would just be needless load on multiple peers for a
+        # track that only needs one to succeed).
+        while True:
+            with self.database.transaction() as connection:
+                next_entry = self.download_requests.get_next_shortlisted(
+                    track_id, connection,
+                )
+
+            if next_entry is None:
+                return
+
+            # Loaded from the DB via get_next_shortlisted() above.
+            assert next_entry.id is not None
+
+            status = self._activate_shortlisted_entry(next_entry)
+
+            if status == "failed":
+                counts["failed"] += 1
+                continue
+
+            if status == "locked":
+                continue
+
+            if status in ("queued", "downloading"):
+                counts[status] += 1
+                return
+
+            if status == "ready_for_review":
+                self._supersede_others_for_track(track_id, next_entry.id)
+                return
+
+    def _activate_shortlisted_entry(self, request: DownloadRequest) -> str:
+        # Phase 4 cascade — submit a fresh request_download for a NEW
+        # candidate (never tried before), so a rejection's reason still
+        # matters: it gets properly classified locked-vs-failed, exactly
+        # like a first-time request in the main poll_downloads loop.
+        #
+        # Both loaded from the DB by every real caller (_cascade_upgrade
+        # fetches via get_next_shortlisted, which only returns persisted
+        # rows; size is always set at creation time in
+        # _request_and_record/_record_shortlisted).
+        assert request.id is not None
+        assert request.size is not None
+
+        try:
+            transfer_id = self.soulseek.request_download(
+                request.username,
+                request.filename,
+                request.size,
+            )
+        except SoulseekDownloadError as error:
+            status = "locked" if _is_lock_rejection(str(error)) else "failed"
+            self._update_status(request.id, status)
+            return status
+
+        # A rejection doesn't raise from request_download itself
+        # (confirmed live, 2026-08-27) — it shows up almost immediately
+        # via the status endpoint instead, so check right away rather
+        # than waiting a full poll cycle to find out it failed again.
+        state = self.soulseek.get_download_status(
+            request.username, transfer_id,
+        )
+
+        if any(marker in state for marker in FAILED_STATE_MARKERS):
+            status = self._resolve_rejection_status(
+                state, request.username, transfer_id,
+            )
+        elif "Succeeded" in state:
+            status = "ready_for_review"
+        else:
+            status = "downloading" if state != "Requested" else "queued"
+
+        with self.database.transaction() as connection:
+            self.download_requests.update_transfer_id_and_status(
+                request.id, transfer_id, status, connection,
+            )
+
+        return status
+
+    def _supersede_others_for_track(
+            self,
+            track_id: str,
+            keep_id: int,
+    ) -> None:
+        with self.database.transaction() as connection:
+            self.download_requests.supersede_other_active_for_track(
+                track_id, keep_id, connection,
+            )
+
+    def _retry_locked_request(self, request: DownloadRequest) -> None:
+        # Phase 3 retry — reactivate an ALREADY-'locked' request. Unlike
+        # _activate_shortlisted_entry above, a rejection's specific
+        # reason doesn't matter here: this candidate is already
+        # confirmed locked, so ANY rejection on the retry (any reason)
+        # just means stay 'locked' and try again next run — only a real
+        # success or in-progress state moves it out of the retry cycle.
+        #
+        # `locked` (the list this is called over) is fetched once at the
+        # start of poll_downloads(), before the main loop runs — if a
+        # DIFFERENT entry for the same track succeeds during that loop
+        # and supersedes this one, this row is no longer really 'locked'
+        # by the time we get here. Re-check its current status first
+        # rather than blindly reactivating (and potentially overwriting
+        # 'superseded' back to 'locked'/'queued') a stale snapshot.
+        assert request.id is not None
+        assert request.size is not None
+
+        with self.database.transaction() as connection:
+            current = self.download_requests.get_by_id(request.id, connection)
+
+        if current is None or current.status != "locked":
+            return
+
+        try:
+            transfer_id = self.soulseek.request_download(
+                request.username,
+                request.filename,
+                request.size,
+            )
+        except SoulseekDownloadError:
+            return  # Rejected again at the batch level — stays locked.
+
+        state = self.soulseek.get_download_status(
+            request.username, transfer_id,
+        )
+
+        if any(marker in state for marker in FAILED_STATE_MARKERS):
+            status = "locked"
+        elif "Succeeded" in state:
+            status = "ready_for_review"
+        else:
+            status = "downloading" if state != "Requested" else "queued"
+
+        with self.database.transaction() as connection:
+            self.download_requests.update_transfer_id_and_status(
+                request.id, transfer_id, status, connection,
+            )
+
+        if status == "ready_for_review":
+            self._supersede_others_for_track(request.track_id, request.id)
+
+    def review_pending_upgrades(self) -> None:
+        requests = self._get_ready_for_review()
+
+        if not requests:
+            print("Nothing to review.")
+            return
+
+        for request in requests:
+            self._confirm_upgrade(request)
+
+    def _get_ready_for_review(self) -> list[DownloadRequest]:
+        with self.database.transaction() as connection:
+            return self.download_requests.get_ready_for_review(connection)
+
+    def _get_locked(self) -> list[DownloadRequest]:
+        with self.database.transaction() as connection:
+            return self.download_requests.get_locked(connection)
+
+    def _get_shortlisted(self) -> list[DownloadRequest]:
+        with self.database.transaction() as connection:
+            return self.download_requests.get_shortlisted(connection)
+
+    def _get_superseded(self) -> list[DownloadRequest]:
+        with self.database.transaction() as connection:
+            return self.download_requests.get_superseded(connection)
+
+    def _update_status(self, request_id: int, status: str) -> None:
+        with self.database.transaction() as connection:
+            self.download_requests.mark_status(request_id, status, connection)
+
+    def _move_completed_file(
+            self,
+            request: DownloadRequest,
+    ) -> tuple[LibraryLocation, str] | None:
+        if not self.slskd_download_dir:
+            print(
+                f"  Warning: SLSKD_DOWNLOAD_DIR is not configured; "
+                f"cannot move '{request.filename}'."
+            )
+            return None
+
+        with self.database.transaction() as connection:
+            playlists = self.playlists.get_by_track_id(
+                request.track_id,
+                connection,
+            )
+
+            if not playlists:
+                print(
+                    f"  Warning: no configured destination found for "
+                    f"track {request.track_id}; leaving "
+                    f"'{request.filename}' in place."
+                )
+                return None
+
+            playlist = playlists[0]
+
+            # get_by_track_id's own query filters to
+            # download_location_id IS NOT NULL, so every playlist it
+            # returns has one set.
+            assert playlist.download_location_id is not None
+
+            location = self.locations.get_by_id(
+                playlist.download_location_id,
+                connection,
+            )
+
+        if location is None:
+            return None
+
+        basename = Path(request.filename.replace("\\", "/")).name
+        matches = list(Path(self.slskd_download_dir).rglob(basename))
+
+        if not matches:
+            return None
+
+        destination_dir = Path(location.path)
+
+        if playlist.download_subfolder:
+            destination_dir = destination_dir / playlist.download_subfolder
+
+        destination_dir.mkdir(parents=True, exist_ok=True)
+
+        destination_path = destination_dir / basename
+        shutil.move(str(matches[0]), str(destination_path))
+
+        print(f"  Moved '{basename}' to {destination_dir}")
+
+        relative_path = str(
+            destination_path.relative_to(Path(location.path))
+        )
+
+        return (location, relative_path)
+
+    def _confirm_upgrade(self, request: DownloadRequest) -> None:
+        # Always called over rows from get_ready_for_review(), so .id
+        # is set.
+        assert request.id is not None
+
+        with self.database.transaction() as connection:
+            track = self.tracks.get_by_id(request.track_id, connection)
+            current_match = self.track_matches.get_by_track_id(
+                request.track_id,
+                connection,
+            )
+
+            current_local_file = None
+            if current_match is not None and current_match.local_file_id:
+                current_local_file = self.local_files.get_by_id(
+                    current_match.local_file_id,
+                    connection,
+                )
+
+        if track is None:
+            return
+
+        current_description = (
+            current_local_file.format
+            if current_local_file is not None
+            else "no current file"
+        )
+
+        answer = input(
+            f"Higher quality version of {track.artist} - {track.title} "
+            f"ready ({request.quality_descriptor} vs current "
+            f"{current_description}). Replace? [y/n] "
+        ).strip().lower()
+
+        if answer != "y":
+            return
+
+        result = self._move_completed_file(request)
+
+        if result is None:
+            print("  Could not locate the downloaded file; leaving for review.")
+            return
+
+        location, relative_path = result
+
+        with self.database.transaction() as connection:
+            new_local_file = index_single_file(
+                location,
+                relative_path,
+                self.local_files,
+                connection,
+            )
+
+            self.track_matches.upsert(
+                TrackMatch(
+                    track_id=request.track_id,
+                    local_file_id=new_local_file.id,
+                    match_method="auto",
+                    score=100.0,
+                    matched_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
+            )
+
+            self.download_requests.mark_status(
+                request.id,
+                "completed",
+                connection,
+            )
+
+        print(f"  Replaced with {location.path}/{relative_path}")
+
+        if current_local_file is not None:
+            with self.database.transaction() as connection:
+                old_location = self.locations.get_by_id(
+                    current_local_file.location_id,
+                    connection,
+                )
+
+            if old_location is not None:
+                old_path = (
+                    Path(old_location.path)
+                    / current_local_file.relative_path
+                )
+
+                delete_answer = input(
+                    f"Delete old file at {old_path}? [y/n] "
+                ).strip().lower()
+
+                if delete_answer == "y":
+                    try:
+                        old_path.unlink()
+                        print(f"  Deleted {old_path}")
+                    except OSError as error:
+                        print(f"  Could not delete {old_path}: {error}")
+                else:
+                    print(f"  Leaving {old_path} in place.")
