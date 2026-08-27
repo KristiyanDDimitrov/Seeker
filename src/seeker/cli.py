@@ -97,9 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="List locally stored Spotify playlists.",
     )
 
-    subparsers.add_parser(
+    check_parser = subparsers.add_parser(
         "check",
         help="Check Spotify tracks against the local library.",
+    )
+    check_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Also list each auto-matched track with score and filename.",
     )
 
     library_parser = subparsers.add_parser(
@@ -209,10 +214,17 @@ def handle_library(
     else:
         print("Usage: seeker library {add,list,remove,scan,match} ...")
 
-def handle_check(application: Application) -> None:
+def handle_check(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
     report = application.track_matcher.generate_match_report()
 
     print(f"Auto-matched: {report['auto_count']}")
+
+    if parsed.verbose:
+        for artist, title, score, filename in report["auto_matched"]:
+            print(f"  {artist} - {title} (score: {score:.1f}) -> {filename}")
 
     needs_review = report["needs_review"]
     print(f"\nNeeds review ({len(needs_review)}):")
@@ -248,7 +260,7 @@ def run(
             handle_playlists(application)
 
         elif parsed.command == "check":
-            handle_check(application)
+            handle_check(application, parsed)
 
         elif parsed.command == "library":
             handle_library(application, parsed)

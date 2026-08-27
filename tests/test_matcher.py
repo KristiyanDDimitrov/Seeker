@@ -116,3 +116,27 @@ def test_wrong_artist_is_excluded_from_candidacy_despite_title_match():
     )
 
     assert find_best_match(track, [candidate]) is None
+
+
+def test_untagged_file_matches_via_filename_alone():
+    # Real case: a WAV with no tags at all (mutagen extracted nothing),
+    # matched purely off its "Artist - Title"-style filename. This used
+    # to be a hard rejection — artist_matches() gated on tag_artist
+    # specifically with no filename fallback, so a null tag_artist
+    # rejected the file outright regardless of filename quality.
+    track = make_track(artist="3amdisco", title="Get Back", duration_ms=301_500)
+
+    candidate = make_local_file(
+        filename="3AMDISCO - Get Back.wav",
+        format="wav",
+        tag_artist=None,
+        tag_title=None,
+        duration_ms=301_500,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert score >= 90

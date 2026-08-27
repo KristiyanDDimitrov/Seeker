@@ -1,8 +1,5 @@
-import re
 from datetime import datetime, timezone
-from pathlib import Path
-
-from rapidfuzz import fuzz
+from typing import Any
 
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
@@ -12,6 +9,13 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.matching import (
+    AUTO_MATCH_THRESHOLD,
+    NEEDS_REVIEW_THRESHOLD,
+    artist_matches,
+    resolve_text_source,
+    score_title,
+)
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
@@ -21,57 +25,6 @@ from seeker.models.track_match import TrackMatch
 # match data shows how tight/loose it needs to be.
 DURATION_TOLERANCE_MS = 5_000
 
-AUTO_MATCH_THRESHOLD = 90.0
-NEEDS_REVIEW_THRESHOLD = 70.0
-
-TRACK_NUMBER_PREFIX_RE = re.compile(r"^\s*\d{1,3}\s*[-.]\s*")
-TRAILING_SEPARATOR_RE = re.compile(r"[\s\-–—.]+$")
-WHITESPACE_RE = re.compile(r"\s+")
-WATERMARK_SUBSTRINGS = (".com", ".org", ".net")
-
-
-def normalize_filename_text(text: str) -> str:
-    text = TRACK_NUMBER_PREFIX_RE.sub("", text)
-
-    tokens = text.split()
-
-    if tokens and any(
-            substring in tokens[-1].lower()
-            for substring in WATERMARK_SUBSTRINGS
-    ):
-        tokens = tokens[:-1]
-
-    text = " ".join(tokens).lower()
-    text = TRAILING_SEPARATOR_RE.sub("", text)
-    text = WHITESPACE_RE.sub(" ", text)
-
-    return text.strip()
-
-
-def artist_matches(spotify_artist: str, local_artist: str | None) -> bool:
-    if local_artist is None:
-        return False
-
-    normalized_spotify_artist = normalize_filename_text(spotify_artist)
-    normalized_local_artist = normalize_filename_text(local_artist)
-
-    return normalized_spotify_artist in normalized_local_artist
-
-
-def score_title(spotify_title: str, local_file: LocalFile) -> float:
-    if local_file.tag_title:
-        local_title_source = local_file.tag_title
-    else:
-        local_title_source = Path(local_file.filename).stem
-
-    normalized_spotify_title = normalize_filename_text(spotify_title)
-    normalized_local_title = normalize_filename_text(local_title_source)
-
-    return fuzz.token_sort_ratio(
-        normalized_spotify_title,
-        normalized_local_title,
-    )
-
 
 def find_best_match(
         track: Track,
@@ -80,10 +33,18 @@ def find_best_match(
     best: tuple[LocalFile, float] | None = None
 
     for candidate in candidates:
-        if not artist_matches(track.artist, candidate.tag_artist):
+        local_artist_source = resolve_text_source(
+            candidate.tag_artist, candidate.filename
+        )
+
+        if not artist_matches(track.artist, local_artist_source):
             continue
 
-        score = score_title(track.title, candidate)
+        local_title_source = resolve_text_source(
+            candidate.tag_title, candidate.filename
+        )
+
+        score = score_title(track.artist, track.title, local_title_source)
 
         if best is None or score > best[1]:
             best = (candidate, score)
@@ -164,15 +125,19 @@ class TrackMatcher:
 
         return counts
 
-    def generate_match_report(self) -> dict:
+    def generate_match_report(self) -> dict[str, Any]:
         with self.database.transaction() as connection:
             tracks_by_id = {
                 track.id: track
                 for track in self.tracks.get_all(connection)
             }
             matches = self.track_matches.get_all(connection)
+            local_files_by_id = {
+                local_file.id: local_file
+                for local_file in self.local_files.get_all(connection)
+            }
 
-        auto_count = 0
+        auto_matched = []
         needs_review = []
         unmatched = []
 
@@ -183,7 +148,13 @@ class TrackMatcher:
                 continue
 
             if match.match_method == "auto":
-                auto_count += 1
+                local_file = local_files_by_id.get(match.local_file_id)
+                filename = (
+                    local_file.filename if local_file is not None else "?"
+                )
+                auto_matched.append(
+                    (track.artist, track.title, match.score, filename)
+                )
             elif match.match_method == "needs_review":
                 needs_review.append(
                     (track.artist, track.title, match.score)
@@ -191,11 +162,17 @@ class TrackMatcher:
             else:
                 unmatched.append((track.artist, track.title))
 
-        needs_review.sort(key=lambda item: item[2], reverse=True)
+        auto_matched.sort(key=lambda item: (item[0], item[1]))
+        # match.score is float | None in general, but a needs_review-
+        # classified match always has a real numeric score (that's what
+        # put it in this bucket) — the `or 0.0` is just satisfying the
+        # type, not a real fallback path.
+        needs_review.sort(key=lambda item: item[2] or 0.0, reverse=True)
         unmatched.sort(key=lambda item: (item[0], item[1]))
 
         return {
-            "auto_count": auto_count,
+            "auto_count": len(auto_matched),
+            "auto_matched": auto_matched,
             "needs_review": needs_review,
             "unmatched": unmatched,
         }
