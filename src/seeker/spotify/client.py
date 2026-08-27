@@ -147,38 +147,41 @@ class SpotifyClient:
             Playlist(
                 id=playlist["id"],
                 name=playlist["name"],
-                track_count=playlist["tracks"]["total"],
+                track_count=playlist["items"]["total"],
                 snapshot_id=playlist.get("snapshot_id"),
             )
             for playlist in items
         ]
 
     def get_playlist_tracks(self, playlist_id: str) -> list[Track]:
-        items = self._get_all_pages(
-            f"{BASE_URL}/playlists/{playlist_id}/tracks",
+        entries = self._get_all_pages(
+            f"{BASE_URL}/playlists/{playlist_id}/items",
             {"limit": 50},
         )
 
         tracks = []
 
-        for item in items:
-            track = item.get("track")
+        for entry in entries:
+            track_data = entry.get("item")
 
-            if not track:
+            if not track_data:
                 continue
 
-            artists = track.get("artists", [])
+            if track_data.get("type") != "track":
+                continue
+
+            artists = track_data.get("artists", [])
 
             if not artists:
                 continue
 
             tracks.append(
                 Track(
-                    id=track["id"],
-                    title=track["name"],
+                    id=track_data["id"],
+                    title=track_data["name"],
                     artist=artists[0]["name"],
-                    album=track["album"]["name"],
-                    duration_ms=track["duration_ms"],
+                    album=track_data["album"]["name"],
+                    duration_ms=track_data["duration_ms"],
                 )
             )
 

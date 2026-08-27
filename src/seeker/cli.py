@@ -3,7 +3,69 @@ import sys
 
 from seeker.application import Application
 from seeker.library.scanner import LibraryUnavailableError
+from seeker.models.playlist import Playlist
 from seeker.spotify.client import SpotifyRateLimitedError
+from seeker.spotify.sync_service import (
+    PlaylistNotFoundError as SyncPlaylistNotFoundError,
+    find_close_playlist_matches,
+)
+
+
+def resolve_playlist_or_offer_sync(
+        name: str,
+        application: Application,
+) -> Playlist:
+    """Shared playlist-name resolution for CLI commands that take one
+    (currently just sync-tracks).
+
+    Four real outcomes, in order:
+      1. Found locally (case-insensitive) — returned immediately, no
+         network call, no prompt.
+      2. Not found, but a close match exists (difflib-based) — re-raises
+         the original "Did you mean...?" error unchanged, WITHOUT
+         offering a refresh. A close match means the name is probably a
+         typo or a stale local rename, and a resync fixes neither of
+         those, so offering one here would be actively misleading.
+      3. Not found, no close match, user declines the refresh offer —
+         re-raises the original "not found locally" error unchanged.
+      4. Not found, no close match, user accepts — runs a real (but
+         cheap, metadata-only) sync_playlists() and retries the lookup
+         exactly once. If found now, returns it. If STILL not found,
+         raises a distinct error stating the name doesn't exist on the
+         account at all, rather than the generic "not found locally"
+         message — the user already knows it isn't local; what they
+         need to know now is that refreshing didn't help either.
+    """
+    try:
+        return application.sync_service.get_playlist_by_name(name)
+    except SyncPlaylistNotFoundError:
+        local_names = [
+            playlist.name
+            for playlist in application.sync_service.list_playlists()
+        ]
+        close_matches = find_close_playlist_matches(name, local_names)
+
+        if close_matches:
+            raise
+
+        answer = input(
+            f"No playlist named '{name}' found locally — it may be "
+            f"new. Refresh from Spotify now? [y/n] "
+        ).strip().lower()
+
+        if answer != "y":
+            raise
+
+        application.sync_service.sync_playlists()
+
+        try:
+            return application.sync_service.get_playlist_by_name(name)
+        except SyncPlaylistNotFoundError:
+            raise SyncPlaylistNotFoundError(
+                f"No playlist named '{name}' found, even after "
+                f"refreshing from Spotify. It doesn't exist on this "
+                f"account."
+            ) from None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,8 +83,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "sync",
-        help="Synchronize Spotify data.",
+        help="Synchronize Spotify playlist metadata (no tracks).",
     )
+
+    sync_tracks_parser = subparsers.add_parser(
+        "sync-tracks",
+        help="Synchronize tracks for a single playlist.",
+    )
+    sync_tracks_parser.add_argument("playlist_name")
 
     subparsers.add_parser(
         "playlists",
@@ -87,14 +155,21 @@ def handle_playlists(application: Application) -> None:
         )
 
 def handle_sync(application: Application) -> None:
-    playlists = (
-        application.sync_service.sync_playlists()
+    application.sync_service.sync_playlists()
+
+    print()
+    handle_playlists(application)
+
+
+def handle_sync_tracks(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
     )
 
-    for playlist in playlists:
-        application.sync_service.sync_playlist_tracks(
-            playlist
-        )
+    application.sync_service.sync_playlist_tracks(playlist)
 
 def handle_library(
         application: Application,
@@ -166,6 +241,9 @@ def run(
         if parsed.command == "sync":
             handle_sync(application)
 
+        elif parsed.command == "sync-tracks":
+            handle_sync_tracks(application, parsed)
+
         elif parsed.command == "playlists":
             handle_playlists(application)
 
@@ -178,5 +256,8 @@ def run(
         print(str(error))
         sys.exit(1)
     except LibraryUnavailableError as error:
+        print(str(error))
+        sys.exit(1)
+    except SyncPlaylistNotFoundError as error:
         print(str(error))
         sys.exit(1)
