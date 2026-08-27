@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS local_files (
     bpm REAL,
     camelot_key TEXT,
     key_confidence REAL,
+    tagged_at TEXT,
 
     UNIQUE (location_id, relative_path),
 

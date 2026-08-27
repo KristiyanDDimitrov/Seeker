@@ -487,6 +487,242 @@ def test_tag_tracks_analyze_audio_false_is_completely_inert(
     assert reopened.tags.get("TKEY") is None
 
 
+def test_tag_tracks_already_tagged_skips_art_download_but_still_analyzes(
+        tmp_path, monkeypatch,
+):
+    # tagged_at already set -> the deterministic text/art write (and
+    # specifically the album art re-download, the original motivation
+    # for this check) must be skipped; --analyze-audio with bpm still
+    # null must still run, independent of the tag-write skip.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service,
+        location,
+        "t1",
+        "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+        service.local_files.mark_tagged(
+            local_file.id, "2026-08-27T00:00:00+00:00", connection
+        )
+
+    def fail_if_called(url, timeout=None):
+        raise AssertionError(
+            "album art must not be downloaded when already tagged"
+        )
+
+    monkeypatch.setattr(httpx, "get", fail_if_called)
+
+    counts = service.tag_tracks(["t1"], analyze_audio=True)
+
+    assert counts["tagged"] == 0
+    assert counts["skipped_already_tagged"] == 1
+    assert counts["skipped_already_analyzed"] == 0
+    assert counts["failed"] == 0
+
+    with service.database.transaction() as connection:
+        after = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+    assert after.bpm is not None
+
+    reopened = MutagenFile(dest)
+    assert reopened.tags.get("TBPM") is not None
+    # Text tags were never written this run — the synthetic WAV starts
+    # with no tags at all, and the skip means write_text_tags is never
+    # even called.
+    assert reopened.tags.get("TIT2") is None
+
+
+def test_tag_tracks_already_analyzed_skips_analysis_but_still_retags(
+        tmp_path, monkeypatch,
+):
+    # bpm already set -> analysis specifically must be skipped, but the
+    # deterministic text/art write (tagged_at still null) must still
+    # happen normally.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service,
+        location,
+        "t1",
+        "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+        service.local_files.update_analysis(
+            local_file.id, 161.499, "3A", 0.477, connection
+        )
+
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    def fail_if_called(file_path, expected_bpm_range=None):
+        raise AssertionError(
+            "audio analysis must not run when bpm is already set"
+        )
+
+    monkeypatch.setattr(
+        "seeker.library.metadata_service.run_audio_analysis",
+        fail_if_called,
+    )
+
+    counts = service.tag_tracks(["t1"], analyze_audio=True)
+
+    assert counts["tagged"] == 1
+    assert counts["skipped_already_tagged"] == 0
+    assert counts["skipped_already_analyzed"] == 1
+    assert counts["failed"] == 0
+
+    with service.database.transaction() as connection:
+        after = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+    # Analysis was skipped, so the pre-existing values are untouched.
+    assert after.bpm == 161.499
+    assert after.camelot_key == "3A"
+    assert after.tagged_at is not None
+
+    reopened = MutagenFile(dest)
+    assert str(reopened.tags["TIT2"]) == "Test Title"
+    assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_tag_tracks_force_bypasses_both_skip_checks_independently(
+        tmp_path, monkeypatch,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service,
+        location,
+        "t1",
+        "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+        service.local_files.mark_tagged(
+            local_file.id, "2026-08-27T00:00:00+00:00", connection
+        )
+        service.local_files.update_analysis(
+            local_file.id, 161.499, "3A", 0.477, connection
+        )
+
+    art_calls = {"n": 0}
+
+    def counting_get(url, timeout=None):
+        art_calls["n"] += 1
+        return _fake_jpeg_response(url, timeout)
+
+    monkeypatch.setattr(httpx, "get", counting_get)
+
+    counts = service.tag_tracks(["t1"], analyze_audio=True, force=True)
+
+    assert counts["tagged"] == 1
+    assert counts["skipped_already_tagged"] == 0
+    assert counts["skipped_already_analyzed"] == 0
+    assert art_calls["n"] == 1
+
+    with service.database.transaction() as connection:
+        after = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+    # Force re-ran analysis for real — a genuinely fresh bpm (synthetic
+    # silent audio), not the stale 161.499 seeded above.
+    assert after.bpm != 161.499
+
+    reopened = MutagenFile(dest)
+    assert str(reopened.tags["TIT2"]) == "Test Title"
+    assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_tag_tracks_real_already_tagged_track_is_skipped_not_reprocessed(
+        tmp_path, monkeypatch,
+):
+    # Base case from the real, already-tagged 240KM/H run (see
+    # CLAUDE.md item 10/11): the real 3amdisco WAV was tagged for real
+    # earlier today with TIT2/TPE1/TALB="Get Back"/"3amdisco"/"Get Back
+    # EP" and analyzed to bpm=161.499/camelot_key="3A". A copy of that
+    # already-fully-processed file, with tagged_at/bpm set to match,
+    # must now be skipped entirely on a normal re-run rather than
+    # silently re-tagged and re-analyzed.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "3AMDISCO - Get Back.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service,
+        location,
+        "t1",
+        "3AMDISCO - Get Back.wav",
+        artist="3amdisco",
+        title="Get Back",
+        album="Get Back EP",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "3AMDISCO - Get Back.wav", connection
+        )
+        service.local_files.mark_tagged(
+            local_file.id, "2026-08-27T00:00:00+00:00", connection
+        )
+        service.local_files.update_analysis(
+            local_file.id, 161.499, "3A", 0.477, connection
+        )
+
+    def fail_if_art_called(url, timeout=None):
+        raise AssertionError("must not re-download art on a skipped track")
+
+    def fail_if_analysis_called(file_path, expected_bpm_range=None):
+        raise AssertionError("must not re-analyze a skipped track")
+
+    monkeypatch.setattr(httpx, "get", fail_if_art_called)
+    monkeypatch.setattr(
+        "seeker.library.metadata_service.run_audio_analysis",
+        fail_if_analysis_called,
+    )
+
+    counts = service.tag_tracks(["t1"], analyze_audio=True)
+
+    assert counts["tagged"] == 0
+    assert counts["skipped_already_tagged"] == 1
+    assert counts["skipped_already_analyzed"] == 1
+    assert counts["failed"] == 0
+
+
 @requires_x9_pro
 def test_tag_tracks_real_wav_round_trips(tmp_path, monkeypatch):
     # Integration check against the real 240KM/H match — a COPY of the

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ class MetadataService:
             playlist_name: str,
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
+            force: bool = False,
     ) -> dict[str, Any]:
         # Only auto-matched tracks — a needs_review match hasn't been
         # confirmed by a human yet, and writing Spotify's canonical
@@ -74,6 +76,7 @@ class MetadataService:
             [track.id for track in tracks],
             analyze_audio=analyze_audio,
             expected_bpm_range=expected_bpm_range,
+            force=force,
         )
 
     def tag_tracks(
@@ -81,11 +84,14 @@ class MetadataService:
             track_ids: list[str],
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
+            force: bool = False,
     ) -> dict[str, Any]:
         counts: dict[str, int] = {
             "tagged": 0,
             "skipped_no_match": 0,
             "skipped_format_unsupported": 0,
+            "skipped_already_tagged": 0,
+            "skipped_already_analyzed": 0,
             "failed": 0,
         }
         details: list[dict[str, str]] = []
@@ -99,6 +105,7 @@ class MetadataService:
                     details,
                     analyze_audio,
                     expected_bpm_range,
+                    force,
                 )
             except Exception as error:
                 counts["failed"] += 1
@@ -120,6 +127,7 @@ class MetadataService:
             details: list[dict[str, str]],
             analyze_audio: bool,
             expected_bpm_range: tuple[float, float] | None,
+            force: bool = False,
     ) -> None:
         with self.database.transaction() as connection:
             track = self.tracks.get_by_id(track_id, connection)
@@ -194,6 +202,52 @@ class MetadataService:
                 )
                 return
 
+        # Two independently-skippable operations, per the ask: a
+        # deterministic tag write (text+art) has already happened once
+        # tagged_at is set — re-running it is a pure waste (most
+        # visibly, a redundant album art re-download every run); an
+        # analysis has already happened once bpm is set. --force
+        # bypasses both checks independently, e.g. for Spotify metadata
+        # having changed or wanting to redo analysis.
+        skip_tag_write = local_file.tagged_at is not None and not force
+        skip_analysis = (
+            analyze_audio
+            and local_file.bpm is not None
+            and not force
+        )
+        needs_analysis = analyze_audio and not skip_analysis
+
+        if skip_tag_write:
+            counts["skipped_already_tagged"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "skipped_already_tagged",
+                    "message": (
+                        f"{track.artist} - {track.title}: already "
+                        f"tagged at {local_file.tagged_at}, skipping "
+                        f"text/art write"
+                    ),
+                }
+            )
+
+        if skip_analysis:
+            counts["skipped_already_analyzed"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "skipped_already_analyzed",
+                    "message": (
+                        f"{track.artist} - {track.title}: already "
+                        f"analyzed (bpm={local_file.bpm}), skipping "
+                        f"audio analysis"
+                    ),
+                }
+            )
+
+        if skip_tag_write and not needs_analysis:
+            return
+
         file_path = Path(location.path) / local_file.relative_path
         mutagen_file = MutagenFile(file_path)
 
@@ -211,36 +265,40 @@ class MetadataService:
             )
             return
 
-        try:
-            write_text_tags(
-                mutagen_file, track.artist, track.title, track.album
-            )
-        except ValueError as error:
-            counts["skipped_format_unsupported"] += 1
-            details.append(
-                {
-                    "track_id": track_id,
-                    "reason": "skipped_format_unsupported",
-                    "message": f"{track.artist} - {track.title}: {error}",
-                }
-            )
-            return
-
-        if track.album_art_url:
+        if not skip_tag_write:
             try:
-                image_bytes, mime_type = self._download_album_art(
-                    track.album_art_url
+                write_text_tags(
+                    mutagen_file, track.artist, track.title, track.album
                 )
-                embed_album_art(mutagen_file, image_bytes, mime_type)
-            except Exception as error:
-                # Art is best-effort — a download/embed failure shouldn't
-                # sink an otherwise-successful text-tag write.
-                print(
-                    f"  Warning: could not embed album art for "
-                    f"{track.artist} - {track.title}: {error}"
+            except ValueError as error:
+                counts["skipped_format_unsupported"] += 1
+                details.append(
+                    {
+                        "track_id": track_id,
+                        "reason": "skipped_format_unsupported",
+                        "message": (
+                            f"{track.artist} - {track.title}: {error}"
+                        ),
+                    }
                 )
+                return
 
-        if analyze_audio:
+            if track.album_art_url:
+                try:
+                    image_bytes, mime_type = self._download_album_art(
+                        track.album_art_url
+                    )
+                    embed_album_art(mutagen_file, image_bytes, mime_type)
+                except Exception as error:
+                    # Art is best-effort — a download/embed failure
+                    # shouldn't sink an otherwise-successful text-tag
+                    # write.
+                    print(
+                        f"  Warning: could not embed album art for "
+                        f"{track.artist} - {track.title}: {error}"
+                    )
+
+        if needs_analysis:
             # Fully independent of the text/art tagging above — an
             # analysis failure (or an unsupported format for the
             # TBPM/TKEY write specifically) must not undo or block the
@@ -275,6 +333,23 @@ class MetadataService:
                 )
 
         mutagen_file.save()
+
+        if skip_tag_write:
+            print(
+                f"  Re-analyzed (already tagged): "
+                f"{track.artist} - {track.title}"
+            )
+            return
+
+        with self.database.transaction() as connection:
+            # Loaded from the DB via get_by_id above, so .id is set.
+            assert local_file.id is not None
+
+            self.local_files.mark_tagged(
+                local_file.id,
+                datetime.now(timezone.utc).isoformat(),
+                connection,
+            )
 
         counts["tagged"] += 1
         print(f"  Tagged: {track.artist} - {track.title}")

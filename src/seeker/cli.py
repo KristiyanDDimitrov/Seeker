@@ -238,6 +238,15 @@ def build_parser() -> argparse.ArgumentParser:
             "--analyze-audio), e.g. --bpm-range 160 180."
         ),
     )
+    tag_parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Bypass the already-tagged/already-analyzed skip checks and "
+            "redo both for every track, e.g. after Spotify metadata "
+            "changed or to redo analysis."
+        ),
+    )
 
     return parser
 
@@ -384,6 +393,7 @@ def handle_library(
             playlist.name,
             analyze_audio=parsed.analyze_audio,
             expected_bpm_range=expected_bpm_range,
+            force=parsed.force,
         )
 
         print(
@@ -391,6 +401,10 @@ def handle_library(
             f"Skipped (no match): {result['skipped_no_match']}, "
             f"Skipped (unsupported format): "
             f"{result['skipped_format_unsupported']}, "
+            f"Skipped (already tagged): "
+            f"{result['skipped_already_tagged']}, "
+            f"Skipped (already analyzed): "
+            f"{result['skipped_already_analyzed']}, "
             f"Failed: {result['failed']}."
         )
 

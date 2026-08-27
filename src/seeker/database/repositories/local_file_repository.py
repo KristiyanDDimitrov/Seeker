@@ -72,6 +72,17 @@ class LocalFileRepository:
             (bpm, camelot_key, key_confidence, local_file_id),
         )
 
+    def mark_tagged(
+            self,
+            local_file_id: int,
+            tagged_at: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            "UPDATE local_files SET tagged_at = ? WHERE id = ?",
+            (tagged_at, local_file_id),
+        )
+
     def get_all(self, connection: sqlite3.Connection) -> list[LocalFile]:
         rows = connection.execute(
             """
@@ -90,7 +101,8 @@ class LocalFileRepository:
                 scanned_at,
                 bpm,
                 camelot_key,
-                key_confidence
+                key_confidence,
+                tagged_at
             FROM local_files
             """
         ).fetchall()
@@ -119,7 +131,8 @@ class LocalFileRepository:
                 scanned_at,
                 bpm,
                 camelot_key,
-                key_confidence
+                key_confidence,
+                tagged_at
             FROM local_files
             WHERE id = ?
             """,
@@ -154,7 +167,8 @@ class LocalFileRepository:
                 scanned_at,
                 bpm,
                 camelot_key,
-                key_confidence
+                key_confidence,
+                tagged_at
             FROM local_files
             WHERE location_id = ? AND relative_path = ?
             """,
@@ -208,4 +222,5 @@ def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
         bpm=row["bpm"],
         camelot_key=row["camelot_key"],
         key_confidence=row["key_confidence"],
+        tagged_at=row["tagged_at"],
     )

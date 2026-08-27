@@ -18,3 +18,4 @@ class LocalFile:
     bpm: float | None = None
     camelot_key: str | None = None
     key_confidence: float | None = None
+    tagged_at: str | None = None
