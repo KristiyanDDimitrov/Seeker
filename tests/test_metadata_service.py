@@ -21,9 +21,13 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
-from seeker.library.metadata_service import MetadataService
+from seeker.library.metadata_service import (
+    MetadataService,
+    PlaylistNotFoundError,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 
@@ -122,6 +126,206 @@ def seed_matched_track(
             ),
             connection,
         )
+
+
+def test_tag_tracks_track_not_found_reports_clear_failure(tmp_path):
+    # A stale/nonexistent track_id — previously would have crashed with
+    # a raw AttributeError ('NoneType' has no attribute 'artist') caught
+    # generically by tag_tracks()'s outer try/except; now gets a clear,
+    # specific message instead.
+    service = make_service(tmp_path)
+
+    counts = service.tag_tracks(["nonexistent-track"])
+
+    assert counts["tagged"] == 0
+    assert counts["failed"] == 1
+    assert counts["details"][0]["reason"] == "failed"
+    assert "not found" in counts["details"][0]["message"]
+
+
+def test_tag_playlist_raises_when_playlist_not_synced(tmp_path):
+    service = make_service(tmp_path)
+
+    with pytest.raises(PlaylistNotFoundError, match="never-synced"):
+        service.tag_playlist("never-synced")
+
+
+def test_tag_playlist_tags_only_auto_matched_tracks(tmp_path, monkeypatch):
+    # tag_playlist must filter to auto-matched tracks before delegating
+    # to tag_tracks — a needs_review/unmatched track has no confirmed
+    # local file, so it must never even be attempted.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "auto-track", "song.wav")
+
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="Test Playlist", track_count=2),
+            connection,
+        )
+        service.tracks.save(
+            Track(
+                id="unmatched-track",
+                title="No Match",
+                artist="Nobody",
+                album="Nothing",
+                duration_ms=1000,
+            ),
+            connection,
+        )
+        service.tracks.save_playlist_track("p1", "auto-track", connection)
+        service.tracks.save_playlist_track(
+            "p1", "unmatched-track", connection
+        )
+
+    counts = service.tag_playlist("Test Playlist")
+
+    assert counts["tagged"] == 1
+    tagged_ids = {d["track_id"] for d in counts["details"]}
+    assert "unmatched-track" not in tagged_ids
+
+
+def test_tag_tracks_mid_batch_exception_does_not_abort_remaining_tracks(
+        tmp_path, monkeypatch,
+):
+    # Same "one bad item must not abort the batch" guarantee verified
+    # for download_playlist/poll_downloads (see CLAUDE.md STEP 4) —
+    # tag_tracks wraps _tag_one_track per-track for the same reason.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "good-track", "song.wav")
+
+    original = MetadataService._tag_one_track
+    call_count = {"n": 0}
+
+    def flaky_tag_one_track(self, track_id, *args, **kwargs):
+        call_count["n"] += 1
+        if track_id == "bad-track":
+            raise RuntimeError("simulated failure")
+        return original(self, track_id, *args, **kwargs)
+
+    monkeypatch.setattr(
+        MetadataService, "_tag_one_track", flaky_tag_one_track
+    )
+
+    counts = service.tag_tracks(["bad-track", "good-track"])
+
+    assert call_count["n"] == 2
+    assert counts["failed"] == 1
+    assert counts["tagged"] == 1
+    failed_detail = next(
+        d for d in counts["details"] if d["track_id"] == "bad-track"
+    )
+    assert failed_detail["reason"] == "failed"
+    assert "simulated failure" in failed_detail["message"]
+
+
+def test_tag_tracks_skips_when_mutagen_cannot_identify_file(tmp_path):
+    # Distinct from skips_unrecognized_format above: this is mutagen
+    # failing to identify the file at all (File() returns None), not
+    # identifying it but write_text_tags lacking support for the type.
+    # Confirmed live: unlike most formats, mutagen's .m4a/.ogg parsers
+    # return None for unparseable content rather than raising, so those
+    # are the only extensions that can genuinely reach this branch — a
+    # garbage .mp3/.flac/.wav/.aac raises instead and is caught by
+    # tag_tracks()'s outer per-track exception handler as "failed".
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "not-audio.m4a"
+    dest.write_bytes(b"this is not a real audio file")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "not-audio.m4a")
+
+    counts = service.tag_tracks(["t1"])
+
+    assert counts["tagged"] == 0
+    assert counts["skipped_format_unsupported"] == 1
+    assert counts["details"][0]["reason"] == "skipped_format_unsupported"
+
+
+def test_tag_tracks_album_art_failure_does_not_block_text_tags(
+        tmp_path, monkeypatch,
+):
+    # Art is explicitly best-effort — a download/embed failure must not
+    # sink an otherwise-successful text-tag write.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service,
+        location,
+        "t1",
+        "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+
+    def failing_get(url, timeout=None):
+        raise httpx.ConnectError("simulated network failure")
+
+    monkeypatch.setattr(httpx, "get", failing_get)
+
+    counts = service.tag_tracks(["t1"])
+
+    assert counts["tagged"] == 1
+    assert counts["failed"] == 0
+
+    reopened = MutagenFile(dest)
+    assert str(reopened.tags["TIT2"]) == "Test Title"
+    assert reopened.tags.get("APIC:Cover") is None
+
+
+def test_tag_tracks_analyze_audio_failure_does_not_block_text_tags(
+        tmp_path, monkeypatch,
+):
+    # Same best-effort treatment as album art: an analysis failure must
+    # not undo the text-tag write that already happened.
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "song.wav")
+
+    def failing_analysis(file_path, expected_bpm_range=None):
+        raise RuntimeError("simulated analysis failure")
+
+    monkeypatch.setattr(
+        "seeker.library.metadata_service.run_audio_analysis",
+        failing_analysis,
+    )
+
+    counts = service.tag_tracks(["t1"], analyze_audio=True)
+
+    assert counts["tagged"] == 1
+    assert counts["failed"] == 0
+
+    reopened = MutagenFile(dest)
+    assert str(reopened.tags["TIT2"]) == "Test Title"
+    assert reopened.tags.get("TBPM") is None
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+    assert local_file.bpm is None
 
 
 def test_tag_tracks_skips_track_with_no_match(tmp_path):

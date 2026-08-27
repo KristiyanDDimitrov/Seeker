@@ -6,7 +6,7 @@ from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 
-from seeker.metadata import embed_album_art, write_text_tags
+from seeker.metadata import embed_album_art, write_analysis_tags, write_text_tags
 
 
 # Real files from the scanned x9-pro library, used to test tag-writing
@@ -118,6 +118,91 @@ def test_write_text_tags_flac_round_trips(tmp_path):
     assert reopened["title"] == ["Test Title"]
     assert reopened["artist"] == ["Test Artist"]
     assert reopened["album"] == ["Test Album"]
+
+
+@requires_x9_pro
+def test_write_text_tags_mp4_round_trips(tmp_path):
+    dest = tmp_path / "test.m4a"
+    shutil.copy(REAL_M4A, dest)
+
+    audio = MP4(dest)
+    write_text_tags(audio, "Test Artist", "Test Title", "Test Album")
+    audio.save()
+
+    reopened = MP4(dest)
+
+    assert reopened.tags["\xa9nam"] == ["Test Title"]
+    assert reopened.tags["\xa9ART"] == ["Test Artist"]
+    assert reopened.tags["\xa9alb"] == ["Test Album"]
+
+
+@requires_x9_pro
+def test_write_analysis_tags_mp3_round_trips(tmp_path):
+    dest = tmp_path / "test.mp3"
+    shutil.copy(REAL_MP3, dest)
+
+    audio = MutagenFile(dest)
+    write_analysis_tags(audio, 128.4, "8A")
+    audio.save()
+
+    reopened = MutagenFile(dest)
+
+    assert str(reopened.tags["TBPM"]) == "128"
+    assert str(reopened.tags["TKEY"]) == "8A"
+
+
+@requires_x9_pro
+def test_write_analysis_tags_flac_round_trips(tmp_path):
+    dest = tmp_path / "test.flac"
+    shutil.copy(REAL_FLAC, dest)
+
+    audio = FLAC(dest)
+    write_analysis_tags(audio, 128.4, "8A")
+    audio.save()
+
+    reopened = FLAC(dest)
+
+    assert reopened["BPM"] == ["128"]
+    assert reopened["KEY"] == ["8A"]
+
+
+@requires_x9_pro
+def test_write_analysis_tags_mp4_round_trips(tmp_path):
+    dest = tmp_path / "test.m4a"
+    shutil.copy(REAL_M4A, dest)
+
+    audio = MP4(dest)
+    write_analysis_tags(audio, 128.4, "8A")
+    audio.save()
+
+    reopened = MP4(dest)
+
+    assert reopened.tags["tmpo"] == [128]
+    initial_key = reopened.tags["----:com.apple.iTunes:initialkey"]
+    assert bytes(initial_key[0]) == b"8A"
+
+
+@requires_x9_pro
+def test_write_analysis_tags_omits_tkey_when_key_is_none(tmp_path):
+    # camelot_key is None for near-silent/noise-only audio (see
+    # audio_analysis.py) — TKEY/KEY/initialkey must simply be absent,
+    # not written as a literal "None".
+    dest = tmp_path / "test.mp3"
+    shutil.copy(REAL_MP3, dest)
+
+    audio = MutagenFile(dest)
+    write_analysis_tags(audio, 128.4, None)
+    audio.save()
+
+    reopened = MutagenFile(dest)
+
+    assert str(reopened.tags["TBPM"]) == "128"
+    assert reopened.tags.get("TKEY") is None
+
+
+def test_write_analysis_tags_raises_for_unsupported_format():
+    with pytest.raises(ValueError):
+        write_analysis_tags(_FakeUnsupportedFile(), 128.0, "8A")
 
 
 class _FakeUnsupportedFile:

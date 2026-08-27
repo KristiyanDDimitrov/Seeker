@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from seeker.soulseek.client import SoulseekClient
+from seeker.soulseek.client import SoulseekClient, SoulseekDownloadError
 
 
 class FakeResponse:
@@ -206,3 +206,130 @@ def test_search_includes_real_lockedfiles_array_shape(monkeypatch):
     assert results[0].locked is True
     assert results[0].username == "another_seeder"
     assert results[0].size == 34279790
+
+
+# request_download / get_download_status / get_download_exception were
+# previously only exercised indirectly, through FakeSoulseekClient in
+# download_service tests — the real client methods (the same ones with
+# real, previously-found bugs: the endpoint/field-name saga, the locked-
+# file investigation) had no direct httpx-mocked coverage of their own.
+
+
+def test_request_download_returns_transfer_id_on_success(monkeypatch):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        assert (
+            url
+            == "http://localhost:5030/api/v0/transfers/downloads/batches"
+        )
+        assert json == {
+            "username": "peer1",
+            "files": [{"filename": "song.flac", "size": 12345}],
+        }
+        return FakeResponse({"batch": {"transfers": [{"id": "transfer-abc"}]}})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    transfer_id = client.request_download("peer1", "song.flac", 12345)
+
+    assert transfer_id == "transfer-abc"
+
+
+def test_request_download_includes_destination_when_given(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["json"] = json
+        return FakeResponse({"batch": {"transfers": [{"id": "t1"}]}})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    client.request_download(
+        "peer1", "song.flac", 12345, destination="sub/dir"
+    )
+
+    assert captured["json"]["options"] == {"destination": "sub/dir"}
+
+
+def test_request_download_raises_with_slskd_failure_message(monkeypatch):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeResponse({"failures": [{"message": "File not shared."}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(SoulseekDownloadError, match="File not shared."):
+        client.request_download("peer1", "song.flac", 12345)
+
+
+def test_get_download_status_returns_real_state(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        assert url == (
+            "http://localhost:5030/api/v0/transfers/downloads/"
+            "peer1/transfer-abc"
+        )
+        return FakeResponse({"state": "Completed, Succeeded"})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    state = client.get_download_status("peer1", "transfer-abc")
+
+    assert state == "Completed, Succeeded"
+
+
+def test_get_download_status_returns_notfound_on_404(monkeypatch):
+    class NotFoundResponse:
+        status_code = 404
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: NotFoundResponse())
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    state = client.get_download_status("peer1", "transfer-abc")
+
+    assert state == "NotFound"
+
+
+def test_get_download_exception_returns_real_reason(monkeypatch):
+    # Exact real string confirmed live (2026-08-27 locked-file
+    # investigation).
+    def fake_get(url, headers=None, timeout=None):
+        return FakeResponse(
+            {
+                "state": "Completed, Rejected",
+                "exception": "Transfer rejected: File not shared.",
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    exception_text = client.get_download_exception("peer1", "transfer-abc")
+
+    assert exception_text == "Transfer rejected: File not shared."
+
+
+def test_get_download_exception_returns_none_when_absent(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return FakeResponse({"state": "Completed, Succeeded"})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    exception_text = client.get_download_exception("peer1", "transfer-abc")
+
+    assert exception_text is None
+
+
+def test_get_download_exception_returns_none_on_404(monkeypatch):
+    class NotFoundResponse:
+        status_code = 404
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: NotFoundResponse())
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    exception_text = client.get_download_exception("peer1", "transfer-abc")
+
+    assert exception_text is None
