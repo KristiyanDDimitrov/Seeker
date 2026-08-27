@@ -9,9 +9,30 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
 from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
+from seeker.spotify.sync_service import (
+    PlaylistNotFoundError as SyncPlaylistNotFoundError,
+)
+
+
+class FakeSyncService:
+    def __init__(self, playlists: list[Playlist]):
+        self._playlists = playlists
+
+    def get_playlist_by_name(self, name: str) -> Playlist:
+        for playlist in self._playlists:
+            if playlist.name.lower() == name.lower():
+                return playlist
+
+        raise SyncPlaylistNotFoundError(
+            f"No playlist named '{name}' found locally."
+        )
+
+    def list_playlists(self) -> list[Playlist]:
+        return self._playlists
 
 
 class FakeApplication:
@@ -20,10 +41,12 @@ class FakeApplication:
             track_matcher: TrackMatcher,
             soulseek_configured: bool = False,
             download_service=None,
+            sync_service=None,
     ):
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
         self.download_service = download_service
+        self.sync_service = sync_service
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -129,8 +152,10 @@ def test_check_verbose_lists_each_auto_matched_track(tmp_path, capsys):
 class FakeDownloadServiceForReview:
     def __init__(self, review_candidates):
         self._review_candidates = review_candidates
+        self.get_review_candidates_calls = []
 
-    def get_review_candidates(self):
+    def get_review_candidates(self, playlist_id=None):
+        self.get_review_candidates_calls.append(playlist_id)
         return self._review_candidates
 
 
@@ -200,3 +225,88 @@ def test_check_lists_soulseek_review_candidates_distinct_from_unmatched(
     # appear listed there.
     unmatched_section = output.split("Unmatched")[-1]
     assert "musicmasterrdjpool" not in unmatched_section
+
+
+def test_check_without_playlist_name_labels_scope_as_global(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    seed_auto_matched_tracks(matcher, count=2)
+
+    cli.run(FakeApplication(matcher), ["check"])
+
+    output = capsys.readouterr().out
+
+    assert "Across all synced playlists:" in output
+
+
+def test_check_playlist_scoped_reports_only_that_playlists_tracks(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+
+    # 3 tracks total: 2 in PlaylistA, 1 in PlaylistB — scoping to
+    # PlaylistA must report only its 2, not the combined 3.
+    seed_auto_matched_tracks(matcher, count=3)
+
+    with matcher.database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO playlists (id, name, track_count) "
+            "VALUES (?, ?, ?)",
+            ("pA", "PlaylistA", 2),
+        )
+        connection.execute(
+            "INSERT INTO playlists (id, name, track_count) "
+            "VALUES (?, ?, ?)",
+            ("pB", "PlaylistB", 1),
+        )
+        connection.executemany(
+            "INSERT INTO playlist_tracks (playlist_id, track_id) "
+            "VALUES (?, ?)",
+            [("pA", "track0"), ("pA", "track1"), ("pB", "track2")],
+        )
+
+    sync_service = FakeSyncService([
+        Playlist(id="pA", name="PlaylistA", track_count=2),
+        Playlist(id="pB", name="PlaylistB", track_count=1),
+    ])
+
+    cli.run(
+        FakeApplication(matcher, sync_service=sync_service),
+        ["check", "PlaylistA"],
+    )
+
+    output = capsys.readouterr().out
+
+    assert "For playlist 'PlaylistA':" in output
+    assert "Auto-matched: 2" in output
+
+
+def test_check_playlist_scoped_passes_playlist_id_to_review_candidates(
+        tmp_path,
+):
+    matcher = make_matcher(tmp_path)
+
+    with matcher.database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO playlists (id, name, track_count) "
+            "VALUES (?, ?, ?)",
+            ("pA", "PlaylistA", 0),
+        )
+
+    sync_service = FakeSyncService(
+        [Playlist(id="pA", name="PlaylistA", track_count=0)]
+    )
+    download_service = FakeDownloadServiceForReview([])
+
+    cli.run(
+        FakeApplication(
+            matcher,
+            soulseek_configured=True,
+            download_service=download_service,
+            sync_service=sync_service,
+        ),
+        ["check", "PlaylistA"],
+    )
+
+    assert download_service.get_review_candidates_calls == ["pA"]

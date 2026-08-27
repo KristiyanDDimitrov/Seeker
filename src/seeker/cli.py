@@ -25,7 +25,8 @@ def resolve_playlist_or_offer_sync(
         application: Application,
 ) -> Playlist:
     """Shared playlist-name resolution for every CLI command that takes
-    one (sync-tracks, playlists set-destination, download, library tag).
+    one (sync-tracks, playlists set-destination, download, library tag,
+    check).
 
     Four real outcomes, in order:
       1. Found locally (case-insensitive) — returned immediately, no
@@ -125,6 +126,15 @@ def build_parser() -> argparse.ArgumentParser:
     check_parser = subparsers.add_parser(
         "check",
         help="Check Spotify tracks against the local library.",
+    )
+    check_parser.add_argument(
+        "playlist_name",
+        nargs="?",
+        default=None,
+        help=(
+            "Scope the report to a single playlist's tracks. Omit to "
+            "report across all synced playlists."
+        ),
     )
     check_parser.add_argument(
         "--verbose",
@@ -399,7 +409,22 @@ def handle_check(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
-    report = application.track_matcher.generate_match_report()
+    playlist_id = None
+
+    if parsed.playlist_name:
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
+        playlist_id = playlist.id
+        print(f"For playlist '{playlist.name}':")
+    else:
+        # The scope is otherwise ambiguous — every count below is a
+        # global total across every synced playlist combined, not just
+        # "whichever playlist I was just looking at." Confirmed live as
+        # a real, easy-to-misread gap (see CLAUDE.md).
+        print("Across all synced playlists:")
+
+    report = application.track_matcher.generate_match_report(playlist_id)
 
     print(f"Auto-matched: {report['auto_count']}")
 
@@ -420,7 +445,9 @@ def handle_check(
     # must keep working without it, so this section is simply omitted
     # rather than erroring when it isn't set up.
     if application.soulseek_configured:
-        soulseek_review = application.download_service.get_review_candidates()
+        soulseek_review = application.download_service.get_review_candidates(
+            playlist_id
+        )
         print(
             f"\nNeeds review (SoulSeek candidate found) "
             f"({len(soulseek_review)}):"

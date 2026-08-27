@@ -78,6 +78,33 @@ class TrackRepository:
 
         return [_row_to_track(row) for row in rows]
 
+    def get_all_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[Track]:
+        # Every track in the playlist, regardless of match status — used
+        # to scope `seeker check`'s report to one playlist (unlike
+        # get_unmatched_for_playlist/get_auto_matched_for_playlist, which
+        # filter by match status too).
+        rows = connection.execute(
+            """
+            SELECT
+                t.id,
+                t.title,
+                t.artist,
+                t.album,
+                t.duration_ms,
+                t.album_art_url
+            FROM tracks t
+            JOIN playlist_tracks pt ON pt.track_id = t.id
+            WHERE pt.playlist_id = ?
+            """,
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_track(row) for row in rows]
+
     def get_unmatched_for_playlist(
             self,
             playlist_id: str,

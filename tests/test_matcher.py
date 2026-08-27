@@ -2,13 +2,18 @@ from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher, find_best_match
 from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist
 from seeker.models.track import Track
+from seeker.models.track_match import TrackMatch
 
 
 def make_track(**overrides) -> Track:
@@ -157,3 +162,145 @@ def test_untagged_file_matches_via_filename_alone():
     matched_candidate, score = match
     assert matched_candidate is candidate
     assert score >= 90
+
+
+def _seed_track_with_match(
+        matcher: TrackMatcher,
+        connection,
+        playlist_id: str,
+        track_id: str,
+        artist: str,
+        title: str,
+        match_method: str | None,
+        score: float | None,
+) -> None:
+    matcher.tracks.save(
+        Track(
+            id=track_id,
+            title=title,
+            artist=artist,
+            album="",
+            duration_ms=200_000,
+        ),
+        connection,
+    )
+    matcher.tracks.save_playlist_track(playlist_id, track_id, connection)
+    matcher.track_matches.upsert(
+        TrackMatch(
+            track_id=track_id,
+            local_file_id=None,
+            match_method=match_method,
+            score=score,
+            matched_at="2026-08-27T00:00:00+00:00",
+        ),
+        connection,
+    )
+
+
+def test_generate_match_report_scopes_to_one_playlist_with_real_data(
+        tmp_path,
+):
+    # Real auto/unmatched split from the actual "240KM/H" and "Test"
+    # playlists (2026-08-27) — CLAUDE.md's own "4 of 6" correction found
+    # that check's report was silently global across every synced
+    # playlist combined, not scoped to whichever playlist a human was
+    # actually looking at. Confirms generate_match_report(playlist_id)
+    # genuinely isolates one playlist's tracks rather than leaking
+    # tracks from the other, using both playlists' real data at once so
+    # a scoping bug would show up as real cross-contamination, not just
+    # an empty-vs-nonempty difference.
+    matcher = make_matcher(tmp_path)
+    playlists = PlaylistRepository(matcher.database)
+
+    with matcher.database.transaction() as connection:
+        playlists.save(
+            Playlist(id="240kmh", name="240KM/H", track_count=3),
+            connection,
+        )
+        playlists.save(
+            Playlist(id="test-playlist", name="Test", track_count=10),
+            connection,
+        )
+
+        # Real 240KM/H tracks: 1 auto, 2 unmatched.
+        _seed_track_with_match(
+            matcher, connection, "240kmh",
+            "3amdisco-track", "3amdisco", "Get Back",
+            match_method="auto", score=94.44444444444444,
+        )
+        _seed_track_with_match(
+            matcher, connection, "240kmh",
+            "kamaleon-track", "Kamäleon", "Quadrat",
+            match_method=None, score=None,
+        )
+        _seed_track_with_match(
+            matcher, connection, "240kmh",
+            "zenea-track", "ZENEA", "INFINITE",
+            match_method=None, score=None,
+        )
+
+        # Real Test tracks: 6 auto, 4 unmatched (Prdk's real score, 24.4,
+        # is a genuinely-attempted-but-low match, not just a null score —
+        # still lands in "unmatched", below NEEDS_REVIEW_THRESHOLD).
+        for track_id, artist, title in [
+            ("audio-reebz-track", "Audio, REEBZ", "Tractor Beam"),
+            ("eluun-track", "Eluun, The Clamps", "Glassy Star"),
+            ("joeford-track", "Joe Ford, Task Horizon", "Ultraviolet"),
+            ("prolix-track", "Prolix", "Cannibals"),
+            ("qotrilo-track", "Qo, Trilo", "Push It To The Limit"),
+            ("skrimor-track", "Skrimor", "Banana Shoes"),
+        ]:
+            _seed_track_with_match(
+                matcher, connection, "test-playlist",
+                track_id, artist, title,
+                match_method="auto", score=100.0,
+            )
+
+        _seed_track_with_match(
+            matcher, connection, "test-playlist",
+            "balron-track", "Balron, Audio", "Breach",
+            match_method=None, score=None,
+        )
+        _seed_track_with_match(
+            matcher, connection, "test-playlist",
+            "jadevenom-track", "Jade Venom", "Scared Now? - DIVERGENCE VI",
+            match_method=None, score=None,
+        )
+        _seed_track_with_match(
+            matcher, connection, "test-playlist",
+            "prdk-track", "Prdk", "ONE MORE NIGHT",
+            match_method=None, score=24.390243902439025,
+        )
+        _seed_track_with_match(
+            matcher, connection, "test-playlist",
+            "zigisc-track", "Zigi SC, A-Cray", "Bit Perfect",
+            match_method=None, score=None,
+        )
+
+    kmh_report = matcher.generate_match_report(playlist_id="240kmh")
+    assert kmh_report["auto_count"] == 1
+    assert len(kmh_report["needs_review"]) == 0
+    assert len(kmh_report["unmatched"]) == 2
+    kmh_unmatched_artists = {artist for artist, _ in kmh_report["unmatched"]}
+    assert kmh_unmatched_artists == {"Kamäleon", "ZENEA"}
+    # Test playlist's tracks must never leak into 240KM/H's scoped report.
+    assert "Balron, Audio" not in kmh_unmatched_artists
+
+    test_report = matcher.generate_match_report(playlist_id="test-playlist")
+    assert test_report["auto_count"] == 6
+    assert len(test_report["needs_review"]) == 0
+    assert len(test_report["unmatched"]) == 4
+    test_unmatched_artists = {
+        artist for artist, _ in test_report["unmatched"]
+    }
+    assert test_unmatched_artists == {
+        "Balron, Audio", "Jade Venom", "Prdk", "Zigi SC, A-Cray",
+    }
+    # 240KM/H's tracks must never leak into Test's scoped report.
+    assert "Kamäleon" not in test_unmatched_artists
+
+    # Omitting playlist_id keeps the existing global behavior — the sum
+    # of both playlists combined.
+    global_report = matcher.generate_match_report()
+    assert global_report["auto_count"] == 7
+    assert len(global_report["unmatched"]) == 6

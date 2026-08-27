@@ -402,6 +402,7 @@ class DownloadService:
 
     def get_review_candidates(
             self,
+            playlist_id: str | None = None,
     ) -> list[tuple[Track, SoulseekReviewCandidate]]:
         # Read-only, informational — no confirmation flow here (unlike
         # ready_for_review's downloads review). Mirrors the local
@@ -410,10 +411,15 @@ class DownloadService:
         # rather than another CLI prompt loop.
         with self.database.transaction() as connection:
             candidates = self.soulseek_review_candidates.get_all(connection)
-            tracks_by_id = {
-                track.id: track
-                for track in self.tracks.get_all(connection)
-            }
+
+            if playlist_id is not None:
+                tracks = self.tracks.get_all_for_playlist(
+                    playlist_id, connection
+                )
+            else:
+                tracks = self.tracks.get_all(connection)
+
+            tracks_by_id = {track.id: track for track in tracks}
 
         results = []
 

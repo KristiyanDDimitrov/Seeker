@@ -125,12 +125,19 @@ class TrackMatcher:
 
         return counts
 
-    def generate_match_report(self) -> dict[str, Any]:
+    def generate_match_report(
+            self,
+            playlist_id: str | None = None,
+    ) -> dict[str, Any]:
         with self.database.transaction() as connection:
-            tracks_by_id = {
-                track.id: track
-                for track in self.tracks.get_all(connection)
-            }
+            if playlist_id is not None:
+                tracks = self.tracks.get_all_for_playlist(
+                    playlist_id, connection
+                )
+            else:
+                tracks = self.tracks.get_all(connection)
+
+            tracks_by_id = {track.id: track for track in tracks}
             matches = self.track_matches.get_all(connection)
             local_files_by_id = {
                 local_file.id: local_file
