@@ -448,6 +448,58 @@ def _seed_single_unmatched_track(
         service.tracks.save_playlist_track("p1", track_id, connection)
 
 
+def test_download_playlist_skips_track_with_existing_active_request(
+        tmp_path,
+):
+    # Real bug, found live (2026-08-27): re-running `seeker download`
+    # against the real "Test" playlist while an earlier request for the
+    # same track was still 'locked' created a SECOND, otherwise-identical
+    # download_requests row (same track/role/rank/username/filename,
+    # differing only in id and requested_at) instead of recognizing the
+    # existing attempt. download_playlist() must skip a track that
+    # already has any active (non-terminal) request rather than
+    # re-searching and re-requesting it.
+    service = make_service(tmp_path, states={})
+    _seed_single_unmatched_track(
+        service,
+        tmp_path,
+        "jade-venom-track",
+        "Jade Venom",
+        "Scared Now? - DIVERGENCE VI",
+    )
+    seed_pending_request(
+        service,
+        transfer_id="old-transfer-1",
+        track_id="jade-venom-track",
+        role="upgrade",
+        status="locked",
+        filename=(
+            "Music (unsorted)\\Labels\\Eatbrain [FLAC]\\"
+            "01. Jade Venom - Scared Now (DIVERGENCE VI).flac"
+        ),
+        username="ofoijacussa",
+    )
+
+    result = service.download_playlist("Test")
+
+    assert result["requested"] == 0
+    assert result["skipped"] == 1
+    assert result["failed"] == 0
+    # The guard fires before ever searching or requesting again.
+    assert service.soulseek.search_calls == []
+    assert service.soulseek.request_download_calls == []
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT id, status FROM download_requests "
+            "WHERE track_id = 'jade-venom-track'"
+        ).fetchall()
+
+    # Still exactly one row — no duplicate created.
+    assert len(rows) == 1
+    assert rows[0]["status"] == "locked"
+
+
 def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
         tmp_path,
 ):

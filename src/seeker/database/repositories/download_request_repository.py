@@ -222,6 +222,44 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
+    def get_active_for_track(
+            self,
+            track_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[DownloadRequest]:
+        # "Active" = still in progress toward a real outcome — every
+        # status except the three terminal end states (completed, failed,
+        # superseded). Used by download_playlist() to avoid creating a
+        # duplicate request for a track that's already being chased —
+        # confirmed live (2026-08-27): re-running `seeker download` while
+        # an earlier request for the same track was still 'locked'
+        # created a second, otherwise-identical row instead of
+        # recognizing the existing attempt.
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at
+            FROM download_requests
+            WHERE track_id = ?
+            AND status NOT IN ('completed', 'failed', 'superseded')
+            """,
+            (track_id,),
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
     def get_next_shortlisted(
             self,
             track_id: str,

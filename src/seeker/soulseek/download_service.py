@@ -192,6 +192,29 @@ class DownloadService:
             # candidates), or failed (with a printed reason) — never
             # dropped without being counted anywhere.
             try:
+                with self.database.transaction() as connection:
+                    active = self.download_requests.get_active_for_track(
+                        track.id, connection
+                    )
+
+                if active:
+                    # A request for this exact track is already in
+                    # flight (queued/downloading/locked/shortlisted/
+                    # ready_for_review) — re-running download_playlist
+                    # must not pile on a duplicate, otherwise-identical
+                    # row for the same candidate. Confirmed live: two
+                    # runs against a still-'locked' upgrade created two
+                    # rows before this guard existed.
+                    statuses = ", ".join(
+                        sorted({request.status for request in active})
+                    )
+                    print(
+                        f"  Already in progress for {track.artist} - "
+                        f"{track.title} ({statuses}) — skipping."
+                    )
+                    skipped += 1
+                    continue
+
                 print(f"Searching: {track.artist} - {track.title}")
 
                 files = self.soulseek.search(_build_search_query(track))
