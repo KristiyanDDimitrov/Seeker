@@ -14,6 +14,9 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.soulseek_review_candidate_repository import (
+    SoulseekReviewCandidateRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
@@ -101,6 +104,16 @@ class Application:
         return self._track_matcher
 
     @property
+    def soulseek_configured(self) -> bool:
+        # Deliberately a cheap config check, not a soulseek_client access
+        # — the latter raises when unconfigured, and `check` (unlike the
+        # download/status commands) must keep working without slskd set
+        # up at all (see config.py). CLI code checks this before calling
+        # anything that would otherwise force soulseek_client into
+        # existence just to read already-persisted review candidates.
+        return bool(config.SLSKD_BASE_URL and config.SLSKD_API_KEY)
+
+    @property
     def soulseek_client(self) -> SoulseekClient:
         if self._soulseek_client is None:
             if not config.SLSKD_BASE_URL:
@@ -128,6 +141,7 @@ class Application:
                 DownloadRequestRepository(self.database),
                 TrackMatchRepository(self.database),
                 LocalFileRepository(self.database),
+                SoulseekReviewCandidateRepository(self.database),
                 config.SLSKD_DOWNLOAD_DIR,
             )
 

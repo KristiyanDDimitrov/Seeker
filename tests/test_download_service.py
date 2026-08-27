@@ -13,6 +13,9 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.soulseek_review_candidate_repository import (
+    SoulseekReviewCandidateRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
@@ -119,6 +122,7 @@ def make_service(
         DownloadRequestRepository(database),
         TrackMatchRepository(database),
         LocalFileRepository(database),
+        SoulseekReviewCandidateRepository(database),
         slskd_download_dir=None,
     )
 
@@ -402,6 +406,212 @@ def test_download_playlist_requests_locked_only_candidate_as_upgrade(
     assert row["status"] == "queued"
     assert row["username"] == "ofoijacussa"
     assert row["filename"] == locked_candidate.filename
+
+
+def _seed_single_unmatched_track(
+        service: DownloadService,
+        tmp_path,
+        track_id: str,
+        artist: str,
+        title: str,
+) -> None:
+    lib_root = tmp_path / "music"
+    lib_root.mkdir(exist_ok=True)
+
+    with service.database.transaction() as connection:
+        service.locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = service.locations.get_by_name("Main", connection)
+
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=1),
+            connection,
+        )
+        service.playlists.set_destination(
+            "p1", location.id, None, connection
+        )
+
+        service.tracks.save(
+            Track(
+                id=track_id,
+                title=title,
+                artist=artist,
+                album="",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        service.tracks.save_playlist_track("p1", track_id, connection)
+
+
+def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
+        tmp_path,
+):
+    # STEP 4: confirms two of the real, previously-silently-dropped
+    # "Test" playlist candidates (captured live 2026-08-27 — see
+    # test_quality.py's REAL_PRDK_CANDIDATE/REAL_ZIGI_SC_CANDIDATE for the
+    # exact same real data) now land in soulseek_review_candidates instead
+    # of vanishing behind "No candidates found."
+    prdk_candidate = make_soulseek_file(
+        username="musicmasterrdjpool",
+        filename=(
+            "DJPOOLS\\2026\\MONTHS\\FEB\\20\\The Mash Up 20 FEB\\"
+            "Prdk - One More Night (Clean) 4A 87.mp3"
+        ),
+        extension="mp3",
+        size=9_251_601,
+        queue_length=67_376,
+        upload_speed=143_109,
+        has_free_upload_slot=False,
+        length=227,
+        bit_rate=320,
+        bit_depth=None,
+        sample_rate=None,
+        is_variable_bitrate=False,
+    )
+    zigi_sc_candidate = make_soulseek_file(
+        username="musicmasterrdjpool",
+        filename=(
+            "DJPOOLS\\2026\\MONTHS\\AUG\\18\\"
+            "Beatport Best of Independent Artist [July 2026]\\"
+            "A-Cray, Zigi SC - Bit Perfect (Original Mix).mp3"
+        ),
+        extension="mp3",
+        size=12_424_929,
+        queue_length=67_377,
+        upload_speed=143_109,
+        has_free_upload_slot=False,
+        length=306,
+        bit_rate=320,
+        bit_depth=None,
+        sample_rate=None,
+        is_variable_bitrate=False,
+    )
+
+    prdk_query = "Prdk ONE MORE NIGHT"
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={prdk_query: [prdk_candidate]},
+    )
+    _seed_single_unmatched_track(
+        service, tmp_path, "prdk-track", "Prdk", "ONE MORE NIGHT"
+    )
+
+    result = service.download_playlist("Test")
+
+    # No auto-tier candidate exists — a real download must not be
+    # requested for a needs_review-only result.
+    assert result["requested"] == 0
+    assert result["skipped"] == 1
+    assert service.soulseek.request_download_calls == []
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id, username, filename, score, "
+            "quality_descriptor FROM soulseek_review_candidates"
+        ).fetchall()
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["track_id"] == "prdk-track"
+    assert row["username"] == "musicmasterrdjpool"
+    assert row["filename"] == prdk_candidate.filename
+    assert 70.0 <= row["score"] < 90.0
+    assert row["quality_descriptor"] == "mp3 320kbps"
+
+    review_candidates = service.get_review_candidates()
+    assert len(review_candidates) == 1
+    track, candidate = review_candidates[0]
+    assert track.artist == "Prdk"
+    assert track.title == "ONE MORE NIGHT"
+    assert candidate.username == "musicmasterrdjpool"
+    assert candidate.filename == prdk_candidate.filename
+
+    # Second track, same real Zigi SC/A-Cray data, on a fully separate DB
+    # (own subdirectory) so it can't collide with the first service's
+    # library_locations UNIQUE(path) constraint.
+    zigi_query = "Zigi SC A-Cray Bit Perfect"
+    zigi_tmp_path = tmp_path / "zigi"
+    zigi_tmp_path.mkdir()
+    service2 = make_service(
+        zigi_tmp_path,
+        states={},
+        search_results={zigi_query: [zigi_sc_candidate]},
+    )
+    _seed_single_unmatched_track(
+        service2,
+        zigi_tmp_path,
+        "zigi-track",
+        "Zigi SC, A-Cray",
+        "Bit Perfect",
+    )
+
+    result2 = service2.download_playlist("Test")
+
+    assert result2["requested"] == 0
+    assert result2["skipped"] == 1
+
+    with service2.database.transaction() as connection:
+        rows2 = connection.execute(
+            "SELECT track_id, username, filename, score "
+            "FROM soulseek_review_candidates"
+        ).fetchall()
+
+    assert len(rows2) == 1
+    assert rows2[0]["track_id"] == "zigi-track"
+    assert rows2[0]["filename"] == zigi_sc_candidate.filename
+    assert 70.0 <= rows2[0]["score"] < 90.0
+
+
+def test_download_playlist_clears_stale_review_candidate_once_settled(
+        tmp_path,
+):
+    # A needs_review row from an earlier run must not keep being surfaced
+    # once a later run finds a real, downloadable auto-tier candidate for
+    # the same track.
+    query = "Dom Dolla Title t1"
+    needs_review_candidate = make_soulseek_file(
+        # Scores ~78 — comfortably inside the needs_review band, well
+        # below AUTO_MATCH_THRESHOLD (verified against the real
+        # score_title/normalize_soulseek_title functions, not assumed).
+        filename="Dom Dolla - Title t1 (Clean).flac",
+    )
+    auto_candidate = make_soulseek_file(
+        filename="Dom Dolla - Title t1.flac",
+        queue_length=2,
+    )
+
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={query: [needs_review_candidate]},
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+
+    first = service.download_playlist("Test")
+    assert first["skipped"] == 1
+
+    with service.database.transaction() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM soulseek_review_candidates"
+        ).fetchone()[0]
+    assert count == 1
+
+    service.soulseek.search_results[query] = [auto_candidate]
+
+    second = service.download_playlist("Test")
+    assert second["requested"] == 1
+
+    with service.database.transaction() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM soulseek_review_candidates"
+        ).fetchone()[0]
+    assert count == 0
 
 
 def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
@@ -795,6 +1005,7 @@ def _seed_upgrade_scenario(tmp_path):
         download_requests,
         track_matches,
         local_files,
+        SoulseekReviewCandidateRepository(database),
         str(slskd_dir),
     )
 

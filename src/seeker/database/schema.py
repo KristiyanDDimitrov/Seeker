@@ -155,4 +155,24 @@ CREATE TABLE IF NOT EXISTS download_requests (
     completed_at TEXT,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
+
+-- Soulseek equivalent of track_matches' 'needs_review' tier (see
+-- matching.py's AUTO_MATCH_THRESHOLD/NEEDS_REVIEW_THRESHOLD) — a real,
+-- artist-matching Soulseek candidate that scored 70-89 (plausible, but
+-- not confident enough to auto-download). One row per track (upserted,
+-- not appended) holding only the single best-scoring such candidate.
+-- Purely informational: nothing here is ever requested from slskd on its
+-- own — surfaced read-only via `seeker check`. Cleared by
+-- download_playlist() the moment a later run finds something better (a
+-- real auto-tier candidate, settled or upgrade-shortlisted) for the same
+-- track, so a stale row can never outlive the state it described.
+CREATE TABLE IF NOT EXISTS soulseek_review_candidates (
+    track_id TEXT NOT NULL PRIMARY KEY,
+    username TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    score REAL NOT NULL,
+    quality_descriptor TEXT,
+    found_at TEXT NOT NULL,
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
 """

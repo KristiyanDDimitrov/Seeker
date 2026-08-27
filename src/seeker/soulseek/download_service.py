@@ -15,6 +15,9 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.soulseek_review_candidate_repository import (
+    SoulseekReviewCandidateRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
@@ -23,6 +26,7 @@ from seeker.library.scanner import index_single_file
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
 from seeker.models.soulseek_file import SoulseekFile
+from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import SoulseekClient, SoulseekDownloadError
@@ -102,6 +106,7 @@ class DownloadService:
         download_request_repository: DownloadRequestRepository,
         track_match_repository: TrackMatchRepository,
         local_file_repository: LocalFileRepository,
+        soulseek_review_candidate_repository: SoulseekReviewCandidateRepository,
         slskd_download_dir: str | None,
     ):
         self.database = database
@@ -112,6 +117,7 @@ class DownloadService:
         self.download_requests = download_request_repository
         self.track_matches = track_match_repository
         self.local_files = local_file_repository
+        self.soulseek_review_candidates = soulseek_review_candidate_repository
         self.slskd_download_dir = slskd_download_dir
 
     def set_destination(
@@ -189,7 +195,17 @@ class DownloadService:
                 print(f"Searching: {track.artist} - {track.title}")
 
                 files = self.soulseek.search(_build_search_query(track))
-                settled, upgrade_shortlist = select_downloads(track, files)
+                settled, upgrade_shortlist, needs_review = select_downloads(
+                    track, files
+                )
+
+                if settled is not None or upgrade_shortlist:
+                    # Something real and auto-tier exists for this track
+                    # now (downloaded, or locked but chased via the
+                    # upgrade cascade) — any needs_review row from an
+                    # earlier, worse run is stale information and must
+                    # not keep being surfaced by `seeker check`.
+                    self._clear_review_candidate(track.id)
 
                 if settled is None:
                     if upgrade_shortlist:
@@ -210,6 +226,23 @@ class DownloadService:
                             track, upgrade_shortlist
                         )
                         requested += 1
+                    elif needs_review is not None:
+                        # No auto-tier candidate at all, but a real,
+                        # plausible one exists (70-89) — record it for
+                        # `seeker check` to surface, rather than letting
+                        # it silently vanish. Never requested from slskd
+                        # on its own; a human confirms manually.
+                        review_file, review_score = needs_review
+                        self._record_review_candidate(
+                            track, review_file, review_score
+                        )
+                        print(
+                            f"  No auto-match candidate — needs-review "
+                            f"candidate found (score {review_score:.1f}): "
+                            f"{review_file.username}: "
+                            f"{review_file.filename}"
+                        )
+                        skipped += 1
                     else:
                         print("  No candidates found.")
                         skipped += 1
@@ -320,6 +353,56 @@ class DownloadService:
                 ),
                 connection,
             )
+
+    def _record_review_candidate(
+            self,
+            track: Track,
+            file: SoulseekFile,
+            score: float,
+    ) -> None:
+        with self.database.transaction() as connection:
+            self.soulseek_review_candidates.upsert(
+                SoulseekReviewCandidate(
+                    track_id=track.id,
+                    username=file.username,
+                    filename=file.filename,
+                    score=score,
+                    quality_descriptor=_quality_descriptor(file),
+                    found_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
+            )
+
+    def _clear_review_candidate(self, track_id: str) -> None:
+        with self.database.transaction() as connection:
+            self.soulseek_review_candidates.delete(track_id, connection)
+
+    def get_review_candidates(
+            self,
+    ) -> list[tuple[Track, SoulseekReviewCandidate]]:
+        # Read-only, informational — no confirmation flow here (unlike
+        # ready_for_review's downloads review). Mirrors the local
+        # matcher's needs_review tier, which has the same open item: an
+        # interactive confirm/reject flow is deferred to a future UI
+        # rather than another CLI prompt loop.
+        with self.database.transaction() as connection:
+            candidates = self.soulseek_review_candidates.get_all(connection)
+            tracks_by_id = {
+                track.id: track
+                for track in self.tracks.get_all(connection)
+            }
+
+        results = []
+
+        for candidate in candidates:
+            track = tracks_by_id.get(candidate.track_id)
+
+            if track is not None:
+                results.append((track, candidate))
+
+        results.sort(key=lambda item: (item[0].artist, item[0].title))
+
+        return results
 
     def poll_downloads(self) -> dict[str, int]:
         with self.database.transaction() as connection:

@@ -3,6 +3,7 @@ import re
 from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.matching import (
     AUTO_MATCH_THRESHOLD,
+    NEEDS_REVIEW_THRESHOLD,
     artist_matches,
     score_title,
 )
@@ -30,6 +31,26 @@ def normalize_soulseek_title(filename: str) -> str:
     return basename.strip()
 
 
+def _score_candidate(track: Track, file: SoulseekFile) -> float | None:
+    # Shared by filter_candidates (auto tier) and
+    # find_best_needs_review_candidate (needs_review tier) — same
+    # extension + artist gate and fuzzy title score, just a different
+    # cutoff applied by each caller. Mirrors library/matcher.py's
+    # find_best_match, which does the equivalent for local files.
+    # Returns None when the file isn't audio or the artist doesn't match
+    # at all (not just "scored too low") — distinct from a real score of
+    # 0, so callers never have to special-case "no signal at all."
+    if f".{file.extension.lower()}" not in AUDIO_EXTENSIONS:
+        return None
+
+    normalized_title = normalize_soulseek_title(file.filename)
+
+    if not artist_matches(track.artist, normalized_title):
+        return None
+
+    return score_title(track.artist, track.title, normalized_title)
+
+
 def filter_candidates(
         track: Track,
         files: list[SoulseekFile],
@@ -37,22 +58,44 @@ def filter_candidates(
     candidates = []
 
     for file in files:
-        if f".{file.extension.lower()}" not in AUDIO_EXTENSIONS:
-            continue
+        score = _score_candidate(track, file)
 
-        normalized_title = normalize_soulseek_title(file.filename)
-
-        if not artist_matches(track.artist, normalized_title):
-            continue
-
-        score = score_title(track.artist, track.title, normalized_title)
-
-        if score < AUTO_MATCH_THRESHOLD:
+        if score is None or score < AUTO_MATCH_THRESHOLD:
             continue
 
         candidates.append(file)
 
     return candidates
+
+
+def find_best_needs_review_candidate(
+        track: Track,
+        files: list[SoulseekFile],
+) -> tuple[SoulseekFile, float] | None:
+    # The Soulseek equivalent of library/matcher.py's needs_review tier:
+    # a real, artist-matching candidate that's plausible but not
+    # confident enough to auto-download (70 <= score < 90). Purely
+    # informational — nothing in this tier is ever requested from slskd
+    # by select_downloads/download_playlist; it's surfaced read-only via
+    # `seeker check` for a human to go find and grab manually. Returns
+    # only the single best-scoring candidate across ALL files (not just
+    # the auto-tier-filtered ones), since a track with zero auto-tier
+    # candidates would otherwise have nothing left to search here.
+    best: tuple[SoulseekFile, float] | None = None
+
+    for file in files:
+        score = _score_candidate(track, file)
+
+        if score is None:
+            continue
+
+        if not (NEEDS_REVIEW_THRESHOLD <= score < AUTO_MATCH_THRESHOLD):
+            continue
+
+        if best is None or score > best[1]:
+            best = (file, score)
+
+    return best
 
 
 def quality_tier(file: SoulseekFile) -> int:
@@ -111,11 +154,21 @@ def _sort_key(file: SoulseekFile) -> tuple[int, int, int, int]:
 def select_downloads(
         track: Track,
         files: list[SoulseekFile],
-) -> tuple[SoulseekFile | None, list[SoulseekFile]]:
+) -> tuple[
+    SoulseekFile | None,
+    list[SoulseekFile],
+    tuple[SoulseekFile, float] | None,
+]:
+    # needs_review is computed independently of the auto-tier logic below
+    # and included unchanged in every return point — the settled/upgrade
+    # ranking never considers it, it's purely extra information for
+    # callers (download_playlist) to act on when there's no auto
+    # candidate at all.
     filtered = filter_candidates(track, files)
+    needs_review = find_best_needs_review_candidate(track, files)
 
     if not filtered:
-        return (None, [])
+        return (None, [], needs_review)
 
     ranked = sorted(filtered, key=_sort_key, reverse=True)
     top = ranked[0]
@@ -124,7 +177,7 @@ def select_downloads(
     # downloaded at all right now, which is a harder blocker than a long
     # queue, so it's checked separately from is_practical().
     if not top.locked and is_practical(top):
-        return (top, [])
+        return (top, [], needs_review)
 
     settled_eligible = [
         file for file in ranked if not file.locked and is_practical(file)
@@ -146,7 +199,7 @@ def select_downloads(
         # Every filtered candidate is locked — nothing downloadable
         # right now, but the whole ranked list is upgrade-shortlist
         # material for the Phase 3/4 retry cycle.
-        return (None, ranked[:MAX_UPGRADE_SHORTLIST])
+        return (None, ranked[:MAX_UPGRADE_SHORTLIST], needs_review)
 
     # Everything ranked ahead of settled (by the same tiebreak-aware key)
     # is genuinely better-or-equal and worth chasing as an upgrade;
@@ -154,4 +207,4 @@ def select_downloads(
     settled_index = next(i for i, f in enumerate(ranked) if f is settled)
     shortlist = ranked[:settled_index][:MAX_UPGRADE_SHORTLIST]
 
-    return (settled, shortlist)
+    return (settled, shortlist, needs_review)

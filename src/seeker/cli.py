@@ -413,6 +413,26 @@ def handle_check(
     for artist, title, score in needs_review:
         print(f"  {artist} - {title} (score: {score:.1f})")
 
+    # Distinct from the local-matcher needs_review tier above — these are
+    # tracks with NO local file match at all, but a real, plausible
+    # SoulSeek candidate (70-89) found by a previous `seeker download`
+    # run. Requires slskd to be configured at all (see config.py); `check`
+    # must keep working without it, so this section is simply omitted
+    # rather than erroring when it isn't set up.
+    if application.soulseek_configured:
+        soulseek_review = application.download_service.get_review_candidates()
+        print(
+            f"\nNeeds review (SoulSeek candidate found) "
+            f"({len(soulseek_review)}):"
+        )
+
+        for track, candidate in soulseek_review:
+            print(
+                f"  {track.artist} - {track.title} "
+                f"(score: {candidate.score:.1f}) -> "
+                f"{candidate.username}: {candidate.filename}"
+            )
+
     unmatched = report["unmatched"]
     print(f"\nUnmatched, needs a SoulSeek download ({len(unmatched)}):")
 

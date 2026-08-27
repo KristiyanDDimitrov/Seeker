@@ -2,6 +2,7 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.quality import (
     filter_candidates,
+    find_best_needs_review_candidate,
     select_downloads,
 )
 
@@ -90,6 +91,18 @@ def test_filter_candidates_keeps_clean_match():
     assert filter_candidates(track, [clean]) == [clean]
 
 
+def test_filter_candidates_matches_multi_artist_track_crediting_only_one():
+    # track.artist may credit multiple artists joined with ", " (e.g.
+    # "MK, Dom Dolla") — a Soulseek filename crediting only one of them
+    # should still pass.
+    track = make_track(artist="MK, Dom Dolla", title="Rhyme Dust")
+    single_credit = make_file(
+        filename="@@1a2b3c\\Music\\MK - Rhyme Dust.flac",
+    )
+
+    assert filter_candidates(track, [single_credit]) == [single_credit]
+
+
 def test_select_downloads_prefers_shorter_queue_on_quality_tie():
     # Two real, equal-tier/bitrate candidates (both flac, no reported
     # bit_rate — real search data for lossless files) differing only in
@@ -109,7 +122,7 @@ def test_select_downloads_prefers_shorter_queue_on_quality_tie():
 
     # Input order deliberately puts the slow one first, so a pass would
     # only happen via the real tiebreak, not incidental list order.
-    settled, _ = select_downloads(track, [slow_flac, fast_flac])
+    settled, _, _ = select_downloads(track, [slow_flac, fast_flac])
 
     assert settled is fast_flac
 
@@ -124,7 +137,7 @@ def test_select_downloads_returns_none_settled_when_nothing_matches():
         bit_depth=None,
     )
 
-    settled, upgrade_shortlist = select_downloads(track, [wrong_artist])
+    settled, upgrade_shortlist, _ = select_downloads(track, [wrong_artist])
 
     assert settled is None
     assert upgrade_shortlist == []
@@ -134,7 +147,7 @@ def test_select_downloads_returns_no_upgrade_when_top_pick_is_practical():
     track = make_track()
     practical_flac = make_file(queue_length=2)
 
-    settled, upgrade_shortlist = select_downloads(track, [practical_flac])
+    settled, upgrade_shortlist, _ = select_downloads(track, [practical_flac])
 
     assert settled is practical_flac
     assert upgrade_shortlist == []
@@ -157,7 +170,7 @@ def test_select_downloads_returns_practical_settled_and_impractical_upgrade():
         queue_length=2,
     )
 
-    settled, upgrade_shortlist = select_downloads(
+    settled, upgrade_shortlist, _ = select_downloads(
         track, [impractical_flac, practical_mp3]
     )
 
@@ -182,7 +195,7 @@ def test_select_downloads_falls_back_to_phase_one_when_none_practical():
         queue_length=800,
     )
 
-    settled, upgrade_shortlist = select_downloads(
+    settled, upgrade_shortlist, _ = select_downloads(
         track, [impractical_flac, impractical_mp3]
     )
 
@@ -202,7 +215,7 @@ def test_select_downloads_never_settles_on_a_locked_candidate():
         locked=True,
     )
 
-    settled, upgrade_shortlist = select_downloads(track, [locked_flac])
+    settled, upgrade_shortlist, _ = select_downloads(track, [locked_flac])
 
     assert settled is None
     assert upgrade_shortlist == [locked_flac]
@@ -229,7 +242,7 @@ def test_select_downloads_locked_upgrade_takes_precedence_when_higher_quality():
         queue_length=800,
     )
 
-    settled, upgrade_shortlist = select_downloads(
+    settled, upgrade_shortlist, _ = select_downloads(
         track, [locked_flac, impractical_mp3]
     )
 
@@ -260,7 +273,7 @@ def test_select_downloads_prefers_unlocked_over_locked_on_quality_tie():
         queue_length=2,
     )
 
-    settled, upgrade_shortlist = select_downloads(
+    settled, upgrade_shortlist, _ = select_downloads(
         track, [locked_mp3, practical_mp3]
     )
 
@@ -299,10 +312,102 @@ def test_select_downloads_shortlist_capped_at_three_and_ranked():
         for i, queue_length in enumerate([300, 10, 200, 50])
     ]
 
-    settled, upgrade_shortlist = select_downloads(
+    settled, upgrade_shortlist, _ = select_downloads(
         track, [settled_practical, *rank_candidates]
     )
 
     assert settled is settled_practical
     assert len(upgrade_shortlist) == 3
     assert [f.queue_length for f in upgrade_shortlist] == [10, 50, 200]
+
+
+# Real search data captured live (2026-08-27) for two of the real "Test"
+# playlist's unmatched tracks — both genuinely landed in the 70-89
+# needs_review band, real DJ-pool filename noise ("(Clean) 4A 87",
+# "(Original Mix)") diluting an otherwise-correct match below
+# AUTO_MATCH_THRESHOLD. (A third real candidate, for "Jade Venom - Scared
+# Now? - DIVERGENCE VI", scored 90.9 — genuinely auto-tier, just locked —
+# so it belongs to the upgrade-shortlist path fixed separately, not this
+# tier; see test_download_service.py's
+# test_download_playlist_requests_locked_only_candidate_as_upgrade.)
+REAL_PRDK_CANDIDATE = SoulseekFile(
+    username="musicmasterrdjpool",
+    filename=(
+        "DJPOOLS\\2026\\MONTHS\\FEB\\20\\The Mash Up 20 FEB\\"
+        "Prdk - One More Night (Clean) 4A 87.mp3"
+    ),
+    extension="mp3",
+    size=9_251_601,
+    queue_length=67_376,
+    upload_speed=143_109,
+    has_free_upload_slot=False,
+    length=227,
+    bit_rate=320,
+    bit_depth=None,
+    sample_rate=None,
+    is_variable_bitrate=False,
+)
+
+REAL_ZIGI_SC_CANDIDATE = SoulseekFile(
+    username="musicmasterrdjpool",
+    filename=(
+        "DJPOOLS\\2026\\MONTHS\\AUG\\18\\"
+        "Beatport Best of Independent Artist [July 2026]\\"
+        "A-Cray, Zigi SC - Bit Perfect (Original Mix).mp3"
+    ),
+    extension="mp3",
+    size=12_424_929,
+    queue_length=67_377,
+    upload_speed=143_109,
+    has_free_upload_slot=False,
+    length=306,
+    bit_rate=320,
+    bit_depth=None,
+    sample_rate=None,
+    is_variable_bitrate=False,
+)
+
+
+def test_find_best_needs_review_candidate_classifies_real_prdk_data():
+    track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
+
+    # Never auto-tier: the DJ-pool suffix keeps it out of filter_candidates.
+    assert filter_candidates(track, [REAL_PRDK_CANDIDATE]) == []
+
+    result = find_best_needs_review_candidate(track, [REAL_PRDK_CANDIDATE])
+
+    assert result is not None
+    file, score = result
+    assert file is REAL_PRDK_CANDIDATE
+    assert 70.0 <= score < 90.0
+
+    settled, upgrade_shortlist, needs_review = select_downloads(
+        track, [REAL_PRDK_CANDIDATE]
+    )
+    assert settled is None
+    assert upgrade_shortlist == []
+    assert needs_review == result
+
+
+def test_find_best_needs_review_candidate_classifies_real_zigi_sc_data():
+    track = make_track(
+        id="zigi1", title="Bit Perfect", artist="Zigi SC, A-Cray",
+    )
+
+    assert filter_candidates(track, [REAL_ZIGI_SC_CANDIDATE]) == []
+
+    result = find_best_needs_review_candidate(
+        track, [REAL_ZIGI_SC_CANDIDATE]
+    )
+
+    assert result is not None
+    file, score = result
+    assert file is REAL_ZIGI_SC_CANDIDATE
+    assert 70.0 <= score < 90.0
+
+    settled, upgrade_shortlist, needs_review = select_downloads(
+        track, [REAL_ZIGI_SC_CANDIDATE]
+    )
+    assert settled is None
+    assert upgrade_shortlist == []
+    assert needs_review == result

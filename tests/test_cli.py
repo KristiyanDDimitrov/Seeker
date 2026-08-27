@@ -9,13 +9,21 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
 from seeker.models.local_file import LocalFile
+from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 
 
 class FakeApplication:
-    def __init__(self, track_matcher: TrackMatcher):
+    def __init__(
+            self,
+            track_matcher: TrackMatcher,
+            soulseek_configured: bool = False,
+            download_service=None,
+    ):
         self.track_matcher = track_matcher
+        self.soulseek_configured = soulseek_configured
+        self.download_service = download_service
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -69,16 +77,14 @@ def seed_auto_matched_tracks(matcher: TrackMatcher, count: int) -> None:
                 connection,
             )
 
-            local_file_id = connection.execute(
-                "SELECT id FROM local_files "
-                "WHERE location_id = ? AND relative_path = ?",
-                (location_id, relative_path),
-            ).fetchone()[0]
+            local_file = matcher.local_files.get_by_location_and_relative_path(
+                location_id, relative_path, connection
+            )
 
             matcher.track_matches.upsert(
                 TrackMatch(
                     track_id=track.id,
-                    local_file_id=local_file_id,
+                    local_file_id=local_file.id,
                     match_method="auto",
                     score=95.0,
                     matched_at="2026-01-01T00:00:00+00:00",
@@ -118,3 +124,79 @@ def test_check_verbose_lists_each_auto_matched_track(tmp_path, capsys):
     for line in auto_lines:
         assert "score:" in line
         assert ".mp3" in line
+
+
+class FakeDownloadServiceForReview:
+    def __init__(self, review_candidates):
+        self._review_candidates = review_candidates
+
+    def get_review_candidates(self):
+        return self._review_candidates
+
+
+def test_check_omits_soulseek_review_section_when_not_configured(
+        tmp_path, capsys,
+):
+    # `check` must keep working without slskd configured at all (see
+    # config.py) — the new section should be silently absent, not
+    # attempted and errored.
+    matcher = make_matcher(tmp_path)
+
+    cli.run(
+        FakeApplication(matcher, soulseek_configured=False),
+        ["check"],
+    )
+
+    output = capsys.readouterr().out
+
+    assert "SoulSeek candidate found" not in output
+
+
+def test_check_lists_soulseek_review_candidates_distinct_from_unmatched(
+        tmp_path, capsys,
+):
+    # Real data captured live (2026-08-27) — same candidate used in
+    # test_quality.py/test_download_service.py's needs_review tests.
+    matcher = make_matcher(tmp_path)
+
+    track = Track(
+        id="prdk-track",
+        title="ONE MORE NIGHT",
+        artist="Prdk",
+        album="",
+        duration_ms=227_000,
+    )
+    candidate = SoulseekReviewCandidate(
+        track_id="prdk-track",
+        username="musicmasterrdjpool",
+        filename=(
+            "DJPOOLS\\2026\\MONTHS\\FEB\\20\\The Mash Up 20 FEB\\"
+            "Prdk - One More Night (Clean) 4A 87.mp3"
+        ),
+        score=70.37,
+        quality_descriptor="mp3 320kbps",
+        found_at="2026-08-27T00:00:00+00:00",
+    )
+
+    download_service = FakeDownloadServiceForReview([(track, candidate)])
+
+    cli.run(
+        FakeApplication(
+            matcher,
+            soulseek_configured=True,
+            download_service=download_service,
+        ),
+        ["check"],
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Needs review (SoulSeek candidate found) (1):" in output
+    assert "Prdk - ONE MORE NIGHT" in output
+    assert "score: 70.4" in output
+    assert "musicmasterrdjpool" in output
+
+    # Distinct section from "Unmatched" — the candidate must not also
+    # appear listed there.
+    unmatched_section = output.split("Unmatched")[-1]
+    assert "musicmasterrdjpool" not in unmatched_section
