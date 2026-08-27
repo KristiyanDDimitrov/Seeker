@@ -2,6 +2,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from mutagen import File as MutagenFile
 
@@ -32,6 +33,12 @@ class LibraryScanner:
         self.database = database
 
     def scan(self, location: LibraryLocation) -> dict[str, int]:
+        # location always comes from LibraryLocationRepository here (the
+        # only real caller is LibraryService.scan_all, iterating rows
+        # already fetched from the DB), so .id is always populated —
+        # None is only possible for a not-yet-persisted LibraryLocation.
+        assert location.id is not None
+
         root = Path(location.path)
 
         if not root.is_dir():
@@ -118,6 +125,10 @@ def index_single_file(
         local_file_repository: LocalFileRepository,
         connection: sqlite3.Connection,
 ) -> LocalFile:
+    # Same invariant as LibraryScanner.scan() above — location is always
+    # an already-persisted row by the time indexing happens.
+    assert location.id is not None
+
     file_path = Path(location.path) / relative_path
     stat = file_path.stat()
 
@@ -135,6 +146,10 @@ def index_single_file(
         relative_path,
         connection,
     )
+
+    # We just upserted this exact (location_id, relative_path) row in
+    # the same transaction, so it must exist.
+    assert indexed is not None
 
     return indexed
 
@@ -190,6 +205,6 @@ def _read_tags(
         return None, None, None, None
 
 
-def _first_tag(tags, key: str) -> str | None:
+def _first_tag(tags: Any, key: str) -> str | None:
     values = tags.get(key)
     return values[0] if values else None

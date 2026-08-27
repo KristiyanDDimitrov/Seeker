@@ -20,5 +20,22 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.3.1",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.4",
+    "scipy-stubs>=1.18.1.0",
 ]
+
+[tool.mypy]
+strict = true
+
+# mutagen ships no type annotations anywhere (no py.typed marker, no
+# types-mutagen package on PyPI — confirmed) — every call into it under
+# --strict trips disallow_untyped_calls. metadata.py is the one module
+# that's inherently mutagen-heavy (TIT2/TPE1/APIC/Picture/MP4Cover/...,
+# many call sites per function); scattering a per-line ignore on each
+# would be noisier than this one acknowledged, scoped exception.
+[[tool.mypy.overrides]]
+module = "seeker.metadata"
+disallow_untyped_calls = false

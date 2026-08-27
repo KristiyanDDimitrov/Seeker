@@ -2,6 +2,7 @@ import httpx
 import time
 
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -72,7 +73,11 @@ class SpotifyClient:
     def __init__(self, access_token: str):
         self.access_token = access_token
 
-    def _get(self, url: str, params: dict | None = None) -> dict:
+    def _get(
+            self,
+            url: str,
+            params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         while True:
             response = httpx.get(
                 url,
@@ -118,21 +123,24 @@ class SpotifyClient:
 
             response.raise_for_status()
 
-            return response.json()
+            # httpx's .json() is untyped (arbitrary JSON) — cast at this
+            # one boundary rather than letting Any leak into every caller.
+            return cast(dict[str, Any], response.json())
 
     def _get_all_pages(
             self,
             url: str,
-            params: dict | None = None,
-    ) -> list[dict]:
-        items = []
+            params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        next_url: str | None = url
 
-        while url:
-            data = self._get(url, params)
+        while next_url:
+            data = self._get(next_url, params)
 
             items.extend(data.get("items", []))
 
-            url = data.get("next")
+            next_url = data.get("next")
             params = None
 
         return items
@@ -175,9 +183,6 @@ class SpotifyClient:
             if not artists:
                 continue
 
-            # Nested album images are already in the real /items response
-            # — no separate GET /v1/albums/{id} call needed. Pick the
-            # largest by width rather than trusting array order.
             images = track_data["album"].get("images") or []
             album_art_url = (
                 max(images, key=lambda image: image.get("width") or 0)["url"]
@@ -189,11 +194,7 @@ class SpotifyClient:
                 Track(
                     id=track_data["id"],
                     title=track_data["name"],
-                    # Spotify may credit multiple artists on one track
-                    # (e.g. a remix or collab) — join all of them rather
-                    # than keeping only artists[0], matching the
-                    # convention already seen in real local file tags.
-                    artist=", ".join(artist["name"] for artist in artists),
+                    artist=", ".join(a["name"] for a in artists),
                     album=track_data["album"]["name"],
                     duration_ms=track_data["duration_ms"],
                     album_art_url=album_art_url,

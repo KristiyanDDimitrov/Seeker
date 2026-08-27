@@ -40,6 +40,10 @@ class LibraryService:
             self.locations.add(location, connection)
             saved = self.locations.get_by_name(name, connection)
 
+        # We just added this exact name in the same transaction, so it
+        # must exist.
+        assert saved is not None
+
         print(f"Added library location '{saved.name}': {saved.path}")
 
         return saved
@@ -63,6 +67,8 @@ class LibraryService:
                 )
                 return
 
+            # Loaded from the DB via get_by_name above, so .id is set.
+            assert location.id is not None
             self.locations.delete(location.id, connection)
 
         print(f"Removed library location '{name}'.")

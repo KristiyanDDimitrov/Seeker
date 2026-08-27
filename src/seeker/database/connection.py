@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from seeker.database.schema import SCHEMA
@@ -23,7 +24,7 @@ class Database:
         return connection
 
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator[sqlite3.Connection]:
         connection = self.connect()
 
         try:

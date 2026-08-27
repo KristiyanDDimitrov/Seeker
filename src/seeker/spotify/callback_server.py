@@ -7,7 +7,7 @@ class SpotifyCallbackHandler(BaseHTTPRequestHandler):
     returned_state = None
     error = None
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         parsed_url = urlparse(self.path)
 
         if parsed_url.path != "/callback":
@@ -43,7 +43,10 @@ class SpotifyCallbackHandler(BaseHTTPRequestHandler):
             """
         )
 
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: object) -> None:
+        # Suppress BaseHTTPRequestHandler's default per-request stderr
+        # logging — this is a short-lived local callback server, not
+        # something that needs request logging.
         return
 
 
