@@ -72,7 +72,7 @@ class FakeSoulseekClient:
         self.search_results = search_results or {}
         self.search_calls: list[str] = []
 
-    def search(self, query: str) -> list["SoulseekFile"]:
+    def search(self, query: str) -> list[SoulseekFile]:
         self.search_calls.append(query)
 
         result = self.search_results.get(query)
