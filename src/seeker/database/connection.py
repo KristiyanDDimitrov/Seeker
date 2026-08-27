@@ -38,3 +38,39 @@ class Database:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            _migrate(connection)
+
+
+# CREATE TABLE IF NOT EXISTS is a no-op against a pre-existing table, so a
+# column added to SCHEMA after the real DB already has that table needs an
+# explicit, idempotent ALTER TABLE here — there's no migration framework in
+# this project yet, so this stays a set of plain guarded ALTERs rather
+# than one.
+def _migrate(connection: sqlite3.Connection) -> None:
+    _add_column_if_missing(connection, "tracks", "album_art_url", "TEXT")
+    _add_column_if_missing(connection, "local_files", "bpm", "REAL")
+    _add_column_if_missing(connection, "local_files", "camelot_key", "TEXT")
+    _add_column_if_missing(
+        connection, "local_files", "key_confidence", "REAL"
+    )
+    _add_column_if_missing(connection, "download_requests", "size", "INTEGER")
+    _add_column_if_missing(connection, "download_requests", "rank", "INTEGER")
+
+
+def _add_column_if_missing(
+        connection: sqlite3.Connection,
+        table: str,
+        column: str,
+        sql_type: str,
+) -> None:
+    existing_columns = {
+        row["name"]
+        for row in connection.execute(
+            f"PRAGMA table_info({table})"
+        ).fetchall()
+    }
+
+    if column not in existing_columns:
+        connection.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"
+        )

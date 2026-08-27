@@ -2,6 +2,9 @@ import argparse
 import sys
 
 from seeker.application import Application
+from seeker.library.metadata_service import (
+    PlaylistNotFoundError as MetadataPlaylistNotFoundError,
+)
 from seeker.library.scanner import LibraryUnavailableError
 from seeker.models.playlist import Playlist
 from seeker.soulseek.client import SoulseekDownloadError
@@ -22,7 +25,7 @@ def resolve_playlist_or_offer_sync(
         application: Application,
 ) -> Playlist:
     """Shared playlist-name resolution for every CLI command that takes
-    one (sync-tracks, playlists set-destination, download).
+    one (sync-tracks, playlists set-destination, download, library tag).
 
     Four real outcomes, in order:
       1. Found locally (case-insensitive) — returned immediately, no
@@ -197,6 +200,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Match Spotify tracks against scanned local files.",
     )
 
+    tag_parser = library_subparsers.add_parser(
+        "tag",
+        help=(
+            "Write Spotify metadata (artist/title/album/art) onto every "
+            "auto-matched track in a playlist."
+        ),
+    )
+    tag_parser.add_argument("playlist_name")
+    tag_parser.add_argument(
+        "--analyze-audio",
+        action="store_true",
+        help=(
+            "Also run local BPM/key analysis and write TBPM/TKEY — "
+            "independent of and slower than the base metadata/art tag "
+            "write."
+        ),
+    )
+    tag_parser.add_argument(
+        "--bpm-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        default=None,
+        help=(
+            "Expected BPM range for octave-error correction (requires "
+            "--analyze-audio), e.g. --bpm-range 160 180."
+        ),
+    )
+
     return parser
 
 def handle_playlists(
@@ -324,8 +356,43 @@ def handle_library(
     elif parsed.library_command == "match":
         application.track_matcher.match_all()
 
+    elif parsed.library_command == "tag":
+        if parsed.bpm_range and not parsed.analyze_audio:
+            print("--bpm-range requires --analyze-audio.")
+            return
+
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
+
+        expected_bpm_range = (
+            tuple(parsed.bpm_range) if parsed.bpm_range else None
+        )
+
+        result = application.metadata_service.tag_playlist(
+            playlist.name,
+            analyze_audio=parsed.analyze_audio,
+            expected_bpm_range=expected_bpm_range,
+        )
+
+        print(
+            f"Tagged: {result['tagged']}, "
+            f"Skipped (no match): {result['skipped_no_match']}, "
+            f"Skipped (unsupported format): "
+            f"{result['skipped_format_unsupported']}, "
+            f"Failed: {result['failed']}."
+        )
+
+        if result["details"]:
+            print("\nSkipped/failed:")
+
+            for detail in result["details"]:
+                print(f"  [{detail['reason']}] {detail['message']}")
+
     else:
-        print("Usage: seeker library {add,list,remove,scan,match} ...")
+        print(
+            "Usage: seeker library {add,list,remove,scan,match,tag} ..."
+        )
 
 def handle_check(
         application: Application,
@@ -370,19 +437,32 @@ def run(
             handle_sync_tracks(application, parsed)
 
         elif parsed.command == "playlists":
-            handle_playlists(application)
+            handle_playlists(application, parsed)
 
         elif parsed.command == "check":
             handle_check(application, parsed)
 
         elif parsed.command == "library":
             handle_library(application, parsed)
+
+        elif parsed.command == "download":
+            handle_download(application, parsed)
+
+        elif parsed.command == "downloads":
+            handle_downloads(application, parsed)
     except SpotifyRateLimitedError as error:
         print(str(error))
         sys.exit(1)
     except LibraryUnavailableError as error:
         print(str(error))
         sys.exit(1)
-    except SyncPlaylistNotFoundError as error:
+    except (
+            PlaylistNotFoundError,
+            SyncPlaylistNotFoundError,
+            MetadataPlaylistNotFoundError,
+            NoDestinationConfiguredError,
+            LibraryLocationNotFoundError,
+            SoulseekDownloadError,
+    ) as error:
         print(str(error))
         sys.exit(1)

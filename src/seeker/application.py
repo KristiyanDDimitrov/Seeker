@@ -19,6 +19,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
+from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
@@ -47,12 +48,13 @@ class Application:
             ),
         )
 
-        self._spotify = None
-        self._sync_service = None
-        self._library_service = None
-        self._track_matcher = None
-        self._soulseek_client = None
-        self._download_service = None
+        self._spotify: SpotifyClient | None = None
+        self._sync_service: SpotifySyncService | None = None
+        self._library_service: LibraryService | None = None
+        self._track_matcher: TrackMatcher | None = None
+        self._soulseek_client: SoulseekClient | None = None
+        self._download_service: DownloadService | None = None
+        self._metadata_service: MetadataService | None = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -130,3 +132,17 @@ class Application:
             )
 
         return self._download_service
+
+    @property
+    def metadata_service(self) -> MetadataService:
+        if self._metadata_service is None:
+            self._metadata_service = MetadataService(
+                self.database,
+                TrackRepository(self.database),
+                TrackMatchRepository(self.database),
+                LocalFileRepository(self.database),
+                LibraryLocationRepository(self.database),
+                PlaylistRepository(self.database),
+            )
+
+        return self._metadata_service

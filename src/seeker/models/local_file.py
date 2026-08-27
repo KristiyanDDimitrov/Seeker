@@ -15,3 +15,6 @@ class LocalFile:
     tag_title: str | None = None
     tag_album: str | None = None
     duration_ms: int | None = None
+    bpm: float | None = None
+    camelot_key: str | None = None
+    key_confidence: float | None = None

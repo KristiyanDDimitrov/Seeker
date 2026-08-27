@@ -175,6 +175,16 @@ class SpotifyClient:
             if not artists:
                 continue
 
+            # Nested album images are already in the real /items response
+            # — no separate GET /v1/albums/{id} call needed. Pick the
+            # largest by width rather than trusting array order.
+            images = track_data["album"].get("images") or []
+            album_art_url = (
+                max(images, key=lambda image: image.get("width") or 0)["url"]
+                if images
+                else None
+            )
+
             tracks.append(
                 Track(
                     id=track_data["id"],
@@ -186,6 +196,7 @@ class SpotifyClient:
                     artist=", ".join(artist["name"] for artist in artists),
                     album=track_data["album"]["name"],
                     duration_ms=track_data["duration_ms"],
+                    album_art_url=album_art_url,
                 )
             )
 

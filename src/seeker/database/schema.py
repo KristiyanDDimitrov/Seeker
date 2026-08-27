@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     title TEXT NOT NULL,
     artist TEXT NOT NULL,
     album TEXT NOT NULL,
-    duration_ms INTEGER NOT NULL
+    duration_ms INTEGER NOT NULL,
+    album_art_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS playlist_tracks (
@@ -51,6 +52,9 @@ CREATE TABLE IF NOT EXISTS local_files (
     tag_album TEXT,
     duration_ms INTEGER,
     scanned_at TEXT NOT NULL,
+    bpm REAL,
+    camelot_key TEXT,
+    key_confidence REAL,
 
     UNIQUE (location_id, relative_path),
 

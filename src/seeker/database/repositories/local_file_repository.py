@@ -55,6 +55,23 @@ class LocalFileRepository:
             ),
         )
 
+    def update_analysis(
+            self,
+            local_file_id: int,
+            bpm: float,
+            camelot_key: str | None,
+            key_confidence: float,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE local_files
+            SET bpm = ?, camelot_key = ?, key_confidence = ?
+            WHERE id = ?
+            """,
+            (bpm, camelot_key, key_confidence, local_file_id),
+        )
+
     def get_all(self, connection: sqlite3.Connection) -> list[LocalFile]:
         rows = connection.execute(
             """
@@ -70,7 +87,10 @@ class LocalFileRepository:
                 tag_title,
                 tag_album,
                 duration_ms,
-                scanned_at
+                scanned_at,
+                bpm,
+                camelot_key,
+                key_confidence
             FROM local_files
             """
         ).fetchall()
@@ -96,7 +116,10 @@ class LocalFileRepository:
                 tag_title,
                 tag_album,
                 duration_ms,
-                scanned_at
+                scanned_at,
+                bpm,
+                camelot_key,
+                key_confidence
             FROM local_files
             WHERE id = ?
             """,
@@ -128,7 +151,10 @@ class LocalFileRepository:
                 tag_title,
                 tag_album,
                 duration_ms,
-                scanned_at
+                scanned_at,
+                bpm,
+                camelot_key,
+                key_confidence
             FROM local_files
             WHERE location_id = ? AND relative_path = ?
             """,
@@ -179,4 +205,7 @@ def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
         tag_album=row["tag_album"],
         duration_ms=row["duration_ms"],
         scanned_at=row["scanned_at"],
+        bpm=row["bpm"],
+        camelot_key=row["camelot_key"],
+        key_confidence=row["key_confidence"],
     )

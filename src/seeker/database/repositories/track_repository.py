@@ -16,14 +16,16 @@ class TrackRepository:
                 title,
                 artist,
                 album,
-                duration_ms
+                duration_ms,
+                album_art_url
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
                 album = excluded.album,
-                duration_ms = excluded.duration_ms
+                duration_ms = excluded.duration_ms,
+                album_art_url = excluded.album_art_url
             """,
             (
                 track.id,
@@ -31,23 +33,9 @@ class TrackRepository:
                 track.artist,
                 track.album,
                 track.duration_ms,
+                track.album_art_url,
             ),
         )
-
-    def get_all(self, connection: sqlite3.Connection) -> list[Track]:
-        rows = connection.execute(
-            """
-            SELECT
-                id,
-                title,
-                artist,
-                album,
-                duration_ms
-            FROM tracks
-            """
-        ).fetchall()
-
-        return [_row_to_track(row) for row in rows]
 
     def get_by_id(
             self,
@@ -61,7 +49,8 @@ class TrackRepository:
                 title,
                 artist,
                 album,
-                duration_ms
+                duration_ms,
+                album_art_url
             FROM tracks
             WHERE id = ?
             """,
@@ -72,6 +61,22 @@ class TrackRepository:
             return None
 
         return _row_to_track(row)
+
+    def get_all(self, connection: sqlite3.Connection) -> list[Track]:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                title,
+                artist,
+                album,
+                duration_ms,
+                album_art_url
+            FROM tracks
+            """
+        ).fetchall()
+
+        return [_row_to_track(row) for row in rows]
 
     def get_unmatched_for_playlist(
             self,
@@ -85,12 +90,38 @@ class TrackRepository:
                 t.title,
                 t.artist,
                 t.album,
-                t.duration_ms
+                t.duration_ms,
+                t.album_art_url
             FROM tracks t
             JOIN playlist_tracks pt ON pt.track_id = t.id
             LEFT JOIN track_matches tm ON tm.track_id = t.id
             WHERE pt.playlist_id = ?
             AND (tm.track_id IS NULL OR tm.match_method IS NULL)
+            """,
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_track(row) for row in rows]
+
+    def get_auto_matched_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[Track]:
+        rows = connection.execute(
+            """
+            SELECT
+                t.id,
+                t.title,
+                t.artist,
+                t.album,
+                t.duration_ms,
+                t.album_art_url
+            FROM tracks t
+            JOIN playlist_tracks pt ON pt.track_id = t.id
+            JOIN track_matches tm ON tm.track_id = t.id
+            WHERE pt.playlist_id = ?
+            AND tm.match_method = 'auto'
             """,
             (playlist_id,),
         ).fetchall()
@@ -153,4 +184,5 @@ def _row_to_track(row: sqlite3.Row) -> Track:
         artist=row["artist"],
         album=row["album"],
         duration_ms=row["duration_ms"],
+        album_art_url=row["album_art_url"],
     )
