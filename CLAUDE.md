@@ -716,6 +716,19 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     a real Confirm click, through the real worker/signal pipeline,
     correctly surfaced that same error on the real status label.
 
+    **Retried (2026-08-30) on request, after the drive was reportedly
+    reconnected — still not actually attached to this machine.**
+    Checked at the OS level, not just via the container: `diskutil
+    list` shows no X9 Pro disk at all (not merely unmounted — the
+    physical device itself isn't enumerated), `/Volumes` unchanged, and
+    `system_profiler SPUSBDataType` returned nothing at all, even
+    outside this session's normal sandboxing. `docker start slskd` was
+    not attempted a second time given that — repeating item 26's
+    original mount-permission failure would have told us nothing new.
+    The real happy-path confirm/replace flow against Prdk/Zigi SC-A-Cray
+    genuinely remains unverified; nothing about this retry changes the
+    verified-vs-not split recorded above.
+
     [HISTORY §26](docs/HISTORY.md#26)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:

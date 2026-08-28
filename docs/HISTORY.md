@@ -2766,3 +2766,28 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     real `ready_for_review` → real Replace click) — needs the drive
     reconnected and slskd actually running, which is the user's call,
     not something to force from this session.
+
+    **Retry attempt (2026-08-30), on request, after being told the
+    drive was reconnected.** Checked at the OS level before touching
+    Docker at all, since the point of this retry was to actually
+    confirm the drive first rather than repeat the earlier failure
+    blind: `diskutil list` — no `X9 Pro` disk anywhere in the output,
+    not even as an unmounted volume; the physical device itself isn't
+    enumerated, which is a stronger negative than "mounted but not at
+    the expected path." `ls /Volumes/` unchanged from the original
+    check (`Macintosh HD`, `SoulseekQt` only). Went one step further
+    than the original investigation: `system_profiler SPUSBDataType`
+    and `SPThunderboltDataType` both returned completely empty output —
+    re-ran the same commands with the sandbox override
+    (`dangerouslyDisableSandbox: true`) to rule out a sandboxing
+    artifact specifically, and got the identical empty result both
+    ways, confirming this isn't a permissions/sandbox quirk hiding a
+    real, connected device. Did not re-attempt `docker start slskd` —
+    the original attempt's exact failure
+    (`mkdir /host_mnt/Volumes/X9 Pro: permission denied`) already
+    fully explains itself given the drive isn't present at all;
+    repeating it would exercise the identical failure path for no new
+    information. Left everything untouched (container still stopped in
+    its original state). The real happy-path verification remains
+    exactly where item 26's first pass left it — genuinely not done,
+    not newly broken or newly available.
