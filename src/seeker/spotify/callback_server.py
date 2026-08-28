@@ -2,6 +2,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 
+# Single source of truth for the local callback port — the onboarding
+# wizard displays DEFAULT_REDIRECT_URI (built from this) as the fixed,
+# copy-pasteable value the user registers on Spotify's dashboard, so it
+# must never drift from what wait_for_callback() actually listens on.
+CALLBACK_PORT = 8888
+DEFAULT_REDIRECT_URI = f"http://127.0.0.1:{CALLBACK_PORT}/callback"
+
+
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
     authorization_code = None
     returned_state = None
@@ -50,7 +58,9 @@ class SpotifyCallbackHandler(BaseHTTPRequestHandler):
         return
 
 
-def wait_for_callback(port: int = 8888) -> tuple[str | None, str | None, str | None]:
+def wait_for_callback(
+        port: int = CALLBACK_PORT,
+) -> tuple[str | None, str | None, str | None]:
     server = HTTPServer(("127.0.0.1", port), SpotifyCallbackHandler)
 
     server.handle_request()

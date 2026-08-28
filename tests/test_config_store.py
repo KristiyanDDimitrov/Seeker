@@ -7,7 +7,7 @@ import pytest
 from seeker.config_store import (
     SeekerConfig,
     load_config,
-    migrate_legacy_slskd_env_config,
+    migrate_legacy_env_config,
     resolve_config_path,
     save_config,
 )
@@ -50,6 +50,20 @@ def test_save_then_load_round_trips(tmp_path):
         slskd_base_url="http://localhost:5030",
         slskd_api_key="real-api-key",
         slskd_download_dir="/mnt/slskd/downloads",
+    )
+
+    save_config(original, path)
+    loaded = load_config(path)
+
+    assert loaded == original
+
+
+def test_save_then_load_round_trips_spotify_fields(tmp_path):
+    path = tmp_path / "config.json"
+
+    original = SeekerConfig(
+        spotify_client_id="real-client-id",
+        spotify_redirect_uri="http://127.0.0.1:8888/callback",
     )
 
     save_config(original, path)
@@ -106,7 +120,7 @@ def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, capsys):
 
     path = tmp_path / "config.json"
 
-    result = migrate_legacy_slskd_env_config(path)
+    result = migrate_legacy_env_config(path)
 
     assert result.slskd_base_url == "http://localhost:5030"
     assert result.slskd_api_key == "env-api-key"
@@ -116,22 +130,48 @@ def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, capsys):
     assert persisted == result
 
     output = capsys.readouterr().out
-    assert "Migrated SoulSeek config from .env" in output
+    assert "Migrated config from .env" in output
     assert "SLSKD_BASE_URL" in output
     assert "SLSKD_API_KEY" in output
     assert "SLSKD_DOWNLOAD_DIR" in output
 
 
-def _clear_slskd_env(monkeypatch):
-    # This process's real .env may have real SLSKD_* values loaded into
-    # os.environ already (config.py's load_dotenv() at import time) —
-    # migrate_legacy_slskd_env_config reads os.environ live, so a test
-    # that only sets/asserts on a subset of the three fields must
+def test_migrate_copies_spotify_env_into_empty_store(
+        tmp_path, monkeypatch, capsys,
+):
+    # Same chain, extended fields (this task's onboarding wizard) — not
+    # a separate mechanism, just two more entries in the same
+    # _ENV_VAR_BY_FIELD map.
+    _clear_migration_env(monkeypatch)
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "real-client-id")
+    monkeypatch.setenv(
+        "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback",
+    )
+
+    path = tmp_path / "config.json"
+
+    result = migrate_legacy_env_config(path)
+
+    assert result.spotify_client_id == "real-client-id"
+    assert result.spotify_redirect_uri == "http://127.0.0.1:8888/callback"
+
+    output = capsys.readouterr().out
+    assert "SPOTIFY_CLIENT_ID" in output
+    assert "SPOTIFY_REDIRECT_URI" in output
+
+
+def _clear_migration_env(monkeypatch):
+    # This process's real .env may have real SLSKD_*/SPOTIFY_* values
+    # loaded into os.environ already (config.py's load_dotenv() at
+    # import time) — migrate_legacy_env_config reads os.environ live,
+    # so a test that only sets/asserts on a subset of fields must
     # explicitly clear the rest first, rather than relying on however
     # this machine happens to be configured.
     monkeypatch.delenv("SLSKD_BASE_URL", raising=False)
     monkeypatch.delenv("SLSKD_API_KEY", raising=False)
     monkeypatch.delenv("SLSKD_DOWNLOAD_DIR", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
 
 def test_migrate_never_overwrites_value_already_in_store(
@@ -139,7 +179,7 @@ def test_migrate_never_overwrites_value_already_in_store(
 ):
     # A value the user has since changed via (future) Settings must
     # never be clobbered by a stale env var.
-    _clear_slskd_env(monkeypatch)
+    _clear_migration_env(monkeypatch)
     monkeypatch.setenv("SLSKD_BASE_URL", "http://stale-env-value:5030")
 
     path = tmp_path / "config.json"
@@ -148,7 +188,7 @@ def test_migrate_never_overwrites_value_already_in_store(
         path,
     )
 
-    result = migrate_legacy_slskd_env_config(path)
+    result = migrate_legacy_env_config(path)
 
     assert result.slskd_base_url == "http://current-store-value:5030"
 
@@ -159,11 +199,11 @@ def test_migrate_never_overwrites_value_already_in_store(
 def test_migrate_noop_when_neither_store_nor_env_has_a_value(
         tmp_path, monkeypatch, capsys,
 ):
-    _clear_slskd_env(monkeypatch)
+    _clear_migration_env(monkeypatch)
 
     path = tmp_path / "config.json"
 
-    result = migrate_legacy_slskd_env_config(path)
+    result = migrate_legacy_env_config(path)
 
     assert result == SeekerConfig()
     assert not path.exists()
@@ -173,16 +213,16 @@ def test_migrate_noop_when_neither_store_nor_env_has_a_value(
 
 
 def test_migrate_is_idempotent_on_second_call(tmp_path, monkeypatch, capsys):
-    _clear_slskd_env(monkeypatch)
+    _clear_migration_env(monkeypatch)
     monkeypatch.setenv("SLSKD_BASE_URL", "http://localhost:5030")
     monkeypatch.setenv("SLSKD_API_KEY", "env-api-key")
 
     path = tmp_path / "config.json"
 
-    first = migrate_legacy_slskd_env_config(path)
+    first = migrate_legacy_env_config(path)
     capsys.readouterr()  # discard the first call's migration message
 
-    second = migrate_legacy_slskd_env_config(path)
+    second = migrate_legacy_env_config(path)
 
     assert second == first
 
@@ -195,7 +235,7 @@ def test_migrate_partial_fields_only_copies_the_missing_ones(
 ):
     # Store already has base_url set (real, current); api_key is still
     # unset. Only api_key should be migrated in.
-    _clear_slskd_env(monkeypatch)
+    _clear_migration_env(monkeypatch)
     monkeypatch.setenv("SLSKD_BASE_URL", "http://stale-env-value:5030")
     monkeypatch.setenv("SLSKD_API_KEY", "env-api-key")
 
@@ -205,7 +245,7 @@ def test_migrate_partial_fields_only_copies_the_missing_ones(
         path,
     )
 
-    result = migrate_legacy_slskd_env_config(path)
+    result = migrate_legacy_env_config(path)
 
     assert result.slskd_base_url == "http://current-store-value:5030"
     assert result.slskd_api_key == "env-api-key"

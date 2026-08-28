@@ -11,6 +11,8 @@ class SeekerConfig:
     slskd_base_url: str | None = None
     slskd_api_key: str | None = None
     slskd_download_dir: str | None = None
+    spotify_client_id: str | None = None
+    spotify_redirect_uri: str | None = None
 
 
 def resolve_config_path() -> Path:
@@ -38,6 +40,8 @@ def load_config(path: Path) -> SeekerConfig:
         slskd_base_url=data.get("slskd_base_url"),
         slskd_api_key=data.get("slskd_api_key"),
         slskd_download_dir=data.get("slskd_download_dir"),
+        spotify_client_id=data.get("spotify_client_id"),
+        spotify_redirect_uri=data.get("spotify_redirect_uri"),
     )
 
 
@@ -54,15 +58,22 @@ def save_config(seeker_config: SeekerConfig, path: Path) -> None:
         pass
 
 
-# Field name -> the legacy .env var it was previously read from.
+# Field name -> the legacy .env var it was previously read from. Covers
+# both SLSKD_* (Task 1) and SPOTIFY_* (this task's onboarding wizard) —
+# one resolution chain for every field the store owns, not a second
+# mechanism per field group. Renamed from the SLSKD-only
+# migrate_legacy_slskd_env_config now that its scope has genuinely
+# broadened, same discipline as RECOGNIZED_REJECTION_PATTERNS's rename.
 _ENV_VAR_BY_FIELD = {
     "slskd_base_url": "SLSKD_BASE_URL",
     "slskd_api_key": "SLSKD_API_KEY",
     "slskd_download_dir": "SLSKD_DOWNLOAD_DIR",
+    "spotify_client_id": "SPOTIFY_CLIENT_ID",
+    "spotify_redirect_uri": "SPOTIFY_REDIRECT_URI",
 }
 
 
-def migrate_legacy_slskd_env_config(path: Path) -> SeekerConfig:
+def migrate_legacy_env_config(path: Path) -> SeekerConfig:
     # Mirrors application.py's _migrate_legacy_database contract exactly:
     # never overwrite a value the store already has (guards against a
     # stale env var clobbering a value changed since via a future
@@ -89,7 +100,7 @@ def migrate_legacy_slskd_env_config(path: Path) -> SeekerConfig:
     if migrated_fields:
         save_config(seeker_config, path)
         print(
-            f"Migrated SoulSeek config from .env to the local config "
+            f"Migrated config from .env to the local config "
             f"store ({path}): {', '.join(migrated_fields)}."
         )
 

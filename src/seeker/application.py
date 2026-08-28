@@ -6,7 +6,7 @@ import platformdirs
 from seeker import config
 from seeker.config_store import (
     SeekerConfig,
-    migrate_legacy_slskd_env_config,
+    migrate_legacy_env_config,
     resolve_config_path,
 )
 from seeker.database.connection import Database
@@ -37,6 +37,7 @@ from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
+from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.spotify.sync_service import SpotifySyncService
 
 
@@ -71,11 +72,7 @@ def _migrate_legacy_database(
 
 
 class Application:
-    def __init__(
-        self,
-        spotify_client_id: str,
-        spotify_redirect_uri: str,
-    ):
+    def __init__(self) -> None:
         db_path = _resolve_database_path()
         _migrate_legacy_database(db_path)
 
@@ -87,18 +84,11 @@ class Application:
         # anything constructs a SoulseekClient, so soulseek_client/
         # soulseek_configured/download_service below always see the
         # post-migration config store state.
-        self._config_store: SeekerConfig = migrate_legacy_slskd_env_config(
+        self._config_store: SeekerConfig = migrate_legacy_env_config(
             resolve_config_path()
         )
 
-        self.auth_manager = SpotifyAuthManager(
-            client_id=spotify_client_id,
-            redirect_uri=spotify_redirect_uri,
-            token_path=Path(
-                ".seeker/spotify_token.json"
-            ),
-        )
-
+        self._auth_manager: SpotifyAuthManager | None = None
         self._spotify: SpotifyClient | None = None
         self._sync_service: SpotifySyncService | None = None
         self._library_service: LibraryService | None = None
@@ -107,6 +97,53 @@ class Application:
         self._download_service: DownloadService | None = None
         self._metadata_service: MetadataService | None = None
         self._dashboard_service: DashboardService | None = None
+
+    @property
+    def _spotify_client_id(self) -> str | None:
+        # Config store value takes precedence — env is only a fallback
+        # for a setup that hasn't gone through migration (or is
+        # env-only by choice) — same chain as the SLSKD_* properties
+        # below. See config_store.py.
+        return self._config_store.spotify_client_id or config.SPOTIFY_CLIENT_ID
+
+    @property
+    def _spotify_redirect_uri(self) -> str | None:
+        # Unlike client_id, this one has a real, app-controlled default
+        # rather than falling through to None — Spotify requires an
+        # exact match against what's registered on the developer
+        # dashboard, so a fixed, copy-pasteable value (matching what
+        # callback_server.py actually listens on) is what the
+        # onboarding wizard offers, not a free-text field.
+        return (
+            self._config_store.spotify_redirect_uri
+            or config.SPOTIFY_REDIRECT_URI
+            or DEFAULT_REDIRECT_URI
+        )
+
+    @property
+    def spotify_configured(self) -> bool:
+        return bool(self._spotify_client_id and self._spotify_redirect_uri)
+
+    @property
+    def auth_manager(self) -> SpotifyAuthManager:
+        if self._auth_manager is None:
+            if not self._spotify_client_id:
+                raise RuntimeError("SPOTIFY_CLIENT_ID is not configured.")
+
+            if not self._spotify_redirect_uri:
+                raise RuntimeError(
+                    "SPOTIFY_REDIRECT_URI is not configured."
+                )
+
+            self._auth_manager = SpotifyAuthManager(
+                client_id=self._spotify_client_id,
+                redirect_uri=self._spotify_redirect_uri,
+                token_path=Path(
+                    ".seeker/spotify_token.json"
+                ),
+            )
+
+        return self._auth_manager
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -242,3 +279,17 @@ class Application:
             )
 
         return self._dashboard_service
+
+    @property
+    def onboarding_complete(self) -> bool:
+        # The two REQUIRED onboarding steps only — Spotify connect and
+        # at least one library location. SoulSeek/Docker setup is
+        # deliberately excluded: it's the wizard's third, skippable
+        # step ("Set up later"), so its completeness must never gate
+        # whether main_ui.py routes to the dashboard vs. the wizard —
+        # an unconfigured slskd is handled by soulseek_configured
+        # disabling SoulSeek-dependent actions, the same way it already
+        # does for the CLI.
+        return bool(
+            self.spotify_configured and self.library_service.list_locations()
+        )

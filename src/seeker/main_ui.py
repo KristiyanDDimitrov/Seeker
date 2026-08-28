@@ -1,7 +1,5 @@
-import os
 import sys
 
-from dotenv import load_dotenv
 from PySide6.QtWidgets import QApplication
 
 from seeker.application import Application
@@ -9,29 +7,11 @@ from seeker.ui.main_window import MainWindow
 
 
 def main() -> None:
-    load_dotenv()
-
-    client_id = os.getenv(
-        "SPOTIFY_CLIENT_ID"
-    )
-    redirect_uri = os.getenv(
-        "SPOTIFY_REDIRECT_URI"
-    )
-
-    if not client_id:
-        raise RuntimeError(
-            "SPOTIFY_CLIENT_ID is not configured."
-        )
-
-    if not redirect_uri:
-        raise RuntimeError(
-            "SPOTIFY_REDIRECT_URI is not configured."
-        )
-
-    application = Application(
-        spotify_client_id=client_id,
-        spotify_redirect_uri=redirect_uri,
-    )
+    # Spotify/SoulSeek config is resolved lazily now (config store,
+    # falling back to .env) — see Application.auth_manager. The
+    # onboarding wizard is what actually collects this on a fresh
+    # install; nothing here needs to pre-validate it.
+    application = Application()
 
     qt_app = QApplication(sys.argv)
     window = MainWindow(application)

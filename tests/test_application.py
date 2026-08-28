@@ -1,3 +1,5 @@
+import pytest
+
 from seeker.application import (
     Application,
     _migrate_legacy_database,
@@ -106,7 +108,7 @@ def test_application_fresh_install_creates_database_at_new_location(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application("client-id", "http://localhost/callback")
+    app = Application()
 
     expected_path = data_dir / "seeker.db"
     assert app.database.path == expected_path
@@ -143,7 +145,7 @@ def test_application_migrates_real_legacy_database_on_startup(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application("client-id", "http://localhost/callback")
+    app = Application()
 
     new_db_path = data_dir / "seeker.db"
     assert app.database.path == new_db_path
@@ -194,7 +196,7 @@ def test_application_does_not_migrate_when_new_database_already_exists(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application("client-id", "http://localhost/callback")
+    app = Application()
 
     assert legacy_db_path.exists()
 
@@ -244,7 +246,7 @@ def test_application_soulseek_config_prefers_store_value_over_env(
         data_dir / "config.json",
     )
 
-    app = Application("client-id", "http://localhost/callback")
+    app = Application()
 
     assert app.soulseek_configured is True
     assert app._slskd_base_url == "http://current-store-value:5030"
@@ -285,7 +287,7 @@ def test_application_soulseek_config_falls_back_to_env_when_store_empty(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application("client-id", "http://localhost/callback")
+    app = Application()
 
     # End-to-end: startup migration copies the env values into the
     # (empty) store, and resolution reflects them correctly either way.
@@ -303,3 +305,103 @@ def test_application_soulseek_config_falls_back_to_env_when_store_empty(
     assert app._slskd_base_url == "http://env-value:5030"
     assert app._slskd_api_key == "env-key"
     assert app._slskd_download_dir is None
+
+
+def test_application_spotify_config_prefers_store_value_over_env(
+        tmp_path, monkeypatch,
+):
+    # Same store-or-env chain as SLSKD_* above, extended to the two new
+    # Spotify fields — not a separate mechanism.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "stale-env-client-id",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://stale-env-redirect/callback",
+    )
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+    data_dir.mkdir(parents=True)
+
+    save_config(
+        SeekerConfig(
+            spotify_client_id="current-store-client-id",
+            spotify_redirect_uri="http://current-store-redirect/callback",
+        ),
+        data_dir / "config.json",
+    )
+
+    app = Application()
+
+    assert app.spotify_configured is True
+    assert app._spotify_client_id == "current-store-client-id"
+    assert (
+        app._spotify_redirect_uri == "http://current-store-redirect/callback"
+    )
+    assert app.auth_manager.client_id == "current-store-client-id"
+    assert (
+        app.auth_manager.redirect_uri
+        == "http://current-store-redirect/callback"
+    )
+
+
+def test_application_spotify_config_falls_back_to_env_then_default(
+        tmp_path, monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+
+    # Store and env both empty for redirect_uri — the fixed,
+    # app-controlled default (matching callback_server.py's own
+    # listening port) must be used instead of None.
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "env-client-id",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+
+    app = Application()
+    app._config_store = SeekerConfig()
+
+    assert app.spotify_configured is True
+    assert app._spotify_client_id == "env-client-id"
+    assert app._spotify_redirect_uri == "http://127.0.0.1:8888/callback"
+
+
+def test_application_spotify_not_configured_raises_only_when_auth_manager_used(
+        tmp_path, monkeypatch,
+):
+    # The whole point of the lazy-resolution fix: constructing
+    # Application with nothing configured at all must not raise —
+    # only actually touching auth_manager (i.e. Spotify auth being
+    # triggered) does.
+    monkeypatch.chdir(tmp_path)
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+
+    app = Application()  # must not raise
+    app._config_store = SeekerConfig()
+
+    assert app.spotify_configured is False
+
+    with pytest.raises(RuntimeError, match="SPOTIFY_CLIENT_ID"):
+        app.auth_manager

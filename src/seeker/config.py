@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Lazy at the config level, same treatment as SLSKD_* below — an
+# onboarding wizard whose job is to collect SPOTIFY_CLIENT_ID can't
+# function if importing this module crashes first. Only enforced at the
+# point Spotify auth is actually triggered (see Application.auth_manager).
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI")
 
@@ -21,10 +25,3 @@ SLSKD_API_KEY = os.getenv("SLSKD_API_KEY")
 # configured library location by `seeker downloads status`. Only enforced
 # when that command needs to move a file.
 SLSKD_DOWNLOAD_DIR = os.getenv("SLSKD_DOWNLOAD_DIR")
-
-
-if not SPOTIFY_CLIENT_ID:
-    raise RuntimeError("SPOTIFY_CLIENT_ID is not configured.")
-
-if not SPOTIFY_REDIRECT_URI:
-    raise RuntimeError("SPOTIFY_REDIRECT_URI is not configured.")
