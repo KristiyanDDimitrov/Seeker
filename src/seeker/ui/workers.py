@@ -55,10 +55,14 @@ def run_worker(
         button: QAbstractButton | None = None,
         status_label: QLabel | None = None,
         on_finished: Callable[[Any], None] | None = None,
+        on_error: Callable[[str], None] | None = None,
 ) -> Worker:
     """Submit fn to run in the background. The triggering button (if
     any) disables for the duration and re-enables on completion either
     way; an error clears to the status line rather than a modal dialog.
+    `on_error` is for callers that need to react to a failure beyond the
+    status line (e.g. clearing an in-progress flag) — optional, and
+    additive to the status-label behavior, not a replacement for it.
     """
     if button is not None:
         button.setEnabled(False)
@@ -86,6 +90,9 @@ def run_worker(
 
         if status_label is not None:
             status_label.setText(message)
+
+        if on_error is not None:
+            on_error(message)
 
     worker.signals.finished.connect(handle_finished)
     worker.signals.error.connect(handle_error)

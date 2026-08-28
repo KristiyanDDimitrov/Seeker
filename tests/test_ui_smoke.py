@@ -1,6 +1,11 @@
-from PySide6.QtWidgets import QPushButton
+import threading
 
+from PySide6.QtWidgets import QProgressBar, QPushButton
+
+from seeker.models.active_download import ActiveDownload
+from seeker.models.download_request import DownloadRequest
 from seeker.models.playlist import Playlist
+from seeker.models.track import Track
 from seeker.ui.main_window import MainWindow
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
@@ -30,13 +35,21 @@ class FakeSyncService:
 
 
 class FakeDashboardService:
-    def __init__(self, statuses: list | None = None):
+    def __init__(
+            self,
+            statuses: list | None = None,
+            active_downloads: list | None = None,
+    ):
         self._statuses = statuses or []
+        self._active_downloads = active_downloads or []
         self.calls: list[str] = []
 
     def get_playlist_track_status(self, playlist_name: str) -> list:
         self.calls.append(playlist_name)
         return self._statuses
+
+    def get_active_downloads(self) -> list:
+        return self._active_downloads
 
 
 class FakeLibraryService:
@@ -53,18 +66,26 @@ class FakeDownloadService:
     def download_playlist(self, playlist_name: str) -> dict:
         return {"requested": 0, "skipped": 0, "failed": 0, "total": 0}
 
+    def poll_downloads(self) -> dict:
+        return {}
+
 
 class FakeApplication:
     def __init__(
             self,
             playlists: list[Playlist] | None = None,
             statuses: list | None = None,
+            active_downloads: list | None = None,
+            soulseek_configured: bool = False,
     ):
         self.sync_service = FakeSyncService(playlists)
-        self.dashboard_service = FakeDashboardService(statuses)
+        self.dashboard_service = FakeDashboardService(
+            statuses, active_downloads,
+        )
         self.library_service = FakeLibraryService()
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService()
+        self.soulseek_configured = soulseek_configured
 
 
 def test_main_window_constructs_without_crashing(qtbot):
@@ -188,3 +209,167 @@ def test_run_worker_registry_releases_worker_on_both_success_and_error():
 
     run_worker(SynchronousPool(), boom)
     assert len(workers_module._active_workers) == baseline
+
+
+def _make_active_download(
+        track_id: str = "t1",
+        status: str = "downloading",
+        role: str = "settled",
+        bytes_transferred: int | None = 500,
+        total_bytes: int | None = 1_000,
+        playlist_name: str = "Playlist A",
+) -> ActiveDownload:
+    return ActiveDownload(
+        request=DownloadRequest(
+            track_id=track_id,
+            username="peer1",
+            filename="file.flac",
+            format="flac",
+            role=role,
+            status=status,
+            requested_at="2026-01-01T00:00:00+00:00",
+            bytes_transferred=bytes_transferred,
+            total_bytes=total_bytes,
+        ),
+        track=Track(
+            id=track_id, title="Title", artist="Artist", album="Album",
+            duration_ms=200_000,
+        ),
+        playlist_name=playlist_name,
+    )
+
+
+def test_downloads_tab_renders_rows_across_playlists(qtbot):
+    downloads = [
+        _make_active_download(track_id="t1", playlist_name="Playlist A"),
+        _make_active_download(
+            track_id="t2", status="locked", role="upgrade",
+            bytes_transferred=None, total_bytes=None,
+            playlist_name="Playlist B",
+        ),
+    ]
+    application = FakeApplication(active_downloads=downloads)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads(downloads)
+
+    assert window.downloads_table.rowCount() == 2
+    assert window.downloads_table.item(0, 1).text() == "Playlist A"
+    assert window.downloads_table.item(1, 1).text() == "Playlist B"
+    # A raw "locked" status gets a plain-language note, not the raw
+    # state string.
+    assert window.downloads_table.item(1, 3).text() == "Retrying (locked)"
+
+
+def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
+    download = _make_active_download(
+        status="queued", bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    bar = window.downloads_table.cellWidget(0, 4)
+    assert isinstance(bar, QProgressBar)
+    assert bar.minimum() == 0
+    assert bar.maximum() == 0
+
+
+def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
+    download = _make_active_download(
+        status="downloading", bytes_transferred=500, total_bytes=1_000,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    bar = window.downloads_table.cellWidget(0, 4)
+    assert isinstance(bar, QProgressBar)
+    assert bar.maximum() == 1_000
+    assert bar.value() == 500
+
+
+def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
+    # Locked/shortlisted rows have no real, current transfer — a
+    # progress claim there would be misleading.
+    download = _make_active_download(
+        status="locked", role="upgrade",
+        bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    bar = window.downloads_table.cellWidget(0, 4)
+    assert not isinstance(bar, QProgressBar)
+
+
+def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):
+    recorded: dict[str, threading.Thread] = {}
+
+    class RecordingDownloadService:
+        def poll_downloads(self) -> dict:
+            recorded["thread"] = threading.current_thread()
+            return {}
+
+    application = FakeApplication(soulseek_configured=True)
+    application.download_service = RecordingDownloadService()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._trigger_backend_poll()
+
+    qtbot.waitUntil(lambda: "thread" in recorded, timeout=2000)
+
+    assert recorded["thread"] != threading.main_thread()
+
+
+def test_backend_poll_skipped_when_soulseek_not_configured(qtbot):
+    application = FakeApplication(soulseek_configured=False)
+    calls = []
+    application.download_service.poll_downloads = lambda: calls.append(1)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._trigger_backend_poll()
+
+    assert calls == []
+
+
+def test_backend_poll_overlap_guard_skips_concurrent_tick(qtbot):
+    call_count = {"n": 0}
+    started = threading.Event()
+    release = threading.Event()
+
+    class SlowDownloadService:
+        def poll_downloads(self) -> dict:
+            call_count["n"] += 1
+            started.set()
+            release.wait(timeout=5)
+            return {}
+
+    application = FakeApplication(soulseek_configured=True)
+    application.download_service = SlowDownloadService()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._trigger_backend_poll()
+    assert started.wait(timeout=2)
+
+    # A second tick while the first poll_downloads() call is still
+    # running must be skipped, not start a second concurrent writer.
+    window._trigger_backend_poll()
+
+    release.set()
+    qtbot.waitUntil(
+        lambda: not window._backend_poll_in_progress, timeout=2000,
+    )
+
+    assert call_count["n"] == 1

@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker.application import Application
+from seeker.models.active_download import ActiveDownload
 from seeker.models.playlist import Playlist
 from seeker.models.track_status import (
     AWAITING_REVIEW,
@@ -34,6 +36,12 @@ from seeker.ui.workers import run_worker
 # real usage data exists, same convention as every other threshold here.
 POLL_INTERVAL_MS = 2_000
 
+# Untuned constant — this timer makes real network calls to slskd (via
+# poll_downloads()), so it deliberately runs far less often than the
+# local-DB-only display refresh above. 15-30s starting range per the
+# task brief; revisit once real usage data exists.
+BACKEND_POLL_INTERVAL_MS = 20_000
+
 _STATE_LABELS = {
     IN_LIBRARY: "In library",
     DOWNLOADING: "Downloading",
@@ -42,6 +50,44 @@ _STATE_LABELS = {
     NOT_FOUND: "Not found",
 }
 
+# Plain-language notes for statuses that aren't self-explanatory as raw
+# text — a "locked" or "shortlisted" row is still actively being chased,
+# just not in a way a non-technical status string conveys.
+_DOWNLOAD_STATUS_LABELS = {
+    "queued": "Queued",
+    "downloading": "Downloading",
+    "locked": "Retrying (locked)",
+    "shortlisted": "Queued as backup",
+    "ready_for_review": "Ready for review",
+    "completed": "Completed",
+    "failed": "Failed",
+}
+
+# Statuses where a progress bar means anything at all — a locked/
+# shortlisted/failed row has no real, current transfer to show progress
+# for (see CLAUDE.md: a rejection leaves bytes_transferred/total_bytes
+# unset by design, not zeroed).
+_PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
+
+
+def _build_progress_widget(download: ActiveDownload) -> QWidget:
+    request = download.request
+
+    if request.status not in _PROGRESS_ELIGIBLE_STATUSES:
+        return QWidget()
+
+    bar = QProgressBar()
+
+    if request.total_bytes and request.bytes_transferred is not None:
+        bar.setRange(0, request.total_bytes)
+        bar.setValue(request.bytes_transferred)
+    else:
+        # No bytes reported yet — indeterminate ("busy") rather than a
+        # 0%-forever bar that looks identical to actually being stuck.
+        bar.setRange(0, 0)
+
+    return bar
+
 
 class MainWindow(QMainWindow):
     def __init__(self, application: Application):
@@ -49,12 +95,14 @@ class MainWindow(QMainWindow):
         self.application = application
         self.thread_pool = QThreadPool()
         self.selected_playlist: Playlist | None = None
+        self._backend_poll_in_progress = False
 
         self.setWindowTitle("Seeker")
         self.resize(1000, 600)
 
         self._build_ui()
         self._load_playlists()
+        self._poll_active_downloads()
 
         # DB-polling pattern for live status: rebuild the visible model
         # each tick rather than diffing for minimal repaints — an
@@ -63,7 +111,19 @@ class MainWindow(QMainWindow):
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
         self.poll_timer.timeout.connect(self._poll_selected_playlist)
+        self.poll_timer.timeout.connect(self._poll_active_downloads)
         self.poll_timer.start()
+
+        # Separate, slower timer: the only thing in this app that causes
+        # poll_downloads() (real slskd network calls) to run without an
+        # explicit `seeker downloads status` invocation. poll_downloads()
+        # was built with exactly this kind of unattended calling in mind
+        # (no input() anywhere — see CLAUDE.md's guardrail tests), so
+        # this is safe to fire on a bare timer with no user interaction.
+        self.backend_poll_timer = QTimer(self)
+        self.backend_poll_timer.setInterval(BACKEND_POLL_INTERVAL_MS)
+        self.backend_poll_timer.timeout.connect(self._trigger_backend_poll)
+        self.backend_poll_timer.start()
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -102,7 +162,17 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(right, 3)
 
-        self.setCentralWidget(central)
+        self.downloads_table = QTableWidget(0, 5)
+        self.downloads_table.setHorizontalHeaderLabels(
+            ["Track", "Playlist", "Role", "Status", "Progress"]
+        )
+        self.downloads_table.horizontalHeader().setStretchLastSection(True)
+
+        tabs = QTabWidget()
+        tabs.addTab(central, "Dashboard")
+        tabs.addTab(self.downloads_table, "Downloads")
+
+        self.setCentralWidget(tabs)
 
         toolbar = QToolBar("Actions")
         self.addToolBar(toolbar)
@@ -207,6 +277,63 @@ class MainWindow(QMainWindow):
                 self.track_table.setCellWidget(row, 2, progress)
             else:
                 self.track_table.setCellWidget(row, 2, QWidget())
+
+    def _poll_active_downloads(self) -> None:
+        # Purely observational — a cheap local DB read via
+        # DashboardService.get_active_downloads(), GLOBAL across every
+        # playlist (unlike _poll_selected_playlist above). No
+        # confirm/reject action lives here; that's a separate future
+        # Review screen.
+        run_worker(
+            self.thread_pool,
+            self.application.dashboard_service.get_active_downloads,
+            on_finished=self._render_active_downloads,
+        )
+
+    def _render_active_downloads(self, downloads: list[ActiveDownload]) -> None:
+        self.downloads_table.setRowCount(len(downloads))
+
+        for row, download in enumerate(downloads):
+            track = download.track
+            label = f"{track.artist} - {track.title}"
+            self.downloads_table.setItem(row, 0, QTableWidgetItem(label))
+            self.downloads_table.setItem(
+                row, 1, QTableWidgetItem(download.playlist_name),
+            )
+            self.downloads_table.setItem(
+                row, 2, QTableWidgetItem(download.request.role.capitalize()),
+            )
+
+            status = download.request.status
+            status_text = _DOWNLOAD_STATUS_LABELS.get(status, status)
+            self.downloads_table.setItem(row, 3, QTableWidgetItem(status_text))
+
+            self.downloads_table.setCellWidget(
+                row, 4, _build_progress_widget(download),
+            )
+
+    def _trigger_backend_poll(self) -> None:
+        if self._backend_poll_in_progress:
+            # A previous poll_downloads() call (real slskd network
+            # calls) is still running — a slow or hanging response must
+            # not cause a second, overlapping writer to start on top of
+            # it. Skip this tick; the next one will try again.
+            return
+
+        if not self.application.soulseek_configured:
+            return
+
+        self._backend_poll_in_progress = True
+
+        def clear_in_progress(_: object) -> None:
+            self._backend_poll_in_progress = False
+
+        run_worker(
+            self.thread_pool,
+            self.application.download_service.poll_downloads,
+            on_finished=clear_in_progress,
+            on_error=clear_in_progress,
+        )
 
     def _on_sync_clicked(self) -> None:
         run_worker(
