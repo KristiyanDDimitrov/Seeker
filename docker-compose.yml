@@ -1,3 +1,13 @@
+# SLSKD_SLSK_USERNAME/SLSKD_SLSK_PASSWORD/SLSKD_API_KEY are populated by
+# the onboarding wizard (Application/docker_setup.py) via the
+# environment `docker compose up` is invoked with — never written to a
+# second, compose-specific env file. Confirmed live (2026-08-28) safe
+# to leave unset for a manual `docker compose up`: slskd falls through
+# to whatever's already persisted in slskd-data/slskd.yml when an
+# env var override is empty, rather than clobbering it (verified
+# against a real persisted credential before relying on this).
+# SLSKD_DATA_DIR/SLSKD_SHARE_PATH default to this repo's existing real
+# values so a manual run without the wizard behaves exactly as before.
 services:
   slskd:
     image: slskd/slskd
@@ -10,7 +20,10 @@ services:
       - PUID=1000
       - PGID=1000
       - SLSKD_REMOTE_CONFIGURATION=true
+      - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
+      - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
+      - SLSKD_API_KEY=${SLSKD_API_KEY}
     volumes:
-      - ./slskd-data:/app
-      - "/Volumes/X9 Pro/Music:/shared/music:ro"
+      - ${SLSKD_DATA_DIR:-./slskd-data}:/app
+      - "${SLSKD_SHARE_PATH:-/Volumes/X9 Pro/Music}:/shared/music:ro"
     restart: always

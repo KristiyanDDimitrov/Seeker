@@ -2007,5 +2007,185 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     confirming the dashboard reflects genuinely current DB state, not
     a stale snapshot.
 
+23. **Frontend Step 4: onboarding wizard — done (2026-08-28).** Three
+    steps (Spotify connect, library location, SoulSeek/Docker setup —
+    the last skippable), resumable across restarts, landing in the
+    dashboard once the two required steps are done.
+
+    **Prerequisite fix (item landed as its own commit first, verified
+    in isolation before any wizard UI was built on top of it):**
+    `config.py` enforced `SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI` at
+    import time — a wizard whose entire job is collecting that value
+    can't function if importing the module that leads to it crashes
+    first. Removed the import-time raise; `Application` no longer takes
+    these as constructor args at all — they're resolved the identical
+    store-value-or-env-fallback way `SLSKD_*` already was
+    (`config_store.py`'s `SeekerConfig` gained `spotify_client_id`/
+    `spotify_redirect_uri`; the migration function is renamed
+    `migrate_legacy_env_config`, since its scope is no longer
+    SLSKD-only — the same one extended, not a second mechanism).
+    `auth_manager` became a lazy property, raising only when actually
+    touched. `redirect_uri` falls back to a real, fixed,
+    app-controlled default rather than free text —
+    `callback_server.py` now exports `CALLBACK_PORT`/
+    `DEFAULT_REDIRECT_URI` as the one source of truth both the server
+    and this default read from, so they can never drift apart. Verified
+    with a real subprocess-based test (not just unit-level): a
+    genuinely clean environment (no `.env` — sidestepping
+    `load_dotenv()`'s walk-up-from-the-module's-own-file-location
+    search required setting the `SPOTIFY_*`/`SLSKD_*` keys to empty
+    strings beforehand, confirmed empirically that `override=False`
+    leaves an already-present-but-empty var alone) imports every module
+    the wizard needs and constructs `Application()` without error, with
+    `auth_manager` raising only when actually accessed — confirmed this
+    test genuinely catches the original bug by temporarily restoring
+    the old import-time raise and watching it fail first.
+
+    **Real ambiguity investigated and resolved before writing any
+    wizard code, not assumed from docs** — slskd's own `--envars`
+    output, read directly off the real running binary, is the actual
+    source of truth:
+    - `SLSKD_USERNAME`/`SLSKD_PASSWORD` → the **web UI** login
+      (`--help` says so explicitly: "username/password for web UI",
+      default `slskd`/`slskd`) — NOT what the wizard's SoulSeek
+      credential fields should map to.
+    - `SLSKD_SLSK_USERNAME`/`SLSKD_SLSK_PASSWORD` → the **SoulSeek
+      network** login — confirmed live: a throwaway container
+      (isolated ports/volume, never touching the real running
+      instance) started with these two produced a real
+      `"Logged in to the Soulseek server as seekerapp"`. Two
+      plausible-looking wrong guesses were tested first and both
+      failed with `"Not connecting to the Soulseek server; username
+      and/or password invalid"`: `SLSKD_SOULSEEK_USERNAME`/`PASSWORD`
+      (doesn't exist at all) and bare `SLSKD_USERNAME`/`PASSWORD`
+      (that's the web UI, confirmed above). Locked in as
+      `docker_setup.py`'s `SLSKD_NETWORK_USERNAME_ENV_VAR`/
+      `SLSKD_NETWORK_PASSWORD_ENV_VAR`, with a regression test pinned
+      to these exact confirmed strings.
+    - **A second real risk, checked before templating
+      `docker-compose.yml`:** does an env var passed as an *empty
+      string* (as `${VAR}` substitution produces when unset) clobber
+      an already-persisted real credential in `slskd-data/slskd.yml`,
+      or does slskd correctly fall through to the yaml value? Verified
+      against a real container with a real persisted credential
+      (`realpersisted`/a real password) and `SLSKD_SLSK_USERNAME=`
+      (present, empty) set: the container logged in as
+      `realpersisted` — slskd falls through, empty does **not**
+      clobber. This is what makes plain `${VAR}` substitution in the
+      tracked compose file safe for a manual `docker compose up`
+      without the wizard's env vars — confirmed, not assumed, before
+      relying on it for a file that governs this project's own real,
+      currently-running production container.
+
+    **`docker-compose.yml` templated accordingly:**
+    `SLSKD_SLSK_USERNAME`/`SLSKD_SLSK_PASSWORD`/`SLSKD_API_KEY` as bare
+    `${VAR}` substitutions (no default — safe to leave unset per the
+    finding above); `SLSKD_DATA_DIR`/`SLSKD_SHARE_PATH` default to this
+    repo's existing real values (`./slskd-data`, the real
+    `/Volumes/X9 Pro/Music` path already hardcoded there) so a manual
+    `docker compose up` with no wizard involved behaves exactly as
+    before. No real secret was ever added to the tracked file as a
+    fallback default — the real SoulSeek password/API key live only in
+    the already-gitignored `slskd-data/slskd.yml`, confirmed never
+    committed. `docker_setup.py::bring_up_slskd` passes the collected
+    credentials/API key/paths directly as the `docker compose up`
+    subprocess's environment — no second, compose-specific env file,
+    per the explicit ask (same discipline Task 1 already established
+    for `.env`).
+
+    **The other real ambiguity, checked live before building the
+    health-poll UI:** does `/api/v0/application`'s (or the dedicated
+    `/api/v0/server`'s) `state` field distinguish "still negotiating"
+    from "rejected — bad credentials"? Checked the real swagger schema
+    for `ServerState` directly: it carries only
+    `state`/`isConnected`/`isLoggedIn`/`isTransitioning` — no
+    error/reason field at all. Confirmed live with two real scenarios
+    that both converge on the identical terminal `state:
+    "Disconnected"`: a genuine bad-password rejection, and an unrelated
+    "kicked, another client already logged in with this username" case
+    (hit by accident testing the real account while the production
+    container was also connected). The real reason only ever shows up
+    via `/api/v0/logs`' `Error`-level entries — confirmed live for a
+    deliberately wrong password:
+    `"Disconnected from the Soulseek server: invalid username or
+    password"` / `"...The server rejected login attempt: INVALIDPASS"`.
+    `docker_setup.py::check_slskd_health` polls `/api/v0/application`
+    for the real, confirmed success state (`"Connected, LoggedIn"`,
+    re-confirmed live against the actual running production instance)
+    and, when not yet healthy, checks `/api/v0/logs` for the confirmed
+    bad-credential substrings — matched case-insensitively, same
+    discipline as `RECOGNIZED_REJECTION_PATTERNS` elsewhere in this
+    codebase, not broadened past what's actually been confirmed.
+    Deliberately a single-shot check, not a blocking poll loop with
+    `time.sleep` — the wizard's own `QTimer` calls it repeatedly (same
+    pattern as the dashboard's live-status poll from Step 3), tracking
+    elapsed wall-clock time itself for the 60s timeout (explicitly
+    flagged as an untuned constant, same convention as every other
+    threshold here).
+
+    **Resumability — a real tension in the brief, resolved
+    deliberately, not left implicit.** The brief's literal completeness
+    definition ("Spotify configured + at least one library location
+    exists") only covers the two *required* steps, and
+    `Application.onboarding_complete` implements exactly that — once
+    true, `main_ui.py` always routes straight to the dashboard on a
+    fresh launch, never back into the wizard, even if step 3 was never
+    touched. This is in genuine tension with the brief's own
+    "a `docker compose up` that succeeded in a prior session shouldn't
+    need repeating" rationale, which only makes sense if the wizard
+    *can* still reopen at step 3. Resolved without adding a second
+    "step 3 resolved" flag to the config store: step 3, whenever it
+    *is* shown (every session until steps 1+2 are both done — step 3 is
+    only ever reached in the same session as completing step 2, per the
+    brief's fixed 1→2→3 ordering), always re-checks Docker's real state
+    live on entry rather than assuming anything — so a prior successful
+    `docker compose up` is reflected immediately (verified directly:
+    `test_wizard_soulseek_step_checks_real_docker_state_on_entry`)
+    without ever being blindly repeated. `OnboardingWizard._initial_step()`
+    only ever needs to choose between step 1 and step 2 in practice,
+    since `onboarding_complete` being false is what got the wizard
+    shown at all.
+
+    Reused the Step 3 worker abstraction for every long-running
+    action — OAuth wait, `docker compose up`, Docker detection, each
+    health-check tick — no second threading pattern.
+
+    **A real cosmetic bug caught and fixed in the same pass:** the
+    Docker-state-button's re-wiring (`NOT_INSTALLED` → download link,
+    `INSTALLED_NOT_RUNNING` → launch/check-again, `RUNNING` → hidden)
+    blindly called `.disconnect()` before reconnecting, which prints a
+    real `libpyside` `RuntimeWarning` (not a raised exception, so a
+    bare `try/except` around it did nothing) the first time the button
+    had no existing connection. Fixed with an explicit
+    `_docker_action_connected` flag instead of a swallowed exception.
+
+    Tests: `tests/test_docker_setup.py` covers the three Docker-state
+    subprocess outcomes (mocked), the credential-mapping regression
+    (locks in the confirmed real env var names), API key length, and
+    `check_slskd_health`'s three classifications including the
+    kicked-vs-bad-credentials disambiguation case using the real
+    captured log text. `tests/test_wizard.py` covers all three
+    resumability starting points (fresh / Spotify-done / Spotify+
+    library-done → step 3), the live Docker re-check on step-3 entry,
+    and the skip path. Kept proportionate to this project's UI-testing
+    philosophy, same as Step 3's dashboard smoke tests — the service
+    layer (`docker_setup.py`) carries the real logic depth and gets
+    real coverage; the Qt wiring stays thin and lightly checked.
+
+    **Verified live against the real application, not only mocked
+    tests:** constructed the real `Application()` (real Spotify config,
+    real library location already registered from earlier sessions) —
+    `onboarding_complete` correctly read `True`, and constructing
+    `OnboardingWizard` directly against it landed on step 3 exactly as
+    designed, with a real (non-mocked) Docker-state check running
+    against this machine's actual Docker installation without error.
+    This run also triggered the real `.env`→config-store migration for
+    the two new Spotify fields for the first time (the first real
+    command run against this machine since the prerequisite fix
+    landed) — confirmed the real `config.json` now correctly holds the
+    real `spotify_client_id`/`spotify_redirect_uri` matching `.env`
+    exactly, same expected one-time side effect as item 19's SLSKD
+    migration.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
