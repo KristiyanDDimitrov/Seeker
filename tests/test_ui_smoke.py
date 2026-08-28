@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QPushButton
 
 from seeker.models.playlist import Playlist
 from seeker.ui.main_window import MainWindow
+from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
 
 
@@ -164,3 +165,26 @@ def test_run_worker_error_sets_status_label_and_reenables_button(qtbot):
 
     assert label.text() == "real failure text"
     assert button.isEnabled() is True
+
+
+def test_run_worker_registry_releases_worker_on_both_success_and_error():
+    # The whole point of _active_workers (see workers.py's own comment)
+    # is to hold a strong reference until a worker is genuinely done —
+    # if cleanup only fired on the success path, a worker that raises
+    # would stay referenced forever, a real leak on every failed
+    # sync/scan/match/download. Asserted directly against the registry
+    # itself, not just inferred from button/label side effects.
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    baseline = len(workers_module._active_workers)
+
+    run_worker(SynchronousPool(), lambda: "ok")
+    assert len(workers_module._active_workers) == baseline
+
+    def boom():
+        raise RuntimeError("simulated failure")
+
+    run_worker(SynchronousPool(), boom)
+    assert len(workers_module._active_workers) == baseline
