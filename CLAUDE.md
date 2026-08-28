@@ -1575,5 +1575,143 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     testing this — every test redirects `platformdirs.user_data_dir`
     into `tmp_path` first.
 
+20. **Frontend Phase 0, Task 2 — real download progress tracking
+    (bytes_transferred/total_bytes) — done (2026-08-28).** Unblocks a
+    future progress-view screen with real per-track numbers instead of
+    something simulated; no UI work in this task.
+
+    **Real field names confirmed live before writing any parsing code**
+    (per this project's own repeated lesson — see the Spotify
+    endpoint/field-name saga, roadmap item 1): hit
+    `GET /api/v0/transfers/downloads/{username}/{id}` directly against
+    two real transfers on the live instance — a genuinely completed one
+    (`kingdomcum`, the real 3AMDISCO WAV) and a genuinely rejected-locked
+    one (`ofoijacussa`, Jade Venom). Confirmed: the real fields are
+    `size` (total bytes — matches the convention `SoulseekFile` already
+    uses, so the new `TransferStatus` type follows that rather than
+    introducing a `total_bytes`/`size` inconsistency at the client
+    layer) and `bytesTransferred` (progress so far). Both are always
+    real integers on a real transfer body — a rejected-before-any-bytes-
+    moved transfer reports `bytesTransferred: 0` for real, not
+    absent/null; a genuinely completed transfer reports
+    `bytesTransferred == size` exactly (confirmed:
+    `79776980 == 79776980`).
+
+    `soulseek/client.py::get_download_status` changed from returning a
+    bare `state: str` to a new `TransferStatus` dataclass
+    (`state`/`bytes_transferred`/`size`, the latter two `None` only on
+    the existing 404/"NotFound" sentinel path, where there's no real
+    transfer body to read them from). All three real call sites
+    (`poll_downloads`'s main loop, `_activate_shortlisted_entry`,
+    `_retry_locked_request`) updated to read `.state` instead of
+    treating the return value as a plain string.
+
+    `download_requests` gains two new nullable columns,
+    `bytes_transferred INTEGER` / `total_bytes INTEGER`, via the
+    existing `_add_column_if_missing` helper — no new migration
+    machinery invented. `DownloadRequest` gains the matching two fields.
+    New `DownloadRequestRepository.update_progress(request_id,
+    bytes_transferred, total_bytes, connection)` — deliberately kept
+    separate from `mark_status`/`update_transfer_id_and_status`, same
+    reasoning as `update_analysis` being kept out of `upsert`'s
+    `ON CONFLICT DO UPDATE`: a routine progress poll must not risk
+    disturbing any unrelated column.
+
+    `poll_downloads()`'s main loop calls `_update_progress` for every
+    request it polls from `pending` (queued/downloading only) —
+    unconditionally, whether the state transition changes or not, since
+    real bytes move every poll regardless. Two edge cases handled
+    deliberately, not left to fall out accidentally: a rejection
+    (anything matching `FAILED_STATE_MARKERS`) `continue`s *before*
+    reaching the progress call, so a rejected-before-any-bytes-moved
+    transfer's progress fields stay genuinely unset (`NULL`) rather than
+    persisted as a misleading `0`; a request that reaches `pending` and
+    then succeeds this same poll still gets its final, real
+    `bytes_transferred == total_bytes` recorded (confirmed this really
+    is what the live data shows — see below). `locked`/`shortlisted`/
+    `superseded` requests never enter `pending` at all, and the two
+    retry/cascade-activation call sites deliberately do **not** call
+    `_update_progress` — those rows were never actually transferring at
+    the moment of that call, matching the ask exactly.
+
+    Tests: `tests/test_connection.py` (new file — no dedicated DB-layer
+    migration test existed before this; the BPM/Camelot column
+    migrations this task's ask referenced as precedent were, in fact,
+    only ever verified live, not with a standing test, so this is a
+    genuinely new addition, not a mirror of something that turned out to
+    exist) covers the guarded `ALTER TABLE` against a hand-built
+    pre-migration `download_requests` table with a real seeded row,
+    confirming the two new columns appear, default to `NULL`, and every
+    original column survives untouched, plus idempotency on a second
+    `initialize()` call. `tests/test_soulseek_client.py` extends the
+    existing `get_download_status` tests to assert `.state` and adds two
+    new tests parsing the real completed/rejected payload shapes above
+    directly. `tests/test_download_service.py` adds: a direct
+    repository-level `update_progress` non-disturbance test (mirroring
+    `update_analysis`'s own guarantee, which likewise had no standing
+    test before now); an in-flight-progress-updates-while-state-doesn't-
+    change test; the settled-completion
+    `bytes_transferred == total_bytes` edge case; the
+    rejection-leaves-progress-unset (not zeroed) edge case; and a
+    guardrail test (same style as the existing `input()` guardrails)
+    asserting `update_progress` is never attempted for a locked,
+    shortlisted, or superseded row even when a locked retry and a
+    shortlist cascade activation both happen in the same run — a
+    forbidden-id assertion wrapping the real repository method, not just
+    a call-count check.
+
+    **Verified live against real, currently-downloading transfers, not
+    only mocked tests** (2026-08-28): the two pre-existing real `queued`
+    rows in this project's actual database (day-old, from an earlier
+    session) turned out to be permanently-locked files that bounce
+    `queued → locked → queued` every retry without ever really
+    transferring, so a fresh, genuinely downloadable pair was requested
+    for real instead (`seeker download "240KM/H"` against the real
+    unmatched ZENEA/Kamäleon tracks, both landing real *unlocked*
+    candidates this run: `earobic`/`ZENEA - INFINITE .flac`,
+    `torogod`/`Kamäleon - Quadrat.mp3`). Three successive real
+    `seeker downloads status` runs captured genuine progress advancing
+    through the real database:
+    row 11 (ZENEA) `36,755,488 → 68,278,944 → 72,005,805` of
+    `72,005,805` total; row 12 (Kamäleon)
+    `4,456,448 → 5,997,594 (completed)` of `5,997,594` total — both
+    finished with `bytes_transferred == total_bytes` exactly, confirming
+    the completion edge case against real data, not just the documented
+    API shape. Both real files were then moved and confirmed present at
+    the real configured destination
+    (`/Volumes/X9 Pro/Music/240KMH/ZENEA - INFINITE .flac`,
+    `.../Kamäleon - Quadrat.mp3`). The earlier real rejection case was
+    also captured live and unmodified by this change: the two real
+    day-old `queued` rows, once finally polled, transitioned to
+    `locked` with `bytes_transferred`/`total_bytes` genuinely left
+    `NULL` — confirming the "rejection isn't progress" design choice
+    against real production data, not a synthetic scenario.
+
+    **Two real, honestly-reported side effects hit while doing this live
+    verification, neither part of this task's own change:**
+    1. Running the real CLI to observe live progress necessarily
+       triggered `Application.__init__`'s startup migration from item
+       19 for real, for the first time, against this machine's actual
+       `.env`/config directory — `config.json` was created for real at
+       `~/Library/Application Support/Seeker/`, copying the real
+       `SLSKD_*` values in. Item 19 explicitly held that migration back
+       pending a separate go-ahead; this task's live-verification step
+       caused it to happen as an unavoidable side effect of running
+       `seeker` for real at all, not a deliberate decision to run it —
+       flagged here rather than left unmentioned.
+    2. A genuine, pre-existing, unrelated issue surfaced during the same
+       live runs: the Phase 3 locked-retry path
+       (`_retry_locked_request` → `request_download` →
+       `POST /api/v0/transfers/downloads/batches`) intermittently
+       returned a real `404 Not Found` for the already-locked
+       `NeuroFunk26\Balron, Audio - Breach.flac` retries, printed as
+       `Failed to retry locked '...'` and caught by `poll_downloads`'s
+       existing per-request exception handling (so it didn't abort the
+       run — that guardrail did its job). `request_download` itself is
+       completely unmodified by this task, so this isn't a regression
+       from this change — logged here as a real observation for a
+       future session to investigate, not fixed as part of this task
+       (out of scope, and not requested).
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.

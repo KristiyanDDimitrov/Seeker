@@ -154,6 +154,14 @@ CREATE TABLE IF NOT EXISTS download_requests (
     rank INTEGER,
     requested_at TEXT NOT NULL,
     completed_at TEXT,
+    -- Real progress numbers for the future progress-view screen, polled
+    -- from slskd's own bytesTransferred/size fields (see
+    -- soulseek/client.py's TransferStatus, confirmed live 2026-08-28).
+    -- Nullable and unset until the first real progress poll; a
+    -- rejected-before-any-bytes-moved request deliberately leaves these
+    -- unset rather than zeroed, since a rejection isn't progress.
+    bytes_transferred INTEGER,
+    total_bytes INTEGER,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 

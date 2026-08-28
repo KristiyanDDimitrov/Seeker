@@ -459,12 +459,20 @@ class DownloadService:
                     counts[request.status] += 1
                     continue
 
-                state = self.soulseek.get_download_status(
+                transfer_status = self.soulseek.get_download_status(
                     request.username,
                     request.transfer_id,
                 )
+                state = transfer_status.state
 
                 if any(marker in state for marker in FAILED_STATE_MARKERS):
+                    # A rejection isn't progress — progress fields stay
+                    # unset here rather than zeroed, whether or not any
+                    # bytes happened to move before the rejection (real,
+                    # confirmed data: a rejected-before-any-bytes-moved
+                    # transfer reports bytesTransferred=0, but recording
+                    # that would misleadingly imply a real 0%-complete
+                    # attempt rather than "never really started").
                     if request.role == "upgrade":
                         status = self._resolve_rejection_status(
                             state, request.username, request.transfer_id,
@@ -487,6 +495,19 @@ class DownloadService:
                     self._update_status(request.id, "failed")
                     counts["failed"] += 1
                     continue
+
+                # Genuinely in progress or just succeeded — real
+                # bytes-so-far/total are available either way (on a
+                # completed transfer, confirmed live: bytes_transferred
+                # == size). Every request reaching this point came from
+                # `pending` (queued/downloading only) at the top of this
+                # run, so this never fires for a locked/shortlisted/
+                # superseded row.
+                self._update_progress(
+                    request.id,
+                    transfer_status.bytes_transferred,
+                    transfer_status.size,
+                )
 
                 if "Succeeded" not in state:
                     new_status = (
@@ -628,7 +649,7 @@ class DownloadService:
         # than waiting a full poll cycle to find out it failed again.
         state = self.soulseek.get_download_status(
             request.username, transfer_id,
-        )
+        ).state
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
             status = self._resolve_rejection_status(
@@ -691,7 +712,7 @@ class DownloadService:
 
         state = self.soulseek.get_download_status(
             request.username, transfer_id,
-        )
+        ).state
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
             status = "locked"
@@ -737,6 +758,17 @@ class DownloadService:
     def _update_status(self, request_id: int, status: str) -> None:
         with self.database.transaction() as connection:
             self.download_requests.mark_status(request_id, status, connection)
+
+    def _update_progress(
+            self,
+            request_id: int,
+            bytes_transferred: int | None,
+            total_bytes: int | None,
+    ) -> None:
+        with self.database.transaction() as connection:
+            self.download_requests.update_progress(
+                request_id, bytes_transferred, total_bytes, connection,
+            )
 
     def _move_completed_file(
             self,

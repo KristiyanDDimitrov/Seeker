@@ -275,9 +275,9 @@ def test_get_download_status_returns_real_state(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    state = client.get_download_status("peer1", "transfer-abc")
+    status = client.get_download_status("peer1", "transfer-abc")
 
-    assert state == "Completed, Succeeded"
+    assert status.state == "Completed, Succeeded"
 
 
 def test_get_download_status_returns_notfound_on_404(monkeypatch):
@@ -287,9 +287,62 @@ def test_get_download_status_returns_notfound_on_404(monkeypatch):
     monkeypatch.setattr(httpx, "get", lambda *a, **k: NotFoundResponse())
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    state = client.get_download_status("peer1", "transfer-abc")
+    status = client.get_download_status("peer1", "transfer-abc")
 
-    assert state == "NotFound"
+    assert status.state == "NotFound"
+    assert status.bytes_transferred is None
+    assert status.size is None
+
+
+def test_get_download_status_parses_real_progress_fields_on_completion(
+        monkeypatch,
+):
+    # Real transfer record shape confirmed live (2026-08-28) against a
+    # genuinely completed transfer (kingdomcum, 3AMDISCO - Get Back.wav):
+    # bytesTransferred == size once a transfer has genuinely finished.
+    def fake_get(url, headers=None, timeout=None):
+        return FakeResponse(
+            {
+                "state": "Completed, Succeeded",
+                "size": 79776980,
+                "bytesTransferred": 79776980,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    status = client.get_download_status("peer1", "transfer-abc")
+
+    assert status.bytes_transferred == 79776980
+    assert status.size == 79776980
+    assert status.bytes_transferred == status.size
+
+
+def test_get_download_status_parses_real_progress_fields_before_rejection(
+        monkeypatch,
+):
+    # Real transfer record shape confirmed live (2026-08-28) for a
+    # locked file rejected before any bytes moved: bytesTransferred is
+    # genuinely 0 in the real payload, not absent — the caller (not this
+    # parsing layer) decides whether to persist that or leave progress
+    # unset for a rejection.
+    def fake_get(url, headers=None, timeout=None):
+        return FakeResponse(
+            {
+                "state": "Completed, Rejected",
+                "size": 55144573,
+                "bytesTransferred": 0,
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    status = client.get_download_status("peer1", "transfer-abc")
+
+    assert status.bytes_transferred == 0
+    assert status.size == 55144573
 
 
 def test_get_download_exception_returns_real_reason(monkeypatch):

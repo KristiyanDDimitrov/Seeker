@@ -27,7 +27,7 @@ from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
-from seeker.soulseek.client import SoulseekDownloadError
+from seeker.soulseek.client import SoulseekDownloadError, TransferStatus
 from seeker.soulseek.download_service import DownloadService, _build_search_query
 
 
@@ -57,6 +57,8 @@ class FakeSoulseekClient:
             retry_results: dict[str, "str | Exception"] | None = None,
             search_results: dict[str, "list[SoulseekFile] | Exception"]
             | None = None,
+            progress: dict[str, tuple[int | None, int | None]]
+            | None = None,
     ):
         self.states = states
         self.exceptions = exceptions or {}
@@ -71,6 +73,11 @@ class FakeSoulseekClient:
         # search failure for one track mid-batch).
         self.search_results = search_results or {}
         self.search_calls: list[str] = []
+        # Keyed by transfer_id -> (bytes_transferred, size). Missing
+        # entries default to (None, None) — most existing tests don't
+        # care about progress at all, only the state transition.
+        self.progress = progress or {}
+        self.get_download_status_calls: list[tuple[str, str]] = []
 
     def search(self, query: str) -> list[SoulseekFile]:
         self.search_calls.append(query)
@@ -82,8 +89,19 @@ class FakeSoulseekClient:
 
         return result or []
 
-    def get_download_status(self, username: str, transfer_id: str) -> str:
-        return self.states[transfer_id]
+    def get_download_status(
+            self, username: str, transfer_id: str,
+    ) -> TransferStatus:
+        self.get_download_status_calls.append((username, transfer_id))
+        bytes_transferred, size = self.progress.get(
+            transfer_id, (None, None)
+        )
+
+        return TransferStatus(
+            state=self.states[transfer_id],
+            bytes_transferred=bytes_transferred,
+            size=size,
+        )
 
     def get_download_exception(
             self, username: str, transfer_id: str,
@@ -107,6 +125,7 @@ def make_service(
         exceptions: dict[str, str] | None = None,
         retry_results: dict | None = None,
         search_results: dict | None = None,
+        progress: dict[str, tuple[int | None, int | None]] | None = None,
 ) -> DownloadService:
     database = Database(tmp_path / "seeker.db")
     database.initialize()
@@ -114,7 +133,7 @@ def make_service(
     return DownloadService(
         database,
         FakeSoulseekClient(
-            states, exceptions, retry_results, search_results,
+            states, exceptions, retry_results, search_results, progress,
         ),
         PlaylistRepository(database),
         TrackRepository(database),
@@ -924,6 +943,149 @@ def test_in_progress_state_marks_downloading(tmp_path):
     assert get_status(service, "t1") == "downloading"
 
 
+def test_update_progress_writes_progress_without_disturbing_other_columns(
+        tmp_path,
+):
+    # Repository-level, direct — mirrors update_analysis's own
+    # non-disturbance guarantee (a routine poll must not risk touching
+    # any unrelated column on the row).
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    repository = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO tracks (id, title, artist, album, duration_ms) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("track-1", "Rhyme Dust", "MK, Dom Dolla", "Rhyme Dust", 215_000),
+        )
+        repository.add(
+            DownloadRequest(
+                track_id="track-1",
+                username="real-peer",
+                filename="Rhyme Dust.flac",
+                format="flac",
+                quality_descriptor="flac 1000kbps",
+                role="settled",
+                status="downloading",
+                transfer_id="real-transfer-id",
+                size=52_428_800,
+                requested_at="2026-08-28T00:00:00+00:00",
+            ),
+            connection,
+        )
+        request_id = connection.execute(
+            "SELECT id FROM download_requests WHERE track_id = 'track-1'"
+        ).fetchone()[0]
+
+    with database.transaction() as connection:
+        repository.update_progress(
+            request_id, 26_214_400, 52_428_800, connection,
+        )
+
+    with database.transaction() as connection:
+        row = repository.get_by_id(request_id, connection)
+
+    assert row is not None
+    assert row.bytes_transferred == 26_214_400
+    assert row.total_bytes == 52_428_800
+    # Every other column is untouched.
+    assert row.username == "real-peer"
+    assert row.filename == "Rhyme Dust.flac"
+    assert row.status == "downloading"
+    assert row.transfer_id == "real-transfer-id"
+    assert row.size == 52_428_800
+    assert row.role == "settled"
+
+
+def test_poll_downloads_updates_progress_for_in_flight_request(tmp_path):
+    # State stays "downloading" (still InProgress) across this poll, but
+    # bytes move every poll regardless of whether status transitions —
+    # progress must update unconditionally alongside the state check.
+    service = make_service(
+        tmp_path,
+        {"t1": "InProgress"},
+        progress={"t1": (26_214_400, 52_428_800)},
+    )
+    seed_pending_request(service, "t1", size=52_428_800)
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT bytes_transferred, total_bytes FROM download_requests "
+            "WHERE transfer_id = 't1'"
+        ).fetchone()
+
+    assert row["bytes_transferred"] == 26_214_400
+    assert row["total_bytes"] == 52_428_800
+
+
+def test_poll_downloads_settled_completion_reaches_total_equals_transferred(
+        tmp_path, monkeypatch,
+):
+    # Real, confirmed-live edge case: a genuinely completed transfer
+    # reports bytes_transferred == total_bytes (see
+    # soulseek/client.py's TransferStatus docstring) — assert that's
+    # what actually lands in the DB once poll_downloads processes it,
+    # not just that the client parses it correctly in isolation.
+    monkeypatch.setattr(
+        "seeker.soulseek.download_service.DownloadService._move_completed_file",
+        lambda self, request: (
+            LibraryLocation(id=1, name="main", path="/music", added_at="x"),
+            "song.flac",
+        ),
+    )
+
+    service = make_service(
+        tmp_path,
+        {"t1": "Completed, Succeeded"},
+        progress={"t1": (79_776_980, 79_776_980)},
+    )
+    seed_pending_request(service, "t1", size=79_776_980)
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT bytes_transferred, total_bytes FROM download_requests "
+            "WHERE transfer_id = 't1'"
+        ).fetchone()
+
+    assert row["bytes_transferred"] == 79_776_980
+    assert row["total_bytes"] == 79_776_980
+    assert row["bytes_transferred"] == row["total_bytes"]
+
+
+def test_poll_downloads_rejection_leaves_progress_unset_not_zeroed(
+        tmp_path,
+):
+    # Real, confirmed-live edge case: a locked file rejected before any
+    # bytes moved reports bytes_transferred=0 in slskd's own payload —
+    # but recording that would misleadingly imply a real 0%-complete
+    # attempt. progress fields must stay NULL, never persisted as 0.
+    service = make_service(
+        tmp_path,
+        {"t1": "Completed, Rejected"},
+        exceptions={"t1": "Transfer rejected: File not shared."},
+        progress={"t1": (0, 55_144_573)},
+    )
+    seed_pending_request(
+        service, "t1", role="upgrade", size=55_144_573,
+    )
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT bytes_transferred, total_bytes FROM download_requests "
+            "WHERE transfer_id = 't1'"
+        ).fetchone()
+
+    assert row["bytes_transferred"] is None
+    assert row["total_bytes"] is None
+
+
 def test_requested_state_stays_queued(tmp_path):
     service = make_service(
         tmp_path, {"t1": "Requested"}
@@ -1406,3 +1568,88 @@ def test_poll_downloads_never_calls_input(tmp_path, monkeypatch):
     # already-locked-1 row moved on to 'downloading' via its own retry.
     assert counts["locked"] == 2
     assert counts["shortlisted"] == 0
+
+
+def test_poll_downloads_never_calls_update_progress_for_never_transferring_requests(
+        tmp_path, monkeypatch,
+):
+    # locked/shortlisted/superseded requests were never actually
+    # transferring — same style as the existing input() guardrail
+    # above, but asserting update_progress specifically is never
+    # attempted for any of these three statuses, even when a locked
+    # request goes through its own retry cycle and a shortlisted one
+    # gets cascade-activated in the same run.
+    service = make_service(
+        tmp_path,
+        {
+            "in-progress-1": "InProgress",
+            "cascade-active-1": "Completed, Rejected",
+        },
+        exceptions={
+            "cascade-active-1": "Transfer rejected: File not shared.",
+        },
+        retry_results={"already-locked.mp3": Exception("still locked")},
+        progress={"in-progress-1": (500, 1_000)},
+    )
+
+    seed_pending_request(
+        service, "in-progress-1", track_id="p1", role="settled",
+    )
+    seed_pending_request(
+        service, "already-locked-1", track_id="al1", role="upgrade",
+        status="locked", filename="already-locked.mp3",
+    )
+    seed_pending_request(
+        service, "cascade-active-1", track_id="cs1", role="upgrade",
+        status="queued", rank=1, username="peerX",
+        filename="cascade-rank1.flac", size=1_000,
+    )
+    seed_pending_request(
+        service, None, track_id="cs1", role="upgrade",
+        status="shortlisted", rank=2, username="peerY",
+        filename="cascade-rank2.flac", size=2_000,
+    )
+    seed_pending_request(
+        service, "superseded-1", track_id="sup1", role="upgrade",
+        status="superseded", filename="superseded.flac",
+    )
+
+    with service.database.transaction() as connection:
+        locked_id = service.download_requests.get_locked(connection)[0].id
+        shortlisted_id = service.download_requests.get_shortlisted(
+            connection
+        )[0].id
+        superseded_id = connection.execute(
+            "SELECT id FROM download_requests WHERE track_id = 'sup1'"
+        ).fetchone()[0]
+
+    forbidden_ids = {locked_id, shortlisted_id, superseded_id}
+
+    original_update_progress = DownloadRequestRepository.update_progress
+
+    def guarded_update_progress(
+            self, request_id, bytes_transferred, total_bytes, connection,
+    ):
+        assert request_id not in forbidden_ids, (
+            f"update_progress must never be attempted for a locked/"
+            f"shortlisted/superseded request (id={request_id})"
+        )
+        return original_update_progress(
+            self, request_id, bytes_transferred, total_bytes, connection,
+        )
+
+    monkeypatch.setattr(
+        DownloadRequestRepository, "update_progress", guarded_update_progress,
+    )
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        in_progress_row = connection.execute(
+            "SELECT bytes_transferred, total_bytes FROM download_requests "
+            "WHERE transfer_id = 'in-progress-1'"
+        ).fetchone()
+
+    # The one genuinely in-flight request still got its real update.
+    assert in_progress_row["bytes_transferred"] == 500
+    assert in_progress_row["total_bytes"] == 1_000

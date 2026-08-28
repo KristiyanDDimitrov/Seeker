@@ -1,4 +1,5 @@
 import time
+from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
@@ -8,6 +9,23 @@ from seeker.models.soulseek_file import SoulseekFile
 
 class SoulseekDownloadError(RuntimeError):
     pass
+
+
+@dataclass
+class TransferStatus:
+    state: str
+    # Real slskd field names, confirmed live against
+    # GET /api/v0/transfers/downloads/{username}/{id} (2026-08-28):
+    # "bytesTransferred" and "size" — "size" matches the same convention
+    # SoulseekFile already uses for total bytes, so this follows that
+    # rather than introducing a "total_bytes" vs "size" inconsistency at
+    # this layer. Both None only for a 404 ("NotFound") response, where
+    # there's no real transfer body to read them from — a genuine,
+    # in-flight transfer always reports both as real integers, 0 being
+    # the real, confirmed representation of "hasn't started" (not
+    # absent/null).
+    bytes_transferred: int | None
+    size: int | None
 
 
 class SoulseekClient:
@@ -109,7 +127,11 @@ class SoulseekClient:
 
         return cast(str, transfers[0]["id"])
 
-    def get_download_status(self, username: str, transfer_id: str) -> str:
+    def get_download_status(
+            self,
+            username: str,
+            transfer_id: str,
+    ) -> TransferStatus:
         response = httpx.get(
             f"{self.base_url}/api/v0/transfers/downloads/"
             f"{username}/{transfer_id}",
@@ -118,11 +140,18 @@ class SoulseekClient:
         )
 
         if response.status_code == 404:
-            return "NotFound"
+            return TransferStatus(
+                state="NotFound", bytes_transferred=None, size=None,
+            )
 
         response.raise_for_status()
+        data = response.json()
 
-        return cast(str, response.json()["state"])
+        return TransferStatus(
+            state=cast(str, data["state"]),
+            bytes_transferred=data.get("bytesTransferred"),
+            size=data.get("size"),
+        )
 
     def get_download_exception(
             self,

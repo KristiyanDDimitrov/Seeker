@@ -16,3 +16,5 @@ class DownloadRequest:
     size: int | None = None
     rank: int | None = None
     completed_at: str | None = None
+    bytes_transferred: int | None = None
+    total_bytes: int | None = None

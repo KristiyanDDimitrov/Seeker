@@ -32,7 +32,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE id = ?
             """,
@@ -102,7 +104,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE status IN ('queued', 'downloading')
             """
@@ -129,7 +133,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE status = 'ready_for_review'
             ORDER BY requested_at
@@ -157,7 +163,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE status = 'locked'
             ORDER BY requested_at
@@ -185,7 +193,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE status = 'shortlisted'
             ORDER BY track_id, rank
@@ -213,7 +223,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE status = 'superseded'
             ORDER BY requested_at
@@ -250,7 +262,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE track_id = ?
             AND status NOT IN ('completed', 'failed', 'superseded')
@@ -282,7 +296,9 @@ class DownloadRequestRepository:
                 size,
                 rank,
                 requested_at,
-                completed_at
+                completed_at,
+                bytes_transferred,
+                total_bytes
             FROM download_requests
             WHERE track_id = ? AND status = 'shortlisted'
             ORDER BY rank ASC
@@ -368,6 +384,26 @@ class DownloadRequestRepository:
             (transfer_id, status, completed_at, download_request_id),
         )
 
+    def update_progress(
+            self,
+            download_request_id: int,
+            bytes_transferred: int | None,
+            total_bytes: int | None,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # Deliberately separate from mark_status/update_transfer_id_and_status
+        # — same reasoning as update_analysis being kept out of upsert's
+        # ON CONFLICT DO UPDATE: a routine progress poll must not risk
+        # disturbing any unrelated column on the row.
+        connection.execute(
+            """
+            UPDATE download_requests
+            SET bytes_transferred = ?, total_bytes = ?
+            WHERE id = ?
+            """,
+            (bytes_transferred, total_bytes, download_request_id),
+        )
+
 
 def _row_to_download_request(row: sqlite3.Row) -> DownloadRequest:
     return DownloadRequest(
@@ -384,4 +420,6 @@ def _row_to_download_request(row: sqlite3.Row) -> DownloadRequest:
         rank=row["rank"],
         requested_at=row["requested_at"],
         completed_at=row["completed_at"],
+        bytes_transferred=row["bytes_transferred"],
+        total_bytes=row["total_bytes"],
     )
