@@ -12,6 +12,35 @@ class DownloadRequestRepository:
     def __init__(self, database: Database):
         self.database = database
 
+    def get_all(self, connection: sqlite3.Connection) -> list[DownloadRequest]:
+        # Whole-table fetch, filtered client-side — same pattern as
+        # TrackMatchRepository.get_all()/LocalFileRepository.get_all(),
+        # used by DashboardService to build a playlist-scoped view
+        # without an N+1 query per track.
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at,
+                bytes_transferred,
+                total_bytes
+            FROM download_requests
+            """
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
     def get_by_id(
             self,
             download_request_id: int,
