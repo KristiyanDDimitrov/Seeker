@@ -2,6 +2,7 @@ import os
 import secrets
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 import httpx
@@ -82,9 +83,22 @@ SLSKD_HEALTHY_STATE = "Connected, LoggedIn"
 # /api/v0/logs' Error-level entries — confirmed live for a deliberately
 # wrong password: "Disconnected from the Soulseek server: invalid
 # username or password" / "Failed to reconnect: ...INVALIDPASS".
-# Matched case-insensitively by substring, same discipline as
-# RECOGNIZED_REJECTION_PATTERNS elsewhere in this codebase — not
-# broadened past what's actually been confirmed.
+#
+# Checked for a more structured signal before settling on substring
+# matching, not assumed to be the only option: a real captured entry's
+# full shape is {timestamp, context, level, message} — "context" is
+# real ("slskd.Application") but too coarse to discriminate a
+# credential rejection from any other application-level error, so it
+# narrows nothing beyond level=="Error" (already checked separately in
+# check_slskd_health). Message-substring matching against these two
+# confirmed real strings is genuinely the most specific signal
+# available, not a shortcut taken over a better one. Matched
+# case-insensitively, same discipline as RECOGNIZED_REJECTION_PATTERNS
+# elsewhere in this codebase — not broadened past what's actually been
+# confirmed. A future slskd version could still reword these messages;
+# there's no structured error-code field to pin to instead, so this
+# stays worth re-checking against a real container after any slskd
+# upgrade.
 BAD_CREDENTIALS_LOG_PATTERNS = ("invalid username or password", "invalidpass")
 
 
@@ -100,11 +114,34 @@ class SlskdHealthCheckResult:
     detail: str | None = None
 
 
-def check_slskd_health(base_url: str, api_key: str) -> SlskdHealthCheckResult:
+def _parse_log_timestamp(raw: object) -> datetime | None:
+    if not isinstance(raw, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def check_slskd_health(
+        base_url: str,
+        api_key: str,
+        since: datetime,
+) -> SlskdHealthCheckResult:
     # A single check, not a blocking poll loop — the wizard's own QTimer
     # calls this repeatedly (same pattern as the dashboard's live-status
     # poll), tracking overall elapsed time itself for the timeout. Keeps
     # this directly, deterministically testable per call.
+    #
+    # `since` (the real timestamp this specific bring-up attempt
+    # started, captured by the caller) matters because /api/v0/logs
+    # returns the whole recent log buffer, not just what happened after
+    # this call — without filtering, a stale Error entry from an
+    # earlier attempt (e.g. the user mistyped their password once,
+    # corrected it, and the wizard retried) would false-positive every
+    # later poll as BAD_CREDENTIALS forever, even after a real
+    # successful reconnect.
     headers = {"X-API-Key": api_key}
 
     try:
@@ -127,6 +164,14 @@ def check_slskd_health(base_url: str, api_key: str) -> SlskdHealthCheckResult:
 
         for entry in logs_response.json():
             if entry.get("level") != "Error":
+                continue
+
+            entry_timestamp = _parse_log_timestamp(entry.get("timestamp"))
+
+            # An entry with no parseable timestamp can't be proven
+            # recent — skip rather than risk a false positive from
+            # something stale.
+            if entry_timestamp is None or entry_timestamp < since:
                 continue
 
             message = str(entry.get("message", "")).lower()

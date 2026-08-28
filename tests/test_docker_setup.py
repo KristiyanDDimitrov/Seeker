@@ -1,4 +1,5 @@
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -12,6 +13,13 @@ from seeker.docker_setup import (
     detect_docker_state,
     generate_api_key,
 )
+
+# A fixed reference point for "when this bring-up attempt started" —
+# tests construct log entries before/after this to exercise the
+# stale-entry filter.
+SINCE = datetime(2026, 8, 28, 15, 0, 0, tzinfo=timezone.utc)
+BEFORE_SINCE = (SINCE - timedelta(minutes=5)).isoformat()
+AFTER_SINCE = (SINCE + timedelta(seconds=1)).isoformat()
 
 
 # Regression test locking in the real, confirmed-live env var mapping
@@ -125,7 +133,7 @@ def test_check_slskd_health_healthy_when_state_matches(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    result = check_slskd_health("http://localhost:5030", "key")
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.HEALTHY
 
@@ -143,7 +151,7 @@ def test_check_slskd_health_not_ready_while_still_negotiating(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    result = check_slskd_health("http://localhost:5030", "key")
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.NOT_READY
 
@@ -156,7 +164,7 @@ def test_check_slskd_health_not_ready_when_application_unreachable(
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    result = check_slskd_health("http://localhost:5030", "key")
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.NOT_READY
 
@@ -165,7 +173,8 @@ def test_check_slskd_health_detects_real_bad_credentials_log_pattern(
         monkeypatch,
 ):
     # Real, confirmed-live log entries (2026-08-28) for a deliberately
-    # wrong SoulSeek password against a real container.
+    # wrong SoulSeek password against a real container — timestamped
+    # after `since`, so this is a real, current-attempt rejection.
     def fake_get(url, headers=None, timeout=None):
         if url.endswith("/api/v0/application"):
             return FakeResponse(200, {"server": {"state": "Disconnected"}})
@@ -174,10 +183,12 @@ def test_check_slskd_health_detects_real_bad_credentials_log_pattern(
             200,
             [
                 {
+                    "timestamp": AFTER_SINCE,
                     "level": "Information",
                     "message": "Connected to the Soulseek server",
                 },
                 {
+                    "timestamp": AFTER_SINCE,
                     "level": "Error",
                     "message": (
                         "Disconnected from the Soulseek server: invalid "
@@ -185,6 +196,7 @@ def test_check_slskd_health_detects_real_bad_credentials_log_pattern(
                     ),
                 },
                 {
+                    "timestamp": AFTER_SINCE,
                     "level": "Error",
                     "message": (
                         'Failed to reconnect: "The server rejected login '
@@ -196,7 +208,7 @@ def test_check_slskd_health_detects_real_bad_credentials_log_pattern(
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    result = check_slskd_health("http://localhost:5030", "key")
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.BAD_CREDENTIALS
     assert result.detail is not None
@@ -219,6 +231,7 @@ def test_check_slskd_health_not_ready_when_disconnected_for_unrelated_reason(
             200,
             [
                 {
+                    "timestamp": AFTER_SINCE,
                     "level": "Error",
                     "message": "Disconnected from the Soulseek server: "
                                 "another client logged in using the same "
@@ -229,6 +242,69 @@ def test_check_slskd_health_not_ready_when_disconnected_for_unrelated_reason(
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    result = check_slskd_health("http://localhost:5030", "key")
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
+
+    assert result.status == SlskdHealthStatus.NOT_READY
+
+
+def test_check_slskd_health_ignores_stale_bad_credentials_entry_before_since(
+        monkeypatch,
+):
+    # The real gap this test guards: /api/v0/logs returns the whole
+    # recent log buffer, not just what happened after this call. A
+    # stale Error entry from an earlier attempt (e.g. a mistyped
+    # password the user already corrected) must not false-positive a
+    # later, genuinely still-negotiating poll as BAD_CREDENTIALS.
+    def fake_get(url, headers=None, timeout=None):
+        if url.endswith("/api/v0/application"):
+            return FakeResponse(200, {"server": {"state": "Disconnected"}})
+
+        return FakeResponse(
+            200,
+            [
+                {
+                    "timestamp": BEFORE_SINCE,
+                    "level": "Error",
+                    "message": (
+                        "Disconnected from the Soulseek server: invalid "
+                        "username or password"
+                    ),
+                },
+            ],
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
+
+    assert result.status == SlskdHealthStatus.NOT_READY
+
+
+def test_check_slskd_health_ignores_error_entry_with_unparseable_timestamp(
+        monkeypatch,
+):
+    # Defensive: an entry that can't be proven recent must not be
+    # trusted either way — skipped, not treated as a false positive.
+    def fake_get(url, headers=None, timeout=None):
+        if url.endswith("/api/v0/application"):
+            return FakeResponse(200, {"server": {"state": "Disconnected"}})
+
+        return FakeResponse(
+            200,
+            [
+                {
+                    "timestamp": "not-a-real-timestamp",
+                    "level": "Error",
+                    "message": (
+                        "Disconnected from the Soulseek server: invalid "
+                        "username or password"
+                    ),
+                },
+            ],
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.NOT_READY

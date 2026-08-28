@@ -3,6 +3,7 @@ import sys
 import webbrowser
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import platformdirs
@@ -87,6 +88,7 @@ class OnboardingWizard(QMainWindow):
         self._slskd_api_key: str | None = None
         self._health_poll_timer: QTimer | None = None
         self._health_poll_elapsed = 0.0
+        self._health_poll_started_at: datetime | None = None
         # Tracks whether docker_action_button.clicked currently has a
         # connection, so it's only ever disconnected when one genuinely
         # exists — PySide6 prints a libpyside RuntimeWarning (not a
@@ -463,6 +465,12 @@ class OnboardingWizard(QMainWindow):
     def _start_health_poll(self, api_key: str) -> None:
         self._slskd_api_key = api_key
         self._health_poll_elapsed = 0.0
+        # Real timestamp this specific bring-up attempt started —
+        # check_slskd_health uses it to ignore any stale Error log
+        # entry from an earlier attempt (e.g. a mistyped password that
+        # was already corrected), so a real reconnect isn't
+        # false-flagged as bad credentials forever.
+        self._health_poll_started_at = datetime.now(timezone.utc)
         self.soulseek_progress.show()
         self.soulseek_status_label.setText(
             "Waiting for SoulSeek to connect..."
@@ -478,11 +486,13 @@ class OnboardingWizard(QMainWindow):
     def _poll_slskd_health_once(self) -> None:
         self._health_poll_elapsed += HEALTH_POLL_INTERVAL_MS / 1000
         api_key = self._slskd_api_key
+        since = self._health_poll_started_at
         assert api_key is not None
+        assert since is not None
 
         run_worker(
             self.thread_pool,
-            lambda: check_slskd_health(SLSKD_LOCAL_BASE_URL, api_key),
+            lambda: check_slskd_health(SLSKD_LOCAL_BASE_URL, api_key, since),
             on_finished=self._handle_health_result,
         )
 

@@ -2187,5 +2187,55 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     exactly, same expected one-time side effect as item 19's SLSKD
     migration.
 
+    **Real gap found and fixed in a follow-up pass, prompted by a
+    direct question rather than caught the first time through:** the
+    original `check_slskd_health` scanned the *entire* `/api/v0/logs`
+    buffer on every poll with no time bound at all — a stale `Error`
+    entry from an earlier attempt (e.g. a mistyped password the user
+    already corrected and retried) would have false-positived every
+    later poll as `BAD_CREDENTIALS` forever, even after a real
+    successful reconnect. Fixed by threading a real `since: datetime`
+    timestamp through — the wizard captures it once, right when the
+    health-poll sequence starts for that specific bring-up attempt —
+    and filtering out any `Error` entry timestamped before it (an
+    entry with an unparseable timestamp is skipped too, not trusted
+    either way). Verified this fix is real, not just plausible-looking:
+    a new test seeds a stale bad-credential entry before `since` and
+    asserts `NOT_READY`, and — same discipline as every other
+    regression test in this session — confirmed it actually fails
+    without the fix by reverting it and watching the assertion break,
+    then restoring.
+
+    Also directly asked and checked, before this became "the thing a
+    future slskd upgrade quietly breaks": is the bad-credentials match
+    scoped to log *level* rather than message-text substring? Only
+    half — `level == "Error"` is a real structured field and genuinely
+    not fragile, but discriminating *which* error happened still
+    relies on substring-matching the two confirmed real message
+    strings, because a live-captured entry's full shape
+    (`timestamp`/`context`/`level`/`message`) has no structured
+    error-code field — `context` is real (`"slskd.Application"`) but
+    too coarse to narrow anything beyond `level`. This is genuinely the
+    most specific signal available today, not a shortcut taken over a
+    better one — but it's real, honest fragility against a future
+    slskd wording change, documented directly in
+    `BAD_CREDENTIALS_LOG_PATTERNS`'s own comment as something worth
+    re-checking against a real container after any slskd upgrade,
+    rather than left implicit.
+
+    **Also directly confirmed, since it was the reassurance asked
+    for:** applying the templated `docker-compose.yml` to this
+    machine's real setup does *not* happen automatically. Checked
+    `docker inspect`'s real `Created` timestamp (predates the file
+    edit) and `docker compose ps` (still the same 28-hours-old
+    container instance) — editing the file, and even running
+    Compose's own read-only `config`/`ps` commands, never recreates a
+    running container; only an explicit `docker compose up` does, and
+    the only code path that ever calls one (`_on_bring_up_clicked`) is
+    gated behind the wizard's step 3, which is gated behind
+    `onboarding_complete` being `False` — already `True` for this real
+    setup, so `seeker-ui` never reaches it without deliberately
+    resetting onboarding state first.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
