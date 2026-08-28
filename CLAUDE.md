@@ -2237,5 +2237,148 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     setup, so `seeker-ui` never reaches it without deliberately
     resetting onboarding state first.
 
+24. **Frontend Step 5: download progress view — done (2026-08-28).** A
+    dedicated, read-only "Downloads" tab showing every active download
+    across every playlist at once, with live byte-level progress —
+    purely observational, no confirm/reject actions (that's a separate
+    future Review screen covering Phase 2 upgrade confirmation and the
+    SoulSeek needs-review tier).
+
+    **New service piece — `DashboardService.get_active_downloads()`,
+    deliberately GLOBAL, not playlist-scoped.** Mirrors `seeker
+    downloads status`'s own scope exactly — the previous task's
+    `get_playlist_track_status()` is scoped to one playlist on purpose,
+    and getting this one backwards would repeat the exact
+    global-vs-playlist-scoped bug class this project already found once
+    (`check`/`match_all`, item 15). Returns one `ActiveDownload`
+    (`models/active_download.py`: `request`, `track`, `playlist_name`)
+    per visible `download_requests` row. "Visible" = every non-terminal
+    status (`queued`/`downloading`/`locked`/`shortlisted`/
+    `ready_for_review` — deliberately excludes `superseded`, which is
+    terminal) PLUS a `completed`/`failed` row within a new, explicitly
+    untuned `RECENTLY_FINISHED_WINDOW_SECONDS = 60` of its
+    `completed_at`, so a download visibly "lands" in the view rather
+    than vanishing the instant `poll_downloads()` marks it terminal.
+    New `PlaylistRepository.get_playlist_names_by_track_id()` (whole-
+    table join, same no-N+1-query pattern as every other `get_all()` in
+    this codebase) supplies the display-context playlist name(s) — a
+    track can legitimately belong to more than one playlist, so this is
+    a comma-joined string, not assumed singular. Tests
+    (`test_dashboard_service.py`) directly cover: two different
+    playlists' downloads both appearing together (the required
+    global-scope check, including the negative case — a row from
+    playlist B is never excluded while building playlist A's rows, and
+    vice versa); every non-terminal status individually; `superseded`
+    excluded; a recent completion included and a stale one (past the
+    window) excluded, for both `completed` and `failed`; and
+    most-recent-first sort order.
+
+    **Background poll-trigger — a new, second timer on `MainWindow`,
+    deliberately separate from the existing display-refresh timer.**
+    Nothing previously caused `poll_downloads()` (real slskd network
+    calls) to run except an explicit `seeker downloads status`
+    invocation or cron — for this screen to show real movement while
+    the UI is open, something has to call it automatically. Re-read
+    `poll_downloads()` before wiring this up to confirm the Step 3/4
+    "safe for unattended calling, no `input()` anywhere" guarantee
+    (guardrail-tested — see item 14/17) still holds; it does, unchanged
+    by this task. New `backend_poll_timer`
+    (`BACKEND_POLL_INTERVAL_MS = 20_000`, explicitly flagged untuned,
+    within the 15-30s range asked for) is intentionally separate from
+    the existing `poll_timer` (`POLL_INTERVAL_MS = 2_000`, a cheap
+    local-DB-only read) — the backend timer makes real network calls,
+    so it runs far less often. `_trigger_backend_poll()` checks
+    `application.soulseek_configured` first (same reasoning as item
+    17's `check` fix — must not force a `SoulseekClient` into existence,
+    or crash, for a setup that hasn't configured slskd at all) and is a
+    complete no-op when unconfigured.
+
+    **Overlap guard**, required by the brief: a plain `bool`
+    (`_backend_poll_in_progress`) set before submitting the
+    `poll_downloads()` worker and cleared only once it actually
+    finishes (success OR error) — a tick that fires while the previous
+    call is still running is skipped outright rather than starting a
+    second concurrent writer against a slow/hanging slskd response.
+    This needed one small, additive change to the shared
+    `ui/workers.py::run_worker()` — it previously had no way to react
+    to a worker's *failure* beyond writing to a status label, so a
+    failed `poll_downloads()` call would have left the in-progress flag
+    stuck `True` forever. Added an optional `on_error` callback,
+    invoked alongside the existing status-label behavior (not a
+    replacement for it) — every existing call site keeps working
+    unchanged since it defaults to `None`. Tested directly with a real
+    `QThreadPool` (not the `SynchronousPool` fake used elsewhere in
+    this suite) and a `threading.Event`-gated fake `poll_downloads()`:
+    a second `_trigger_backend_poll()` call while the first is still
+    blocked is confirmed to make zero additional calls, and the flag
+    correctly clears once the first call is released. A separate test
+    confirms `poll_downloads()` itself genuinely executes off the main
+    thread (`threading.current_thread() != threading.main_thread()`
+    inside the fake), not just "doesn't block the test."
+
+    **Concurrency — targeted check, not a full re-run of item 22's
+    broader stress test**, per the brief's own reasoning: this
+    introduces one more recurring background-thread writer (the new
+    backend poll timer, doing real `update_progress`/`mark_status`
+    writes) alongside the existing recurring reader (the display-
+    refresh timer, now also reading via `get_active_downloads()`) — not
+    a meaningfully different access pattern from what item 22 already
+    validated (every `Database.transaction()` call still opens and
+    closes its own short-lived connection, from whichever thread calls
+    it). `tests/test_connection.py::
+    test_concurrent_progress_writes_and_active_downloads_reads` runs a
+    real writer thread doing 50 `update_progress` calls against one row
+    concurrently with two real reader threads each doing 50
+    `get_active_downloads()` calls, asserting zero errors and a
+    correct final byte count — confirms this specific new combination
+    is fine without re-running the original, broader 1,000-transaction
+    stress test.
+
+    **UI**: existing dashboard content moved into a `QTabWidget`
+    ("Dashboard" tab, unchanged) alongside a new "Downloads" tab — a
+    `QTableWidget` (Track / Playlist / Role / Status / Progress) driven
+    by both timers: the 2s display-refresh timer re-renders it from
+    `get_active_downloads()` (plus an explicit initial call in
+    `__init__`, so the tab isn't empty for the first 2s), and the 20s
+    backend timer is what actually advances the underlying data via
+    slskd. `locked`/`shortlisted` rows get a plain-language
+    `_DOWNLOAD_STATUS_LABELS` note ("Retrying (locked)"/"Queued as
+    backup") instead of the raw status string, matching the existing
+    dashboard tab's "(SoulSeek candidate found)" convention rather than
+    inventing a new one. Progress bar: real `bytes_transferred`/
+    `total_bytes` when both are present; **indeterminate**
+    (`QProgressBar.setRange(0, 0)`) when a queued/downloading/
+    ready_for_review/completed row hasn't reported bytes yet — a
+    0%-forever bar would be visually indistinguishable from "actually
+    stuck," which the brief specifically called out to avoid. A
+    `locked`/`shortlisted`/`failed` row gets no progress bar at all
+    (blank cell) rather than a misleading indeterminate spinner — these
+    have no real, current transfer in flight (by design, a rejection
+    leaves `bytes_transferred`/`total_bytes` unset rather than zeroed —
+    see item 20), and the Status column's plain-language note already
+    conveys "still being chased" without implying a live byte count.
+    Purely observational per the brief: `ready_for_review` rows render
+    with a status label like everything else, with no confirm/reject
+    control anywhere in this tab.
+
+    Kept to this project's established UI-testing philosophy (thin Qt
+    glue gets light smoke coverage; the real logic depth lives in the
+    service layer, which gets real coverage) —
+    `tests/test_ui_smoke.py` adds: rows from two different playlists
+    both rendering in the tab; a locked row's plain-language status
+    text; determinate vs. indeterminate progress bar rendering for both
+    with-bytes and without-bytes cases; a locked row rendering no
+    progress bar at all; the backend-poll-runs-off-main-thread check;
+    the soulseek-not-configured no-op check; and the overlap-guard
+    check described above.
+
+    **Not yet run live against the real application in this session**
+    — per this project's own established pattern (Step 3/4's dashboard
+    and wizard screens were each verified live in their own task before
+    being called done), this screen should get the same live check in
+    a follow-up pass: open `seeker-ui` against the real DB with a real
+    in-flight download and confirm the tab renders live, advancing
+    progress, not just pass against fakes/mocks in tests.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
