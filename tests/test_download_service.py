@@ -31,6 +31,26 @@ from seeker.soulseek.client import SoulseekDownloadError, TransferStatus
 from seeker.soulseek.download_service import DownloadService, _build_search_query
 
 
+def test_single_source_of_truth_for_recognized_rejection_patterns():
+    # Guards against the exact drift pattern this codebase has hit
+    # before (matching.py, AUDIO_EXTENSIONS): the rejection-pattern
+    # constant/classifier used to live in download_service.py as
+    # LOCK_REJECTION_PATTERNS/_is_lock_rejection — now moved down to
+    # client.py (below download_service.py in the layering) as
+    # RECOGNIZED_REJECTION_PATTERNS/is_recognized_rejection, with
+    # download_service.py importing it rather than keeping a second
+    # copy that could silently diverge.
+    import seeker.soulseek.download_service as download_service_module
+    from seeker.soulseek.client import is_recognized_rejection
+
+    assert not hasattr(download_service_module, "LOCK_REJECTION_PATTERNS")
+    assert not hasattr(download_service_module, "_is_lock_rejection")
+    assert (
+        download_service_module.is_recognized_rejection
+        is is_recognized_rejection
+    )
+
+
 def test_build_search_query_strips_comma_from_multi_artist_track():
     # track.artist may credit multiple artists joined with ", " (e.g.
     # "MK, Dom Dolla") — the literal comma isn't a sane search string,
@@ -913,6 +933,134 @@ def test_locked_request_rejected_at_batch_level_stays_locked(tmp_path):
     assert counts["failed"] == 0
     assert counts["locked"] == 1
     assert get_status(service, "old-1") == "locked"
+
+
+def test_retry_locked_request_recognizes_real_peer_offline_rejection(
+        tmp_path, monkeypatch, capsys,
+):
+    # Real, confirmed-live rejection shape (2026-08-28, the Balron/
+    # long25 investigation): a peer-offline 404 straight off the
+    # enqueue POST is now wrapped into SoulseekDownloadError by
+    # request_download itself (see client.py's
+    # RECOGNIZED_REJECTION_PATTERNS) — this simulates that fixed client
+    # behavior at the service-layer boundary. Before the fix, this
+    # exact message arrived as an unwrapped httpx.HTTPStatusError,
+    # which this method's `except SoulseekDownloadError` couldn't
+    # catch — it escaped to poll_downloads' outer per-request handler
+    # and printed "Failed to retry locked ...". That escape is exactly
+    # what this test asserts is now gone.
+    service = make_service(
+        tmp_path,
+        states={},
+        retry_results={
+            "NeuroFunk26\\Balron, Audio - Breach.flac": SoulseekDownloadError(
+                "slskd rejected the download of "
+                "'NeuroFunk26\\Balron, Audio - Breach.flac' from "
+                "'long25': User long25 appears to be offline"
+            ),
+        },
+    )
+    seed_pending_request(
+        service, "old-transfer-1", track_id="t1", role="upgrade",
+        status="locked", username="long25",
+        filename="NeuroFunk26\\Balron, Audio - Breach.flac",
+        size=37_691_256,
+    )
+
+    original = DownloadRequestRepository.update_transfer_id_and_status
+    update_calls = []
+
+    def spy(self, request_id, transfer_id, status, connection):
+        update_calls.append((request_id, transfer_id, status))
+        return original(self, request_id, transfer_id, status, connection)
+
+    monkeypatch.setattr(
+        DownloadRequestRepository, "update_transfer_id_and_status", spy,
+    )
+
+    counts = service.poll_downloads()
+
+    output = capsys.readouterr().out
+    # The designed, silent contract — not the accidental escape into
+    # the outer per-request handler that printed this before the fix.
+    assert "Failed to retry locked" not in output
+
+    assert counts["failed"] == 0
+    assert counts["locked"] == 1
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status, transfer_id FROM download_requests "
+            "WHERE track_id = 't1'"
+        ).fetchone()
+
+    assert row["status"] == "locked"
+    # The retry was rejected synchronously — no new transfer_id was
+    # ever issued, so there's nothing new to persist. This is a clean
+    # no-op via `except SoulseekDownloadError: return`, confirmed
+    # directly: update_transfer_id_and_status is never called for this
+    # row (unlike the async-rejection retry case, where a real new
+    # transfer_id genuinely does get recorded — see
+    # test_locked_request_rejected_again_stays_locked_not_failed).
+    assert row["transfer_id"] == "old-transfer-1"
+    assert update_calls == []
+
+
+def test_cascade_activation_recognizes_peer_offline_and_locks_not_stuck(
+        tmp_path, capsys,
+):
+    # The real bug case: before the fix, a peer-offline 404 during
+    # cascade activation propagated a bare httpx.HTTPStatusError out of
+    # _activate_shortlisted_entry, up through _cascade_upgrade, into
+    # poll_downloads' main-loop outer per-request handler — leaving the
+    # row stuck at 'shortlisted' forever, never touched by mark_status,
+    # since the classification code (is_recognized_rejection) was never
+    # reached at all. This is the path that was never exercised live —
+    # simulates the fixed request_download's wrapped SoulseekDownloadError
+    # using the exact real message confirmed live (2026-08-28).
+    service = make_service(
+        tmp_path,
+        states={"active-1": "Completed, Rejected"},
+        exceptions={"active-1": "Transfer rejected: File not shared."},
+        retry_results={
+            "NeuroFunk26\\Balron, Audio - Breach.flac": SoulseekDownloadError(
+                "slskd rejected the download of "
+                "'NeuroFunk26\\Balron, Audio - Breach.flac' from "
+                "'long25': User long25 appears to be offline"
+            ),
+        },
+    )
+
+    seed_pending_request(
+        service, "active-1", track_id="t1", role="upgrade",
+        status="queued", rank=1, username="peerX",
+        filename="cascade-rank1.flac", size=1_000,
+    )
+    seed_pending_request(
+        service, None, track_id="t1", role="upgrade",
+        status="shortlisted", rank=2, username="long25",
+        filename="NeuroFunk26\\Balron, Audio - Breach.flac",
+        size=37_691_256,
+    )
+
+    counts = service.poll_downloads()
+
+    output = capsys.readouterr().out
+    assert "Failed to poll" not in output
+
+    assert counts["failed"] == 0
+    # Both rank 1 (async "not shared" rejection) and the cascaded rank 2
+    # (sync "appears to be offline" rejection) correctly classify as
+    # 'locked', not 'failed' and not stuck at 'shortlisted'.
+    assert counts["locked"] == 2
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status FROM download_requests "
+            "WHERE filename LIKE '%Balron%'"
+        ).fetchone()
+
+    assert row["status"] == "locked"
 
 
 def test_completed_without_succeeded_is_not_treated_as_done(tmp_path):

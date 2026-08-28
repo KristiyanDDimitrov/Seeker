@@ -1713,5 +1713,125 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
        future session to investigate, not fixed as part of this task
        (out of scope, and not requested).
 
+21. **Fix: a real, live-discovered rejection shape (peer-offline 404)
+    escaped the recognized-rejection handling at both call sites that
+    depend on it — done (2026-08-28), following a dedicated diagnostic
+    pass (item 20's Balron/long25 observation).**
+
+    **Root cause, confirmed against the real API before touching any
+    code.** `SoulseekClient.request_download`'s `response
+    .raise_for_status()` had no try/except around it — a non-2xx
+    response raised a bare `httpx.HTTPStatusError`, a type neither
+    `_retry_locked_request` nor `_activate_shortlisted_entry` catches
+    (`except SoulseekDownloadError` only). `SoulseekDownloadError` was
+    only ever constructed later, in the 2xx-with-empty-transfers
+    branch — a 404 never reaches that code at all. Confirmed live by
+    replaying the exact failing enqueue request directly against the
+    live instance: `POST /api/v0/transfers/downloads/batches` for the
+    real Balron/`long25` case returns `404` with body `"User long25
+    appears to be offline"` — a **third, distinct rejection shape**
+    from the one Phase 3 was built and tested against
+    (`"Transfer rejected: File not shared."`, which arrives
+    asynchronously — the POST itself succeeds with a real transfer_id,
+    and the rejection only shows up moments later via
+    `get_download_status`/`get_download_exception`). A peer being
+    briefly unreachable is a synchronous, immediate refusal at enqueue
+    time instead.
+
+    **Fixed at the source, once, not at both call sites** — same
+    consolidation reasoning as `matching.py`/`AUDIO_EXTENSIONS`
+    (roadmap items 2-3): `request_download` now wraps a
+    `httpx.HTTPStatusError` in a try/except around the POST, inspects
+    the response body (`.json()`, falling back to `.text` if the body
+    isn't valid JSON) against a shared pattern list, and raises
+    `SoulseekDownloadError` with the real message when it matches — so
+    every current and future caller inherits correct handling from one
+    place instead of needing its own audit. An unrecognized 4xx/5xx
+    (auth failure, malformed request, a genuine server error)
+    re-raises the original `httpx.HTTPStatusError` unchanged — this is
+    deliberately not broadened past what's actually been confirmed,
+    same discipline the async-side pattern list already applied.
+
+    The pattern list itself moved down to `client.py` (below
+    `download_service.py` in the layering — the same "shared thing
+    lives at the lowest layer that needs it" rule the earlier
+    consolidations followed) and was renamed:
+    `LOCK_REJECTION_PATTERNS`/`_is_lock_rejection` →
+    `RECOGNIZED_REJECTION_PATTERNS`/`is_recognized_rejection` — the old
+    name undersold what it now covers ("locked" was never really the
+    concept; "a recognized, known-transient rejection reason worth
+    retrying later" is). Now holds two confirmed real strings:
+    `"not shared"` (2026-08-27) and `"appears to be offline"`
+    (2026-08-28). `download_service.py` imports the function rather
+    than keeping its own copy — `tests/test_download_service.py::
+    test_single_source_of_truth_for_recognized_rejection_patterns`
+    guards this directly (asserts the old names no longer exist on the
+    module, and that the imported function is the exact same object as
+    `client.py`'s).
+
+    **Verified, not assumed, that both existing call sites now behave
+    correctly with zero further changes needed beyond the import:**
+    - `_retry_locked_request`: still just `except SoulseekDownloadError:
+      return` — unchanged, and correctly so. A synchronous rejection
+      (peer offline) never produces a new `transfer_id` at all, so
+      there is nothing new to persist; `update_transfer_id_and_status`
+      is confirmed (via a direct spy in the new test) to NOT be called
+      for this row, same as before the fix — what changes is that this
+      branch is now actually *reached*, instead of the exception
+      escaping past it entirely. (This corrects an assumption in the
+      diagnostic task's own test spec, which expected that method to
+      fire here — re-reading the exact code showed it's a clean no-op
+      by design, and forcing a call that doesn't belong would be wrong,
+      not a fix.) The real, previously-observed symptom — a
+      `"Failed to retry locked '...'"` print on every single retry
+      cycle — is confirmed gone in the new test
+      (`test_retry_locked_request_recognizes_real_peer_offline_rejection`)
+      and live (see below).
+    - `_activate_shortlisted_entry`: **this was the real bug.** Before
+      the fix, an uncaught `httpx.HTTPStatusError` here would propagate
+      up through `_cascade_upgrade`'s while loop into
+      `poll_downloads`'s main-loop outer per-request handler (the item
+      15 audit's "one bad item can't abort the batch" guardrail) —
+      correctly not crashing the run, but leaving the row stuck at
+      `'shortlisted'` forever, since `mark_status` is never reached on
+      that escape path. This is the case the original diagnostic
+      flagged as never having been exercised live (unlike the retry
+      path, no real peer-offline shortlisted candidate happened to be
+      sitting in the queue that day). Fixed the same way, verified with
+      a dedicated new test
+      (`test_cascade_activation_recognizes_peer_offline_and_locks_not_stuck`)
+      built from the real captured 404 body as a fixture, since this
+      path depends on a specific live peer-offline state that isn't
+      reliably reproducible on demand — consistent with how Phase 4
+      already handles hard-to-reproduce live scenarios (its own tests
+      use real captured peer data rather than waiting for a live repro
+      every time). Confirms the row now genuinely transitions to
+      `'locked'` via `is_recognized_rejection`'s classification, not
+      left in `'shortlisted'` and not misrouted to `'failed'`.
+
+    Tests: `tests/test_soulseek_client.py` adds
+    `test_request_download_wraps_real_peer_offline_404` (the exact real
+    captured body, not a paraphrase) and a parametrized
+    `test_request_download_does_not_wrap_unrecognized_error` (401, 500
+    — guards against over-broad catching) using a new `FakeErrorResponse`
+    helper that raises a genuine `httpx.HTTPStatusError` carrying a real
+    response object, exactly like the real client sees.
+    `tests/test_download_service.py` adds the two call-site tests above
+    plus the single-source-of-truth guardrail.
+
+    **Live re-verification against the real, still-reproducible
+    Balron/`long25` scenario** (2026-08-28, same day, confirmed
+    reproducible immediately beforehand via a direct replay of the
+    exact failing request): two consecutive real `seeker downloads
+    status` runs after the fix landed produced **zero** `"Failed to
+    retry locked"` output — a real, visible behavior change from every
+    prior run that day. All 3 real Balron rows (ids 5, 7, 9) stayed
+    `'locked'` with their `transfer_id` genuinely unchanged across both
+    runs, confirmed directly via `sqlite3`, not just inferred from the
+    absence of an error line. The two real Jade Venom rows (ids 6, 10 —
+    the unrelated async-shape "not shared" case) continued retrying and
+    picking up new `transfer_id`s normally in the same runs, confirming
+    the fix didn't disturb the already-working path.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.

@@ -29,7 +29,11 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
-from seeker.soulseek.client import SoulseekClient, SoulseekDownloadError
+from seeker.soulseek.client import (
+    SoulseekClient,
+    SoulseekDownloadError,
+    is_recognized_rejection,
+)
 from seeker.soulseek.quality import select_downloads
 
 
@@ -44,22 +48,6 @@ FAILED_STATE_MARKERS = (
     "Aborted",
 )
 
-# Phase 3: the real, confirmed rejection reason for a locked file
-# (2026-08-27 live investigation) is "Transfer rejected: File not
-# shared." — matched case-insensitively by substring in case wording
-# varies slightly across peers/slskd versions. Only this specific
-# rejection reason gets the automatic locked-retry treatment; any other
-# rejection reason still correctly terminates as 'failed'.
-LOCK_REJECTION_PATTERNS = ("not shared",)
-
-
-def _is_lock_rejection(exception_text: str | None) -> bool:
-    if not exception_text:
-        return False
-
-    lowered = exception_text.lower()
-
-    return any(pattern in lowered for pattern in LOCK_REJECTION_PATTERNS)
 
 
 class PlaylistNotFoundError(RuntimeError):
@@ -577,7 +565,7 @@ class DownloadService:
                 username, transfer_id,
             )
 
-            if _is_lock_rejection(exception_text):
+            if is_recognized_rejection(exception_text):
                 return "locked"
 
         return "failed"
@@ -639,14 +627,24 @@ class DownloadService:
                 request.size,
             )
         except SoulseekDownloadError as error:
-            status = "locked" if _is_lock_rejection(str(error)) else "failed"
+            # request_download itself now raises this for BOTH
+            # rejection shapes — the synchronous one (e.g. peer
+            # offline, a 404 straight off the enqueue POST) as well as
+            # the asynchronous one (e.g. file not shared, which instead
+            # raises nothing here and only shows up via the status
+            # check below) — see client.py's RECOGNIZED_REJECTION_PATTERNS.
+            status = (
+                "locked" if is_recognized_rejection(str(error)) else "failed"
+            )
             self._update_status(request.id, status)
             return status
 
-        # A rejection doesn't raise from request_download itself
-        # (confirmed live, 2026-08-27) — it shows up almost immediately
-        # via the status endpoint instead, so check right away rather
-        # than waiting a full poll cycle to find out it failed again.
+        # An ASYNC-shape rejection doesn't raise from request_download
+        # itself (confirmed live, 2026-08-27) — it shows up almost
+        # immediately via the status endpoint instead, so check right
+        # away rather than waiting a full poll cycle to find out it
+        # failed again. A SYNC-shape rejection (peer offline) never
+        # reaches this point at all — it's already handled above.
         state = self.soulseek.get_download_status(
             request.username, transfer_id,
         ).state
@@ -708,6 +706,11 @@ class DownloadService:
                 request.size,
             )
         except SoulseekDownloadError:
+            # Covers both recognized rejection shapes now that
+            # request_download wraps the synchronous one too (see
+            # client.py's RECOGNIZED_REJECTION_PATTERNS) — a peer that's
+            # offline right now hits this branch exactly the same way a
+            # file-not-shared rejection always did.
             return  # Rejected again at the batch level — stays locked.
 
         state = self.soulseek.get_download_status(

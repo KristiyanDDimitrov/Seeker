@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -14,6 +16,29 @@ class FakeResponse:
 
     def raise_for_status(self):
         pass
+
+
+class FakeErrorResponse:
+    # Mimics enough of a real httpx.Response for raise_for_status() to
+    # raise a genuine httpx.HTTPStatusError carrying this object as
+    # .response, exactly like the real client sees.
+    def __init__(self, status_code: int, json_body):
+        self.status_code = status_code
+        self.text = json.dumps(json_body)
+        self._json_body = json_body
+
+    def json(self):
+        return self._json_body
+
+    def raise_for_status(self):
+        raise httpx.HTTPStatusError(
+            f"{self.status_code} error",
+            request=httpx.Request(
+                "POST",
+                "http://localhost:5030/api/v0/transfers/downloads/batches",
+            ),
+            response=self,  # type: ignore[arg-type]
+        )
 
 
 # Trimmed real slskd search response shape for "Dom Dolla Rhyme Dust" — one
@@ -261,6 +286,48 @@ def test_request_download_raises_with_slskd_failure_message(monkeypatch):
     client = SoulseekClient("http://localhost:5030", "test-api-key")
 
     with pytest.raises(SoulseekDownloadError, match="File not shared."):
+        client.request_download("peer1", "song.flac", 12345)
+
+
+def test_request_download_wraps_real_peer_offline_404(monkeypatch):
+    # Real, captured response (2026-08-28): a direct replay of the exact
+    # failing request against the live instance for a peer that wasn't
+    # currently online returned this precise body — a synchronous 404
+    # straight off the enqueue POST, a genuinely different shape from
+    # the accepted-then-rejected-later flow the other tests exercise.
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeErrorResponse(404, "User long25 appears to be offline")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(
+        SoulseekDownloadError, match="appears to be offline",
+    ):
+        client.request_download(
+            "long25", "NeuroFunk26\\Balron, Audio - Breach.flac", 37691256,
+        )
+
+
+@pytest.mark.parametrize("status_code", [401, 500])
+def test_request_download_does_not_wrap_unrecognized_error(
+        monkeypatch, status_code,
+):
+    # An unrecognized 4xx/5xx (auth failure, server error — anything
+    # that isn't a confirmed, known-transient rejection reason) must
+    # keep propagating loudly as the original httpx.HTTPStatusError,
+    # not get silently absorbed into "retry later." Guardrail against
+    # RECOGNIZED_REJECTION_PATTERNS ever being broadened past what's
+    # actually been confirmed.
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeErrorResponse(status_code, "Internal Server Error")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(httpx.HTTPStatusError):
         client.request_download("peer1", "song.flac", 12345)
 
 
