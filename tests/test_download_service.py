@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -25,10 +27,16 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
+from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import SoulseekDownloadError, TransferStatus
-from seeker.soulseek.download_service import DownloadService, _build_search_query
+from seeker.soulseek.download_service import (
+    DownloadService,
+    ReviewCandidateMissingSizeError,
+    ReviewCandidateNotFoundError,
+    _build_search_query,
+)
 
 
 def test_single_source_of_truth_for_recognized_rejection_patterns():
@@ -709,6 +717,142 @@ def test_download_playlist_clears_stale_review_candidate_once_settled(
     assert count == 0
 
 
+def seed_review_candidate(
+        service: DownloadService,
+        track_id: str = "t1",
+        username: str = "musicmasterrdjpool",
+        filename: str = "Prdk - One More Night (Clean) 4A 87.mp3",
+        score: float = 70.4,
+        size: int | None = 2_000_000,
+) -> None:
+    with service.database.transaction() as connection:
+        existing_track = service.tracks.get_by_id(track_id, connection)
+
+        if existing_track is None:
+            service.tracks.save(
+                Track(
+                    id=track_id, title="ONE MORE NIGHT", artist="Prdk",
+                    album="Album", duration_ms=200_000,
+                ),
+                connection,
+            )
+
+        service.soulseek_review_candidates.upsert(
+            SoulseekReviewCandidate(
+                track_id=track_id,
+                username=username,
+                filename=filename,
+                score=score,
+                quality_descriptor="mp3",
+                found_at="2026-01-01T00:00:00+00:00",
+                size=size,
+            ),
+            connection,
+        )
+
+
+def test_confirm_review_candidate_requests_settled_download_and_clears_row(
+        tmp_path,
+):
+    service = make_service(tmp_path, states={})
+    seed_review_candidate(service, track_id="t1", size=2_000_000)
+
+    service.confirm_review_candidate("t1")
+
+    assert service.soulseek.request_download_calls == [
+        (
+            "musicmasterrdjpool",
+            "Prdk - One More Night (Clean) 4A 87.mp3",
+            2_000_000,
+        ),
+    ]
+
+    with service.database.transaction() as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM soulseek_review_candidates"
+        ).fetchone()[0]
+        row = connection.execute(
+            "SELECT role, status, transfer_id, size, format "
+            "FROM download_requests WHERE track_id = 't1'"
+        ).fetchone()
+
+    # Cleared immediately once the request was made — not waiting for
+    # the download to finish.
+    assert remaining == 0
+    assert row["role"] == "settled"
+    assert row["status"] == "queued"
+    assert row["transfer_id"] is not None
+    assert row["size"] == 2_000_000
+    assert row["format"] == "mp3"
+
+
+def test_confirm_review_candidate_locked_rejection_uses_existing_classification(
+        tmp_path,
+):
+    # confirm_review_candidate() itself does no special-casing for
+    # rejections — the resulting row goes through the exact same
+    # poll_downloads() classification as any other request. This is the
+    # scenario item 26's broadened classification exists for:
+    # find_best_needs_review_candidate never filters on lock status, so
+    # a confirmed candidate genuinely can be locked.
+    service = make_service(
+        tmp_path,
+        states={"transfer-1": "Completed, Rejected"},
+        exceptions={"transfer-1": "Transfer rejected: File not shared."},
+        retry_results={
+            "Prdk - One More Night (Clean) 4A 87.mp3": "transfer-1",
+        },
+    )
+    seed_review_candidate(service, track_id="t1", size=2_000_000)
+
+    service.confirm_review_candidate("t1")
+    counts = service.poll_downloads()
+
+    assert counts["failed"] == 0
+    assert get_status(service, "transfer-1") == "locked"
+
+
+def test_reject_review_candidate_deletes_and_requests_nothing(tmp_path):
+    service = make_service(tmp_path, states={})
+    seed_review_candidate(service, track_id="t1", size=2_000_000)
+
+    service.reject_review_candidate("t1")
+
+    assert service.soulseek.request_download_calls == []
+
+    with service.database.transaction() as connection:
+        remaining_candidates = connection.execute(
+            "SELECT COUNT(*) FROM soulseek_review_candidates"
+        ).fetchone()[0]
+        request_count = connection.execute(
+            "SELECT COUNT(*) FROM download_requests"
+        ).fetchone()[0]
+
+    assert remaining_candidates == 0
+    assert request_count == 0
+
+
+def test_confirm_review_candidate_raises_when_no_candidate_found(tmp_path):
+    service = make_service(tmp_path, states={})
+
+    with pytest.raises(ReviewCandidateNotFoundError):
+        service.confirm_review_candidate("missing-track")
+
+
+def test_confirm_review_candidate_raises_for_legacy_row_without_size(
+        tmp_path,
+):
+    # A row persisted before `size` existed on this table (item 26) —
+    # must refuse rather than guess/default a size for request_download.
+    service = make_service(tmp_path, states={})
+    seed_review_candidate(service, track_id="t1", size=None)
+
+    with pytest.raises(ReviewCandidateMissingSizeError):
+        service.confirm_review_candidate("t1")
+
+    assert service.soulseek.request_download_calls == []
+
+
 def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
     service = make_service(
         tmp_path, {"t1": "Completed, Succeeded"}
@@ -798,13 +942,20 @@ def test_rejected_state_marks_failed(tmp_path):
     assert get_status(service, "t1") == "failed"
 
 
-def test_rejected_settled_role_marks_failed_even_with_lock_exception_text(
+def test_rejected_settled_role_with_lock_exception_routes_to_locked_not_failed(
         tmp_path,
 ):
-    # The locked-retry treatment is scoped to role='upgrade' only —
-    # select_downloads() never picks a locked candidate as 'settled', so
-    # a settled-role rejection (even one that happens to carry
-    # lock-shaped exception text) stays a plain failure, not a retry.
+    # Item 26 correction: lock-pattern classification applies regardless
+    # of role, not just role=='upgrade'. The old scoping rested on the
+    # premise that select_downloads() never assigns a locked candidate to
+    # 'settled', so a settled-role rejection was "never expected to be
+    # lock-related" — that stopped being universally true once
+    # confirm_review_candidate could request a role='settled' download
+    # for a human-confirmed needs-review candidate that was never
+    # filtered on lock status at all (see item 26). This is the GENERAL
+    # case, not specific to the new confirm-review feature — an ordinary
+    # settled request hitting this same real rejection text must now
+    # also retry instead of failing immediately.
     service = make_service(
         tmp_path,
         {"t1": "Completed, Rejected"},
@@ -814,8 +965,59 @@ def test_rejected_settled_role_marks_failed_even_with_lock_exception_text(
 
     counts = service.poll_downloads()
 
+    assert counts["failed"] == 0
+    assert counts["locked"] == 1
+    assert get_status(service, "t1") == "locked"
+
+
+def test_rejected_settled_role_with_other_reason_still_marks_failed(
+        tmp_path,
+):
+    # The broadened classification isn't "every settled rejection
+    # retries" — only a recognized rejection pattern does. Mirrors
+    # test_rejected_upgrade_with_other_reason_still_marks_failed for the
+    # settled role.
+    service = make_service(
+        tmp_path,
+        {"t1": "Completed, Rejected"},
+        exceptions={"t1": "Transfer rejected: Too many requests."},
+    )
+    seed_pending_request(service, "t1", role="settled")
+
+    counts = service.poll_downloads()
+
     assert counts["failed"] == 1
+    assert counts["locked"] == 0
     assert get_status(service, "t1") == "failed"
+
+
+def test_settled_role_rejection_does_not_trigger_upgrade_cascade(tmp_path):
+    # The Phase 4 cascade stays role-specific even after broadening the
+    # rejection classification itself — get_next_shortlisted() isn't
+    # role-scoped, so calling the cascade for a settled rejection could
+    # otherwise incorrectly activate an unrelated upgrade-role
+    # shortlist entry for the same track.
+    service = make_service(
+        tmp_path,
+        {"t1": "Completed, Rejected"},
+        exceptions={"t1": "Transfer rejected: File not shared."},
+    )
+    seed_pending_request(service, "t1", track_id="shared-track", role="settled")
+    seed_pending_request(
+        service, None, track_id="shared-track", role="upgrade",
+        status="shortlisted", rank=2, filename="other-candidate.mp3",
+        username="peer2",
+    )
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        shortlisted_status = connection.execute(
+            "SELECT status FROM download_requests "
+            "WHERE filename = 'other-candidate.mp3'"
+        ).fetchone()["status"]
+
+    assert shortlisted_status == "shortlisted"
 
 
 def test_rejected_upgrade_with_lock_exception_routes_to_locked_not_failed(
@@ -883,6 +1085,98 @@ def test_locked_request_succeeds_on_retry_transitions_to_downloading(
 
     assert row["status"] == "downloading"
     assert row["transfer_id"] == "new-1"
+
+
+def test_settled_role_locked_request_succeeds_on_retry_auto_moves_without_review(
+        tmp_path,
+):
+    # Item 26 correction: a role='settled' row can now genuinely reach
+    # 'locked' (via confirm_review_candidate — a needs-review candidate
+    # is never filtered on lock status). Once such a retry succeeds, it
+    # must auto-move into the library exactly like an ordinary settled
+    # success — never through ready_for_review, which would demand a
+    # SECOND human confirmation for a candidate that was already
+    # confirmed once.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Prdk - One More Night.mp3").write_bytes(b"real audio data")
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+    track_matches = TrackMatchRepository(database)
+    local_files = LocalFileRepository(database)
+    download_requests = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+        playlists.save(
+            Playlist(id="p1", name="Test", track_count=1), connection,
+        )
+        playlists.set_destination("p1", location.id, None, connection)
+
+        tracks.save(
+            Track(
+                id="t1", title="ONE MORE NIGHT", artist="Prdk",
+                album="Album", duration_ms=200_000,
+            ),
+            connection,
+        )
+        tracks.save_playlist_track("p1", "t1", connection)
+
+        download_requests.add(
+            DownloadRequest(
+                track_id="t1",
+                username="musicmasterrdjpool",
+                filename="Prdk - One More Night.mp3",
+                format="mp3",
+                quality_descriptor="mp3",
+                role="settled",
+                status="locked",
+                transfer_id="old-1",
+                size=1_000,
+                requested_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(
+            states={"new-1": "Completed, Succeeded"},
+            retry_results={"Prdk - One More Night.mp3": "new-1"},
+        ),
+        playlists, tracks, locations, download_requests, track_matches,
+        local_files, SoulseekReviewCandidateRepository(database),
+        str(slskd_dir),
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert counts["failed"] == 0
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status FROM download_requests WHERE track_id = 't1'"
+        ).fetchone()
+
+    assert row["status"] == "completed"
+    assert (lib_root / "Prdk - One More Night.mp3").exists()
+    assert _ready_for_review_count(service) == 0
 
 
 def test_locked_request_rejected_again_stays_locked_not_failed(tmp_path):

@@ -33,6 +33,7 @@ from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import (
     SoulseekClient,
     SoulseekDownloadError,
+    derive_extension,
     is_recognized_rejection,
 )
 from seeker.soulseek.quality import select_downloads
@@ -60,6 +61,14 @@ class NoDestinationConfiguredError(RuntimeError):
 
 
 class LibraryLocationNotFoundError(RuntimeError):
+    pass
+
+
+class ReviewCandidateNotFoundError(RuntimeError):
+    pass
+
+
+class ReviewCandidateMissingSizeError(RuntimeError):
     pass
 
 
@@ -381,6 +390,7 @@ class DownloadService:
                     score=score,
                     quality_descriptor=_quality_descriptor(file),
                     found_at=datetime.now(timezone.utc).isoformat(),
+                    size=file.size,
                 ),
                 connection,
             )
@@ -393,11 +403,12 @@ class DownloadService:
             self,
             playlist_id: str | None = None,
     ) -> list[tuple[Track, SoulseekReviewCandidate]]:
-        # Read-only, informational — no confirmation flow here (unlike
-        # ready_for_review's downloads review). Mirrors the local
-        # matcher's needs_review tier, which has the same open item: an
-        # interactive confirm/reject flow is deferred to a future UI
-        # rather than another CLI prompt loop.
+        # Read-only listing — the actual confirm/reject actions are
+        # confirm_review_candidate()/reject_review_candidate() below
+        # (item 26, the Review screen), not here. Originally this
+        # method's own docstring deferred that entirely to "a future UI,
+        # not another CLI prompt loop" (mirroring the local matcher's
+        # identical open item) — that future UI is what item 26 builds.
         with self.database.transaction() as connection:
             candidates = self.soulseek_review_candidates.get_all(connection)
 
@@ -421,6 +432,77 @@ class DownloadService:
         results.sort(key=lambda item: (item[0].artist, item[0].title))
 
         return results
+
+    def confirm_review_candidate(self, track_id: str) -> None:
+        # Item 26 — the Review screen's SoulSeek-candidate confirm
+        # action. role='settled', deliberately: a human just manually
+        # confirmed this specific candidate is correct, a stronger
+        # signal than an algorithmic top-rank pick, so it auto-moves
+        # into the library on success rather than demanding a SECOND
+        # confirmation via ready_for_review. This required a real,
+        # audited change to poll_downloads()'s rejection handling (see
+        # CLAUDE.md item 26) — find_best_needs_review_candidate never
+        # filters on lock status, so this candidate genuinely can be
+        # locked, and a locked settled-role request now correctly
+        # retries via the same Phase 3 cascade an upgrade would, rather
+        # than failing permanently the moment it's requested.
+        with self.database.transaction() as connection:
+            candidate = self.soulseek_review_candidates.get_by_track_id(
+                track_id, connection,
+            )
+
+        if candidate is None:
+            raise ReviewCandidateNotFoundError(
+                f"No SoulSeek review candidate found for track "
+                f"{track_id}."
+            )
+
+        if candidate.size is None:
+            # A legacy row persisted before `size` existed on this
+            # table (item 26) — can't call request_download without it.
+            # Re-running `seeker download` for the track's playlist
+            # refreshes this row with a real size the normal way,
+            # rather than this method guessing or defaulting one.
+            raise ReviewCandidateMissingSizeError(
+                f"Review candidate for track {track_id} predates size "
+                f"tracking — re-run 'seeker download' for its playlist "
+                f"to refresh it before confirming."
+            )
+
+        transfer_id = self.soulseek.request_download(
+            candidate.username, candidate.filename, candidate.size,
+        )
+
+        with self.database.transaction() as connection:
+            self.download_requests.add(
+                DownloadRequest(
+                    track_id=track_id,
+                    username=candidate.username,
+                    filename=candidate.filename,
+                    format=derive_extension(candidate.filename),
+                    quality_descriptor=candidate.quality_descriptor,
+                    role="settled",
+                    transfer_id=transfer_id,
+                    size=candidate.size,
+                    requested_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
+            )
+
+        # Cleared immediately once the request is made, not once it
+        # completes — the exact same clearing trigger item 17 already
+        # established ("something real now exists for this track"), so
+        # `seeker check` never surfaces this candidate as still awaiting
+        # a decision once a decision has, in fact, been made.
+        self._clear_review_candidate(track_id)
+
+    def reject_review_candidate(self, track_id: str) -> None:
+        # No request made — just removes the candidate from view. Note,
+        # not built: nothing stops the same or a similar candidate from
+        # resurfacing on a later `download` run if it's still the
+        # best-scoring real match (no blacklist concept exists here);
+        # that's out of scope for this action.
+        self._clear_review_candidate(track_id)
 
     def poll_downloads(self) -> dict[str, int]:
         with self.database.transaction() as connection:
@@ -462,27 +544,52 @@ class DownloadService:
                     # transfer reports bytesTransferred=0, but recording
                     # that would misleadingly imply a real 0%-complete
                     # attempt rather than "never really started").
+                    #
+                    # Lock-pattern classification applies regardless of
+                    # role (item 26 correction — see CLAUDE.md item 13's
+                    # updated note): this used to be scoped to
+                    # role=='upgrade' only, on the premise that
+                    # select_downloads() never assigns a locked candidate
+                    # to 'settled', so a settled-role rejection was
+                    # "never expected to be lock-related". That premise
+                    # was already only ever approximately true even for
+                    # the ordinary search pipeline (a candidate confirmed
+                    # unlocked at search time can go offline by the time
+                    # the real request lands), and confirm_review_candidate
+                    # (item 26) makes it concretely false: a needs-review
+                    # candidate is never filtered on lock status at all,
+                    # so a human-confirmed one can be a genuinely locked
+                    # file requested as role='settled'. Retry-worthiness
+                    # is a property of the REJECTION, not of why the
+                    # download was requested, so the classification
+                    # itself is now unconditional; only the Phase 4
+                    # cascade below stays role-specific, since the
+                    # shortlist/cascade mechanism is an upgrade-only
+                    # concept.
+                    status = self._resolve_rejection_status(
+                        state, request.username, request.transfer_id,
+                    )
+                    self._update_status(request.id, status)
+
+                    if status == "failed":
+                        counts["failed"] += 1
+
                     if request.role == "upgrade":
-                        status = self._resolve_rejection_status(
-                            state, request.username, request.transfer_id,
-                        )
-                        self._update_status(request.id, status)
-
-                        if status == "failed":
-                            counts["failed"] += 1
-
                         # Phase 4 cascade: try the next shortlisted
                         # candidate for this track immediately, in this
                         # same run, regardless of why this one was
                         # rejected (locked-pattern or otherwise) — the
                         # exact same candidate has already failed either
                         # way, so there's no reason to wait a day before
-                        # trying the next best one.
+                        # trying the next best one. Scoped to
+                        # role=='upgrade' only — 'settled' has no
+                        # shortlist concept, and get_next_shortlisted()
+                        # isn't itself role-scoped, so calling this for a
+                        # 'settled' rejection could incorrectly activate
+                        # an unrelated upgrade-role shortlist entry for
+                        # the same track.
                         self._cascade_upgrade(request.track_id, counts)
-                        continue
 
-                    self._update_status(request.id, "failed")
-                    counts["failed"] += 1
                     continue
 
                 # Genuinely in progress or just succeeded — real
@@ -541,7 +648,7 @@ class DownloadService:
             # Same principle as above — one bad retry must not stop the
             # rest of the locked shortlist from being retried this run.
             try:
-                self._retry_locked_request(request)
+                self._retry_locked_request(request, counts)
             except Exception as error:
                 print(
                     f"  Failed to retry locked '{request.filename}': "
@@ -676,7 +783,9 @@ class DownloadService:
                 track_id, keep_id, connection,
             )
 
-    def _retry_locked_request(self, request: DownloadRequest) -> None:
+    def _retry_locked_request(
+            self, request: DownloadRequest, counts: dict[str, int],
+    ) -> None:
         # Phase 3 retry — reactivate an ALREADY-'locked' request. Unlike
         # _activate_shortlisted_entry above, a rejection's specific
         # reason doesn't matter here: this candidate is already
@@ -728,9 +837,31 @@ class DownloadService:
         if any(marker in state for marker in FAILED_STATE_MARKERS):
             status = "locked"
         elif "Succeeded" in state:
-            status = "ready_for_review"
+            # role='upgrade' still needs a human's confirmation via
+            # ready_for_review, exactly as before. role='settled' is
+            # only reachable here at all via a human-confirmed
+            # needs-review candidate that turned out to be locked
+            # (find_best_needs_review_candidate never filters on lock
+            # status — item 26) — that candidate was ALREADY
+            # human-confirmed once, so it auto-moves into the library
+            # like an ordinary settled success, not a second
+            # confirmation via ready_for_review.
+            status = "ready_for_review" if request.role == "upgrade" else "completed"
         else:
             status = "downloading" if state != "Requested" else "queued"
+
+        if status == "completed":
+            # Mirror poll_downloads()'s own main-loop pattern: only
+            # persist 'completed' if the file is genuinely found and
+            # moved. If not, fall back to 'downloading' — the real
+            # transfer stays reported as Succeeded by slskd on every
+            # future poll, so the next run's main pending loop retries
+            # the move instead of this row silently claiming a
+            # completion that never actually happened.
+            if self._move_completed_file(request) is not None:
+                counts["completed"] += 1
+            else:
+                status = "downloading"
 
         with self.database.transaction() as connection:
             self.download_requests.update_transfer_id_and_status(

@@ -153,6 +153,95 @@ def test_initialize_is_idempotent_on_an_already_migrated_database(
     assert columns.count("total_bytes") == 1
 
 
+def _create_pre_migration_soulseek_review_candidates_table(path):
+    # Simulates a real, existing database from before `size` existed on
+    # this table (item 26) — the exact shape this table has had since
+    # item 17 first created it, built by hand rather than via SCHEMA
+    # (which already has the new column).
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.executescript(
+        """
+        CREATE TABLE tracks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            album TEXT NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            album_art_url TEXT
+        );
+
+        CREATE TABLE soulseek_review_candidates (
+            track_id TEXT NOT NULL PRIMARY KEY,
+            username TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            score REAL NOT NULL,
+            quality_descriptor TEXT,
+            found_at TEXT NOT NULL,
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+        );
+        """
+    )
+
+    connection.execute(
+        "INSERT INTO tracks (id, title, artist, album, duration_ms) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("track-1", "ONE MORE NIGHT", "Prdk", "Album", 200_000),
+    )
+    connection.execute(
+        """
+        INSERT INTO soulseek_review_candidates (
+            track_id, username, filename, score, quality_descriptor,
+            found_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "track-1",
+            "musicmasterrdjpool",
+            "Prdk - One More Night (Clean) 4A 87.mp3",
+            70.4,
+            "mp3",
+            "2026-08-27T00:00:00+00:00",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+
+def test_initialize_adds_review_candidate_size_without_losing_existing_data(
+        tmp_path,
+):
+    db_path = tmp_path / "seeker.db"
+    _create_pre_migration_soulseek_review_candidates_table(db_path)
+
+    database = Database(db_path)
+    database.initialize()
+
+    with database.transaction() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(soulseek_review_candidates)"
+            ).fetchall()
+        }
+        assert "size" in columns
+
+        row = connection.execute(
+            "SELECT * FROM soulseek_review_candidates "
+            "WHERE track_id = 'track-1'"
+        ).fetchone()
+
+    # The real pre-existing row survived untouched on every original
+    # column, and the new column defaults to NULL, not 0 — a size-less
+    # legacy row is a distinct state (confirm_review_candidate must
+    # refuse it) from a genuine zero-byte file.
+    assert row["username"] == "musicmasterrdjpool"
+    assert row["filename"] == "Prdk - One More Night (Clean) 4A 87.mp3"
+    assert row["score"] == 70.4
+    assert row["size"] is None
+
+
 def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
     # Targeted check for the Downloads screen's new combination: the
     # backend poll timer writes real progress from a background thread

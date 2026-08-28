@@ -63,6 +63,9 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "download_requests", "total_bytes", "INTEGER"
     )
+    _add_column_if_missing(
+        connection, "soulseek_review_candidates", "size", "INTEGER"
+    )
 
 
 def _add_column_if_missing(

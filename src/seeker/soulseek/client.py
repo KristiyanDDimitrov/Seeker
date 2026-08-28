@@ -321,7 +321,7 @@ def _build_soulseek_file(
     return SoulseekFile(
         username=username,
         filename=filename,
-        extension=_derive_extension(filename),
+        extension=derive_extension(filename),
         size=size,
         length=file.get("length"),
         bit_rate=file.get("bitRate"),
@@ -335,7 +335,12 @@ def _build_soulseek_file(
     )
 
 
-def _derive_extension(filename: str) -> str:
+# Public (not _-prefixed) since item 26 reuses this for
+# DownloadService.confirm_review_candidate — a persisted
+# SoulseekReviewCandidate only has a filename, not a SoulseekFile with
+# its own .extension already derived, so it needs the same logic
+# _build_soulseek_file below already uses.
+def derive_extension(filename: str) -> str:
     basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
 
     if "." not in basename:

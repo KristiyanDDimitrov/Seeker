@@ -848,11 +848,23 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     shared"`, matched case-insensitively by substring against the one
     real confirmed string — more patterns get added here if a different
     real rejection reason for a locked file ever turns up) becomes
-    `'locked'` instead of `'failed'`. Deliberately scoped to
-    `role == 'upgrade'` only: `select_downloads` never picks a locked
-    file as `settled`, so a settled-role rejection is never expected to
-    be lock-related, and doesn't get the retry treatment even if its
-    exception text happened to match.
+    `'locked'` instead of `'failed'`.
+
+    **Correction (item 26, 2026-08-28): this classification is NOT
+    scoped to `role == 'upgrade'` any more.** It originally was, on the
+    premise that `select_downloads` never picks a locked file as
+    `settled`, so a settled-role rejection was "never expected to be
+    lock-related" and didn't get the retry treatment even if its
+    exception text happened to match. That premise held for the
+    ordinary search pipeline, but `confirm_review_candidate` (item 26)
+    requests a human-confirmed needs-review candidate as `role='settled'`
+    — and `find_best_needs_review_candidate` never filters on lock
+    status at all, so a settled-role request genuinely can be locked
+    now. The classification itself is unconditional as of item 26; only
+    the Phase 4 cascade (STEP 4/5 below) stays `role == 'upgrade'`-
+    specific, since shortlisting is an upgrade-only concept. See item 26
+    for the full reasoning and the corresponding fix to
+    `_retry_locked_request`'s success path.
 
     STEP 4 — `poll_downloads()` fetches requests already `'locked'`
     *before* this run started (a request that newly becomes `'locked'`
@@ -2649,6 +2661,134 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     read-side fix exactly, this time because the underlying duplicate
     rows themselves resolved to one real winner each, not just the
     display layer hiding the extras.
+
+26. **Frontend Step 6: Review screen — in progress (2026-08-28).** Two
+    deliberately-deferred CLI-only flows get a real UI home: item 17's
+    read-only SoulSeek needs-review tier gains its first real
+    confirm/reject action, and Phase 2's `seeker downloads review`
+    upgrade-confirmation flow gets exposed to a non-`input()` caller.
+
+    **§0 — `confirm_review_candidate(track_id)` /
+    `reject_review_candidate(track_id)` on `DownloadService` — done.**
+    `reject_review_candidate` just deletes the
+    `soulseek_review_candidates` row — no blacklist concept exists, so
+    the same or a similar candidate can resurface on a later `download`
+    run if it's still the best-scoring real match; that's a deliberate
+    non-feature, not an oversight.
+
+    **The `role` decision — sanity-checked against real consumers
+    before locking in, per the ask, and it surfaced a real, general
+    bug, not just a confirm-review edge case.** `role='settled'` was
+    the right call (a human just manually confirmed this candidate, a
+    stronger signal than an algorithmic top-rank pick, so it should
+    auto-move into the library on success rather than demanding a
+    SECOND confirmation via `ready_for_review`) — but `role='settled'`
+    as the codebase stood would have silently broken retry-on-lock:
+    `poll_downloads()`'s lock-pattern classification was scoped to
+    `role == 'upgrade'` only, on the premise (correct for the ordinary
+    search pipeline) that `select_downloads()` never assigns a locked
+    candidate to `settled`. `find_best_needs_review_candidate` never
+    filters on lock status at all, so a human-confirmed needs-review
+    candidate genuinely can be a locked file — under the old code, that
+    would fail permanently with zero retry the instant it's requested,
+    directly contradicting "reuse the existing pipeline unchanged."
+
+    Resolved by broadening the classification itself to apply
+    regardless of role — not a narrow, confirm-review-only carve-out.
+    The old `role`-scoping was really "this case doesn't happen for
+    settled," not a deliberate semantic tied to role; retry-worthiness
+    is a property of the REJECTION reason, not of why the download was
+    requested. Only the Phase 4 cascade (`_cascade_upgrade`) stays
+    `role == 'upgrade'`-specific, since `get_next_shortlisted()` isn't
+    itself role-scoped and calling it for a settled rejection could
+    incorrectly activate an unrelated upgrade-role shortlist entry for
+    the same track. See item 13's correction above for the full
+    before/after on this classification.
+
+    A second, related invariant broke under the same broadening and
+    needed its own fix: `_retry_locked_request`'s success path
+    unconditionally set `'ready_for_review'` on a successful retry,
+    correct only because a locked row had always been `role='upgrade'`
+    before now. A `role='settled'` row that becomes locked (via
+    `confirm_review_candidate`) and later succeeds on retry now
+    auto-moves and marks `'completed'` directly — the same "already
+    confirmed once" reasoning, mirroring `poll_downloads()`'s own
+    main-loop pattern (only persist `'completed'` if
+    `_move_completed_file` actually finds and moves the file; fall back
+    to `'downloading'` otherwise so the next poll retries the move
+    against the same still-`Succeeded` real transfer, rather than
+    silently claiming a completion that didn't happen).
+
+    A narrower alternative was considered and rejected: dynamically
+    choosing `role='settled'` for unlocked candidates and `role=
+    'upgrade'` only for locked ones, to avoid touching existing
+    classification at all. Falls apart on inspection — the existing
+    `ready_for_review` upgrade-confirmation UI/copy is built entirely
+    around "replace an already-downloaded file with a better one"
+    (`"Higher quality version of X ready (Y vs current Z)"`); a
+    needs-review-tier track has no local file at all, so there's no
+    "current" to compare against. Routing a locked confirm-review
+    candidate through that flow wouldn't just cost a second click, it
+    would put semantically broken copy in front of a real user.
+
+    **A real, previously-existing gap found and fixed while wiring
+    this up, not filed for later:** `SoulseekReviewCandidate` never
+    persisted `size` at all — `_record_review_candidate` only ever
+    needed it transiently at request time before this task, so it was
+    never stored. `confirm_review_candidate` needs it to call
+    `request_download`. Added a guarded/idempotent `size INTEGER`
+    column (`soulseek_review_candidates`, same
+    `_add_column_if_missing` pattern as every other schema change),
+    a matching `SoulseekReviewCandidate.size: int | None = None`
+    field, and `_record_review_candidate` now persists `file.size`.
+    `confirm_review_candidate` explicitly refuses (a new
+    `ReviewCandidateMissingSizeError`) a legacy row with `size IS
+    NULL` — this project's two real, still-live candidates (Prdk,
+    Zigi SC/A-Cray from item 17) predate this column and will need one
+    more real `seeker download` run to refresh before they can be
+    confirmed, rather than this method guessing or defaulting a size.
+    A second new `derive_extension()` (renamed from client.py's private
+    `_derive_extension` — same "shared thing moves down to the lowest
+    layer that needs it" precedent as item 21's rejection patterns) was
+    needed too: a persisted candidate has only a filename, not a
+    `SoulseekFile` with `.extension` already derived from it.
+
+    A bug in the first draft, caught before it ever ran against a real
+    test: the `DownloadRequest` built by `confirm_review_candidate`
+    initially omitted `transfer_id` entirely, silently defaulting to
+    `None` — which would have left the row permanently stuck at
+    `'queued'`, since `poll_downloads()`'s main loop skips polling any
+    row with `transfer_id is None`. Fixed before writing the tests that
+    would have caught it anyway.
+
+    Tests (`tests/test_download_service.py`): `confirm_review_candidate`
+    creates a real request with `role='settled'`, a real `transfer_id`,
+    the derived `format`, and clears the candidate row immediately (not
+    after completion, verified by checking the table count right after
+    the call, before any poll); a confirmed-then-locked candidate
+    correctly reaches `'locked'` via the ordinary `poll_downloads()`
+    path with zero special-casing in `confirm_review_candidate` itself;
+    `reject_review_candidate` deletes and requests nothing;
+    `ReviewCandidateNotFoundError`/`ReviewCandidateMissingSizeError` for
+    the two real refusal cases. Plus the general-case regression tests
+    the broadened classification itself needed, independent of the new
+    confirm-review feature: an ordinary `role='settled'` request hitting
+    the real confirmed lock-pattern text now correctly retries instead
+    of failing immediately (this is EXISTING, previously-verified
+    behavior changing — given its own dedicated test, separate from the
+    confirm-review-path test, rather than only covered incidentally); a
+    settled rejection for any OTHER reason still correctly fails, not
+    everything becomes locked; a settled rejection never triggers the
+    upgrade-only cascade even when a same-track upgrade-role shortlist
+    entry exists; and a locked `role='settled'` row that succeeds on
+    retry auto-moves and marks `'completed'` without ever touching
+    `ready_for_review`. Full suite (280 tests at this point) and
+    `mypy --strict` clean throughout.
+
+    Still to do: §1 (extract Phase 2's replace/delete-old-file logic
+    from its `input()` loop into an explicit-boolean-parameter function
+    the UI can call) and §2 (the actual two-section Qt screen), plus
+    live verification against the two real waiting candidates.
 
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
