@@ -3,6 +3,7 @@ from seeker.application import (
     _migrate_legacy_database,
     _resolve_database_path,
 )
+from seeker.config_store import SeekerConfig, save_config
 from seeker.database.connection import Database
 
 
@@ -203,3 +204,102 @@ def test_application_does_not_migrate_when_new_database_already_exists(
         ).fetchone()
 
     assert row["name"] == "Current Real Playlist"
+
+
+def test_application_soulseek_config_prefers_store_value_over_env(
+        tmp_path, monkeypatch,
+):
+    # A stale env var must never win over a value the user has since
+    # changed via (future) Settings — same guarantee config_store.py's
+    # own migration tests assert, checked here end-to-end through
+    # Application's actual resolution properties.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_BASE_URL",
+        "http://stale-env-value:5030",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_API_KEY", "stale-env-key",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_DOWNLOAD_DIR", "/stale/env/dir",
+    )
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+    data_dir.mkdir(parents=True)
+
+    # The store already has every field populated — migration (which
+    # never overwrites a populated field) is guaranteed to no-op here
+    # regardless of the real process environment.
+    save_config(
+        SeekerConfig(
+            slskd_base_url="http://current-store-value:5030",
+            slskd_api_key="current-store-key",
+            slskd_download_dir="/current/store/dir",
+        ),
+        data_dir / "config.json",
+    )
+
+    app = Application("client-id", "http://localhost/callback")
+
+    assert app.soulseek_configured is True
+    assert app._slskd_base_url == "http://current-store-value:5030"
+    assert app._slskd_api_key == "current-store-key"
+    assert app._slskd_download_dir == "/current/store/dir"
+    assert app.download_service.slskd_download_dir == "/current/store/dir"
+    assert app.soulseek_client.base_url == "http://current-store-value:5030"
+
+
+def test_application_soulseek_config_falls_back_to_env_when_store_empty(
+        tmp_path, monkeypatch,
+):
+    # An env-only setup (pre-migration, or one that intentionally never
+    # touches the config store) must keep working exactly as before.
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setenv("SLSKD_BASE_URL", "http://env-value:5030")
+    monkeypatch.setenv("SLSKD_API_KEY", "env-key")
+    monkeypatch.delenv("SLSKD_DOWNLOAD_DIR", raising=False)
+
+    # config.py's module-level constants are fixed at import time, not
+    # re-read live from os.environ — patch them directly so the
+    # property-level fallback (which reads config.SLSKD_*) is exercised
+    # against the same values the env-var monkeypatches above represent.
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_BASE_URL", "http://env-value:5030",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_API_KEY", "env-key",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_DOWNLOAD_DIR", None,
+    )
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+
+    app = Application("client-id", "http://localhost/callback")
+
+    # End-to-end: startup migration copies the env values into the
+    # (empty) store, and resolution reflects them correctly either way.
+    assert app.soulseek_configured is True
+    assert app._slskd_base_url == "http://env-value:5030"
+    assert app._slskd_api_key == "env-key"
+    assert app._slskd_download_dir is None
+
+    # Isolate the property-level fallback itself, independent of
+    # migration having already copied the values into the store — force
+    # the store back to empty and confirm resolution still works.
+    app._config_store = SeekerConfig()
+
+    assert app.soulseek_configured is True
+    assert app._slskd_base_url == "http://env-value:5030"
+    assert app._slskd_api_key == "env-key"
+    assert app._slskd_download_dir is None

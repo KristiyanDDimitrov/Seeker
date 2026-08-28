@@ -4,6 +4,11 @@ from pathlib import Path
 import platformdirs
 
 from seeker import config
+from seeker.config_store import (
+    SeekerConfig,
+    migrate_legacy_slskd_env_config,
+    resolve_config_path,
+)
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -77,6 +82,14 @@ class Application:
 
         self.database.initialize()
 
+        # Same ordering principle as the DB migration above: run before
+        # anything constructs a SoulseekClient, so soulseek_client/
+        # soulseek_configured/download_service below always see the
+        # post-migration config store state.
+        self._config_store: SeekerConfig = migrate_legacy_slskd_env_config(
+            resolve_config_path()
+        )
+
         self.auth_manager = SpotifyAuthManager(
             client_id=spotify_client_id,
             redirect_uri=spotify_redirect_uri,
@@ -138,6 +151,24 @@ class Application:
         return self._track_matcher
 
     @property
+    def _slskd_base_url(self) -> str | None:
+        # Config store value takes precedence — env is only a fallback
+        # for a setup that hasn't gone through migration (or is
+        # env-only by choice). See config_store.py.
+        return self._config_store.slskd_base_url or config.SLSKD_BASE_URL
+
+    @property
+    def _slskd_api_key(self) -> str | None:
+        return self._config_store.slskd_api_key or config.SLSKD_API_KEY
+
+    @property
+    def _slskd_download_dir(self) -> str | None:
+        return (
+            self._config_store.slskd_download_dir
+            or config.SLSKD_DOWNLOAD_DIR
+        )
+
+    @property
     def soulseek_configured(self) -> bool:
         # Deliberately a cheap config check, not a soulseek_client access
         # — the latter raises when unconfigured, and `check` (unlike the
@@ -145,20 +176,20 @@ class Application:
         # up at all (see config.py). CLI code checks this before calling
         # anything that would otherwise force soulseek_client into
         # existence just to read already-persisted review candidates.
-        return bool(config.SLSKD_BASE_URL and config.SLSKD_API_KEY)
+        return bool(self._slskd_base_url and self._slskd_api_key)
 
     @property
     def soulseek_client(self) -> SoulseekClient:
         if self._soulseek_client is None:
-            if not config.SLSKD_BASE_URL:
+            if not self._slskd_base_url:
                 raise RuntimeError("SLSKD_BASE_URL is not configured.")
 
-            if not config.SLSKD_API_KEY:
+            if not self._slskd_api_key:
                 raise RuntimeError("SLSKD_API_KEY is not configured.")
 
             self._soulseek_client = SoulseekClient(
-                config.SLSKD_BASE_URL,
-                config.SLSKD_API_KEY,
+                self._slskd_base_url,
+                self._slskd_api_key,
             )
 
         return self._soulseek_client
@@ -176,7 +207,7 @@ class Application:
                 TrackMatchRepository(self.database),
                 LocalFileRepository(self.database),
                 SoulseekReviewCandidateRepository(self.database),
-                config.SLSKD_DOWNLOAD_DIR,
+                self._slskd_download_dir,
             )
 
         return self._download_service

@@ -1458,5 +1458,122 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     playlists correctly — confirming the guard against re-migrating or
     double-running is genuinely idempotent, not just implemented.
 
+19. **Frontend Phase 0, Task 1 — local JSON config store for
+    SoulSeek/slskd settings, with legacy `.env` migration — done
+    (2026-08-28).** Groundwork for a future onboarding wizard/Settings
+    screen: those need something they can write to directly, not a
+    `.env` file a human hand-edits. `.env` conceptually narrows to just
+    `SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI` (genuinely fixed at
+    install time) — `SLSKD_BASE_URL`/`SLSKD_API_KEY`/`SLSKD_DOWNLOAD_DIR`
+    move to a small JSON store the app owns. `config.py` itself is
+    unchanged (still reads all five vars from `.env`/`os.environ`) —
+    the SLSKD_* reads there are still needed as the migration source and
+    as the fallback described below, so removing them wasn't the ask;
+    only what a *new* setup should ever need to hand-edit narrows.
+
+    New `config_store.py`: a typed `SeekerConfig` dataclass
+    (`slskd_base_url`/`slskd_api_key`/`slskd_download_dir`, all
+    `str | None = None`) rather than a generic dict, matching this
+    codebase's existing typing discipline. Deliberately **excludes**
+    SoulSeek network username/password — nothing consumes them yet
+    (`SoulseekClient` only ever needed `base_url`+`api_key` for slskd's
+    REST API); those get added when the onboarding wizard that actually
+    generates slskd's own config is built, not speculatively now.
+    `resolve_config_path()` mirrors `application.py`'s
+    `_resolve_database_path()` exactly — same
+    `platformdirs.user_data_dir("Seeker", appauthor=False)` directory
+    the database lives in (item 18), `config.json` alongside
+    `seeker.db`. `load_config`/`save_config` are a plain JSON
+    round-trip; a missing file, a partial/old-shape file (missing
+    keys), or genuinely corrupt JSON all resolve to all-`None`
+    defaults rather than crashing — this is deliberately *not*
+    versioned/guarded-migration machinery the way the DB schema is,
+    since a flat JSON file with defaulted optional fields is inherently
+    additive. `save_config` chmods the file `0600` where the OS
+    supports POSIX permission semantics (a no-op on Windows) — this
+    file will eventually hold real credentials, even though this task
+    doesn't add any yet.
+
+    `migrate_legacy_slskd_env_config(path)` mirrors
+    `_migrate_legacy_database`'s contract field-by-field rather than
+    whole-file: a field the store already has a value for is never
+    overwritten from `.env` (guards a stale env var from clobbering a
+    value changed since via a future Settings screen); a field the
+    store is missing gets copied in from the matching env var if set,
+    saved, and reported in one summary print naming exactly which env
+    vars were migrated; nothing to migrate is a genuine no-op with no
+    output; running it twice produces no second migration message —
+    confirmed via a real idempotency test, not just asserted by
+    inspection. The real `.env` file itself is never read from or
+    written to directly — only `os.environ` (already populated by
+    `config.py`'s `load_dotenv()`, which runs at import time) is read,
+    so nothing about the user's `.env` file changes.
+
+    `Application.__init__` calls this once, right after
+    `Database.initialize()` and before anything can construct a
+    `SoulseekClient` — same ordering principle as the DB migration
+    itself. `soulseek_configured`/`soulseek_client`/`download_service`
+    now resolve `base_url`/`api_key`/`download_dir` through three new
+    private properties (`_slskd_base_url`/`_slskd_api_key`/
+    `_slskd_download_dir`), each `self._config_store.<field> or
+    config.SLSKD_*` — config store wins, `.env` is the fallback. This
+    preserves exact existing behavior for anyone who hasn't been
+    through migration yet (env-only stays working) while letting a
+    future Settings write reach the store and take effect without
+    touching `.env` at all.
+
+    **A real gotcha caught while writing the Application-level
+    integration test, not left implicit:** `config.py`'s
+    `SLSKD_BASE_URL`/`SLSKD_API_KEY`/`SLSKD_DOWNLOAD_DIR` are plain
+    module-level constants fixed once at import time — `monkeypatch
+    .setenv` on `os.environ` has zero effect on them after the fact
+    (unlike `config_store.py`'s own migration function, which reads
+    `os.environ` live via `os.getenv` on every call and IS correctly
+    affected by env monkeypatching). A test asserting the
+    store-empty-falls-back-to-env property path has to monkeypatch
+    `seeker.application.config.SLSKD_*` directly, not just
+    `os.environ` — `tests/test_application.py`'s two new
+    Application-level tests do both (env vars, for the real migration
+    step to pick up live; the frozen `config.*` constants, for the
+    property fallback itself) and explicitly re-null the config store
+    after construction to isolate the fallback branch from migration
+    already having copied the value in.
+
+    Tests: `tests/test_config_store.py` covers path resolution,
+    save/load round-trip, missing/partial/corrupt-JSON loads, the
+    `0600` permission check (skipped on Windows, same treatment as the
+    drive-unmounted skip elsewhere in this suite), and all of the
+    migration contract points above (copy-when-empty, never-overwrite,
+    no-op, idempotent, partial-fields-only). Every migration test
+    explicitly clears all three `SLSKD_*` env vars before setting only
+    the ones it means to exercise — caught for real during this task:
+    the first version of `test_migrate_never_overwrites_value_already
+    _in_store` only set `SLSKD_BASE_URL` and left the real project
+    `.env`'s own `SLSKD_API_KEY`/`SLSKD_DOWNLOAD_DIR` values live in
+    `os.environ`, so the test unexpectedly migrated those two for
+    real (into a `tmp_path` store, harmlessly, but the test's own
+    "no output" assertion failed) — fixed by adding a shared
+    `_clear_slskd_env` helper used at the top of every migration test
+    that doesn't explicitly set all three fields itself, rather than
+    depending on whichever machine happens to run the suite.
+    `tests/test_application.py` adds two full `Application()`
+    integration tests: config store values winning over a
+    deliberately-different env value across all three fields and every
+    consumer (`soulseek_configured`, `soulseek_client.base_url`,
+    `download_service.slskd_download_dir`); and the env-only fallback
+    path, both end-to-end (through real migration) and isolated
+    (store forced back to empty post-construction).
+
+    **Explicitly not run for real against this machine's actual `.env`
+    or config directory**, per the ask — this is a real, once-only
+    action on real user state (even though `.env` itself is never
+    touched, it changes what the running app reads), held back for an
+    explicit go-ahead the same way Phase B's real tag-write and the DB
+    migration itself were both held back until asked for directly.
+    Confirmed no stray `config.json` exists at the real
+    `~/Library/Application Support/Seeker` location after building and
+    testing this — every test redirects `platformdirs.user_data_dir`
+    into `tmp_path` first.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
