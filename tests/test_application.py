@@ -534,3 +534,55 @@ def test_persist_soulseek_config_updates_store_disk_and_resets_client(
     reloaded = load_config(resolve_config_path())
     assert reloaded.slskd_username == "real-username"
     assert reloaded.slskd_password == "real-password"
+
+
+def test_download_service_constructs_without_soulseek_configured(
+        tmp_path, monkeypatch,
+):
+    # Real gap found building Settings (Step 8): download_service used
+    # to eagerly construct a SoulseekClient, so accessing it at all
+    # raised when SoulSeek wasn't configured — even for
+    # set_destination()/get_review_candidates(), which never touch
+    # SoulSeek. SoulSeek is the wizard's own optional, skippable step,
+    # so this was a real usability gap, not a hypothetical one.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_BASE_URL", None,
+    )
+    monkeypatch.setattr("seeker.application.config.SLSKD_API_KEY", None)
+    app._config_store = SeekerConfig()
+
+    assert app.soulseek_configured is False
+
+    service = app.download_service  # must not raise
+
+    with pytest.raises(RuntimeError, match="SoulSeek is not configured"):
+        service.soulseek
+
+
+def test_persist_soulseek_config_resets_cached_download_service(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "seeker.application.config.SLSKD_BASE_URL", None,
+    )
+    monkeypatch.setattr("seeker.application.config.SLSKD_API_KEY", None)
+    app._config_store = SeekerConfig()
+
+    # Accessed once while genuinely unconfigured — this cached instance
+    # must not linger forever once real credentials land.
+    unconfigured_service = app.download_service
+    assert unconfigured_service._soulseek_client is None
+
+    app.persist_soulseek_config(
+        "http://localhost:5030",
+        "real-api-key",
+        "/data/downloads",
+        "real-username",
+        "real-password",
+    )
+
+    assert app._download_service is None
+    assert app.download_service is not unconfigured_service
+    assert app.download_service.soulseek is not None  # must not raise

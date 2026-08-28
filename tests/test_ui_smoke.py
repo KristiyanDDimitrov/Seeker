@@ -186,6 +186,21 @@ def test_main_window_constructs_without_crashing(qtbot):
     assert window.windowTitle() == "Seeker"
 
 
+def test_main_window_has_a_settings_button(qtbot):
+    # Thin glue coverage only — opening the real SettingsWindow needs a
+    # real Application (library_service.list_locations, sync_service,
+    # download_service, _config_store, etc.), which this file's simpler
+    # FakeApplication doesn't model. The real substance is covered
+    # directly in tests/test_settings_window.py against a real
+    # Application; this just confirms the entry point exists.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.settings_button.text() == "Settings"
+    assert window.settings_button.isEnabled()
+
+
 def test_main_window_populates_playlist_list_from_service(qtbot):
     playlists = [Playlist(id="p1", name="Test Playlist", track_count=3)]
     application = FakeApplication(playlists=playlists)

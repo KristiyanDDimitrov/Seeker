@@ -101,7 +101,7 @@ class DownloadService:
     def __init__(
         self,
         database: Database,
-        soulseek_client: SoulseekClient,
+        soulseek_client: SoulseekClient | None,
         playlist_repository: PlaylistRepository,
         track_repository: TrackRepository,
         library_location_repository: LibraryLocationRepository,
@@ -113,7 +113,17 @@ class DownloadService:
         get_config: Callable[[], SeekerConfig] | None = None,
     ):
         self.database = database
-        self.soulseek = soulseek_client
+        # None only when SoulSeek genuinely isn't configured — Step 8's
+        # Settings screen needs to construct a real, usable
+        # DownloadService for set_destination()/get_review_candidates()/
+        # get_pending_upgrade_reviews() (none of which ever touch
+        # SoulSeek at all) without a working slskd connection. A method
+        # that DOES need it (download_playlist, poll_downloads, ...)
+        # raises a clear error via the `soulseek` property below,
+        # rather than making construction itself impossible the way
+        # Application.soulseek_client's own eager raise already does
+        # for anything that goes through it directly.
+        self._soulseek_client = soulseek_client
         self.playlists = playlist_repository
         self.tracks = track_repository
         self.locations = library_location_repository
@@ -127,6 +137,15 @@ class DownloadService:
         # needing DownloadService itself reconstructed.
         self._get_config = get_config or (lambda: SeekerConfig())
         self.slskd_download_dir = slskd_download_dir
+
+    @property
+    def soulseek(self) -> SoulseekClient:
+        if self._soulseek_client is None:
+            raise RuntimeError(
+                "SoulSeek is not configured (SLSKD_BASE_URL/SLSKD_API_KEY)."
+            )
+
+        return self._soulseek_client
 
     def set_destination(
         self,

@@ -2962,7 +2962,134 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
 
 ### 28
 
-28. **Frontend Step 8: Settings — in progress (2026-08-30).**
+28. **Frontend Step 8: Settings — done (2026-08-30).**
+
+    **§1/§2 — library locations and playlist destinations — done,
+    straightforward wiring as scoped, plus one real gap found and
+    fixed along the way.** Both sections are thin `QTableWidget`/form
+    UI over already-complete service methods
+    (`LibraryService.list_locations`/`add_location`/`remove_location`,
+    `DownloadService.set_destination`) — no new backend logic needed
+    for either, confirmed by reading each method fully before wiring
+    anything.
+
+    Checked the CLI's own `library remove` before deciding whether
+    Settings needed a confirmation prompt on its own "Remove" button:
+    `cli.py::handle_library`'s `remove` branch calls
+    `library_service.remove_location(name)` with zero `input()`
+    anywhere, and `LibraryService.remove_location` itself has no
+    confirmation logic either — grepped for it directly rather than
+    assuming. Matched that design exactly; no prompt added.
+
+    Extracted the wizard's "Choose your music library" folder-picker
+    flow into `ui/library_location_picker.py::pick_and_add_library_location()`
+    rather than rebuilding it, per the brief's explicit instruction.
+    The wizard's original `_on_choose_library_folder_clicked` set
+    `self.library_path_label.setText(path)` immediately after the
+    native picker returned, BEFORE the (worker-routed, so
+    technically-async even though near-instant) `add_location()` call
+    even started — a real UX detail that had to be preserved, not
+    simplified away in the extraction. Added an `on_path_picked`
+    callback specifically for this, fired synchronously inside the
+    shared function right after a real path is chosen — the wizard
+    passes `self.library_path_label.setText` directly as this
+    callback, Settings doesn't use it at all (its own status label
+    covers the "in progress" case well enough via `run_worker`'s
+    normal button-disable + `status_label` reset). The wizard
+    hardcodes `name="Library"` (a real, deliberate single-location
+    onboarding simplification, not an oversight — see item 23);
+    Settings' own "Add location" form collects a real user-typed name,
+    since listing/managing multiple named locations is the whole point
+    of this tab.
+
+    **A real, reachable bug found while wiring the destinations tab,
+    not a hypothetical edge case — fixed in the same pass.** The
+    naive implementation (`self.application.download_service
+    .set_destination(...)`) failed immediately in a real test with
+    `RuntimeError: SLSKD_BASE_URL is not configured.` — not from
+    `set_destination` itself (confirmed by reading its full body: pure
+    `self.playlists`/`self.locations` DB operations, zero reference to
+    `self.soulseek` anywhere), but from
+    `Application.download_service`'s own property, which
+    unconditionally evaluated `self.soulseek_client` (itself raising
+    when unconfigured) as an argument to `DownloadService(...)` before
+    the constructor ever ran. Since the onboarding wizard's SoulSeek
+    step is explicitly optional and skippable (item 23's own design),
+    and `main_ui.py` routes straight to the dashboard once just
+    Spotify + a library location are done, a real user who skipped
+    SoulSeek setup would hit this exact error trying to do something
+    that has nothing to do with SoulSeek at all — confirmed this is
+    the SAME root-cause class item 17 already found and fixed once for
+    `check`'s needs-review section, not a coincidence: `Application
+    .download_service`'s eager construction has now caused this twice.
+
+    Item 17's own fix (a cheap `soulseek_configured` check the CALLER
+    consults before ever touching `download_service`) doesn't apply
+    here, though — Settings genuinely needs to call
+    `download_service.set_destination()`, not merely avoid touching
+    the property. Fixed at the actual source this time: `DownloadService
+    .__init__`'s `soulseek_client` parameter became `SoulseekClient |
+    None`, stored as `self._soulseek_client` instead of the previous
+    plain `self.soulseek` attribute assignment; a new `soulseek`
+    property raises the identical `RuntimeError` message as before,
+    but only when something that genuinely needs it
+    (`download_playlist`, `poll_downloads`,
+    `_retry_locked_request`, `confirm_review_candidate`, ...) actually
+    calls it — not at construction time. Every existing internal
+    `self.soulseek.xxx(...)` call site keeps working completely
+    unchanged, since the property resolves to the exact same object a
+    plain attribute would have. `Application.download_service` now
+    passes `self.soulseek_client if self.soulseek_configured else
+    None` — confirmed no existing test broke (every test constructing
+    `DownloadService` still passes a real client positionally, which
+    remains fully valid under the widened `SoulseekClient | None`
+    type). `persist_soulseek_config` (§3) additionally resets
+    `self._download_service = None`, not just `self._soulseek_client
+    = None` — without this, a `DownloadService` already cached from an
+    earlier, genuinely-unconfigured moment in the same session would
+    keep its frozen `None` client forever, even after real credentials
+    land later via "Update SoulSeek credentials."
+
+    Tests: `DownloadService.soulseek` raises the clear error only when
+    actually accessed with `_soulseek_client=None`;
+    `set_destination()` genuinely works end-to-end with no SoulSeek
+    client at all (a real DB write, not just "didn't raise");
+    `Application.download_service` constructs successfully while
+    unconfigured; `persist_soulseek_config` resets the cached
+    `DownloadService`, and the freshly-reconstructed one has a real,
+    working `soulseek` property afterward. `pick_and_add_library_location`
+    tests: dialog-cancelled no-op, a real chosen path correctly
+    calling `add_location(name, path)`, `on_path_picked` firing with
+    the raw path synchronously and before the add call, and the
+    button/status_label wiring genuinely routing through
+    `run_worker`'s standard handling rather than bypassing it. Settings-
+    level tests (`tests/test_settings_window.py`, 21 tests, using a
+    real `Application()` against a real tmp_path-redirected DB — same
+    testing philosophy as `test_wizard.py`, not hand-rolled fakes,
+    since Settings is deeply wired to real service method signatures a
+    fake could silently drift out of sync with): locations list/add/
+    remove wiring; destinations list/save wiring, including reading
+    the saved value back from the real DB; the no-selection guard
+    messages for both tabs.
+
+    **A real gotcha hit writing these tests, same one item 19's own
+    test suite already documented once:** the first draft of
+    `make_application()` for this test file left this developer
+    machine's real `.env` values (`SLSKD_BASE_URL`/`SLSKD_API_KEY`/
+    etc., loaded into `os.environ` at `config.py` import time, which
+    predates any test-level `monkeypatch.chdir()`) leaking into
+    `migrate_legacy_env_config`'s migration, AND — a layer this
+    specific gotcha hadn't been hit at before — `config.py`'s
+    module-level constants (`config.SLSKD_BASE_URL` etc.) are frozen
+    at import time and untouched by `monkeypatch.delenv()` alone, so
+    `Application`'s own property-level env fallback still returned the
+    real machine's real value even after clearing `os.environ`. Fixed
+    by clearing both layers in `make_application()` — real
+    `os.environ` vars via `monkeypatch.delenv` AND the frozen
+    `seeker.application.config.*` constants via `monkeypatch.setattr`
+    — matching `test_application.py`'s own already-established
+    two-layer pattern, applied here for the first time in a
+    Settings-specific test file.
 
     **§3 — SoulSeek/Spotify connection-management extraction — done.**
     Read the onboarding wizard's Spotify and SoulSeek step code
@@ -3065,12 +3192,13 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     than assumed by running the existing suite, not just by reading the
     diff.
 
-    **Live verification, scoped deliberately per the brief:** "Test
+    **Live verification, scoped deliberately per the brief.** "Test
     connection" is safe and non-destructive against the real running
-    container — planned for real verification once the rest of the
-    Settings screen (§1/§2, and the UI itself) is in place, so it can
-    be exercised through the actual Settings UI rather than a bare
-    script. A full credential-rotation-and-recreate cycle against the
+    container — deferred at this point in the build to once the rest
+    of the Settings screen (§1/§2, and the UI itself) existed, so it
+    could be exercised through the actual Settings UI rather than a
+    bare script; see the real result recorded once that UI existed,
+    below. A full credential-rotation-and-recreate cycle against the
     real production slskd setup was NOT run for real, per the brief's
     own explicit scoping — tests plus the wizard's own already-
     established live verification (item 23) cover the underlying
@@ -3079,6 +3207,26 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     would be a genuinely disruptive action on working infrastructure
     for a task whose only actual change is *who calls* the function,
     not what it does.
+
+    **"Test connection" live-verified for real, once the Settings UI
+    existed (2026-08-30) — the X9 Pro drive and slskd both became
+    available partway through this task, unblocking this and every
+    other real-infrastructure check in this session.** Constructed the
+    real `Application()` (real config store, real production `.env`),
+    built the real `SettingsWindow` (offscreen Qt, no fakes), and
+    confirmed the Connection tab correctly rendered the real, already-
+    configured masked API key and clicked the real "Test connection"
+    button — it returned `HEALTHY` from `check_slskd_health` against
+    the real, currently-running `slskd` container and rendered
+    "Connected." on the real status label, through the real
+    worker/thread-pool pipeline, not called directly. Also confirmed,
+    live rather than assumed: the real stored `config.json`'s
+    `slskd_username`/`slskd_password` correctly display "Not
+    configured" — genuinely accurate, not a rendering bug, since that
+    file was written by the wizard's real bring-up (item 23) before
+    this task's `persist_soulseek_config` ever existed to capture
+    those two fields; they'll only populate once a real "Update
+    SoulSeek credentials" run actually happens.
 
     **§4 — editable thresholds — done. Full design reasoning, since
     this is the one genuine refactor in this step (the other three
@@ -3183,3 +3331,48 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     vars are always strings). A scoped `# type: ignore[arg-type]` with
     an inline comment, same discipline as the existing
     `seeker.metadata` mypy override for mutagen's missing stubs.
+
+    **Live-verified for real against the production database (2026-08-30),
+    the drive/slskd having become available partway through this
+    session.** Set the real thresholds via the real `SettingsWindow`
+    (offscreen Qt, real `Application`): `auto_match_threshold` field
+    to `"70.0"`, `needs_review_threshold` to `"60.0"`, clicked real
+    Save. Confirmed both in-memory (`app._config_store`) and on disk
+    (`load_config(resolve_config_path())`) immediately reflected the
+    new values.
+
+    Ran a real `seeker download "Test"` in the same session, no
+    restart, right after. Real output:
+    ```
+    Searching: Prdk - ONE MORE NIGHT
+      Requested from musicmasterrdjpool: DJPOOLS\2026\MONTHS\FEB\20\The Mash Up 20 FEB\Prdk - One More Night (Clean) 4A 87.mp3
+      Already in progress for Balron, Audio - Breach (queued) — skipping.
+    Searching: Zigi SC, A-Cray - Bit Perfect
+      Requested from DJ-Promo: AUDIO1\2026\07-JUL\25\Beatport Best of Independent Artist June 2026\A-Cray, Zigi SC - Bit Perfect (Original Mix) [www.dj-promo.org].mp3
+      Already in progress for Jade Venom - Scared Now? - DIVERGENCE VI (locked) — skipping.
+    Requested 2 download(s), skipped 2, failed 0 (of 4 unmatched tracks).
+    ```
+    Both Prdk and Zigi SC/A-Cray — the exact same real candidates
+    (same peer usernames, same filenames) that had been sitting in
+    `soulseek_review_candidates` since item 17 — were genuinely
+    requested this run, not just re-scored in isolation. Confirmed
+    directly via `sqlite3` against the real database, not inferred
+    from the printed output alone: both landed real `download_requests`
+    rows with `role='settled'`, `status='queued'`; `soulseek_review_candidates`
+    was completely empty immediately afterward, confirming item 17's
+    stale-review-candidate-clearing logic (`download_playlist`'s
+    `settled is not None or upgrade_shortlist` clear-trigger) fired
+    correctly for both. A follow-up real `seeker downloads status`
+    showed both had already progressed to `Downloading` for real.
+
+    This is a genuine, complete, end-to-end proof that a threshold
+    changed through the real Settings UI reaches the real
+    `download_playlist()` code path with zero restart in between —
+    not a synthetic reproduction of the mechanism, the actual
+    real-world scenario the whole feature exists for. (Real,
+    honestly-noted side effect: this run created two genuine real
+    Soulseek download requests against real peers as a direct,
+    intended consequence of the verification the task asked for — not
+    an accident, but worth naming since it's a real action on live,
+    external infrastructure, same disclosure discipline as every other
+    live-verification note in this file.)

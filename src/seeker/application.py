@@ -220,6 +220,12 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
         self._soulseek_client = None
+        # A DownloadService constructed earlier in this session (e.g.
+        # Settings' destinations tab, before SoulSeek was ever set up)
+        # may have been built with soulseek_client=None — without this
+        # reset too, it would keep raising on any SoulSeek-dependent
+        # method forever, even after real credentials just landed.
+        self._download_service = None
 
     @property
     def spotify(self) -> SpotifyClient:
@@ -313,9 +319,21 @@ class Application:
     @property
     def download_service(self) -> DownloadService:
         if self._download_service is None:
+            # soulseek_configured, not self.soulseek_client directly —
+            # the latter raises immediately when unconfigured, which
+            # would make DownloadService itself unconstructable even
+            # for methods that never touch SoulSeek at all
+            # (set_destination, get_review_candidates,
+            # get_pending_upgrade_reviews — Settings needs all three
+            # usable regardless of SoulSeek setup, since it's the
+            # wizard's own optional, skippable step). DownloadService's
+            # own `soulseek` property raises the same clear error, just
+            # deferred to the point a method that genuinely needs it is
+            # actually called — same end-user-visible outcome for the
+            # CLI/download path, no regression there.
             self._download_service = DownloadService(
                 self.database,
-                self.soulseek_client,
+                self.soulseek_client if self.soulseek_configured else None,
                 PlaylistRepository(self.database),
                 TrackRepository(self.database),
                 LibraryLocationRepository(self.database),

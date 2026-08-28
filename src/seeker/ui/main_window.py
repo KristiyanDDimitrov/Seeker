@@ -35,6 +35,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
+from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import run_worker
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
@@ -237,6 +238,10 @@ class MainWindow(QMainWindow):
         self.download_button = QPushButton("Download selected playlist")
         self.download_button.clicked.connect(self._on_download_clicked)
         toolbar.addWidget(self.download_button)
+
+        self.settings_button = QPushButton("Settings")
+        self.settings_button.clicked.connect(self._on_settings_clicked)
+        toolbar.addWidget(self.settings_button)
 
     def _build_tagging_controls(self) -> QHBoxLayout:
         # Shared by all three triggers (per-track, "Tag selected",
@@ -843,3 +848,12 @@ class MainWindow(QMainWindow):
             status_label=self.status_label,
             on_finished=lambda _: self._poll_selected_playlist(),
         )
+
+    def _on_settings_clicked(self) -> None:
+        # A held reference is required — a local-only QMainWindow with
+        # nothing else pointing at it gets garbage-collected as soon as
+        # this method returns (same class of bug item 22's
+        # _active_workers registry exists to prevent, applied here to
+        # a window instead of a worker).
+        self.settings_window = SettingsWindow(self.application)
+        self.settings_window.show()

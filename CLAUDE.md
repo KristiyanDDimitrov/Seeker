@@ -777,13 +777,77 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     mocks — so it wasn't run, rather than performing a hollow "ran the
     command" step that confirms nothing real. [HISTORY §27](docs/HISTORY.md#27)
 
-28. **Frontend Step 8: Settings — in progress (2026-08-30).** A new
-    Settings screen exposing config-store values the UI had no way to
+28. **Frontend Step 8: Settings — done (2026-08-30).** A new
+    `SettingsWindow` (opened via a "Settings" toolbar button on
+    `MainWindow`) exposing config-store values the UI had no way to
     view or edit before now: library locations, playlist destinations,
     SoulSeek/Spotify connection management, and (the one genuine
     refactor in this step, not just wiring) editable match-classification
-    thresholds. Sections built and documented incrementally, same
-    pattern as item 26's §0/§1/§2.
+    thresholds. Four tabs, one per section below.
+
+    **§1 — library locations — done.** List (name/path/reachable),
+    add, remove — thin wiring over `LibraryService.list_locations`/
+    `add_location`/`remove_location`, no new backend logic. **No
+    confirmation prompt on Remove** — checked the CLI's own `library
+    remove` first (`handle_library`'s `remove` branch, `LibraryService
+    .remove_location` itself) and confirmed neither has one; adding a
+    heavier gate in Settings than the CLI's own established design
+    calls for would be inconsistent, same reasoning already applied to
+    the tagging panel's own no-confirmation design (item 27).
+
+    New `ui/library_location_picker.py::pick_and_add_library_location()`
+    — the wizard's own "Choose your music library" folder-picker flow,
+    extracted so both the wizard and Settings' "Add location" call the
+    identical native-picker-then-register flow instead of a second
+    copy. The wizard hardcodes `name="Library"` (single-location
+    onboarding assumption); Settings passes a real user-typed name,
+    since it supports multiple named locations. An `on_path_picked`
+    callback (fires synchronously the moment a path is chosen, before
+    the worker-routed `add_location()` call even starts) preserves the
+    wizard's existing immediate-label-feedback behavior — the
+    extraction needed this to stay behavior-identical, not simplify it
+    away.
+
+    **§2 — playlist destinations — done.** A playlist list + a
+    location dropdown + a subfolder field, calling the existing
+    `DownloadService.set_destination(playlist_name, location_name,
+    subfolder)` directly — no new backend logic, as scoped.
+
+    **A real, pre-existing usability gap found and fixed while wiring
+    this up, not filed for later.** `Application.download_service`'s
+    property used to eagerly construct a real `SoulseekClient` (raising
+    if `SLSKD_BASE_URL`/`SLSKD_API_KEY` aren't set) as part of building
+    `DownloadService` itself — so merely *accessing* `download_service`
+    to call `set_destination()` (which never touches SoulSeek at all)
+    already failed for anyone who hadn't set up SoulSeek yet. Since
+    SoulSeek is the wizard's own optional, skippable third step, a real
+    user could easily reach Settings in exactly that state — this was a
+    genuine, reachable bug, not a hypothetical one, discovered by
+    actually building the destinations tab and hitting it live in a
+    test. Same root-cause class item 17 already fixed once for
+    `check`'s needs-review section (`soulseek_configured` as a cheap
+    check *before* touching `download_service`) — but that pattern
+    doesn't help here, since Settings genuinely needs to *use*
+    `download_service.set_destination()`, not just avoid touching it.
+
+    Fixed at the actual source instead: `DownloadService.__init__`'s
+    `soulseek_client` parameter is now `SoulseekClient | None`, stored
+    as `self._soulseek_client`; a new `soulseek` property raises the
+    same clear `RuntimeError` as before, but only when a method that
+    genuinely needs it (`download_playlist`, `poll_downloads`,
+    `confirm_review_candidate`, ...) is actually called — not at
+    construction. `Application.download_service` now passes
+    `self.soulseek_client if self.soulseek_configured else None`
+    instead of always forcing construction. `set_destination`/
+    `get_review_candidates`/`get_pending_upgrade_reviews` never
+    reference `self.soulseek` at all, so all three now work correctly
+    regardless of SoulSeek setup — confirmed directly, not just
+    inferred from the diff. `persist_soulseek_config` (§3) additionally
+    resets `self._download_service = None`, not just
+    `self._soulseek_client = None` — a `DownloadService` built earlier
+    in the session while genuinely unconfigured would otherwise keep
+    its `None` client forever, even after real credentials land later
+    in the same session.
 
     **§3 — SoulSeek/Spotify connection-management extraction — done.**
     Two pieces of wizard-only logic extracted onto `Application` itself
@@ -838,6 +902,23 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     all five fields and resets `_soulseek_client`; `slskd_data_dir()`
     resolves the platformdirs path correctly from its new home.
     `mypy --strict` clean; full suite 323 passed.
+
+    **"Test connection" live-verified for real (2026-08-30)**, once
+    the Settings UI itself existed to exercise it through, per the
+    original plan — a real `SettingsWindow.test_connection_button`
+    click against the real, currently-running production `slskd`
+    container returned `HEALTHY` and rendered "Connected." The real
+    stored config's `slskd_username`/`slskd_password` correctly
+    displayed "Not configured" — confirmed accurate, not a bug: the
+    real setup's `config.json` predates this task's fields entirely
+    (it was written by the wizard before `persist_soulseek_config`
+    ever captured them), so there's genuinely nothing there yet; only
+    a real "Update SoulSeek credentials" run would populate them. A
+    full credential-rotation-and-recreate cycle against the real
+    production container was still NOT run for real, per the original
+    scoping — genuinely disruptive to working infrastructure for no
+    new information beyond what `bring_up_slskd`'s own existing tests
+    and item 23's live verification already cover.
 
     **§4 — editable auto-match/needs-review thresholds — done.**
     `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD` stay hardcoded
@@ -901,10 +982,31 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     becomes a real requested download once the config value is lowered
     below its real score, mid-session, same service instance. Config
     round-trip tests for all four new `SeekerConfig` fields.
-    `mypy --strict` clean; full suite 316 passed (no skips — the X9 Pro
-    drive is attached again this session, unblocking the
-    drive-unmounted-skip tests too — unrelated to this task, just
-    incidentally true for this run).
+
+    **Live-verified for real against the production DB, X9 Pro drive
+    and slskd both attached again this session (2026-08-30).** Set
+    `auto_match_threshold=70.0`/`needs_review_threshold=60.0` via the
+    real `SettingsWindow` (offscreen Qt, real `Application`) — saved
+    correctly both in-memory and to the real `config.json` on disk. A
+    real `seeker download "Test"` immediately afterward (same session,
+    no restart) moved BOTH real reference candidates from
+    item 17 out of `soulseek_review_candidates` into genuinely
+    requested `download_requests` rows (`role='settled'`,
+    `status='queued'`, confirmed directly via `sqlite3` against the
+    real DB, not just CLI output) — Prdk from the same real peer
+    (`musicmasterrdjpool`) and file it had been sitting on since item
+    17, Zigi SC/A-Cray likewise (`DJ-Promo`). `soulseek_review_candidates`
+    was empty immediately after, confirming item 17's stale-candidate-
+    clearing logic fired correctly. A follow-up `seeker downloads
+    status` showed both genuinely transition to `Downloading` — this
+    is a real, live, end-to-end confirmation that a Settings-driven
+    threshold change reaches the exact same code path a real `download`
+    run uses, with no restart in between.
+
+    `mypy --strict` clean; full suite 352 passed (no skips this run —
+    the X9 Pro drive is attached and slskd is up again this session,
+    unblocking the drive-unmounted-skip tests too — unrelated to this
+    task's own scope, just incidentally true for this run).
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

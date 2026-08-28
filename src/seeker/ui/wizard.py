@@ -8,7 +8,6 @@ from pathlib import Path
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -32,6 +31,7 @@ from seeker.docker_setup import (
     slskd_data_dir,
 )
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
+from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.workers import run_worker
 
 # Untuned constants, flagged same as every other threshold in this
@@ -224,26 +224,16 @@ class OnboardingWizard(QMainWindow):
         return page
 
     def _on_choose_library_folder_clicked(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self, "Choose Music Folder",
-        )
-
-        if not path:
-            return
-
-        self.library_path_label.setText(path)
-
-        def do_add_location() -> str:
-            location = self.application.library_service.add_location(
-                "Library", path,
-            )
-            return location.path
-
-        run_worker(
+        pick_and_add_library_location(
+            self,
             self.thread_pool,
-            do_add_location,
+            self.application,
+            "Library",
             status_label=self.library_status_label,
-            on_finished=self._advance_from_library,
+            on_path_picked=self.library_path_label.setText,
+            on_finished=lambda location: self._advance_from_library(
+                location.path
+            ),
         )
 
     def _advance_from_library(self, location_path: str) -> None:

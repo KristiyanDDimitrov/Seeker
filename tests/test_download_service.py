@@ -61,6 +61,49 @@ def test_single_source_of_truth_for_recognized_rejection_patterns():
     )
 
 
+def test_soulseek_property_raises_clear_error_when_client_is_none(tmp_path):
+    # Step 8: Application.download_service now constructs DownloadService
+    # with soulseek_client=None when SoulSeek isn't configured, rather
+    # than making construction itself impossible — methods that never
+    # touch SoulSeek (set_destination, get_review_candidates, ...) must
+    # stay usable. Anything that DOES need it raises a clear error at
+    # the point of actual use instead.
+    service = make_service(tmp_path, states={}, get_config=None)
+    service._soulseek_client = None
+
+    with pytest.raises(RuntimeError, match="SoulSeek is not configured"):
+        service.soulseek
+
+
+def test_set_destination_works_without_soulseek_configured(tmp_path):
+    # The real gap this was built to fix: a user who skipped the
+    # wizard's optional SoulSeek step must still be able to set
+    # playlist destinations via Settings.
+    service = make_service(tmp_path, states={})
+    service._soulseek_client = None
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    with service.database.transaction() as connection:
+        service.locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=0), connection,
+        )
+
+    service.set_destination("Test", "Main", "DnB")  # must not raise
+
+    with service.database.transaction() as connection:
+        playlist = service.playlists.get_by_name("Test", connection)
+
+    assert playlist.download_subfolder == "DnB"
+
+
 def test_build_search_query_strips_comma_from_multi_artist_track():
     # track.artist may credit multiple artists joined with ", " (e.g.
     # "MK, Dom Dolla") — the literal comma isn't a sane search string,
