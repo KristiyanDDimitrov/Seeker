@@ -1875,6 +1875,80 @@ def test_review_pending_upgrades_no_leaves_ready_for_review(
     assert not (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
 
 
+def _get_ready_for_review_request_id(service: DownloadService) -> int:
+    request = service._get_ready_for_review()[0]
+    assert request.id is not None
+    return request.id
+
+
+def test_get_upgrade_review_details_resolves_current_file_and_old_path(
+        tmp_path,
+):
+    # The extracted read-only accessor both the CLI wrapper and the
+    # future Review screen build their display/prompts from.
+    service, lib_root = _seed_upgrade_scenario(tmp_path)
+    request_id = _get_ready_for_review_request_id(service)
+
+    details = service.get_upgrade_review_details(request_id)
+
+    assert details is not None
+    assert details.track.id == "t1"
+    assert details.current_description == "mp3"
+    assert details.old_file_path == str(lib_root / "old.mp3")
+
+
+def test_get_upgrade_review_details_none_for_missing_request(tmp_path):
+    service = make_service(tmp_path, {})
+
+    assert service.get_upgrade_review_details(999) is None
+
+
+def test_apply_upgrade_decision_replace_and_delete_old(tmp_path):
+    # §1's explicit-decision function, called directly with both
+    # booleans already resolved — no input() anywhere in this path.
+    service, lib_root = _seed_upgrade_scenario(tmp_path)
+    request_id = _get_ready_for_review_request_id(service)
+
+    message = service.apply_upgrade_decision(
+        request_id, replace=True, delete_old=True,
+    )
+
+    assert message is not None
+    assert "Replaced with" in message
+    assert "Deleted" in message
+    assert not (lib_root / "old.mp3").exists()
+    assert (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
+    assert _ready_for_review_count(service) == 0
+
+
+def test_apply_upgrade_decision_replace_and_keep_old(tmp_path):
+    service, lib_root = _seed_upgrade_scenario(tmp_path)
+    request_id = _get_ready_for_review_request_id(service)
+
+    message = service.apply_upgrade_decision(
+        request_id, replace=True, delete_old=False,
+    )
+
+    assert message is not None
+    assert "Replaced with" in message
+    assert "Leaving" in message
+    assert (lib_root / "old.mp3").exists()
+    assert (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
+    assert _ready_for_review_count(service) == 0
+
+
+def test_apply_upgrade_decision_decline_is_a_no_op(tmp_path):
+    service, lib_root = _seed_upgrade_scenario(tmp_path)
+    request_id = _get_ready_for_review_request_id(service)
+
+    message = service.apply_upgrade_decision(request_id, replace=False)
+
+    assert message is None
+    assert _ready_for_review_count(service) == 1
+    assert (lib_root / "old.mp3").exists()
+    assert not (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
+
+
 def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
         tmp_path, capsys,
 ):

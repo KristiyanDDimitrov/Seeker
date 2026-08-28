@@ -30,6 +30,7 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
+from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.client import (
     SoulseekClient,
     SoulseekDownloadError,
@@ -1029,12 +1030,21 @@ class DownloadService:
 
         return (location, relative_path)
 
-    def _confirm_upgrade(self, request: DownloadRequest) -> None:
-        # Always called over rows from get_ready_for_review(), so .id
-        # is set.
-        assert request.id is not None
-
+    def get_upgrade_review_details(
+            self,
+            request_id: int,
+    ) -> UpgradeReviewDetails | None:
+        # Read-only — no input() anywhere, so both the CLI's interactive
+        # loop and the Review screen's UI can build their prompts/labels
+        # from the identical resolved info. None only when the request
+        # or its track can no longer be found (matches the CLI's own
+        # original early-return-on-missing-track guard).
         with self.database.transaction() as connection:
+            request = self.download_requests.get_by_id(request_id, connection)
+
+            if request is None:
+                return None
+
             track = self.tracks.get_by_id(request.track_id, connection)
             current_match = self.track_matches.get_by_track_id(
                 request.track_id,
@@ -1048,8 +1058,15 @@ class DownloadService:
                     connection,
                 )
 
+            old_location = None
+            if current_local_file is not None:
+                old_location = self.locations.get_by_id(
+                    current_local_file.location_id,
+                    connection,
+                )
+
         if track is None:
-            return
+            return None
 
         current_description = (
             current_local_file.format
@@ -1057,20 +1074,62 @@ class DownloadService:
             else "no current file"
         )
 
-        answer = input(
-            f"Higher quality version of {track.artist} - {track.title} "
-            f"ready ({request.quality_descriptor} vs current "
-            f"{current_description}). Replace? [y/n] "
-        ).strip().lower()
+        old_file_path = None
+        if current_local_file is not None and old_location is not None:
+            old_file_path = str(
+                Path(old_location.path) / current_local_file.relative_path
+            )
 
-        if answer != "y":
-            return
+        return UpgradeReviewDetails(
+            request_id=request_id,
+            track=track,
+            quality_descriptor=request.quality_descriptor,
+            current_description=current_description,
+            old_file_path=old_file_path,
+        )
+
+    def apply_upgrade_decision(
+            self,
+            request_id: int,
+            replace: bool,
+            delete_old: bool = False,
+    ) -> str | None:
+        """Explicit-decision version of the Phase 2 replace/delete-old-
+        file action — pure mutation, no input() anywhere, so the CLI's
+        interactive loop and a UI can call the identical logic with
+        already-resolved booleans instead of blocking on stdin. Returns
+        a short, human-readable status message (the exact text
+        review_pending_upgrades() used to print inline) for the caller
+        to surface, or None for `replace=False` (a no-op — the row
+        stays ready_for_review, offered again later, same as declining
+        in the CLI).
+        """
+        if not replace:
+            return None
+
+        with self.database.transaction() as connection:
+            request = self.download_requests.get_by_id(request_id, connection)
+
+        if request is None:
+            return "Request not found."
+
+        with self.database.transaction() as connection:
+            current_match = self.track_matches.get_by_track_id(
+                request.track_id,
+                connection,
+            )
+
+            current_local_file = None
+            if current_match is not None and current_match.local_file_id:
+                current_local_file = self.local_files.get_by_id(
+                    current_match.local_file_id,
+                    connection,
+                )
 
         result = self._move_completed_file(request)
 
         if result is None:
-            print("  Could not locate the downloaded file; leaving for review.")
-            return
+            return "Could not locate the downloaded file; leaving for review."
 
         location, relative_path = result
 
@@ -1093,36 +1152,70 @@ class DownloadService:
                 connection,
             )
 
+            # request_id, not request.id — this is the caller-supplied
+            # id (always set for any real caller: get_ready_for_review()
+            # rows always have one), avoiding a redundant assert on the
+            # freshly-refetched `request` above.
             self.download_requests.mark_status(
-                request.id,
+                request_id,
                 "completed",
                 connection,
             )
 
-        print(f"  Replaced with {location.path}/{relative_path}")
+        message = f"Replaced with {location.path}/{relative_path}"
 
-        if current_local_file is not None:
-            with self.database.transaction() as connection:
-                old_location = self.locations.get_by_id(
-                    current_local_file.location_id,
-                    connection,
-                )
+        if current_local_file is None:
+            return message
 
-            if old_location is not None:
-                old_path = (
-                    Path(old_location.path)
-                    / current_local_file.relative_path
-                )
+        with self.database.transaction() as connection:
+            old_location = self.locations.get_by_id(
+                current_local_file.location_id,
+                connection,
+            )
 
-                delete_answer = input(
-                    f"Delete old file at {old_path}? [y/n] "
-                ).strip().lower()
+        if old_location is None:
+            return message
 
-                if delete_answer == "y":
-                    try:
-                        old_path.unlink()
-                        print(f"  Deleted {old_path}")
-                    except OSError as error:
-                        print(f"  Could not delete {old_path}: {error}")
-                else:
-                    print(f"  Leaving {old_path} in place.")
+        old_path = Path(old_location.path) / current_local_file.relative_path
+
+        if not delete_old:
+            return f"{message}\n  Leaving {old_path} in place."
+
+        try:
+            old_path.unlink()
+            return f"{message}\n  Deleted {old_path}"
+        except OSError as error:
+            return f"{message}\n  Could not delete {old_path}: {error}"
+
+    def _confirm_upgrade(self, request: DownloadRequest) -> None:
+        # Thin, interactive wrapper over the two explicit-decision
+        # methods above — CLI-only input() sequencing lives here now;
+        # the actual mutation is identical to what apply_upgrade_decision
+        # does for the UI. Always called over rows from
+        # get_ready_for_review(), so .id is set.
+        assert request.id is not None
+
+        details = self.get_upgrade_review_details(request.id)
+
+        if details is None:
+            return
+
+        answer = input(
+            f"Higher quality version of {details.track.artist} - "
+            f"{details.track.title} ready ({details.quality_descriptor} "
+            f"vs current {details.current_description}). Replace? [y/n] "
+        ).strip().lower()
+
+        replace = answer == "y"
+        delete_old = False
+
+        if replace and details.old_file_path is not None:
+            delete_answer = input(
+                f"Delete old file at {details.old_file_path}? [y/n] "
+            ).strip().lower()
+            delete_old = delete_answer == "y"
+
+        message = self.apply_upgrade_decision(request.id, replace, delete_old)
+
+        if message is not None:
+            print(f"  {message}")
