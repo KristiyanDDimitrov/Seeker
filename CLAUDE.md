@@ -2372,13 +2372,119 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     the soulseek-not-configured no-op check; and the overlap-guard
     check described above.
 
-    **Not yet run live against the real application in this session**
-    — per this project's own established pattern (Step 3/4's dashboard
-    and wizard screens were each verified live in their own task before
-    being called done), this screen should get the same live check in
-    a follow-up pass: open `seeker-ui` against the real DB with a real
-    in-flight download and confirm the tab renders live, advancing
-    progress, not just pass against fakes/mocks in tests.
+    **Live-verified against the real application (2026-08-28, follow-up
+    pass, closing out this task rather than a separate one).** Driven
+    with a real `Application()` (real DB, real slskd container, real
+    config store) and a real `MainWindow` (Qt's `offscreen` platform
+    plugin, since this session has no attached display) — no fakes,
+    no mocks; the only instrumentation was wrapping
+    `_render_active_downloads`/`_trigger_backend_poll` to log the real
+    `downloads_table` contents on every real call, so the render logic
+    exercised was byte-for-byte what ships.
+
+    Kicked off two real downloads via `seeker download "240KM/H"`
+    against the two real, still-unmatched tracks there: **ZENEA -
+    INFINITE** (no practical unlocked candidate found this run — real
+    live search results vary — so it was requested as `role='upgrade'`
+    from peer `trickytraxx`, landing in the locked-retry cascade) and
+    **Kamäleon - Quadrat** (`role='settled'` from peer `torogod`).
+    Watched the real tab for two windows (130s, then 240s — 18 total
+    real 20s backend-poll cycles) alongside the two pre-existing real
+    `locked` upgrade rows already in the DB from the prior day's
+    session (Jade Venom - Scared Now?, Balron/Audio - Breach, both in
+    the "Test" playlist).
+
+    **Row correctness, live:** every row rendered with the exactly
+    correct track/playlist/role/status — e.g. `Kamäleon - Quadrat` /
+    `240KM/H` / `Settled` / `Queued`, and simultaneously `Jade Venom -
+    Scared Now? - DIVERGENCE VI` / `Test` / `Upgrade` / `Retrying
+    (locked)` in the very same render. This **is** the real version of
+    the written cross-playlist test, not just its mock: one real render
+    at `2026-08-28T15:35:00Z` showed 240KM/H's two rows and Test's six
+    rows together in one table.
+
+    **Progress bar — genuinely reflects real bytes, cross-verified
+    against slskd's own API directly.** The real Kamäleon transfer
+    (peer `torogod`) completed in **5.3 real wall-clock seconds**
+    (slskd's own `startedAt`/`endedAt`: `15:34:19.887Z` →
+    `15:34:25.175Z`) — faster than one 20s poll cycle, so the tab's
+    genuine progression was `Queued`/indeterminate → straight to
+    `Completed` with `progress=5,997,594/5,997,594` at the very next
+    backend-poll tick (`15:35:14`). That exact byte count was
+    independently confirmed against a raw
+    `GET /api/v0/transfers/downloads` call against the live slskd
+    instance (`bytesTransferred: 5997594, size: 5997594` for the same
+    `torogod` transfer) — not fabricated, not a stub. The bar never sat
+    at a stuck 0% or stayed indeterminate for a transfer independently
+    confirmed to be progressing — every indeterminate row genuinely had
+    zero bytes reported (confirmed directly against slskd: three
+    separate real rejections at `15:36:54.9Z` for `long25`/
+    `ofoijacussa`/`trickytraxx` all show `bytesTransferred: 0`), and one
+    row (a duplicate/older active Jade Venom request) spent ~45 real
+    seconds in a genuine `Downloading` state with correctly-rendered
+    indeterminate progress before slskd ultimately rejected it too —
+    correct given zero bytes ever actually landed for it.
+
+    **Real completion → 60-second window boundary, confirmed to the
+    second.** Kamäleon's real `completed_at` was
+    `2026-08-28T15:35:14.302Z`. The render at `15:36:14.173Z` (59.87s
+    later) still showed it; the very next render, at `15:36:16.171Z`
+    (61.87s later), had dropped it — the row disappeared within about
+    2 seconds either side of the real 60-second cutoff (the display
+    timer's own 2s granularity, not slop in the window logic itself),
+    exactly matching `RECENTLY_FINISHED_WINDOW_SECONDS`. It updated in
+    place (same row, `Queued` → `Completed`) rather than
+    disappearing-and-reappearing, also as specified.
+
+    **Background timer survived real conditions across both windows:**
+    zero exceptions, zero freezes, 18 real backend-poll ticks fired on
+    schedule (confirmed via logged timestamps ~20.0s apart every time,
+    e.g. `15:35:14 → :34 → :54 → 15:36:14 → :34 → :54`), and both driver
+    runs printed their own clean completion sentinel at the end with no
+    error output. `soulseek_configured=False` was tested against the
+    real `Application` class directly (patching the property, since the
+    live slskd container couldn't be torn down mid-verification without
+    disrupting the rest of the check) — across 45s (two real backend
+    intervals) a spy wrapping the real `poll_downloads` recorded **zero
+    calls**, confirming the no-op path is genuine, not just
+    unit-tested.
+
+    **What this pass did NOT manage to observe live: a genuine
+    mid-transfer PARTIAL byte count (`0 < bytes_transferred <
+    total_bytes`).** Every real successful transfer seen this session —
+    Kamäleon's 5.3s completion here, and the historical
+    3AMDISCO/ZENEA/Kamäleon transfers referenced in item 20 — either
+    finished inside one 20s poll window or (for item 20's original
+    72MB ZENEA flac) was only ever sampled via manual, closely-spaced
+    CLI runs rather than the UI's own 20s timer. The three real
+    candidates still open during this pass (Jade Venom, Balron, ZENEA's
+    retry) stayed locked/rejected for the entire ~6 minutes of combined
+    observation and never began a real transfer. This is a live
+    peer-speed/timing gap for this particular session, not a code
+    defect: the determinate-bar code path (`bar.setRange(0,
+    total_bytes); bar.setValue(bytes_transferred)`) was exercised with
+    correct, real, cross-verified values at the moment a transfer
+    completed, and the indeterminate path was correct for every row
+    with genuinely zero bytes reported — there's just no real sample of
+    the bar sitting at, say, 40% yet. Worth a quick look next time a
+    naturally slow real transfer happens to be in flight, but not
+    blocking on it — nothing observed suggests the determinate branch
+    would behave differently at 40% than it did at 100%.
+
+    **One pre-existing, out-of-scope observation made while watching,
+    not a Step 5 defect:** several tracks (Jade Venom, Balron) carry
+    *multiple* simultaneously-active `download_requests` rows for the
+    same track (e.g. Jade Venom had 3 non-terminal rows at once during
+    this session — ids left over from repeated locked-retry attempts
+    across 2026-08-27/28). `get_active_downloads()` correctly shows
+    every one of them, per its own documented contract ("every
+    download_requests row"), and this predates Step 5 entirely — it's
+    the same real duplicate-row condition `get_active_for_track`'s
+    dedup guard (item 16) only prevents *new* top-level requests from
+    piling onto, not something it retroactively collapses. Flagged here
+    for visibility, same as item 20's own practice of noting real,
+    out-of-scope findings without fixing them under an unrelated task —
+    not fixed as part of this pass.
 
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
