@@ -147,13 +147,15 @@ def seed_download_request(
         total_bytes: int | None = None,
         completed_at: str | None = None,
         requested_at: str = "2026-01-01T00:00:00+00:00",
+        username: str = "peer1",
+        filename: str = "file.flac",
 ) -> None:
     with service.database.transaction() as connection:
         service.download_requests.add(
             DownloadRequest(
                 track_id=track_id,
-                username="peer1",
-                filename="file.flac",
+                username=username,
+                filename=filename,
                 format="flac",
                 role=role,
                 status=status,
@@ -518,3 +520,95 @@ def test_get_active_downloads_sorted_most_recent_first(tmp_path):
     downloads = service.get_active_downloads()
 
     assert [d.track.id for d in downloads] == ["t2", "t1"]
+
+
+def test_get_active_downloads_collapses_genuine_duplicate_candidate_rows(
+        tmp_path,
+):
+    # Real, live-observed shape (2026-08-28 Step 5 follow-up): three
+    # rows for the same track, all rank=1, all the identical peer+file
+    # — stale leftovers from before download_playlist()'s
+    # get_active_for_track guard (item 16) was fully effective, not
+    # Phase 4's legitimate multi-candidate shortlist (which always uses
+    # distinct peers/files per rank). Only the most-recently-requested
+    # of the three should surface.
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="queued", role="upgrade",
+        username="long25", filename="Breach.flac",
+        requested_at="2026-08-27T13:01:24+00:00",
+    )
+    seed_download_request(
+        service, "t1", status="locked", role="upgrade",
+        username="long25", filename="Breach.flac",
+        requested_at="2026-08-27T13:15:47+00:00",
+    )
+    seed_download_request(
+        service, "t1", status="locked", role="upgrade",
+        username="long25", filename="Breach.flac",
+        requested_at="2026-08-27T17:41:05+00:00",
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 1
+    assert downloads[0].request.requested_at == "2026-08-27T17:41:05+00:00"
+
+
+def test_get_active_downloads_keeps_legitimate_multi_candidate_rows_separate(
+        tmp_path,
+):
+    # The exact case the dedup above must NOT collapse: Phase 4's
+    # ranked shortlist — a rank-1 active row plus rank-2/3 backups for
+    # the same track, each a genuinely different real peer/file. These
+    # must all keep showing, since they're real, distinct candidates,
+    # not repeats of one attempt.
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="locked", role="upgrade",
+        username="peerA", filename="candidate-a.flac",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+    seed_download_request(
+        service, "t1", status="shortlisted", role="upgrade",
+        username="peerB", filename="candidate-b.flac",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+    seed_download_request(
+        service, "t1", status="shortlisted", role="upgrade",
+        username="peerC", filename="candidate-c.flac",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 3
+    assert {d.request.username for d in downloads} == {"peerA", "peerB", "peerC"}
+
+
+def test_get_active_downloads_dedup_does_not_merge_across_roles(tmp_path):
+    # A track can legitimately have both a settled request and an
+    # upgrade request in flight at once (item 8) — even if they somehow
+    # shared a peer/file, role keeps them distinct rather than merging
+    # two conceptually different attempts.
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="downloading", role="settled",
+        username="peer1", filename="same.flac",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+    seed_download_request(
+        service, "t1", status="queued", role="upgrade",
+        username="peer1", filename="same.flac",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 2

@@ -2459,32 +2459,100 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     CLI runs rather than the UI's own 20s timer. The three real
     candidates still open during this pass (Jade Venom, Balron, ZENEA's
     retry) stayed locked/rejected for the entire ~6 minutes of combined
-    observation and never began a real transfer. This is a live
-    peer-speed/timing gap for this particular session, not a code
-    defect: the determinate-bar code path (`bar.setRange(0,
-    total_bytes); bar.setValue(bytes_transferred)`) was exercised with
-    correct, real, cross-verified values at the moment a transfer
-    completed, and the indeterminate path was correct for every row
-    with genuinely zero bytes reported — there's just no real sample of
-    the bar sitting at, say, 40% yet. Worth a quick look next time a
-    naturally slow real transfer happens to be in flight, but not
-    blocking on it — nothing observed suggests the determinate branch
-    would behave differently at 40% than it did at 100%.
+    observation and never began a real transfer.
 
-    **One pre-existing, out-of-scope observation made while watching,
-    not a Step 5 defect:** several tracks (Jade Venom, Balron) carry
-    *multiple* simultaneously-active `download_requests` rows for the
-    same track (e.g. Jade Venom had 3 non-terminal rows at once during
-    this session — ids left over from repeated locked-retry attempts
-    across 2026-08-27/28). `get_active_downloads()` correctly shows
-    every one of them, per its own documented contract ("every
-    download_requests row"), and this predates Step 5 entirely — it's
-    the same real duplicate-row condition `get_active_for_track`'s
-    dedup guard (item 16) only prevents *new* top-level requests from
-    piling onto, not something it retroactively collapses. Flagged here
-    for visibility, same as item 20's own practice of noting real,
-    out-of-scope findings without fixing them under an unrelated task —
-    not fixed as part of this pass.
+    **Checked in a follow-up pass whether this gap already had test
+    coverage rather than leaving it recorded as open — it did.**
+    `tests/test_ui_smoke.py::
+    test_downloads_tab_progress_bar_determinate_with_real_bytes` already
+    exercises `_build_progress_widget` with `bytes_transferred=500,
+    total_bytes=1_000` — a genuine 50% partial-fill state, not an
+    endpoint. That test asserts `bar.maximum() == 1_000` and
+    `bar.value() == 500`, i.e. the exact same `setRange`/`setValue` call
+    a live 40%-complete transfer would make. The render code has no
+    special-casing for 0%, 50%, or 100% — it's one unconditional
+    computation regardless of which real numbers feed it — so this
+    mocked mid-range value covers the identical code path a live one
+    would have exercised, the same reasoning already used for this
+    project's drive-unmounted WAV tests. No new test needed; this gap
+    is closed by coverage that already existed, not left open.
+
+    **Multi-row-per-track observation — investigated further, confirmed
+    as a genuine duplicate (not Phase 4's shortlist design), and fixed,
+    not left filed as out-of-scope.** Checked the real rows directly
+    against `rank`/`role`/`username`/`filename` rather than assuming:
+    all three rows per track (e.g. Jade Venom ids 6/8/10, Balron ids
+    5/7/9) share `rank=1` and the *identical* peer+filename — a real
+    ranked shortlist (item 14) would show rank 1/2/3 with genuinely
+    different peers/files per rank, and a live query confirmed **zero**
+    rows with `rank > 1` exist anywhere in the database. So this is not
+    Phase 4 working as designed — it's the same real duplicate-request
+    condition item 16 already diagnosed and fixed at the
+    `download_playlist()` level (`get_active_for_track`), just never
+    cleaned up from the rows it left behind. Confirmed the *current*
+    guard is not reproducing this today, not just assumed: re-running
+    `seeker download "Test"` twice against this exact live data in the
+    prior live-verification pass printed "Already in progress ... —
+    skipping" both times, with no new duplicate row created — so the
+    root cause is stale historical data from before the guard was fully
+    effective, not a currently-reproducible bug in `download_playlist`.
+
+    The real, actionable bug was in what Step 5 itself built: without
+    deduplication, `get_active_downloads()` rendered three apparently-
+    independent active downloads for what was really one candidate,
+    across two separate real tracks. Fixed with a new
+    `_dedupe_repeated_candidates()` in `dashboard_service.py`, applied
+    to the visible rows before building the result: rows are collapsed
+    by `(track_id, role, username, filename)`, keeping only the
+    most-recently-requested one per real candidate. Deliberately keyed
+    *without* `rank` — two rows are the same real download attempt if
+    they share track/role/peer/filename, independent of which row
+    happened to be created when; two genuinely different candidates
+    (a real rank 1/2/3 shortlist) always have distinct peers/files by
+    construction, so they're never collapsed by this key regardless of
+    rank. `role` stays in the key deliberately too — a track can
+    legitimately have a `settled` and an `upgrade` request in flight at
+    once (item 8), and those must never merge even if they happened to
+    share a peer/file. Three new tests in `test_dashboard_service.py`
+    cover all three shapes directly: the real duplicate-collapse case
+    (reproducing the exact real Balron timestamps/peer), the
+    must-not-collapse legitimate-multi-candidate case (three distinct
+    peers for one track, all surviving), and the must-not-merge-across-
+    roles case.
+
+    **Re-verified against the real, live production database after the
+    fix, read-only** — no destructive cleanup of the underlying stale
+    rows was needed or attempted; the fix is purely in how they're
+    presented. Before: 8 rows shown (3 duplicates each for Jade Venom
+    and Balron, plus ZENEA). After:
+    exactly 3 — `ZENEA - INFINITE` (240KM/H, upgrade, queued,
+    `trickytraxx`), `Jade Venom - Scared Now? - DIVERGENCE VI` (Test,
+    upgrade, locked, `ofoijacussa`, the `2026-08-27T17:41:47` attempt —
+    correctly the most recent of the three real duplicates), and
+    `Balron, Audio - Breach` (Test, upgrade, queued, `long25`, likewise
+    the most recent). One separately-flagged, genuinely out-of-scope
+    observation from the same investigation: `poll_downloads()`'s
+    locked-retry loop (`soulseek/download_service.py`, Phase 3 — a
+    different phase's code, not part of Step 5) still independently
+    retries every stale duplicate row every cycle against the real same
+    peer, since it reads `get_locked()` directly rather than through
+    this new display-layer dedup. That's real, ongoing, low-value
+    network traffic against a live third party, but it's a Phase 3
+    retry-engine concern, not a Downloads-tab rendering one — worth a
+    dedicated future pass (e.g. teaching the retry loop to skip a
+    locked row once a more-recent duplicate for the same candidate
+    exists), not folded into this display fix.
+
+    **Forward note for the future Review screen** (item 7/17's still-
+    outstanding confirm/reject UI for needs-review matches and
+    Phase 2 upgrade confirmation): a genuine Phase 4 shortlist — one
+    real track legitimately backed by 2-3 distinct candidates at once —
+    is exactly the shape this dedup deliberately preserves rather than
+    collapses. That screen will need to visually *group* those rows by
+    track ("3 candidates for this track", ranked) rather than list them
+    as unrelated lines, since it's the next place a human actually acts
+    on which candidate wins — the Downloads tab only ever observes, so
+    a flat list was sufficient here.
 
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
