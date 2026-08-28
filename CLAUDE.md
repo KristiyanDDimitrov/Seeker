@@ -785,6 +785,60 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     thresholds. Sections built and documented incrementally, same
     pattern as item 26's §0/§1/§2.
 
+    **§3 — SoulSeek/Spotify connection-management extraction — done.**
+    Two pieces of wizard-only logic extracted onto `Application` itself
+    so Settings' "Re-authorize"/"Update SoulSeek credentials" actions
+    call the exact same code the wizard's first-time setup already
+    uses, not a second copy: `connect_spotify(client_id,
+    force_reauthorize=False)` and `persist_soulseek_config(base_url,
+    api_key, download_dir, username, password)`. The wizard's
+    `_on_connect_spotify_clicked`/`_persist_soulseek_config` are now
+    thin callers of these. `docker_setup.py`'s already-standalone
+    functions (`detect_docker_state`, `generate_api_key`,
+    `bring_up_slskd`, `check_slskd_health`) needed no extraction at
+    all — they were never wizard-entangled to begin with; only
+    `ui/wizard.py`'s own private `_slskd_data_dir()` helper (used to
+    resolve the exact same path a credential-update action also needs)
+    moved down to `docker_setup.py` as a public `slskd_data_dir()`.
+
+    **Real gap closed, not just moved: `connect_spotify`'s
+    `force_reauthorize` flag.** `SpotifyAuthManager.get_valid_token()`
+    silently returns an existing still-valid cached token without ever
+    opening the browser — correct for the wizard's first connect (no
+    token file exists yet) but would make Settings' "Re-authorize" a
+    complete no-op for an already-connected setup, the opposite of
+    what a user clicking "Re-authorize" wants. Fixed with a genuinely
+    new (if small) capability, not present before this task:
+    `TokenStore.clear()`, called only when `force_reauthorize=True`,
+    which deletes the cached token file so `get_valid_token()`'s
+    existing `token is None` branch runs a real fresh authorization.
+    `Application` gained a `SPOTIFY_TOKEN_PATH` constant (previously an
+    inline literal duplicated between `auth_manager`'s property and
+    what would have been a second copy in `connect_spotify`).
+    `persist_soulseek_config` also resets `self._soulseek_client = None`
+    — a real, necessary invalidation the ORIGINAL wizard code never
+    needed (nothing had constructed a `SoulseekClient` yet during
+    first-time onboarding) but Settings genuinely does, since it can
+    run against an already-connected, already-running app whose cached
+    client would otherwise keep pointing at the old base_url/api_key.
+
+    `SeekerConfig`'s new `slskd_username`/`slskd_password` fields (see
+    §4) get their first real writer here — `persist_soulseek_config`
+    is "exactly this real consumer" item 19 was waiting for.
+
+    Tests: `TokenStore.clear()` (removes an existing file, no-ops when
+    none exists); `connect_spotify()` persists to disk and the
+    in-memory `_config_store`, resets `_auth_manager`, and genuinely
+    reaches the OAuth trigger point (the real browser/callback
+    round-trip stays out of scope for a unit test, same treatment
+    `_authorize()` itself already gets — see item 15); the
+    `force_reauthorize` flag's two directions — clears an existing
+    cached token when `True`, leaves one untouched when `False` (the
+    wizard's own default path); `persist_soulseek_config()` persists
+    all five fields and resets `_soulseek_client`; `slskd_data_dir()`
+    resolves the platformdirs path correctly from its new home.
+    `mypy --strict` clean; full suite 323 passed.
+
     **§4 — editable auto-match/needs-review thresholds — done.**
     `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD` stay hardcoded
     constants in `matching.py`, which stays completely config-unaware

@@ -4,8 +4,20 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 import httpx
+import platformdirs
+
+
+def slskd_data_dir() -> Path:
+    # Moved here from ui/wizard.py (Step 8) so Settings' "Update SoulSeek
+    # credentials" action can resolve the identical path without either
+    # duplicating it or importing a UI module from a service-layer one.
+    # Same per-user app-data directory the DB/config store live in.
+    return Path(
+        platformdirs.user_data_dir("Seeker", appauthor=False)
+    ) / "slskd-data"
 
 
 class DockerState(Enum):

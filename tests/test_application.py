@@ -2,11 +2,14 @@ import pytest
 
 from seeker.application import (
     Application,
+    SPOTIFY_TOKEN_PATH,
     _migrate_legacy_database,
     _resolve_database_path,
 )
-from seeker.config_store import SeekerConfig, save_config
+from seeker.config_store import SeekerConfig, load_config, resolve_config_path, save_config
 from seeker.database.connection import Database
+from seeker.spotify.token import SpotifyToken
+from seeker.spotify.token_store import TokenStore
 
 
 def _fake_user_data_dir(data_dir):
@@ -405,3 +408,129 @@ def test_application_spotify_not_configured_raises_only_when_auth_manager_used(
 
     with pytest.raises(RuntimeError, match="SPOTIFY_CLIENT_ID"):
         app.auth_manager
+
+
+# --- Step 8 §3: connection-management extraction ----------------------
+#
+# connect_spotify()/persist_soulseek_config() are the shared logic the
+# onboarding wizard's first-time connect/bring-up and Settings'
+# re-authorize/update-credentials actions both call — extracted rather
+# than duplicated. The real OAuth browser round-trip and the real
+# docker-compose bring-up are out of scope for a unit test (matches
+# this project's existing "verified live, not re-mocked" treatment of
+# _authorize()); what's tested here is the persistence contract and the
+# real invalidation side effects, which is genuinely new logic.
+
+def _application_with_tmp_config(tmp_path, monkeypatch) -> Application:
+    monkeypatch.chdir(tmp_path)
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+    return Application()
+
+
+def test_connect_spotify_persists_config_and_resets_auth_manager(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    # Stand in for the real OAuth round-trip (auth_manager /
+    # callback_server) — connect_spotify()'s last line just accesses
+    # `self.spotify`, so replacing that property confirms it's reached
+    # (a real trigger) without opening a real browser.
+    triggered = []
+    monkeypatch.setattr(
+        Application, "spotify", property(lambda self: triggered.append(True)),
+    )
+
+    app._auth_manager = "stale-sentinel"  # type: ignore[assignment]
+
+    app.connect_spotify("real-client-id")
+
+    assert triggered == [True]
+    assert app._auth_manager is None
+    assert app._config_store.spotify_client_id == "real-client-id"
+
+    # Persisted to disk too, not just the in-memory attribute — a
+    # second Application() in the same session would see it.
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.spotify_client_id == "real-client-id"
+
+
+def test_connect_spotify_force_reauthorize_clears_cached_token(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(Application, "spotify", property(lambda self: None))
+
+    SPOTIFY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TokenStore(SPOTIFY_TOKEN_PATH).save(
+        SpotifyToken(
+            access_token="stale-access",
+            refresh_token="stale-refresh",
+            expires_at=9_999_999_999.0,
+        )
+    )
+
+    app.connect_spotify("real-client-id", force_reauthorize=True)
+
+    # Without force_reauthorize, get_valid_token() would just silently
+    # return this still-valid cached token and never re-trigger OAuth
+    # at all — this is what makes "re-authorize" a real action instead
+    # of a no-op for an already-connected setup.
+    assert not SPOTIFY_TOKEN_PATH.exists()
+
+
+def test_connect_spotify_without_force_leaves_cached_token_untouched(
+        tmp_path, monkeypatch,
+):
+    # The wizard's first-time-connect path — no token exists yet in
+    # practice, but confirms force_reauthorize's default (False) really
+    # is inert, not silently always-clearing.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(Application, "spotify", property(lambda self: None))
+
+    SPOTIFY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TokenStore(SPOTIFY_TOKEN_PATH).save(
+        SpotifyToken(
+            access_token="still-valid",
+            refresh_token="still-valid-refresh",
+            expires_at=9_999_999_999.0,
+        )
+    )
+
+    app.connect_spotify("real-client-id")
+
+    assert SPOTIFY_TOKEN_PATH.exists()
+
+
+def test_persist_soulseek_config_updates_store_disk_and_resets_client(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    # A previously-cached client (as if Settings is updating credentials
+    # on an already-running, already-connected app) must not survive a
+    # credential change silently pointing at the old base_url/api_key.
+    app._soulseek_client = "stale-sentinel"  # type: ignore[assignment]
+
+    app.persist_soulseek_config(
+        "http://localhost:5030",
+        "real-api-key",
+        "/data/downloads",
+        "real-username",
+        "real-password",
+    )
+
+    assert app._soulseek_client is None
+    assert app._config_store.slskd_base_url == "http://localhost:5030"
+    assert app._config_store.slskd_api_key == "real-api-key"
+    assert app._config_store.slskd_download_dir == "/data/downloads"
+    assert app._config_store.slskd_username == "real-username"
+    assert app._config_store.slskd_password == "real-password"
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_username == "real-username"
+    assert reloaded.slskd_password == "real-password"

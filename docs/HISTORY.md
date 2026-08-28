@@ -2964,6 +2964,122 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
 
 28. **Frontend Step 8: Settings — in progress (2026-08-30).**
 
+    **§3 — SoulSeek/Spotify connection-management extraction — done.**
+    Read the onboarding wizard's Spotify and SoulSeek step code
+    (`ui/wizard.py`) before touching anything, per the brief's own
+    instruction, specifically to answer: which parts are already
+    separable service/worker calls Settings can just call directly,
+    and which are genuinely entangled with the wizard's own
+    screen-navigation code and need real extraction?
+
+    Checked each of the three required actions separately:
+    - **"Test connection"** — `docker_setup.py::check_slskd_health` is
+      already a fully standalone, pure(ish) function (real `httpx`
+      calls, but zero wizard/Qt coupling) — confirmed by reading its
+      own call site (`_poll_slskd_health_once`), which is nothing more
+      than `run_worker(..., lambda: check_slskd_health(...), ...)`.
+      Nothing to extract; Settings can call it directly.
+    - **"Update SoulSeek credentials"** — `bring_up_slskd` (also
+      already standalone) runs `docker compose ... up -d`, which is
+      already the "recreate, not restart" command per item 13's
+      established lesson — Compose recreates a service whose config
+      (here: env vars) changed. So the "needs a recreate, not a
+      restart" requirement was ALREADY satisfied by reusing this
+      function as-is; no new recreate logic to write. The one thing
+      genuinely entangled with the wizard was
+      `_persist_soulseek_config()` — small, but it directly touched
+      `self.application._config_store`/`save_config`/`resolve_config_path`
+      inline, which Settings would otherwise have had to duplicate.
+      Extracted to `Application.persist_soulseek_config(...)`.
+    - **"Re-authorize Spotify"** — similarly, `_on_connect_spotify_clicked`'s
+      `do_connect()` closure directly touched `self.application
+      ._config_store`/`_auth_manager` inline. Extracted to
+      `Application.connect_spotify(client_id, force_reauthorize=False)`.
+
+    **A real correctness gap found while designing "Re-authorize"
+    specifically, not assumed to be fine because the wizard's version
+    "worked":** re-read `SpotifyAuthManager.get_valid_token()`
+    (`spotify/auth_manager.py`) before assuming resetting
+    `_auth_manager` to `None` and calling `.spotify` would be enough.
+    It isn't, for the Settings case specifically: `get_valid_token()`
+    loads whatever token is on disk via `TokenStore`, and only calls
+    `_authorize()` (the real browser-opening path) when that load
+    returns `None` or the token is expired-and-refresh-fails.
+    Resetting `_auth_manager` to a fresh instance changes nothing about
+    what's already saved to disk — a fresh `SpotifyAuthManager` still
+    loads the SAME still-valid token file and returns it silently, no
+    browser opened. This is invisible in the wizard's own flow (no
+    token file exists yet on a first connect, so the `None` branch
+    always fires there) — which is exactly why it was never caught
+    before. For a user clicking "Re-authorize" on an already-connected
+    setup, the exact same code would silently do nothing at all, while
+    still reporting success. Fixed with a real, new (if small)
+    capability: `TokenStore.clear()` — deletes the cached token file —
+    called by `connect_spotify` only when `force_reauthorize=True`
+    (the wizard's own call site omits it, preserving its existing
+    behavior exactly, confirmed via a dedicated test that a token
+    present before an unforced `connect_spotify()` call is still
+    present after).
+
+    Also found and fixed in the same pass, checking rather than
+    assuming: does `persist_soulseek_config` need to invalidate
+    anything else? The wizard's original `_persist_soulseek_config`
+    never reset `self.application._soulseek_client` — safe there only
+    because nothing had constructed one yet during first-time
+    onboarding (`Application.soulseek_client` is itself a lazy-cached
+    property, and onboarding is definitionally the FIRST configuration
+    event). Settings' "Update SoulSeek credentials" has no such
+    guarantee — it can run against an app that's been live and
+    connected for a while, with a real cached `SoulseekClient` already
+    pointing at the OLD base_url/api_key. `persist_soulseek_config`
+    resets `self._soulseek_client = None` unconditionally, so the next
+    access to `application.soulseek_client` rebuilds it with the new
+    credentials. Verified directly with a dedicated test (seeds a
+    sentinel value into `_soulseek_client` before calling
+    `persist_soulseek_config`, asserts it's `None` afterward) rather
+    than only asserting the config-store side.
+
+    A small, real duplication caught while making this change, fixed
+    alongside it rather than left as a second copy: the exact literal
+    `Path(".seeker/spotify_token.json")` was about to appear a second
+    time inside `connect_spotify` (needed to construct the `TokenStore`
+    for `force_reauthorize`), duplicating the one already inline in the
+    `auth_manager` property. Factored out to a single
+    `SPOTIFY_TOKEN_PATH` module constant in `application.py`, and the
+    `auth_manager` property updated to use it too — one literal, not
+    two that could drift.
+
+    `ui/wizard.py`'s own private `_slskd_data_dir()` helper (used both
+    by `_on_bring_up_clicked` and `_persist_soulseek_config`) was the
+    one other genuinely shared-but-UI-local piece — moved to
+    `docker_setup.py` as a public `slskd_data_dir()`, since Settings'
+    "Update SoulSeek credentials" needs the exact same path and a UI
+    module importing from another UI module (`ui/wizard.py` →
+    `ui/settings_window.py` or vice versa) would be a worse layering
+    choice than both importing a shared function from the
+    service-adjacent `docker_setup.py`.
+
+    Every existing wizard test (`tests/test_wizard.py`) passes
+    unmodified — the refactor is a pure extraction with the exact same
+    external behavior at the wizard's own call sites, confirmed rather
+    than assumed by running the existing suite, not just by reading the
+    diff.
+
+    **Live verification, scoped deliberately per the brief:** "Test
+    connection" is safe and non-destructive against the real running
+    container — planned for real verification once the rest of the
+    Settings screen (§1/§2, and the UI itself) is in place, so it can
+    be exercised through the actual Settings UI rather than a bare
+    script. A full credential-rotation-and-recreate cycle against the
+    real production slskd setup was NOT run for real, per the brief's
+    own explicit scoping — tests plus the wizard's own already-
+    established live verification (item 23) cover the underlying
+    `bring_up_slskd`/`check_slskd_health` mechanism; re-running that
+    exact mechanism against the real, currently-working container
+    would be a genuinely disruptive action on working infrastructure
+    for a task whose only actual change is *who calls* the function,
+    not what it does.
+
     **§4 — editable thresholds — done. Full design reasoning, since
     this is the one genuine refactor in this step (the other three
     sections are wiring on top of already-complete services).**

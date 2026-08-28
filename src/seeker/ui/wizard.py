@@ -2,11 +2,9 @@ import subprocess
 import sys
 import webbrowser
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-import platformdirs
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,7 +21,6 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
-from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.docker_setup import (
     DockerState,
     SlskdHealthCheckResult,
@@ -32,6 +29,7 @@ from seeker.docker_setup import (
     check_slskd_health,
     detect_docker_state,
     generate_api_key,
+    slskd_data_dir,
 )
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui.workers import run_worker
@@ -50,12 +48,6 @@ HEALTH_POLL_TIMEOUT_SECONDS = 60.0
 COMPOSE_FILE_PATH = Path("docker-compose.yml")
 
 SLSKD_LOCAL_BASE_URL = "http://localhost:5030"
-
-
-def _slskd_data_dir() -> Path:
-    return Path(
-        platformdirs.user_data_dir("Seeker", appauthor=False)
-    ) / "slskd-data"
 
 
 class OnboardingWizard(QMainWindow):
@@ -185,27 +177,13 @@ class OnboardingWizard(QMainWindow):
     def _on_connect_spotify_clicked(self) -> None:
         client_id = self.client_id_field.text().strip()
 
-        def do_connect() -> None:
-            config_path = resolve_config_path()
-            current = load_config(config_path)
-            updated = replace(
-                current,
-                spotify_client_id=client_id,
-                spotify_redirect_uri=DEFAULT_REDIRECT_URI,
-            )
-            save_config(updated, config_path)
-            self.application._config_store = updated
-            self.application._auth_manager = None
-
-            # Triggers the existing OAuth flow (auth_manager /
-            # callback_server) — opens the system browser and waits
-            # for the local callback. Genuinely long-running, hence
-            # the worker.
-            self.application.spotify
-
+        # connect_spotify() is genuinely long-running (opens the system
+        # browser and waits for the local OAuth callback), hence the
+        # worker. Shared with Settings' "Re-authorize" action (Step 8
+        # §3) — see application.py.
         run_worker(
             self.thread_pool,
-            do_connect,
+            lambda: self.application.connect_spotify(client_id),
             button=self.connect_button,
             status_label=self.spotify_status_label,
             on_finished=lambda _: self._advance_from_spotify(),
@@ -430,7 +408,7 @@ class OnboardingWizard(QMainWindow):
             return
 
         api_key = generate_api_key()
-        data_dir = _slskd_data_dir()
+        data_dir = slskd_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
 
         library_path = self._library_location_path
@@ -527,16 +505,18 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_progress.hide()
 
     def _persist_soulseek_config(self) -> None:
-        config_path = resolve_config_path()
-        current = load_config(config_path)
-        updated = replace(
-            current,
-            slskd_base_url=SLSKD_LOCAL_BASE_URL,
-            slskd_api_key=self._slskd_api_key,
-            slskd_download_dir=str(_slskd_data_dir() / "downloads"),
+        assert self._slskd_api_key is not None
+
+        # Form fields are still populated from _on_bring_up_clicked —
+        # nothing clears them between requesting the bring-up and the
+        # health poll confirming it succeeded.
+        self.application.persist_soulseek_config(
+            SLSKD_LOCAL_BASE_URL,
+            self._slskd_api_key,
+            str(slskd_data_dir() / "downloads"),
+            self.soulseek_username_field.text().strip(),
+            self.soulseek_password_field.text(),
         )
-        save_config(updated, config_path)
-        self.application._config_store = updated
 
     def _on_skip_soulseek_clicked(self) -> None:
         self._advance_to_dashboard()

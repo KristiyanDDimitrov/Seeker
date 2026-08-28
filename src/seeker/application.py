@@ -1,4 +1,5 @@
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import platformdirs
@@ -6,8 +7,10 @@ import platformdirs
 from seeker import config
 from seeker.config_store import (
     SeekerConfig,
+    load_config,
     migrate_legacy_env_config,
     resolve_config_path,
+    save_config,
 )
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -46,6 +49,11 @@ from seeker.spotify.sync_service import SpotifySyncService
 # directory. Relative to the current working directory, matching where
 # it was always created before.
 LEGACY_DATABASE_PATH = Path(".seeker/seeker.db")
+
+# Factored out (Step 8) so connect_spotify() below and the auth_manager
+# property don't hold two independent literals of the same path — a
+# real, if minor, drift risk the moment either one changed alone.
+SPOTIFY_TOKEN_PATH = Path(".seeker/spotify_token.json")
 
 
 def _resolve_database_path() -> Path:
@@ -138,12 +146,80 @@ class Application:
             self._auth_manager = SpotifyAuthManager(
                 client_id=self._spotify_client_id,
                 redirect_uri=self._spotify_redirect_uri,
-                token_path=Path(
-                    ".seeker/spotify_token.json"
-                ),
+                token_path=SPOTIFY_TOKEN_PATH,
             )
 
         return self._auth_manager
+
+    def connect_spotify(
+            self,
+            client_id: str,
+            force_reauthorize: bool = False,
+    ) -> None:
+        """Persist client_id to the config store and trigger the OAuth
+        flow. Shared by the onboarding wizard's first-time connect and
+        Settings' "Re-authorize" action (Step 8 §3) — extracted from
+        the wizard's own inline do_connect() closure so both call the
+        identical logic instead of two copies that could drift.
+
+        force_reauthorize additionally clears any cached token first:
+        get_valid_token() would otherwise just silently return an
+        existing still-valid token without ever opening the browser,
+        which is correct for the wizard's first connect (no token
+        exists yet) but would make Settings' "Re-authorize" a no-op
+        for an already-connected setup.
+        """
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(
+            current,
+            spotify_client_id=client_id,
+            spotify_redirect_uri=DEFAULT_REDIRECT_URI,
+        )
+        save_config(updated, config_path)
+        self._config_store = updated
+        self._auth_manager = None
+
+        if force_reauthorize:
+            from seeker.spotify.token_store import TokenStore
+
+            TokenStore(SPOTIFY_TOKEN_PATH).clear()
+
+        # Triggers the existing OAuth flow via
+        # auth_manager.get_valid_token() — opens the system browser and
+        # waits for the local callback.
+        self.spotify
+
+    def persist_soulseek_config(
+            self,
+            base_url: str,
+            api_key: str,
+            download_dir: str,
+            username: str,
+            password: str,
+    ) -> None:
+        """Persist real SoulSeek connection details to the config
+        store. Shared by the onboarding wizard's first bring-up and
+        Settings' "Update SoulSeek credentials" action (Step 8 §3) —
+        extracted from the wizard's own _persist_soulseek_config so
+        both write the identical shape, including the network
+        username/password this method is what first started
+        persisting at all (see config_store.py — item 19 deliberately
+        left them out, pending exactly this real consumer).
+        """
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(
+            current,
+            slskd_base_url=base_url,
+            slskd_api_key=api_key,
+            slskd_download_dir=download_dir,
+            slskd_username=username,
+            slskd_password=password,
+        )
+        save_config(updated, config_path)
+        self._config_store = updated
+        self._soulseek_client = None
 
     @property
     def spotify(self) -> SpotifyClient:

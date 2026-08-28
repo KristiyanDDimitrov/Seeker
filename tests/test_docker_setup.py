@@ -12,6 +12,7 @@ from seeker.docker_setup import (
     check_slskd_health,
     detect_docker_state,
     generate_api_key,
+    slskd_data_dir,
 )
 
 # A fixed reference point for "when this bring-up attempt started" —
@@ -46,6 +47,21 @@ def test_generate_api_key_is_within_slskd_documented_length_range():
 
 def test_generate_api_key_produces_distinct_values():
     assert generate_api_key() != generate_api_key()
+
+
+def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(
+        tmp_path, monkeypatch,
+):
+    # Moved here from ui/wizard.py (Step 8 §3) so Settings' "Update
+    # SoulSeek credentials" action can resolve the identical path
+    # without importing a UI module — same platformdirs directory the
+    # DB/config store already live in.
+    monkeypatch.setattr(
+        "seeker.docker_setup.platformdirs.user_data_dir",
+        lambda appname, **kwargs: str(tmp_path),
+    )
+
+    assert slskd_data_dir() == tmp_path / "slskd-data"
 
 
 class FakeCompletedProcess:
