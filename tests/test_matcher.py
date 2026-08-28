@@ -1,3 +1,6 @@
+from dataclasses import replace
+
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
@@ -138,6 +141,84 @@ def test_multi_artist_track_matches_local_file_crediting_only_one():
 
     assert match is not None
     assert match[0] is candidate
+
+
+# --- Step 8: editable thresholds -------------------------------------
+
+def test_match_all_unchanged_behavior_with_no_config_or_override(tmp_path):
+    # Behavior-preservation bar for the refactor itself: a TrackMatcher
+    # built the exact same way every existing caller already builds one
+    # (make_matcher, no get_config) must classify identically to before.
+    matcher = make_matcher(tmp_path)
+    track = make_track()
+    local_file = make_local_file()
+
+    seed(matcher, track, local_file)
+
+    counts = matcher.match_all()
+
+    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+
+
+def test_match_all_explicit_override_reclassifies_a_real_score(tmp_path):
+    matcher = make_matcher(tmp_path)
+    track = make_track()
+    # A real, slightly-off title variant — computed score used directly
+    # below rather than guessed, so this test doesn't depend on knowing
+    # rapidfuzz's exact ratio in advance.
+    local_file = make_local_file(tag_title="Blinding Lights (Radio Edit)")
+
+    match = find_best_match(track, [local_file])
+    assert match is not None
+    _, real_score = match
+
+    seed(matcher, track, local_file)
+
+    counts_above = matcher.match_all(auto_match_threshold=real_score + 1)
+    assert counts_above["auto"] == 0
+
+    counts_at = matcher.match_all(auto_match_threshold=real_score)
+    assert counts_at["auto"] == 1
+
+
+def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
+    # Not just isolated unit coverage of match_all's own override param
+    # — this proves the real wiring: a config value set (mirroring what
+    # Settings does via Application._config_store), no explicit
+    # override passed, and the classification result actually changes.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    config_state = SeekerConfig()
+
+    matcher = TrackMatcher(
+        database,
+        TrackRepository(database),
+        LocalFileRepository(database),
+        TrackMatchRepository(database),
+        get_config=lambda: config_state,
+    )
+
+    track = make_track()
+    local_file = make_local_file(tag_title="Blinding Lights (Radio Edit)")
+
+    match = find_best_match(track, [local_file])
+    assert match is not None
+    _, real_score = match
+
+    seed(matcher, track, local_file)
+
+    counts_before = matcher.match_all()
+    assert counts_before["auto"] == 0
+
+    # Reassigning the closed-over variable mirrors
+    # `self.application._config_store = updated` — the SAME already-
+    # constructed matcher must see it on its very next call, no
+    # reconstruction, no restart.
+    config_state = replace(config_state, auto_match_threshold=real_score)
+
+    counts_after = matcher.match_all()
+    assert counts_after["auto"] == 1
 
 
 def test_untagged_file_matches_via_filename_alone():

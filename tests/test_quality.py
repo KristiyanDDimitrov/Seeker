@@ -411,3 +411,66 @@ def test_find_best_needs_review_candidate_classifies_real_zigi_sc_data():
     assert settled is None
     assert upgrade_shortlist == []
     assert needs_review == result
+
+
+# --- Step 8: threshold overrides ------------------------------------
+#
+# filter_candidates/find_best_needs_review_candidate/select_downloads
+# stay pure plain functions with no config awareness at all (see
+# CLAUDE.md item 28) — DownloadService is the one real caller that
+# resolves config-or-default and passes the numbers in explicitly.
+# These tests exercise the override parameter directly, using the same
+# real Prdk/Zigi SC-A-Cray data the needs_review tier was built and
+# verified against, since a lowered auto_match_threshold is exactly
+# what should move them from needs_review into the auto tier.
+
+def test_filter_candidates_unchanged_default_behavior_without_override():
+    track = make_track()
+    clean = make_file()
+
+    assert filter_candidates(track, [clean]) == [clean]
+
+
+def test_filter_candidates_real_prdk_data_passes_with_lowered_threshold():
+    track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
+
+    # Confirmed above: 70.4 at the default AUTO_MATCH_THRESHOLD=90 stays
+    # needs_review-only. A threshold at or below its real score moves it
+    # into the auto tier — proving the override parameter, not just its
+    # default, actually changes classification.
+    assert filter_candidates(
+        track, [REAL_PRDK_CANDIDATE], auto_match_threshold=70.0,
+    ) == [REAL_PRDK_CANDIDATE]
+
+
+def test_find_best_needs_review_candidate_unchanged_default_without_override():
+    track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
+
+    result = find_best_needs_review_candidate(track, [REAL_PRDK_CANDIDATE])
+
+    assert result is not None
+    assert result[0] is REAL_PRDK_CANDIDATE
+
+
+def test_find_best_needs_review_candidate_respects_narrowed_band():
+    # Zigi SC/A-Cray's real score is 73.2 — raising needs_review_threshold
+    # above it excludes it from the tier entirely, using the override.
+    track = make_track(
+        id="zigi1", title="Bit Perfect", artist="Zigi SC, A-Cray",
+    )
+
+    result = find_best_needs_review_candidate(
+        track, [REAL_ZIGI_SC_CANDIDATE], needs_review_threshold=74.0,
+    )
+
+    assert result is None
+
+
+def test_select_downloads_real_prdk_data_settles_with_lowered_threshold():
+    track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
+
+    settled, upgrade_shortlist, needs_review = select_downloads(
+        track, [REAL_PRDK_CANDIDATE], auto_match_threshold=70.0,
+    )
+
+    assert settled is REAL_PRDK_CANDIDATE

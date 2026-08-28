@@ -2959,3 +2959,111 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     that a real tag write reads back correctly from a real file — so it
     wasn't run, and this gap is recorded directly rather than papered
     over with a technically-real but uninformative test run.
+
+### 28
+
+28. **Frontend Step 8: Settings — in progress (2026-08-30).**
+
+    **§4 — editable thresholds — done. Full design reasoning, since
+    this is the one genuine refactor in this step (the other three
+    sections are wiring on top of already-complete services).**
+
+    First checked the real call sites before touching anything, per
+    the brief's own instruction — grepped every reference to
+    `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD` across the
+    codebase. Neither constant is referenced inside `matching.py`
+    itself at all — `score_title`/`artist_matches`/`resolve_text_source`/
+    `normalize_filename_text` are pure scoring/normalization functions
+    with no threshold comparison anywhere in their bodies. The actual
+    comparison points are `library/matcher.py::TrackMatcher.match_all()`
+    (inline `if score >= AUTO_MATCH_THRESHOLD: ... elif score >=
+    NEEDS_REVIEW_THRESHOLD: ...`) and `soulseek/quality.py`'s
+    `filter_candidates` (`score < AUTO_MATCH_THRESHOLD`) and
+    `find_best_needs_review_candidate` (`NEEDS_REVIEW_THRESHOLD <=
+    score < AUTO_MATCH_THRESHOLD`) — confirming the brief's own
+    parenthetical guess exactly.
+
+    **The real design question: should `quality.py`'s functions
+    themselves become config-aware (matching `TrackMatcher`), or stay
+    pure with plain parameters (matching `matching.py`)?** The brief's
+    own phrasing ("the service-layer callers (TrackMatcher, the
+    quality.py functions) are the ones that resolve config-value-or-
+    default") reads ambiguously — it could mean quality.py's functions
+    do the resolving themselves, or it could mean they're being named
+    as peers-in-the-sentence to TrackMatcher without literally sharing
+    its exact mechanism. Resolved by architecture, not by re-parsing
+    the sentence harder: `quality.py` currently has ZERO service-layer
+    coupling — no DB, no config, no I/O, exactly like `matching.py`
+    itself, and `tests/test_quality.py` calls its functions directly
+    with hand-built in-memory data, no mocking of any kind. Making
+    `quality.py` config-aware would introduce exactly the coupling this
+    task's own design section says `matching.py` must NOT have, just
+    one file over — inconsistent with the explicit protection that
+    module gets. So: `quality.py`'s three functions got plain optional
+    float parameters, staying exactly as pure and directly testable as
+    before. `DownloadService` (real DB, real repositories, already the
+    thing `quality.py`'s functions get called from) is the actual
+    "quality.py caller" that resolves config-or-default and passes
+    explicit numbers in — the brief's requirement is satisfied one
+    layer up from where a literal reading might have placed it, for a
+    concrete, checked reason.
+
+    **The "callable, not a snapshot" requirement — also worked out from
+    first principles, not assumed.** `Application.track_matcher`/
+    `.download_service` are lazy-cached properties — the real
+    `TrackMatcher`/`DownloadService` instance is constructed exactly
+    once and reused for the app's entire session. If `Application`
+    passed `self._config_store` (a plain `SeekerConfig` dataclass
+    value) into the constructor at that first access, the service would
+    hold a frozen snapshot from whatever `_config_store` was AT THAT
+    MOMENT — a Settings save afterward reassigns
+    `self._config_store = updated` (item 19's/23's established
+    pattern), which rebinds the ATTRIBUTE on `Application`, but does
+    nothing to a value already copied out of it. Confirmed this by
+    reading every existing write path
+    (`OnboardingWizard._on_connect_spotify_clicked`'s `do_connect()`,
+    `_persist_soulseek_config()`) — both already do exactly
+    `self.application._config_store = updated`, not a mutation of the
+    existing object. So both new constructor params are typed
+    `Callable[[], SeekerConfig] | None`, and `Application` supplies
+    `lambda: self._config_store` — a closure reading `self`'s current
+    attribute fresh on every call, not a value copied once. Verified
+    this actually works, not just architecturally plausible: the new
+    end-to-end tests construct a `TrackMatcher`/`DownloadService` ONCE,
+    call `match_all()`/`download_playlist()` to get a baseline result,
+    reassign a local `config_state` variable the injected lambda
+    closes over (mirroring `Application`'s exact pattern), and call
+    the SAME already-constructed service again — confirming the
+    classification result actually changes with no reconstruction.
+
+    Real reference data used throughout, not synthetic scores — the
+    same Prdk (70.4)/Zigi SC-A-Cray (73.2) candidates from item 17,
+    reused directly from `test_quality.py`'s
+    `REAL_PRDK_CANDIDATE`/`REAL_ZIGI_SC_CANDIDATE` fixtures and
+    `test_download_service.py`'s existing needs-review test's exact
+    search query/candidate data. A lowered `auto_match_threshold=70.0`
+    moves Prdk from `filter_candidates`'s exclusion into inclusion, and
+    from `select_downloads`'s `needs_review`-only result into a real
+    `settled` pick — checked directly, including the DownloadService-
+    level test where the SAME real candidate that landed in
+    `soulseek_review_candidates` at the default threshold becomes a
+    real `request_download()` call once the config value is lowered on
+    the same, already-running service.
+
+    `SeekerConfig` also gained `slskd_username`/`slskd_password` (plain
+    text — same 0600-permission file as every other field here) ahead
+    of §3's connection-management section, which is the section that
+    actually needs to display/re-collect them; item 19 deliberately
+    scoped these out when the store was first built, explicitly
+    "pending exactly this real consumer."
+
+    A small, unavoidable mypy fallout, fixed in the same pass:
+    `migrate_legacy_env_config`'s `replace(seeker_config,
+    **{field_name: env_value})` used to type-check cleanly when every
+    `SeekerConfig` field was `str | None` — once the dataclass also
+    has `float | None` fields, mypy can no longer verify a `**kwargs`
+    dict keyed by a runtime string only ever touches the str-typed
+    fields (which `_ENV_VAR_BY_FIELD` genuinely only ever does — env
+    vars are always strings). A scoped `# type: ignore[arg-type]` with
+    an inline comment, same discipline as the existing
+    `seeker.metadata` mypy override for mutagen's missing stubs.

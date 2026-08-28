@@ -185,6 +185,7 @@ class Application:
                 TrackRepository(self.database),
                 LocalFileRepository(self.database),
                 TrackMatchRepository(self.database),
+                get_config=lambda: self._config_store,
             )
 
         return self._track_matcher
@@ -247,6 +248,7 @@ class Application:
                 LocalFileRepository(self.database),
                 SoulseekReviewCandidateRepository(self.database),
                 self._slskd_download_dir,
+                get_config=lambda: self._config_store,
             )
 
         return self._download_service

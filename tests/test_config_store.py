@@ -72,6 +72,40 @@ def test_save_then_load_round_trips_spotify_fields(tmp_path):
     assert loaded == original
 
 
+def test_save_then_load_round_trips_soulseek_credential_fields(tmp_path):
+    path = tmp_path / "config.json"
+
+    original = SeekerConfig(
+        slskd_username="realuser",
+        slskd_password="real-password",
+    )
+
+    save_config(original, path)
+    loaded = load_config(path)
+
+    assert loaded == original
+
+
+def test_save_then_load_round_trips_threshold_fields(tmp_path):
+    # Step 8's new editable-thresholds feature — None (unset) must
+    # round-trip as None, not 0.0 or some other falsy stand-in, since
+    # None is what tells TrackMatcher/DownloadService to fall back to
+    # matching.py's hardcoded defaults.
+    path = tmp_path / "config.json"
+
+    original = SeekerConfig(
+        auto_match_threshold=92.5,
+        needs_review_threshold=65.0,
+    )
+
+    save_config(original, path)
+    loaded = load_config(path)
+
+    assert loaded == original
+    assert loaded.auto_match_threshold == 92.5
+    assert loaded.needs_review_threshold == 65.0
+
+
 def test_load_config_missing_file_returns_defaults_no_crash(tmp_path):
     path = tmp_path / "does-not-exist" / "config.json"
 

@@ -54,13 +54,14 @@ def _score_candidate(track: Track, file: SoulseekFile) -> float | None:
 def filter_candidates(
         track: Track,
         files: list[SoulseekFile],
+        auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
 ) -> list[SoulseekFile]:
     candidates = []
 
     for file in files:
         score = _score_candidate(track, file)
 
-        if score is None or score < AUTO_MATCH_THRESHOLD:
+        if score is None or score < auto_match_threshold:
             continue
 
         candidates.append(file)
@@ -71,16 +72,26 @@ def filter_candidates(
 def find_best_needs_review_candidate(
         track: Track,
         files: list[SoulseekFile],
+        needs_review_threshold: float = NEEDS_REVIEW_THRESHOLD,
+        auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
 ) -> tuple[SoulseekFile, float] | None:
     # The Soulseek equivalent of library/matcher.py's needs_review tier:
     # a real, artist-matching candidate that's plausible but not
-    # confident enough to auto-download (70 <= score < 90). Purely
-    # informational — nothing in this tier is ever requested from slskd
-    # by select_downloads/download_playlist; it's surfaced read-only via
-    # `seeker check` for a human to go find and grab manually. Returns
-    # only the single best-scoring candidate across ALL files (not just
-    # the auto-tier-filtered ones), since a track with zero auto-tier
-    # candidates would otherwise have nothing left to search here.
+    # confident enough to auto-download (70 <= score < 90 by default).
+    # Purely informational — nothing in this tier is ever requested from
+    # slskd by select_downloads/download_playlist; it's surfaced
+    # read-only via `seeker check` for a human to go find and grab
+    # manually. Returns only the single best-scoring candidate across
+    # ALL files (not just the auto-tier-filtered ones), since a track
+    # with zero auto-tier candidates would otherwise have nothing left
+    # to search here.
+    #
+    # Both thresholds are plain optional parameters, not read from
+    # config here — this module stays as decoupled from config/
+    # filesystem concerns as matching.py itself (see CLAUDE.md item 28).
+    # DownloadService, the one real caller, resolves config-or-default
+    # once per download_playlist() run and passes the numbers in
+    # explicitly.
     best: tuple[SoulseekFile, float] | None = None
 
     for file in files:
@@ -89,7 +100,7 @@ def find_best_needs_review_candidate(
         if score is None:
             continue
 
-        if not (NEEDS_REVIEW_THRESHOLD <= score < AUTO_MATCH_THRESHOLD):
+        if not (needs_review_threshold <= score < auto_match_threshold):
             continue
 
         if best is None or score > best[1]:
@@ -154,6 +165,8 @@ def _sort_key(file: SoulseekFile) -> tuple[int, int, int, int]:
 def select_downloads(
         track: Track,
         files: list[SoulseekFile],
+        auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
+        needs_review_threshold: float = NEEDS_REVIEW_THRESHOLD,
 ) -> tuple[
     SoulseekFile | None,
     list[SoulseekFile],
@@ -164,8 +177,10 @@ def select_downloads(
     # ranking never considers it, it's purely extra information for
     # callers (download_playlist) to act on when there's no auto
     # candidate at all.
-    filtered = filter_candidates(track, files)
-    needs_review = find_best_needs_review_candidate(track, files)
+    filtered = filter_candidates(track, files, auto_match_threshold)
+    needs_review = find_best_needs_review_candidate(
+        track, files, needs_review_threshold, auto_match_threshold,
+    )
 
     if not filtered:
         return (None, [], needs_review)

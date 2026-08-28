@@ -1,7 +1,9 @@
 import shutil
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -24,6 +26,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.library.scanner import index_single_file
+from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
 from seeker.models.soulseek_file import SoulseekFile
@@ -107,6 +110,7 @@ class DownloadService:
         local_file_repository: LocalFileRepository,
         soulseek_review_candidate_repository: SoulseekReviewCandidateRepository,
         slskd_download_dir: str | None,
+        get_config: Callable[[], SeekerConfig] | None = None,
     ):
         self.database = database
         self.soulseek = soulseek_client
@@ -117,6 +121,11 @@ class DownloadService:
         self.track_matches = track_match_repository
         self.local_files = local_file_repository
         self.soulseek_review_candidates = soulseek_review_candidate_repository
+        # See matcher.py's identical get_config comment — a callable,
+        # not a snapshot, so a Settings-driven threshold change is
+        # visible on the very next download_playlist() call without
+        # needing DownloadService itself reconstructed.
+        self._get_config = get_config or (lambda: SeekerConfig())
         self.slskd_download_dir = slskd_download_dir
 
     def set_destination(
@@ -179,6 +188,19 @@ class DownloadService:
                 connection,
             )
 
+        # Resolved once for the whole run, not per track — thresholds
+        # don't change mid-run, and re-reading config per track would
+        # just be wasted work. Still re-resolved on every
+        # download_playlist() call, so a Settings-driven change takes
+        # effect on the next run with no restart needed.
+        config = self._get_config()
+        auto_match_threshold = (
+            config.auto_match_threshold or AUTO_MATCH_THRESHOLD
+        )
+        needs_review_threshold = (
+            config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        )
+
         requested = 0
         skipped = 0
         failed = 0
@@ -218,7 +240,7 @@ class DownloadService:
 
                 files = self.soulseek.search(_build_search_query(track))
                 settled, upgrade_shortlist, needs_review = select_downloads(
-                    track, files
+                    track, files, auto_match_threshold, needs_review_threshold,
                 )
 
                 if settled is not None or upgrade_shortlist:

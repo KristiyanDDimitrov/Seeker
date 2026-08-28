@@ -1,6 +1,8 @@
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
@@ -59,13 +61,46 @@ class TrackMatcher:
         track_repository: TrackRepository,
         local_file_repository: LocalFileRepository,
         track_match_repository: TrackMatchRepository,
+        get_config: Callable[[], SeekerConfig] | None = None,
     ):
         self.database = database
         self.tracks = track_repository
         self.local_files = local_file_repository
         self.track_matches = track_match_repository
+        # A callable, not a snapshot SeekerConfig — TrackMatcher itself
+        # is constructed once and cached for the app's lifetime
+        # (Application.track_matcher), so a plain dataclass value passed
+        # in at construction time would go stale the moment Settings
+        # saves a threshold change. Application supplies
+        # `lambda: self._config_store`, which always reads its own
+        # current attribute; defaulting here to an always-empty config
+        # keeps every existing caller (tests included) byte-for-byte
+        # unchanged, since SeekerConfig()'s threshold fields are None.
+        self._get_config = get_config or (lambda: SeekerConfig())
 
-    def match_all(self) -> dict[str, int]:
+    def match_all(
+            self,
+            auto_match_threshold: float | None = None,
+            needs_review_threshold: float | None = None,
+    ) -> dict[str, int]:
+        # Resolved once per call, not cached — a threshold changed via
+        # Settings takes effect on the very next match_all() run, no
+        # restart needed. An explicit argument (if a caller ever passes
+        # one — e.g. a future "preview before saving" UI, or a test)
+        # wins over config; config wins over matching.py's hardcoded
+        # default.
+        config = self._get_config()
+        resolved_auto_threshold = (
+            auto_match_threshold
+            if auto_match_threshold is not None
+            else config.auto_match_threshold or AUTO_MATCH_THRESHOLD
+        )
+        resolved_needs_review_threshold = (
+            needs_review_threshold
+            if needs_review_threshold is not None
+            else config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        )
+
         counts = {"auto": 0, "needs_review": 0, "unmatched": 0}
 
         with self.database.transaction() as connection:
@@ -91,10 +126,10 @@ class TrackMatcher:
                 if match is not None:
                     candidate, score = match
 
-                    if score >= AUTO_MATCH_THRESHOLD:
+                    if score >= resolved_auto_threshold:
                         match_method = "auto"
                         local_file_id = candidate.id
-                    elif score >= NEEDS_REVIEW_THRESHOLD:
+                    elif score >= resolved_needs_review_threshold:
                         match_method = "needs_review"
                         local_file_id = candidate.id
 

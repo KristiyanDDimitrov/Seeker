@@ -1,7 +1,9 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
 
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -154,6 +156,7 @@ def make_service(
         retry_results: dict | None = None,
         search_results: dict | None = None,
         progress: dict[str, tuple[int | None, int | None]] | None = None,
+        get_config=None,
 ) -> DownloadService:
     database = Database(tmp_path / "seeker.db")
     database.initialize()
@@ -171,6 +174,7 @@ def make_service(
         LocalFileRepository(database),
         SoulseekReviewCandidateRepository(database),
         slskd_download_dir=None,
+        get_config=get_config,
     )
 
 
@@ -669,6 +673,68 @@ def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
     assert rows2[0]["track_id"] == "zigi-track"
     assert rows2[0]["filename"] == zigi_sc_candidate.filename
     assert 70.0 <= rows2[0]["score"] < 90.0
+
+
+def test_download_playlist_resolves_threshold_from_config_end_to_end(
+        tmp_path,
+):
+    # Step 8's editable thresholds — same real Prdk data/query as the
+    # needs_review test above (default: needs_review only, 70.4 < 90).
+    # Proves the actual service-layer wiring, not just select_downloads'
+    # own override parameter in isolation: a config value set (mirroring
+    # what Settings does via Application._config_store), no explicit
+    # override passed to download_playlist() itself, and the real
+    # candidate moves from needs_review into a real requested download.
+    prdk_candidate = make_soulseek_file(
+        username="musicmasterrdjpool",
+        filename=(
+            "DJPOOLS\\2026\\MONTHS\\FEB\\20\\The Mash Up 20 FEB\\"
+            "Prdk - One More Night (Clean) 4A 87.mp3"
+        ),
+        extension="mp3",
+        size=9_251_601,
+        # Practical (unlike the real 67_376 in the needs_review test) —
+        # this test is about threshold resolution, not queue-length
+        # practicality, so keep every other variable simple.
+        queue_length=2,
+        upload_speed=143_109,
+        has_free_upload_slot=False,
+        length=227,
+        bit_rate=320,
+        is_variable_bitrate=False,
+    )
+
+    prdk_query = "Prdk ONE MORE NIGHT"
+    config_state = SeekerConfig()
+
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={prdk_query: [prdk_candidate]},
+        get_config=lambda: config_state,
+    )
+    _seed_single_unmatched_track(
+        service, tmp_path, "prdk-track", "Prdk", "ONE MORE NIGHT"
+    )
+
+    result_before = service.download_playlist("Test")
+
+    assert result_before["requested"] == 0
+    assert result_before["skipped"] == 1
+    assert service.soulseek.request_download_calls == []
+
+    # Settings-equivalent action: lower the config threshold below the
+    # real 70.4 score, without reconstructing DownloadService.
+    config_state = replace(config_state, auto_match_threshold=70.0)
+
+    result_after = service.download_playlist("Test")
+
+    assert result_after["requested"] == 1
+    assert result_after["skipped"] == 0
+    assert len(service.soulseek.request_download_calls) == 1
+    assert service.soulseek.request_download_calls[0][1] == (
+        prdk_candidate.filename
+    )
 
 
 def test_download_playlist_clears_stale_review_candidate_once_settled(

@@ -13,6 +13,20 @@ class SeekerConfig:
     slskd_download_dir: str | None = None
     spotify_client_id: str | None = None
     spotify_redirect_uri: str | None = None
+    # SoulSeek network login — plain text in this file (same 0600
+    # chmod as every other field here; see save_config). Added for
+    # Settings (Step 8) to have something real to display/re-collect
+    # for "Update SoulSeek credentials" — item 19 deliberately left
+    # these out of scope when the store was first built, pending
+    # exactly this real consumer.
+    slskd_username: str | None = None
+    slskd_password: str | None = None
+    # None means "use matching.py's hardcoded default" — same
+    # unset-means-unchanged discipline as every optional override in
+    # this codebase (e.g. the BPM-range feature). Resolved per-call by
+    # TrackMatcher/DownloadService, never cached at import time.
+    auto_match_threshold: float | None = None
+    needs_review_threshold: float | None = None
 
 
 def resolve_config_path() -> Path:
@@ -42,6 +56,10 @@ def load_config(path: Path) -> SeekerConfig:
         slskd_download_dir=data.get("slskd_download_dir"),
         spotify_client_id=data.get("spotify_client_id"),
         spotify_redirect_uri=data.get("spotify_redirect_uri"),
+        slskd_username=data.get("slskd_username"),
+        slskd_password=data.get("slskd_password"),
+        auto_match_threshold=data.get("auto_match_threshold"),
+        needs_review_threshold=data.get("needs_review_threshold"),
     )
 
 
@@ -94,7 +112,13 @@ def migrate_legacy_env_config(path: Path) -> SeekerConfig:
         if not env_value:
             continue
 
-        seeker_config = replace(seeker_config, **{field_name: env_value})
+        # _ENV_VAR_BY_FIELD only ever lists str-typed fields (env vars
+        # are always strings) — mypy can't verify that statically once
+        # SeekerConfig also has float-typed fields, since **kwargs here
+        # is keyed by a runtime field_name string.
+        seeker_config = replace(
+            seeker_config, **{field_name: env_value},  # type: ignore[arg-type]
+        )
         migrated_fields.append(env_var)
 
     if migrated_fields:

@@ -777,6 +777,81 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     mocks — so it wasn't run, rather than performing a hollow "ran the
     command" step that confirms nothing real. [HISTORY §27](docs/HISTORY.md#27)
 
+28. **Frontend Step 8: Settings — in progress (2026-08-30).** A new
+    Settings screen exposing config-store values the UI had no way to
+    view or edit before now: library locations, playlist destinations,
+    SoulSeek/Spotify connection management, and (the one genuine
+    refactor in this step, not just wiring) editable match-classification
+    thresholds. Sections built and documented incrementally, same
+    pattern as item 26's §0/§1/§2.
+
+    **§4 — editable auto-match/needs-review thresholds — done.**
+    `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD` stay hardcoded
+    constants in `matching.py`, which stays completely config-unaware
+    (same reasoning that already protects it from filesystem/DB
+    coupling). Neither constant is actually referenced inside any
+    `matching.py` function body, though — `score_title`/`artist_matches`
+    never compared against them at all; the real reference points were
+    `quality.py`'s `filter_candidates`/`find_best_needs_review_candidate`/
+    `select_downloads` and `matcher.py`'s `TrackMatcher.match_all()`.
+
+    `quality.py`'s three functions gained plain optional float
+    parameters (`auto_match_threshold`/`needs_review_threshold`,
+    defaulting to the `matching.py` constants) and stay just as pure as
+    before — no config awareness inside `quality.py` itself, mirroring
+    `matching.py`'s own purity rather than only half-applying it.
+    `TrackMatcher`/`DownloadService` are the real "service-layer
+    resolvers": both constructors gained `get_config: Callable[[],
+    SeekerConfig] | None = None` — a **callable**, not a snapshot
+    `SeekerConfig` value, because both are constructed once and cached
+    for the app's lifetime (`Application.track_matcher`/
+    `.download_service`) — a plain value captured at that first
+    construction would go stale the moment Settings saves a change.
+    `Application` supplies `lambda: self._config_store`, which always
+    reads its own current attribute; every write path that touches
+    `_config_store` already reassigns it in place (item 19's/23's
+    established `self.application._config_store = updated` pattern),
+    so this needed zero new synchronization mechanism.
+    `TrackMatcher.match_all()`/`DownloadService.download_playlist()`
+    resolve `config.threshold or matching.py's constant` **fresh on
+    every call** (never cached), so a Settings change takes effect on
+    the very next `library match`/`download` run with no restart.
+    `match_all()` also accepts explicit optional override arguments
+    (`None` = use config-or-default) — used directly by tests, and
+    available to any future caller that wants to preview a value before
+    saving it.
+
+    **Behavior-preserving, confirmed the same way every prior refactor
+    here was:** every existing call site (`filter_candidates(track,
+    files)`, `select_downloads(track, files)`, `match_all()` with no
+    args, every `TrackMatcher`/`DownloadService` constructed the way
+    every current test already does) is untouched — full suite passes
+    unmodified, only new tests added. `SeekerConfig` also gained
+    `slskd_username`/`slskd_password` (plain text, same 0600-permission
+    file as everything else in the store) — item 19 deliberately left
+    these out when the store was first built, "pending exactly this
+    real consumer"; Settings' connection-management section (§3) is
+    that consumer.
+
+    Tests: `filter_candidates`/`find_best_needs_review_candidate`
+    unchanged with no override, reclassify correctly with one — using
+    the real Prdk (70.4)/Zigi SC-A-Cray (73.2) reference data from item
+    17 directly, not synthetic scores; `match_all()` likewise, plus a
+    dedicated end-to-end test that sets a `get_config`-backed value
+    (mirroring the real `Application._config_store` reassignment
+    pattern) and confirms the SAME already-constructed `TrackMatcher`
+    reclassifies a real score on its very next call with zero
+    reconstruction; an equivalent end-to-end test at the
+    `DownloadService.download_playlist()` layer, using the real Prdk
+    search data — a needs_review-only result at the default threshold
+    becomes a real requested download once the config value is lowered
+    below its real score, mid-session, same service instance. Config
+    round-trip tests for all four new `SeekerConfig` fields.
+    `mypy --strict` clean; full suite 316 passed (no skips — the X9 Pro
+    drive is attached again this session, unblocking the
+    drive-unmounted-skip tests too — unrelated to this task, just
+    incidentally true for this run).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
