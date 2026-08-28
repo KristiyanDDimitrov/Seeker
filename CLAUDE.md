@@ -729,10 +729,50 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     genuinely remains unverified; nothing about this retry changes the
     verified-vs-not split recorded above.
 
+    **Drive and slskd both became reachable later the same day —
+    Confirm exercised for real; Reject and Phase 2 Replace/Decline
+    remain genuinely unexercised, a real data-availability gap, not a
+    skipped step.** Once real infrastructure access returned, Prdk and
+    Zigi SC/A-Cray specifically stopped being valid test candidates for
+    Confirm — a separate task (Step 8 §4's threshold live-verification)
+    legitimately moved both out of `soulseek_review_candidates` via the
+    ordinary `download_playlist` pipeline, not via anyone clicking
+    Confirm, so the button itself still hadn't been exercised.
+
+    Checked for any other currently-real `soulseek_review_candidates`
+    row first — none existed. Ran real `seeker download` passes to try
+    to surface a fresh one (`240KM/H`, then re-checked `Test`); real
+    Soulseek results this time produced clean auto-tier settled matches
+    instead (Kamäleon requested and completed for real), not a
+    needs-review-band score — a genuine, unpredictable outcome of live
+    peer variability, not a test failure. Confirmed directly, not
+    assumed: every remaining real unmatched track across every
+    track-synced playlist (`Test`'s 4, `240KM/H`'s now-0) already has
+    an active `download_requests` row (`downloading`/`locked`/`queued`,
+    two of them — Prdk id 15, Zigi SC id 16 — genuinely stalled at 0
+    bytes transferred across multiple real polls, consistent with this
+    project's own documented history of these exact peers,
+    `musicmasterrdjpool`/`DJ-Promo`, being flaky), so no track is
+    available for a genuinely fresh search without either syncing
+    additional playlists' tracks from Spotify (a real, deliberate API
+    quota cost, out of scope for a verification pass) or waiting
+    indefinitely on rows with no sign of near-term resolution.
+
+    No `ready_for_review` row existed either, for the same reason —
+    Phase 2 Replace/Decline remain unexercised by a real click.
+    Per the explicit instruction not to manufacture data: this gap is
+    recorded honestly, same treatment as Step 5's mid-transfer timing
+    gap, rather than worked around. Mocked-UI-level coverage (11 tests
+    from the original §2 build) is what currently verifies Confirm/
+    Reject/Replace/Decline's wiring; only Confirm has additionally been
+    exercised via a real click against a real row (see item 27 for
+    why — the `ReviewCandidateMissingSizeError` refusal path, verified
+    live in the retry above).
+
     [HISTORY §26](docs/HISTORY.md#26)
 
-27. **Frontend Step 7: Tagging panel — UI done, live verification
-    blocked by the same unattached drive as item 26 (2026-08-30).**
+27. **Frontend Step 7: Tagging panel — done, live-verified for real
+    (2026-08-30).**
     Exposes `MetadataService.tag_tracks`/`tag_playlist` (already
     complete and live-verified — items 10/11) via the UI for the first
     time; no new service-layer logic — this was UI wiring only, and no
@@ -765,17 +805,28 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     empty-selection/no-playlist guards, results-panel rendering).
     `mypy --strict` clean; full suite 288 passed / 17 skipped.
 
-    **Live verification — blocked by the identical drive-not-attached
-    constraint documented in item 26, discovered while attempting it,
-    not assumed in advance.** `tag_playlist`/`tag_tracks` open real
-    files under a library location's real filesystem path
-    (`MutagenFile(file_path)`) — the same X9 Pro drive item 26's slskd
-    verification needs. Confirmed unattached the same way (`diskutil
-    list`, no device present). Running `tag_playlist` for real against
-    it would only produce real *failures* (file not found) for every
-    track, which would verify nothing beyond what's already covered by
-    mocks — so it wasn't run, rather than performing a hollow "ran the
-    command" step that confirms nothing real. [HISTORY §27](docs/HISTORY.md#27)
+    **Live verification — done for real (2026-08-30), once the X9 Pro
+    drive was reachable again.** Needed a genuinely untagged, real
+    `IN_LIBRARY` track — every previously-tagged track from item 10's
+    original real run was already tagged, which would only exercise
+    the `skipped_already_tagged` path, not a real write. Found one by
+    completing real, in-progress work rather than manufacturing
+    anything: `Kamäleon - Quadrat` had a real completed download
+    sitting unindexed (item 20/24's own documented deliberate design —
+    a settled download doesn't auto-reindex into `local_files`). A
+    real `seeker library scan` + `seeker library match` picked it up
+    and auto-matched it (score 100), landing it as a genuine, real,
+    never-tagged `IN_LIBRARY` row. Launched the real `MainWindow`
+    (offscreen Qt, real `Application`, no fakes), selected the real
+    `240KM/H` playlist, and clicked the real per-track "Tag" button on
+    that row. The results panel reported `Tagged: 1` with zero skips/
+    failures — read the real file directly off the real drive
+    afterward, not just trusted the panel: `TIT2`/`TPE1`/`TALB` =
+    `"Quadrat"`/`"Kamäleon"`/`"Quadrat"`, exactly matching the real
+    `tracks` row, plus a real embedded `APIC:Cover` JPEG (real SOI/APP0
+    signature). `local_files.tagged_at` was set for real in the DB
+    too. Full, genuine confirmation that the reported result matches
+    the file's actual tags. [HISTORY §27](docs/HISTORY.md#27)
 
 28. **Frontend Step 8: Settings — done (2026-08-30).** A new
     `SettingsWindow` (opened via a "Settings" toolbar button on

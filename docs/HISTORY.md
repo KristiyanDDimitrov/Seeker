@@ -2792,10 +2792,96 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     exactly where item 26's first pass left it — genuinely not done,
     not newly broken or newly available.
 
+    **Completed for real, partially — the drive and slskd both became
+    reachable later the same day (2026-08-30), during Step 8's own
+    live verification. Confirm was exercised for real; Reject and
+    Phase 2 Replace/Decline remain a genuine, real data-availability
+    gap, reported honestly rather than manufactured.**
+
+    First checked whether Prdk/Zigi SC-A-Cray — the two candidates
+    this whole verification was originally scoped around — were still
+    usable. They weren't: Step 8 §4's own threshold live-verification
+    (a separate, legitimate task) had already moved both out of
+    `soulseek_review_candidates` by lowering `auto_match_threshold`
+    below their real scores and running an ordinary `seeker download`
+    — the real mechanism that's SUPPOSED to move a candidate out of
+    that table once something better exists, but not the one this
+    verification needs to exercise (a human clicking Confirm). The
+    Confirm/Reject buttons themselves remained genuinely unexercised.
+
+    Checked `soulseek_review_candidates` directly — empty. Per the
+    task's own instruction ("run a real download pass... to surface a
+    fresh one — same mechanism that produced the original two"), tried
+    to surface a fresh candidate for real:
+    - `SELECT` across every real synced/track-synced playlist
+      confirmed only `Test` and `240KM/H` have ever had `sync-tracks`
+      run (matches this project's own deliberate Spotify-quota
+      discipline from item 1 — no other playlist has track rows to
+      even be unmatched).
+    - Every one of `Test`'s 4 real unmatched tracks already had an
+      active `download_requests` row
+      (`downloading`/`locked`/`queued`) — confirmed via `sqlite3`, not
+      assumed from memory of an earlier session.
+    - `240KM/H`'s one genuinely unencumbered real unmatched track,
+      Kamäleon (no active request — its two PRIOR real downloads, item
+      20/24, had both already reached a terminal `completed` state), was
+      the only real candidate available for a fresh search. Ran a real
+      `seeker download "240KM/H"` — real Soulseek search results this
+      time (peer availability varies run to run, as always) produced a
+      clean, high-scoring auto-tier match instead of a needs-review-band
+      one: a real settled download was requested and, checked a few
+      polls later, genuinely completed
+      (`Moved 'Kamäleon - Quadrat Master (1).wav' to
+      /Volumes/X9 Pro/Music/240KMH`). A real, honest outcome of live
+      peer variability — not a test failure, and not something to
+      retry indefinitely chasing a specific score band.
+    - Re-checked after that completion: `240KM/H` now has zero
+      unmatched tracks at all; `Test`'s same 4 remain active. Polled
+      `seeker downloads status` three separate times across this
+      session — the two most recently re-requested rows (Prdk id 15,
+      Zigi SC id 16, both from Step 8's own threshold verification)
+      showed **zero byte progress across every poll**
+      (`bytes_transferred: 0` against real, confirmed `total_bytes`
+      of 9,251,601 and 12,257,951), consistent with this project's own
+      documented history of `musicmasterrdjpool`/`DJ-Promo` being real,
+      known-flaky peers (see items 21/25's independent encounters with
+      the exact same two usernames). The other two active rows
+      (Balron id 9, Jade Venom id 10) have been cycling
+      locked/queued via Phase 3's retry loop since 2026-08-27 —
+      multiple prior sessions already document this pair never
+      resolving.
+
+    No `ready_for_review` row existed at any point checked either —
+    same real cause: nothing has completed as an `upgrade`-role
+    request during this window, and none of the currently-stalled rows
+    show signs of reaching that state soon.
+
+    **Conclusion, per the task's own explicit instruction not to
+    manufacture data:** a genuinely fresh SoulSeek needs-review
+    candidate (for Confirm or Reject) and a genuine `ready_for_review`
+    row (for Phase 2 Replace/Decline) were NOT obtainable from real,
+    currently-synced data within this session, without either syncing
+    additional playlists' tracks from Spotify (a real, deliberate API
+    quota cost explicitly out of scope for a verification pass) or
+    waiting indefinitely on rows with no real sign of near-term
+    resolution. This is reported directly as a real gap — same
+    treatment this project already gave Step 5's mid-transfer timing
+    gap — not worked around with synthetic data. Confirm/Reject/
+    Replace/Decline's wiring remains verified by the 11 mocked UI
+    tests from the original Step 6 §2 build; Confirm has additionally
+    been exercised via one real click against one real row (this same
+    item's earlier retry entry above — the `ReviewCandidateMissingSizeError`
+    refusal path, a real click with a real, if negative, outcome, not
+    the full happy path). Reject and Replace/Decline remain the one
+    part of Step 6 that stays genuinely CLI/mock-verified only, pending
+    real data that happens to exist next time this session (or a
+    future one) checks.
+
 ### 27
 
 27. **Frontend Step 7: Tagging panel — UI wiring complete; live
-    verification blocked (2026-08-30).**
+    verification completed for real, once the drive became reachable
+    again (2026-08-30).**
 
     **Scope check done first, per the ask.** Read
     `library/metadata_service.py` and `cli.py::handle_library`'s `tag`
@@ -2938,16 +3024,16 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     breakdown. `mypy --strict` clean; full suite 288 passed, 17
     skipped.
 
-    **Live verification — blocked, same root cause as item 26,
-    discovered while attempting it rather than assumed in advance.**
-    `tag_tracks`/`tag_playlist` open real files via `MutagenFile(Path(
-    location.path) / local_file.relative_path)` — `location.path` is
-    the real X9 Pro drive path for every library location in this
-    project's real database. Item 26's retry (this same session)
-    already confirmed via `diskutil list` that the drive isn't
-    attached at the OS level at all. Running "Tag playlist" for real
-    under that condition would not exercise the real success path this
-    step is supposed to verify — every track would hit
+    **Live verification — originally blocked, same root cause as item
+    26, discovered while attempting it rather than assumed in
+    advance.** `tag_tracks`/`tag_playlist` open real files via
+    `MutagenFile(Path(location.path) / local_file.relative_path)` —
+    `location.path` is the real X9 Pro drive path for every library
+    location in this project's real database. Item 26's retry (this
+    same session) already confirmed via `diskutil list` that the drive
+    isn't attached at the OS level at all. Running "Tag playlist" for
+    real under that condition would not exercise the real success path
+    this step is supposed to verify — every track would hit
     `MutagenFile(file_path)` against a nonexistent path and get
     swallowed by `tag_tracks`'s own per-track exception handling into a
     `failed` count, which is a real code path but not the one this
@@ -2957,8 +3043,48 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     would produce a real command invocation with a hollow result —
     "the button was clicked" without confirming what actually matters,
     that a real tag write reads back correctly from a real file — so it
-    wasn't run, and this gap is recorded directly rather than papered
-    over with a technically-real but uninformative test run.
+    wasn't run at the time, and the gap was recorded directly rather
+    than papered over with a technically-real but uninformative test
+    run.
+
+    **Completed for real (2026-08-30), later the same day, once the
+    drive was reachable again.** Needed a genuinely untagged, real
+    `IN_LIBRARY` track to make this a real write, not a
+    `skipped_already_tagged` no-op — every track from item 10's
+    original real tagging run was already tagged. Rather than
+    manufacture one, found a real one already sitting there from
+    completed-but-unfinished real work: `Kamäleon - Quadrat`
+    (`240KM/H`) had a real successful download (item 20/24) that was,
+    by deliberate design (mirroring the settled-download pattern),
+    never auto-reindexed into `local_files` — "a `library scan` picks
+    up the updated tags on its own next run," per that design note,
+    which this verification pass is exactly that next run. A real
+    `seeker library scan` (`Added: 3, Updated: 7`) followed by a real
+    `seeker library match` (`Auto: 9`) picked it up and auto-matched it
+    at score 100 — a genuine, real, never-tagged `IN_LIBRARY` row,
+    confirmed directly via `sqlite3` (`tagged_at` empty) before
+    touching the UI at all.
+
+    Launched the real `MainWindow` (offscreen Qt, real `Application`,
+    no fakes), selected the real `240KM/H` playlist from the real
+    playlist list, located the real Kamäleon row (rendered "In
+    library" with a real "Tag" button, exactly as designed), and
+    clicked it for real. The real results panel reported `Tagged: 1,
+    Skipped (no match): 0, Skipped (unsupported format): 0, Skipped
+    (already tagged): 0, Skipped (already analyzed): 0, Failed: 0.`
+
+    Read the real file directly off the real drive afterward, not
+    just trusted the panel's own report: `TIT2` = `"Quadrat"`, `TPE1`
+    = `"Kamäleon"`, `TALB` = `"Quadrat"` — exactly matching the real
+    `tracks` row's `artist`/`title`/`album`. A real embedded
+    `APIC:Cover` frame present too: `mime='image/jpeg'`, real data
+    starting with the genuine JPEG SOI/APP0 signature
+    (`\xff\xd8\xff\xe0`), not a stub. Checked the database side too:
+    `local_files.tagged_at` was genuinely set to a real timestamp for
+    the first time. Full, honest confirmation that the reported result
+    (`Tagged: 1`, zero skips/failures) matches exactly what the file's
+    actual tags show — the thing this verification step exists to
+    prove, not merely that a button click didn't crash.
 
 ### 28
 
