@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from seeker.dashboard_service import DashboardService, PlaylistNotFoundError
@@ -143,6 +145,8 @@ def seed_download_request(
         role: str = "settled",
         bytes_transferred: int | None = None,
         total_bytes: int | None = None,
+        completed_at: str | None = None,
+        requested_at: str = "2026-01-01T00:00:00+00:00",
 ) -> None:
     with service.database.transaction() as connection:
         service.download_requests.add(
@@ -158,7 +162,8 @@ def seed_download_request(
                     else None
                 ),
                 size=1_000,
-                requested_at="2026-01-01T00:00:00+00:00",
+                requested_at=requested_at,
+                completed_at=completed_at,
             ),
             connection,
         )
@@ -396,3 +401,120 @@ def test_scoping_two_playlists_sharing_no_tracks_never_leak(tmp_path):
     assert statuses_b[0].track.id == "b1"
     assert statuses_b[0].state == NEEDS_REVIEW
     assert statuses_b[0].soulseek_candidate is not None
+
+
+def test_get_active_downloads_is_global_across_playlists(tmp_path):
+    # The exact scoping bug class this project already found once
+    # (global-vs-playlist-scoped check/match_all confusion) — this
+    # asserts get_active_downloads() is NOT scoped to one playlist:
+    # a row from a different playlist must never be excluded.
+    service = make_service(tmp_path)
+    seed_playlist(service, "pA", name="Playlist A")
+    seed_playlist(service, "pB", name="Playlist B")
+    seed_track(service, "pA", "a1", artist="Artist A", title="Song A")
+    seed_track(service, "pB", "b1", artist="Artist B", title="Song B")
+    seed_download_request(service, "a1", status="downloading")
+    seed_download_request(service, "b1", status="locked", role="upgrade")
+
+    downloads = service.get_active_downloads()
+
+    assert {d.track.id for d in downloads} == {"a1", "b1"}
+    playlist_names_by_track = {d.track.id: d.playlist_name for d in downloads}
+    assert playlist_names_by_track["a1"] == "Playlist A"
+    assert playlist_names_by_track["b1"] == "Playlist B"
+
+
+@pytest.mark.parametrize(
+    "status", ["queued", "downloading", "locked", "shortlisted", "ready_for_review"],
+)
+def test_get_active_downloads_includes_every_non_terminal_status(
+        tmp_path, status,
+):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(service, "t1", status=status, role="upgrade")
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 1
+    assert downloads[0].request.status == status
+
+
+def test_get_active_downloads_excludes_superseded(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(service, "t1", status="superseded", role="upgrade")
+
+    downloads = service.get_active_downloads()
+
+    assert downloads == []
+
+
+def test_get_active_downloads_includes_recently_completed(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    recent = (
+        datetime.now(timezone.utc) - timedelta(seconds=10)
+    ).isoformat()
+    seed_download_request(
+        service, "t1", status="completed", completed_at=recent,
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 1
+    assert downloads[0].request.status == "completed"
+
+
+def test_get_active_downloads_excludes_long_completed(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    stale = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).isoformat()
+    seed_download_request(
+        service, "t1", status="completed", completed_at=stale,
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert downloads == []
+
+
+def test_get_active_downloads_excludes_long_failed(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    stale = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).isoformat()
+    seed_download_request(
+        service, "t1", status="failed", completed_at=stale,
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert downloads == []
+
+
+def test_get_active_downloads_sorted_most_recent_first(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1", title="Older")
+    seed_track(service, "p1", "t2", title="Newer")
+    seed_download_request(
+        service, "t1", status="queued",
+        requested_at="2026-01-01T00:00:00+00:00",
+    )
+    seed_download_request(
+        service, "t2", status="queued",
+        requested_at="2026-01-02T00:00:00+00:00",
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert [d.track.id for d in downloads] == ["t2", "t1"]

@@ -129,6 +129,34 @@ class PlaylistRepository:
 
         return [_row_to_playlist(row) for row in rows]
 
+    def get_playlist_names_by_track_id(
+            self,
+            connection: sqlite3.Connection,
+    ) -> dict[str, list[str]]:
+        # Whole-table join, no per-track query — used by
+        # DashboardService.get_active_downloads() to build display-context
+        # playlist names for the GLOBAL active-downloads view (every
+        # download_requests row, across every playlist) without an N+1
+        # query per row. Deliberately not filtered by
+        # download_location_id (unlike get_by_track_id above, which
+        # exists only to resolve a move destination) — this is purely
+        # for display, so every playlist a track belongs to counts.
+        rows = connection.execute(
+            """
+            SELECT pt.track_id, p.name
+            FROM playlist_tracks pt
+            JOIN playlists p ON p.id = pt.playlist_id
+            ORDER BY p.name
+            """
+        ).fetchall()
+
+        result: dict[str, list[str]] = {}
+
+        for row in rows:
+            result.setdefault(row["track_id"], []).append(row["name"])
+
+        return result
+
     def set_destination(
             self,
             playlist_id: str,

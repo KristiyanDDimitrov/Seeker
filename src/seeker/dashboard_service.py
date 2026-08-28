@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -15,6 +17,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.local_file import LocalFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
@@ -41,6 +44,21 @@ _DOWNLOADING_STATUSES = {"queued", "downloading"}
 # Deliberately excludes completed/failed/superseded — those aren't
 # "awaiting" anything.
 _AWAITING_REVIEW_STATUSES = {"ready_for_review", "locked", "shortlisted"}
+
+# Every download_requests status that still represents real, in-progress
+# work toward an outcome — mirrors `seeker downloads status`'s own scope
+# exactly (see download_service.py's TERMINAL_STATUSES/status state
+# machine in schema.py). Deliberately excludes 'superseded' — that's
+# terminal, a sibling entry already won.
+ACTIVE_DOWNLOAD_STATUSES = {
+    "queued", "downloading", "locked", "shortlisted", "ready_for_review",
+}
+
+# Untuned constant, same convention as every other threshold in this
+# codebase — how long a completed/failed row keeps appearing in the
+# active-downloads view after landing, so a download visibly "lands"
+# rather than vanishing the instant poll_downloads() marks it terminal.
+RECENTLY_FINISHED_WINDOW_SECONDS = 60
 
 
 class DashboardService:
@@ -148,6 +166,71 @@ class DashboardService:
             )
             for track in tracks
         ]
+
+    def get_active_downloads(self) -> list[ActiveDownload]:
+        """Every download_requests row still in progress, GLOBALLY across
+        every playlist at once — mirrors `seeker downloads status`'s own
+        scope, not the single-playlist scope of
+        get_playlist_track_status() above. Getting this backwards would
+        repeat the exact scoping bug class this project already found
+        once (the global-vs-playlist-scoped `check`/`match_all`
+        confusion, see CLAUDE.md) — so this is deliberately NOT filtered
+        by playlist anywhere in this method.
+
+        Also includes a completed/failed row for
+        RECENTLY_FINISHED_WINDOW_SECONDS after its completed_at, so a
+        download visibly "lands" in the view instead of disappearing the
+        instant poll_downloads() marks it terminal.
+        """
+        with self.database.transaction() as connection:
+            requests = self.download_requests.get_all(connection)
+            tracks_by_id = {
+                track.id: track for track in self.tracks.get_all(connection)
+            }
+            playlist_names_by_track_id = (
+                self.playlists.get_playlist_names_by_track_id(connection)
+            )
+
+        now = datetime.now(timezone.utc)
+        results = []
+
+        for request in requests:
+            if not _is_visible(request, now):
+                continue
+
+            track = tracks_by_id.get(request.track_id)
+
+            if track is None:
+                continue
+
+            playlist_names = playlist_names_by_track_id.get(
+                request.track_id, [],
+            )
+
+            results.append(
+                ActiveDownload(
+                    request=request,
+                    track=track,
+                    playlist_name=", ".join(playlist_names) or "Unknown",
+                )
+            )
+
+        results.sort(key=lambda item: item.request.requested_at, reverse=True)
+
+        return results
+
+
+def _is_visible(request: DownloadRequest, now: datetime) -> bool:
+    if request.status in ACTIVE_DOWNLOAD_STATUSES:
+        return True
+
+    if request.status in ("completed", "failed") and request.completed_at:
+        completed_at = datetime.fromisoformat(request.completed_at)
+        elapsed = (now - completed_at).total_seconds()
+
+        return elapsed <= RECENTLY_FINISHED_WINDOW_SECONDS
+
+    return False
 
 
 def _compute_status(

@@ -1,6 +1,27 @@
 import sqlite3
+import threading
 
+from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
+from seeker.database.repositories.download_request_repository import (
+    DownloadRequestRepository,
+)
+from seeker.database.repositories.local_file_repository import (
+    LocalFileRepository,
+)
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
+)
+from seeker.database.repositories.soulseek_review_candidate_repository import (
+    SoulseekReviewCandidateRepository,
+)
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
+from seeker.database.repositories.track_repository import TrackRepository
+from seeker.models.download_request import DownloadRequest
+from seeker.models.playlist import Playlist
+from seeker.models.track import Track
 
 
 def _create_pre_migration_download_requests_table(path):
@@ -130,3 +151,98 @@ def test_initialize_is_idempotent_on_an_already_migrated_database(
 
     assert columns.count("bytes_transferred") == 1
     assert columns.count("total_bytes") == 1
+
+
+def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
+    # Targeted check for the Downloads screen's new combination: the
+    # backend poll timer writes real progress from a background thread
+    # (mirroring poll_downloads()'s update_progress calls) at the same
+    # time the display-refresh timer reads via
+    # DashboardService.get_active_downloads() from another thread. The
+    # main dashboard's own stress test (item 22 in CLAUDE.md) already
+    # established Database.transaction()'s per-call-connection pattern
+    # is safe for concurrent readers/writers in general — this isn't a
+    # meaningfully different access pattern (still short-lived,
+    # independent connections per call), so a full re-run of that
+    # broader stress test isn't needed; this confirms the specific new
+    # writer+reader pair introduced by this task doesn't error or
+    # corrupt state.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    download_requests = DownloadRequestRepository(database)
+    dashboard_service = DashboardService(
+        database,
+        PlaylistRepository(database),
+        TrackRepository(database),
+        TrackMatchRepository(database),
+        download_requests,
+        SoulseekReviewCandidateRepository(database),
+        LocalFileRepository(database),
+    )
+
+    with database.transaction() as connection:
+        dashboard_service.playlists.save(
+            Playlist(id="p1", name="Playlist", track_count=1), connection,
+        )
+        dashboard_service.tracks.save(
+            Track(
+                id="t1", title="Title", artist="Artist", album="Album",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        dashboard_service.tracks.save_playlist_track("p1", "t1", connection)
+        download_requests.add(
+            DownloadRequest(
+                track_id="t1",
+                username="peer1",
+                filename="file.flac",
+                format="flac",
+                status="downloading",
+                transfer_id="transfer-1",
+                requested_at="2026-01-01T00:00:00+00:00",
+            ),
+            connection,
+        )
+        request_id = connection.execute(
+            "SELECT id FROM download_requests WHERE track_id = 't1'"
+        ).fetchone()[0]
+
+    errors: list[BaseException] = []
+    iterations = 50
+
+    def writer() -> None:
+        try:
+            for i in range(iterations):
+                with database.transaction() as connection:
+                    download_requests.update_progress(
+                        request_id, i, 1_000, connection,
+                    )
+        except BaseException as error:  # noqa: BLE001 - captured for the assertion below
+            errors.append(error)
+
+    def reader() -> None:
+        try:
+            for _ in range(iterations):
+                dashboard_service.get_active_downloads()
+        except BaseException as error:  # noqa: BLE001 - captured for the assertion below
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=writer),
+        threading.Thread(target=reader),
+        threading.Thread(target=reader),
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+
+    downloads = dashboard_service.get_active_downloads()
+    assert len(downloads) == 1
+    assert downloads[0].request.bytes_transferred == iterations - 1
