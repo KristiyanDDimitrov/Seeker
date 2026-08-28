@@ -1,5 +1,6 @@
 import threading
 
+from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QCheckBox, QProgressBar, QPushButton
 
 from seeker.models.active_download import ActiveDownload
@@ -7,6 +8,12 @@ from seeker.models.download_request import DownloadRequest
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
+from seeker.models.track_status import (
+    DOWNLOADING,
+    IN_LIBRARY,
+    NOT_FOUND,
+    TrackStatus,
+)
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui.main_window import MainWindow
 from seeker.ui import workers as workers_module
@@ -105,6 +112,48 @@ class FakeDownloadService:
         return self.apply_upgrade_decision_result if replace else None
 
 
+_EMPTY_TAG_RESULT = {
+    "tagged": 0,
+    "skipped_no_match": 0,
+    "skipped_format_unsupported": 0,
+    "skipped_already_tagged": 0,
+    "skipped_already_analyzed": 0,
+    "failed": 0,
+    "details": [],
+}
+
+
+class FakeMetadataService:
+    def __init__(self, tag_result: dict | None = None):
+        self._tag_result = tag_result or dict(_EMPTY_TAG_RESULT)
+        self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None]] = []
+        self.tag_playlist_calls: list[tuple[str, bool, tuple | None]] = []
+
+    def tag_tracks(
+            self,
+            track_ids: list[str],
+            analyze_audio: bool = False,
+            expected_bpm_range: tuple | None = None,
+            force: bool = False,
+    ) -> dict:
+        self.tag_tracks_calls.append(
+            (track_ids, analyze_audio, expected_bpm_range)
+        )
+        return self._tag_result
+
+    def tag_playlist(
+            self,
+            playlist_name: str,
+            analyze_audio: bool = False,
+            expected_bpm_range: tuple | None = None,
+            force: bool = False,
+    ) -> dict:
+        self.tag_playlist_calls.append(
+            (playlist_name, analyze_audio, expected_bpm_range)
+        )
+        return self._tag_result
+
+
 class FakeApplication:
     def __init__(
             self,
@@ -114,6 +163,7 @@ class FakeApplication:
             soulseek_configured: bool = False,
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
+            tag_result: dict | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.dashboard_service = FakeDashboardService(
@@ -124,6 +174,7 @@ class FakeApplication:
         self.download_service = FakeDownloadService(
             review_candidates, pending_upgrades,
         )
+        self.metadata_service = FakeMetadataService(tag_result)
         self.soulseek_configured = soulseek_configured
 
 
@@ -605,3 +656,226 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
         lambda: window.review_needs_table.rowCount() == 1, timeout=2000,
     )
     assert window.review_upgrades_table.rowCount() == 1
+
+
+def _make_track_status(track_id: str = "t1", state: str = IN_LIBRARY) -> TrackStatus:
+    return TrackStatus(track=_make_track(track_id), state=state)
+
+
+def test_tag_button_appears_only_for_in_library_tracks(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=IN_LIBRARY),
+        _make_track_status(track_id="t2", state=NOT_FOUND),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    in_library_actions = window.track_table.cellWidget(0, 3)
+    assert [b.text() for b in in_library_actions.findChildren(QPushButton)] == ["Tag"]
+
+    not_found_actions = window.track_table.cellWidget(1, 3)
+    assert not_found_actions.findChildren(QPushButton) == []
+
+
+def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
+    statuses = [_make_track_status(track_id="t7", state=IN_LIBRARY)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    actions = window.track_table.cellWidget(0, 3)
+    tag_button = actions.findChildren(QPushButton)[0]
+    tag_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_tracks_calls == [
+        (["t7"], False, None),
+    ]
+
+
+def test_bpm_range_fields_hidden_until_analyze_audio_checked(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    # isVisible() reflects actual on-screen visibility, which requires
+    # a shown top-level window — isHidden() reflects the widget's own
+    # explicit hide/show state regardless of ancestor visibility, which
+    # is what this test actually cares about, so window.show() isn't
+    # needed here.
+    assert window.bpm_min_edit.isHidden()
+    assert window.bpm_max_edit.isHidden()
+
+    window.analyze_audio_checkbox.setChecked(True)
+
+    assert not window.bpm_min_edit.isHidden()
+    assert not window.bpm_max_edit.isHidden()
+
+    window.analyze_audio_checkbox.setChecked(False)
+
+    assert window.bpm_min_edit.isHidden()
+    assert window.bpm_max_edit.isHidden()
+
+
+def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
+    statuses = [_make_track_status(track_id="t9", state=IN_LIBRARY)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    window.analyze_audio_checkbox.setChecked(True)
+    window.bpm_min_edit.setText("160")
+    window.bpm_max_edit.setText("180")
+
+    actions = window.track_table.cellWidget(0, 3)
+    actions.findChildren(QPushButton)[0].click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_tracks_calls == [
+        (["t9"], True, (160.0, 180.0)),
+    ]
+
+
+def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
+    statuses = [_make_track_status(track_id="t3", state=IN_LIBRARY)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    window.analyze_audio_checkbox.setChecked(True)
+    window.bpm_min_edit.setText("160")
+    # bpm_max_edit deliberately left blank.
+
+    actions = window.track_table.cellWidget(0, 3)
+    actions.findChildren(QPushButton)[0].click()
+
+    assert application.metadata_service.tag_tracks_calls == []
+    assert "both" in window.status_label.text().lower()
+
+
+def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
+    statuses = [
+        _make_track_status(track_id="s1", state=IN_LIBRARY),
+        _make_track_status(track_id="s2", state=IN_LIBRARY),
+        _make_track_status(track_id="s3", state=IN_LIBRARY),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+    # Select rows 0 and 2 additively through the selection model itself
+    # (QItemSelectionModel.Select | .Rows) — selectRow() replaces the
+    # existing selection instead of adding to it, which isn't what a
+    # real ctrl/shift-click multi-select produces.
+    selection_model = window.track_table.selectionModel()
+    for row in (0, 2):
+        selection_model.select(
+            window.track_table.model().index(row, 0),
+            QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows,
+        )
+
+    window.tag_selected_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    track_ids, analyze_audio, bpm_range = application.metadata_service.tag_tracks_calls[0]
+    assert set(track_ids) == {"s1", "s3"}
+    assert analyze_audio is False
+    assert bpm_range is None
+
+
+def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
+    statuses = [_make_track_status(track_id="s1", state=IN_LIBRARY)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+    window.tag_selected_button.click()
+
+    assert application.metadata_service.tag_tracks_calls == []
+    assert "select" in window.status_label.text().lower()
+
+
+def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
+    playlists = [Playlist(id="p1", name="240KM/H", track_count=5)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
+    window.playlist_list.setCurrentRow(0)
+
+    window.tag_playlist_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_playlist_calls == [
+        ("240KM/H", False, None),
+    ]
+
+
+def test_tag_playlist_without_selection_shows_message_and_makes_no_call(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.tag_playlist_button.click()
+
+    assert application.metadata_service.tag_playlist_calls == []
+    assert "playlist" in window.status_label.text().lower()
+
+
+def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    result = {
+        "tagged": 2,
+        "skipped_no_match": 1,
+        "skipped_format_unsupported": 1,
+        "skipped_already_tagged": 0,
+        "skipped_already_analyzed": 0,
+        "failed": 1,
+        "details": [
+            {
+                "track_id": "t1",
+                "reason": "skipped_no_match",
+                "message": "Artist A - Title A: no matched local file",
+            },
+            {
+                "track_id": "t2",
+                "reason": "failed",
+                "message": "Artist B - Title B: disk read error",
+            },
+        ],
+    }
+
+    window._render_tag_result(result)
+
+    text = window.tagging_results.toPlainText()
+    assert "Tagged: 2" in text
+    assert "Failed: 1" in text
+    assert "[skipped_no_match] Artist A - Title A: no matched local file" in text
+    assert "[failed] Artist B - Title B: disk read error" in text

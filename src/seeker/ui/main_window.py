@@ -2,12 +2,15 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -103,6 +106,10 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool()
         self.selected_playlist: Playlist | None = None
         self._backend_poll_in_progress = False
+        # Maps track_table row -> TrackStatus, rebuilt on every render —
+        # needed to resolve a multi-selection back to real track ids for
+        # "Tag selected" (Step 7).
+        self._current_track_statuses: list[TrackStatus] = []
 
         self.setWindowTitle("Seeker")
         self.resize(1000, 600)
@@ -149,11 +156,20 @@ class MainWindow(QMainWindow):
 
         right = QVBoxLayout()
 
-        self.track_table = QTableWidget(0, 3)
+        self.track_table = QTableWidget(0, 4)
         self.track_table.setHorizontalHeaderLabels(
-            ["Track", "Status", "Progress"]
+            ["Track", "Status", "Progress", "Actions"]
         )
         self.track_table.horizontalHeader().setStretchLastSection(True)
+        # Multi-select needed for "Tag selected" (Step 7) — rows, not
+        # cells, and extended (ctrl/shift-click) rather than the Qt
+        # default of single-row selection.
+        self.track_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.track_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         right.addWidget(self.track_table)
 
         self.empty_state_label = QLabel(
@@ -168,6 +184,16 @@ class MainWindow(QMainWindow):
         )
         self.sync_tracks_button.hide()
         right.addWidget(self.sync_tracks_button)
+
+        right.addLayout(self._build_tagging_controls())
+
+        self.tagging_results = QPlainTextEdit()
+        self.tagging_results.setReadOnly(True)
+        self.tagging_results.setMaximumHeight(120)
+        self.tagging_results.setPlaceholderText(
+            "Tagging results will appear here."
+        )
+        right.addWidget(self.tagging_results)
 
         self.status_label = QLabel("")
         right.addWidget(self.status_label)
@@ -211,6 +237,196 @@ class MainWindow(QMainWindow):
         self.download_button = QPushButton("Download selected playlist")
         self.download_button.clicked.connect(self._on_download_clicked)
         toolbar.addWidget(self.download_button)
+
+    def _build_tagging_controls(self) -> QHBoxLayout:
+        # Shared by all three triggers (per-track, "Tag selected",
+        # "Tag playlist") — one set of options, not three independently
+        # configurable copies. --bpm-range requiring --analyze-audio
+        # (the CLI's own validation) is enforced structurally here by
+        # hiding the range fields entirely while the checkbox is
+        # unchecked, rather than validating the combination after the
+        # fact the way the CLI has to.
+        controls = QHBoxLayout()
+
+        self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
+        self.analyze_audio_checkbox.toggled.connect(
+            self._on_analyze_audio_toggled
+        )
+        controls.addWidget(self.analyze_audio_checkbox)
+
+        self.bpm_min_edit = QLineEdit()
+        self.bpm_min_edit.setPlaceholderText("Min BPM")
+        self.bpm_min_edit.hide()
+        controls.addWidget(self.bpm_min_edit)
+
+        self.bpm_max_edit = QLineEdit()
+        self.bpm_max_edit.setPlaceholderText("Max BPM")
+        self.bpm_max_edit.hide()
+        controls.addWidget(self.bpm_max_edit)
+
+        self.tag_selected_button = QPushButton("Tag selected")
+        self.tag_selected_button.clicked.connect(
+            self._on_tag_selected_clicked
+        )
+        controls.addWidget(self.tag_selected_button)
+
+        self.tag_playlist_button = QPushButton("Tag playlist")
+        self.tag_playlist_button.clicked.connect(
+            self._on_tag_playlist_clicked
+        )
+        controls.addWidget(self.tag_playlist_button)
+
+        return controls
+
+    def _on_analyze_audio_toggled(self, checked: bool) -> None:
+        self.bpm_min_edit.setVisible(checked)
+        self.bpm_max_edit.setVisible(checked)
+
+    def _resolve_tag_options(self) -> tuple[bool, tuple[float, float] | None]:
+        analyze_audio = self.analyze_audio_checkbox.isChecked()
+
+        if not analyze_audio:
+            return False, None
+
+        min_text = self.bpm_min_edit.text().strip()
+        max_text = self.bpm_max_edit.text().strip()
+
+        if not min_text and not max_text:
+            # A range is optional even with analysis on — matches the
+            # CLI, where --analyze-audio alone (no --bpm-range) is
+            # perfectly valid.
+            return True, None
+
+        if not min_text or not max_text:
+            raise ValueError(
+                "Enter both a min and max BPM, or leave both blank."
+            )
+
+        try:
+            return True, (float(min_text), float(max_text))
+        except ValueError:
+            raise ValueError("BPM range must be numeric.")
+
+    def _render_tag_result(self, result: dict[str, Any]) -> None:
+        self.status_label.setText("")
+
+        lines = [
+            f"Tagged: {result['tagged']}, "
+            f"Skipped (no match): {result['skipped_no_match']}, "
+            f"Skipped (unsupported format): "
+            f"{result['skipped_format_unsupported']}, "
+            f"Skipped (already tagged): "
+            f"{result['skipped_already_tagged']}, "
+            f"Skipped (already analyzed): "
+            f"{result['skipped_already_analyzed']}, "
+            f"Failed: {result['failed']}."
+        ]
+
+        for detail in result["details"]:
+            lines.append(f"  [{detail['reason']}] {detail['message']}")
+
+        self.tagging_results.setPlainText("\n".join(lines))
+
+    def _selected_track_ids(self) -> list[str]:
+        rows = sorted(
+            {index.row() for index in self.track_table.selectionModel().selectedRows()}
+        )
+        return [self._current_track_statuses[row].track.id for row in rows]
+
+    def _build_track_actions(self, status: TrackStatus) -> QWidget:
+        # No button at all outside IN_LIBRARY — tag_tracks would just
+        # report skipped_no_match for anything else, so there's nothing
+        # real to offer here (same "blank cell, not a misleading
+        # control" precedent as the Downloads tab's progress bars).
+        if status.state != IN_LIBRARY:
+            return QWidget()
+
+        container = QWidget()
+        actions_layout = QHBoxLayout(container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        tag_button = QPushButton("Tag")
+        track_id = status.track.id
+        tag_button.clicked.connect(
+            lambda: self._on_tag_track_clicked(track_id, tag_button)
+        )
+        actions_layout.addWidget(tag_button)
+
+        return container
+
+    def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
+        try:
+            analyze_audio, bpm_range = self._resolve_tag_options()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.metadata_service.tag_tracks(
+                [track_id],
+                analyze_audio=analyze_audio,
+                expected_bpm_range=bpm_range,
+            ),
+            button=button,
+            status_label=self.status_label,
+            on_finished=self._render_tag_result,
+        )
+
+    def _on_tag_selected_clicked(self) -> None:
+        track_ids = self._selected_track_ids()
+
+        if not track_ids:
+            self.status_label.setText("Select at least one track first.")
+            return
+
+        try:
+            analyze_audio, bpm_range = self._resolve_tag_options()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.metadata_service.tag_tracks(
+                track_ids,
+                analyze_audio=analyze_audio,
+                expected_bpm_range=bpm_range,
+            ),
+            button=self.tag_selected_button,
+            status_label=self.status_label,
+            on_finished=self._render_tag_result,
+        )
+        # Analysis in particular does real, potentially slow per-track
+        # work — an in-progress note beyond just the disabled button,
+        # for anything wider than a single track.
+        self.status_label.setText(f"Tagging {len(track_ids)} selected track(s)...")
+
+    def _on_tag_playlist_clicked(self) -> None:
+        if self.selected_playlist is None:
+            self.status_label.setText("Select a playlist first.")
+            return
+
+        try:
+            analyze_audio, bpm_range = self._resolve_tag_options()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+
+        playlist_name = self.selected_playlist.name
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.metadata_service.tag_playlist(
+                playlist_name,
+                analyze_audio=analyze_audio,
+                expected_bpm_range=bpm_range,
+            ),
+            button=self.tag_playlist_button,
+            status_label=self.status_label,
+            on_finished=self._render_tag_result,
+        )
+        self.status_label.setText(f"Tagging playlist '{playlist_name}'...")
 
     def _build_review_tab(self) -> QWidget:
         # Two independent sections, per item 26: SoulSeek needs-review
@@ -289,6 +505,8 @@ class MainWindow(QMainWindow):
         )
 
     def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
+        self._current_track_statuses = statuses
+
         if not statuses:
             self.track_table.setRowCount(0)
             self.empty_state_label.show()
@@ -324,6 +542,10 @@ class MainWindow(QMainWindow):
                 self.track_table.setCellWidget(row, 2, progress)
             else:
                 self.track_table.setCellWidget(row, 2, QWidget())
+
+            self.track_table.setCellWidget(
+                row, 3, self._build_track_actions(status),
+            )
 
     def _poll_active_downloads(self) -> None:
         # Purely observational — a cheap local DB read via

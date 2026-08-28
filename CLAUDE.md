@@ -731,6 +731,52 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     [HISTORY §26](docs/HISTORY.md#26)
 
+27. **Frontend Step 7: Tagging panel — UI done, live verification
+    blocked by the same unattached drive as item 26 (2026-08-30).**
+    Exposes `MetadataService.tag_tracks`/`tag_playlist` (already
+    complete and live-verified — items 10/11) via the UI for the first
+    time; no new service-layer logic — this was UI wiring only, and no
+    real gap was found while wiring it up. Three triggers on the
+    Dashboard tab: a per-track "Tag" button (Actions column, `track_table`
+    now 4 columns) that only renders at all for `IN_LIBRARY` rows — same
+    "blank cell, not a misleading control" precedent as the Downloads
+    tab; "Tag selected" using `QTableWidget`'s `ExtendedSelection`/
+    `SelectRows` mode to call `tag_tracks` with the selected ids,
+    regardless of their state (tag_tracks itself already reports
+    `skipped_no_match` correctly for anything unmatched); "Tag playlist"
+    calling `tag_playlist(playlist_name, ...)` directly. One shared
+    "Analyze audio (BPM/Key)" checkbox + BPM min/max fields, all three
+    triggers reading from it via `_resolve_tag_options()`. The
+    CLI's `--bpm-range` requires `--analyze-audio` rule is enforced
+    *structurally* here, not just validated after the fact — the range
+    fields are hidden entirely while the checkbox is unchecked, so the
+    invalid combination can't be constructed in the first place; a
+    range left half-filled (one field blank) is rejected with a status
+    message before any service call, matching the CLI's fail-fast
+    behavior. A non-blocking `QPlainTextEdit` results panel (not a
+    modal) renders the full breakdown plus every `details` entry's
+    `[reason] message`, since that's specifically why `tag_tracks`
+    returns `details` rather than just counts. No confirmation gate
+    before running — matches this project's own design principle
+    (confirmation is for file *replacement*, not tag-writing) and the
+    CLI's own `library tag`, which already runs unprompted. 13 new UI
+    smoke tests (trigger wiring + exact call arguments, per-row button
+    visibility by state, BPM-range gating and partial-input rejection,
+    empty-selection/no-playlist guards, results-panel rendering).
+    `mypy --strict` clean; full suite 288 passed / 17 skipped.
+
+    **Live verification — blocked by the identical drive-not-attached
+    constraint documented in item 26, discovered while attempting it,
+    not assumed in advance.** `tag_playlist`/`tag_tracks` open real
+    files under a library location's real filesystem path
+    (`MutagenFile(file_path)`) — the same X9 Pro drive item 26's slskd
+    verification needs. Confirmed unattached the same way (`diskutil
+    list`, no device present). Running `tag_playlist` for real against
+    it would only produce real *failures* (file not found) for every
+    track, which would verify nothing beyond what's already covered by
+    mocks — so it wasn't run, rather than performing a hollow "ran the
+    command" step that confirms nothing real. [HISTORY §27](docs/HISTORY.md#27)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

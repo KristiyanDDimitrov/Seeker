@@ -2791,3 +2791,171 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     its original state). The real happy-path verification remains
     exactly where item 26's first pass left it — genuinely not done,
     not newly broken or newly available.
+
+### 27
+
+27. **Frontend Step 7: Tagging panel — UI wiring complete; live
+    verification blocked (2026-08-30).**
+
+    **Scope check done first, per the ask.** Read
+    `library/metadata_service.py` and `cli.py::handle_library`'s `tag`
+    branch before writing any UI code. Confirmed `tag_tracks`/
+    `tag_playlist` are genuinely complete and already return exactly
+    the shape a UI needs (`{tagged, skipped_no_match,
+    skipped_format_unsupported, skipped_already_tagged,
+    skipped_already_analyzed, failed, details}` — two more counters
+    than the original Phase B/C summary in this file's older item 10
+    mentioned, from `force`'s later addition, but no different in kind)
+    — so this task really was UI wiring only, and it stayed that way;
+    no new gap turned up while building it, so no new service method
+    was added beyond what item 26 already needed.
+
+    **Where the three triggers live and why.** All three land on the
+    existing Dashboard tab next to the track table, since that's
+    already the one place both a single-playlist track list (for
+    per-track/batch) and the selected playlist itself (for "Tag
+    playlist") are both already in scope — no new tab was justified for
+    three buttons and a shared options row.
+
+    - **Per-track**: `track_table` gained a 4th "Actions" column
+      (`["Track", "Status", "Progress", "Actions"]`). `_build_track_actions(status)`
+      returns a bare, buttonless `QWidget()` for anything that isn't
+      `IN_LIBRARY` — not a disabled button, an *absent* one, on the
+      same reasoning already established for the Downloads tab's
+      progress-bar cells (item 24: no real action available here, so
+      don't render a control that implies one). A `TrackStatus` doesn't
+      carry a match-quality or already-tagged signal beyond
+      `IN_LIBRARY` itself, so that's the only gate available or needed
+      — `tag_tracks` already handles "matched but already tagged"
+      gracefully via `skipped_already_tagged`, which isn't something
+      the UI needs to pre-filter.
+    - **Batch**: `track_table.setSelectionBehavior(SelectRows)` +
+      `setSelectionMode(ExtendedSelection)` (ctrl/shift-click, standard
+      multi-select) were not previously set on this table (its prior
+      single-row `currentItemChanged` wiring for the Dashboard's own
+      status display is untouched and still fires normally under
+      `ExtendedSelection`). "Tag selected" resolves the current
+      selection back to real track ids via a new
+      `self._current_track_statuses: list[TrackStatus]` — a fresh copy
+      stored on every `_render_track_statuses()` call — mapping
+      `selectionModel().selectedRows()` row indices back to
+      `TrackStatus.track.id`. Deliberately does NOT filter the
+      selection to `IN_LIBRARY` rows before calling `tag_tracks` — per
+      the brief, `tag_tracks` already reports `skipped_no_match`
+      correctly for anything unmatched, so pre-filtering here would
+      just be duplicating logic the service already owns correctly.
+    - **Playlist**: "Tag playlist" calls `tag_playlist(playlist_name,
+      ...)` directly against `self.selected_playlist.name` — no
+      client-side id list construction, reusing `tag_playlist`'s own
+      `match_method='auto'` scoping exactly as it already exists.
+
+    **Shared options, one copy, not three.** `_build_tagging_controls()`
+    builds the "Analyze audio (BPM/Key)" checkbox and two `QLineEdit`
+    BPM min/max fields once; all three trigger handlers call the same
+    `_resolve_tag_options() -> (bool, tuple[float, float] | None)`.
+    The CLI's own `--bpm-range` requires `--analyze-audio` check
+    (`cli.py`: `if parsed.bpm_range and not parsed.analyze_audio:
+    print(...); return`) is a *validation*, catching an already-
+    possible invalid combination after the fact — argparse has no way
+    to prevent `--bpm-range` being passed alone. The UI can do
+    strictly better: `bpm_min_edit`/`bpm_max_edit` are hidden (`.hide()`
+    at construction, `.setVisible(checked)` on the checkbox's `toggled`
+    signal) whenever the checkbox is unchecked, so there is no way to
+    even populate a range without analysis also being on — the invalid
+    combination is structurally unreachable, not merely rejected.
+    A *different* invalid shape is still possible even with the
+    checkbox on — one of the two fields filled, the other blank — and
+    `_resolve_tag_options()` raises a plain `ValueError` for that case
+    ("Enter both a min and max BPM, or leave both blank."), caught by
+    each trigger handler and surfaced via `status_label` *before* any
+    `run_worker`/service call is made — confirmed directly in
+    `test_bpm_range_partial_input_blocks_the_call_with_an_error`, which
+    asserts `tag_tracks_calls == []`, not just that an error string
+    appeared.
+
+    **Results panel, not the status label.** `status_label` is
+    already this window's channel for short, transient action
+    feedback (errors, "select a playlist first," etc.) — cramming a
+    multi-line breakdown plus a per-track reasons list into it would
+    make it behave inconsistently with every other action in the app.
+    A separate `QPlainTextEdit` (`tagging_results`, read-only,
+    `setMaximumHeight(120)` to stay a compact panel rather than
+    dominating the screen — a non-blocking area, not a modal, matching
+    this project's established preference) renders the aggregate
+    counts on one line plus one `[reason] message` line per
+    `details` entry, via `_render_tag_result(result)`. `status_label`
+    itself is explicitly cleared at the start of `_render_tag_result`
+    so a leftover "Tagging N selected track(s)..." progress note (set
+    manually right after starting the batch/playlist workers, since
+    `run_worker`'s own `status_label` handling only ever *clears* it at
+    call time and never sets an in-progress message of its own) doesn't
+    linger after the real result is in.
+
+    **In-progress indicator, per the ask ("not just an instant
+    fire-and-forget" for anything beyond a single track).** The
+    triggering button disabling for the duration (via `run_worker`'s
+    existing `button=` handling, unchanged) already covers all three
+    triggers uniformly; "Tag selected" and "Tag playlist" additionally
+    set an explicit `status_label` note (`"Tagging N selected
+    track(s)..."` / `"Tagging playlist 'X'..."`) right after submitting
+    the worker, since analysis in particular can run long per track and
+    a disabled button alone is easy to miss. The single-track "Tag"
+    button relies on the disabled-button signal alone, matching the
+    brief's "not just a single track" framing.
+
+    **No confirmation gate** — checked directly against this project's
+    own stated design principle (README's four named patterns, see
+    item 15) before deciding, not assumed: "never touching a file
+    destructively without an explicit confirmation prompt" is scoped to
+    *replacement* (the Review screen's Replace/delete-old-file flow,
+    item 26 §1/§2) — tag-writing augments a file in place, the same
+    category of action the CLI's own `library tag` already performs
+    with zero prompt. Adding one here would be inconsistent with both
+    the CLI and the project's own documented rationale, not extra
+    safety.
+
+    **Tests** (`tests/test_ui_smoke.py`, 13 new): a new
+    `FakeMetadataService` (`tag_tracks_calls`/`tag_playlist_calls`,
+    each recording the exact `(ids_or_name, analyze_audio,
+    expected_bpm_range)` tuple) wired into `FakeApplication`. Covers:
+    per-row Tag button present only for `IN_LIBRARY`, absent (no
+    `QPushButton` at all) otherwise; a real Tag click's exact call
+    args, with and without analyze-audio/BPM-range; BPM fields'
+    hidden/visible state tracking the checkbox both directions
+    (`isHidden()`, not `isVisible()` — this window is never `.show()`n
+    in these tests, and `isVisible()` reflects true on-screen
+    visibility gated by every ancestor, not just this widget's own
+    hide/show state, which is what the test actually needs); the
+    partial-BPM-input rejection (no call made); "Tag selected" against
+    an additive multi-row selection built through
+    `selectionModel().select(index, Select | Rows)` directly — a first
+    draft using `QTableWidget.selectRow()` twice was caught replacing
+    the selection instead of extending it (only the second row
+    survived), not merely a hypothetical risk; empty-selection and
+    no-playlist-selected guards (no call made, a clear status message
+    instead); and the results panel rendering both the aggregate line
+    and every per-item `[reason] message` line from a realistic mocked
+    breakdown. `mypy --strict` clean; full suite 288 passed, 17
+    skipped.
+
+    **Live verification — blocked, same root cause as item 26,
+    discovered while attempting it rather than assumed in advance.**
+    `tag_tracks`/`tag_playlist` open real files via `MutagenFile(Path(
+    location.path) / local_file.relative_path)` — `location.path` is
+    the real X9 Pro drive path for every library location in this
+    project's real database. Item 26's retry (this same session)
+    already confirmed via `diskutil list` that the drive isn't
+    attached at the OS level at all. Running "Tag playlist" for real
+    under that condition would not exercise the real success path this
+    step is supposed to verify — every track would hit
+    `MutagenFile(file_path)` against a nonexistent path and get
+    swallowed by `tag_tracks`'s own per-track exception handling into a
+    `failed` count, which is a real code path but not the one this
+    verification step exists to confirm (that path is already covered
+    directly by the drive-unmounted-skip tests in
+    `tests/test_metadata_service.py`, per item 10). Running it anyway
+    would produce a real command invocation with a hollow result —
+    "the button was clicked" without confirming what actually matters,
+    that a real tag write reads back correctly from a real file — so it
+    wasn't run, and this gap is recorded directly rather than papered
+    over with a technically-real but uninformative test run.
