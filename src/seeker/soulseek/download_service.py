@@ -1088,6 +1088,29 @@ class DownloadService:
             old_file_path=old_file_path,
         )
 
+    def get_pending_upgrade_reviews(self) -> list[UpgradeReviewDetails]:
+        # The Review screen's listing call for its upgrade-confirmation
+        # section — same read-only resolution get_upgrade_review_details
+        # already does per-row, just fetching every ready_for_review row
+        # up front rather than requiring the caller to already know a
+        # request_id (mirrors get_review_candidates()'s own shape for
+        # the needs-review section). A row whose details can no longer
+        # be resolved (track deleted, etc.) is silently skipped rather
+        # than surfaced as a broken row — the same "None means gone"
+        # contract get_upgrade_review_details already documents.
+        requests = self._get_ready_for_review()
+
+        results = []
+
+        for request in requests:
+            assert request.id is not None
+            details = self.get_upgrade_review_details(request.id)
+
+            if details is not None:
+                results.append(details)
+
+        return results
+
     def apply_upgrade_decision(
             self,
             request_id: int,

@@ -1,11 +1,13 @@
 import threading
 
-from PySide6.QtWidgets import QProgressBar, QPushButton
+from PySide6.QtWidgets import QCheckBox, QProgressBar, QPushButton
 
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.playlist import Playlist
+from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
+from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui.main_window import MainWindow
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
@@ -63,11 +65,44 @@ class FakeTrackMatcher:
 
 
 class FakeDownloadService:
+    def __init__(
+            self,
+            review_candidates: list | None = None,
+            pending_upgrades: list | None = None,
+    ):
+        self._review_candidates = review_candidates or []
+        self._pending_upgrades = pending_upgrades or []
+        self.confirm_review_candidate_calls: list[str] = []
+        self.reject_review_candidate_calls: list[str] = []
+        self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
+        self.apply_upgrade_decision_result: str | None = "Replaced with /new/path"
+
     def download_playlist(self, playlist_name: str) -> dict:
         return {"requested": 0, "skipped": 0, "failed": 0, "total": 0}
 
     def poll_downloads(self) -> dict:
         return {}
+
+    def get_review_candidates(self) -> list:
+        return self._review_candidates
+
+    def get_pending_upgrade_reviews(self) -> list:
+        return self._pending_upgrades
+
+    def confirm_review_candidate(self, track_id: str) -> None:
+        self.confirm_review_candidate_calls.append(track_id)
+
+    def reject_review_candidate(self, track_id: str) -> None:
+        self.reject_review_candidate_calls.append(track_id)
+
+    def apply_upgrade_decision(
+            self,
+            request_id: int,
+            replace: bool,
+            delete_old: bool = False,
+    ) -> str | None:
+        self.apply_upgrade_decision_calls.append((request_id, replace, delete_old))
+        return self.apply_upgrade_decision_result if replace else None
 
 
 class FakeApplication:
@@ -77,6 +112,8 @@ class FakeApplication:
             statuses: list | None = None,
             active_downloads: list | None = None,
             soulseek_configured: bool = False,
+            review_candidates: list | None = None,
+            pending_upgrades: list | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.dashboard_service = FakeDashboardService(
@@ -84,7 +121,9 @@ class FakeApplication:
         )
         self.library_service = FakeLibraryService()
         self.track_matcher = FakeTrackMatcher()
-        self.download_service = FakeDownloadService()
+        self.download_service = FakeDownloadService(
+            review_candidates, pending_upgrades,
+        )
         self.soulseek_configured = soulseek_configured
 
 
@@ -373,3 +412,196 @@ def test_backend_poll_overlap_guard_skips_concurrent_tick(qtbot):
     )
 
     assert call_count["n"] == 1
+
+
+def _make_track(track_id: str = "t1") -> Track:
+    return Track(
+        id=track_id, title="Title", artist="Artist", album="Album",
+        duration_ms=200_000,
+    )
+
+
+def _make_review_candidate(
+        track_id: str = "t1",
+        score: float = 73.2,
+) -> SoulseekReviewCandidate:
+    return SoulseekReviewCandidate(
+        track_id=track_id,
+        username="peer1",
+        filename="Artist - Title (Original Mix).flac",
+        score=score,
+        quality_descriptor="flac",
+        found_at="2026-01-01T00:00:00+00:00",
+        size=1_000_000,
+    )
+
+
+def _make_upgrade_details(
+        request_id: int = 1,
+        old_file_path: str | None = "/music/old.mp3",
+) -> UpgradeReviewDetails:
+    return UpgradeReviewDetails(
+        request_id=request_id,
+        track=_make_track(),
+        quality_descriptor="flac 1000kbps",
+        current_description="mp3",
+        old_file_path=old_file_path,
+    )
+
+
+def test_review_tab_renders_needs_review_candidates(qtbot):
+    candidates = [(_make_track(), _make_review_candidate())]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_needs_review_candidates(candidates)
+
+    assert window.review_needs_table.rowCount() == 1
+    assert window.review_needs_table.item(0, 0).text() == "Artist - Title"
+    assert window.review_needs_table.item(0, 1).text() == "73.2"
+    assert "peer1" in window.review_needs_table.item(0, 2).text()
+
+    actions = window.review_needs_table.cellWidget(0, 3)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    assert set(buttons) == {"Confirm", "Reject"}
+
+
+def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
+    candidates = [(_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_needs_review_candidates(candidates)
+
+    actions = window.review_needs_table.cellWidget(0, 3)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Confirm"].click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.confirm_review_candidate_calls == ["t7"],
+        timeout=2000,
+    )
+    assert application.download_service.reject_review_candidate_calls == []
+
+
+def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
+    candidates = [(_make_track(track_id="t9"), _make_review_candidate(track_id="t9"))]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_needs_review_candidates(candidates)
+
+    actions = window.review_needs_table.cellWidget(0, 3)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Reject"].click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.reject_review_candidate_calls == ["t9"],
+        timeout=2000,
+    )
+    assert application.download_service.confirm_review_candidate_calls == []
+
+
+def test_review_tab_renders_pending_upgrades_with_delete_checkbox_when_old_file_exists(
+        qtbot,
+):
+    details = [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+
+    assert window.review_upgrades_table.rowCount() == 1
+    assert window.review_upgrades_table.item(0, 1).text() == "mp3"
+    assert window.review_upgrades_table.item(0, 2).text() == "flac 1000kbps"
+
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    assert len(actions.findChildren(QCheckBox)) == 1
+    buttons = {b.text() for b in actions.findChildren(QPushButton)}
+    assert buttons == {"Replace", "Decline"}
+
+
+def test_review_tab_renders_pending_upgrades_without_delete_checkbox_when_no_old_file(
+        qtbot,
+):
+    # Mirrors the CLI's own guard around its second input() prompt —
+    # there's nothing to offer deleting when there's no current file.
+    details = [_make_upgrade_details(old_file_path=None)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    assert actions.findChildren(QCheckBox) == []
+
+
+def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag(
+        qtbot,
+):
+    details = [_make_upgrade_details(request_id=42, old_file_path="/music/old.mp3")]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    checkbox.setChecked(True)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Replace"].click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.apply_upgrade_decision_calls
+        == [(42, True, True)],
+        timeout=2000,
+    )
+    assert window.status_label.text() == "Replaced with /new/path"
+
+
+def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_false(
+        qtbot,
+):
+    details = [_make_upgrade_details(request_id=99)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Decline"].click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.apply_upgrade_decision_calls
+        == [(99, False, False)],
+        timeout=2000,
+    )
+    # A decline returns None from apply_upgrade_decision — no status
+    # message should be surfaced, unlike a real replace.
+    assert window.status_label.text() == ""
+
+
+def test_review_tab_populates_both_sections_on_construction(qtbot):
+    # _poll_review_items() runs once in __init__ (like the Downloads
+    # tab's own initial call) so the Review tab isn't empty for the
+    # first poll interval either.
+    candidates = [(_make_track(track_id="tc"), _make_review_candidate(track_id="tc"))]
+    upgrades = [_make_upgrade_details(request_id=5)]
+    application = FakeApplication(
+        review_candidates=candidates, pending_upgrades=upgrades,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.review_needs_table.rowCount() == 1, timeout=2000,
+    )
+    assert window.review_upgrades_table.rowCount() == 1

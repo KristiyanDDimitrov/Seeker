@@ -643,7 +643,7 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     instance of this has ever co-occurred with nonzero
     `bytes_transferred` on more than one sibling, so it's undefended
     rather than guarded speculatively. [HISTORY §25](docs/HISTORY.md#25)
-26. **Frontend Step 6: Review screen — in progress (2026-08-28).**
+26. **Frontend Step 6: Review screen — done (2026-08-29).**
     Two deliberately-deferred CLI-only flows get a real UI home: item
     17's read-only SoulSeek needs-review tier gains its first real
     confirm/reject action, and Phase 2's `seeker downloads review`
@@ -681,6 +681,40 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     `models/upgrade_review.py`. `_confirm_upgrade` is now a thin
     wrapper around the two real `input()` calls + one
     `apply_upgrade_decision` call — behavior-preserving for the CLI.
+
+    **§2 — the two-section Qt Review screen — done.** New "Review" tab
+    on `MainWindow`: a needs-review-candidates table (Confirm/Reject
+    per row, calling §0's two methods) and a pending-upgrades table
+    (Replace/Decline per row, a "Delete old file" checkbox that only
+    appears when `old_file_path` is set — mirroring the CLI's own
+    guard, calling §1's `apply_upgrade_decision`). New
+    `DownloadService.get_pending_upgrade_reviews()` — no method
+    existed to list every `ready_for_review` row as resolved
+    `UpgradeReviewDetails` before this. Both tables refresh on the
+    existing 2s local-DB-only poll timer (cheap reads, no slskd calls)
+    and immediately after any action completes.
+
+    **Live verification — genuinely blocked by a real environment
+    constraint (external drive not attached this session), not
+    skipped.** slskd needs the real X9 Pro drive mounted (item 13);
+    confirmed directly it isn't attached here, and the pre-existing
+    `slskd` container correctly refused to start
+    (`mkdir /host_mnt/Volumes/X9 Pro: permission denied`) rather than
+    something being broken — left it exactly as found. This blocks
+    only the real happy path (a fresh `seeker download` to refresh a
+    legacy candidate's `size`, then a real confirm → `request_download`
+    → `ready_for_review` → replace). Everything not dependent on a
+    live slskd connection WAS verified live against the real,
+    production database: the `size`-column migration applied for real
+    on first real `Application()` construction since it landed; the
+    two real waiting candidates from item 17 (Prdk, Zigi SC/A-Cray)
+    read back correctly via `get_review_candidates()`; a direct
+    `confirm_review_candidate()` call against the real Prdk row
+    correctly raised `ReviewCandidateMissingSizeError` with zero
+    mutation; the real `MainWindow` (offscreen Qt, real `Application`,
+    no fakes) rendered both real candidates with working buttons; and
+    a real Confirm click, through the real worker/signal pipeline,
+    correctly surfaced that same error on the real status label.
 
     [HISTORY §26](docs/HISTORY.md#26)
 

@@ -1903,6 +1903,26 @@ def test_get_upgrade_review_details_none_for_missing_request(tmp_path):
     assert service.get_upgrade_review_details(999) is None
 
 
+def test_get_pending_upgrade_reviews_lists_ready_for_review_details(tmp_path):
+    # The Review screen's listing call for its upgrade-confirmation
+    # section (Step 6 §2) — same resolution get_upgrade_review_details
+    # does per-row, just fetching every ready_for_review row up front.
+    service, lib_root = _seed_upgrade_scenario(tmp_path)
+
+    results = service.get_pending_upgrade_reviews()
+
+    assert len(results) == 1
+    assert results[0].track.id == "t1"
+    assert results[0].current_description == "mp3"
+    assert results[0].old_file_path == str(lib_root / "old.mp3")
+
+
+def test_get_pending_upgrade_reviews_empty_when_nothing_ready(tmp_path):
+    service = make_service(tmp_path, {})
+
+    assert service.get_pending_upgrade_reviews() == []
+
+
 def test_apply_upgrade_decision_replace_and_delete_old(tmp_path):
     # §1's explicit-decision function, called directly with both
     # booleans already resolved — no input() anywhere in this path.

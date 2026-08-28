@@ -2666,5 +2666,103 @@ Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-26).
     `apply_upgrade_decision` directly with each real decision
     combination (replace+delete, replace+keep-old, decline).
 
-    Still to do: §2 (the actual two-section Qt screen), plus live
-    verification against the two real waiting candidates.
+    **§2 — the two-section Qt Review screen — done (2026-08-29).** New
+    "Review" tab on `MainWindow`, alongside Dashboard/Downloads: a
+    needs-review-candidates table (Track/Score/Candidate/Actions,
+    Confirm+Reject buttons per row, driven by
+    `get_review_candidates()`/`confirm_review_candidate()`/
+    `reject_review_candidate()`) and a pending-upgrades table
+    (Track/Current/New quality/Actions, Replace+Decline buttons, a
+    "Delete old file" checkbox that only appears when
+    `UpgradeReviewDetails.old_file_path` is set — mirroring the CLI's
+    own guard around its second `input()` prompt). New
+    `DownloadService.get_pending_upgrade_reviews()` — the listing call
+    the upgrades section needed; no method existed to fetch every
+    `ready_for_review` row as resolved `UpgradeReviewDetails` before
+    this (only per-request-id `get_upgrade_review_details`, and a
+    private `_get_ready_for_review()` returning bare
+    `DownloadRequest`s) — implemented by combining the two, mirroring
+    `get_review_candidates()`'s own listing shape. Both tables refresh
+    on the existing 2s local-DB-only `poll_timer` (cheap reads, no
+    slskd calls, same categorization as `get_active_downloads`) and
+    immediately after any action completes (`_poll_review_items()`
+    called from each action's `on_finished`). Consistent with the
+    project's already-accepted "rebuild each tick" tradeoff (item 22):
+    a checkbox toggled mid-2s-interval can get reset by the next
+    tick's rebuild — same accepted cost as everywhere else this
+    pattern is used, not a new one introduced here. `apply_upgrade_decision`
+    returns `None` for a decline and a real status string for a
+    replace — `run_worker`'s own `status_label` wiring only fires on
+    error, so the success message is surfaced via a small
+    `on_finished` handler instead. 9 new UI smoke tests (needs-review
+    rendering + confirm/reject wiring, upgrade rendering with/without
+    the delete checkbox, replace/decline wiring including the real
+    `(request_id, replace, delete_old)` argument tuple, and the
+    initial-population-on-construction case) plus 2 new
+    `DownloadService`-level tests for `get_pending_upgrade_reviews()`
+    itself (returns real resolved details; empty when nothing is
+    ready). `mypy --strict` clean; full suite 278 passed, 17 skipped.
+
+    **Live verification against the two real waiting candidates
+    (Prdk, Zigi SC/A-Cray) — partially blocked by a real environment
+    constraint, not skipped without explanation.** slskd's Docker
+    Compose setup mounts the real X9 Pro music drive read-only
+    (item 13); that physical drive isn't attached to this machine in
+    this session — confirmed directly (`/Volumes/` lists only
+    `Macintosh HD`/`SoulseekQt`, no `X9 Pro`) before concluding
+    anything, not assumed from the container failing to start. The
+    pre-existing real `slskd` container (stopped from an earlier
+    session, ordinary shutdown per its own logs — not a crash) refused
+    to restart with a real, specific error:
+    `mkdir /host_mnt/Volumes/X9 Pro: permission denied` — confirming
+    the drive-not-mounted diagnosis rather than a Docker/compose
+    regression. Left the container exactly as found (still stopped,
+    same `Exited (128)` state) rather than forcing anything further.
+
+    This blocks the real happy path specifically — `confirm_review_candidate()`
+    calling a real `request_download()` against live slskd, and the
+    "re-run `seeker download` to refresh a legacy candidate's missing
+    `size`" step item 26 §0 itself calls for — since both need a real
+    search/enqueue round-trip against the live network. Everything
+    NOT dependent on a live slskd connection was still verified live,
+    for real, against the actual production database and application,
+    not mocked:
+    - Constructing the real `Application()` for the first time since
+      the `size` column migration landed applied it for real:
+      `PRAGMA table_info(soulseek_review_candidates)` before showed 6
+      columns (no `size`); after, 7, with the two real legacy
+      candidate rows intact and read back with `size=None`, exactly
+      the documented legacy-row shape.
+    - `get_review_candidates()` against the real DB returns exactly
+      the two real rows still open since item 17
+      (`Prdk - ONE MORE NIGHT`, score 70.4; `Zigi SC, A-Cray - Bit
+      Perfect`, score 73.2), matching the real usernames/filenames
+      recorded when they were first found.
+    - `confirm_review_candidate()` called directly against the real
+      Prdk row correctly raised `ReviewCandidateMissingSizeError` with
+      the real message text, and — checked directly, not assumed —
+      left both real candidate rows present and untouched afterward
+      (no partial mutation before the guard fires).
+    - The real `MainWindow`, launched against the real `Application`
+      (Qt's `offscreen` platform, no attached display) with no fakes
+      and no mocks, rendered both real candidates in the needs-review
+      table with real Confirm/Reject buttons — the actual live
+      equivalent of the mocked `test_review_tab_renders_needs_review_candidates`
+      test, run against the real waiting data.
+    - A real click on the real Prdk row's Confirm button, through the
+      real worker/thread-pool/signal pipeline (not called directly),
+      correctly surfaced the real `ReviewCandidateMissingSizeError`
+      message on the real status label, and the real candidate count
+      was confirmed unchanged (2) immediately after — full live
+      verification of the error-path wiring end to end.
+    - The real Zigi SC/A-Cray row's Reject button was deliberately
+      NOT clicked — that would permanently delete a real, currently-
+      undecided candidate as a side effect of testing, not something
+      to do without the user's own decision.
+
+    Deliberately not yet done: the real happy-path confirm (fresh
+    `seeker download "Test"` to refresh both candidates' `size`, then
+    a real `confirm_review_candidate()` → real `request_download()` →
+    real `ready_for_review` → real Replace click) — needs the drive
+    reconnected and slskd actually running, which is the user's call,
+    not something to force from this session.

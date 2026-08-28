@@ -2,6 +2,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.models.active_download import ActiveDownload
 from seeker.models.playlist import Playlist
+from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
+from seeker.models.track import Track
 from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
@@ -28,7 +31,11 @@ from seeker.models.track_status import (
     NOT_FOUND,
     TrackStatus,
 )
+from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui.workers import run_worker
+
+NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
+PendingUpgrades = list[UpgradeReviewDetails]
 
 
 # Untuned constant — matches the ~2s cadence already observed against
@@ -103,15 +110,20 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._load_playlists()
         self._poll_active_downloads()
+        self._poll_review_items()
 
         # DB-polling pattern for live status: rebuild the visible model
         # each tick rather than diffing for minimal repaints — an
         # acceptable v1 simplification, matching this project's habit
-        # of shipping a working real version before optimizing.
+        # of shipping a working real version before optimizing. Applies
+        # to the Review tab too: a checkbox toggled mid-interval can get
+        # reset by the next tick's rebuild, same accepted tradeoff as
+        # everywhere else this pattern is used.
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
         self.poll_timer.timeout.connect(self._poll_selected_playlist)
         self.poll_timer.timeout.connect(self._poll_active_downloads)
+        self.poll_timer.timeout.connect(self._poll_review_items)
         self.poll_timer.start()
 
         # Separate, slower timer: the only thing in this app that causes
@@ -168,9 +180,12 @@ class MainWindow(QMainWindow):
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
 
+        review_tab = self._build_review_tab()
+
         tabs = QTabWidget()
         tabs.addTab(central, "Dashboard")
         tabs.addTab(self.downloads_table, "Downloads")
+        tabs.addTab(review_tab, "Review")
 
         self.setCentralWidget(tabs)
 
@@ -196,6 +211,38 @@ class MainWindow(QMainWindow):
         self.download_button = QPushButton("Download selected playlist")
         self.download_button.clicked.connect(self._on_download_clicked)
         toolbar.addWidget(self.download_button)
+
+    def _build_review_tab(self) -> QWidget:
+        # Two independent sections, per item 26: SoulSeek needs-review
+        # candidates (item 17's tier, gaining its first real
+        # confirm/reject action here) and Phase 2 upgrade confirmations
+        # (item 8's ready_for_review flow, previously CLI-only via
+        # `seeker downloads review`). Both are driven by DownloadService
+        # methods that were built explicit-decision and input()-free
+        # specifically so a UI could call them directly — see CLAUDE.md
+        # item 26 §0/§1.
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
+
+        self.review_needs_table = QTableWidget(0, 4)
+        self.review_needs_table.setHorizontalHeaderLabels(
+            ["Track", "Score", "Candidate", "Actions"]
+        )
+        self.review_needs_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.review_needs_table)
+
+        layout.addWidget(QLabel("Downloaded upgrades ready for review"))
+
+        self.review_upgrades_table = QTableWidget(0, 4)
+        self.review_upgrades_table.setHorizontalHeaderLabels(
+            ["Track", "Current", "New quality", "Actions"]
+        )
+        self.review_upgrades_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.review_upgrades_table)
+
+        return tab
 
     def _load_playlists(self) -> None:
         run_worker(
@@ -311,6 +358,186 @@ class MainWindow(QMainWindow):
             self.downloads_table.setCellWidget(
                 row, 4, _build_progress_widget(download),
             )
+
+    def _poll_review_items(self) -> None:
+        # Both halves are cheap, local-DB-only reads (like
+        # get_active_downloads above) — no real slskd network calls, so
+        # this belongs on the 2s display-refresh timer, not the 20s
+        # backend-poll one. Bundled into one worker call rather than two
+        # so both tables update from the same consistent DB snapshot.
+        def fetch() -> tuple[NeedsReviewCandidates, PendingUpgrades]:
+            service = self.application.download_service
+            return (service.get_review_candidates(), service.get_pending_upgrade_reviews())
+
+        run_worker(
+            self.thread_pool,
+            fetch,
+            on_finished=self._render_review_items,
+        )
+
+    def _render_review_items(
+            self,
+            data: tuple[NeedsReviewCandidates, PendingUpgrades],
+    ) -> None:
+        candidates, upgrades = data
+        self._render_needs_review_candidates(candidates)
+        self._render_pending_upgrades(upgrades)
+
+    def _render_needs_review_candidates(
+            self,
+            candidates: NeedsReviewCandidates,
+    ) -> None:
+        self.review_needs_table.setRowCount(len(candidates))
+
+        for row, (track, candidate) in enumerate(candidates):
+            label = f"{track.artist} - {track.title}"
+            self.review_needs_table.setItem(row, 0, QTableWidgetItem(label))
+            self.review_needs_table.setItem(
+                row, 1, QTableWidgetItem(f"{candidate.score:.1f}"),
+            )
+
+            candidate_text = f"{candidate.quality_descriptor} — {candidate.username}"
+            self.review_needs_table.setItem(
+                row, 2, QTableWidgetItem(candidate_text),
+            )
+
+            self.review_needs_table.setCellWidget(
+                row, 3, self._build_needs_review_actions(track.id),
+            )
+
+    def _build_needs_review_actions(self, track_id: str) -> QWidget:
+        container = QWidget()
+        actions_layout = QHBoxLayout(container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        confirm_button = QPushButton("Confirm")
+        reject_button = QPushButton("Reject")
+
+        confirm_button.clicked.connect(
+            lambda: self._on_confirm_review_candidate(track_id, confirm_button)
+        )
+        reject_button.clicked.connect(
+            lambda: self._on_reject_review_candidate(track_id, reject_button)
+        )
+
+        actions_layout.addWidget(confirm_button)
+        actions_layout.addWidget(reject_button)
+
+        return container
+
+    def _on_confirm_review_candidate(
+            self,
+            track_id: str,
+            button: QPushButton,
+    ) -> None:
+        # confirm_review_candidate makes a real request_download() call
+        # (network) — routed through the worker pool like every other
+        # long-running action, never called directly on the main thread.
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service.confirm_review_candidate(
+                track_id
+            ),
+            button=button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._poll_review_items(),
+        )
+
+    def _on_reject_review_candidate(
+            self,
+            track_id: str,
+            button: QPushButton,
+    ) -> None:
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service.reject_review_candidate(
+                track_id
+            ),
+            button=button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._poll_review_items(),
+        )
+
+    def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
+        self.review_upgrades_table.setRowCount(len(upgrades))
+
+        for row, details in enumerate(upgrades):
+            label = f"{details.track.artist} - {details.track.title}"
+            self.review_upgrades_table.setItem(row, 0, QTableWidgetItem(label))
+            self.review_upgrades_table.setItem(
+                row, 1, QTableWidgetItem(details.current_description),
+            )
+            self.review_upgrades_table.setItem(
+                row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
+            )
+            self.review_upgrades_table.setCellWidget(
+                row, 3, self._build_upgrade_actions(details),
+            )
+
+    def _build_upgrade_actions(self, details: UpgradeReviewDetails) -> QWidget:
+        container = QWidget()
+        actions_layout = QHBoxLayout(container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        replace_button = QPushButton("Replace")
+        decline_button = QPushButton("Decline")
+
+        # The "delete old file?" control only ever appears when there's
+        # a real old file to delete — mirrors the CLI's own guard around
+        # its second input() prompt (get_upgrade_review_details leaves
+        # old_file_path unset when there's nothing to replace).
+        delete_checkbox: QCheckBox | None = None
+        if details.old_file_path is not None:
+            delete_checkbox = QCheckBox("Delete old file")
+            actions_layout.addWidget(delete_checkbox)
+
+        def on_replace() -> None:
+            delete_old = delete_checkbox is not None and delete_checkbox.isChecked()
+            self._on_apply_upgrade_decision(
+                details.request_id, True, delete_old, replace_button,
+            )
+
+        def on_decline() -> None:
+            # A true no-op per apply_upgrade_decision's own contract —
+            # the row stays ready_for_review and is offered again next
+            # poll, identical to declining the CLI's prompt.
+            self._on_apply_upgrade_decision(
+                details.request_id, False, False, decline_button,
+            )
+
+        replace_button.clicked.connect(on_replace)
+        decline_button.clicked.connect(on_decline)
+
+        actions_layout.addWidget(replace_button)
+        actions_layout.addWidget(decline_button)
+
+        return container
+
+    def _on_apply_upgrade_decision(
+            self,
+            request_id: int,
+            replace: bool,
+            delete_old: bool,
+            button: QPushButton,
+    ) -> None:
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service.apply_upgrade_decision(
+                request_id, replace, delete_old,
+            ),
+            button=button,
+            on_finished=self._on_upgrade_decision_finished,
+        )
+
+    def _on_upgrade_decision_finished(self, message: str | None) -> None:
+        # apply_upgrade_decision returns None for a decline (no-op, no
+        # message needed) and a short status string for a real replace —
+        # run_worker's own status_label wiring only fires on error, so
+        # the success message is surfaced here instead.
+        if message is not None:
+            self.status_label.setText(message)
+
+        self._poll_review_items()
 
     def _trigger_backend_poll(self) -> None:
         if self._backend_poll_in_progress:
