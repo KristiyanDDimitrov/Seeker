@@ -14,16 +14,22 @@ the fastest one.
 Strict layering, always respected:
 
 ```
-CLI (cli.py)
-  -> Application / services (application.py, spotify/sync_service.py)
+Presentation layer (cli.py, ui/*)
+  -> Application / services (application.py, spotify/sync_service.py, dashboard_service.py)
     -> Repositories (database/repositories/*)
       -> Database (database/connection.py, database/schema.py)
 ```
 
-Rule: CLI code must never import or call a repository directly. All CLI
-handlers go through `Application` (or a service it exposes), the same way
-`handle_sync` goes through `application.sync_service`. If a command needs
-data, add/extend a method on the service layer rather than reaching past it.
+Rule: presentation-layer code (CLI *or* UI) must never import or call a
+repository directly. Every CLI handler and every Qt widget goes through
+`Application` (or a service it exposes), the same way `handle_sync` goes
+through `application.sync_service` and `MainWindow` goes through
+`application.dashboard_service`. If a screen or command needs data,
+add/extend a method on the service layer rather than reaching past it —
+this is what `dashboard_service.py` exists for (see roadmap item 22):
+the dashboard's playlist-scoped track status was a real gap in the
+service layer, not something to assemble ad hoc from Qt code by calling
+multiple repositories directly.
 
 ## Current layout
 
@@ -1832,6 +1838,174 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     the unrelated async-shape "not shared" case) continued retrying and
     picking up new `transfer_id`s normally in the same runs, confirming
     the fix didn't disturb the already-working path.
+
+22. **Frontend Step 3: UI scaffolding + main dashboard — done
+    (2026-08-28).** The first real UI on top of everything built so
+    far: a Qt (PySide6) desktop shell showing a playlist's tracks with
+    live status, backed by the exact same service layer the CLI uses.
+
+    **New service-layer piece — `DashboardService.get_playlist_track_status()`.**
+    The dashboard's entire premise is "select a playlist, see that
+    playlist's tracks with live status" — nothing in the codebase
+    answered that before this (`TrackMatcher.generate_match_report()`
+    reports globally across every synced playlist, per item 15's own
+    correction). New `DashboardService` (top-level, alongside
+    `application.py`, since it's cross-cutting — matching + downloads +
+    soulseek candidates, not owned by any one existing domain), exposed
+    via `Application.dashboard_service`, the same lazy-init-property
+    pattern every other service uses.
+    `get_playlist_track_status(playlist_name)` returns one `TrackStatus`
+    (new `models/track_status.py`) per track, with exactly one
+    mutually-exclusive primary state, first match wins: `IN_LIBRARY`
+    (an auto track_matches row resolving to a real local file — takes
+    precedence over any stale download_requests row left over from
+    before the track was matched), `DOWNLOADING` (an active
+    queued/downloading request, carrying real `bytes_transferred`/
+    `total_bytes` from item 20 so a progress bar renders without a
+    second query), `AWAITING_REVIEW` (`ready_for_review`, or an active
+    `locked`/`shortlisted` row), `NEEDS_REVIEW` (a needs_review
+    track_matches row with no active download activity), or
+    `NOT_FOUND`. A secondary "SoulSeek candidate found" tag can only
+    surface on `NEEDS_REVIEW`/`NOT_FOUND`, enforced by construction —
+    the candidate lookup is only ever consulted from those two
+    branches, so it's structurally impossible for a track to report
+    both `IN_LIBRARY` and the tag at once, not just conventionally
+    avoided. Verified the invariant against the real database before
+    relying on it: zero rows currently have an auto match and a
+    soulseek_review_candidates entry for the same track — item 17's
+    clearing logic is working correctly on real data. New
+    `DownloadRequestRepository.get_all()` (whole-table fetch, same
+    pattern as `TrackMatchRepository`/`LocalFileRepository`'s own
+    `get_all()`) lets the service build the playlist-scoped view in a
+    handful of queries rather than one per track. 18 dedicated tests:
+    one per primary state, the in-library-over-stale-request and
+    downloading-over-awaiting-review precedence cases, both
+    secondary-tag co-occurrence cases plus the suppressed-invariant
+    case, and a two-playlists-sharing-no-tracks scoping test — the
+    exact bug class item 15 already found once in the global report.
+
+    **Package structure.** New `src/seeker/ui/` package, sibling to
+    `cli.py` — both are presentation-layer callers of the service
+    layer now, so the architecture rule at the top of this file was
+    reworded from "CLI code" to "presentation-layer code" to actually
+    say what it means. New `src/seeker/main_ui.py`, a thin bootstrap
+    mirroring `main.py`'s exact existing shape (load `.env`, validate
+    `SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI`, construct `Application`)
+    with a `QApplication`/`MainWindow` in place of `cli.run()`. New
+    `seeker-ui` console-script entry alongside `seeker` in
+    `pyproject.toml` — a separate entry point rather than a `seeker ui`
+    subcommand, since Qt's event-loop bootstrap doesn't fit argparse
+    dispatch cleanly. Added `PySide6` as a runtime dependency and
+    `pytest-qt` as a dev dependency.
+
+    **Concurrency check — verified, not assumed, before building the
+    worker pattern on top of it.** `database/connection.py`'s
+    `Database.transaction()` opens a brand-new `sqlite3.connect()` per
+    call and closes it when the context manager exits — never one
+    long-lived shared connection — so no `sqlite3.Connection` object is
+    ever used across threads (each is created and used entirely within
+    the thread that opened it). Stress-tested directly rather than
+    reasoning about it in the abstract: 10 writer threads + 10 reader
+    threads, 50 transactions each (1,000 total), zero errors, correct
+    final state, ~0.4s. Python's `sqlite3.connect()` default 5-second
+    lock-acquisition timeout is what actually absorbs the write
+    contention here (no explicit `busy_timeout`/WAL configured, and
+    none needed for this access pattern) — confirmed empirically that
+    this was already safe for the new multi-threaded UI access pattern
+    the CLI never exercised. No change made to `connection.py`.
+
+    **Background worker pattern — `ui/workers.py`.** `Worker`
+    (`QRunnable` + a separate `WorkerSignals` `QObject` for
+    `finished(object)`/`error(str)`, since `QRunnable` itself isn't a
+    `QObject` and can't emit signals directly) plus `run_worker(pool,
+    fn, button=None, status_label=None, on_finished=None)` — one
+    reusable abstraction every long-running action (sync, scan, match,
+    download, the dashboard's own status poll) goes through. The
+    triggering button (if any) disables for the duration and
+    re-enables on completion either way; an error clears to the status
+    line, never a modal.
+
+    **A real bug found and fixed in this same pass, not filed for
+    later:** the first version of `run_worker` created its `Worker`
+    as a local variable and returned it, with nothing else holding a
+    reference. `QThreadPool.start()` schedules execution on a real OS
+    thread and returns immediately — well before that thread actually
+    calls `run()` — so the only Python reference to the worker (and
+    its `WorkerSignals` `QObject`) went out of scope the instant
+    `run_worker()` returned, long before the background thread was
+    done with it. `QRunnable` isn't a `QObject`, so it can't rely on
+    Qt's own parent-child ownership to survive the way a `QObject`
+    could. Caught for real, not theoretically: a smoke test using
+    `qtbot.waitUntil` to wait for a populated playlist list timed out
+    with the worker's result silently never arriving (garbage-collected
+    before `run()` executed); running the same scenario as part of the
+    full smoke-test file instead produced a genuine interpreter
+    segfault (a cross-thread signal emission racing a half-finalized
+    object) — two different symptoms of the identical root cause,
+    depending on GC timing. Fixed with an explicit `_active_workers:
+    set[Worker]` registry in `workers.py`, holding a strong reference
+    to every in-flight worker until its own `finished`/`error` signal
+    fires and removes it — the standard, defensive pattern for this
+    exact PySide6/`QThreadPool` gotcha. Re-verified stable across
+    repeated runs after the fix (no flaky pass/fail), not just "passed
+    once."
+
+    **DB-polling pattern — a single `QTimer` on the dashboard**,
+    `POLL_INTERVAL_MS = 2_000` (explicitly flagged as an untuned
+    constant in code, matching the convention for every other
+    threshold in this codebase — chosen to match the ~2s cadence
+    already observed against real slskd elsewhere in this project),
+    re-querying `get_playlist_track_status()` for whichever playlist is
+    currently selected, routed through the same `run_worker` so a slow
+    poll can never block the UI thread. First cut rebuilds the visible
+    table each tick rather than diffing for minimal repaints — an
+    acceptable v1 simplification, matching this project's habit of
+    shipping a working real version before optimizing.
+
+    **Main window (`ui/main_window.py`).** Sidebar populated from
+    `sync_service.list_playlists()` — the identical call `seeker
+    playlists` already uses. Toolbar actions kept honest to what the
+    CLI already established rather than implied broader by placement:
+    Sync/Scan/Match are labeled "Sync all playlists"/"Scan all
+    locations"/"Match all tracks" (global, same scope as the CLI —
+    selecting a playlist in the sidebar must not imply these narrow to
+    it); only Download is playlist-scoped, matching `seeker download
+    <playlist>` exactly. Deliberately does **not** auto-trigger
+    `sync-tracks` on playlist selection — track syncing was
+    deliberately split out from playlist syncing specifically to keep
+    Spotify API calls scoped and intentional (roadmap item 1); an
+    auto-fetch on every sidebar click would silently reintroduce the
+    exact unscoped-quota-burning behavior that split was meant to
+    prevent. A playlist with zero cached tracks shows an explicit empty
+    state and a "Sync tracks" button instead.
+
+    **UI-layer testing kept proportionate, per this project's own
+    established philosophy** (`cli.py`/`main.py`'s argparse dispatch is
+    deliberately untested beyond the service layer it wraps, since it's
+    thin by design) — `tests/test_ui_smoke.py` confirms the window
+    constructs, the playlist list populates from a fake service, the
+    empty-state/"Sync tracks" prompt shows correctly with zero
+    auto-fetch, and `Worker`/`run_worker`'s signals and button
+    disable/re-enable/error-to-status-line behavior fire correctly —
+    not deep Qt coverage for what is, by design, thin glue around
+    already-tested services — `DashboardService` (above) is where the
+    real logic depth lives.
+
+    **Verified live against the real application, not only fakes or
+    mocked tests:** launched the real `MainWindow` against the real
+    `Application` (real client ID, real cached Spotify token) — the
+    background worker refreshed the real expired token without
+    blocking the UI thread, and all 215 real playlists loaded into the
+    sidebar. Selecting the real "Test" playlist and letting the poll
+    timer run rendered all 10 real tracks with genuinely correct,
+    live-matching status: the 6 real auto-matched tracks as "In
+    library"; Prdk and Zigi SC/A-Cray as "Not found (SoulSeek candidate
+    found)", matching item 17's real needs-review candidates exactly;
+    Balron/Audio as "Awaiting review" (its real `locked` status at the
+    time); Jade Venom as "Downloading" — a real, live status change
+    from the `locked` state it was in earlier in this same session,
+    confirming the dashboard reflects genuinely current DB state, not
+    a stale snapshot.
 
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.

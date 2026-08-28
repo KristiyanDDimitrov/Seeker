@@ -8,6 +8,7 @@ dependencies = [
     "librosa>=1.0.0",
     "mutagen>=1.48.1",
     "platformdirs>=4.11.4",
+    "pyside6>=6.11.2",
     "python-dotenv>=1.2.3",
     "rapidfuzz>=3.14.5",
     "scipy>=1.18.1",
@@ -15,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 seeker = "seeker.main:main"
+seeker-ui = "seeker.main_ui:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
@@ -25,6 +27,7 @@ dev = [
     "mypy>=2.3.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "pytest-qt>=4.5.0",
     "ruff>=0.16.4",
     "scipy-stubs>=1.18.1.0",
 ]

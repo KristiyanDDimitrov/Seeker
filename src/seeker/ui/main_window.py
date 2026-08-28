@@ -1,0 +1,269 @@
+from typing import Any
+
+from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
+)
+
+from seeker.application import Application
+from seeker.models.playlist import Playlist
+from seeker.models.track_status import (
+    AWAITING_REVIEW,
+    DOWNLOADING,
+    IN_LIBRARY,
+    NEEDS_REVIEW,
+    NOT_FOUND,
+    TrackStatus,
+)
+from seeker.ui.workers import run_worker
+
+
+# Untuned constant — matches the ~2s cadence already observed against
+# real slskd elsewhere in this project (see CLAUDE.md); revisit once
+# real usage data exists, same convention as every other threshold here.
+POLL_INTERVAL_MS = 2_000
+
+_STATE_LABELS = {
+    IN_LIBRARY: "In library",
+    DOWNLOADING: "Downloading",
+    AWAITING_REVIEW: "Awaiting review",
+    NEEDS_REVIEW: "Needs review",
+    NOT_FOUND: "Not found",
+}
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, application: Application):
+        super().__init__()
+        self.application = application
+        self.thread_pool = QThreadPool()
+        self.selected_playlist: Playlist | None = None
+
+        self.setWindowTitle("Seeker")
+        self.resize(1000, 600)
+
+        self._build_ui()
+        self._load_playlists()
+
+        # DB-polling pattern for live status: rebuild the visible model
+        # each tick rather than diffing for minimal repaints — an
+        # acceptable v1 simplification, matching this project's habit
+        # of shipping a working real version before optimizing.
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setInterval(POLL_INTERVAL_MS)
+        self.poll_timer.timeout.connect(self._poll_selected_playlist)
+        self.poll_timer.start()
+
+    def _build_ui(self) -> None:
+        central = QWidget()
+        layout = QHBoxLayout(central)
+
+        self.playlist_list = QListWidget()
+        self.playlist_list.currentItemChanged.connect(
+            self._on_playlist_selected
+        )
+        layout.addWidget(self.playlist_list, 1)
+
+        right = QVBoxLayout()
+
+        self.track_table = QTableWidget(0, 3)
+        self.track_table.setHorizontalHeaderLabels(
+            ["Track", "Status", "Progress"]
+        )
+        self.track_table.horizontalHeader().setStretchLastSection(True)
+        right.addWidget(self.track_table)
+
+        self.empty_state_label = QLabel(
+            "No cached tracks for this playlist yet."
+        )
+        self.empty_state_label.hide()
+        right.addWidget(self.empty_state_label)
+
+        self.sync_tracks_button = QPushButton("Sync tracks")
+        self.sync_tracks_button.clicked.connect(
+            self._on_sync_tracks_clicked
+        )
+        self.sync_tracks_button.hide()
+        right.addWidget(self.sync_tracks_button)
+
+        self.status_label = QLabel("")
+        right.addWidget(self.status_label)
+
+        layout.addLayout(right, 3)
+
+        self.setCentralWidget(central)
+
+        toolbar = QToolBar("Actions")
+        self.addToolBar(toolbar)
+
+        # Sync/Scan/Match are deliberately labeled as global actions —
+        # same scope as the CLI (all playlists / all locations / all
+        # cached tracks) — so selecting a playlist in the sidebar
+        # doesn't imply these narrow to it. Only Download is scoped.
+        self.sync_button = QPushButton("Sync all playlists")
+        self.sync_button.clicked.connect(self._on_sync_clicked)
+        toolbar.addWidget(self.sync_button)
+
+        self.scan_button = QPushButton("Scan all locations")
+        self.scan_button.clicked.connect(self._on_scan_clicked)
+        toolbar.addWidget(self.scan_button)
+
+        self.match_button = QPushButton("Match all tracks")
+        self.match_button.clicked.connect(self._on_match_clicked)
+        toolbar.addWidget(self.match_button)
+
+        self.download_button = QPushButton("Download selected playlist")
+        self.download_button.clicked.connect(self._on_download_clicked)
+        toolbar.addWidget(self.download_button)
+
+    def _load_playlists(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.sync_service.list_playlists,
+            status_label=self.status_label,
+            on_finished=self._populate_playlists,
+        )
+
+    def _populate_playlists(self, playlists: list[Playlist]) -> None:
+        self.playlist_list.clear()
+
+        for playlist in playlists:
+            item = QListWidgetItem(
+                f"{playlist.name} ({playlist.track_count} tracks)"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, playlist)
+            self.playlist_list.addItem(item)
+
+    def _on_playlist_selected(
+            self,
+            current: QListWidgetItem | None,
+            previous: QListWidgetItem | None,
+    ) -> None:
+        self.selected_playlist = (
+            current.data(Qt.ItemDataRole.UserRole)
+            if current is not None
+            else None
+        )
+        self._poll_selected_playlist()
+
+    def _poll_selected_playlist(self) -> None:
+        if self.selected_playlist is None:
+            return
+
+        playlist_name = self.selected_playlist.name
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.dashboard_service
+            .get_playlist_track_status(playlist_name),
+            status_label=self.status_label,
+            on_finished=self._render_track_statuses,
+        )
+
+    def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
+        if not statuses:
+            self.track_table.setRowCount(0)
+            self.empty_state_label.show()
+            # Explicit, user-triggered sync only — never auto-fetched on
+            # selection, since track syncing was deliberately split out
+            # from playlist syncing to keep Spotify API calls scoped
+            # and intentional (roadmap item 1).
+            self.sync_tracks_button.show()
+            return
+
+        self.empty_state_label.hide()
+        self.sync_tracks_button.hide()
+
+        self.track_table.setRowCount(len(statuses))
+
+        for row, status in enumerate(statuses):
+            label = f"{status.track.artist} - {status.track.title}"
+            self.track_table.setItem(row, 0, QTableWidgetItem(label))
+
+            state_text = _STATE_LABELS[status.state]
+            if status.soulseek_candidate is not None:
+                state_text += " (SoulSeek candidate found)"
+            self.track_table.setItem(row, 1, QTableWidgetItem(state_text))
+
+            if (
+                    status.state == DOWNLOADING
+                    and status.total_bytes
+                    and status.bytes_transferred is not None
+            ):
+                progress = QProgressBar()
+                progress.setMaximum(status.total_bytes)
+                progress.setValue(status.bytes_transferred)
+                self.track_table.setCellWidget(row, 2, progress)
+            else:
+                self.track_table.setCellWidget(row, 2, QWidget())
+
+    def _on_sync_clicked(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.sync_service.sync_playlists,
+            button=self.sync_button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._load_playlists(),
+        )
+
+    def _on_scan_clicked(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.library_service.scan_all,
+            button=self.scan_button,
+            status_label=self.status_label,
+        )
+
+    def _on_match_clicked(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.track_matcher.match_all,
+            button=self.match_button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._poll_selected_playlist(),
+        )
+
+    def _on_download_clicked(self) -> None:
+        if self.selected_playlist is None:
+            self.status_label.setText("Select a playlist first.")
+            return
+
+        playlist_name = self.selected_playlist.name
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service.download_playlist(
+                playlist_name
+            ),
+            button=self.download_button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._poll_selected_playlist(),
+        )
+
+    def _on_sync_tracks_clicked(self) -> None:
+        if self.selected_playlist is None:
+            return
+
+        playlist = self.selected_playlist
+
+        def do_sync() -> Any:
+            self.application.sync_service.sync_playlist_tracks(playlist)
+
+        run_worker(
+            self.thread_pool,
+            do_sync,
+            button=self.sync_tracks_button,
+            status_label=self.status_label,
+            on_finished=lambda _: self._poll_selected_playlist(),
+        )
