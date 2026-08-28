@@ -124,6 +124,14 @@ dependency management — not `pip`/`poetry`.
 uv sync
 ```
 
+`seeker`'s SQLite cache lives in an OS-conventional per-user app-data
+directory (via [`platformdirs`](https://github.com/tox-dev/platformdirs)),
+not the project folder — e.g. `~/Library/Application Support/Seeker` on
+macOS, `~/.local/share/Seeker` on Linux, `%LOCALAPPDATA%\Seeker` on
+Windows. If a database from an older `.seeker/seeker.db` (relative to
+wherever you ran `seeker` from) is found on first run, it's moved into
+the new location automatically — nothing to do by hand.
+
 ### 2. Register a Spotify app
 
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)

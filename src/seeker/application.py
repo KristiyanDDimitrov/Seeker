@@ -1,4 +1,7 @@
+import shutil
 from pathlib import Path
+
+import platformdirs
 
 from seeker import config
 from seeker.database.connection import Database
@@ -31,15 +34,46 @@ from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
 
 
+# Pre-platformdirs location — a real, non-empty database may still exist
+# here from before this migrated to an OS-conventional app-data
+# directory. Relative to the current working directory, matching where
+# it was always created before.
+LEGACY_DATABASE_PATH = Path(".seeker/seeker.db")
+
+
+def _resolve_database_path() -> Path:
+    data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    return data_dir / "seeker.db"
+
+
+def _migrate_legacy_database(
+        new_path: Path,
+        legacy_path: Path = LEGACY_DATABASE_PATH,
+) -> bool:
+    # Only migrate into a genuinely fresh install — never overwrite a
+    # database that already exists at the new location (e.g. a second
+    # run after the migration already happened once).
+    if new_path.exists() or not legacy_path.exists():
+        return False
+
+    shutil.move(str(legacy_path), str(new_path))
+    print(f"Migrated existing database from {legacy_path} to {new_path}.")
+
+    return True
+
+
 class Application:
     def __init__(
         self,
         spotify_client_id: str,
         spotify_redirect_uri: str,
     ):
-        self.database = Database(
-            Path(".seeker/seeker.db")
-        )
+        db_path = _resolve_database_path()
+        _migrate_legacy_database(db_path)
+
+        self.database = Database(db_path)
 
         self.database.initialize()
 

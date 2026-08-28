@@ -1396,5 +1396,67 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     ordinary `Unmatched` section beneath it, since the two sections
     measure genuinely different things.
 
+18. **Migrated the SQLite database path from CWD-relative to an
+    OS-conventional app-data directory via `platformdirs` — done
+    (2026-08-28).** `.seeker/seeker.db` (relative to wherever `seeker`
+    happened to be run from) was never a real per-user location — it
+    just happened to work because the CLI was always invoked from this
+    project's own directory. Replaced with
+    `platformdirs.user_data_dir("Seeker", appauthor=False)` (e.g.
+    `~/Library/Application Support/Seeker` on macOS, `~/.local/share/
+    Seeker` on Linux, `%LOCALAPPDATA%\Seeker` on Windows) —
+    `appauthor=False` since this is a personal project with no separate
+    publisher/org identity worth a vendor subdirectory on Windows.
+    `Application._resolve_database_path()` creates that directory
+    (`mkdir(parents=True, exist_ok=True)`) before `Database()` is ever
+    constructed. Scoped to the SQLite database only, per the ask — the
+    Spotify token cache (`.seeker/spotify_token.json`) is untouched and
+    stays where it was.
+
+    **A real, non-empty database already existed at the old location**
+    (2.1MB, 215 playlists, 13 tracks, 13 track_matches, 7
+    download_requests, 3215 local_files — this project's actual daily-use
+    data, not a fixture) — so a silent "just create fresh at the new
+    path" would have orphaned all of it. `Application._migrate_legacy_database()`
+    checks for exactly that: if a DB already exists at the new
+    platformdirs location, never touch anything (guards against a stale
+    leftover `.seeker/seeker.db` ever clobbering current real data on a
+    later startup); if not, and the old `.seeker/seeker.db` exists, moves
+    it (`shutil.move`) into the new location and prints exactly what
+    happened; if neither exists, does nothing and a fresh DB is created
+    at the new location as normal.
+
+    Tests (`tests/test_application.py`) cover `_resolve_database_path`
+    and `_migrate_legacy_database` directly (fresh-directory creation;
+    real-bytes-preserved move; neither-exists no-op; existing-new-DB
+    never overwritten by a stale legacy file), plus full `Application()`
+    integration tests for both the fresh-install and real-migration
+    paths — the migration test seeds a real schema-initialized DB with
+    an actual row via `Database`/`.transaction()` (not just arbitrary
+    bytes) and asserts that exact row is readable back through
+    `app.database` after construction, confirming the moved file is
+    still a genuinely working, queryable database, not just a
+    byte-for-byte copy that happens to sit at the right path.
+
+    **Verified live against this project's real, actual database, not a
+    copy:** ran `seeker playlists` for real. Output line one:
+    `Migrated existing database from .seeker/seeker.db to
+    /Users/sinthesis/Library/Application Support/Seeker/seeker.db.` —
+    then all 215 real playlists listed normally, same as always. Directly
+    confirmed after: `.seeker/` now holds only `spotify_token.json` (no
+    `seeker.db`); the new location has a `seeker.db` that is
+    byte-identical in size (1,437,696 bytes) to the pre-migration file;
+    row counts at the new location match the pre-migration counts
+    exactly (215/13/13/7/3215, queried directly via `sqlite3`, not
+    trusted from the app's own output alone); `seeker check` against the
+    migrated DB reproduced the exact same auto-matched/needs-review/
+    unmatched breakdown as the last real verification run before this
+    migration (7 auto-matched, the same 2 SoulSeek needs-review
+    candidates, the same 6 unmatched tracks). A second real
+    `seeker playlists` run immediately after printed no migration
+    message (nothing left to migrate) and still listed all 215
+    playlists correctly — confirming the guard against re-migrating or
+    double-running is genuinely idempotent, not just implemented.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.
