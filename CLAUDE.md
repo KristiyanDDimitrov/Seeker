@@ -2554,5 +2554,101 @@ uv run pytest         # run tests (add pytest to dev deps if not present)
     on which candidate wins — the Downloads tab only ever observes, so
     a flat list was sufficient here.
 
+25. **Fix: Phase 3 retry loop didn't dedupe stale duplicate rows before
+    retrying — done (2026-08-28), closing the out-of-scope observation
+    flagged at the end of item 24.** Root cause, exactly as diagnosed
+    there: item 16's creation-time dedup guard
+    (`get_active_for_track`, checked inside `download_playlist()`) only
+    stops NEW duplicate rows going forward — it does nothing for rows
+    already created before it was fully effective. `get_locked()`
+    fetches every `'locked'` row globally with no per-candidate
+    collapsing by its own documented design, so `poll_downloads()`'s
+    retry loop re-issued a real `request_download` for each stale
+    duplicate independently, every cycle, against the same real peer.
+
+    Fixed at the retry loop itself, not a one-off cleanup script, per
+    the ask — `DownloadService._retry_locked_request` now calls a new
+    `_supersede_stale_duplicates(current)` before ever re-issuing a
+    request: it looks up every OTHER row sharing the identical real
+    candidate (`track_id`/`role`/`username`/`filename`) that's
+    currently `locked`/`queued`/`downloading` (new
+    `DownloadRequestRepository.get_active_candidates`), keeps only the
+    most-recently-requested one, and marks the rest `'superseded'` —
+    reusing that status's existing, already-documented meaning
+    ("abandoned because a sibling already won") rather than inventing a
+    new one. If `current` itself loses to a more recent sibling, it's
+    superseded and the retry is skipped entirely (no redundant network
+    call); if it's the winner, every other sibling is superseded and
+    the normal retry proceeds unchanged.
+
+    **Shared logic, not reinvented — same consolidation reasoning as
+    matching.py/AUDIO_EXTENSIONS.** The exact grouping/tiebreak rule
+    (same track/role/peer/file wins by most-recent `requested_at`) was
+    already written once for item 24's read-side fix
+    (`DashboardService.get_active_downloads`'s now-removed
+    `_dedupe_repeated_candidates`). Extracted into a new top-level
+    `seeker/download_dedup.py`
+    (`candidate_key`/`most_recent_per_candidate`) — the same layering
+    precedent as `matching.py` (a shared rule used by two different
+    service-layer modules, living at neither's own layer). Both
+    `DashboardService` (read) and `DownloadService` (write) now import
+    the identical function, so display and mutation can never drift
+    onto two different notions of "duplicate" the way the pre-item-16
+    codebase drifted on artist-matching logic.
+
+    **Deliberately unresolved edge case, documented rather than
+    guarded against speculatively:** the tiebreak is pure
+    `requested_at` comparison with no status-awareness — it doesn't
+    prefer a sibling that's genuinely `downloading` with real bytes
+    over a merely `locked` one, even if the locked one happens to be
+    more recent. Checked against all real duplicate data in this
+    project to date: no instance has ever had nonzero
+    `bytes_transferred` on more than one sibling in a group
+    simultaneously, so this hasn't been a real problem — noted directly
+    in `download_dedup.py`'s docstring as something to revisit with a
+    status-aware tiebreak if it ever is, rather than adding
+    speculative handling for a scenario that hasn't happened.
+
+    Tests (`tests/test_download_service.py`) cover exactly the three
+    required shapes: `test_retry_loop_dedupes_stale_duplicate_locked_rows`
+    (two locked rows, same candidate, different `requested_at` — only
+    the more recent gets a real `request_download` call, the other
+    becomes `superseded`); `test_retry_loop_never_collapses_distinct_candidates`
+    (two different real peers for the same track — both retried
+    independently, neither superseded, proving the Phase 4 shortlist
+    shape is untouched); and
+    `test_retry_loop_single_locked_row_unaffected_by_dedup_check` (a
+    lone locked row — the new check is a complete no-op, matching the
+    pre-existing Phase 3 contract exactly). All of Phase 3/4's existing
+    tests (the `input()` guardrails, the cascade/shortlist tests, the
+    peer-offline 404 tests) still pass unmodified, confirming no
+    regression.
+
+    **Live-verified against the real, still-present stale rows —
+    resolved for real, not just in tests.** Before: the exact same
+    duplicate groups documented in item 24 (Balron ids 5/7/9, Jade
+    Venom ids 6/8/10, all real, all still in the live database). Ran
+    the real `seeker downloads status` (i.e. a real `poll_downloads()`
+    call, the same one the running app's 20s backend timer already
+    calls automatically) **twice** — real network conditions meant one
+    of Balron's three duplicates was `queued` rather than `locked` at
+    the first poll, so it wasn't reachable via the retry loop's
+    dedup check on that pass (by design — this fix is scoped to
+    `_retry_locked_request`/locked rows, matching the ask); a second
+    real run, once that row cycled back to `locked` (the same real
+    flakiness already documented in item 21), completed the
+    convergence. Confirmed via direct `sqlite3` queries after each run:
+    first run — Jade Venom fully converged in one pass (ids 6, 8 →
+    `superseded`, id 10 the sole survivor); Balron partially converged
+    (id 7 → `superseded`, id 9 remained the eventual winner, id 5 still
+    `locked`/`queued` pending its own next cycle). Second run — id 5
+    also converged to `superseded`, leaving id 9 as Balron's sole
+    survivor. Re-ran the read-side `get_active_downloads()` check
+    afterward and confirmed exactly 3 real rows now (ZENEA, Jade Venom,
+    Balron — one each), matching item 24's original "8 collapsed to 3"
+    read-side fix exactly, this time because the underlying duplicate
+    rows themselves resolved to one real winner each, not just the
+    display layer hiding the extras.
+
 Keep this file updated as decisions get made — treat it as the standing
 brief, not a changelog of everything that happened.

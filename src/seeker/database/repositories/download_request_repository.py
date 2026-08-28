@@ -303,6 +303,60 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
+    def get_active_candidates(
+            self,
+            track_id: str,
+            role: str,
+            username: str,
+            filename: str,
+            connection: sqlite3.Connection,
+    ) -> list[DownloadRequest]:
+        # Every row for the exact same real candidate (identical
+        # track/role/peer/file — see seeker.download_dedup) that's
+        # currently in a live-retry-eligible state. Used by the Phase 3
+        # retry loop's dedup-before-retry check
+        # (DownloadService._supersede_stale_duplicates) to find stale
+        # sibling rows before re-issuing a real request_download for
+        # one of them — confirmed live (2026-08-28): without this,
+        # every duplicate row left over from before download_playlist()'s
+        # get_active_for_track guard (item 16) got retried independently,
+        # every poll cycle, against the same real peer. Deliberately
+        # scoped to queued/downloading/locked, NOT the full
+        # get_active_for_track set — shortlisted/ready_for_review rows
+        # are a different mechanism with their own supersede path
+        # (_supersede_others_for_track) and are never literal duplicates
+        # of a locked candidate by construction (a shortlist candidate
+        # is always a distinct real search result).
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at,
+                bytes_transferred,
+                total_bytes
+            FROM download_requests
+            WHERE track_id = ?
+            AND role = ?
+            AND username = ?
+            AND filename = ?
+            AND status IN ('locked', 'queued', 'downloading')
+            """,
+            (track_id, role, username, filename),
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
     def get_next_shortlisted(
             self,
             track_id: str,

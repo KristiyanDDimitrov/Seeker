@@ -17,6 +17,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.download_dedup import most_recent_per_candidate
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.local_file import LocalFile
@@ -184,11 +185,15 @@ class DashboardService:
 
         Rows representing the exact same real candidate (same track/
         role/peer/file) are collapsed to the single most-recently-
-        requested one via _dedupe_repeated_candidates() — see that
-        function's docstring for why this is safe: it never collapses
-        Phase 4's legitimate multi-candidate shortlist (different rows
-        there always have different peers/files by construction), only
-        genuine repeat rows for the identical candidate.
+        requested one via seeker.download_dedup.most_recent_per_candidate
+        — the same shared rule DownloadService's Phase 3 retry loop uses
+        on the write side (_retry_locked_request), so display and
+        mutation never drift onto two different notions of "duplicate".
+        See that module's docstring for why this is safe: it never
+        collapses Phase 4's legitimate multi-candidate shortlist
+        (different rows there always have different peers/files by
+        construction), only genuine repeat rows for the identical
+        candidate.
         """
         with self.database.transaction() as connection:
             requests = self.download_requests.get_all(connection)
@@ -201,7 +206,7 @@ class DashboardService:
 
         now = datetime.now(timezone.utc)
         visible = [request for request in requests if _is_visible(request, now)]
-        deduplicated = _dedupe_repeated_candidates(visible)
+        deduplicated = list(most_recent_per_candidate(visible).values())
 
         results = []
 
@@ -226,59 +231,6 @@ class DashboardService:
         results.sort(key=lambda item: item.request.requested_at, reverse=True)
 
         return results
-
-
-def _dedupe_repeated_candidates(
-        requests: list[DownloadRequest],
-) -> list[DownloadRequest]:
-    """Collapse repeated download_requests rows that represent the exact
-    same real candidate (same track/role/peer/file) down to the single
-    most-recently-requested attempt.
-
-    Confirmed live (2026-08-28, Step 5 live-verification follow-up)
-    against real production data: some tracks carry multiple
-    simultaneously-active rows with identical track_id/role/username/
-    filename, all rank=1 — e.g. three rows for "Balron, Audio - Breach"
-    (ids 5/7/9), all against the same peer 'long25' and the same
-    filename, requested hours apart on 2026-08-27. Checked against
-    rank/role/username/filename directly to rule out Phase 4's
-    legitimate multi-candidate shortlist (rank 1 active + ranks 2/3
-    shortlisted as DIFFERENT real peers/files) before concluding this —
-    no rank > 1 row exists anywhere in that data, and every "duplicate"
-    shares the identical candidate, which the shortlist design never
-    produces (each rank is a genuinely different search result). This
-    is stale data from before download_playlist()'s get_active_for_track
-    guard (item 16) was fully effective, not a currently-reproducible
-    bug — re-running download_playlist() against this exact live data
-    correctly skipped re-requesting ("Already in progress ... —
-    skipping"), confirming today's guard works. The real, actionable
-    problem for THIS screen: without this dedup, the Downloads tab
-    rendered three apparently-independent active downloads for what is
-    really one attempt.
-
-    Deliberately keyed WITHOUT rank — two rows are the same real
-    candidate if they share track/role/peer/filename, full stop; two
-    genuinely different candidates (Phase 4's rank 1/2/3 shortlist)
-    always have distinct username/filename by construction (each rank
-    is a different real search result), so they're never collapsed by
-    this key regardless of rank.
-    """
-    most_recent_by_candidate: dict[tuple[str, str, str, str], DownloadRequest] = {}
-
-    for request in requests:
-        key = (
-            request.track_id, request.role, request.username,
-            request.filename,
-        )
-        current_best = most_recent_by_candidate.get(key)
-
-        if (
-                current_best is None
-                or request.requested_at > current_best.requested_at
-        ):
-            most_recent_by_candidate[key] = request
-
-    return list(most_recent_by_candidate.values())
 
 
 def _is_visible(request: DownloadRequest, now: datetime) -> bool:

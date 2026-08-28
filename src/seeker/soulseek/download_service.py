@@ -22,6 +22,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.library.scanner import index_single_file
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
@@ -699,6 +700,13 @@ class DownloadService:
         if current is None or current.status != "locked":
             return
 
+        if self._supersede_stale_duplicates(current):
+            # A more recent row for the exact same candidate already
+            # exists and just absorbed this one's spot — no point
+            # issuing a real, redundant request_download for a stale
+            # duplicate against the same real peer.
+            return
+
         try:
             transfer_id = self.soulseek.request_download(
                 request.username,
@@ -731,6 +739,59 @@ class DownloadService:
 
         if status == "ready_for_review":
             self._supersede_others_for_track(request.track_id, request.id)
+
+    def _supersede_stale_duplicates(self, request: DownloadRequest) -> bool:
+        # item 16's creation-time dedup guard (get_active_for_track,
+        # checked inside download_playlist()) only prevents NEW
+        # duplicate rows going forward — it does nothing for rows
+        # already created before it was fully effective. Confirmed live
+        # (2026-08-28): get_locked() has no per-track/per-candidate
+        # collapsing by its own documented design, so without this
+        # check the retry loop below would re-issue a real
+        # request_download for every stale duplicate independently,
+        # every poll cycle, against the same real peer — real, ongoing,
+        # low-value network traffic against a live third party.
+        #
+        # Mirrors seeker.download_dedup.most_recent_per_candidate's
+        # exact grouping/tiebreak rule rather than reinventing one — the
+        # same rule DashboardService.get_active_downloads() already
+        # uses on the read side, so display and mutation never drift
+        # onto two different notions of "duplicate" (the same
+        # consolidation reasoning already applied to matching.py and
+        # AUDIO_EXTENSIONS elsewhere in this codebase).
+        #
+        # Returns True if `request` itself lost to a more recent sibling
+        # (and was just marked 'superseded' — the caller must not retry
+        # it). Returns False if `request` IS the most recent (or the
+        # only) row for its candidate — in which case every OTHER
+        # sibling in the group gets marked 'superseded' here, so a
+        # group of duplicates converges to one survivor within a single
+        # poll_downloads() run regardless of which row this method
+        # happens to be called for first (get_by_id-guarded siblings
+        # already marked 'superseded' on an earlier call this same run
+        # simply won't be in the group query's result on a later one).
+        assert request.id is not None
+
+        with self.database.transaction() as connection:
+            group = self.download_requests.get_active_candidates(
+                request.track_id, request.role, request.username,
+                request.filename, connection,
+            )
+
+        winner = most_recent_per_candidate(group).get(
+            candidate_key(request)
+        )
+
+        if winner is not None and winner.id != request.id:
+            self._update_status(request.id, "superseded")
+            return True
+
+        for sibling in group:
+            if sibling.id != request.id:
+                assert sibling.id is not None
+                self._update_status(sibling.id, "superseded")
+
+        return False
 
     def review_pending_upgrades(self) -> None:
         requests = self._get_ready_for_review()

@@ -176,6 +176,7 @@ def seed_pending_request(
         filename: str = "Dom Dolla - Rhyme Dust.mp3",
         rank: int | None = None,
         username: str = "peer1",
+        requested_at: str | None = None,
 ) -> None:
     with service.database.transaction() as connection:
         existing = service.tracks.get_by_id(track_id, connection)
@@ -204,7 +205,10 @@ def seed_pending_request(
                 transfer_id=transfer_id,
                 size=size,
                 rank=rank,
-                requested_at=datetime.now(timezone.utc).isoformat(),
+                requested_at=(
+                    requested_at
+                    or datetime.now(timezone.utc).isoformat()
+                ),
             ),
             connection,
         )
@@ -909,6 +913,127 @@ def test_locked_request_rejected_again_stays_locked_not_failed(tmp_path):
     # transfer_id was updated to the new attempt even though it stayed
     # locked, so the next run polls the latest attempt, not the stale one.
     assert row["transfer_id"] == "new-1"
+
+
+def test_retry_loop_dedupes_stale_duplicate_locked_rows(tmp_path):
+    # Real, live-observed shape (CLAUDE.md item 24 follow-up,
+    # 2026-08-28): item 16's creation-time dedup guard only prevents
+    # NEW duplicate rows going forward — rows already created before it
+    # was fully effective (e.g. "Balron, Audio - Breach" ids 5/7/9,
+    # 3 rows for the identical peer+file) get retried independently,
+    # every cycle, against the same real peer, unless the retry loop
+    # itself also dedupes. Only the most-recently-requested duplicate
+    # should actually be retried; the rest become 'superseded'.
+    service = make_service(
+        tmp_path,
+        states={"new-1": "InProgress"},
+        retry_results={"Breach.flac": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked",
+        filename="Breach.flac", username="long25",
+        requested_at="2026-08-27T13:15:47+00:00",
+    )
+    seed_pending_request(
+        service, "old-2", role="upgrade", status="locked",
+        filename="Breach.flac", username="long25",
+        requested_at="2026-08-27T17:41:05+00:00",
+    )
+
+    counts = service.poll_downloads()
+
+    # Only ONE real request_download call — for the more recent
+    # duplicate — not one per stale row against the same real peer.
+    assert service.soulseek.request_download_calls == [
+        ("long25", "Breach.flac", 1_000_000),
+    ]
+    assert counts["locked"] == 0
+
+    with service.database.transaction() as connection:
+        rows = {
+            row["transfer_id"]: row["status"]
+            for row in connection.execute(
+                "SELECT transfer_id, status FROM download_requests "
+                "WHERE filename = 'Breach.flac'"
+            ).fetchall()
+        }
+
+    assert rows["old-1"] == "superseded"
+    assert rows["new-1"] == "downloading"
+
+
+def test_retry_loop_never_collapses_distinct_candidates(tmp_path):
+    # The exact case the dedup above must NOT touch: two genuinely
+    # different real candidates for the same track (different peers) —
+    # a legitimate Phase 4 shortlist shape, not a stale duplicate. Both
+    # must be retried independently, and neither should be superseded
+    # by this check.
+    service = make_service(
+        tmp_path,
+        states={"new-a": "InProgress", "new-b": "InProgress"},
+        retry_results={
+            "candidate-a.flac": "new-a", "candidate-b.flac": "new-b",
+        },
+    )
+    seed_pending_request(
+        service, "old-a", role="upgrade", status="locked",
+        filename="candidate-a.flac", username="peerA",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+    seed_pending_request(
+        service, "old-b", role="upgrade", status="locked",
+        filename="candidate-b.flac", username="peerB",
+        requested_at="2026-08-28T10:00:00+00:00",
+    )
+
+    counts = service.poll_downloads()
+
+    assert sorted(service.soulseek.request_download_calls) == [
+        ("peerA", "candidate-a.flac", 1_000_000),
+        ("peerB", "candidate-b.flac", 1_000_000),
+    ]
+    assert counts["locked"] == 0
+
+    with service.database.transaction() as connection:
+        statuses = [
+            row["status"]
+            for row in connection.execute(
+                "SELECT status FROM download_requests"
+            ).fetchall()
+        ]
+
+    assert "superseded" not in statuses
+
+
+def test_retry_loop_single_locked_row_unaffected_by_dedup_check(tmp_path):
+    # No duplicates at all — the new dedup-before-retry check must be a
+    # complete no-op, matching the exact pre-existing Phase 3 contract
+    # (test_locked_request_succeeds_on_retry_transitions_to_downloading
+    # already covers the transition itself; this asserts the dedup
+    # check specifically never touches a lone row's status).
+    service = make_service(
+        tmp_path,
+        states={"new-1": "InProgress"},
+        retry_results={"Dom Dolla - Rhyme Dust.mp3": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["locked"] == 0
+    assert service.soulseek.request_download_calls == [
+        ("peer1", "Dom Dolla - Rhyme Dust.mp3", 12_345),
+    ]
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status FROM download_requests "
+            "WHERE filename = 'Dom Dolla - Rhyme Dust.mp3'"
+        ).fetchone()
+
+    assert row["status"] == "downloading"
 
 
 def test_locked_request_rejected_at_batch_level_stays_locked(tmp_path):
