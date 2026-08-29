@@ -4248,3 +4248,249 @@ already-documented pattern of drive reachability fluctuating within a
 session (see item 26's "became reachable later the same day"). The
 task ends with a genuinely clean full suite, not just an excused set
 of failures.
+
+### 30, §3 retry — closing the "doesn't crash" vs. "actually works" gap
+
+The first §3 pass (above) stopped at "the frozen process boots
+cleanly" once `screencapture`/`System Events` both failed in this
+session's shell — a real tooling gap, but one that left a real
+verification gap too: nothing had actually exercised the wizard, the
+OAuth trigger, a real sync/scan/match, the skip-Docker path, or
+Settings against the frozen binary specifically. Asked to retry using
+the same mechanism this project's own Step 5 live verification already
+used successfully — Qt's `offscreen` platform plugin
+(`QT_QPA_PLATFORM=offscreen`) — before accepting the permission gap as
+a reason not to try. This is a genuinely different mechanism from what
+was tried before: `offscreen` is a Qt-level headless platform plugin
+(no real display connection is opened at all), not macOS UI automation
+— it needs neither Screen Recording nor Accessibility, both of which
+were the actual blockers last time. Worth being precise about why the
+first pass didn't already try this: it wasn't ruled out and rejected,
+it simply wasn't considered — the first pass's own launch was `open
+dist/Seeker.app`, a real desktop launch, and the natural next step from
+there was OS-level automation (`screencapture`/`System Events`), not
+reaching for a Qt-internal platform plugin. Confirmed this rather than
+assumed it before writing anything: the offscreen plugin doesn't touch
+window-server or accessibility APIs at all (it's the same plugin
+`pytest-qt` already runs this entire project's UI test suite under,
+headless, on this exact machine, in this exact session, throughout
+this task) — so there was never a real reason it would have hit the
+same wall.
+
+**Approach.** A launched `.app` process can't be "driven
+programmatically" from outside without exactly the OS automation APIs
+that were already confirmed blocked — a separate, running process has
+no Python-level hook for another process to call into. So rather than
+try to puppet the already-built `dist/Seeker.app` from outside, built a
+**second, throwaway frozen binary** — same `Analysis` config as the
+real `packaging/seeker.spec` (identical `pathex`, the identical real
+`docker-compose.yml` bundled as `datas`, zero hidden-import overrides)
+but pointing at a different entrypoint script
+(`verify_entrypoint.py`, scratchpad-only, never committed — a
+diagnostic tool, not shipped code, same treatment §0's own throwaway
+spike binary got). That script constructs the real
+`QApplication`/`Application`/`OnboardingWizard`/`MainWindow`/
+`SettingsWindow` objects directly, in-process, and drives them via
+genuine Python method calls (`.click()` on real `QPushButton`
+instances, `.setText()` on real `QLineEdit` fields, calling the same
+private handlers `test_wizard.py` already calls directly when a
+button isn't stored as a `self` attribute, e.g.
+`wizard._on_skip_soulseek_clicked()`) — this is exactly this project's
+own already-established "offscreen Qt, real `Application`, no fakes"
+verification pattern (see items 22, 26 §2, 27, 28's own live-verification
+passes), just run inside a genuinely frozen bundle instead of the dev
+venv. The only thing this approach does NOT test that a black-box
+click-through would have: the literal compiled bytes of the real
+`packaging/entrypoint.py` (a 3-line wrapper, already read/confirmed by
+inspection) and real mouse/keyboard event delivery through Qt's
+widget-hit-testing — everything else (real bundled resource resolution
+via `sys._MEIPASS`, real hook-discovered dependencies, real
+`sys.frozen` state, real widget construction/signal wiring, real
+service-layer calls) is exercised identically to how the shipped app
+would run it.
+
+**Building the verification script — read the real call sites first,
+not guessed.** Read `wizard.py` in full to get real attribute names
+(`wizard.stack`, `wizard.client_id_field`, `wizard.connect_button`,
+`wizard._docker_state`, `wizard._on_skip_soulseek_clicked`) and
+`main_window.py`'s toolbar section (`sync_button`/`scan_button`/
+`match_button`/`settings_button`, each wired to `_on_sync_clicked`/
+`_on_scan_clicked`/`_on_match_clicked`/`_on_settings_clicked`) rather
+than guessing them. Cross-checked the isolation pattern against
+`tests/test_application.py`/`tests/test_wizard.py`'s own established
+`_fake_user_data_dir()`/`make_application()` helpers — same technique
+reused directly: monkeypatch `platformdirs.user_data_dir` on
+`application`/`config_store`/`docker_setup` (all three call it
+independently) to an isolated temp dir for the fresh-install checks,
+run from an isolated CWD (so `SPOTIFY_TOKEN_PATH`'s CWD-relative
+`.seeker/spotify_token.json` and `config.py`'s `load_dotenv()` search
+never reach the real repo's real `.env`/token file), and strip the
+relevant env vars — confirmed this genuinely isolates rather than
+assumed: `config.py`'s `SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI` are
+frozen at import time from `.env`, and since the verification binary's
+CWD starts outside the repo entirely, `load_dotenv()`'s upward search
+never finds the real file at all — no monkeypatch of `config.*` was
+even needed for that part.
+
+**Real bug caught in the verification script itself, on the very first
+dry run — not a debugging aside, this is exactly the kind of thing a
+"real, live" pass is supposed to catch.** Iterated fast first: ran the
+script unfrozen (`QT_QPA_PLATFORM=offscreen uv run python
+verify_entrypoint.py`, no PyInstaller build in the loop yet) to shake
+out bugs quickly before paying the ~20s freeze cost repeatedly. First
+attempt crashed immediately: `auth_manager_module.webbrowser.open`
+doesn't exist — `_authorize()` does `import webbrowser` as a **local**
+import inside the method itself, not a module-level name on
+`auth_manager` at all, so there's no such module attribute to patch.
+Fixed by patching the real `webbrowser` module's `open` directly
+(`import webbrowser as webbrowser_module; webbrowser_module.open =
+fake_open`) — Python modules are singletons, so `_authorize()`'s local
+`import webbrowser` resolves to the same patched object regardless.
+
+Second dry run reached the end and reported real failures — both
+turned out to be bugs in the verification script's own wait logic, not
+the app:
+
+1. `settings.locations_table.rowCount() >= 0` as a "wait for the async
+   render" predicate is vacuously true instantly (0 is always >= 0),
+   so it never actually waited for `SettingsWindow`'s real
+   `_refresh_locations()` worker (a `QThreadPool` call with no
+   button/status_label to poll instead) to land. Fixed by waiting for
+   the real expected count (`== real_location_count`, captured from a
+   direct, synchronous `real_app.library_service.list_locations()`
+   call made just before constructing the window) rather than a
+   vacuous inequality.
+2. An assertion that `onboarding_complete` was still `False`
+   immediately before clicking "skip SoulSeek" — this FAILED, and
+   checking why surfaced a real, correct fact about the app rather
+   than a bug: `onboarding_complete`'s own property body (read
+   directly, not assumed) explicitly excludes SoulSeek/Docker from its
+   definition — "the two REQUIRED onboarding steps only... SoulSeek is
+   deliberately excluded... its completeness must never gate whether
+   main_ui.py routes to the dashboard." Since check 2's OAuth-trigger
+   step already had `connect_spotify()` persist a real client ID to
+   the config store (a genuine, correct side effect — `connect_spotify`
+   writes to the config store *before* triggering OAuth, so it
+   happened even though the stubbed `wait_for_callback()` made the
+   auth attempt itself fail), and a library location was added right
+   before this assertion, `onboarding_complete` was correctly already
+   `True` — the wizard just hadn't been shown step 3 yet in the same
+   session. Fixed by correcting the assertion to match the real,
+   confirmed-correct behavior, with a comment recording why (matches
+   this project's own habit of writing the "why" down when a
+   verification pass corrects its own wrong assumption rather than the
+   app's).
+
+Both fixes together (plus keeping the original write-up honest about
+which of the two was "my mistake" vs. "the app's real behavior") — a
+third dry run came back **16/16 checks passing**, unfrozen, before
+spending the freeze step at all.
+
+**Frozen run — the actual ask.** Built `SeekerVerify` (the throwaway
+binary) via the identical `pyinstaller` invocation pattern already
+established in §2/§0 — succeeded on the first attempt, no new
+hidden-import issues (expected, since this reuses the exact same
+`Analysis` config that already produced the real `Seeker.app`
+successfully). Ran it with `QT_QPA_PLATFORM=offscreen`, from the real
+repo root (so Phase B's real-`Application` checks resolve
+`SPOTIFY_TOKEN_PATH`/`.env` exactly the way a real `uv run seeker-ui`
+or the real `Seeker.app` launch would), output redirected to a log
+file. Exit code 0. Confirmed `sys.frozen=True` and a real
+`sys._MEIPASS` pointing at the frozen bundle's own `_internal`
+directory in the script's own printed diagnostic line — this is
+genuinely running inside the frozen environment, not accidentally
+falling back to an unfrozen import path.
+
+**Result: 16/16 checks passed, byte-for-byte matching the unfrozen dry
+run's outcome** (same authorization URL shape, same real playlist
+count, same real scan/match numbers) — the frozen build behaves
+identically to dev mode for everything this pass exercised, which is
+itself the real point of freezing at all. Specifically, all five
+originally-requested checks:
+
+1. **Wizard opens on first run** — a fresh, isolated `Application`
+   (isolated `platformdirs` data dir, isolated CWD, stripped env vars)
+   opens `OnboardingWizard` at `stack.currentIndex() == 0` (the Spotify
+   step), with `onboarding_complete`/`spotify_configured` both
+   confirmed `False` first.
+2. **Spotify OAuth flow triggers correctly** — typing a client ID
+   enabled the real Connect button; clicking it ran the real
+   `connect_spotify()` → `auth_manager.get_valid_token()` →
+   `_authorize()` chain for real, which built a real PKCE
+   authorization URL (`client_id=verification-test-client-id`,
+   `response_type=code`, `code_challenge=...`,
+   `code_challenge_method=S256`, a real random `state`) and called the
+   real (captured, not executed) `webbrowser.open()` with it. Only
+   `wait_for_callback()` — the piece that needs an actual human
+   completing a real browser redirect — was stubbed, matching this
+   project's own pre-existing `_authorize()` test-scope precedent
+   exactly (see item 28 §3's own tests).
+3. **A real sync/scan/match succeeds** — against the REAL production
+   `Application` (real DB, real cached Spotify token, real X9 Pro
+   library), clicking Sync/Scan/Match on the real `MainWindow`
+   toolbar, in sequence, all completed for real: Sync fetched **215**
+   real playlist metadata rows (`sync_playlists()`, the metadata-only
+   endpoint per item 1 — deliberately not a heavier `sync-tracks` call,
+   consistent with this project's own established discipline about not
+   spending Spotify quota gratuitously during a verification pass);
+   Scan found one real library change (`Added: 0, Updated: 1, Removed:
+   0, Unchanged: 3217`); Match reclassified real tracks (`Auto: 9,
+   Needs review: 0, Unmatched: 4`). Each completion was detected by
+   waiting for the real toolbar button to re-enable AND the real
+   `status_label` to stay empty (the only thing that ever writes
+   non-empty text there is `run_worker`'s own error path) — a real,
+   general-purpose success signal, not one hardcoded to the specific
+   text of each action. Ran `seeker check` directly afterward as an
+   independent, out-of-process confirmation that the real DB was left
+   in a healthy, consistent state (`Auto-matched: 9`, `Unmatched (4)`
+   — the identical numbers Match itself reported), not just trusting
+   the in-process assertions.
+4. **The "skip Docker for now" path behaves correctly** — a second,
+   still-isolated wizard (same `Application` as check 2, now with a
+   real library location added) correctly resumed at
+   `stack.currentIndex() == 2` (the SoulSeek/Docker step); its entry
+   ran a real, live `detect_docker_state()` call (`DockerState.RUNNING`
+   — genuinely checked against this machine's real Docker, not
+   skipped); clicking `_on_skip_soulseek_clicked()` fired the real
+   `on_complete` callback and left `onboarding_complete` `True` with
+   zero Docker/SoulSeek credentials ever supplied.
+5. **Settings opens and reflects real config** — a real `SettingsWindow`
+   built against the real production `Application` rendered the real
+   `config.json`'s Spotify Client ID (compared directly against a
+   fresh, independent `load_config(resolve_config_path())` read off
+   disk — exact match) and the real registered library location count
+   (compared against a fresh, independent
+   `library_service.list_locations()` call — exact match).
+
+Zero Python tracebacks anywhere in the frozen run's full output
+(checked directly with a `grep` for
+`traceback|error|exception`, excluding the same benign macOS
+`appintents`/`RemoteObjectProxy` framework noise already seen and
+dismissed during the first §3 pass).
+
+**Cleanup.** The isolated `tempfile.mkdtemp()` directories from Phase
+A's fresh-install checks (`seeker_verify_data_*`/`seeker_verify_cwd_*`/
+`seeker_verify_library_*`, under this machine's real `$TMPDIR`) were
+removed after the run — harmless, but no reason to leave them.
+Confirmed the real production DB was left correctly consistent, not
+just via the in-process assertions above but via a completely separate
+`seeker check` CLI invocation afterward, matching the numbers exactly.
+The throwaway `SeekerVerify` build (~305MB `dist/` + ~70MB `build/`,
+scratchpad-only) was deleted; `verify_entrypoint.py`/`verify.spec`
+themselves were left in the scratchpad (not the repo) in case a future
+session wants to rerun this exact pass — they were never intended to
+be shipped or committed, same treatment as §0's own spike script.
+
+**What this changes about the §3 record above:** the original pass's
+"genuinely NOT verified... someone with normal desktop access should
+still do that pass" language is now stale for the specific five checks
+it named — they were done, for real, against the frozen binary, in
+this same session. What that pass's own tooling-permission finding
+still stands for: a literal visual screenshot of the rendered window,
+and real OS-level mouse/keyboard event delivery through Qt's own
+widget hit-testing, remain unverified in this environment — the
+`offscreen` platform plugin deliberately never renders pixels or
+synthesizes real input events, by design, so it was never going to
+close that specific, narrower gap. That's a materially smaller and
+more honestly-scoped remaining gap than "nothing beyond process
+liveness was checked," which is what stood before this retry.

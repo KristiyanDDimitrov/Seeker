@@ -1352,28 +1352,71 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     behavior) that the built app carries zero `pytest`/`mypy`/`ruff`
     files.
 
-    **§3 macOS build + live verification — built and run for real
-    against this machine's actual production config/DB, with an
-    honest, partial-but-real verification bar, not a full click-
-    through.** `open dist/Seeker.app` (the same path a user takes) kept
-    the process alive well past Qt/Cocoa's fail-fast window (10+
-    seconds, steady ~180MB RSS, no crash report under
-    `~/Library/Logs/DiagnosticReports`); `lsof` confirmed every real
-    dependency (PySide6/Qt, numpy, scipy, rapidfuzz) loaded its actual
-    compiled library into the process; the real macOS unified log
-    showed a genuine AppKit window-initialization sequence (light/dark
-    `NSApp` appearance resolution) with zero Python tracebacks.
-    **Real, confirmed environment gap, not skipped:** this session's
-    shell has no Screen Recording or Accessibility permission grant —
-    `screencapture` failed outright ("could not create image from
-    display") and `System Events` UI scripting returned inconsistent
-    permission errors across calls — so no screenshot and no scripted
-    click-through of the wizard, Settings, or a sync/scan/match run
-    was possible from here. Documented plainly in the README rather
-    than glossed over, same honesty bar as every other genuine gap in
-    this project's history (e.g. item 26's drive-unavailable sessions)
-    — "boots and runs cleanly against real data" is what's confirmed;
-    "every screen was clicked through" is not, and the README says so.
+    **§3 macOS build + live verification — done for real, all five
+    original checks passing against the actual frozen binary, not just
+    "doesn't crash."** First pass (`open dist/Seeker.app`, the same
+    path a user takes) confirmed the process itself is healthy: stayed
+    alive well past Qt/Cocoa's fail-fast window, `lsof` showed every
+    real dependency (PySide6/Qt, numpy, scipy, rapidfuzz) loaded its
+    actual compiled library, the real macOS unified log showed a
+    genuine AppKit window-init sequence with zero Python tracebacks.
+    That alone left a real gap, though — "boots cleanly" isn't "the
+    app works" — and this session's shell has no Screen Recording or
+    Accessibility permission grant, so `screencapture`/`System Events`
+    couldn't screenshot or click through it.
+
+    **Closed for real with the same mechanism this project's own Step
+    5 live verification already used successfully: Qt's `offscreen`
+    platform plugin (`QT_QPA_PLATFORM=offscreen`)** — a Qt-level
+    headless mode, not macOS UI automation, so it needed neither Screen
+    Recording nor Accessibility. Built a second, throwaway frozen
+    binary (`SeekerVerify`, same `Analysis` config as the real
+    `packaging/seeker.spec` — same `pathex`, same bundled
+    `docker-compose.yml`, zero hidden-import overrides — just a
+    different entrypoint script; not committed, a diagnostic tool only)
+    that constructs the real `QApplication`/`Application`/
+    `OnboardingWizard`/`MainWindow`/`SettingsWindow` objects directly
+    and drives them via real Python method calls (`.click()`,
+    `.setText()`, calling the same private handlers this project's own
+    `test_wizard.py` already calls directly when a button isn't stored
+    as a `self` attribute) — exactly this project's own established
+    "offscreen Qt, real `Application`, no fakes" pattern (see items
+    22/26/27/28), just run inside a genuinely frozen bundle
+    (`sys.frozen=True`, a real `sys._MEIPASS`) instead of the dev venv.
+
+    All five original checks, run for real against the frozen binary,
+    **16/16 PASS**: (1) a fresh, isolated `Application` (isolated
+    `platformdirs` data dir + isolated CWD so `.env`/the real token
+    file are never touched) opens the wizard at the Spotify step; (2)
+    entering a client ID and clicking Connect genuinely builds a real
+    PKCE authorization URL (real `client_id`/`code_challenge`/
+    `response_type=code`) and calls the real `webbrowser.open()` with
+    it — only `wait_for_callback()` (the piece needing an actual human
+    completing a real browser round-trip) is stubbed, same scope this
+    project's own `_authorize()` has always had in tests; (3) against
+    the REAL production `Application` (real DB, real Spotify tokens,
+    real X9 Pro library), clicking Sync/Scan/Match in sequence all
+    completed for real — Sync fetched real playlist metadata (215
+    playlists), Scan found a real library change, Match reclassified
+    real tracks (Auto: 9, Unmatched: 4), confirmed against `seeker
+    check` afterward showing the identical, consistent state; (4)
+    "Set up later" on a fresh wizard (Spotify configured + a library
+    location added, matching this project's own existing skip-test
+    precedent) completes onboarding — and surfaced a genuine, correct
+    behavioral fact worth recording: `onboarding_complete` is already
+    `True` the moment Spotify+library are done, *before* step 3 is
+    even reached, since `onboarding_complete`'s own definition
+    deliberately excludes SoulSeek/Docker (an initial version of this
+    check asserted the opposite and was wrong, not the app — fixed
+    once the real property's own logic was checked properly); (5) a
+    real `SettingsWindow` against the real `Application` shows the
+    real `config.json`'s Spotify Client ID and the real registered
+    library location, both compared directly against what's on disk.
+    Zero Python tracebacks in the frozen run's output. The real
+    production DB was intentionally exercised for real (Sync/Scan/
+    Match, matching how items 22/26-28 already verify live against
+    production) — confirmed healthy and consistent afterward via
+    `seeker check`, not just assumed.
 
     **§4 Windows/Linux — written, explicitly documented as
     unverified**, no real machine available here. The spec needed no

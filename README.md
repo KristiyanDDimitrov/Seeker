@@ -393,28 +393,45 @@ Don't treat the Windows/Linux rows as verified just because the same
 state until someone runs `pyinstaller packaging/seeker.spec` for real
 on those platforms.
 
-**macOS live verification, done for real (2026-08-29):** built the
-actual `.app`, launched it via `open dist/Seeker.app` (the same path a
-user double-clicking it takes) against this machine's real, existing
-production config/database. Confirmed real and non-fabricated: the
-process stays alive well past Qt/Cocoa's typical fail-fast window (10+
-seconds, steady ~180MB RSS, no crash report under
+**macOS live verification, done for real (2026-08-29), in two passes.**
+First: built the actual `.app`, launched it via `open dist/Seeker.app`
+(the same path a user double-clicking it takes) against this machine's
+real, existing production config/database. Confirmed real and
+non-fabricated: the process stays alive well past Qt/Cocoa's typical
+fail-fast window (10+ seconds, steady ~180MB RSS, no crash report under
 `~/Library/Logs/DiagnosticReports`); every real dependency — PySide6/Qt,
 numpy, scipy, rapidfuzz — loaded its real compiled library into the
 process (`lsof`); and the real macOS unified log
 (`log show --predicate 'process == "Seeker"'`) shows a genuine AppKit
-window-initialization sequence (light/dark `NSApp` appearance
-resolution, the sequence Cocoa runs when actually preparing to render a
-window) with zero Python tracebacks. **Genuinely NOT verified, a real
-tooling gap in this environment, not skipped:** this session's shell
-has no Screen Recording or Accessibility permission grant, so neither
-`screencapture` nor `System Events` UI scripting could confirm what the
-window actually rendered, and neither could drive a real click through
-the wizard, Settings, or a sync/scan/match run. Someone with normal
-desktop access to a built `.app` should still do that pass before
-calling packaging fully done end-to-end — what's confirmed here is
-"boots and runs cleanly with the real environment," not "every screen
-was clicked through."
+window-initialization sequence with zero Python tracebacks. That alone
+only confirms the process is healthy, though — "doesn't crash" isn't
+"the app works" — and this session's shell has no Screen Recording or
+Accessibility permission, so `screencapture`/`System Events` couldn't
+click through it.
+
+Second, real pass: driven with `QT_QPA_PLATFORM=offscreen` — a
+Qt-level headless platform plugin, not macOS UI automation, so neither
+permission was needed. A second, throwaway frozen binary (same
+`Analysis` config as `packaging/seeker.spec`, just a different
+entrypoint; not shipped) constructed the real `Application`/
+`OnboardingWizard`/`MainWindow`/`SettingsWindow` objects directly and
+drove them with real method calls (`.click()`, `.setText()`), the same
+"offscreen Qt, real `Application`, no fakes" pattern already used
+throughout this project's own live verification history. All five
+original checks passed for real against the frozen binary: the wizard
+opens fresh at the Spotify step; clicking Connect builds a real PKCE
+authorization URL and calls the real `webbrowser.open()` (only the
+browser round-trip itself is stubbed, matching this project's existing
+`_authorize()` test scope); Sync/Scan/Match all completed against the
+real production app (215 real playlists synced, a real library change
+found, tracks reclassified) with the real DB confirmed healthy
+afterward via `seeker check`; "Set up later" completes onboarding
+without Docker/credentials; and a real `SettingsWindow` showed the
+real `config.json`'s Spotify Client ID and library location. Full
+detail — including a wrong assumption in the first verification-script
+draft (about *when* `onboarding_complete` actually turns true) that
+got caught and fixed once checked against the real property's logic —
+is in `docs/HISTORY.md`'s packaging entry.
 
 **Also confirmed:** the build only pulls in runtime dependencies — a
 built app has zero `pytest`/`mypy`/`ruff` files anywhere in it (checked
