@@ -2151,6 +2151,40 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     `track_matches.local_file_id` (`ON DELETE SET NULL`) was verified
     with a real FK-cascade test, not assumed from the schema text.
 
+    **Follow-up (2026-08-30), a real gap closed before this could be
+    called done: the cascade alone left a track's status wrong, not
+    just null.** `ON DELETE SET NULL` only clears `local_file_id` — it
+    leaves `match_method`/`score` untouched, so a track that was
+    `match_method='auto'` stayed `'auto'` with `local_file_id=NULL`.
+    Checked what that combination does downstream rather than assuming
+    it was harmless: `DashboardService._compute_status` requires BOTH
+    `match_method == "auto"` AND a resolvable `local_file_id` for
+    `IN_LIBRARY`, so the track falsely showed `NOT_FOUND` even though
+    the group's other (often better-quality) copy was sitting right
+    there — undercutting the whole point of resolving a duplicate.
+    Checked the specific re-download risk too, not just the display
+    bug: `TrackRepository.get_unmatched_for_playlist` (what
+    `download_playlist` actually schedules against) filters on
+    `match_method IS NULL`, which stayed FALSE for this row — so
+    `download_playlist` would NOT re-fetch it either, meaning the real
+    failure mode was a track stuck in limbo (shown missing, never
+    re-searched), not the app going and re-downloading a copy it
+    already has. Still a real bug, fixed properly: `delete_local_files`
+    now takes an optional `keep_local_file_id`; when given, any
+    `track_matches` row pointing at a file being deleted is re-pointed
+    to the surviving file instead of falling to the cascade (via
+    `TrackMatchRepository.upsert()` — the same reusable primitive
+    `match_all()`/`apply_upgrade_decision` already use for this, no new
+    "repoint" helper needed; a new `get_by_local_file_id` read method
+    was added since none existed for that lookup direction).
+    `match_method`/`score` are preserved as-is on repoint (not
+    re-evaluated) since the underlying audio is fingerprint-confirmed
+    near-identical; only `matched_at` refreshes. The UI passes the
+    checked radio's file id through. Verified with a real end-to-end
+    test seeding a real match, deleting the matched file with the other
+    kept, and confirming the match follows it with its original
+    `match_method`/`score` intact.
+
     **Reused, not duplicated:** `apply_upgrade_decision`'s inlined
     "delete this file, catch OSError, report a message" tail was
     extracted into shared `seeker/file_deletion.py::delete_file()` (same
@@ -2174,7 +2208,26 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     No new CLI command — out of the task's own stated scope (the UI
     flow specifically); `library duplicates` stays read-only.
 
-    `mypy --strict` clean; full suite 468 passed / 1 skipped, run 3x.
+    **A second real problem, found by checking against the real result
+    scale rather than a small synthetic one: refreshing after every
+    single-group resolution via a `find_duplicate_groups()` re-fetch
+    was genuinely broken at real scale.** That call recomputes an
+    entire location's clustering from scratch every time, by design
+    (never persisted, so a moved/rescanned file can't leave a stale
+    group behind) — item 39's own live-verification already recorded
+    the real cost of that: ~10 minutes over a real ~3,100-file/
+    344-group library. Re-running it after each of 344 one-at-a-time
+    resolutions would have made the feature practically unusable at the
+    exact scale it exists to help with. Fixed by dropping just the
+    resolved group from the in-memory list the tab already holds and
+    re-rendering locally — zero additional service calls — rather than
+    reaching for a persisted "resolved" flag (which would reopen the
+    staleness problem the fresh-recompute design deliberately avoids).
+    A partial failure (some files in the group failed to delete) keeps
+    the group visible instead of assuming it's resolved, since its real
+    DB/disk state may not actually match that.
+
+    `mypy --strict` clean; full suite 470 passed / 1 skipped, run 3x.
     [HISTORY §40](docs/HISTORY.md#40)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:

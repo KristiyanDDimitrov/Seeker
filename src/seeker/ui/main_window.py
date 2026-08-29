@@ -693,6 +693,7 @@ class MainWindow(QMainWindow):
         # with nothing else referencing it is a live GC/use-after-free
         # hazard, not just a style preference. Reset on every render.
         self._duplicate_button_groups: list[QButtonGroup] = []
+        self._current_duplicate_groups: list[DuplicateGroup] = []
 
         return tab
 
@@ -780,6 +781,11 @@ class MainWindow(QMainWindow):
 
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
         self._duplicate_button_groups = []
+        # Kept so a single-group resolution can drop just that group and
+        # re-render locally afterward — see _on_delete_duplicates_finished's
+        # own docstring for why re-fetching via find_duplicate_groups()
+        # after every resolution is not an option at real scale.
+        self._current_duplicate_groups = groups
 
         if not groups:
             self.duplicates_table.setRowCount(0)
@@ -919,47 +925,50 @@ class MainWindow(QMainWindow):
         run_worker(
             self.thread_pool,
             lambda: self.application.duplicate_service.delete_local_files(
-                delete_ids
+                delete_ids, keep_id,
             ),
             button=button,
             status_label=self.duplicates_status_label,
-            on_finished=self._on_delete_duplicates_finished,
+            on_finished=lambda result: self._on_delete_duplicates_finished(
+                result, group,
+            ),
         )
 
-    def _on_delete_duplicates_finished(self, result: dict[str, Any]) -> None:
+    def _on_delete_duplicates_finished(
+            self,
+            result: dict[str, Any],
+            group: DuplicateGroup,
+    ) -> None:
+        # Deliberately NOT a find_duplicate_groups() re-fetch after every
+        # single-group resolution. That call recomputes the ENTIRE
+        # location's clustering from scratch every time, by design (item
+        # 39 — never persisted, so a moved/rescanned file can't leave a
+        # stale group behind) — real, live-verified cost against a real
+        # ~3,100-file/344-group library was ~10 minutes (see
+        # docs/HISTORY.md item 39). Re-running that after every single
+        # group would make resolving a real library's worth of
+        # duplicates one at a time completely impractical (344 groups x
+        # ~10 minutes each). Instead, drop just the resolved group from
+        # the in-memory list this tab already holds and re-render from
+        # that — no backend call at all.
         message = f"Deleted: {result['deleted']}, Failed: {result['failed']}."
-        location_name = self._selected_duplicates_location()
 
-        if location_name is None:
+        if result["failed"] > 0:
+            # A partial failure means the DB/disk state for this group
+            # may not actually match "fully resolved" (see
+            # DuplicateService.delete_local_files' own per-item
+            # semantics) — leave it visible rather than assuming it's
+            # gone, so the user can see it's still there and retry.
             self.duplicates_status_label.setText(message)
             return
 
-        # Re-fetch rather than just removing the resolved rows locally
-        # -- find_duplicate_groups is always computed fresh from cached
-        # fingerprints (never persisted state to patch in place, see
-        # DuplicateService's own docstring), so this is the same "ask
-        # the service again" pattern every other poll/refresh in this
-        # app already uses. Deliberately no status_label passed to
-        # run_worker here (unlike _on_find_duplicates_clicked's own
-        # button click path) -- this is a silent background refresh
-        # whose own "Searching..."/"Found N group(s)" text must not
-        # clobber the deletion result message above it.
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.duplicate_service.find_duplicate_groups(
-                location_name
-            ),
-            on_finished=lambda groups: self._render_duplicates_after_delete(
-                groups, message,
-            ),
-        )
-
-    def _render_duplicates_after_delete(
-            self,
-            groups: list[DuplicateGroup],
-            message: str,
-    ) -> None:
-        self._render_duplicate_groups(groups)
+        self._current_duplicate_groups = [
+            g for g in self._current_duplicate_groups if g is not group
+        ]
+        # _render_duplicate_groups sets its own "Found N group(s)"/"No
+        # duplicates found" status text -- overwritten here afterward so
+        # the deletion result is what the user actually sees.
+        self._render_duplicate_groups(self._current_duplicate_groups)
         self.duplicates_status_label.setText(
             f"{message} {self.duplicates_status_label.text()}"
         )

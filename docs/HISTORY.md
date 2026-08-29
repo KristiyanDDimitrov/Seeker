@@ -6166,3 +6166,150 @@ tests reconfirmed passing unmodified against the refactored shared
 `delete_file()` call. `mypy --strict` clean; full suite 468 passed / 1
 skipped, run 3 times in a row.
 
+### 40, follow-up — a real match-status gap and a real performance
+regression, both found by checking rather than assuming the first pass
+was complete
+
+A quick follow-up review of item 40 asked two direct questions before
+treating it as closed: what happens to a track's match when the
+deleted duplicate held it, and does resolving a group against the real
+~344-group result set actually perform acceptably. Both had real
+answers.
+
+**Question 1 — checked exactly what the `ON DELETE SET NULL` cascade
+leaves behind, not assumed it fully "unmatches" the track.** Read
+`schema.py`'s actual declaration: `FOREIGN KEY (local_file_id)
+REFERENCES local_files(id) ON DELETE SET NULL` — this clears
+`local_file_id` and nothing else. A row that was `match_method='auto',
+score=100.0, local_file_id=<deleted id>` becomes `match_method='auto',
+score=100.0, local_file_id=NULL` — NOT the same thing as a genuinely
+unmatched track (`match_method IS NULL`), a distinction this codebase's
+own `matching.py`/`matcher.py` treat as meaningfully different
+everywhere else.
+
+Traced what actually consumes that combination downstream, not just
+reasoned about it in the abstract: `DashboardService._compute_status`
+(`dashboard_service.py`) requires BOTH `match.match_method == "auto"`
+AND `match.local_file_id is not None` AND `match.local_file_id in
+local_files_by_id` for `IN_LIBRARY` — a `local_file_id=NULL` row fails
+that check and falls through every other branch (no active download,
+not `needs_review`) to `NOT_FOUND`. Confirmed this is a real, reachable
+display bug: a user resolves a duplicate group, keeping the better-
+quality copy, and the dashboard reports the track as missing entirely.
+
+Then checked the SPECIFIC risk the follow-up asked about directly —
+does anything treat this as a signal to search/download — by reading
+the actual query `download_playlist` schedules against, not the
+dashboard's own separate status logic:
+`TrackRepository.get_unmatched_for_playlist` filters
+`WHERE pt.playlist_id = ? AND (tm.track_id IS NULL OR tm.match_method
+IS NULL)`. Since `match_method` stays `'auto'` (the cascade never
+touches it), this condition is FALSE for the affected row — the track
+is NOT included in what `download_playlist` schedules. Also confirmed
+no scheduled/background trigger for either `match_all()` or
+`download_playlist()` exists at all — grepped every UI/CLI call site:
+both are ONLY ever invoked from an explicit button click
+(`_on_match_clicked`/`_on_download_clicked`) or an explicit CLI
+subcommand, never a `QTimer` poll. So the specific failure mode
+flagged as the real risk — the app going and re-downloading a copy of
+a track the user already has, undercutting the point of the feature —
+does NOT occur, in either the automatic-trigger sense (no such trigger
+exists) or the "download_playlist quietly re-includes it" sense (the
+`match_method IS NULL` gate blocks it). The REAL failure mode present
+was different and still worth fixing: the track becomes stuck in limbo
+— shown as missing by the dashboard, but never re-searched either,
+until an explicit, later `library match` run happens to notice and
+correct it.
+
+**Fix, reusing the existing repoint pattern rather than inventing a
+new one.** Grepped for any existing "reassign a track_matches row"
+helper before writing new logic: none exists as a separate function —
+every real call site (`TrackMatcher.match_all()`,
+`DownloadService.apply_upgrade_decision`'s replace path) just
+constructs a `TrackMatch` dataclass with the fields it wants and calls
+`TrackMatchRepository.upsert()` directly. That upsert call IS the
+reusable primitive; there was nothing further to extract. Added
+`TrackMatchRepository.get_by_local_file_id(local_file_id, connection)
+-> list[TrackMatch]` (a list, not a single optional — `local_file_id`
+isn't the table's own primary key, `track_id` is, so nothing in the
+schema actually prevents more than one track's match from pointing at
+the same file, even though that's expected to be rare in practice).
+`DuplicateService.delete_local_files` gained an optional
+`keep_local_file_id: int | None = None` parameter; a new private
+`_repoint_or_clear_match` looks up any match pointing at the file about
+to be deleted and, if `keep_local_file_id` was given, re-points it
+there via `upsert()` — preserving the original `match_method`/`score`
+(the underlying audio is fingerprint-confirmed near-identical, so the
+existing match's own confidence is still the right thing to report;
+nothing was re-evaluated) and refreshing only `matched_at`. `None`
+(the parameter's default) falls through to the original `ON DELETE SET
+NULL` cascade behavior, unchanged — a caller with no group/keep context
+at all still gets the old, safe-if-imperfect behavior rather than being
+forced to supply an id it doesn't have. `Application.duplicate_service`
+and the UI's delete-button handler were updated to pass the checked
+radio's `local_file_id` through.
+
+New test: `test_delete_local_files_repoints_match_to_the_kept_file` —
+seeds a real `Track`+`TrackMatch` (`match_method='auto', score=87.5`)
+pointing at a `low_quality` file, calls `delete_local_files([low_quality
+.id], keep_local_file_id=high_quality.id)`, and confirms the match now
+points at `high_quality.id` with `match_method`/`score` unchanged and
+`matched_at` genuinely updated (not left stale).
+
+**Question 2 — checked the real cost of resolving one group at real
+scale, using item 39's own already-recorded real number rather than
+guessing or building a fresh synthetic benchmark.** Item 39's own
+live-verification (docs/HISTORY.md, same file) already recorded the
+real, current cost of a full `find_duplicate_groups()` call: **9m59s
+real wall-clock time** over a real ~3,142-fingerprinted-file library
+that produced 344 real duplicate groups. The first draft of item 40's
+`_on_delete_duplicates_finished` called `find_duplicate_groups()` again
+after every single-group resolution to refresh the tab — at the real
+scale that number describes, resolving all 344 groups one at a time
+would have cost roughly 344 × 10 minutes, making the feature
+practically unusable at the exact scale it's meant to help with. This
+is a real, confirmed regression, not a hypothetical worth hedging
+against speculatively — the number came directly from this project's
+own prior real run, not an estimate.
+
+Fixed per the task's own suggested direction, checked as the right
+call rather than taken on faith: `MainWindow` now keeps the
+last-fetched `list[DuplicateGroup]` in `self._current_duplicate_groups`
+(set inside `_render_duplicate_groups`, alongside the existing
+`_duplicate_button_groups` reset). `_on_delete_duplicates_finished`
+drops the just-resolved `group` from that list by identity (`is not
+group`) and calls `_render_duplicate_groups` on the reduced list
+directly — no `run_worker`/service call at all for the refresh. A
+persisted "resolved" flag was explicitly NOT used, per the task's own
+reasoning: `find_duplicate_groups`'s fresh-every-call design (item 39)
+exists specifically to avoid a moved/rescanned file leaving a stale
+group behind, and a persisted flag would reopen exactly that
+staleness risk for no benefit here, since the in-memory list is already
+authoritative for what the tab is currently showing.
+
+One added correctness guard beyond the original ask: `result["failed"]
+> 0` (a partial deletion failure) leaves the group in place rather than
+dropping it, since the real DB/disk state in that case may not actually
+match "resolved" — confirmed via a new test
+(`test_delete_duplicates_partial_failure_keeps_group_visible`) that the
+table still shows both rows and `_current_duplicate_groups` still holds
+the group after a simulated partial failure. The success path's own
+test (`test_delete_duplicates_finished_removes_group_locally_without_
+refetch`, replacing the old re-fetch-asserting test) confirms zero
+`find_duplicate_groups` calls happen and the table/in-memory list are
+both empty afterward.
+
+**Tooltip/subtitle check — already accurate, confirmed by reading the
+current text rather than assumed stale.** `DUPLICATES_TAB_SUBTITLE` and
+the three new tooltips (`TOOLTIP_KEEP_FILE_RADIO`/
+`TOOLTIP_DELETE_DUPLICATES_CHECKBOX`/`TOOLTIP_DELETE_DUPLICATES_BUTTON`)
+were written during item 40's own original UI pass and already
+describe the real delete action correctly (the subtitle no longer says
+"Read-only for now"); no stale copy was found, so nothing needed
+changing here. The remaining three tooltips (location combo, Compute
+fingerprints, Find duplicates) describe controls whose behavior didn't
+change in this task and remain accurate as written.
+
+`mypy --strict` clean; full suite 470 passed / 1 skipped, run 3 times
+in a row.
+

@@ -99,7 +99,7 @@ class FakeDuplicateService:
         }
         self.compute_fingerprints_calls: list[str] = []
         self.find_duplicate_groups_calls: list[str] = []
-        self.delete_local_files_calls: list[list[int]] = []
+        self.delete_local_files_calls: list[tuple[list[int], int | None]] = []
 
     def compute_fingerprints(self, location_name: str) -> dict:
         self.compute_fingerprints_calls.append(location_name)
@@ -109,8 +109,12 @@ class FakeDuplicateService:
         self.find_duplicate_groups_calls.append(location_name)
         return self._groups
 
-    def delete_local_files(self, local_file_ids: list[int]) -> dict:
-        self.delete_local_files_calls.append(local_file_ids)
+    def delete_local_files(
+            self,
+            local_file_ids: list[int],
+            keep_local_file_id: int | None = None,
+    ) -> dict:
+        self.delete_local_files_calls.append((local_file_ids, keep_local_file_id))
         return self._delete_result
 
 
@@ -1543,7 +1547,7 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    assert application.duplicate_service.delete_local_files_calls == [[102]]
+    assert application.duplicate_service.delete_local_files_calls == [([102], 101)]
 
 
 def test_delete_duplicates_respects_a_changed_keep_selection(qtbot):
@@ -1568,10 +1572,19 @@ def test_delete_duplicates_respects_a_changed_keep_selection(qtbot):
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    assert application.duplicate_service.delete_local_files_calls == [[101]]
+    assert application.duplicate_service.delete_local_files_calls == [([101], 102)]
 
 
-def test_delete_duplicates_finished_refreshes_and_reports_counts(qtbot):
+def test_delete_duplicates_finished_removes_group_locally_without_refetch(
+        qtbot,
+):
+    # Deliberately NOT a find_duplicate_groups() re-fetch after a
+    # single-group resolution -- that call recomputes an entire
+    # location's clustering from scratch every time, confirmed live to
+    # cost ~10 real minutes over a real ~3,100-file/344-group library
+    # (docs/HISTORY.md item 39). Resolving groups one at a time must
+    # drop each one from the in-memory list this tab already holds
+    # instead, with zero additional service calls.
     application = FakeApplication(
         duplicate_groups=[_make_duplicate_group()],
     )
@@ -1595,4 +1608,34 @@ def test_delete_duplicates_finished_refreshes_and_reports_counts(qtbot):
         lambda: "Deleted: 1, Failed: 0" in window.duplicates_status_label.text(),
         timeout=2000,
     )
-    assert application.duplicate_service.find_duplicate_groups_calls[-1] == "Main"
+    assert application.duplicate_service.find_duplicate_groups_calls == []
+    assert window.duplicates_table.rowCount() == 0
+    assert window._current_duplicate_groups == []
+
+
+def test_delete_duplicates_partial_failure_keeps_group_visible(qtbot):
+    # A partial failure means the group's real DB/disk state may not
+    # actually match "fully resolved" -- it must stay visible rather
+    # than being dropped as if it were.
+    application = FakeApplication(
+        duplicate_groups=[_make_duplicate_group()],
+    )
+    application.duplicate_service._delete_result = {
+        "deleted": 0, "failed": 1, "details": [],
+    }
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    actions = window.duplicates_table.cellWidget(0, 6)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    delete_button = actions.findChildren(QPushButton)[0]
+    checkbox.setChecked(True)
+    delete_button.click()
+
+    qtbot.waitUntil(
+        lambda: "Deleted: 0, Failed: 1" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+    assert window.duplicates_table.rowCount() == 2
+    assert len(window._current_duplicate_groups) == 1
