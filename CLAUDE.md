@@ -2131,6 +2131,52 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     explicitly out of scope until a future phase, per the task's own
     stated build order. [HISTORY §39](docs/HISTORY.md#39)
 
+40. **Duplicate/quality detector — Phase 2: the delete action — done
+    (2026-08-30).** Closes out item 39's deliberately-deferred scope:
+    resolving a duplicate group by keeping one copy and deleting the
+    rest, both the DB row and the real file. No schema change needed —
+    `find_duplicate_groups` is already computed fresh from cached
+    fingerprints on every call (item 39's own design), so a deleted
+    duplicate simply stops appearing next time; no "resolved" flag.
+
+    **Standing fact for any future code touching `local_files`
+    deletion:** delete the DB row FIRST, then the file on disk.
+    Confirmed directly (not assumed) that `library/scanner.py`'s own
+    `delete_missing()` already self-heals the DB-row-first failure mode
+    (an interrupted-before-file-delete orphan just gets rediscovered as
+    "new" on the next `library scan`) — the reverse order would instead
+    leave a row pointing at a nonexistent file in the window before
+    that same scan, which a matcher/tagger could act on and fail
+    against. `local_files.delete_by_id`'s cascade onto
+    `track_matches.local_file_id` (`ON DELETE SET NULL`) was verified
+    with a real FK-cascade test, not assumed from the schema text.
+
+    **Reused, not duplicated:** `apply_upgrade_decision`'s inlined
+    "delete this file, catch OSError, report a message" tail was
+    extracted into shared `seeker/file_deletion.py::delete_file()` (same
+    "shared thing lives in exactly one place" precedent as
+    `matching.py`/`download_dedup.py`); both it and the new
+    `DuplicateService.delete_local_files(local_file_ids)` call it now.
+    `delete_local_files` has no notion of "groups" itself — the caller
+    decides which ids to delete.
+
+    **UI reuses the Review tab's exact double-confirm shape, not a new
+    one:** a "Keep" radio per file (grouped per group via
+    `QButtonGroup`, pre-selected to Phase 1's best-quality pick but
+    changeable) and a "Confirm delete" checkbox + "Delete" button on
+    each group's first row only (blank elsewhere, item 27's own
+    precedent). Routed through `run_worker()` exactly like every other
+    background action — item 39's final state was re-read before
+    writing this, and nothing here reintroduces any of its four closed
+    hazards (the delete itself is one synchronous service call inside
+    the worker function, no bespoke `QRunnable`/signal design).
+
+    No new CLI command — out of the task's own stated scope (the UI
+    flow specifically); `library duplicates` stays read-only.
+
+    `mypy --strict` clean; full suite 468 passed / 1 skipped, run 3x.
+    [HISTORY §40](docs/HISTORY.md#40)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

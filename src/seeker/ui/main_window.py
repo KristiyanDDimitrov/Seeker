@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -629,11 +631,12 @@ class MainWindow(QMainWindow):
         return tab
 
     def _build_duplicates_tab(self) -> QWidget:
-        # Read-only, per roadmap item 5's own build order — fingerprint
-        # computation + clustering/scoring display first, live-verified
-        # against the real library, BEFORE any delete/replace action
-        # gets built at all. Scoped to one library location at a time
-        # (the location combo below), never merged across all of them.
+        # Fingerprint computation + clustering/scoring were built and
+        # live-verified first, read-only, per roadmap item 5's own
+        # build order; the delete action below (item 40) is the later,
+        # explicitly-scoped follow-up. Scoped to one library location
+        # at a time (the location combo below), never merged across all
+        # of them.
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.addWidget(
@@ -671,12 +674,25 @@ class MainWindow(QMainWindow):
         self.duplicates_status_label = QLabel("")
         layout.addWidget(self.duplicates_status_label)
 
-        self.duplicates_table = QTableWidget(0, 5)
+        self.duplicates_table = QTableWidget(0, 7)
         self.duplicates_table.setHorizontalHeaderLabels(
-            ["Group", "File", "Format", "Bitrate", "Similarity"]
+            [
+                "Group", "File", "Format", "Bitrate", "Similarity",
+                "Keep", "Actions",
+            ]
         )
         self.duplicates_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.duplicates_table)
+
+        # QButtonGroup instances (one per duplicate group, so only one
+        # radio per group can be selected) have no Qt parent-child
+        # ownership tie to the table cells their radios live in -- kept
+        # alive here for the same reason ui/workers.py's _callbacks
+        # keeps a Worker reference until its own completion, and item
+        # 22's docstring on that pattern more generally: a Qt object
+        # with nothing else referencing it is a live GC/use-after-free
+        # hazard, not just a style preference. Reset on every render.
+        self._duplicate_button_groups: list[QButtonGroup] = []
 
         return tab
 
@@ -763,6 +779,8 @@ class MainWindow(QMainWindow):
         )
 
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
+        self._duplicate_button_groups = []
+
         if not groups:
             self.duplicates_table.setRowCount(0)
             self.duplicates_status_label.setText(
@@ -780,9 +798,20 @@ class MainWindow(QMainWindow):
 
         row = 0
         for group_index, group in enumerate(groups, start=1):
-            for duplicate_file in group.files:
+            # group.files is already ranked best-quality-first (see
+            # DuplicateGroup's own docstring) -- files[0] is this
+            # group's own recommendation for which copy to keep,
+            # pre-selected below but never auto-applied: the radio can
+            # still be moved to any other file in the group before
+            # Delete is ever clicked.
+            button_group = QButtonGroup(self.duplicates_table)
+            self._duplicate_button_groups.append(button_group)
+            group_first_row = row
+
+            for file_index, duplicate_file in enumerate(group.files):
                 local_file = duplicate_file.local_file
                 quality = duplicate_file.quality
+                assert local_file.id is not None
 
                 self.duplicates_table.setItem(
                     row, 0, QTableWidgetItem(str(group_index)),
@@ -804,7 +833,136 @@ class MainWindow(QMainWindow):
                 self.duplicates_table.setItem(
                     row, 4, QTableWidgetItem(f"{group.similarity:.1%}"),
                 )
+
+                keep_radio = QRadioButton()
+                keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
+                keep_radio.setChecked(file_index == 0)
+                # The button's own id IS the local_file_id -- checkedId()
+                # below reads it back directly, no separate id-to-file
+                # mapping needed.
+                button_group.addButton(keep_radio, id=local_file.id)
+                self.duplicates_table.setCellWidget(row, 5, keep_radio)
+
                 row += 1
+
+            self.duplicates_table.setCellWidget(
+                group_first_row,
+                6,
+                self._build_duplicate_group_actions(group, button_group),
+            )
+
+            for other_row in range(group_first_row + 1, row):
+                # Blank cell, not a misleading control -- same "the
+                # action lives once per group, not once per row"
+                # precedent as item 27's per-track Tag button only
+                # rendering for IN_LIBRARY rows.
+                self.duplicates_table.setCellWidget(other_row, 6, QWidget())
+
+            self.duplicates_table.setSpan(
+                group_first_row, 6, len(group.files), 1,
+            )
+
+    def _build_duplicate_group_actions(
+            self,
+            group: DuplicateGroup,
+            button_group: QButtonGroup,
+    ) -> QWidget:
+        container = QWidget()
+        actions_layout = QHBoxLayout(container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        confirm_checkbox = QCheckBox("Confirm delete")
+        confirm_checkbox.setToolTip(
+            help_text.TOOLTIP_DELETE_DUPLICATES_CHECKBOX
+        )
+        actions_layout.addWidget(confirm_checkbox)
+
+        delete_button = QPushButton("Delete")
+        delete_button.setToolTip(help_text.TOOLTIP_DELETE_DUPLICATES_BUTTON)
+        delete_button.clicked.connect(
+            lambda: self._on_delete_duplicates_clicked(
+                group, button_group, confirm_checkbox, delete_button,
+            )
+        )
+        actions_layout.addWidget(delete_button)
+
+        return container
+
+    def _on_delete_duplicates_clicked(
+            self,
+            group: DuplicateGroup,
+            button_group: QButtonGroup,
+            confirm_checkbox: QCheckBox,
+            button: QPushButton,
+    ) -> None:
+        if not confirm_checkbox.isChecked():
+            # The standing rule against touching a file without
+            # confirmation applies in full here: a click alone is only
+            # the FIRST signal (which file to keep); the checkbox is
+            # the second, explicit one, mirroring the Review tab's own
+            # Replace + "Delete old file" checkbox pair. Neither one
+            # alone deletes anything.
+            self.duplicates_status_label.setText(
+                "Check \"Confirm delete\" before deleting duplicate "
+                "files."
+            )
+            return
+
+        keep_id = button_group.checkedId()
+        delete_ids = [
+            duplicate_file.local_file.id
+            for duplicate_file in group.files
+            if duplicate_file.local_file.id is not None
+            and duplicate_file.local_file.id != keep_id
+        ]
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.duplicate_service.delete_local_files(
+                delete_ids
+            ),
+            button=button,
+            status_label=self.duplicates_status_label,
+            on_finished=self._on_delete_duplicates_finished,
+        )
+
+    def _on_delete_duplicates_finished(self, result: dict[str, Any]) -> None:
+        message = f"Deleted: {result['deleted']}, Failed: {result['failed']}."
+        location_name = self._selected_duplicates_location()
+
+        if location_name is None:
+            self.duplicates_status_label.setText(message)
+            return
+
+        # Re-fetch rather than just removing the resolved rows locally
+        # -- find_duplicate_groups is always computed fresh from cached
+        # fingerprints (never persisted state to patch in place, see
+        # DuplicateService's own docstring), so this is the same "ask
+        # the service again" pattern every other poll/refresh in this
+        # app already uses. Deliberately no status_label passed to
+        # run_worker here (unlike _on_find_duplicates_clicked's own
+        # button click path) -- this is a silent background refresh
+        # whose own "Searching..."/"Found N group(s)" text must not
+        # clobber the deletion result message above it.
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.duplicate_service.find_duplicate_groups(
+                location_name
+            ),
+            on_finished=lambda groups: self._render_duplicates_after_delete(
+                groups, message,
+            ),
+        )
+
+    def _render_duplicates_after_delete(
+            self,
+            groups: list[DuplicateGroup],
+            message: str,
+    ) -> None:
+        self._render_duplicate_groups(groups)
+        self.duplicates_status_label.setText(
+            f"{message} {self.duplicates_status_label.text()}"
+        )
 
     def _load_playlists(self) -> None:
         run_worker(

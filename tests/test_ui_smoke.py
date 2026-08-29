@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QProgressBar,
     QPushButton,
+    QRadioButton,
 )
 
 from seeker.models.active_download import ActiveDownload
@@ -86,14 +87,19 @@ class FakeDuplicateService:
             self,
             fingerprint_result: dict | None = None,
             groups: list | None = None,
+            delete_result: dict | None = None,
     ):
         self._fingerprint_result = fingerprint_result or {
             "computed": 0, "skipped_already_computed": 0, "failed": 0,
             "details": [],
         }
         self._groups = groups or []
+        self._delete_result = delete_result or {
+            "deleted": 0, "failed": 0, "details": [],
+        }
         self.compute_fingerprints_calls: list[str] = []
         self.find_duplicate_groups_calls: list[str] = []
+        self.delete_local_files_calls: list[list[int]] = []
 
     def compute_fingerprints(self, location_name: str) -> dict:
         self.compute_fingerprints_calls.append(location_name)
@@ -102,6 +108,10 @@ class FakeDuplicateService:
     def find_duplicate_groups(self, location_name: str) -> list:
         self.find_duplicate_groups_calls.append(location_name)
         return self._groups
+
+    def delete_local_files(self, local_file_ids: list[int]) -> dict:
+        self.delete_local_files_calls.append(local_file_ids)
+        return self._delete_result
 
 
 class FakeTrackMatcher:
@@ -1421,6 +1431,7 @@ def _make_duplicate_group():
         files=[
             DuplicateFile(
                 local_file=LocalFile(
+                    id=101,
                     location_id=1, relative_path="a.flac", filename="a.flac",
                     format="flac", size_bytes=1, mtime=0.0,
                     scanned_at="2026-01-01T00:00:00+00:00",
@@ -1433,6 +1444,7 @@ def _make_duplicate_group():
             ),
             DuplicateFile(
                 local_file=LocalFile(
+                    id=102,
                     location_id=1, relative_path="a.mp3", filename="a.mp3",
                     format="mp3", size_bytes=1, mtime=0.0,
                     scanned_at="2026-01-01T00:00:00+00:00",
@@ -1459,3 +1471,128 @@ def test_render_duplicate_groups_populates_table(qtbot):
     assert window.duplicates_table.item(0, 1).text() == "a.flac"
     assert window.duplicates_table.item(1, 1).text() == "a.mp3"
     assert window.duplicates_table.item(0, 4).text() == "98.7%"
+
+
+def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
+        qtbot,
+):
+    # group.files is already best-quality-first (a.flac, tier 2, over
+    # a.mp3, tier 1) -- the radio on row 0 must be pre-checked, row 1
+    # must not be, and neither is auto-applied without a later click.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    keep_radio_0 = window.duplicates_table.cellWidget(0, 5)
+    keep_radio_1 = window.duplicates_table.cellWidget(1, 5)
+    assert isinstance(keep_radio_0, QRadioButton)
+    assert isinstance(keep_radio_1, QRadioButton)
+    assert keep_radio_0.isChecked() is True
+    assert keep_radio_1.isChecked() is False
+
+
+def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    first_row_actions = window.duplicates_table.cellWidget(0, 6)
+    other_row_actions = window.duplicates_table.cellWidget(1, 6)
+    assert first_row_actions.findChildren(QPushButton)
+    assert not other_row_actions.findChildren(QPushButton)
+
+
+def test_delete_duplicates_without_confirm_checkbox_does_not_delete(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    actions = window.duplicates_table.cellWidget(0, 6)
+    delete_button = actions.findChildren(QPushButton)[0]
+    delete_button.click()
+
+    assert application.duplicate_service.delete_local_files_calls == []
+    assert "Confirm delete" in window.duplicates_status_label.text()
+
+
+def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
+        qtbot,
+):
+    # a.flac (id 101) is pre-selected to keep (best quality) -- clicking
+    # Delete with the checkbox checked must delete only a.mp3 (id 102).
+    application = FakeApplication(
+        duplicate_groups=[_make_duplicate_group()],
+    )
+    application.duplicate_service.delete_local_files_calls = []
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    actions = window.duplicates_table.cellWidget(0, 6)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    delete_button = actions.findChildren(QPushButton)[0]
+    checkbox.setChecked(True)
+    delete_button.click()
+
+    qtbot.waitUntil(
+        lambda: bool(application.duplicate_service.delete_local_files_calls),
+        timeout=2000,
+    )
+    assert application.duplicate_service.delete_local_files_calls == [[102]]
+
+
+def test_delete_duplicates_respects_a_changed_keep_selection(qtbot):
+    # Moving the radio to a.mp3 (id 102) before deleting must delete
+    # a.flac (id 101) instead of the pre-selected default.
+    application = FakeApplication(
+        duplicate_groups=[_make_duplicate_group()],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    window.duplicates_table.cellWidget(1, 5).setChecked(True)
+
+    actions = window.duplicates_table.cellWidget(0, 6)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    delete_button = actions.findChildren(QPushButton)[0]
+    checkbox.setChecked(True)
+    delete_button.click()
+
+    qtbot.waitUntil(
+        lambda: bool(application.duplicate_service.delete_local_files_calls),
+        timeout=2000,
+    )
+    assert application.duplicate_service.delete_local_files_calls == [[101]]
+
+
+def test_delete_duplicates_finished_refreshes_and_reports_counts(qtbot):
+    application = FakeApplication(
+        duplicate_groups=[_make_duplicate_group()],
+    )
+    application.duplicate_service._delete_result = {
+        "deleted": 1, "failed": 0, "details": [],
+    }
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicates_locations(
+        [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
+    )
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    actions = window.duplicates_table.cellWidget(0, 6)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    delete_button = actions.findChildren(QPushButton)[0]
+    checkbox.setChecked(True)
+    delete_button.click()
+
+    qtbot.waitUntil(
+        lambda: "Deleted: 1, Failed: 0" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+    assert application.duplicate_service.find_duplicate_groups_calls[-1] == "Main"

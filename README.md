@@ -135,6 +135,8 @@ src/seeker/
 │                             #   poll_downloads (status + file move)
 ├── library/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
+│   └── duplicate_service.py   # fingerprint-based duplicate detection
+│                             #   + group-resolution delete action
 ├── ui/                        # the seeker-ui GUI (PySide6)
 │   ├── main_window.py         # dashboard + Downloads/Review/tagging tabs
 │   ├── wizard.py               # onboarding: Spotify, library, SoulSeek
@@ -151,6 +153,7 @@ src/seeker/
 ├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
 ├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)
 ├── download_dedup.py          # shared "same real candidate" dedup rule (download service + dashboard)
+├── file_deletion.py            # shared safe-file-delete primitive (download service + duplicate service)
 ├── config.py                  # .env-sourced fallback values (legacy/CLI-only path)
 ├── application.py
 ├── cli.py
@@ -317,16 +320,19 @@ one-off decisions:
   exist specifically because a real run surfaced a mismatch. Where
   practical, tests and manual verification runs use real API responses
   and real files rather than only synthetic fixtures.
-- **Never touch a file without confirmation when it matters.** Replacing
-  an already-downloaded file with a higher-quality version is the one
-  filesystem-destructive action in the pipeline, and it's the one place
-  both interfaces stop and ask — twice, once to confirm the replacement
-  and once to confirm deleting the old file (the CLI's `downloads
-  review` prompts; the GUI's Review tab has a Replace/Decline button
-  pair and a "Delete old file" checkbox) — rather than acting
-  automatically. Writing tags onto a file, by contrast, is treated as
-  non-destructive (it augments a file in place rather than replacing
-  it) and runs with no confirmation in either interface.
+- **Never touch a file without confirmation when it matters.** Two
+  independent flows can delete a real file from disk, and both stop and
+  ask twice before doing it, never acting automatically: replacing an
+  already-downloaded file with a higher-quality version (the CLI's
+  `downloads review` prompts; the GUI's Review tab has a Replace/Decline
+  button pair and a "Delete old file" checkbox), and resolving a
+  duplicate-file group found by the Duplicates tab's fingerprint-based
+  detection (pick which copy to keep — pre-selected to the highest-
+  quality one, but changeable — then check "Confirm delete" and click
+  Delete before the other copy/copies are removed). Writing tags onto a
+  file, by contrast, is treated as non-destructive (it augments a file
+  in place rather than replacing it) and runs with no confirmation in
+  either interface.
 
 ## Running tests
 

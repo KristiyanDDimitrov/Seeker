@@ -30,8 +30,9 @@ REVIEW_TAB_SUBTITLE = (
 )
 DUPLICATES_TAB_SUBTITLE = (
     "Find duplicate or near-duplicate files within one library "
-    "location, by audio content — not just matching filenames. "
-    "Read-only for now: nothing here deletes or moves a file."
+    "location, by audio content — not just matching filenames. Pick "
+    "which copy to keep, then confirm deleting the rest — nothing is "
+    "removed until you explicitly check the box and click Delete."
 )
 SETTINGS_WINDOW_SUBTITLE = (
     "Library locations, playlist destinations, Spotify/SoulSeek "
@@ -122,6 +123,18 @@ TOOLTIP_COMPUTE_FINGERPRINTS = (
 TOOLTIP_FIND_DUPLICATES = (
     "Compare this location's already-fingerprinted files and group the "
     "ones that are the same recording, by audio content."
+)
+TOOLTIP_KEEP_FILE_RADIO = (
+    "Which copy in this group to keep. Pre-selected to the highest-"
+    "quality copy, but you can pick a different one."
+)
+TOOLTIP_DELETE_DUPLICATES_CHECKBOX = (
+    "Confirm you want to permanently delete every other file in this "
+    "group from disk. Required before Delete does anything."
+)
+TOOLTIP_DELETE_DUPLICATES_BUTTON = (
+    "Delete every file in this group except the one selected to keep. "
+    "Only takes effect once the checkbox above is checked."
 )
 
 # --- Settings: Library Locations tab --------------------------------------

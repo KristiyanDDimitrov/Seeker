@@ -5977,3 +5977,192 @@ the crash class above). The one-event-loop-tick deferral is load-
 bearing, not cosmetic: deleting synchronously, even via a safely-
 obtained reference, reintroduced the crash; deferring it does not.
 
+### 40
+
+Phase 2 of the duplicate/quality detector (item 39's own Phase 1 built
+fingerprinting, clustering, and a read-only Duplicates tab; this closes
+the deliberately-deferred delete/replace action). Re-read item 39's
+final state (CLAUDE.md's Known Issues entry and both HISTORY.md
+addenda) before starting, per the task's own explicit instruction —
+this Phase adds another worker-driven action into the exact lifecycle
+machinery item 39 spent four rounds getting right.
+
+**Design question resolved first, by checking real behavior, not by
+picking an order and hoping: does the DB row update or the file
+deletion happen first?** These aren't atomic, and the task's own
+framing was right that the two orderings fail differently. Checked
+directly whether `library scan`'s existing reachability/change-
+detection logic already reconciles `local_files` rows for files that
+no longer exist, rather than assuming either way: yes — `library/
+scanner.py::LibraryScanner.scan()` builds `seen_relative_paths` from a
+real `rglob()` walk of the location's real directory tree and calls
+`self.local_files.delete_missing(location.id, seen_relative_paths,
+connection)`, which deletes every `local_files` row for that location
+whose `relative_path` wasn't seen. This changes how much the ordering
+matters, exactly as the task anticipated: the DB-row-first failure mode
+(interrupted after the DB delete, before the file delete) leaves an
+orphaned-but-still-present file on disk — completely benign, since the
+next `library scan` just rediscovers it as a "new" file, no error
+potential at all. The reverse order (file first, DB row second) would
+leave a `local_files` row pointing at a file that no longer exists in
+the window before that same next scan repairs it — a state a matcher
+or tagger run in that window could act on and genuinely fail against
+(a real I/O error opening a file that isn't there), which is worse.
+**Decision: DB row first, then the file on disk** — and this already
+matches existing precedent in this exact codebase: `apply_upgrade_
+decision` (item 26) already does `track_matches.upsert()` +
+`download_requests.mark_status("completed")` (the DB update) BEFORE
+`old_path.unlink()` (the file delete), for the identical reasoning,
+confirmed by reading its own source rather than assumed from memory.
+
+Also checked directly (not assumed from the schema text alone) that
+`local_files.delete_by_id`'s cascade onto `track_matches.local_file_id`
+actually fires: `schema.py` declares `FOREIGN KEY (local_file_id)
+REFERENCES local_files(id) ON DELETE SET NULL`, and `connection.py`
+sets `PRAGMA foreign_keys = ON` on every real connection — a genuine
+end-to-end test (`test_delete_local_files_cascades_track_match_to_
+unmatched`) seeds a real `Track`+`TrackMatch` row pointing at a real
+`local_file_id`, calls `delete_local_files`, and confirms the match
+comes back with `local_file_id is None` rather than trusting the
+schema declaration on its own.
+
+**Reuse audit — the Review tab's actual deletion code was NOT factored
+for reuse, confirmed by reading it directly rather than assumed either
+way.** `DownloadService.apply_upgrade_decision`'s tail (`old_path.
+unlink()` wrapped in a bare `try/except OSError`, formatting a message
+inline) was a private implementation detail of that one method, not a
+standalone, importable function — reusing it as-is would have meant
+either importing a private-shaped snippet across a `soulseek/` →
+`library/` layer boundary or duplicating it. Per the task's own
+instruction ("if it's not currently factored for reuse, that's fine,
+but say so explicitly rather than silently duplicating it"), extracted
+it instead: new top-level `seeker/file_deletion.py::delete_file(path)
+-> str | None` — a pure, zero-seeker-dependency primitive (just
+`pathlib.Path`), the same "lowest layer that needs it" placement this
+codebase already uses for `download_dedup.py`. `apply_upgrade_decision`
+was updated to call it too, confirmed behavior-preserving by its own
+three existing tests passing unmodified
+(`test_apply_upgrade_decision_replace_and_delete_old`/
+`_replace_and_keep_old`/`_decline_is_a_no_op`).
+
+**Service layer.** `DuplicateService.delete_local_files(local_file_ids:
+list[int]) -> dict[str, Any]` — deliberately takes no `location_name`
+or "group" concept at all: each `LocalFile` already carries its own
+`location_id`, so the caller (the UI) just passes the specific ids it
+decided to delete, and the method trusts that decision rather than
+re-deriving or re-validating it against `find_duplicate_groups`' own
+clustering (which would require re-fingerprinting/re-clustering just to
+check a caller-supplied list, for no real safety benefit). Per-item
+try/except, same batch-safety shape as `compute_fingerprints`
+(item 39): one bad id (already gone, permission denied, whatever)
+can't abort the rest of the batch. Three real outcomes, each with its
+own test: (1) a normal delete — both the `local_files` row and the
+real file removed, confirmed via `LocalFileRepository.get_by_id`
+returning `None` and `Path.exists()` returning `False`; (2) an
+already-missing id — the desired end state (no such row, no such
+tracked file) is already true, so this counts as a clean `deleted`,
+not a `failed`; (3) a DB row whose real file was already gone from disk
+(moved, deleted by something else) — the DB row is still correctly
+removed (per the ordering decision above), but the file-deletion
+failure is surfaced as a real `failed` entry with a message naming the
+missing file, not silently treated as success just because the DB side
+succeeded.
+
+**UI — reused the Review tab's exact double-confirm interaction shape,
+not a new one, per the task's own explicit instruction.** The existing
+Duplicates tab (item 39) rendered a flat, 5-column, one-row-per-file
+table with no per-group action at all. Extended to 7 columns: "Keep" —
+a `QRadioButton` per file row, grouped per duplicate group via
+`QButtonGroup(self.duplicates_table)` (so only one file per group can
+ever be selected), with `addButton(radio, id=local_file.id)` — the
+button's own id IS the local_file_id, so `checkedId()` reads back which
+file to keep with no separate id-mapping dict needed. Pre-selected to
+`group.files[0]` (Phase 1's own best-quality-first ranking — see
+`DuplicateGroup`'s own docstring, "files[0] is this group's own
+recommendation") but never auto-applied; the user can move the
+selection to any other file in the group before anything is deleted.
+"Actions" — a "Confirm delete" checkbox + "Delete" button, rendered
+only on each group's first row (`setSpan(group_first_row, 6,
+len(group.files), 1)`), every other row in the group getting a bare
+`QWidget()` — the identical "blank cell, not a misleading control"
+precedent item 27 already established for the per-track Tag button
+only rendering for `IN_LIBRARY` rows. Clicking Delete with the checkbox
+unchecked is a genuine no-op (a status message, `delete_local_files` is
+never called) — confirmed via a dedicated test asserting the fake
+service's call list stays empty. `QButtonGroup` instances have no Qt
+parent-child ownership tie to the radios living in table cells, so they're
+kept alive in a `self._duplicate_button_groups` list, reset on every
+render — the identical GC-hazard reasoning `ui/workers.py`'s
+`_callbacks` dict is built on (item 39), applied here to a different
+kind of Qt object.
+
+**Routed through the exact same worker machinery as everything else —
+verified, not just asserted in a comment.** The delete button's click
+handler calls `run_worker(self.thread_pool, lambda: self.application.
+duplicate_service.delete_local_files(delete_ids), button=..., status_
+label=..., on_finished=...)` — the same `run_worker()` every other
+background action in this codebase goes through, no bespoke worker
+path, no ad hoc `connect()`. This doesn't reintroduce any of item 39's
+four closed hazards because it doesn't need to touch any of the
+machinery those hazards lived in: the delete action itself is a single
+synchronous service-layer call executed inside the worker's own
+function body (exactly like `compute_fingerprints`/`find_duplicate_
+groups` before it), not a new `QRunnable` subclass, signal, or
+cross-thread callback design of its own — `ui/workers.py` itself was
+not touched by this task at all.
+
+**Refresh-after-delete needed one small, deliberate fix to avoid
+clobbering its own result message.** The first draft called
+`_on_find_duplicates_clicked()` directly after a successful delete —
+but that method also sets `duplicates_status_label` to "Searching for
+duplicates..." and passes `status_label=` to its own `run_worker()`
+call (which clears the label to `""` at the start of any worker), which
+would immediately overwrite the "Deleted: N, Failed: N" message before
+the user could ever see it. Fixed by re-fetching `find_duplicate_
+groups` directly with no `status_label` passed (a silent background
+refresh, the same pattern `_poll_review_items` already uses for its own
+2s-timer-driven refreshes) and combining the two messages explicitly
+once the re-render completes.
+
+**No new CLI command, and no new schema/migration — both deliberate,
+not omissions.** The task scoped the delete action to the UI's own
+double-confirm flow specifically (mirroring the Review tab); `library
+duplicates` stays a read-only listing, matching item 39's own "read-
+only for now" build order for the CLI side. `find_duplicate_groups`
+already recomputes fresh from cached fingerprints on every call
+(item 39's own explicit design choice — "never persisted as its own
+table... a moved/rescanned file can't leave a stale group behind") —
+adding a "resolved" flag or any other persisted group-state table would
+have been exactly the premature schema change this project's own
+conventions warn against, since a deleted duplicate already stops
+appearing in the very next `find_duplicate_groups()` call with zero new
+state.
+
+**Live verification, beyond the mocked UI tests.** A real, offscreen
+(`QT_QPA_PLATFORM=offscreen`) `MainWindow`, wired to a real
+`DuplicateService` (real `Database`, real repositories) rather than the
+test suite's `FakeDuplicateService` — two real generated duplicate
+`.wav` files (identical 440Hz tones) in a disposable `tempfile.
+mkdtemp()` directory, never a real library. Ran the real
+`compute_fingerprints`/`find_duplicate_groups` calls directly (real
+libchromaprint), confirmed one real 2-file group was found, rendered it
+through the real `_render_duplicate_groups`, checked the real "Confirm
+delete" checkbox and clicked the real "Delete" button on the real
+`QPushButton` inside the real cell widget. Confirmed directly
+afterward, not just trusted the status label: exactly one of the two
+real `.wav` files was gone from disk (`Path.exists()` on each), exactly
+one `local_files` row remained in the real DB, and the status label
+correctly read "Deleted: 1, Failed: 0."
+
+Tests: 5 new `DuplicateService.delete_local_files` tests (real
+`tmp_path` files throughout — normal delete, FK-cascade-to-unmatched,
+already-missing id, file-already-gone-from-disk failure reporting,
+one-failure-doesn't-abort-the-batch), 2 new `file_deletion.delete_file`
+tests, 6 new UI smoke tests (pre-selection, per-group action placement,
+no-op without the confirm checkbox, correct ids deleted including
+after moving the radio selection, and the refresh-with-combined-
+message behavior), plus the 3 pre-existing `apply_upgrade_decision`
+tests reconfirmed passing unmodified against the refactored shared
+`delete_file()` call. `mypy --strict` clean; full suite 468 passed / 1
+skipped, run 3 times in a row.
+
