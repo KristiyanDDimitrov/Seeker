@@ -19,6 +19,7 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.file_deletion import delete_file
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
@@ -67,13 +68,15 @@ class DuplicateGroup:
 
 class DuplicateService:
     """Per-library-location fingerprint computation and duplicate
-    clustering (roadmap item 5) — deliberately scoped to one
-    `library_locations` row at a time, the same unit `library add`/
-    `list`/`remove` already use, not merged across every registered
-    location. Read-only: this service only computes fingerprints and
-    reports groups: no file is ever moved or deleted here (that's a
-    separate, later, explicitly-confirmed action — see CLAUDE.md item
-    5's own build-order note)."""
+    clustering (roadmap item 5), plus the group-resolution delete action
+    (roadmap item 40) — deliberately scoped to one `library_locations`
+    row at a time, the same unit `library add`/`list`/`remove` already
+    use, not merged across every registered location.
+    `compute_fingerprints`/`find_duplicate_groups` are read-only, per
+    item 5's own build-order note; `delete_local_files` is the one
+    filesystem-destructive method here, and is never called without an
+    explicit, caller-confirmed list of ids (see CLAUDE.md item 40 for
+    the UI's own double-confirm flow before it's ever invoked)."""
 
     def __init__(
         self,
@@ -244,6 +247,90 @@ class DuplicateService:
             )
 
         return groups
+
+    def delete_local_files(self, local_file_ids: list[int]) -> dict[str, Any]:
+        """Deletes each given local file — both its `local_files` DB row
+        and the real file on disk — used to resolve a duplicate group by
+        removing every member except whichever one the caller decided to
+        keep. Deliberately has no notion of "groups" itself: the caller
+        (the UI, per its own double-confirm flow — see CLAUDE.md item
+        40) decides which specific ids to delete; this method trusts
+        that decision rather than re-deriving or re-validating it against
+        `find_duplicate_groups`' own clustering. Per-item try/except,
+        same batch-safety shape as `compute_fingerprints`.
+
+        Order is deliberate and matters: for each file, the DB row is
+        deleted FIRST, then the file on disk. These two steps aren't
+        atomic. If something interrupts between them, THIS order fails
+        in the safer direction — an orphaned-but-still-present file,
+        which `library/scanner.py`'s own reachability logic
+        (`delete_missing`) already self-heals on the next `library
+        scan` by simply rediscovering it as a "new" file. The reverse
+        order (file first, DB row second) would instead leave a
+        `local_files` row pointing at a file that no longer exists, in
+        the window before that same next scan repairs it — a state a
+        matcher or tagger run in that window could act on and fail
+        against, which is worse than a merely-orphaned file. Checked
+        directly rather than assumed: `local_files.delete_by_id`
+        cascades `track_matches.local_file_id` to NULL via the schema's
+        own `ON DELETE SET NULL` (confirmed enforced —
+        `Database`/`connection.py` sets `PRAGMA foreign_keys = ON`), so
+        a track matched to a deleted duplicate goes back to unmatched
+        rather than being left pointing at a deleted row.
+        """
+        counts = {"deleted": 0, "failed": 0}
+        details: list[dict[str, str]] = []
+
+        for local_file_id in local_file_ids:
+            try:
+                self._delete_one_local_file(local_file_id)
+            except Exception as error:
+                counts["failed"] += 1
+                details.append(
+                    {
+                        "local_file_id": str(local_file_id),
+                        "message": str(error),
+                    }
+                )
+                print(f"  Failed to delete local file {local_file_id}: {error}")
+            else:
+                counts["deleted"] += 1
+
+        return {**counts, "details": details}
+
+    def _delete_one_local_file(self, local_file_id: int) -> None:
+        with self.database.transaction() as connection:
+            local_file = self.local_files.get_by_id(local_file_id, connection)
+
+            if local_file is None:
+                # Already gone -- the desired end state (no such row,
+                # no such file tracked) is already true.
+                return
+
+            location = self.locations.get_by_id(
+                local_file.location_id, connection,
+            )
+            self.local_files.delete_by_id(local_file_id, connection)
+
+        if location is None:
+            # A local_files row with no matching library_locations row
+            # isn't a state this schema's own foreign keys allow --
+            # nothing further to delete on disk.
+            return
+
+        file_path = Path(location.path) / local_file.relative_path
+        error = delete_file(file_path)
+
+        if error is not None:
+            # The DB row is already gone at this point (see this
+            # method's own docstring for why that ordering is the
+            # deliberately safer one) -- the file itself is still on
+            # disk, which is a real, worth-surfacing partial failure,
+            # not a silent success.
+            raise RuntimeError(
+                f"removed from the library but could not delete "
+                f"{file_path}: {error}"
+            )
 
 
 def _quality_sort_key(quality: LocalFileQuality) -> tuple[int, int]:

@@ -12,6 +12,10 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
+from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.duplicate_service import (
     DuplicateService,
     LibraryLocationNotFoundError,
@@ -20,6 +24,8 @@ from seeker.library.duplicate_service import (
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
+from seeker.models.track import Track
+from seeker.models.track_match import TrackMatch
 from seeker.soulseek.quality import LocalFileQuality
 
 
@@ -279,3 +285,135 @@ def test_quality_sort_key_prefers_lossless_then_higher_bitrate():
     )
 
     assert ranked == [lossless, lossy_high, lossy_low]
+
+
+# --- delete_local_files (roadmap item 40) — real tmp_path files only,
+# never a real library, matching this project's own standing rule
+# against ever touching a file without confirmation and never running a
+# destructive test outside a disposable fixture directory. -------------
+
+def test_delete_local_files_removes_db_row_and_real_file(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    file_path = music_dir / "dupe.wav"
+    file_path.write_bytes(b"fake audio data")
+    local_file = add_local_file(database, location, "dupe.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.delete_local_files([local_file.id])
+
+    assert result == {"deleted": 1, "failed": 0, "details": []}
+    assert not file_path.exists()
+
+    with database.transaction() as connection:
+        assert LocalFileRepository(database).get_by_id(
+            local_file.id, connection,
+        ) is None
+
+
+def test_delete_local_files_cascades_track_match_to_unmatched(tmp_path):
+    # Confirms the schema's own ON DELETE SET NULL actually fires under
+    # PRAGMA foreign_keys = ON, rather than assuming it does -- a track
+    # matched to a deleted duplicate must come back as unmatched
+    # (local_file_id NULL), never left pointing at a deleted row.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    file_path = music_dir / "dupe.wav"
+    file_path.write_bytes(b"fake audio data")
+    local_file = add_local_file(database, location, "dupe.wav", "wav", 3000)
+
+    track_repo = TrackRepository(database)
+    match_repo = TrackMatchRepository(database)
+    with database.transaction() as connection:
+        track_repo.save(
+            Track(
+                id="t1", title="Title", artist="Artist", album="Album",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        match_repo.upsert(
+            TrackMatch(
+                track_id="t1",
+                local_file_id=local_file.id,
+                match_method="auto",
+                score=100.0,
+                matched_at=datetime.now(timezone.utc).isoformat(),
+            ),
+            connection,
+        )
+
+    service = make_service(database)
+    service.delete_local_files([local_file.id])
+
+    with database.transaction() as connection:
+        match = match_repo.get_by_track_id("t1", connection)
+
+    assert match is not None
+    assert match.local_file_id is None
+
+
+def test_delete_local_files_already_missing_id_counts_as_deleted(tmp_path):
+    # The desired end state (no such row, no such tracked file) is
+    # already true -- not a failure.
+    database = make_database(tmp_path)
+    register_location(database, tmp_path / "music")
+    service = make_service(database)
+
+    result = service.delete_local_files([999])
+
+    assert result == {"deleted": 1, "failed": 0, "details": []}
+
+
+def test_delete_local_files_reports_failure_when_file_already_gone_from_disk(
+        tmp_path,
+):
+    # DB row exists but the real file underneath it was already removed
+    # out from under it (e.g. moved, or deleted by something else) --
+    # the DB row is still correctly removed (see the method's own
+    # docstring for why that ordering is deliberate), but the failure
+    # to delete a file that isn't there must be reported, not silently
+    # treated as a clean success.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    local_file = add_local_file(database, location, "gone.wav", "wav", 3000)
+    # Deliberately never write gone.wav to disk.
+
+    service = make_service(database)
+    result = service.delete_local_files([local_file.id])
+
+    assert result["deleted"] == 0
+    assert result["failed"] == 1
+    assert "gone.wav" in result["details"][0]["message"]
+
+    with database.transaction() as connection:
+        assert LocalFileRepository(database).get_by_id(
+            local_file.id, connection,
+        ) is None
+
+
+def test_delete_local_files_one_failure_does_not_abort_the_batch(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    good_path = music_dir / "good.wav"
+    good_path.write_bytes(b"fake audio data")
+    good_file = add_local_file(database, location, "good.wav", "wav", 3000)
+    # missing.wav is registered but never written to disk -- deleting it
+    # fails, and must not stop good.wav from still being deleted.
+    missing_file = add_local_file(database, location, "missing.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.delete_local_files([missing_file.id, good_file.id])
+
+    assert result["deleted"] == 1
+    assert result["failed"] == 1
+    assert not good_path.exists()

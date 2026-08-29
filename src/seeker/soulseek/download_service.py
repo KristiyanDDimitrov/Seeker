@@ -25,6 +25,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
+from seeker.file_deletion import delete_file
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.download_request import DownloadRequest
@@ -1245,11 +1246,12 @@ class DownloadService:
         if not delete_old:
             return f"{message}\n  Leaving {old_path} in place."
 
-        try:
-            old_path.unlink()
+        error = delete_file(old_path)
+
+        if error is None:
             return f"{message}\n  Deleted {old_path}"
-        except OSError as error:
-            return f"{message}\n  Could not delete {old_path}: {error}"
+
+        return f"{message}\n  Could not delete {old_path}: {error}"
 
     def _confirm_upgrade(self, request: DownloadRequest) -> None:
         # Thin, interactive wrapper over the two explicit-decision

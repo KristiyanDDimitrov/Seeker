@@ -252,6 +252,19 @@ class LocalFileRepository:
 
         return _row_to_local_file(row)
 
+    def delete_by_id(
+            self,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # track_matches.local_file_id references this via ON DELETE SET
+        # NULL (see schema.py) -- a track matched to this file goes back
+        # to unmatched rather than left pointing at a deleted row.
+        connection.execute(
+            "DELETE FROM local_files WHERE id = ?",
+            (local_file_id,),
+        )
+
     def delete_missing(
             self,
             location_id: int,
