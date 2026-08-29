@@ -437,6 +437,66 @@ is in `docs/HISTORY.md`'s packaging entry.
 built app has zero `pytest`/`mypy`/`ruff` files anywhere in it (checked
 directly, not assumed from PyInstaller's import-analysis behavior).
 
+### Building the `.dmg` installer
+
+The `.app` above is a real, runnable bundle on its own, but a `.dmg` is
+the distribution format users actually expect on macOS — mount it, drag
+the app to `/Applications`. Built with
+[`dmgbuild`](https://dmgbuild.readthedocs.io/) (a pure-Python dev
+dependency, kept consistent with this project's `uv`-managed tooling
+rather than pulling in an external shell tool like `create-dmg`):
+
+```
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec   # builds dist/Seeker.app
+uv run dmgbuild -s packaging/dmg_settings.py -Dapp=dist/Seeker.app \
+    Seeker dist/Seeker.dmg
+```
+
+or, chained into one command:
+
+```
+uv run python packaging/build_dmg.py
+```
+
+`packaging/dmg_settings.py` lays out a standard drag-to-install
+volume: the app and an `/Applications` symlink side by side, a sized
+window, no clutter (status bar/toolbar/sidebar all off). **No custom
+`.icns` exists for this app yet** — a known, acceptable cosmetic gap
+for this pass, not attempted; the volume and the app both fall through
+to PyInstaller/macOS's generic default icon rather than erroring.
+Background-image polish is similarly left out — optional, not
+required for a working installer.
+
+**Relocation live-verified for real (2026-08-29) — this is the one
+thing a same-location `.app` launch can't catch.** Built the real
+`.dmg`, mounted it (`hdiutil attach`), and actually copied the `.app`
+out to `/Applications` — a genuinely different location from the
+build directory, not a stand-in for it — then launched it **from
+there** with `QT_QPA_PLATFORM=offscreen` (the same real,
+non-fabricated verification technique from the packaging task's own
+retry — a Qt-level headless platform plugin, not macOS UI automation).
+**17/17 checks passed**, including a new, explicit check of exactly
+the risk a `.dmg` introduces: `docker_setup.py::compose_file_path()`'s
+`sys._MEIPASS`-based resolution correctly found the bundled
+`docker-compose.yml` at its real, relocated path
+(`/Applications/SeekerVerify.app/Contents/Frameworks/docker-compose.yml`
+in the verification run) — confirming this resolves relative to
+wherever the running binary actually lives, not a path baked in at
+build time. All five original functional checks (wizard opens fresh,
+Spotify OAuth builds a real authorization URL, Sync/Scan/Match all
+complete against the real production app, "skip Docker" completes
+onboarding, Settings reflects real config) passed again too, launched
+from the relocated copy. Full detail, including how the relocated
+binary was built and driven, is in `docs/HISTORY.md`'s packaging
+entry. Test copies were removed from `/Applications` after
+verification — this doesn't leave anything installed.
+
+Same as the `.app` itself: **unsigned, unnotarized** — Gatekeeper will
+warn on first launch on any machine other than the one that built it.
+Code signing/notarization is out of scope here for the same reason as
+the `.app` build (needs a paid Apple Developer account this
+environment doesn't have) — see the hook points noted below.
+
 **Code signing / notarization is deliberately out of scope** — it
 needs a paid Apple Developer account and credentials only the project
 owner can provide. The build is unsigned; Gatekeeper will warn on

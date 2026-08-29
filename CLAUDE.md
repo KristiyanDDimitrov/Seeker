@@ -1442,6 +1442,68 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     came back **379 passed, 0 failed**.
     [HISTORY §30](docs/HISTORY.md#30)
 
+31. **`.dmg` installer (2026-08-29) — done, macOS live-verified,
+    including the one new risk a `.dmg` introduces that item 30's own
+    verification couldn't reach: a relocated launch.**
+    `packaging/dmg_settings.py` wraps `seeker.spec`'s built `.app` into
+    a standard drag-to-`/Applications` `.dmg` — the app and an
+    `/Applications` symlink side by side, sized window, no clutter.
+    `packaging/build_dmg.py` chains both steps
+    (`pyinstaller`→`dmgbuild`) into one command.
+
+    **Tool choice: `dmgbuild` (pure Python) over `create-dmg` (external
+    shell tool)** — keeps packaging entirely inside this project's
+    `uv`-managed dependency convention rather than introducing a
+    second kind of build dependency. Its real settings-file API
+    (`files`/`symlinks`/`icon_locations`/`window_rect`/`background`/
+    `icon`/`badge_icon`, a plain `exec()`'d Python script with
+    `defines` injected from `-D key=value` CLI flags) was verified
+    against dmgbuild 1.6.7's actual current docs
+    (dmgbuild.readthedocs.io's settings/example pages) and its
+    installed package's own `core.py`, not written from a remembered
+    shape — `core.py`'s real `options` dict is the actual source of
+    truth for every key name used.
+
+    **No custom `.icns` exists for this app** — a known, accepted
+    cosmetic gap for this pass, not attempted; both the volume and the
+    app fall through to the generic default icon rather than
+    erroring. Background-image polish similarly skipped — optional,
+    not required for a working drag-to-install volume.
+
+    **Verification — the genuinely new thing this task could catch
+    that item 30's own live-verification couldn't.** A same-location
+    `.app` launch (item 30's own pass) can never exercise whether
+    anything assumed a fixed relative path to the *build directory* —
+    only a real relocation can. Built the real `.dmg`, mounted it for
+    real (`hdiutil attach`), actually copied the `.app` out to
+    `/Applications` (a genuinely different location, not a stand-in
+    for the build dir), and reran item 30's own
+    `QT_QPA_PLATFORM=offscreen` verification harness (a second,
+    throwaway diagnostic build reusing the identical `Analysis`
+    config, now also `BUNDLE()`-wrapped into a `.app` and put through
+    the identical real `.dmg`→mount→copy→relocate path as the real
+    app, launched from `/Applications` itself) against the relocated
+    copy. **17/17 checks passed** — including one new, explicit check
+    added specifically for this task:
+    `docker_setup.py::compose_file_path()`'s `sys._MEIPASS`-based
+    resolution correctly found the bundled `docker-compose.yml` at its
+    real, post-relocation path
+    (`/Applications/SeekerVerify.app/Contents/Frameworks/docker-compose.yml`),
+    confirming this resolves relative to wherever the running binary
+    actually lives rather than anything baked in at build time — the
+    exact risk this task exists to catch, genuinely checked rather
+    than assumed correct-by-construction. All five of item 30's
+    original functional checks (wizard opens fresh, Spotify OAuth
+    builds a real authorization URL, Sync/Scan/Match all complete
+    against the real production app, "skip Docker" completes
+    onboarding, Settings reflects real config) passed again too,
+    launched from the relocated location. Test copies were removed
+    from `/Applications` and all scratch build artifacts cleaned up
+    after verification — nothing left installed or lying around; the
+    real production DB was confirmed still healthy and consistent
+    afterward via `seeker check`, matching the state before this task
+    started. [HISTORY §31](docs/HISTORY.md#31)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

@@ -11,7 +11,7 @@ investigation. If you're trying to understand *why* a fix looks the way
 it does, or want the full evidence behind a "verified live" claim, this
 is the file to read — `CLAUDE.md` deliberately does not repeat it.
 
-Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-30).
+Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-31).
 
 ---
 
@@ -4494,3 +4494,195 @@ synthesizes real input events, by design, so it was never going to
 close that specific, narrower gap. That's a materially smaller and
 more honestly-scoped remaining gap than "nothing beyond process
 liveness was checked," which is what stood before this retry.
+
+### 31
+
+Follow-on packaging task: wrap item 30's already-verified `.app` into
+a real `.dmg` installer — the format users actually expect on macOS.
+Quick, scoped polish, not a rebuild of anything from item 30.
+
+**Tool choice, verified against real current docs before writing
+anything — not assumed.** Chose `dmgbuild` (pure Python) over
+`create-dmg` (an external shell tool distributed via brew/npm), per
+the task's own explicit steer to keep this consistent with the
+project's `uv`-managed dependency convention rather than introducing a
+second kind of build tool. Added via `uv add --group dev dmgbuild`
+(pulled in `ds-store`/`mac-alias` as real transitive deps; version
+1.6.7). Before writing `packaging/dmg_settings.py`, read
+`dmgbuild/core.py`'s real, installed `build_dmg()` function directly —
+its `options` dict literally enumerates every real settings-file key
+(`files`, `symlinks`, `icon`, `badge_icon`, `background`,
+`window_rect`, `icon_locations`, `icon_size`, `text_size`,
+`label_pos`, `format`, `filesystem`, ...) — and cross-checked against
+dmgbuild's actual hosted docs
+(`dmgbuild.readthedocs.io/en/latest/settings.html` and
+`.../example.html`, fetched live) rather than writing from a
+remembered shape. Confirmed directly, not assumed: a settings file is
+`exec()`'d by `load_settings()` with the in-progress `options` dict as
+both its globals and locals — so top-level assignments in the settings
+script (`files = [...]`, `icon_locations = {...}`, etc.) directly
+become/override those dict entries, and `defines` (populated from
+`-D key=value` CLI flags in `dmgbuild/__main__.py`) is a real,
+already-injected name in that same namespace, not something the
+settings file itself defines. This is exactly the pattern the real
+docs' example settings file uses (`application = defines.get("app",
+...)`).
+
+**Implementation.** `packaging/dmg_settings.py`: `application =
+defines.get("app", "dist/Seeker.app")` (parameterized via `-D`, so the
+same file works for both the real app and, as it turned out, the
+verification build below — genuinely reused, not just theoretically
+reusable); `files = [application]`; `symlinks = {"Applications":
+"/Applications"}`; `icon_locations` places the app and the
+`Applications` symlink side by side (`(160, 160)`/`(480, 160)`) — the
+one concrete layout ask, not left to chance; `window_rect`,
+`icon_size`, `text_size`, `label_pos`, and all the `show_*` toggles set
+to a clean, uncluttered default view; `format = defines.get("format",
+"UDBZ")` (bzip2-compressed, read-only — the standard choice, matching
+dmgbuild's own example). `icon`/`badge_icon` deliberately left unset:
+this app has no custom `.icns` yet (checked directly — `find . -iname
+"*.icns"` across the real source tree turns up nothing outside
+third-party `.venv` packages), a known, accepted cosmetic gap for this
+pass per the task's own explicit scoping, not attempted; dmgbuild's
+own default for both is `None`, which just means the generic default
+icon is used — confirmed this is a real, non-error code path by
+reading `core.py` rather than assuming it wouldn't break.
+
+`packaging/build_dmg.py`: a small Python wrapper (matching this
+project's all-Python build-tooling convention — no `.sh` files exist
+anywhere in the repo, checked before deciding not to add the first
+one) chaining `python -m PyInstaller --noconfirm --clean
+packaging/seeker.spec` then `python -m dmgbuild -s
+packaging/dmg_settings.py -D app=dist/Seeker.app Seeker dist/Seeker.dmg`
+via `subprocess.run(..., check=True)`, using `sys.executable` rather
+than shelling out to `uv run` a second time from inside an
+already-`uv run` process. Guards with an explicit `sys.platform !=
+"darwin"` check and a clear message — both dmgbuild and `.app`
+bundling are macOS-only, and a confusing subprocess failure on another
+platform would be a worse experience than a direct explanation.
+
+**Built for real, first attempt, no iteration needed** (expected,
+since `dmg_settings.py` was written against dmgbuild's real, checked
+API rather than guessed): `uv run python packaging/build_dmg.py`
+produced a real 112MB `dist/Seeker.dmg` (bzip2/UDBZ, confirmed via
+`file dist/Seeker.dmg` reporting "bzip2 compressed data") from the
+real 306MB `dist/Seeker.app`. Mounted it for real (`hdiutil attach
+dist/Seeker.dmg -nobrowse`) and confirmed the real volume contents
+directly: `Seeker.app`, an `Applications -> /Applications` symlink,
+and a real `.DS_Store` (dmgbuild's own icon-position/window-settings
+write) — exactly the intended drag-to-install layout, not just trusted
+from the settings file's intent.
+
+**Verification — the one thing this task could catch that item 30's
+own live-verification pass couldn't reach.** Item 30's own §3
+retry already proved the frozen binary works correctly when launched
+from its own build directory (`dist/Seeker.app`, driven via
+`QT_QPA_PLATFORM=offscreen`) — but a `.dmg` introduces a genuinely new
+risk that same-location launch can never exercise: does anything in
+the frozen app assume a fixed relative path to *where it was built*,
+as opposed to resolving correctly relative to wherever it actually
+ends up running from? `docker_setup.py::compose_file_path()`'s
+`sys._MEIPASS`-based resolution is the one piece of code in this whole
+app where that risk lives (see item 30 §1) — in principle
+`sys._MEIPASS` is *supposed* to be computed by PyInstaller's
+bootloader relative to the currently-running executable's own real
+location, not baked in at build time, but "supposed to be, per how
+PyInstaller documents it" is exactly the kind of claim this project's
+own standing practice says to verify live rather than trust, the same
+discipline applied to Spotify's/slskd's API docs throughout this
+project's whole history (see the "Verify against real data over
+trusting documentation" design principle in the README).
+
+Actually drag/copy-testing the REAL shipped `Seeker.app` itself has a
+real constraint, though: its actual entrypoint
+(`packaging/entrypoint.py`) just calls `main()`, which blocks in a
+real Qt event loop with no hook for external code to drive it — the
+same constraint item 30's own retry already worked around once, by
+building a second, throwaway diagnostic binary reusing the identical
+`Analysis` config (same `pathex`, same bundled `docker-compose.yml`
+`datas` entry, zero hidden-import differences) with a driveable
+verification entrypoint instead. Reused that exact mechanism here,
+extended one step further: added a `sys.platform == "darwin"`-gated
+`BUNDLE()` call to `verify.spec` (previously onedir-only) so the
+diagnostic build gets the identical `Contents/Resources`/
+`Contents/Frameworks` split the real `Seeker.app` has, then ran it
+through the exact same real distribution path being tested — wrapped
+into a `.dmg` via the real, unmodified `packaging/dmg_settings.py`
+(passing `-Dapp=.../SeekerVerify.app` — confirming the settings file
+genuinely generalizes to a different app name, not hardcoded to
+"Seeker.app" specifically), mounted for real, and actually copied out
+to `/Applications` — not the build directory, not a stand-in, a
+genuinely different real location on this machine.
+
+Added one new, explicit check to the verification script specifically
+for this task — none of item 30's original 16 checks ever directly
+exercised `compose_file_path()` at all, even though it's the exact
+resource-path risk a relocation test exists to catch:
+
+```python
+from seeker.docker_setup import compose_file_path
+resolved_compose_path = compose_file_path()
+check(
+    "compose_file_path() resolves to a real, existing file "
+    "(the exact resource-path risk a relocated launch tests)",
+    resolved_compose_path.is_file(),
+    str(resolved_compose_path),
+)
+```
+
+Ran the relocated `/Applications/SeekerVerify.app/Contents/MacOS/
+SeekerVerify` with `QT_QPA_PLATFORM=offscreen`, from the real repo
+root (so the real-production-`Application` checks resolve
+`SPOTIFY_TOKEN_PATH`/`.env` exactly as a real launch would — CWD, not
+the build directory, is what those specific pre-existing, already-
+documented CWD-relative paths depend on, a materially different and
+already-understood concern from the build-directory-path risk this
+task is actually about). **Result: 17/17 checks passed.** Printed
+diagnostics confirmed the resolution genuinely happened relative to
+the relocated binary, not the old build directory:
+`sys._MEIPASS=/Applications/SeekerVerify.app/Contents/Frameworks`,
+and the new check's own detail line confirmed
+`docker-compose.yml` was found at
+`/Applications/SeekerVerify.app/Contents/Frameworks/docker-compose.yml`
+— a real file, at a real post-relocation path, resolved correctly
+with zero hardcoded build-directory assumption anywhere in the code.
+All five of item 30's original functional checks (fresh wizard opens
+at the Spotify step; a real client ID + Connect click builds a real
+PKCE authorization URL and calls the real `webbrowser.open()`;
+Sync/Scan/Match all complete against the real production app — 215
+real playlists synced, a real library change found, tracks
+reclassified, cross-checked against a separate `seeker check`
+invocation afterward; "skip Docker" completes onboarding without
+credentials, including a real live `detect_docker_state()` call;
+Settings reflects the real `config.json`'s Client ID and library
+location) passed again too, unchanged in outcome from item 30's own
+run — meaning the frozen app's behavior is genuinely
+location-independent, not something that happened to work from
+`dist/` by coincidence.
+
+**Cleanup, done thoroughly rather than left for later.** Detached both
+mounted volumes (`hdiutil detach`) immediately after each copy step.
+Removed both test copies from `/Applications`
+(`Seeker.app`/`SeekerVerify.app`) once verification finished — nothing
+from this task was left actually installed on the machine. Removed the
+throwaway `SeekerVerify.dmg` (112MB) and its `dist`/`build` directories
+(~680MB combined, scratchpad-only) and the real repo's own
+`dist`/`build` directories (already `.gitignore`d since item 30).
+Cleared the isolated `tempfile.mkdtemp()` directories the verification
+script's fresh-install phase leaves under `$TMPDIR` (same cleanup item
+30's own retry already did once). Confirmed the real production DB was
+left in the identical, healthy, consistent state it was in before this
+task started — `seeker check` reported the same `Auto-matched: 9` /
+`Unmatched (4)` breakdown both before and after the whole task ran, an
+independent, out-of-process confirmation that the real Sync/Scan/Match
+clicks exercised during relocated verification didn't leave anything
+inconsistent behind.
+
+Tests: none added — this task is build tooling (a settings file and a
+thin subprocess-chaining wrapper), matching item 30's own precedent
+that packaging work is verified by real build-and-run passes, not unit
+tests. `mypy --strict` and the full existing test suite both still
+pass unmodified (`packaging/build_dmg.py`/`dmg_settings.py` are typed
+plainly but live outside `src/`, matching where `packaging/
+entrypoint.py`/`seeker.spec` already live and are already excluded
+from `mypy --strict src/`'s scope).

@@ -1,0 +1,57 @@
+"""dmgbuild settings for the seeker-ui distributable .dmg installer.
+
+Verified against dmgbuild 1.6.7's real, current settings-file API
+(https://dmgbuild.readthedocs.io/en/latest/settings.html and
+.../example.html, cross-checked against the installed package's own
+dmgbuild/core.py — every option name assigned below is one of that
+module's real `options` dict keys) rather than written from memory.
+A settings file is dmgbuild's own `exec()`'d Python script — every
+top-level name assigned here becomes (or overrides) one of those
+options; `defines` is injected by dmgbuild itself from `-D key=value`
+CLI flags, not something this file defines.
+
+Usage (see packaging/build_dmg.py for the one-command version):
+
+    uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+    uv run dmgbuild -s packaging/dmg_settings.py -Dapp=dist/Seeker.app \
+        Seeker dist/Seeker.dmg
+"""
+
+import os.path
+
+application = defines.get("app", "dist/Seeker.app")  # noqa: F821 — injected by dmgbuild
+appname = os.path.basename(application)
+
+format = defines.get("format", "UDBZ")  # noqa: F821 — bzip2-compressed, read-only
+filesystem = "HFS+"
+
+files = [application]
+symlinks = {"Applications": "/Applications"}
+
+# No custom .icns exists for this app yet — a known, documented
+# cosmetic gap (see README's "Building a standalone app"), not
+# attempted in this pass. Leaving `icon`/`badge_icon` unset falls
+# through to dmgbuild's own defaults (None) — the volume and its badge
+# just use the generic default icon; this is not an error condition.
+
+window_rect = ((100, 100), (640, 320))
+default_view = "icon-view"
+show_status_bar = False
+show_tab_view = False
+show_toolbar = False
+show_pathbar = False
+show_sidebar = False
+show_icon_preview = True
+
+icon_size = 128
+text_size = 16
+label_pos = "bottom"
+
+# The one concrete layout ask for this pass: the app and the
+# /Applications symlink side by side, so a drag-to-install is obvious
+# the moment the volume opens. A background image is optional polish,
+# not attempted here.
+icon_locations = {
+    appname: (160, 160),
+    "Applications": (480, 160),
+}
