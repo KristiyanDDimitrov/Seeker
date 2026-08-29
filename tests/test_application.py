@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from seeker.application import (
@@ -586,3 +588,71 @@ def test_persist_soulseek_config_resets_cached_download_service(
     assert app._download_service is None
     assert app.download_service is not unconfigured_service
     assert app.download_service.soulseek is not None  # must not raise
+
+
+# --- UI polish pass: onboarding_complete's actual boolean correctness
+# was previously exercised only via a subprocess smoke test asserting
+# it doesn't raise (test_lazy_spotify_config.py) — real, but coverage.py
+# can't see across a process boundary, and nothing anywhere asserted
+# the TRUE/FALSE value was actually correct for a given state. Real
+# gap: main_ui.py's wizard-vs-dashboard routing depends entirely on
+# this property returning the right answer.
+
+def test_onboarding_complete_false_when_neither_spotify_nor_library_done(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+    app._config_store = SeekerConfig()
+
+    assert app.onboarding_complete is False
+
+
+def test_onboarding_complete_false_when_spotify_done_but_no_library(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    app._config_store = replace(
+        app._config_store,
+        spotify_client_id="real-client-id",
+        spotify_redirect_uri="http://127.0.0.1:8888/callback",
+    )
+
+    assert app.spotify_configured is True
+    assert app.library_service.list_locations() == []
+    assert app.onboarding_complete is False
+
+
+def test_onboarding_complete_false_when_library_done_but_not_spotify(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+    app._config_store = SeekerConfig()
+    app.library_service.add_location("Main", str(tmp_path))
+
+    assert app.spotify_configured is False
+    assert app.onboarding_complete is False
+
+
+def test_onboarding_complete_true_when_spotify_and_library_both_done(
+        tmp_path, monkeypatch,
+):
+    # The real gating condition main_ui.py depends on — SoulSeek
+    # deliberately excluded (it's the wizard's optional, skippable
+    # step), confirmed here rather than just asserted in a comment.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    app._config_store = replace(
+        app._config_store,
+        spotify_client_id="real-client-id",
+        spotify_redirect_uri="http://127.0.0.1:8888/callback",
+    )
+    app.library_service.add_location("Main", str(tmp_path))
+
+    assert app.onboarding_complete is True

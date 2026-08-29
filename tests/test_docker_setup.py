@@ -2,13 +2,13 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 
 import httpx
-import pytest
 
 from seeker.docker_setup import (
     SLSKD_NETWORK_PASSWORD_ENV_VAR,
     SLSKD_NETWORK_USERNAME_ENV_VAR,
     DockerState,
     SlskdHealthStatus,
+    bring_up_slskd,
     check_slskd_health,
     detect_docker_state,
     generate_api_key,
@@ -324,3 +324,53 @@ def test_check_slskd_health_ignores_error_entry_with_unparseable_timestamp(
     result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.NOT_READY
+
+
+def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
+    # No caller in this codebase ever exercises bring_up_slskd's real
+    # body — every wizard/Settings test mocks it out entirely (there's
+    # no reasonable way to unit test a real `docker compose up`). This
+    # is the one direct test of what it actually constructs — a real
+    # regression risk given item 13's own history of getting the
+    # SoulSeek-network-vs-web-UI env var names wrong once already.
+    captured = {}
+
+    def fake_run(command, env, capture_output, text, timeout):
+        captured["command"] = command
+        captured["env"] = env
+        captured["capture_output"] = capture_output
+        captured["text"] = text
+        captured["timeout"] = timeout
+
+        class FakeResult:
+            returncode = 0
+            stderr = ""
+
+        return FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("UNRELATED_VAR", "should-be-preserved")
+
+    bring_up_slskd(
+        compose_file="docker-compose.yml",
+        soulseek_username="realuser",
+        soulseek_password="realpass",
+        api_key="real-api-key",
+        slskd_data_dir="/data/slskd-data",
+        library_location_path="/music",
+    )
+
+    assert captured["command"] == [
+        "docker", "compose", "-f", "docker-compose.yml", "up", "-d",
+    ]
+    env = captured["env"]
+    assert env[SLSKD_NETWORK_USERNAME_ENV_VAR] == "realuser"
+    assert env[SLSKD_NETWORK_PASSWORD_ENV_VAR] == "realpass"
+    assert env["SLSKD_API_KEY"] == "real-api-key"
+    assert env["SLSKD_DATA_DIR"] == "/data/slskd-data"
+    assert env["SLSKD_SHARE_PATH"] == "/music"
+    # The real process environment is passed through, not replaced —
+    # confirms **os.environ is actually spread in, not just assumed.
+    assert env["UNRELATED_VAR"] == "should-be-preserved"
+    assert captured["capture_output"] is True
+    assert captured["text"] is True
