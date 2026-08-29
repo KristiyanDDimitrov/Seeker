@@ -656,3 +656,29 @@ def test_onboarding_complete_true_when_spotify_and_library_both_done(
     app.library_service.add_location("Main", str(tmp_path))
 
     assert app.onboarding_complete is True
+
+
+def test_dashboard_service_is_a_cached_singleton_across_app_lifetime(
+        tmp_path, monkeypatch,
+):
+    # Task 2 (download ETA) needs DashboardService to genuinely persist
+    # across a whole UI session, the same way track_matcher already
+    # does (item 28 §4) — a live confirmation of the actual property
+    # behavior, not an assumption carried over from that precedent.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    first = app.dashboard_service
+    second = app.dashboard_service
+
+    assert first is second
+
+
+def test_track_matcher_is_a_cached_singleton_across_app_lifetime(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    first = app.track_matcher
+    second = app.track_matcher
+
+    assert first is second

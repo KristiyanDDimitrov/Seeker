@@ -1635,6 +1635,36 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     `lsof`.
     [HISTORY §32](docs/HISTORY.md#32)
 
+33. **Download ETA (per-download speed/ETA estimate) — done
+    (2026-08-29).** `ui/download_eta.py::DownloadEtaTracker` — purely
+    in-memory, keyed by `download_requests.id`, no schema/service-layer
+    changes at all. Confirmed directly, not assumed: `Application
+    .dashboard_service` is a cached singleton for the app's whole
+    lifetime, the identical pattern `track_matcher` already relies on
+    (item 28 §4) — see `test_dashboard_service_is_a_cached_singleton
+    _across_app_lifetime`. Samples are recorded only on `MainWindow`'s
+    20s `BACKEND_POLL_INTERVAL_MS` cycle — `_trigger_backend_poll`'s
+    on_finished chains a fresh `get_active_downloads()` fetch into
+    `_record_eta_samples` — never on the 2s display-refresh tick, which
+    would just re-diff against the same DB row `poll_downloads()`
+    hasn't touched since the last real network poll. Speed = delta
+    bytes / delta t between the last two samples for a given request
+    id; "Calculating…" until a second sample exists or the latest
+    delta is non-positive; "Stalled" once `STALL_SAMPLE_COUNT = 3`
+    (untuned, flagged in a code comment) consecutive samples report
+    identical bytes — deliberately more than one flat sample before
+    calling it a stall, since one flat interval alone isn't proof yet.
+    History is capped at 3 samples per id and evicted the moment an id
+    drops out of `get_active_downloads()` (completed/failed/superseded)
+    — this project has hunted the unbounded-growth version of this
+    exact leak class before, for real Qt objects (items 29/32), so the
+    same discipline applies here even though this is plain Python state.
+    ETA only ever renders once a download's progress bar is
+    determinate — the pre-existing indeterminate-bar behavior is
+    untouched — shown in a small container widget next to the bar in
+    the Downloads tab (the cell widget there is no longer always a bare
+    `QProgressBar`; tests updated to look up the nested bar/label).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

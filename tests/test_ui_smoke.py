@@ -1,7 +1,8 @@
 import threading
+from datetime import datetime, timedelta, timezone
 
 from PySide6.QtCore import QItemSelectionModel
-from PySide6.QtWidgets import QCheckBox, QProgressBar, QPushButton
+from PySide6.QtWidgets import QCheckBox, QLabel, QProgressBar, QPushButton
 
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
@@ -469,6 +470,10 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
 
 
 def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
+    # A determinate bar is wrapped in a container alongside the ETA
+    # label (Task 2) — the bar itself is a child widget, not the cell
+    # widget directly (unlike the indeterminate/no-progress cases above,
+    # which are left unchanged).
     download = _make_active_download(
         status="downloading", bytes_transferred=500, total_bytes=1_000,
     )
@@ -478,8 +483,9 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
 
     window._render_active_downloads([download])
 
-    bar = window.downloads_table.cellWidget(0, 4)
-    assert isinstance(bar, QProgressBar)
+    container = window.downloads_table.cellWidget(0, 4)
+    bar = container.findChild(QProgressBar)
+    assert bar is not None
     assert bar.maximum() == 1_000
     assert bar.value() == 500
 
@@ -499,6 +505,97 @@ def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
 
     bar = window.downloads_table.cellWidget(0, 4)
     assert not isinstance(bar, QProgressBar)
+
+
+def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):
+    download = _make_active_download(
+        status="downloading", bytes_transferred=500, total_bytes=1_000,
+    )
+    download.request.id = 1
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    label = container.findChild(QLabel)
+    assert label.text() == "Calculating…"
+
+
+def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
+    download = _make_active_download(
+        status="downloading", bytes_transferred=600, total_bytes=1_000,
+    )
+    download.request.id = 1
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    now = datetime.now(timezone.utc)
+    # 400 bytes/second over the last interval, 400 bytes remaining ->
+    # a clean 1s ETA, easy to assert on exactly.
+    window._eta_tracker.record(1, 200, now - timedelta(seconds=1))
+    window._eta_tracker.record(1, 600, now)
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    label = container.findChild(QLabel)
+    assert label.text() == "1s"
+
+
+def test_downloads_tab_eta_shows_stalled_after_flat_samples(qtbot):
+    download = _make_active_download(
+        status="downloading", bytes_transferred=600, total_bytes=1_000,
+    )
+    download.request.id = 1
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    now = datetime.now(timezone.utc)
+    for offset in (2, 1, 0):
+        window._eta_tracker.record(1, 600, now - timedelta(seconds=offset))
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    label = container.findChild(QLabel)
+    assert label.text() == "Stalled"
+
+
+def test_record_eta_samples_evicts_ids_no_longer_active(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    now = datetime.now(timezone.utc)
+    window._eta_tracker.record(1, 100, now)
+    window._eta_tracker.record(1, 200, now)
+
+    # request id 1 has since disappeared from get_active_downloads() —
+    # completed, failed, or superseded — so a fresh sampling pass with
+    # no row for it must drop its history rather than keep it forever
+    # (Task 2's own explicit leak-prevention requirement).
+    window._record_eta_samples([])
+
+    assert window._eta_tracker.describe(1, 1_000) == "Calculating…"
+
+
+def test_trigger_backend_poll_samples_eta_after_poll_succeeds(qtbot):
+    download = _make_active_download(bytes_transferred=500, total_bytes=1_000)
+    download.request.id = 7
+
+    application = FakeApplication(
+        soulseek_configured=True, active_downloads=[download],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._trigger_backend_poll()
+
+    qtbot.waitUntil(lambda: 7 in window._eta_tracker._history, timeout=2000)
 
 
 def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):

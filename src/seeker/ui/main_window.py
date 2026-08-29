@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
@@ -35,6 +36,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
+from seeker.ui.download_eta import DownloadEtaTracker
 from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import run_worker
 
@@ -81,7 +83,10 @@ _DOWNLOAD_STATUS_LABELS = {
 _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
 
 
-def _build_progress_widget(download: ActiveDownload) -> QWidget:
+def _build_progress_widget(
+        download: ActiveDownload,
+        eta_text: str | None,
+) -> QWidget:
     request = download.request
 
     if request.status not in _PROGRESS_ELIGIBLE_STATUSES:
@@ -89,15 +94,27 @@ def _build_progress_widget(download: ActiveDownload) -> QWidget:
 
     bar = QProgressBar()
 
-    if request.total_bytes and request.bytes_transferred is not None:
-        bar.setRange(0, request.total_bytes)
-        bar.setValue(request.bytes_transferred)
-    else:
+    if not (request.total_bytes and request.bytes_transferred is not None):
         # No bytes reported yet — indeterminate ("busy") rather than a
         # 0%-forever bar that looks identical to actually being stuck.
+        # No ETA either (Task 2): there's nothing determinate to
+        # estimate against.
         bar.setRange(0, 0)
+        return bar
 
-    return bar
+    bar.setRange(0, request.total_bytes)
+    bar.setValue(request.bytes_transferred)
+
+    # ETA only ever shown once the bar is determinate, per Task 2's own
+    # scoping — the indeterminate branch above is left exactly as it
+    # was before this feature.
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(bar, 1)
+    layout.addWidget(QLabel(eta_text or "Calculating…"))
+
+    return container
 
 
 class MainWindow(QMainWindow):
@@ -120,6 +137,10 @@ class MainWindow(QMainWindow):
         self.thread_pool = QThreadPool()
         self.selected_playlist: Playlist | None = None
         self._backend_poll_in_progress = False
+        # Task 2 — speed/ETA estimation for the Downloads tab. Purely
+        # in-memory, scoped to this window's lifetime — see
+        # ui/download_eta.py's own docstring for the sampling contract.
+        self._eta_tracker = DownloadEtaTracker()
         # Maps track_table row -> TrackStatus, rebuilt on every render —
         # needed to resolve a multi-selection back to real track ids for
         # "Tag selected" (Step 7).
@@ -595,8 +616,14 @@ class MainWindow(QMainWindow):
             status_text = _DOWNLOAD_STATUS_LABELS.get(status, status)
             self.downloads_table.setItem(row, 3, QTableWidgetItem(status_text))
 
+            request = download.request
+            eta_text = (
+                self._eta_tracker.describe(request.id, request.total_bytes)
+                if request.id is not None and request.total_bytes
+                else None
+            )
             self.downloads_table.setCellWidget(
-                row, 4, _build_progress_widget(download),
+                row, 4, _build_progress_widget(download, eta_text),
             )
 
     def _poll_review_items(self) -> None:
@@ -792,15 +819,45 @@ class MainWindow(QMainWindow):
 
         self._backend_poll_in_progress = True
 
-        def clear_in_progress(_: object) -> None:
+        def on_poll_finished(_: object) -> None:
+            self._backend_poll_in_progress = False
+            self._sample_download_progress()
+
+        def on_poll_error(_: str) -> None:
             self._backend_poll_in_progress = False
 
         run_worker(
             self.thread_pool,
             self.application.download_service.poll_downloads,
-            on_finished=clear_in_progress,
-            on_error=clear_in_progress,
+            on_finished=on_poll_finished,
+            on_error=on_poll_error,
         )
+
+    def _sample_download_progress(self) -> None:
+        # Task 2 — feeds DownloadEtaTracker exactly once per real
+        # poll_downloads() cycle (this method is only ever called from
+        # _trigger_backend_poll's on_finished above), never from the 2s
+        # display-refresh tick — sampling there would just re-diff
+        # against the same DB row poll_downloads() hasn't touched yet.
+        run_worker(
+            self.thread_pool,
+            self.application.dashboard_service.get_active_downloads,
+            on_finished=self._record_eta_samples,
+        )
+
+    def _record_eta_samples(self, downloads: list[ActiveDownload]) -> None:
+        active_request_ids = {
+            download.request.id
+            for download in downloads
+            if download.request.id is not None
+        }
+        self._eta_tracker.evict_except(active_request_ids)
+
+        now = datetime.now(timezone.utc)
+        for download in downloads:
+            request = download.request
+            if request.id is not None and request.bytes_transferred is not None:
+                self._eta_tracker.record(request.id, request.bytes_transferred, now)
 
     def _on_sync_clicked(self) -> None:
         run_worker(
