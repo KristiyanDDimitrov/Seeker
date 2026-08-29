@@ -27,6 +27,7 @@ from seeker.docker_setup import (
     SlskdHealthStatus,
     bring_up_slskd,
     check_slskd_health,
+    compose_file_path,
     generate_api_key,
     slskd_data_dir,
 )
@@ -34,7 +35,7 @@ from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.ui.library_location_picker import pick_and_add_library_location
-from seeker.ui.wizard import COMPOSE_FILE_PATH, SLSKD_LOCAL_BASE_URL
+from seeker.ui.wizard import SLSKD_LOCAL_BASE_URL
 from seeker.ui.workers import run_worker
 
 # A one-off, on-demand check, not a poll loop tracking a specific
@@ -523,7 +524,7 @@ class SettingsWindow(QMainWindow):
 
         def do_update() -> None:
             result = bring_up_slskd(
-                compose_file=str(COMPOSE_FILE_PATH),
+                compose_file=str(compose_file_path()),
                 soulseek_username=username,
                 soulseek_password=password,
                 api_key=api_key,

@@ -1,5 +1,6 @@
 import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 
@@ -10,6 +11,7 @@ from seeker.docker_setup import (
     SlskdHealthStatus,
     bring_up_slskd,
     check_slskd_health,
+    compose_file_path,
     detect_docker_state,
     generate_api_key,
     slskd_data_dir,
@@ -62,6 +64,25 @@ def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(
     )
 
     assert slskd_data_dir() == tmp_path / "slskd-data"
+
+
+# Packaging task's resource-path fix (see docs/HISTORY.md packaging
+# entry): dev-mode behavior must stay byte-identical to what shipped
+# before — CWD-relative, matching the CLI's own documented "run
+# `docker compose up` from the project root" convention. Only a frozen
+# build (sys.frozen set by PyInstaller's bootloader) should switch to
+# resolving against sys._MEIPASS instead.
+def test_compose_file_path_is_cwd_relative_outside_a_frozen_build(monkeypatch):
+    monkeypatch.delattr("sys.frozen", raising=False)
+
+    assert compose_file_path() == Path("docker-compose.yml")
+
+
+def test_compose_file_path_resolves_against_meipass_when_frozen(monkeypatch):
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys._MEIPASS", "/fake/bundle/root", raising=False)
+
+    assert compose_file_path() == Path("/fake/bundle/root/docker-compose.yml")
 
 
 class FakeCompletedProcess:

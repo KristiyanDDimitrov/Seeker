@@ -1,6 +1,7 @@
 import os
 import secrets
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -8,6 +9,30 @@ from pathlib import Path
 
 import httpx
 import platformdirs
+
+
+def compose_file_path() -> Path:
+    # Same reasoning/home as slskd_data_dir() just above: both
+    # wizard.py and settings_window.py need the identical path, so it
+    # lives here rather than being duplicated or imported UI-to-UI.
+    #
+    # docker-compose.yml is real *resource data*, not application code
+    # — a packaged build (see packaging/seeker.spec) bundles it as a
+    # PyInstaller `datas` entry, and it's found at runtime under
+    # `sys._MEIPASS` (the extracted/bundled resource root PyInstaller
+    # sets in every frozen build, one-folder or one-file). In an
+    # ordinary `uv run seeker-ui` dev run, `sys.frozen` is never set,
+    # so this falls through to the exact same CWD-relative path as
+    # before — `docker compose up` is documented (README) to run from
+    # the project root, the same assumption LEGACY_DATABASE_PATH made
+    # elsewhere before item 18. Deliberately NOT source-tree-relative
+    # (e.g. via `__file__`) for the dev-mode branch — that would be a
+    # real behavior change from what's shipped and tested today, not
+    # just a packaging-mode addition.
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "docker-compose.yml"  # type: ignore[attr-defined]
+
+    return Path("docker-compose.yml")
 
 
 def slskd_data_dir() -> Path:

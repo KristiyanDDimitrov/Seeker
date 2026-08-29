@@ -3,7 +3,6 @@ import sys
 import webbrowser
 from collections.abc import Callable
 from datetime import datetime, timezone
-from pathlib import Path
 
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import (
@@ -26,6 +25,7 @@ from seeker.docker_setup import (
     SlskdHealthStatus,
     bring_up_slskd,
     check_slskd_health,
+    compose_file_path,
     detect_docker_state,
     generate_api_key,
     slskd_data_dir,
@@ -41,11 +41,6 @@ from seeker.ui.workers import run_worker
 # reach a real Soulseek network login.
 HEALTH_POLL_INTERVAL_MS = 2_000
 HEALTH_POLL_TIMEOUT_SECONDS = 60.0
-
-# Assumes the CLI's own documented convention: `docker compose up` is
-# run from the project root (see README's setup instructions) — same
-# CWD-relative assumption LEGACY_DATABASE_PATH makes elsewhere.
-COMPOSE_FILE_PATH = Path("docker-compose.yml")
 
 SLSKD_LOCAL_BASE_URL = "http://localhost:5030"
 
@@ -405,7 +400,7 @@ class OnboardingWizard(QMainWindow):
 
         def do_bring_up() -> str:
             result = bring_up_slskd(
-                compose_file=str(COMPOSE_FILE_PATH),
+                compose_file=str(compose_file_path()),
                 soulseek_username=username,
                 soulseek_password=password,
                 api_key=api_key,
