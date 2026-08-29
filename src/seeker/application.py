@@ -33,6 +33,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.dashboard_service import DashboardService
+from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
@@ -105,6 +106,7 @@ class Application:
         self._download_service: DownloadService | None = None
         self._metadata_service: MetadataService | None = None
         self._dashboard_service: DashboardService | None = None
+        self._duplicate_service: DuplicateService | None = None
 
     @property
     def _spotify_client_id(self) -> str | None:
@@ -375,6 +377,17 @@ class Application:
             )
 
         return self._dashboard_service
+
+    @property
+    def duplicate_service(self) -> DuplicateService:
+        if self._duplicate_service is None:
+            self._duplicate_service = DuplicateService(
+                self.database,
+                LibraryLocationRepository(self.database),
+                LocalFileRepository(self.database),
+            )
+
+        return self._duplicate_service
 
     @property
     def onboarding_complete(self) -> bool:

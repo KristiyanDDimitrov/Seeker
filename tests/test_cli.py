@@ -42,11 +42,13 @@ class FakeApplication:
             soulseek_configured: bool = False,
             download_service=None,
             sync_service=None,
+            duplicate_service=None,
     ):
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
         self.download_service = download_service
         self.sync_service = sync_service
+        self.duplicate_service = duplicate_service
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -310,3 +312,168 @@ def test_check_playlist_scoped_passes_playlist_id_to_review_candidates(
     )
 
     assert download_service.get_review_candidates_calls == ["pA"]
+
+
+class FakeDuplicateService:
+    def __init__(self, fingerprint_result=None, groups=None):
+        self._fingerprint_result = fingerprint_result or {
+            "computed": 0, "skipped_already_computed": 0, "failed": 0,
+            "details": [],
+        }
+        self._groups = groups or []
+        self.compute_fingerprints_calls = []
+        self.find_duplicate_groups_calls = []
+
+    def compute_fingerprints(self, location_name, force=False):
+        self.compute_fingerprints_calls.append((location_name, force))
+        return self._fingerprint_result
+
+    def find_duplicate_groups(self, location_name):
+        self.find_duplicate_groups_calls.append(location_name)
+        return self._groups
+
+
+def test_library_fingerprint_calls_compute_fingerprints_and_reports_counts(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService(
+        fingerprint_result={
+            "computed": 2, "skipped_already_computed": 1, "failed": 0,
+            "details": [],
+        },
+    )
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "fingerprint", "Main"],
+    )
+
+    assert duplicate_service.compute_fingerprints_calls == [("Main", False)]
+    output = capsys.readouterr().out
+    assert "Fingerprinted: 2" in output
+    assert "Skipped (already computed): 1" in output
+
+
+def test_library_fingerprint_force_flag_is_passed_through(tmp_path):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService()
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "fingerprint", "Main", "--force"],
+    )
+
+    assert duplicate_service.compute_fingerprints_calls == [("Main", True)]
+
+
+def test_library_fingerprint_reports_failure_details(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService(
+        fingerprint_result={
+            "computed": 0, "skipped_already_computed": 0, "failed": 1,
+            "details": [
+                {
+                    "local_file_id": "1",
+                    "reason": "failed",
+                    "message": "a.mp3: real decode error",
+                },
+            ],
+        },
+    )
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "fingerprint", "Main"],
+    )
+
+    output = capsys.readouterr().out
+    assert "real decode error" in output
+
+
+def test_library_duplicates_reports_no_duplicates(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService(groups=[])
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "duplicates", "Main"],
+    )
+
+    assert duplicate_service.find_duplicate_groups_calls == ["Main"]
+    output = capsys.readouterr().out
+    assert "No duplicates found" in output
+
+
+def test_library_duplicates_reports_real_group_shape(tmp_path, capsys):
+    from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
+    from seeker.soulseek.quality import LocalFileQuality
+
+    matcher = make_matcher(tmp_path)
+    group = DuplicateGroup(
+        files=[
+            DuplicateFile(
+                local_file=LocalFile(
+                    location_id=1, relative_path="a.flac", filename="a.flac",
+                    format="flac", size_bytes=1, mtime=0.0,
+                    scanned_at="2026-01-01T00:00:00+00:00",
+                ),
+                quality=LocalFileQuality(
+                    tier=2, bitrate_kbps=1000, bit_depth=16,
+                    sample_rate=44_100, clipping_ratio=0.0,
+                    integrated_loudness_lufs=None,
+                ),
+            ),
+            DuplicateFile(
+                local_file=LocalFile(
+                    location_id=1, relative_path="a.mp3", filename="a.mp3",
+                    format="mp3", size_bytes=1, mtime=0.0,
+                    scanned_at="2026-01-01T00:00:00+00:00",
+                ),
+                quality=LocalFileQuality(
+                    tier=1, bitrate_kbps=320, bit_depth=None,
+                    sample_rate=44_100, clipping_ratio=0.0,
+                    integrated_loudness_lufs=None,
+                ),
+            ),
+        ],
+        similarity=0.987,
+    )
+    duplicate_service = FakeDuplicateService(groups=[group])
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "duplicates", "Main"],
+    )
+
+    output = capsys.readouterr().out
+    assert "Found 1 duplicate group" in output
+    assert "98.7%" in output
+    assert "a.flac" in output
+    assert "a.mp3" in output
+
+
+def test_library_fingerprint_unknown_location_exits_nonzero(tmp_path, capsys):
+    from seeker.library.duplicate_service import LibraryLocationNotFoundError
+
+    matcher = make_matcher(tmp_path)
+
+    class RaisingDuplicateService:
+        def compute_fingerprints(self, location_name, force=False):
+            raise LibraryLocationNotFoundError(
+                f"No library location named '{location_name}' is registered."
+            )
+
+    try:
+        cli.run(
+            FakeApplication(
+                matcher, duplicate_service=RaisingDuplicateService(),
+            ),
+            ["library", "fingerprint", "Nonexistent"],
+        )
+        assert False, "expected SystemExit"
+    except SystemExit as exit_info:
+        assert exit_info.code == 1
+
+    output = capsys.readouterr().out
+    assert "Nonexistent" in output

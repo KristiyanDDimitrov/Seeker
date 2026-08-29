@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
+from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
@@ -323,11 +325,27 @@ class MainWindow(QMainWindow):
         downloads_layout.addWidget(self.downloads_table)
 
         review_tab = self._build_review_tab()
+        duplicates_tab = self._build_duplicates_tab()
 
         tabs = QTabWidget()
         tabs.addTab(central, "Dashboard")
         tabs.addTab(downloads_tab, "Downloads")
         tabs.addTab(review_tab, "Review")
+        tabs.addTab(duplicates_tab, "Duplicates")
+
+        # Locations load lazily, the first time this tab is actually
+        # shown, rather than eagerly in _build_ui() — every MainWindow
+        # construction runs _build_ui() once, and an eager worker here
+        # was confirmed live to compound into a real, reproducible
+        # deadlock (Qt's internal connection-list mutex vs. the GIL)
+        # under the rapid, repeated MainWindow construction this
+        # project's own test suite does — see CLAUDE.md/docs/HISTORY.md.
+        # A real user only reaches this tab by clicking it, which is
+        # comparatively rare and human-paced, so this never fires in a
+        # tight loop the way construction does.
+        self._duplicates_tab_index = tabs.indexOf(duplicates_tab)
+        self._duplicates_locations_loaded = False
+        tabs.currentChanged.connect(self._on_tab_changed)
 
         self.setCentralWidget(tabs)
 
@@ -609,6 +627,184 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.review_upgrades_table)
 
         return tab
+
+    def _build_duplicates_tab(self) -> QWidget:
+        # Read-only, per roadmap item 5's own build order — fingerprint
+        # computation + clustering/scoring display first, live-verified
+        # against the real library, BEFORE any delete/replace action
+        # gets built at all. Scoped to one library location at a time
+        # (the location combo below), never merged across all of them.
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.addWidget(
+            _build_subtitle_label(help_text.DUPLICATES_TAB_SUBTITLE)
+        )
+
+        controls = QHBoxLayout()
+
+        self.duplicates_location_combo = QComboBox()
+        self.duplicates_location_combo.setToolTip(
+            help_text.TOOLTIP_DUPLICATES_LOCATION_COMBO
+        )
+        controls.addWidget(self.duplicates_location_combo)
+
+        self.compute_fingerprints_button = QPushButton("Compute fingerprints")
+        self.compute_fingerprints_button.setToolTip(
+            help_text.TOOLTIP_COMPUTE_FINGERPRINTS
+        )
+        self.compute_fingerprints_button.clicked.connect(
+            self._on_compute_fingerprints_clicked
+        )
+        controls.addWidget(self.compute_fingerprints_button)
+
+        self.find_duplicates_button = QPushButton("Find duplicates")
+        self.find_duplicates_button.setToolTip(
+            help_text.TOOLTIP_FIND_DUPLICATES
+        )
+        self.find_duplicates_button.clicked.connect(
+            self._on_find_duplicates_clicked
+        )
+        controls.addWidget(self.find_duplicates_button)
+
+        layout.addLayout(controls)
+
+        self.duplicates_status_label = QLabel("")
+        layout.addWidget(self.duplicates_status_label)
+
+        self.duplicates_table = QTableWidget(0, 5)
+        self.duplicates_table.setHorizontalHeaderLabels(
+            ["Group", "File", "Format", "Bitrate", "Similarity"]
+        )
+        self.duplicates_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.duplicates_table)
+
+        return tab
+
+    def _on_tab_changed(self, index: int) -> None:
+        if (
+                index == self._duplicates_tab_index
+                and not self._duplicates_locations_loaded
+        ):
+            self._duplicates_locations_loaded = True
+            self._refresh_duplicates_locations()
+
+    def _refresh_duplicates_locations(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.library_service.list_locations,
+            on_finished=self._render_duplicates_locations,
+        )
+
+    def _render_duplicates_locations(
+            self,
+            locations: list[tuple[Any, bool]],
+    ) -> None:
+        self.duplicates_location_combo.clear()
+
+        for location, _ in locations:
+            self.duplicates_location_combo.addItem(
+                location.name, location.name
+            )
+
+    def _selected_duplicates_location(self) -> str | None:
+        name = self.duplicates_location_combo.currentData()
+        return str(name) if name is not None else None
+
+    def _on_compute_fingerprints_clicked(self) -> None:
+        location_name = self._selected_duplicates_location()
+
+        if location_name is None:
+            self.duplicates_status_label.setText(
+                "Select a library location first."
+            )
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.duplicate_service.compute_fingerprints(
+                location_name
+            ),
+            button=self.compute_fingerprints_button,
+            status_label=self.duplicates_status_label,
+            on_finished=self._render_fingerprint_result,
+        )
+        self.duplicates_status_label.setText(
+            f"Computing fingerprints for '{location_name}'..."
+        )
+
+    def _render_fingerprint_result(self, result: dict[str, Any]) -> None:
+        self.duplicates_status_label.setText(
+            f"Fingerprinted: {result['computed']}, "
+            f"Skipped (already computed): "
+            f"{result['skipped_already_computed']}, "
+            f"Failed: {result['failed']}."
+        )
+
+    def _on_find_duplicates_clicked(self) -> None:
+        location_name = self._selected_duplicates_location()
+
+        if location_name is None:
+            self.duplicates_status_label.setText(
+                "Select a library location first."
+            )
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.duplicate_service.find_duplicate_groups(
+                location_name
+            ),
+            button=self.find_duplicates_button,
+            status_label=self.duplicates_status_label,
+            on_finished=self._render_duplicate_groups,
+        )
+        self.duplicates_status_label.setText(
+            f"Searching for duplicates in '{location_name}'..."
+        )
+
+    def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
+        if not groups:
+            self.duplicates_table.setRowCount(0)
+            self.duplicates_status_label.setText(
+                "No duplicates found. Run Compute fingerprints first if "
+                "you haven't yet."
+            )
+            return
+
+        self.duplicates_status_label.setText(
+            f"Found {len(groups)} duplicate group(s)."
+        )
+
+        total_rows = sum(len(group.files) for group in groups)
+        self.duplicates_table.setRowCount(total_rows)
+
+        row = 0
+        for group_index, group in enumerate(groups, start=1):
+            for duplicate_file in group.files:
+                local_file = duplicate_file.local_file
+                quality = duplicate_file.quality
+
+                self.duplicates_table.setItem(
+                    row, 0, QTableWidgetItem(str(group_index)),
+                )
+                self.duplicates_table.setItem(
+                    row, 1, QTableWidgetItem(local_file.relative_path),
+                )
+                self.duplicates_table.setItem(
+                    row, 2, QTableWidgetItem(local_file.format),
+                )
+                bitrate_text = (
+                    f"{quality.bitrate_kbps} kbps"
+                    if quality.bitrate_kbps
+                    else "—"
+                )
+                self.duplicates_table.setItem(
+                    row, 3, QTableWidgetItem(bitrate_text),
+                )
+                self.duplicates_table.setItem(
+                    row, 4, QTableWidgetItem(f"{group.similarity:.1%}"),
+                )
+                row += 1
 
     def _load_playlists(self) -> None:
         run_worker(

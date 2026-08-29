@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS local_files (
     camelot_key TEXT,
     key_confidence REAL,
     tagged_at TEXT,
+    fingerprint TEXT,
+    fingerprint_duration REAL,
+    fingerprint_computed_at TEXT,
 
     UNIQUE (location_id, relative_path),
 

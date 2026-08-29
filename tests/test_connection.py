@@ -133,6 +133,96 @@ def test_initialize_adds_progress_columns_without_losing_existing_data(
     assert row["total_bytes"] is None
 
 
+def _create_pre_migration_local_files_table(path):
+    # Simulates a real, existing database from before the fingerprint
+    # columns existed (roadmap item 5's Phase 1) — built by hand rather
+    # than via SCHEMA (which already has them) so this genuinely
+    # exercises the guarded ALTER TABLE path.
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.executescript(
+        """
+        CREATE TABLE library_locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            path TEXT NOT NULL UNIQUE,
+            added_at TEXT NOT NULL
+        );
+
+        CREATE TABLE local_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER NOT NULL,
+            relative_path TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            format TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            mtime REAL NOT NULL,
+            tag_artist TEXT,
+            tag_title TEXT,
+            tag_album TEXT,
+            duration_ms INTEGER,
+            scanned_at TEXT NOT NULL,
+            bpm REAL,
+            camelot_key TEXT,
+            key_confidence REAL,
+            tagged_at TEXT,
+
+            UNIQUE (location_id, relative_path),
+            FOREIGN KEY (location_id) REFERENCES library_locations(id)
+                ON DELETE CASCADE
+        );
+        """
+    )
+
+    connection.execute(
+        "INSERT INTO library_locations (id, name, path, added_at) "
+        "VALUES (1, 'Main', '/music', '2026-08-01T00:00:00+00:00')"
+    )
+    connection.execute(
+        """
+        INSERT INTO local_files (
+            location_id, relative_path, filename, format, size_bytes,
+            mtime, tag_artist, tag_title, scanned_at
+        )
+        VALUES (1, 'a.flac', 'a.flac', 'flac', 1000, 0.0,
+                'Real Artist', 'Real Title', '2026-08-01T00:00:00+00:00')
+        """
+    )
+    connection.commit()
+    connection.close()
+
+
+def test_initialize_adds_fingerprint_columns_without_losing_existing_data(
+        tmp_path,
+):
+    db_path = tmp_path / "seeker.db"
+    _create_pre_migration_local_files_table(db_path)
+
+    database = Database(db_path)
+    database.initialize()
+
+    with database.transaction() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(local_files)"
+            ).fetchall()
+        }
+        assert "fingerprint" in columns
+        assert "fingerprint_duration" in columns
+        assert "fingerprint_computed_at" in columns
+
+        row = connection.execute(
+            "SELECT * FROM local_files WHERE relative_path = 'a.flac'"
+        ).fetchone()
+
+    assert row["tag_artist"] == "Real Artist"
+    assert row["tag_title"] == "Real Title"
+    assert row["fingerprint"] is None
+    assert row["fingerprint_duration"] is None
+    assert row["fingerprint_computed_at"] is None
+
+
 def test_initialize_closes_its_connection(tmp_path, monkeypatch):
     # Real bug, found via a real ResourceWarning during the UI polish
     # pass's error-handling audit: `with self.connect() as connection:`

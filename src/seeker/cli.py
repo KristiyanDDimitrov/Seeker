@@ -2,6 +2,10 @@ import argparse
 import sys
 
 from seeker.application import Application
+from seeker.audio_fingerprint import FingerprintingUnavailableError
+from seeker.library.duplicate_service import (
+    LibraryLocationNotFoundError as DuplicateLibraryLocationNotFoundError,
+)
 from seeker.library.metadata_service import (
     PlaylistNotFoundError as MetadataPlaylistNotFoundError,
 )
@@ -248,6 +252,29 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    fingerprint_parser = library_subparsers.add_parser(
+        "fingerprint",
+        help=(
+            "Compute audio fingerprints for one library location's "
+            "files, for later duplicate detection."
+        ),
+    )
+    fingerprint_parser.add_argument("location_name")
+    fingerprint_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recompute fingerprints even for files that already have one.",
+    )
+
+    duplicates_parser = library_subparsers.add_parser(
+        "duplicates",
+        help=(
+            "Report duplicate/near-duplicate files within one library "
+            "location (run 'fingerprint' on it first)."
+        ),
+    )
+    duplicates_parser.add_argument("location_name")
+
     return parser
 
 def handle_playlists(
@@ -414,9 +441,60 @@ def handle_library(
             for detail in result["details"]:
                 print(f"  [{detail['reason']}] {detail['message']}")
 
+    elif parsed.library_command == "fingerprint":
+        result = application.duplicate_service.compute_fingerprints(
+            parsed.location_name, force=parsed.force,
+        )
+
+        print(
+            f"Fingerprinted: {result['computed']}, "
+            f"Skipped (already computed): "
+            f"{result['skipped_already_computed']}, "
+            f"Failed: {result['failed']}."
+        )
+
+        if result["details"]:
+            print("\nFailed:")
+
+            for detail in result["details"]:
+                print(f"  [{detail['reason']}] {detail['message']}")
+
+    elif parsed.library_command == "duplicates":
+        groups = application.duplicate_service.find_duplicate_groups(
+            parsed.location_name,
+        )
+
+        if not groups:
+            print(
+                "No duplicates found. (Run 'library fingerprint "
+                f"{parsed.location_name}' first if you haven't yet.)"
+            )
+            return
+
+        print(f"Found {len(groups)} duplicate group(s):\n")
+
+        for group in groups:
+            print(f"Similarity: {group.similarity:.1%}")
+
+            for duplicate_file in group.files:
+                local_file = duplicate_file.local_file
+                quality = duplicate_file.quality
+                bitrate = (
+                    f"{quality.bitrate_kbps}kbps"
+                    if quality.bitrate_kbps
+                    else "unknown bitrate"
+                )
+                print(
+                    f"  - {local_file.relative_path} "
+                    f"({local_file.format}, {bitrate})"
+                )
+
+            print()
+
     else:
         print(
-            "Usage: seeker library {add,list,remove,scan,match,tag} ..."
+            "Usage: seeker library "
+            "{add,list,remove,scan,match,tag,fingerprint,duplicates} ..."
         )
 
 def handle_check(
@@ -525,6 +603,8 @@ def run(
             NoDestinationConfiguredError,
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
+            DuplicateLibraryLocationNotFoundError,
+            FingerprintingUnavailableError,
     ) as error:
         print(str(error))
         sys.exit(1)

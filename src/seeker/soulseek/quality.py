@@ -1,4 +1,10 @@
 import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import mutagen
+import numpy as np
 
 from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.matching import (
@@ -109,16 +115,28 @@ def find_best_needs_review_candidate(
     return best
 
 
-def quality_tier(file: SoulseekFile) -> int:
-    extension = file.extension.lower()
+def quality_tier_for_format(extension: str) -> int:
+    """Lossless(2)/lossy(1)/unknown(0) tiering keyed by a bare format
+    string (e.g. LocalFile.format, which is already stored exactly
+    this way — see library/scanner.py) rather than a SoulseekFile.
+    Factored out so the local-duplicate detector (roadmap item 5) can
+    reuse this project's one real "is this file better" ranking
+    instead of writing a third copy of it — same drift lesson
+    matching.py's own consolidation already taught this codebase once
+    (see CLAUDE.md)."""
+    normalized = extension.lower().lstrip(".")
 
-    if extension in LOSSLESS_EXTENSIONS:
+    if normalized in LOSSLESS_EXTENSIONS:
         return 2
 
-    if extension in LOSSY_EXTENSIONS:
+    if normalized in LOSSY_EXTENSIONS:
         return 1
 
     return 0
+
+
+def quality_tier(file: SoulseekFile) -> int:
+    return quality_tier_for_format(file.extension)
 
 
 def effective_bitrate(file: SoulseekFile) -> int:
@@ -223,3 +241,116 @@ def select_downloads(
     shortlist = ranked[:settled_index][:MAX_UPGRADE_SHORTLIST]
 
     return (settled, shortlist, needs_review)
+
+
+# --- Local-file quality analysis (roadmap item 5) ---------------------
+#
+# Everything above this point ranks remote SoulSeek search results;
+# this section adds what's missing to rank real files already on disk
+# for the duplicate detector — reusing quality_tier_for_format() above
+# rather than a third copy of tiering logic, and reading real bitrate/
+# bit-depth via mutagen (already a project dependency) plus a real
+# clipping heuristic, since a SoulseekFile's remote-reported bit_rate/
+# is_variable_bitrate fields don't exist for a file that's just sitting
+# on disk — the file itself has to be opened.
+
+# Untuned heuristic threshold, flagged the same as every other constant
+# in this codebase — a sample at or above this fraction of full-scale
+# (16-bit) counts toward clipping_ratio. Revisit once this sees more
+# real library data than item 5's own small real spot-check.
+CLIPPING_AMPLITUDE_THRESHOLD = 0.999
+
+
+@dataclass
+class LocalFileQuality:
+    tier: int
+    bitrate_kbps: int | None
+    bit_depth: int | None
+    sample_rate: int | None
+    # Fraction of samples at/near full-scale amplitude — a heuristic
+    # signal that a lossy source was over-compressed/limited before
+    # encoding, not a certainty (some masters are legitimately loud).
+    clipping_ratio: float
+    # Informational only, per the task's own scoping — never a primary
+    # signal in any ranking decision. None when pyloudnorm can't
+    # measure it (e.g. audio too short/silent for a real ITU-R BS.1770
+    # gated measurement).
+    integrated_loudness_lufs: float | None
+
+
+def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
+    extension = Path(path).suffix
+    tier = quality_tier_for_format(extension)
+
+    bitrate_kbps: int | None = None
+    bit_depth: int | None = None
+    sample_rate: int | None = None
+
+    # mutagen ships no type annotations at all (no py.typed marker, no
+    # types-mutagen package on PyPI — same real gap metadata.py's own
+    # module docstring already documents); mutagen_file/info are typed
+    # Any here rather than scattering per-line ignores across this one
+    # small, self-contained function.
+    mutagen_file: Any = mutagen.File(str(path))
+
+    if mutagen_file is not None and mutagen_file.info is not None:
+        info = mutagen_file.info
+        sample_rate = getattr(info, "sample_rate", None)
+
+        raw_bitrate = getattr(info, "bitrate", None)
+        if raw_bitrate:
+            bitrate_kbps = int(raw_bitrate // 1000)
+
+        bit_depth = getattr(info, "bits_per_sample", None)
+
+    return LocalFileQuality(
+        tier=tier,
+        bitrate_kbps=bitrate_kbps,
+        bit_depth=bit_depth,
+        sample_rate=sample_rate,
+        clipping_ratio=_measure_clipping_ratio(path),
+        integrated_loudness_lufs=_measure_integrated_loudness(path),
+    )
+
+
+def _measure_clipping_ratio(path: str | Path) -> float:
+    import soundfile as sf
+
+    data, _ = sf.read(str(path), dtype="int16", always_2d=True)
+
+    if data.size == 0:
+        return 0.0
+
+    full_scale = np.iinfo(np.int16).max
+    threshold = CLIPPING_AMPLITUDE_THRESHOLD * full_scale
+    clipped_samples = np.abs(data) >= threshold
+
+    return float(clipped_samples.sum()) / float(data.size)
+
+
+def _measure_integrated_loudness(path: str | Path) -> float | None:
+    import math
+
+    import pyloudnorm
+    import soundfile as sf
+
+    data, rate = sf.read(str(path))
+
+    try:
+        meter = pyloudnorm.Meter(rate)
+        loudness = float(meter.integrated_loudness(data))
+    except ValueError:
+        # pyloudnorm raises on audio too short for a real ITU-R
+        # BS.1770 gated measurement — informational-only, so a missing
+        # value here is fine, not an error worth surfacing.
+        return None
+
+    # Confirmed live, not assumed: digital silence doesn't raise —
+    # it returns a real, mathematically-correct -inf (ln(0) diverging),
+    # which isn't a meaningful value to show or compare against other
+    # files. NaN is the same "not meaningful" case for any other
+    # degenerate input.
+    if not math.isfinite(loudness):
+        return None
+
+    return loudness

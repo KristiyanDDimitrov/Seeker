@@ -72,6 +72,34 @@ class LocalFileRepository:
             (bpm, camelot_key, key_confidence, local_file_id),
         )
 
+    def update_fingerprint(
+            self,
+            local_file_id: int,
+            fingerprint: str,
+            fingerprint_duration: float,
+            fingerprint_computed_at: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # Deliberately NOT part of upsert()'s ON CONFLICT DO UPDATE —
+        # same reasoning as update_analysis() above (item 11's pattern):
+        # a routine library scan must never wipe a previously-computed
+        # fingerprint just because the file's tags/mtime were re-read.
+        connection.execute(
+            """
+            UPDATE local_files
+            SET fingerprint = ?,
+                fingerprint_duration = ?,
+                fingerprint_computed_at = ?
+            WHERE id = ?
+            """,
+            (
+                fingerprint,
+                fingerprint_duration,
+                fingerprint_computed_at,
+                local_file_id,
+            ),
+        )
+
     def mark_tagged(
             self,
             local_file_id: int,
@@ -102,9 +130,47 @@ class LocalFileRepository:
                 bpm,
                 camelot_key,
                 key_confidence,
-                tagged_at
+                tagged_at,
+                fingerprint,
+                fingerprint_duration,
+                fingerprint_computed_at
             FROM local_files
             """
+        ).fetchall()
+
+        return [_row_to_local_file(row) for row in rows]
+
+    def get_all_for_location(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> list[LocalFile]:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                location_id,
+                relative_path,
+                filename,
+                format,
+                size_bytes,
+                mtime,
+                tag_artist,
+                tag_title,
+                tag_album,
+                duration_ms,
+                scanned_at,
+                bpm,
+                camelot_key,
+                key_confidence,
+                tagged_at,
+                fingerprint,
+                fingerprint_duration,
+                fingerprint_computed_at
+            FROM local_files
+            WHERE location_id = ?
+            """,
+            (location_id,),
         ).fetchall()
 
         return [_row_to_local_file(row) for row in rows]
@@ -132,7 +198,10 @@ class LocalFileRepository:
                 bpm,
                 camelot_key,
                 key_confidence,
-                tagged_at
+                tagged_at,
+                fingerprint,
+                fingerprint_duration,
+                fingerprint_computed_at
             FROM local_files
             WHERE id = ?
             """,
@@ -168,7 +237,10 @@ class LocalFileRepository:
                 bpm,
                 camelot_key,
                 key_confidence,
-                tagged_at
+                tagged_at,
+                fingerprint,
+                fingerprint_duration,
+                fingerprint_computed_at
             FROM local_files
             WHERE location_id = ? AND relative_path = ?
             """,
@@ -223,4 +295,7 @@ def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
         camelot_key=row["camelot_key"],
         key_confidence=row["key_confidence"],
         tagged_at=row["tagged_at"],
+        fingerprint=row["fingerprint"],
+        fingerprint_duration=row["fingerprint_duration"],
+        fingerprint_computed_at=row["fingerprint_computed_at"],
     )

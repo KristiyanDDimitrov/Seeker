@@ -28,6 +28,11 @@ REVIEW_TAB_SUBTITLE = (
     "Confirm or reject SoulSeek matches that weren't clean enough to "
     "auto-accept, and approve quality upgrades once they're downloaded."
 )
+DUPLICATES_TAB_SUBTITLE = (
+    "Find duplicate or near-duplicate files within one library "
+    "location, by audio content — not just matching filenames. "
+    "Read-only for now: nothing here deletes or moves a file."
+)
 SETTINGS_WINDOW_SUBTITLE = (
     "Library locations, playlist destinations, Spotify/SoulSeek "
     "connections, and match-classification thresholds."
@@ -101,6 +106,22 @@ TOOLTIP_DECLINE_UPGRADE = (
 TOOLTIP_DELETE_OLD_FILE_CHECKBOX = (
     "Also delete the file being replaced from disk, not just from the "
     "library record."
+)
+
+# --- Duplicates tab ---------------------------------------------------------
+
+TOOLTIP_DUPLICATES_LOCATION_COMBO = (
+    "Which registered library location to scan — duplicate detection "
+    "runs on one location at a time, never merged across all of them."
+)
+TOOLTIP_COMPUTE_FINGERPRINTS = (
+    "Compute an audio fingerprint for every file in this location that "
+    "doesn't already have one. Needed once before Find Duplicates can "
+    "compare files — can take a while for a large location."
+)
+TOOLTIP_FIND_DUPLICATES = (
+    "Compare this location's already-fingerprinted files and group the "
+    "ones that are the same recording, by audio content."
 )
 
 # --- Settings: Library Locations tab --------------------------------------

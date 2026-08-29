@@ -19,3 +19,6 @@ class LocalFile:
     camelot_key: str | None = None
     key_confidence: float | None = None
     tagged_at: str | None = None
+    fingerprint: str | None = None
+    fingerprint_duration: float | None = None
+    fingerprint_computed_at: str | None = None

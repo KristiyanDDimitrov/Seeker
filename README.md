@@ -260,11 +260,12 @@ equivalent: the Dashboard tab covers `sync`/`sync-tracks`/`scan`/`match`/
 `download`/tagging for whichever playlist is selected; the Downloads tab
 covers `downloads status`; the Review tab covers `downloads review` plus
 confirming/rejecting SoulSeek needs-review candidates (`check`'s
-"Needs review" section, with an action the CLI never had); and the
-Settings screen covers `library add`/`list`/`remove`, `playlists
-set-destination`, SoulSeek/Spotify connection management, and the
-auto-match/needs-review thresholds (editable there; hardcoded constants
-for the CLI).
+"Needs review" section, with an action the CLI never had); the
+Duplicates tab covers `library fingerprint`/`library duplicates`,
+scoped to one library location at a time; and the Settings screen
+covers `library add`/`list`/`remove`, `playlists set-destination`,
+SoulSeek/Spotify connection management, and the auto-match/needs-review
+thresholds (editable there; hardcoded constants for the CLI).
 
 ```
 uv run seeker <command>
@@ -282,6 +283,8 @@ uv run seeker <command>
 | `library scan` | Scan all registered locations for audio files. |
 | `library match` | Fuzzy-match cached Spotify tracks against scanned local files. |
 | `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key. |
+| `library fingerprint <location> [--force]` | Compute an audio fingerprint for every file in one library location, for later duplicate detection. |
+| `library duplicates <location>` | Report duplicate/near-duplicate files within one library location, by audio content (run `fingerprint` on it first). Read-only — nothing here moves or deletes a file. |
 | `check [--verbose]` | Report the auto-matched / needs-review / unmatched split for cached tracks. |
 | `download <playlist>` | Search SoulSeek and request downloads for a playlist's still-unmatched tracks. |
 | `downloads status` | Poll in-flight SoulSeek transfers and move completed ones into place. Non-interactive — safe to run from a scheduler. |

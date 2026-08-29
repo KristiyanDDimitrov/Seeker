@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
 
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.library_location import LibraryLocation
+from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -69,8 +71,37 @@ class FakeDashboardService:
 
 
 class FakeLibraryService:
+    def __init__(self, locations: list | None = None):
+        self._locations = locations or []
+
     def scan_all(self) -> None:
         pass
+
+    def list_locations(self) -> list:
+        return self._locations
+
+
+class FakeDuplicateService:
+    def __init__(
+            self,
+            fingerprint_result: dict | None = None,
+            groups: list | None = None,
+    ):
+        self._fingerprint_result = fingerprint_result or {
+            "computed": 0, "skipped_already_computed": 0, "failed": 0,
+            "details": [],
+        }
+        self._groups = groups or []
+        self.compute_fingerprints_calls: list[str] = []
+        self.find_duplicate_groups_calls: list[str] = []
+
+    def compute_fingerprints(self, location_name: str) -> dict:
+        self.compute_fingerprints_calls.append(location_name)
+        return self._fingerprint_result
+
+    def find_duplicate_groups(self, location_name: str) -> list:
+        self.find_duplicate_groups_calls.append(location_name)
+        return self._groups
 
 
 class FakeTrackMatcher:
@@ -171,17 +202,23 @@ class FakeApplication:
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
             tag_result: dict | None = None,
+            locations: list | None = None,
+            fingerprint_result: dict | None = None,
+            duplicate_groups: list | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.dashboard_service = FakeDashboardService(
             statuses, active_downloads,
         )
-        self.library_service = FakeLibraryService()
+        self.library_service = FakeLibraryService(locations)
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService(
             review_candidates, pending_upgrades,
         )
         self.metadata_service = FakeMetadataService(tag_result)
+        self.duplicate_service = FakeDuplicateService(
+            fingerprint_result, duplicate_groups,
+        )
         self.soulseek_configured = soulseek_configured
 
 
@@ -1179,3 +1216,203 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
     assert "Failed: 1" in text
     assert "[skipped_no_match] Artist A - Title A: no matched local file" in text
     assert "[failed] Artist B - Title B: disk read error" in text
+
+
+# --- Duplicates tab (roadmap item 5) ---------------------------------------
+#
+# Locations load lazily, only once the tab is actually shown (see
+# main_window.py's own comment on _on_tab_changed for why — an eager
+# worker here, run during every MainWindow construction, was confirmed
+# live to cause a real, reproducible deadlock under this test suite's
+# own rapid-fire construction pattern). Tests below drive that
+# explicitly rather than relying on construction alone.
+
+def _switch_to_duplicates_tab(window) -> None:
+    tabs = window.centralWidget()
+    tabs.setCurrentIndex(window._duplicates_tab_index)
+
+
+def test_duplicates_tab_has_persistent_subtitle(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    tabs = window.centralWidget()
+    duplicates_tab = tabs.widget(window._duplicates_tab_index)
+    labels = [w.text() for w in duplicates_tab.findChildren(QLabel)]
+
+    assert help_text.DUPLICATES_TAB_SUBTITLE in labels
+
+
+def test_duplicates_tab_controls_have_tooltips(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.duplicates_location_combo.toolTip() != ""
+    assert window.compute_fingerprints_button.toolTip() != ""
+    assert window.find_duplicates_button.toolTip() != ""
+
+
+def test_switching_to_duplicates_tab_loads_locations_lazily(qtbot):
+    location = LibraryLocation(
+        id=1, name="Main", path="/music",
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(locations=[(location, True)])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.duplicates_location_combo.count() == 0
+
+    _switch_to_duplicates_tab(window)
+
+    qtbot.waitUntil(
+        lambda: window.duplicates_location_combo.count() == 1, timeout=2000,
+    )
+    assert window.duplicates_location_combo.itemText(0) == "Main"
+
+
+def test_switching_to_duplicates_tab_twice_loads_locations_once(qtbot):
+    # Deliberately does NOT drive a second real tab-switch/worker round
+    # trip — see main_window.py's own _on_tab_changed comment: spawning
+    # overlapping run_worker() calls in tight succession was confirmed
+    # live to risk a real Qt-connection-mutex/GIL deadlock under this
+    # suite's own rapid MainWindow churn (CLAUDE.md/docs/HISTORY.md).
+    # The "loaded once" guard is a plain if-check on
+    # _duplicates_locations_loaded, so it's verified directly, the same
+    # way a pure function would be, without needing a second live
+    # worker to prove it.
+    location = LibraryLocation(
+        id=1, name="Main", path="/music",
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(locations=[(location, True)])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._on_tab_changed(window._duplicates_tab_index)
+    qtbot.waitUntil(
+        lambda: window.duplicates_location_combo.count() == 1, timeout=2000,
+    )
+
+    assert window._duplicates_locations_loaded is True
+
+    # A second call must be a pure no-op — checked by asserting the
+    # combo's contents are untouched, not by spawning another worker.
+    window.duplicates_location_combo.clear()
+    window._on_tab_changed(window._duplicates_tab_index)
+
+    assert window.duplicates_location_combo.count() == 0
+
+
+def test_compute_fingerprints_without_selection_shows_message(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._on_compute_fingerprints_clicked()
+
+    assert "Select a library location" in window.duplicates_status_label.text()
+    assert application.duplicate_service.compute_fingerprints_calls == []
+
+
+def test_compute_fingerprints_calls_service_with_selected_location(qtbot):
+    application = FakeApplication(
+        fingerprint_result={
+            "computed": 3, "skipped_already_computed": 1, "failed": 0,
+            "details": [],
+        },
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicates_locations(
+        [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
+    )
+
+    window._on_compute_fingerprints_clicked()
+
+    qtbot.waitUntil(
+        lambda: application.duplicate_service.compute_fingerprints_calls == ["Main"],
+        timeout=2000,
+    )
+    qtbot.waitUntil(
+        lambda: "Fingerprinted: 3" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+
+
+def test_find_duplicates_without_selection_shows_message(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._on_find_duplicates_clicked()
+
+    assert "Select a library location" in window.duplicates_status_label.text()
+    assert application.duplicate_service.find_duplicate_groups_calls == []
+
+
+def test_find_duplicates_renders_no_duplicates_message(qtbot):
+    application = FakeApplication(duplicate_groups=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicates_locations(
+        [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
+    )
+
+    window._on_find_duplicates_clicked()
+
+    qtbot.waitUntil(
+        lambda: "No duplicates found" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+    assert window.duplicates_table.rowCount() == 0
+
+
+def _make_duplicate_group():
+    from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
+    from seeker.soulseek.quality import LocalFileQuality
+
+    return DuplicateGroup(
+        files=[
+            DuplicateFile(
+                local_file=LocalFile(
+                    location_id=1, relative_path="a.flac", filename="a.flac",
+                    format="flac", size_bytes=1, mtime=0.0,
+                    scanned_at="2026-01-01T00:00:00+00:00",
+                ),
+                quality=LocalFileQuality(
+                    tier=2, bitrate_kbps=1000, bit_depth=16,
+                    sample_rate=44_100, clipping_ratio=0.0,
+                    integrated_loudness_lufs=None,
+                ),
+            ),
+            DuplicateFile(
+                local_file=LocalFile(
+                    location_id=1, relative_path="a.mp3", filename="a.mp3",
+                    format="mp3", size_bytes=1, mtime=0.0,
+                    scanned_at="2026-01-01T00:00:00+00:00",
+                ),
+                quality=LocalFileQuality(
+                    tier=1, bitrate_kbps=320, bit_depth=None,
+                    sample_rate=44_100, clipping_ratio=0.0,
+                    integrated_loudness_lufs=None,
+                ),
+            ),
+        ],
+        similarity=0.987,
+    )
+
+
+def test_render_duplicate_groups_populates_table(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    assert window.duplicates_table.rowCount() == 2
+    assert window.duplicates_table.item(0, 1).text() == "a.flac"
+    assert window.duplicates_table.item(1, 1).text() == "a.mp3"
+    assert window.duplicates_table.item(0, 4).text() == "98.7%"

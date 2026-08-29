@@ -235,6 +235,42 @@ uv run mypy --strict src/  # type check — must stay clean
       as an incidental signal). `tests/test_spotify_client.py` updated
       to match the real live entry shape and to cover the non-track
       skip.
+- [ ] **Known, NOT fixed: a real, reproducible deadlock in
+      `ui/workers.py`'s cross-thread signal handling under heavy,
+      rapid, concurrent `run_worker()` use.** Found live while building
+      roadmap item 5's Duplicates tab (2026-08-29) — an eagerly-started
+      background worker added inside `MainWindow.__init__` (fetching
+      library locations for every construction) made the full UI test
+      suite hang indefinitely; `sample`-profiling the stuck process
+      showed a genuine two-lock inversion: a pooled worker thread mid-
+      `.emit()` held Qt's internal connection-list mutex
+      (`QBasicMutex::lockInternal`) while blocked waiting for the GIL
+      (to safely copy the Python result object into a queued
+      `QMetaCallEvent`), while the main thread — holding the GIL —
+      was blocked inside a NEW `QObject::connect()` call (constructing
+      another widget/worker) waiting for that same Qt mutex. Confirmed
+      reproducible more than once, with slightly different stacks
+      (`disconnectNotify` one time, `connectImpl` another), both the
+      identical root pattern. **Mitigated, not fixed:** the specific
+      trigger (an eager `run_worker()` call inside a widget constructor
+      invoked many times in quick succession) was removed — the
+      Duplicates tab now loads its location list lazily, on first real
+      tab-switch, not during construction (see `main_window.py`'s
+      `_on_tab_changed`). This resolved the concrete symptom without
+      touching `workers.py`'s actual cross-thread signal-handling
+      design, which is what would need to change to rule the class of
+      bug out entirely. Item 32's own 300-second real stress test
+      (heavy overlapping Sync/Scan/Match/Download activity against a
+      single long-lived `MainWindow`) never hit this, suggesting the
+      real risk may be specific to many independent `MainWindow`/
+      `QThreadPool` instances churning rapidly in one process (this
+      project's own test suite's pattern) rather than sustained
+      single-session real usage — but this is NOT proven safe, only
+      not yet observed outside the test-churn pattern. Worth a
+      dedicated future investigation before adding more eager
+      `run_worker()` call sites, especially inside a widget constructor
+      or any other code path that can run many times in quick
+      succession. [HISTORY §39](docs/HISTORY.md#39)
 
 ## Roadmap (direction, not urgent)
 
@@ -1870,6 +1906,178 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the location-scoped clustering/quality-scoring service, CLI
     commands, and the UI tab are all still ahead — this entry covers
     Phase 0 only. [HISTORY §38](docs/HISTORY.md#38)
+
+39. **Duplicate/quality detector via audio fingerprinting — Phase 1
+    done and live-verified (2026-08-29): fingerprint computation +
+    read-only clustering/scoring, CLI and UI, exactly per the task's
+    own build order. The delete/replace action is NOT built yet —
+    deliberately deferred to a later phase.**
+
+    **Schema.** `local_files` gains nullable `fingerprint` (TEXT,
+    base64 chromaprint output), `fingerprint_duration` (REAL),
+    `fingerprint_computed_at` (TEXT) — added to `SCHEMA` and via a
+    guarded `_add_column_if_missing` in `connection.py`, following item
+    11's exact pattern (excluded from `upsert()`'s `ON CONFLICT DO
+    UPDATE`, written only via a separate `LocalFileRepository
+    .update_fingerprint()`). **Verified live against the real,
+    non-empty production DB** (3,218 real `local_files` rows) — columns
+    added cleanly, zero data loss, confirmed via `seeker check`
+    reporting the identical breakdown before and after.
+
+    **`seeker/audio_fingerprint.py` — a project-owned ctypes binding,
+    not a dependency on `pyacoustid`'s bundled one.** Phase 0's spike
+    (item 38) found real reasons not to reuse the third-party binding
+    as-is (import-time crash on a missing library; a bare-name
+    `ctypes.CDLL` lookup that doesn't find a real Homebrew install on
+    Apple Silicon). This module adapts the same small, real C API
+    (`chromaprint_new/free/start/feed/finish/get_fingerprint/
+    decode_fingerprint/dealloc`) with: an explicit candidate-path
+    search (Homebrew arm64/intel, a `sys._MEIPASS` branch for a future
+    frozen build, then a bare-name fallback) instead of a bare lookup;
+    a lazy, call-time-only failure (`FingerprintingUnavailableError`,
+    never raised at import) plus a cheap `is_available()` check mirror-
+    ing `Application.soulseek_configured`'s own "checked before use"
+    precedent; `compute_fingerprint(path)` streaming real PCM via
+    `soundfile` in ~1-second chunks (not the fpcalc subprocess path);
+    and `similarity_from_decoded(a, b)` — a **pure**, ctypes-free
+    Hamming-distance function operating on already-decoded `uint32`
+    arrays, factored out specifically so clustering logic can be unit-
+    tested with synthetic vectors with no real audio or library needed,
+    per the task's own testing guidance. `decode_fingerprint()` is
+    public (not a private helper) for exactly this reason too — see
+    the caching note below. A vectorized numpy popcount
+    (`_popcount_uint32`, a 256-entry byte lookup table) replaces a
+    naive per-subfingerprint Python loop — matters at real scale (a
+    fingerprint is ~10,000 `uint32` values).
+
+    **`soulseek/quality.py` extended, not duplicated.** New
+    `quality_tier_for_format(extension)` factors the existing lossless/
+    lossy tiering out of the `SoulseekFile`-specific `quality_tier()`
+    (which now just delegates to it) so local-file duplicate ranking
+    reuses the identical scale instead of a third copy — the same
+    drift lesson `matching.py`'s own consolidation already taught this
+    codebase. New `analyze_local_file_quality(path)` reads real bitrate/
+    bit-depth/sample-rate via `mutagen.File(path).info` (confirmed live
+    that mutagen reports a real, correct bitrate for uncompressed WAV
+    PCM too — `sample_rate * bit_depth * channels`, not just for lossy
+    formats, correcting a wrong assumption an early test draft made),
+    a real clipping-ratio heuristic (`CLIPPING_AMPLITUDE_THRESHOLD =
+    0.999`, explicitly flagged untuned) via `soundfile`, and optional
+    integrated-loudness (LUFS) via `pyloudnorm` — confirmed live that
+    digital silence returns a real, mathematically-correct `-inf`
+    rather than raising, which needed an explicit `math.isfinite()`
+    check to turn into a clean `None` (not a meaningful value to show).
+
+    **`library/duplicate_service.py` — the location-scoped service.**
+    `compute_fingerprints(location_name, force=False)` mirrors
+    `MetadataService.tag_tracks`'s exact shape (per-item try/except so
+    one bad file can't abort a batch; skip-already-done + `force`).
+    `find_duplicate_groups(location_name)` clusters via union-find over
+    `DUPLICATE_SIMILARITY_THRESHOLD = 0.95` (untuned, but justified by
+    item 38's real spike numbers: real duplicates scored 99.87-99.98%,
+    an unrelated real pair ~58% — a wide margin either side of 0.95).
+    Never persisted as its own table — computed fresh from cached
+    fingerprints on every call, so a moved/rescanned file can't leave a
+    stale group behind. `LibraryLocationNotFoundError` is a real,
+    distinct class from `soulseek/download_service.py`'s
+    identically-named one — kept separate rather than cross-imported
+    across unrelated service modules, the same precedent this
+    codebase's three separate `PlaylistNotFoundError` classes already
+    set (aliased at the `cli.py` import site).
+
+    **A real, live-verification-driven performance fix, done before
+    calling this "live-verified" rather than after.** The first real
+    run against the production library's ~3,142 successfully-
+    fingerprinted files took **several minutes and multiple GB of RAM**
+    for `find_duplicate_groups` alone — traced to `hamming_similarity`
+    re-decoding both fingerprints (a real ctypes call plus a numpy
+    array copy) on **every single pairwise comparison**, when a file
+    is compared against many others. Fixed by decoding each file's
+    fingerprint exactly once (`decode_fingerprint`, now public) into a
+    cache reused across every comparison — this is the real reason
+    `similarity_from_decoded` is a public, separate function from
+    `hamming_similarity`. A second, independent fix: even with cheap
+    per-pair comparisons, a genuine `O(n^2)` **iteration** (~4.9M pairs
+    for n=3,142) still cost real, measurable minutes of pure Python-
+    loop overhead — fixed by sorting files by `duration_ms` first and
+    sliding a bounded window (break once two files, in duration order,
+    exceed `DURATION_TOLERANCE_MS`), rather than checking-then-skipping
+    every pair. Files with no reported `duration_ms` (expected to be
+    rare/none in practice) still fall back to an unoptimized full sweep,
+    matching the original, un-windowed semantics for that edge case
+    exactly. **Final real run, fully re-verified after both fixes:**
+    `seeker library fingerprint x9-pro` — 3,142 of 3,218 real files
+    fingerprinted successfully (76 real failures, see below);
+    `seeker library duplicates x9-pro` — completed in **9m59s real
+    wall-clock time**, found **344 real duplicate groups**. Read the
+    real output, not just the count: correctly clustered same-track
+    re-downloads across different monthly chart folders (near/exactly
+    100% similarity) genuinely by audio content despite completely
+    different filenames — including one pair with different
+    collaborator-credit ordering in the filename entirely
+    (`"Emmanuel Jal, Nyaruach, Benjy, LevyM - Guaja..."` vs.
+    `"LevyM, Benjy, Emmanuel Jal, Nyaruach, N-You-Up - Guaja..."`, 99.0%
+    similarity) — and correctly identified the user's own WIP mix
+    revisions of original productions as genuinely similar-but-distinct
+    (`"Acid 6db Gain.wav"` vs. `"Acid Pre-Limiter.wav"`, 95.3% — a real,
+    meaningfully lower score than the near-100% exact-duplicate pairs,
+    exactly the discriminative behavior this is supposed to have) and a
+    real, previously-unnoticed accidental duplicate across two
+    unrelated folders (a `wetransfer_...` import folder and
+    `Sinthesis/YBBY`, 100.0%). **Honest, current characteristic, not
+    hidden:** ~10 minutes for ~3,100 files is real and acceptable for
+    an occasional, explicitly-triggered scan, not instant — a future
+    session could reduce it further (e.g. bucketing/parallelizing the
+    comparison), but this was not pursued further once real,
+    documented, non-blocking performance was reached.
+
+    **Real, confirmed decode failures — 76 of 3,218 files, correctly
+    isolated by the existing per-file try/except, not a design gap.**
+    Two real causes, checked directly rather than assumed: (1) several
+    "File does not exist" failures on files with accented filenames
+    turned out to be genuinely 0-byte files on disk (confirmed via
+    `ls -la` before assuming a Unicode-normalization bug — there wasn't
+    one); (2) ~70 "bad data offset"/"unspecified internal error"
+    failures on real, valid, playable MP3s (confirmed via `file`) are a
+    real, known `libsndfile`/`soundfile` limitation — its MP3 decoder
+    is less permissive than `mpg123`/`ffmpeg` about non-standard ID3/
+    VBR framing. Not fixed in this phase (a future revision could add
+    an `ffmpeg`/`mpg123` fallback for files `soundfile` can't open) —
+    recorded honestly as a real, current gap instead.
+
+    **CLI — `seeker library fingerprint <location> [--force]` /
+    `seeker library duplicates <location>`.** Both raise
+    `LibraryLocationNotFoundError`/`FingerprintingUnavailableError`
+    up through `cli.run()`'s existing top-level exception handling
+    (`sys.exit(1)`) rather than swallowing them locally, matching how
+    every other playlist/location-not-found error in this file already
+    propagates.
+
+    **UI — a new, read-only "Duplicates" tab in `MainWindow`.** A
+    location combo (scoped to one location, never all of them — the
+    UI counterpart to the CLI's own scoping), "Compute fingerprints"/
+    "Find duplicates" buttons, and a results table. **A real,
+    significant concurrency bug was found and fixed while wiring this
+    up — see the new unfixed "Known issues" entry above and
+    [HISTORY §39](docs/HISTORY.md#39) for the full investigation**: the
+    location combo now loads lazily on first real tab-switch
+    (`_on_tab_changed`), not eagerly during `MainWindow.__init__`,
+    specifically because the eager version triggered a real,
+    reproducible deadlock. No Replace/Decline actions exist yet on this
+    tab — intentionally read-only, matching the task's own build order.
+    UI verification is mock-level (mirrors this project's own "real
+    backend + thorough mocked UI wiring" split used elsewhere, e.g.
+    item 27) rather than a redundant real offscreen-Qt click-through —
+    the real ~10-minute computation was already verified once via the
+    CLI above; running the identical computation a second time through
+    the UI would cost another ~10 minutes for no new information.
+
+    **Not yet built, deliberately:** the delete/replace action and its
+    double-confirm UX (mirroring the Review tab's own Replace/Decline +
+    "Delete old file" pattern), and the README "one filesystem-
+    destructive action" line update that ships alongside it — both
+    explicitly out of scope until a future phase, per the task's own
+    stated build order. [HISTORY §39](docs/HISTORY.md#39)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
