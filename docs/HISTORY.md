@@ -5032,305 +5032,6 @@ passes rather than unit tests. `mypy --strict` clean across all 60
 passed, 1 skipped, run three times in a row with zero crashes after
 the real fix landed.
 
-### 39
-
-Phase 1 of the duplicate/quality detector (roadmap item 5, following
-item 38's Phase 0 spike): schema, `audio_fingerprint.py`, the
-`quality.py` extension, `duplicate_service.py`, CLI, and a read-only
-UI tab — plus two real, unplanned investigations this task's own live-
-verification requirement surfaced: a genuine Qt/GIL deadlock, and a
-real O(n^2) performance problem, both found and fixed before the work
-was called done, not after.
-
-**Schema migration, verified live against the real, non-empty
-production DB before trusting it.** Backed up
-`~/Library/Application Support/Seeker/seeker.db` to `/tmp` first (pure
-caution — every prior schema change in this project's history, items
-10/11/13/etc., already applied its guarded `ALTER TABLE` directly
-against production with no issue, but the backup cost nothing).
-Constructed a real `Application()` against the real DB — the three new
-`local_files` columns appeared via `PRAGMA table_info`, the real
-3,218-row count was unchanged, and `seeker check` reported the
-identical `Auto-matched`/`Unmatched` breakdown before and after.
-
-**`audio_fingerprint.py` built directly on item 38's spike findings —
-no new API surprises, since that work was already done.** The module's
-own docstring records the two real reasons this isn't just "depend on
-`pyacoustid`": its bundled `chromaprint.py` binding does a bare
-`ctypes.CDLL("libchromaprint.1.dylib")` (confirmed live in item 38 not
-to find a real Homebrew install on Apple Silicon without an explicit
-`DYLD_FALLBACK_LIBRARY_PATH`), and it raises at *import* time when the
-library can't be found (would crash this whole app just for existing
-on a machine without it installed). This project's own version passes
-an absolute, explicitly-searched path straight to `ctypes.CDLL`,
-confirmed live to work with **zero environment variables set** —
-`uv run python -c "from seeker import audio_fingerprint;
-audio_fingerprint._load_library()"` returned a real, loaded
-`CDLL('/opt/homebrew/lib/libchromaprint.1.dylib', ...)` with a clean
-shell environment, the exact gap the third-party binding had.
-
-**Real, live-caught test-writing mistakes, corrected against actual
-behavior rather than assumption — recorded because both are genuinely
-non-obvious and could trip up a future change to this code.**
-1. `mutagen.File(wav_path).info.bitrate` for an uncompressed PCM WAV
-   returned a real, non-`None` value (`705` kbps for a 44.1kHz/16-bit/
-   mono test file — `44100 * 16 * 1 = 705,600 bps`), not `None` as an
-   initial test draft assumed ("lossless means no bitrate concept").
-   Mutagen computes a real effective bitrate for uncompressed formats
-   too; the test was fixed to expect the correct value once this was
-   checked directly rather than argued from what "lossless" ought to
-   imply.
-2. `pyloudnorm.Meter.integrated_loudness()` on digital silence does
-   NOT raise — it returns a real, mathematically-correct `-inf`
-   (`ln(0)` diverging in the ITU-R BS.1770 loudness-gating math). An
-   initial `_measure_integrated_loudness` only caught `ValueError`
-   (for audio too short to measure at all), so a real silent test file
-   returned `-inf` instead of the intended `None` (informational-only,
-   "not a meaningful value"). Fixed with an explicit
-   `math.isfinite(loudness)` check, catching both `-inf` and any future
-   `NaN` case the same way.
-
-**`library/duplicate_service.py`'s union-find clustering, run for real
-against the production library — the first real run immediately
-exposed a genuine performance problem, not a theoretical one.**
-
-*First real run* (`seeker library fingerprint x9-pro`, no `--force`):
-looked alarmingly slow at first glance — checking `ps` mid-run showed
-`elapsed 01:58` against only `0:00.02` of real CPU time, which read
-like a hang. Investigated properly instead of just waiting or killing
-on a hunch: timing a single real file directly
-(`compute_fingerprint()` on a real 15MB MP3) took a real `0.42s` —
-consistent with, not contradicting, the batch run's true throughput.
-The apparent "stall" was mis-reading `tail -20` of a growing log as
-the *total* progress rather than its last 20 lines; the real log
-already had 399 real files fingerprinted by that point. Restarted
-(the skip-already-computed check meant no wasted repeat work) and let
-it run to real completion: **3,142 of 3,218 real files fingerprinted
-successfully in total, 76 real failures** — see below for what those
-actually were, confirmed rather than assumed.
-
-*Second real run* (`seeker library duplicates x9-pro`, clustering the
-3,142 real fingerprints): this one WAS genuinely slow, confirmed by
-watching real CPU time track real elapsed time (`100% CPU`,
-`TIME ≈ ELAPSED`) for several minutes with real memory climbing past
-3.7GB — a real problem, not a misread log this time. Diagnosed the
-real cause directly rather than guessing at an optimization: every
-pairwise comparison in the O(n^2) clustering loop called
-`hamming_similarity(fp_a_string, fp_b_string)`, which **re-decodes
-both fingerprints from scratch on every single call** — a real ctypes
-round-trip plus a numpy array copy, repeated up to `n` times per file
-across all its comparisons rather than once. Fixed by making
-`decode_fingerprint()` a public function (it already existed
-internally) and having `find_duplicate_groups()` decode each
-fingerprinted file exactly once into a `dict[int, np.ndarray]` cache,
-reused via the already-pure `similarity_from_decoded()` for every
-comparison. Killed the still-running first attempt, reran with the
-fix: real memory usage dropped (3.7GB → ~1.2-2.6GB, fluctuating with
-GC) but the run *still* took real, multi-minute wall-clock time,
-confirming decode-caching alone wasn't the whole story.
-
-Diagnosed the *second*, independent cause the same way: even with a
-cheap per-pair comparison, the **iteration** itself is a real `O(n^2)`
-loop — for n=3,142 fingerprinted files, ~4.9 million pair-checks, each
-paying real Python-level loop/attribute-access overhead regardless of
-how cheap the actual comparison became. Fixed by sorting files by
-`duration_ms` and sweeping a bounded window (break out of the inner
-loop the instant two files, in duration order, exceed
-`DURATION_TOLERANCE_MS` — every file further along is even further
-apart) instead of checking-then-skipping every single pair. Files with
-no `duration_ms` at all (expected to be rare-to-nonexistent for a
-`library/scanner.py`-populated real library) fall back to an
-unoptimized full sweep against everything, preserving the exact
-original semantics for that edge case rather than silently changing
-behavior for it.
-
-**Final real run, after both fixes, this is what "live-verified"
-means here:** `seeker library duplicates x9-pro` completed in **9m59s
-real wall-clock time** and found **344 real duplicate groups**. Read
-the actual output, not just the count, to confirm the clustering is
-doing something genuinely useful rather than just "returning
-some numbers": real cross-folder re-download duplicates (the same
-track appearing in multiple monthly "Beatport Top 100" chart exports)
-clustered correctly at 99.9-100% similarity purely by audio content;
-one real pair with **completely different artist-credit ordering in
-the filename** (`"Emmanuel Jal, Nyaruach, Benjy, LevyM - Guaja..."` vs.
-`"LevyM, Benjy, Emmanuel Jal, Nyaruach, N-You-Up - Guaja..."`) still
-correctly clustered at 99.0% — exactly the case filename-based
-duplicate detection would have missed entirely; the user's own
-original-production WIP mix revisions (`"Acid 6db Gain.wav"` vs.
-`"Acid Pre-Limiter.wav"`, 95.3%; several other `Sinthesis/` pairs at
-95-99%) scored meaningfully *lower* than the near-100% exact-duplicate
-pairs — real, correct discrimination between "same underlying
-recording, different master" and "byte-different encode of the exact
-same audio," not a coincidence; and one real, previously-unnoticed
-accidental duplicate spanning two unrelated folders entirely
-(`Music/Sinthesis/YBBY/...` and a `wetransfer_...` import folder,
-100.0%) — a genuine, useful find a human skimming filenames would
-likely have missed.
-
-**Real decode failures, investigated individually rather than lumped
-together as "fingerprinting is flaky."** 76 of 3,218 real files failed
-to fingerprint, all correctly isolated by the existing per-file
-try/except (the batch completed cleanly regardless). Checked two
-representative failure classes directly:
-1. Several "File does not exist or is not a regular file" errors on
-   files with accented characters in their names (`René Amesz`,
-   `Mangueleña`) — the first hypothesis was a real macOS NFC/NFD
-   Unicode filename-normalization mismatch between Python's path
-   handling and libsndfile's C string handling. Checked directly with
-   `ls -la` and `unicodedata.normalize` before concluding anything: the
-   real file was a genuine **0-byte file** on disk (`-rwx------ ... 0
-   Aug 9 2024 ...`) — nothing to do with Unicode at all, a real,
-   pre-existing empty/corrupted file in the library.
-2. ~70 "bad data offset" / "Unspecified internal error" failures on
-   files confirmed via `file` to be real, valid, playable MPEG audio
-   (`MPEG ADTS, layer III, v1, 128 kbps, 44.1 kHz`). This is a real,
-   known `libsndfile` limitation — its MP3 decoder is measurably less
-   permissive about non-standard ID3/VBR framing than dedicated
-   decoders like `mpg123`/`ffmpeg`. Not worked around in this phase
-   (a future revision could add an `ffmpeg`/`mpg123` fallback
-   specifically for files `soundfile` can't open) — recorded as a
-   real, honest, current gap rather than silently ignored or
-   overclaimed as "fixed."
-
-**A real, reproducible Qt/GIL deadlock, found while wiring the read-
-only UI tab — the most significant finding of this task, and NOT
-fully fixed, only mitigated (see CLAUDE.md's "Known issues" entry).**
-
-First symptom: adding `_refresh_duplicates_locations()` as an eager
-call at the end of `MainWindow._build_duplicates_tab()` (itself called
-from `_build_ui()`, i.e. on every `MainWindow.__init__`) made
-`uv run pytest tests/test_ui_smoke.py -q` — previously a reliable
-~1.5s run — hang indefinitely. First suspected the hang might be a
-red herring from shell output buffering (a `| tail -N` pipe without
-`-f` doesn't print anything until the underlying command exits, which
-had already caused two false alarms earlier in this same session with
-completely unrelated, actually-fast commands) — ruled this out
-properly rather than assuming it again: switched to
-`PYTHONUNBUFFERED=1` piped through a live `tail -f`/`Monitor`, and the
-process was still genuinely stuck with no new output, confirmed by
-`ps` showing real elapsed time far exceeding real CPU time (e.g.
-`elapsed 03:28` against `time 0:01.12` — mostly idle/blocked, not
-computing).
-
-Diagnosed with macOS's built-in `sample` profiler
-(`sample <pid> 3 -f /tmp/pytest_sample.txt`) rather than guessing —
-`py-spy` isn't installed in this environment and wasn't worth adding
-just for one investigation. The real call graph showed a genuine,
-two-thread lock inversion:
-- The **main thread**, holding the GIL, was inside
-  `QToolBar::QToolBar()` → `QObject::connect()` →
-  `QObjectPrivate::connectImpl()` → `QBasicMutex::lockInternal()` →
-  `__ulock_wait2` — blocked waiting for Qt's own internal connection-
-  list mutex while constructing a brand-new widget/signal connection
-  for the NEXT test's `MainWindow`.
-- A **pooled worker thread**, simultaneously, was inside
-  `QRunnableWrapper::run()` → `signalInstanceEmit()` (the PREVIOUS
-  test's `worker.signals.finished.emit(...)` call) →
-  `QQueuedMetaCallEvent` construction → `QMetaType::construct()` →
-  `Shiboken::GilState::GilState()` → `PyGILState_Ensure()` — blocked
-  waiting for the GIL, needed to safely copy the Python result object
-  into the queued cross-thread event, while (per the stack) still
-  holding the very same Qt connection-mutex the main thread wanted.
-
-This is real: Thread A holds Qt's mutex and wants the GIL; Thread B
-(main) holds the GIL and wants Qt's mutex — classic deadlock, and
-genuinely triggered by ordinary, correct-looking code (`run_worker()`
-already used `Qt.ConnectionType.SingleShotConnection`, item 32's own
-already-verified-safe pattern for the leak/crash it was built to fix —
-this is a DIFFERENT bug class, not a regression of that fix). A second
-occurrence (profiled separately, after removing the first trigger and
-adding a second, different rapid-fire test — see below) showed the
-identical pattern with a slightly different top frame
-(`signalInstanceConnect`/`connectImpl` instead of `disconnectNotify`),
-confirming this isn't one specific call site's fault but a structural
-risk in mixing Qt's internal locking with the GIL under enough
-concurrent, rapidly-repeated `run_worker()` activity.
-
-**Root-caused which specific new code triggered it, then verified the
-fix genuinely resolved it, not just moved it.** The eager
-`_refresh_duplicates_locations()` call meant every one of
-`test_ui_smoke.py`'s ~50 `MainWindow()` constructions spawned one more
-background worker+signal-connection, compounding whatever narrow
-timing window this requires. Fixed by making the fetch lazy —
-triggered only on a real `QTabWidget.currentChanged` to the Duplicates
-tab's own index, guarded by a `_duplicates_locations_loaded` flag so
-it fires at most once per window — reducing the trigger from "every
-single `MainWindow` construction" to "a real tab click," which a
-human does at a comparatively glacial pace. Reran the full
-`test_ui_smoke.py` suite: **49 passed in 1.57s**, back to the original
-baseline.
-
-**The fix needed a second correction — one of this task's OWN new
-tests reintroduced the exact same risk, caught by the same symptom
-recurring.** A test verifying "switching to the Duplicates tab twice
-only fetches locations once" drove two real, sequential tab-switch
-round-trips (each potentially spawning/awaiting a worker) — running
-the newly-expanded `test_ui_smoke.py` (now ~59 tests, including this
-one) hung again, profiled again, confirmed as the identical deadlock
-pattern via a fresh `sample` capture. Fixed by rewriting that one test
-to call `window._on_tab_changed(...)` directly, twice, asserting the
-guard flag and the unchanged combo contents — verifying the real
-`if index == ... and not loaded:` logic directly, the same way a pure
-function would be tested, without needing a second live worker round-
-trip to prove a guard that's already a plain boolean check. Reran the
-full suite: **453 passed, 1 skipped, in 14.91s** — clean, and (per a
-separate, deliberate check) unaffected by whether a concurrent, CPU-
-heavy real fingerprinting/clustering job was also running in the
-background at the same time, ruling out "the test suite was just slow
-under load" as an alternative explanation for either occurrence.
-
-**What's confirmed vs. NOT confirmed, stated plainly rather than
-either overclaiming a fix or underclaiming the risk.** Confirmed: the
-deadlock is real, reproducible, and specifically tied to rapid,
-repeated `run_worker()`-spawning activity (many independent
-`MainWindow`/`QThreadPool` instances churning in one process, as this
-test suite does). Confirmed: item 32's own real 300-second stress test
-— sustained, genuinely overlapping Sync/Scan/Match/Download activity
-against a SINGLE long-lived `MainWindow` — never hit this, which is
-real evidence (not proof) that ordinary sustained single-session usage
-may not reach the same timing window. NOT confirmed: that real usage
-is safe from this class of bug in general, or that the only fix
-needed is "don't add eager workers to constructors" — the actual root
-cause (mixing Qt's internal connection-list locking with the GIL
-across threads) still exists in `workers.py`'s design and could
-resurface from a different trigger. Recorded as an open, unfixed
-"Known issues" entry rather than folded into the roadmap's own "done"
-framing, specifically so a future session doesn't have to rediscover
-this from scratch before adding the next feature that spawns workers
-freely.
-
-Tests: `tests/test_connection.py` (fingerprint-column migration, real
-pre-existing-row preservation, mirroring items 10/11/13's own
-migration-test pattern); `tests/test_audio_fingerprint.py` (pure
-`similarity_from_decoded` unit tests with synthetic vectors; a
-lazy-loading contract test confirming `FingerprintingUnavailableError`
-never fires at import time; 4 real integration tests against real
-duplicate/non-duplicate file pairs copied from the production library,
-skipped automatically when the drive or libchromaprint aren't
-available); `tests/test_quality.py` (tier-mapping plus real, synthetic-
-WAV-generated tests for bitrate/bit-depth/clipping/loudness — no real
-library files needed, since `soundfile.write()` can generate exactly
-the edge cases needed, e.g. a WAV that's precisely half clipped
-samples); `tests/test_duplicate_service.py` (a full real end-to-end
-test using real generated audio + real libchromaprint — no mocks —
-plus pure synthetic-array clustering tests using real decoded-array
-inputs rather than monkeypatching, since `similarity_from_decoded` is
-already pure and fast enough to just call for real); `tests/
-test_cli.py` (fingerprint/duplicates command wiring, force-flag
-pass-through, nonzero exit on a real `LibraryLocationNotFoundError`);
-`tests/test_ui_smoke.py` (Duplicates tab construction, tooltips,
-subtitle, lazy-loading contract, button wiring — all against a fake
-`DuplicateService`, no real audio needed at the UI layer since the
-real service-layer logic is already covered above). `mypy --strict`
-clean across all 64 `src/` files (one real, caught-and-fixed mistake
-along the way: a `replace_all` rename of `_decode_fingerprint` →
-`decode_fingerprint` also silently corrupted the unrelated real C
-function name `chromaprint_decode_fingerprint` into
-`chromaprintdecode_fingerprint` in three places — caught immediately
-by re-reading the diff before running anything, not by a later
-failure). Full suite: 453 passed, 1 skipped.
-
 ### 36
 
 Packaging polish follow-on task (macOS ad-hoc signing + `.dmg` readme,
@@ -5570,3 +5271,528 @@ The throwaway spike script itself
 directory, never committed — same treatment as every other diagnostic-
 only script in this project's history (item 30 §0's freeze spike,
 item 30's `verify_entrypoint.py`).
+
+### 39
+
+Phase 1 of the duplicate/quality detector (roadmap item 5, following
+item 38's Phase 0 spike): schema, `audio_fingerprint.py`, the
+`quality.py` extension, `duplicate_service.py`, CLI, and a read-only
+UI tab — plus two real, unplanned investigations this task's own live-
+verification requirement surfaced: a genuine Qt/GIL deadlock, and a
+real O(n^2) performance problem, both found and fixed before the work
+was called done, not after.
+
+**Schema migration, verified live against the real, non-empty
+production DB before trusting it.** Backed up
+`~/Library/Application Support/Seeker/seeker.db` to `/tmp` first (pure
+caution — every prior schema change in this project's history, items
+10/11/13/etc., already applied its guarded `ALTER TABLE` directly
+against production with no issue, but the backup cost nothing).
+Constructed a real `Application()` against the real DB — the three new
+`local_files` columns appeared via `PRAGMA table_info`, the real
+3,218-row count was unchanged, and `seeker check` reported the
+identical `Auto-matched`/`Unmatched` breakdown before and after.
+
+**`audio_fingerprint.py` built directly on item 38's spike findings —
+no new API surprises, since that work was already done.** The module's
+own docstring records the two real reasons this isn't just "depend on
+`pyacoustid`": its bundled `chromaprint.py` binding does a bare
+`ctypes.CDLL("libchromaprint.1.dylib")` (confirmed live in item 38 not
+to find a real Homebrew install on Apple Silicon without an explicit
+`DYLD_FALLBACK_LIBRARY_PATH`), and it raises at *import* time when the
+library can't be found (would crash this whole app just for existing
+on a machine without it installed). This project's own version passes
+an absolute, explicitly-searched path straight to `ctypes.CDLL`,
+confirmed live to work with **zero environment variables set** —
+`uv run python -c "from seeker import audio_fingerprint;
+audio_fingerprint._load_library()"` returned a real, loaded
+`CDLL('/opt/homebrew/lib/libchromaprint.1.dylib', ...)` with a clean
+shell environment, the exact gap the third-party binding had.
+
+**Real, live-caught test-writing mistakes, corrected against actual
+behavior rather than assumption — recorded because both are genuinely
+non-obvious and could trip up a future change to this code.**
+1. `mutagen.File(wav_path).info.bitrate` for an uncompressed PCM WAV
+   returned a real, non-`None` value (`705` kbps for a 44.1kHz/16-bit/
+   mono test file — `44100 * 16 * 1 = 705,600 bps`), not `None` as an
+   initial test draft assumed ("lossless means no bitrate concept").
+   Mutagen computes a real effective bitrate for uncompressed formats
+   too; the test was fixed to expect the correct value once this was
+   checked directly rather than argued from what "lossless" ought to
+   imply.
+2. `pyloudnorm.Meter.integrated_loudness()` on digital silence does
+   NOT raise — it returns a real, mathematically-correct `-inf`
+   (`ln(0)` diverging in the ITU-R BS.1770 loudness-gating math). An
+   initial `_measure_integrated_loudness` only caught `ValueError`
+   (for audio too short to measure at all), so a real silent test file
+   returned `-inf` instead of the intended `None` (informational-only,
+   "not a meaningful value"). Fixed with an explicit
+   `math.isfinite(loudness)` check, catching both `-inf` and any future
+   `NaN` case the same way.
+
+**`library/duplicate_service.py`'s union-find clustering, run for real
+against the production library — the first real run immediately
+exposed a genuine performance problem, not a theoretical one.**
+
+*First real run* (`seeker library fingerprint x9-pro`, no `--force`):
+looked alarmingly slow at first glance — checking `ps` mid-run showed
+`elapsed 01:58` against only `0:00.02` of real CPU time, which read
+like a hang. Investigated properly instead of just waiting or killing
+on a hunch: timing a single real file directly
+(`compute_fingerprint()` on a real 15MB MP3) took a real `0.42s` —
+consistent with, not contradicting, the batch run's true throughput.
+The apparent "stall" was mis-reading `tail -20` of a growing log as
+the *total* progress rather than its last 20 lines; the real log
+already had 399 real files fingerprinted by that point. Restarted
+(the skip-already-computed check meant no wasted repeat work) and let
+it run to real completion: **3,142 of 3,218 real files fingerprinted
+successfully in total, 76 real failures** — see below for what those
+actually were, confirmed rather than assumed.
+
+*Second real run* (`seeker library duplicates x9-pro`, clustering the
+3,142 real fingerprints): this one WAS genuinely slow, confirmed by
+watching real CPU time track real elapsed time (`100% CPU`,
+`TIME ≈ ELAPSED`) for several minutes with real memory climbing past
+3.7GB — a real problem, not a misread log this time. Diagnosed the
+real cause directly rather than guessing at an optimization: every
+pairwise comparison in the O(n^2) clustering loop called
+`hamming_similarity(fp_a_string, fp_b_string)`, which **re-decodes
+both fingerprints from scratch on every single call** — a real ctypes
+round-trip plus a numpy array copy, repeated up to `n` times per file
+across all its comparisons rather than once. Fixed by making
+`decode_fingerprint()` a public function (it already existed
+internally) and having `find_duplicate_groups()` decode each
+fingerprinted file exactly once into a `dict[int, np.ndarray]` cache,
+reused via the already-pure `similarity_from_decoded()` for every
+comparison. Killed the still-running first attempt, reran with the
+fix: real memory usage dropped (3.7GB → ~1.2-2.6GB, fluctuating with
+GC) but the run *still* took real, multi-minute wall-clock time,
+confirming decode-caching alone wasn't the whole story.
+
+Diagnosed the *second*, independent cause the same way: even with a
+cheap per-pair comparison, the **iteration** itself is a real `O(n^2)`
+loop — for n=3,142 fingerprinted files, ~4.9 million pair-checks, each
+paying real Python-level loop/attribute-access overhead regardless of
+how cheap the actual comparison became. Fixed by sorting files by
+`duration_ms` and sweeping a bounded window (break out of the inner
+loop the instant two files, in duration order, exceed
+`DURATION_TOLERANCE_MS` — every file further along is even further
+apart) instead of checking-then-skipping every single pair. Files with
+no `duration_ms` at all (expected to be rare-to-nonexistent for a
+`library/scanner.py`-populated real library) fall back to an
+unoptimized full sweep against everything, preserving the exact
+original semantics for that edge case rather than silently changing
+behavior for it.
+
+**Final real run, after both fixes, this is what "live-verified"
+means here:** `seeker library duplicates x9-pro` completed in **9m59s
+real wall-clock time** and found **344 real duplicate groups**. Read
+the actual output, not just the count, to confirm the clustering is
+doing something genuinely useful rather than just "returning
+some numbers": real cross-folder re-download duplicates (the same
+track appearing in multiple monthly "Beatport Top 100" chart exports)
+clustered correctly at 99.9-100% similarity purely by audio content;
+one real pair with **completely different artist-credit ordering in
+the filename** (`"Emmanuel Jal, Nyaruach, Benjy, LevyM - Guaja..."` vs.
+`"LevyM, Benjy, Emmanuel Jal, Nyaruach, N-You-Up - Guaja..."`) still
+correctly clustered at 99.0% — exactly the case filename-based
+duplicate detection would have missed entirely; the user's own
+original-production WIP mix revisions (`"Acid 6db Gain.wav"` vs.
+`"Acid Pre-Limiter.wav"`, 95.3%; several other `Sinthesis/` pairs at
+95-99%) scored meaningfully *lower* than the near-100% exact-duplicate
+pairs — real, correct discrimination between "same underlying
+recording, different master" and "byte-different encode of the exact
+same audio," not a coincidence; and one real, previously-unnoticed
+accidental duplicate spanning two unrelated folders entirely
+(`Music/Sinthesis/YBBY/...` and a `wetransfer_...` import folder,
+100.0%) — a genuine, useful find a human skimming filenames would
+likely have missed.
+
+**Real decode failures, investigated individually rather than lumped
+together as "fingerprinting is flaky."** 76 of 3,218 real files failed
+to fingerprint, all correctly isolated by the existing per-file
+try/except (the batch completed cleanly regardless). Checked two
+representative failure classes directly:
+1. Several "File does not exist or is not a regular file" errors on
+   files with accented characters in their names (`René Amesz`,
+   `Mangueleña`) — the first hypothesis was a real macOS NFC/NFD
+   Unicode filename-normalization mismatch between Python's path
+   handling and libsndfile's C string handling. Checked directly with
+   `ls -la` and `unicodedata.normalize` before concluding anything: the
+   real file was a genuine **0-byte file** on disk (`-rwx------ ... 0
+   Aug 9 2024 ...`) — nothing to do with Unicode at all, a real,
+   pre-existing empty/corrupted file in the library.
+2. ~70 "bad data offset" / "Unspecified internal error" failures on
+   files confirmed via `file` to be real, valid, playable MPEG audio
+   (`MPEG ADTS, layer III, v1, 128 kbps, 44.1 kHz`). This is a real,
+   known `libsndfile` limitation — its MP3 decoder is measurably less
+   permissive about non-standard ID3/VBR framing than dedicated
+   decoders like `mpg123`/`ffmpeg`. Not worked around in this phase
+   (a future revision could add an `ffmpeg`/`mpg123` fallback
+   specifically for files `soundfile` can't open) — recorded as a
+   real, honest, current gap rather than silently ignored or
+   overclaimed as "fixed."
+
+**A real, reproducible Qt/GIL deadlock, found while wiring the read-
+only UI tab — the most significant finding of this task. Recorded
+below as it stood at the time (mitigated, not fixed); a dedicated
+follow-on task later fixed the actual root cause for real — see the
+addendum at the end of this section.**
+
+First symptom: adding `_refresh_duplicates_locations()` as an eager
+call at the end of `MainWindow._build_duplicates_tab()` (itself called
+from `_build_ui()`, i.e. on every `MainWindow.__init__`) made
+`uv run pytest tests/test_ui_smoke.py -q` — previously a reliable
+~1.5s run — hang indefinitely. First suspected the hang might be a
+red herring from shell output buffering (a `| tail -N` pipe without
+`-f` doesn't print anything until the underlying command exits, which
+had already caused two false alarms earlier in this same session with
+completely unrelated, actually-fast commands) — ruled this out
+properly rather than assuming it again: switched to
+`PYTHONUNBUFFERED=1` piped through a live `tail -f`/`Monitor`, and the
+process was still genuinely stuck with no new output, confirmed by
+`ps` showing real elapsed time far exceeding real CPU time (e.g.
+`elapsed 03:28` against `time 0:01.12` — mostly idle/blocked, not
+computing).
+
+Diagnosed with macOS's built-in `sample` profiler
+(`sample <pid> 3 -f /tmp/pytest_sample.txt`) rather than guessing —
+`py-spy` isn't installed in this environment and wasn't worth adding
+just for one investigation. The real call graph showed a genuine,
+two-thread lock inversion:
+- The **main thread**, holding the GIL, was inside
+  `QToolBar::QToolBar()` → `QObject::connect()` →
+  `QObjectPrivate::connectImpl()` → `QBasicMutex::lockInternal()` →
+  `__ulock_wait2` — blocked waiting for Qt's own internal connection-
+  list mutex while constructing a brand-new widget/signal connection
+  for the NEXT test's `MainWindow`.
+- A **pooled worker thread**, simultaneously, was inside
+  `QRunnableWrapper::run()` → `signalInstanceEmit()` (the PREVIOUS
+  test's `worker.signals.finished.emit(...)` call) →
+  `QQueuedMetaCallEvent` construction → `QMetaType::construct()` →
+  `Shiboken::GilState::GilState()` → `PyGILState_Ensure()` — blocked
+  waiting for the GIL, needed to safely copy the Python result object
+  into the queued cross-thread event, while (per the stack) still
+  holding the very same Qt connection-mutex the main thread wanted.
+
+This is real: Thread A holds Qt's mutex and wants the GIL; Thread B
+(main) holds the GIL and wants Qt's mutex — classic deadlock, and
+genuinely triggered by ordinary, correct-looking code (`run_worker()`
+already used `Qt.ConnectionType.SingleShotConnection`, item 32's own
+already-verified-safe pattern for the leak/crash it was built to fix —
+this is a DIFFERENT bug class, not a regression of that fix). A second
+occurrence (profiled separately, after removing the first trigger and
+adding a second, different rapid-fire test — see below) showed the
+identical pattern with a slightly different top frame
+(`signalInstanceConnect`/`connectImpl` instead of `disconnectNotify`),
+confirming this isn't one specific call site's fault but a structural
+risk in mixing Qt's internal locking with the GIL under enough
+concurrent, rapidly-repeated `run_worker()` activity.
+
+**Root-caused which specific new code triggered it, then verified the
+fix genuinely resolved it, not just moved it.** The eager
+`_refresh_duplicates_locations()` call meant every one of
+`test_ui_smoke.py`'s ~50 `MainWindow()` constructions spawned one more
+background worker+signal-connection, compounding whatever narrow
+timing window this requires. Fixed by making the fetch lazy —
+triggered only on a real `QTabWidget.currentChanged` to the Duplicates
+tab's own index, guarded by a `_duplicates_locations_loaded` flag so
+it fires at most once per window — reducing the trigger from "every
+single `MainWindow` construction" to "a real tab click," which a
+human does at a comparatively glacial pace. Reran the full
+`test_ui_smoke.py` suite: **49 passed in 1.57s**, back to the original
+baseline.
+
+**The fix needed a second correction — one of this task's OWN new
+tests reintroduced the exact same risk, caught by the same symptom
+recurring.** A test verifying "switching to the Duplicates tab twice
+only fetches locations once" drove two real, sequential tab-switch
+round-trips (each potentially spawning/awaiting a worker) — running
+the newly-expanded `test_ui_smoke.py` (now ~59 tests, including this
+one) hung again, profiled again, confirmed as the identical deadlock
+pattern via a fresh `sample` capture. Fixed by rewriting that one test
+to call `window._on_tab_changed(...)` directly, twice, asserting the
+guard flag and the unchanged combo contents — verifying the real
+`if index == ... and not loaded:` logic directly, the same way a pure
+function would be tested, without needing a second live worker round-
+trip to prove a guard that's already a plain boolean check. Reran the
+full suite: **453 passed, 1 skipped, in 14.91s** — clean, and (per a
+separate, deliberate check) unaffected by whether a concurrent, CPU-
+heavy real fingerprinting/clustering job was also running in the
+background at the same time, ruling out "the test suite was just slow
+under load" as an alternative explanation for either occurrence.
+
+**What's confirmed vs. NOT confirmed, stated plainly rather than
+either overclaiming a fix or underclaiming the risk.** Confirmed: the
+deadlock is real, reproducible, and specifically tied to rapid,
+repeated `run_worker()`-spawning activity (many independent
+`MainWindow`/`QThreadPool` instances churning in one process, as this
+test suite does). Confirmed: item 32's own real 300-second stress test
+— sustained, genuinely overlapping Sync/Scan/Match/Download activity
+against a SINGLE long-lived `MainWindow` — never hit this, which is
+real evidence (not proof) that ordinary sustained single-session usage
+may not reach the same timing window. NOT confirmed: that real usage
+is safe from this class of bug in general, or that the only fix
+needed is "don't add eager workers to constructors" — the actual root
+cause (mixing Qt's internal connection-list locking with the GIL
+across threads) still exists in `workers.py`'s design and could
+resurface from a different trigger. Recorded as an open, unfixed
+"Known issues" entry rather than folded into the roadmap's own "done"
+framing, specifically so a future session doesn't have to rediscover
+this from scratch before adding the next feature that spawns workers
+freely. **This "NOT confirmed" state didn't last — see the addendum
+below, added once a dedicated follow-on task fixed the real root
+cause.**
+
+Tests: `tests/test_connection.py` (fingerprint-column migration, real
+pre-existing-row preservation, mirroring items 10/11/13's own
+migration-test pattern); `tests/test_audio_fingerprint.py` (pure
+`similarity_from_decoded` unit tests with synthetic vectors; a
+lazy-loading contract test confirming `FingerprintingUnavailableError`
+never fires at import time; 4 real integration tests against real
+duplicate/non-duplicate file pairs copied from the production library,
+skipped automatically when the drive or libchromaprint aren't
+available); `tests/test_quality.py` (tier-mapping plus real, synthetic-
+WAV-generated tests for bitrate/bit-depth/clipping/loudness — no real
+library files needed, since `soundfile.write()` can generate exactly
+the edge cases needed, e.g. a WAV that's precisely half clipped
+samples); `tests/test_duplicate_service.py` (a full real end-to-end
+test using real generated audio + real libchromaprint — no mocks —
+plus pure synthetic-array clustering tests using real decoded-array
+inputs rather than monkeypatching, since `similarity_from_decoded` is
+already pure and fast enough to just call for real); `tests/
+test_cli.py` (fingerprint/duplicates command wiring, force-flag
+pass-through, nonzero exit on a real `LibraryLocationNotFoundError`);
+`tests/test_ui_smoke.py` (Duplicates tab construction, tooltips,
+subtitle, lazy-loading contract, button wiring — all against a fake
+`DuplicateService`, no real audio needed at the UI layer since the
+real service-layer logic is already covered above). `mypy --strict`
+clean across all 64 `src/` files (one real, caught-and-fixed mistake
+along the way: a `replace_all` rename of `_decode_fingerprint` →
+`decode_fingerprint` also silently corrupted the unrelated real C
+function name `chromaprint_decode_fingerprint` into
+`chromaprintdecode_fingerprint` in three places — caught immediately
+by re-reading the diff before running anything, not by a later
+failure). Full suite: 453 passed, 1 skipped.
+
+### 39, addendum — the deadlock, fixed for real
+
+Standalone follow-on task, explicitly scoped to nothing but this:
+fix the `ui/workers.py` deadlock recorded above as "mitigated, not
+fixed," with the same numbering (this is still item 39) since it's a
+direct continuation of that same investigation. Re-read the "Known,
+NOT fixed" entry, plus items 28 (`WA_DeleteOnClose`), 29 (the
+`Database.initialize()` connection-leak fix and its own audit
+discipline), and 32 (the leak hunt and its `SingleShotConnection` fix,
+including the real segfault its first attempt caused) before starting,
+per the task's own brief — item 32 in particular as both a rigor bar
+(its ~35-signal-connection audit, its 40-cycle repeated-repro
+discipline) and a cautionary precedent: a fix that looks right on
+paper caused a real crash there once already, so nothing here was
+trusted without a live repro proving it.
+
+**Correction to this file's own prior framing, made explicitly before
+starting any investigation, not after.** The original entry's "never
+observed outside the test-churn pattern" language was flagged as a
+real risk of being read as lower-urgency than warranted. Checked
+directly: `MainWindow.__init__` starts a `poll_timer`
+(`POLL_INTERVAL_MS = 2_000`) whose `timeout` fires THREE separate
+`run_worker()` calls every single tick
+(`_poll_selected_playlist`/`_poll_active_downloads`/`_poll_review_items`),
+plus a `backend_poll_timer` firing a fourth every 20s — for the entire
+lifetime of any normal real session, not just this project's own test
+suite. This is structurally the identical hazard shape as the test
+suite's rapid `MainWindow` construction, just at a lower frequency —
+every real session was already exercising the actual collision window
+this bug needs; it simply hadn't been unlucky yet. Treated as a live
+production risk from the start of this task, not a test-only curiosity.
+
+**Step 1 — checked whether this is a known, already-fixed upstream
+issue before writing any code.** Confirmed the real installed version
+live: PySide6 6.11.2 / Qt 6.11.2 (`PySide6.__version__` /
+`QtCore.qVersion()`). Searched Qt's own bug tracker rather than
+guessing: PYSIDE-1657 ("Possible deadlock on signal connect/emit",
+fetched via `bugreports.qt.io`'s real JSON API since the JS-rendered
+page itself doesn't return content to a plain fetch) describes the
+literal same pattern confirmed independently in this project's own
+earlier stack-trace analysis — "the main thread attempting signal
+connection may hold the GIL while another thread emitting signals
+waits for GIL release — while itself holding a lock the main thread
+requires" — filed against PySide2 5.14.1, closed as fixed in 5.14.2.2
+by referencing PYSIDE-803 ("QThread Freezes GUI"), whose real fix (per
+its own recorded comments) was four patches reducing how often PySide
+releases/reacquires the GIL (`Py_BEGIN/END_ALLOW_THREADS` frequency,
+defaulting "allow-thread" to `False`) — a real **frequency reduction**,
+not a structural elimination of the underlying two-lock-ordering
+hazard. Confirmed this distinction matters directly: on PySide6
+6.11.2 — a version that already carries all of this 2020-era work —
+the exact same hazard is still live-reproducible (see below), meaning
+the 2020 fix narrowed the race window without closing it. Also found
+QTBUG-93259, a related Qt-level report on cross-thread signal/mutex
+interaction, explicitly stating there's "no general solution at
+present" for that class of scenario — real, current confirmation that
+no single upstream fix exists to simply upgrade into; an
+application-level mitigation is the standard answer, not a
+workaround-of-last-resort.
+
+**Step 2 — audited every cross-thread signal connection in `ui/*.py`,
+call site by call site, not sampled — matching item 32's own
+discipline.** Grepped every `.connect(`/`.disconnect(`/`.emit(` across
+`src/seeker/ui/*.py`. Classified each one by whether it ever crosses
+the worker-pool-thread/main-thread boundary:
+- `WorkerSignals.finished`/`.error` (or, post-fix, the shared
+  dispatcher's two signals) in `workers.py` — the ONLY cross-thread
+  traffic in the entire UI layer. `.emit()` happens inside
+  `Worker.run()`, executing on a real `QThreadPool` OS thread;
+  `.connect()`/`.disconnect()` happen in `run_worker()`, on the main
+  thread. In scope.
+- Every other `.connect(` in `main_window.py`/`wizard.py`/
+  `settings_window.py` — button `.clicked`, `QTimer.timeout`,
+  `currentItemChanged`/`currentChanged`, `textChanged`,
+  `toggled` — is a same-thread Qt widget signal, always both emitted
+  and connected on the main thread by Qt's own design (a `QTimer`
+  fires from the thread it lives on; a button click is delivered by
+  the main event loop). Confirmed genuinely out of scope, per the
+  task's own explicit instruction not to apply the fix indiscriminately
+  to signals that were never part of the hazard — these were left
+  untouched.
+
+**Step 3 — built a real, deterministic, standalone repro before
+touching any fix.** A minimal script (no `Application`/DB layer needed
+at all — the hazard lives entirely in Qt/widget construction plus
+`workers.py`): construct many real `QMainWindow`+`QToolBar`+
+`QPushButton` widgets back to back with zero explicit event-loop
+processing in between (matching how pytest actually ran many
+`MainWindow()` constructions in the original discovery), each also
+firing two real `run_worker()` calls via a real `QThreadPool`. Run as
+a real subprocess with a hard `subprocess.run(..., timeout=N)` — the
+only safe way to test a literal-freeze failure mode. Confirmed live,
+reliably: at 400 windows/iterations, the pre-fix design hung
+**43 of 50 trials (86%)**. A control variant with ZERO widget
+construction — pure `run_worker()` spam against itself — ALSO hung
+(5/10), confirming the hazard doesn't require external widget
+construction at all; it's sufficient for `workers.py`'s own repeated
+per-task `connect()`/`disconnect()`/`emit()` calls to collide with
+*each other* at high enough volume.
+
+**Step 4 — spiked the recommended `threading.RLock` approach, and
+verified live that it does NOT close the hazard.** Wrapped every
+cross-thread `connect()`/`disconnect()`/`emit()` identified in Step 2
+in a single shared `threading.RLock()` (reentrant, per the reasoning
+that a slot synchronously re-entering a guarded call on the same
+thread must not self-deadlock — and RLock correctly yields the GIL
+while blocked cross-thread, which is the actual mechanism that would
+break the cycle if this fully worked). Tested against BOTH repro
+variants:
+- No-widgets repro (pure `run_worker()`-vs-`run_worker()` collision):
+  **10/10 clean** — the RLock correctly serializes `workers.py`'s own
+  connect/disconnect/emit calls against each other.
+- With-widgets repro (the real-world-shaped one, matching the
+  original discovery): **7/15 (47%) still hung.**
+
+Root cause of the gap, confirmed rather than assumed: Qt's own signal/
+slot connection bookkeeping (`QObjectPrivate::signalSlotLock`) is
+backed by a `QMutexPool` — a small, striped pool of mutexes keyed by
+hashing the QObject's own memory address (confirmed against real Qt
+documentation of this mechanism, not assumed) — NOT a single global
+mutex and NOT a genuinely unique per-object one. `QToolBar`'s own
+constructor makes its OWN internal `QObject::connect()` calls (visible
+directly in the original stack trace: `QToolBar::QToolBar()` →
+`QObject::connect()` using the OLD four-argument SIGNAL/SLOT overload —
+genuinely Qt-internal code, not anything this project calls). A
+Python-level lock, however broad, has no way to make Qt's own internal
+widget-construction code wait for it — so any two objects (a
+`WorkerSignals` instance and, say, a `QPushButton`) whose addresses
+happen to hash into the same pool slot can still collide, RLock or
+not, the moment real widget construction is happening concurrently
+with a real emit(). This directly matches the task's own explicit
+instruction: verified live that the surgical fix doesn't fully close
+the hazard, stopped, and switched approach — rather than shipping it
+or quietly narrowing the claim.
+
+**Step 5 — built and verified the connect-once dispatcher fallback.**
+Replaced the per-task `WorkerSignals` QObject (a fresh heap address,
+connected and disconnected on every single call) with one shared,
+permanent `_Dispatcher` QObject whose two signals
+(`task_finished`/`task_error`, each now carrying the originating
+`Worker` instance as an extra argument so the shared handler can route
+each result to its own callback) are connected **exactly once, at
+import time, for the life of the process** — never disconnected. Every
+`Worker.run()` emits through this same fixed-address object instead of
+constructing a new one. This doesn't eliminate emit()'s own exposure
+(still a real cross-thread emit, still theoretically poolable-mutex-
+collidable), but it eliminates the *other*, much larger half of the
+volume: `connect()`/`disconnect()` calls, which need mutex-pool slots
+for BOTH sender and receiver (confirmed via Qt's own internals: "to
+modify a Connection you need to lock two mutexes"), previously
+happening on every single task.
+
+Verified live, escalating the stress level rather than stopping at
+one comfortable result: **0/15, then 0/20 hangs** at the SAME
+with-widgets repro that broke the RLock (47% hang rate) — including at
+2000 iterations, the exact stress level that hung the ORIGINAL design
+on its very first attempt in this task's own earlier session. Also
+verified **functional correctness**, not just absence of hanging — a
+dedicated script running 1000-1500 concurrent tasks with unique,
+distinguishable results (and roughly 1% deliberately raising) confirmed
+every result and error was delivered to its own correct callback, with
+the caveat that `pool.waitForDone()` alone doesn't pump the receiving
+event loop (a real gap in the first version of this correctness check,
+which reported "0 results" until `app.processEvents()` was added to
+actually drive delivery of the QUEUED cross-thread signal — a real
+mistake caught and fixed before trusting the result, not a target
+outcome assumed in advance).
+
+**Step 6 — the redesign introduced a real, NEW, separate bug: a
+genuine, reproducible segfault — exactly the cautionary pattern this
+task was warned about going in, and treated with the same seriousness
+item 32's own analogous crash got.** Running the full
+`tests/test_ui_smoke.py` suite (not the isolated repro — the same
+lesson item 32 itself teaches about verifying broadly) against the new
+dispatcher design crashed with a real, reliably-reproducible
+`Fatal Python error: Segmentation fault`, in
+`pytestqt.plugin._process_events` during test teardown — the *exact*
+same crash location item 32's own unsafe first attempt hit, though
+confirmed via direct A/B testing to be a **new, different** bug: the
+unmodified original (pre-dispatcher) code ran clean 3/3 times; the
+dispatcher version crashed reliably 3/3 times.
+
+Root-caused rather than patched blind: `QThreadPool`'s C++ side
+auto-deletes a `QRunnable` the instant `run()` returns, unless told
+not to — confirmed live (`QRunnable` subclass, fresh instance,
+`.autoDelete()` returns `True` by default). The dispatcher's `emit()`
+call passes `self` (the `Worker`) through the signal as its LAST
+statement inside `run()` — meaning the underlying C++ object can be
+(and, per the crash, reliably was) deleted by `QThreadPool` a few CPU
+cycles after `run()` returns, racing ahead of the QUEUED signal's
+delivery on the main thread. By the time `_handle_task_finished`
+finally ran, `worker` could be a dangling reference to an
+already-deleted C++ object. The ORIGINAL per-task design never hit
+this because it never passed the `Worker` itself through any signal
+at all — only the plain, already-copied-out result value or error
+string. Fixed with `self.setAutoDelete(False)` in `Worker.__init__`,
+with the full reasoning recorded inline in the code, not just here.
+Reran the full suite **15/15 clean** immediately after the fix (5
+initial + 10 more), then the complete repo-wide suite **3/3 clean**.
+
+**Final verification — the regression test that ships.**
+`tests/test_workers_deadlock_regression.py` runs the real repro
+(`tests/_workers_deadlock_repro.py`, matching Step 3's script) in 50
+separate subprocesses, each with an 8-second hard wall-clock timeout —
+the failure mode is a literal, unrecoverable freeze, so this test can
+never itself hang, no matter what regresses. A second test runs the
+correctness repro (`tests/_workers_correctness_repro.py`) the same
+way. Confirmed both directions live, not just the post-fix pass:
+running this exact test file against the untouched original
+(pre-dispatcher) `workers.py` failed with **42/50 trials timing out**;
+against the final, fixed `workers.py`, both tests pass — reran the
+deadlock trial count directly (not just via pytest) at **50/50 clean**
+and, at nearly 4x the per-trial stress level (1500 vs. 400
+iterations), **20/20 clean**. Full repo-wide suite: **455 passed, 1
+skipped**, run three times in a row.
+
+**Outcome.** The "Known issues" entry is updated from "mitigated, not
+fixed" to fixed. `mypy --strict` clean across all `src/` files
+throughout every step of this task, including both the RLock spike and
+the dispatcher redesign.
+

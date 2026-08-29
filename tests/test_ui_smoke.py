@@ -373,11 +373,28 @@ def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
 
 
 def test_worker_emits_finished_with_result():
+    # Worker no longer owns a per-instance `.signals` object — every
+    # worker reports through the one shared, permanently-connected
+    # `_dispatcher` (see workers.py's own docstring for why: a fresh
+    # per-task QObject+connect()/disconnect() cycle was confirmed live
+    # to cause a real, reproducible deadlock). Connect directly to the
+    # dispatcher and filter by worker identity, the same way
+    # _handle_task_finished itself does.
     worker = Worker(lambda: 42)
     results = []
-    worker.signals.finished.connect(results.append)
 
-    worker.run()
+    def on_finished(w: object, result: object) -> None:
+        if w is worker:
+            results.append(result)
+
+    # Disconnected in finally — this connects to the one PERMANENT,
+    # shared dispatcher, so a test-local connection left dangling would
+    # linger for the rest of the process, not just this test.
+    workers_module._dispatcher.task_finished.connect(on_finished)
+    try:
+        worker.run()
+    finally:
+        workers_module._dispatcher.task_finished.disconnect(on_finished)
 
     assert results == [42]
 
@@ -388,9 +405,16 @@ def test_worker_emits_error_on_exception():
 
     worker = Worker(boom)
     errors = []
-    worker.signals.error.connect(errors.append)
 
-    worker.run()
+    def on_error(w: object, message: str) -> None:
+        if w is worker:
+            errors.append(message)
+
+    workers_module._dispatcher.task_error.connect(on_error)
+    try:
+        worker.run()
+    finally:
+        workers_module._dispatcher.task_error.disconnect(on_error)
 
     assert errors == ["simulated failure"]
 

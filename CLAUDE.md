@@ -235,42 +235,41 @@ uv run mypy --strict src/  # type check — must stay clean
       as an incidental signal). `tests/test_spotify_client.py` updated
       to match the real live entry shape and to cover the non-track
       skip.
-- [ ] **Known, NOT fixed: a real, reproducible deadlock in
-      `ui/workers.py`'s cross-thread signal handling under heavy,
-      rapid, concurrent `run_worker()` use.** Found live while building
-      roadmap item 5's Duplicates tab (2026-08-29) — an eagerly-started
-      background worker added inside `MainWindow.__init__` (fetching
-      library locations for every construction) made the full UI test
-      suite hang indefinitely; `sample`-profiling the stuck process
-      showed a genuine two-lock inversion: a pooled worker thread mid-
-      `.emit()` held Qt's internal connection-list mutex
-      (`QBasicMutex::lockInternal`) while blocked waiting for the GIL
-      (to safely copy the Python result object into a queued
-      `QMetaCallEvent`), while the main thread — holding the GIL —
-      was blocked inside a NEW `QObject::connect()` call (constructing
-      another widget/worker) waiting for that same Qt mutex. Confirmed
-      reproducible more than once, with slightly different stacks
-      (`disconnectNotify` one time, `connectImpl` another), both the
-      identical root pattern. **Mitigated, not fixed:** the specific
-      trigger (an eager `run_worker()` call inside a widget constructor
-      invoked many times in quick succession) was removed — the
-      Duplicates tab now loads its location list lazily, on first real
-      tab-switch, not during construction (see `main_window.py`'s
-      `_on_tab_changed`). This resolved the concrete symptom without
-      touching `workers.py`'s actual cross-thread signal-handling
-      design, which is what would need to change to rule the class of
-      bug out entirely. Item 32's own 300-second real stress test
-      (heavy overlapping Sync/Scan/Match/Download activity against a
-      single long-lived `MainWindow`) never hit this, suggesting the
-      real risk may be specific to many independent `MainWindow`/
-      `QThreadPool` instances churning rapidly in one process (this
-      project's own test suite's pattern) rather than sustained
-      single-session real usage — but this is NOT proven safe, only
-      not yet observed outside the test-churn pattern. Worth a
-      dedicated future investigation before adding more eager
-      `run_worker()` call sites, especially inside a widget constructor
-      or any other code path that can run many times in quick
-      succession. [HISTORY §39](docs/HISTORY.md#39)
+- [x] Fixed: a real, reproducible deadlock in `ui/workers.py`'s
+      cross-thread signal handling under heavy, rapid, concurrent
+      `run_worker()` use — previously recorded here as "mitigated, not
+      fixed" (found live while building roadmap item 5's Duplicates
+      tab). Root cause: Qt's own connect()/disconnect()/emit()
+      bookkeeping is guarded by a striped pool of mutexes keyed by
+      object address, and the original design created a fresh
+      `WorkerSignals` QObject and called connect()/disconnect() on it
+      for every single task — enough distinct addresses cycling
+      through that pool, concurrently with ordinary Qt widget
+      construction (which does its own internal connect() calls we
+      don't control), to deadlock a worker thread mid-`.emit()`
+      (holding a mutex-pool slot, waiting on the GIL) against the main
+      thread mid-`connect()` (holding the GIL, waiting for that same
+      slot). Fixed for real (not just mitigated) by replacing the
+      per-task QObject+connect()/disconnect() cycle with one shared,
+      permanently-connected dispatcher — connected exactly once, at
+      import time, never disconnected — so the only Qt connection-list
+      operation happening on a hot path is `.emit()` on a single fixed
+      address, not a constantly-growing population of them. A first
+      attempt (a `threading.RLock` around the same calls) was tried,
+      confirmed live to reduce but NOT eliminate the hang (Qt's own
+      internal widget-construction connects aren't ours to wrap in a
+      Python lock), and abandoned in favor of the dispatcher per the
+      task's own explicit "verify live, switch approach if the
+      surgical fix doesn't hold up" instruction. The redesign itself
+      introduced one new real bug along the way — a genuine, repeatable
+      segfault from `QThreadPool`'s default `autoDelete()` freeing a
+      `Worker` the instant `run()` returns, racing the queued signal
+      that still needed to pass that same `worker` reference to the
+      main thread — fixed with `self.setAutoDelete(False)`. Proven via
+      a real regression test (`tests/test_workers_deadlock_regression.py`,
+      50 subprocess trials with a hard wall-clock timeout each): 43/50
+      hung on the pre-fix design, 0/50 (and 0/20 at ~4x the stress
+      level) on the fixed one. [HISTORY §39](docs/HISTORY.md#39)
 
 ## Roadmap (direction, not urgent)
 
@@ -2057,13 +2056,17 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     location combo (scoped to one location, never all of them — the
     UI counterpart to the CLI's own scoping), "Compute fingerprints"/
     "Find duplicates" buttons, and a results table. **A real,
-    significant concurrency bug was found and fixed while wiring this
-    up — see the new unfixed "Known issues" entry above and
+    significant concurrency bug was found while wiring this up, and
+    later fixed for real (not just mitigated) in a dedicated follow-on
+    task — see the "Known issues" entry above and
     [HISTORY §39](docs/HISTORY.md#39) for the full investigation**: the
-    location combo now loads lazily on first real tab-switch
+    location combo loads lazily on first real tab-switch
     (`_on_tab_changed`), not eagerly during `MainWindow.__init__`,
-    specifically because the eager version triggered a real,
-    reproducible deadlock. No Replace/Decline actions exist yet on this
+    since the eager version was what originally triggered the
+    deadlock — this lazy-loading choice stays in place even after the
+    underlying `ui/workers.py` bug was fixed, since it's also just a
+    better fit for the UI (a real user reaches this tab far less often
+    than every window construction). No Replace/Decline actions exist yet on this
     tab — intentionally read-only, matching the task's own build order.
     UI verification is mock-level (mirrors this project's own "real
     backend + thorough mocked UI wiring" split used elsewhere, e.g.
