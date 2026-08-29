@@ -1,0 +1,16 @@
+Seeker — first launch on this Mac
+==================================
+
+This build isn't notarized by Apple (that needs a paid Apple Developer
+account), so macOS Gatekeeper will warn that it's "from an unidentified
+developer" the first time you open it on a machine other than the one
+that built it. This is expected, not a sign anything's wrong.
+
+To open it the first time:
+
+  1. Drag Seeker.app into Applications (if you haven't already).
+  2. Right-click (or Control-click) Seeker.app and choose "Open".
+  3. Click "Open" again in the dialog that appears.
+
+After that first launch, Seeker opens normally with a plain
+double-click, like any other app.

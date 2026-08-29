@@ -22,10 +22,21 @@ import os.path
 application = defines.get("app", "dist/Seeker.app")  # noqa: F821 — injected by dmgbuild
 appname = os.path.basename(application)
 
+# Item 4 (packaging polish): a plain-text first-launch note, alongside
+# the app inside the volume — the "right-click -> Open" Gatekeeper
+# workaround, spelled out for someone who's never hit it before. Not a
+# substitute for real notarization (still out of scope — see
+# seeker.spec's own docstring), just documentation for the friction
+# that comes with skipping it.
+readme = defines.get(  # noqa: F821 — injected by dmgbuild
+    "readme", "packaging/Read Me First.txt",
+)
+readme_name = os.path.basename(readme)
+
 format = defines.get("format", "UDBZ")  # noqa: F821 — bzip2-compressed, read-only
 filesystem = "HFS+"
 
-files = [application]
+files = [application, readme]
 symlinks = {"Applications": "/Applications"}
 
 # No custom .icns exists for this app yet — a known, documented
@@ -34,7 +45,7 @@ symlinks = {"Applications": "/Applications"}
 # through to dmgbuild's own defaults (None) — the volume and its badge
 # just use the generic default icon; this is not an error condition.
 
-window_rect = ((100, 100), (640, 320))
+window_rect = ((100, 100), (640, 400))
 default_view = "icon-view"
 show_status_bar = False
 show_tab_view = False
@@ -49,9 +60,10 @@ label_pos = "bottom"
 
 # The one concrete layout ask for this pass: the app and the
 # /Applications symlink side by side, so a drag-to-install is obvious
-# the moment the volume opens. A background image is optional polish,
-# not attempted here.
+# the moment the volume opens, with the first-launch README below them.
+# A background image is optional polish, not attempted here.
 icon_locations = {
     appname: (160, 160),
     "Applications": (480, 160),
+    readme_name: (320, 300),
 }

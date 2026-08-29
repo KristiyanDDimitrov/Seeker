@@ -28,14 +28,28 @@ app only. The onboarding wizard's existing Docker detection/bring-up
 flow (docker_setup.py) is unchanged and still expects a real, separate
 Docker install.
 
-Code signing / notarization: explicitly out of scope (needs a paid
-Apple Developer account this environment doesn't have). The hook point
-for it is `codesign_identity=`/`entitlements_file=` on the `EXE(...)`
-call below, and a real notarization step would run against the built
-`.app` afterward (`xcrun notarytool` / `stapler`) — left as a clear,
-documented no-op rather than attempted. This build is unsigned;
-Gatekeeper will warn on first launch on a machine that isn't this one
-— expected, not a bug to route around.
+Code signing / notarization: real notarization is explicitly out of
+scope (needs a paid Apple Developer account this environment doesn't
+have). The hook point for a real signing identity is
+`codesign_identity=`/`entitlements_file=` on the `EXE(...)` call below
+(currently `None`), and a real notarization step would run against the
+built `.app` afterward (`xcrun notarytool` / `stapler`) — left as a
+clear, documented no-op rather than attempted.
+
+**Confirmed live (item 4, packaging polish task): the build is NOT
+fully unsigned even with `codesign_identity=None`.** PyInstaller's own
+`osxutils.sign_binary()` defaults to ad-hoc signing (`codesign -s -`)
+whenever no real identity is given, and applies this to both the
+individual frozen executable (during `EXE`) and the whole `.app`
+bundle, `--deep` (during `BUNDLE`) — verified directly against a real
+build: `codesign -dvvv dist/Seeker.app` shows `flags=0x2(adhoc)` /
+`Signature=adhoc`, and `codesign --verify --deep --strict
+dist/Seeker.app` exits 0. This is real and already happening — no
+extra build step was needed to add it. It does NOT satisfy Gatekeeper
+(`spctl --assess` still reports "rejected", as expected — ad-hoc
+signing isn't notarization), so first-launch-on-another-Mac still needs
+the right-click → Open workaround, which is why `packaging/Read Me
+First.txt` (bundled into the `.dmg` — see dmg_settings.py) exists.
 """
 
 import sys

@@ -384,9 +384,9 @@ has).
 
 | Platform | Status |
 | --- | --- |
-| macOS | Built and live-verified on this machine (see below) |
-| Windows | Spec is written and cross-platform (only the macOS `.app` `BUNDLE()` step is platform-gated) — **not run on a real Windows machine**, no such environment available here |
-| Linux | Same spec, same caveat — **not run on a real Linux machine** |
+| macOS | Built and live-verified on this machine, including a `.dmg` installer (see below) |
+| Windows | `seeker.spec` is cross-platform (only the macOS `.app` `BUNDLE()` step is platform-gated); an Inno Setup installer script (`packaging/seeker.iss`) is also written — **neither has been run on a real Windows machine**, no such environment available here |
+| Linux | Same `seeker.spec`, same caveat — **not run on a real Linux machine**; a real installer format (AppImage/`.deb`) isn't scoped yet, see CLAUDE.md's roadmap |
 
 Don't treat the Windows/Linux rows as verified just because the same
 `.spec` file covers them; they're the honest, written-but-unverified
@@ -459,13 +459,21 @@ uv run python packaging/build_dmg.py
 ```
 
 `packaging/dmg_settings.py` lays out a standard drag-to-install
-volume: the app and an `/Applications` symlink side by side, a sized
-window, no clutter (status bar/toolbar/sidebar all off). **No custom
-`.icns` exists for this app yet** — a known, acceptable cosmetic gap
-for this pass, not attempted; the volume and the app both fall through
-to PyInstaller/macOS's generic default icon rather than erroring.
-Background-image polish is similarly left out — optional, not
-required for a working installer.
+volume: the app, an `/Applications` symlink, and a `Read Me First.txt`
+side by side, a sized window, no clutter (status bar/toolbar/sidebar
+all off). **No custom `.icns` exists for this app yet** — a known,
+acceptable cosmetic gap, deliberately deferred (guidance on what's
+wanted comes later — see CLAUDE.md); the volume and the app both fall
+through to PyInstaller/macOS's generic default icon rather than
+erroring. Background-image polish is similarly left out — optional,
+not required for a working installer.
+
+**`Read Me First.txt`** spells out the one real friction point an
+unsigned-by-a-paid-developer-account build has: first launch on any
+Mac other than the one that built it needs right-click (or
+Control-click) → Open, then Open again in the dialog, instead of a
+plain double-click — the standard Gatekeeper workaround for an
+app that's signed (see below) but not notarized.
 
 **Relocation live-verified for real (2026-08-29) — this is the one
 thing a same-location `.app` launch can't catch.** Built the real
@@ -491,17 +499,75 @@ binary was built and driven, is in `docs/HISTORY.md`'s packaging
 entry. Test copies were removed from `/Applications` after
 verification — this doesn't leave anything installed.
 
-Same as the `.app` itself: **unsigned, unnotarized** — Gatekeeper will
-warn on first launch on any machine other than the one that built it.
-Code signing/notarization is out of scope here for the same reason as
-the `.app` build (needs a paid Apple Developer account this
-environment doesn't have) — see the hook points noted below.
+Same as the `.app` itself: **ad-hoc signed, not notarized** — confirmed
+live, not assumed: PyInstaller's build already ad-hoc-signs both the
+frozen executable and the whole `.app` bundle by default
+(`codesign -dvvv` on a real build shows `Signature=adhoc`,
+`codesign --verify --deep --strict` exits 0) — no extra build step was
+needed to add this. Ad-hoc signing does NOT satisfy Gatekeeper's
+notarization check (`spctl --assess` still reports
+"rejected" — expected, this is normal for any non-notarized build), so
+Gatekeeper still warns on first launch on any machine other than the
+one that built it; right-click → Open (spelled out in the `.dmg`'s own
+`Read Me First.txt`, see above) is still the workaround. Real
+notarization is out of scope here for the same reason as the `.app`
+build (needs a paid Apple Developer account this environment doesn't
+have) — see the hook points noted below.
 
-**Code signing / notarization is deliberately out of scope** — it
-needs a paid Apple Developer account and credentials only the project
-owner can provide. The build is unsigned; Gatekeeper will warn on
-first launch on any machine other than the one that built it (expected
-— not a bug to route around). The hook points for adding it later are
-documented directly in `packaging/seeker.spec`: `codesign_identity=`/
+**Real notarization is deliberately out of scope** — it needs a paid
+Apple Developer account and credentials only the project owner can
+provide. Ad-hoc signing (see above) already happens automatically;
+what's missing is a real signing *identity* and Apple's notarization
+service, so Gatekeeper still warns on first launch on any machine
+other than the one that built it (expected — not a bug to route
+around). The hook points for adding real signing later are documented
+directly in `packaging/seeker.spec`: `codesign_identity=`/
 `entitlements_file=` on the `EXE(...)` call, plus a real
 `xcrun notarytool`/`stapler` pass against the built `.app` afterward.
+
+### Building the Windows installer
+
+**Written but not verified on a real Windows machine — no such
+environment exists in this project's development session.** Treated
+the same honest way as the Windows/Linux rows in the platform table
+above: don't assume this works until someone actually runs it on
+Windows.
+
+The Windows equivalent of the `.dmg`: a real `Setup.exe` with Start
+Menu/Desktop shortcuts and a standard uninstall entry, built with
+[Inno Setup](https://jrsoftware.org/isinfo.php) wrapping the same
+PyInstaller onedir build (`dist/Seeker/`) `seeker.spec` already
+produces. Same structural pattern as the macOS pairing
+(`dmg_settings.py` + `build_dmg.py`): `packaging/seeker.iss` is the
+installer definition, `packaging/build_windows_installer.py` chains
+the PyInstaller build and the Inno Setup compile into one command.
+
+Inno Setup itself is a real, separate Windows-only tool this project's
+`uv`-managed dependencies can't install for you — install it once
+(https://jrsoftware.org/isdl.php) so its command-line compiler,
+`ISCC.exe`, is on `PATH` (or pass its path via `--iscc`). This mirrors
+the existing Docker/slskd relationship: a real external prerequisite
+the wizard/build tooling expects but doesn't bundle.
+
+```
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+ISCC.exe packaging\seeker.iss
+```
+
+or, chained into one command:
+
+```
+uv run python packaging/build_windows_installer.py
+```
+
+Produces `dist/SeekerSetup.exe`. `packaging/seeker.iss`'s `AppId` is a
+fixed GUID (generated once for this project) — Inno Setup uses it to
+recognize reinstalls/upgrades as the same app rather than installing
+side by side; never regenerate it. No custom `.ico` exists yet, the
+same deliberately deferred cosmetic gap as macOS's missing `.icns` —
+the installer, shortcuts, and uninstaller all fall back to a generic
+icon. No code signing is configured (Windows' equivalent of macOS's
+Gatekeeper warning — SmartScreen — will likely flag an unsigned
+`Setup.exe`; a real Windows code-signing certificate is a similar
+paid-prerequisite gap to Apple notarization, and is out of scope here
+for the same reason).

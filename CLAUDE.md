@@ -1725,6 +1725,66 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     landing on the done page first, then click Continue. No mention on
     the daily-use Dashboard/Downloads/Review screens, as scoped.
 
+36. **Packaging polish (2026-08-29) — macOS done and re-verified,
+    Windows written-but-unverified, Linux deliberately deprioritized.**
+
+    **macOS.** The task's own ask — "add ad-hoc self-signing as a build
+    step if it genuinely reduces friction" — turned out to already be
+    true and required zero code changes: PyInstaller's `BUNDLE()`/`EXE()`
+    steps ad-hoc-sign (`codesign -s -`) both the frozen executable and
+    the whole `.app` bundle by default whenever no real
+    `codesign_identity` is given (`osxutils.sign_binary()`'s own
+    default), confirmed live against a real fresh build — `codesign
+    -dvvv dist/Seeker.app` shows `flags=0x2(adhoc)`/`Signature=adhoc`,
+    `codesign --verify --deep --strict` exits 0. `spctl --assess` still
+    correctly reports "rejected" (ad-hoc signing isn't notarization —
+    Gatekeeper still warns on another machine's first launch), so the
+    real, still-needed friction point is the right-click → Open
+    workaround, not the absence of any signature at all — `seeker.spec`
+    and README previously described the build as plain "unsigned,"
+    which undersold what's actually happening; both corrected to say
+    "ad-hoc signed, not notarized."
+
+    Added `packaging/Read Me First.txt` (bundled into the `.dmg`
+    alongside `Seeker.app`, via `dmg_settings.py`'s `files`/
+    `icon_locations` — window resized taller, `((100,100),(640,400))`,
+    to fit the third icon) spelling out that right-click → Open
+    workaround for someone hitting it for the first time. Rebuilt and
+    live-verified the real `.dmg`: mounted it (`hdiutil attach`),
+    confirmed `Seeker.app`, the `Applications` symlink, and `Read Me
+    First.txt` (with the exact intended text) all present on the real
+    volume.
+
+    Icon: skipped entirely, as scoped — no `.icns` generated
+    speculatively; the existing generic-icon fallback is untouched.
+
+    **Windows — written, explicitly unverified (no real Windows machine
+    in this environment).** `packaging/seeker.iss` (Inno Setup script)
+    + `packaging/build_windows_installer.py` (chaining wrapper) mirror
+    `dmg_settings.py`/`build_dmg.py`'s exact structural pattern: wraps
+    `seeker.spec`'s same PyInstaller onedir output (`dist/Seeker/`)
+    into a real `SeekerSetup.exe` with Start Menu/Desktop shortcuts and
+    a standard uninstall entry. Inno Setup itself (specifically its
+    command-line compiler, `ISCC.exe`) is a real, separate Windows-only
+    tool — not a `uv`-managed dependency, the same relationship this
+    project already has with Docker for slskd. `AppId` is a fixed,
+    generated-once GUID (`08479AF0-7643-4688-B183-4E3A3431DE4D`) so a
+    future reinstall/upgrade replaces in place — never regenerate it.
+    No `.ico` exists yet (same deferred-icon gap as macOS); no Windows
+    code-signing certificate configured (SmartScreen will likely flag
+    the unsigned `Setup.exe` — same paid-prerequisite gap as Apple
+    notarization). **Real verification on an actual Windows machine is
+    still outstanding** — don't treat this as proven just because the
+    same structural pattern already works on macOS.
+
+    **Linux — not scoped, tracked as a real future direction only** —
+    see item 37 below (Linux AppImage/`.deb` packaging), not attempted
+    here.
+
+37. Linux packaging (AppImage or `.deb`) is a real, deliberately
+    deprioritized future option — not scoped or attempted as part of
+    item 36. Direction, not urgent.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
