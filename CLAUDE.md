@@ -1504,6 +1504,137 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     afterward via `seeker check`, matching the state before this task
     started. [HISTORY §31](docs/HISTORY.md#31)
 
+32. **Broad end-to-end stress test (2026-08-29) — done; two real,
+    previously-undetected resource leaks found and fixed, both
+    confirmed via a live repro before and after the fix, not
+    inferred.** Different in kind from every prior verification in
+    this project — not one feature proven and moved on from, but the
+    whole real pipeline driven together, overlapping and sustained,
+    specifically hunting for bugs that only show up under combined,
+    extended real usage.
+
+    **§0 audits, done first — one came back clean, one surfaced the
+    two real bugs.** Audited every `Database`/`httpx`/file-handle/
+    `HTTPServer` usage in the codebase for the resource-leak pattern
+    already found once in `Database.initialize()` (item 29) — clean:
+    every DB call site goes through the properly-closing
+    `Database.transaction()`, never raw `.connect()`; every HTTP call
+    is a stateless `httpx.get`/`.post()` (no persistent `httpx.Client`
+    anywhere to leak); every file write is `Path.write_text()`/
+    `.read_text()` or mutagen's own self-managed file handles (no raw
+    `open()` calls in application code at all); `wait_for_callback()`
+    already calls `server_close()`. Also audited every `.connect()` in
+    `ui/*.py` (~35 signal connections, every `QTimer.timeout` included)
+    for a `run_worker` bypass — also clean: every call that touches
+    `self.application.*` is routed through `run_worker`, confirmed
+    call site by call site rather than sampled.
+
+    **Bug 1 — `SettingsWindow`/`OnboardingWizard`/`MainWindow` never
+    actually get destroyed on `close()`.** A parentless top-level
+    `QMainWindow`'s `close()` only *hides* it by default in Qt — real,
+    ordinary usage (open Settings, close it, reopen it) leaked ~2MB of
+    real RSS per cycle, confirmed via an isolated repro (40 real
+    open/close cycles, explicit `gc.collect()` between each,
+    `gc.get_objects()` count climbing linearly and non-negotiably —
+    genuinely unreachable-but-uncollected, not just slow GC timing).
+    Fixed with `Qt.WidgetAttribute.WA_DeleteOnClose` on all three
+    top-level windows, which makes `close()` actually schedule real
+    deletion.
+
+    **Bug 2 — a reference cycle in `run_worker` invisible to Python's
+    own cyclic GC.** `handle_finished`/`handle_error` both close over
+    `worker` itself (to call `_active_workers.discard(worker)`) and
+    are connected to `worker.signals.finished`/`.error` — `worker` →
+    `worker.signals` → [Qt connection] → the handler → `worker` again.
+    The Qt/shiboken side of a signal connection isn't visible to
+    Python's cycle tracer, so this leak was real and permanent, not
+    just uncollected garbage — confirmed by the same repro (with
+    `WA_DeleteOnClose` alone still in place): `gc.get_objects()`
+    stopped climbing per-cycle by ~87% but a real, still-linear ~285
+    objects/cycle residual remained, and a direct type-count scan
+    found every single `Worker`/`WorkerSignals`/`SettingsWindow`
+    instance ever constructed still alive.
+
+    **The fix for Bug 2 needed a second iteration — its first attempt
+    caused a real, reproducible segfault, caught by the full suite,
+    not the isolated repro.** Manually calling
+    `worker.signals.finished.disconnect()` from inside
+    `handle_finished` itself — the handler that signal's own emission
+    had just invoked — crashed the full test suite consistently, every
+    run, deep in Qt's own event processing during a later, unrelated
+    test's teardown. Mutating a signal's connection list while that
+    same signal is mid-emission is undefined behavior in Qt's C++
+    layer; Python-level try/except can't protect against it. Confirmed
+    this was genuinely the cause (not `WA_DeleteOnClose`, the other
+    same-session change) by reverting each independently against the
+    full suite. Real fix: `Qt.ConnectionType.SingleShotConnection` on
+    both `connect()` calls (Qt safely disconnects its own connection
+    internally, immediately after that one emission finishes — no
+    Python-side mid-emission mutation at all), plus an explicit manual
+    disconnect of only the *other*, non-firing signal in each handler
+    (safe, since that one was never mid-emission).
+
+    **Combined fix, confirmed clean:** the same 40-cycle repro now
+    shows `gc.get_objects()` completely flat (identical count across
+    every checkpoint from cycle 5 through cycle 35) and zero live
+    `Worker`/`WorkerSignals`/`SettingsWindow`/`QThreadPool` instances
+    after a `gc.collect()` — a complete fix, not a reduction. Full test
+    suite (379 passed, 1 skipped) run three times in a row with no
+    crash, after previously crashing on every run with the unsafe
+    manual-disconnect version.
+
+    **The real, sustained stress run (2026-08-29, 302 real seconds,
+    against production data) — the harness itself, not just the two
+    bugs above.** Real `Application`/`MainWindow` under
+    `QT_QPA_PLATFORM=offscreen` (the same mechanism proven in the
+    packaging task's own retry): fired Sync/Scan/Match overlapping,
+    not sequentially, and they settled cleanly (215 real playlists
+    synced, one real library change found, tracks reclassified — Auto:
+    9, Unmatched: 4); fired 3 concurrent download operations across two
+    playlists (bypassing `MainWindow`'s single-selection download
+    button via direct `download_playlist()` calls through the same
+    real `run_worker`/`QThreadPool` mechanism, plus one real UI button
+    click) — a real service-layer dedup guard correctly reported
+    "Already in progress ... skipping" for all 4 real tracks already
+    mid-download rather than double-submitting; interleaved 20 real
+    Settings open/close cycles with playlist-selection switching while
+    background work (the real 20s backend-poll timer) kept running;
+    changed `auto_match_threshold`/`needs_review_threshold` mid-session
+    via the real Settings save button and confirmed the SAME
+    already-constructed `TrackMatcher` picked it up on its very next
+    `match_all()` call with no restart (matches item 28 §4's own
+    precedent, now proven under a busier, more realistic session), then
+    restored the original values in a `finally` block, confirmed by an
+    independent reload. Real resource numbers over the full run: RSS
+    218.1MB → 276.4MB (nearly all of it — ~53MB — in the first 2
+    seconds of real object construction and the overlapping sync/scan/
+    match burst; only ~4.5MB more across the remaining 270 seconds and
+    18 interleaved cycles, ≈0.25MB/cycle, matching the isolated repro's
+    own small legitimate residual); open file descriptors 6 → 21
+    (stable, no growth across the interleaved cycles); threads 5 → 9
+    (stable, fluctuating, never climbing); `active_workers` at 0 at the
+    end (every worker drained). Real production DB/config confirmed
+    unchanged afterward — `seeker check` reported the identical
+    breakdown before and after, and the real `config.json` thresholds
+    were confirmed restored to their real pre-existing values (70.0/
+    60.0, the same values item 28's own live verification set).
+
+    **Durable regression guard, not a one-off script.**
+    `tests/test_stress_e2e.py` — opt-in only
+    (`SEEKER_RUN_STRESS_TEST=1`; duration overridable via
+    `SEEKER_STRESS_DURATION_SECONDS`, default 300s), skipped in the
+    normal fast suite the same way the X9-Pro-drive tests are, plus an
+    explicit opt-in gate on top since — unlike that skip — the
+    infrastructure being present isn't enough reason to run something
+    this slow and consequential by default. Asserts bounded RSS/fd/
+    thread growth against generous-but-real ceilings and that
+    `active_workers` is empty at the end — this specific assertion is
+    what would have caught both bugs above proactively. `psutil` added
+    as a dev dependency for real process-level sampling (RSS, open fd
+    count, thread count) — cross-platform, not shelling out to `ps`/
+    `lsof`.
+    [HISTORY §32](docs/HISTORY.md#32)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

@@ -11,7 +11,7 @@ investigation. If you're trying to understand *why* a fix looks the way
 it does, or want the full evidence behind a "verified live" claim, this
 is the file to read — `CLAUDE.md` deliberately does not repeat it.
 
-Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-31).
+Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-32).
 
 ---
 
@@ -4686,3 +4686,348 @@ pass unmodified (`packaging/build_dmg.py`/`dmg_settings.py` are typed
 plainly but live outside `src/`, matching where `packaging/
 entrypoint.py`/`seeker.spec` already live and are already excluded
 from `mypy --strict src/`'s scope).
+
+### 32
+
+Broad end-to-end stress test: run the whole real pipeline together,
+overlapping and sustained, hunting specifically for the class of bug
+that only shows up under combined, extended real usage — not
+re-confirming individual features already proven narrow-and-real
+elsewhere in this project's history. Genuinely found two real,
+previously-undetected resource leaks, fixed both, and one of the
+fixes itself needed a second iteration after its first attempt caused
+a real, reproducible segfault — this entry is the full, honest
+narrative of all of it, not just the clean final state.
+
+**§0a — resource-leak pattern audit, came back clean beyond the
+already-known/fixed case.** Item 29's own polish pass had already
+found and fixed one real leak (`Database.initialize()`'s `with
+self.connect() as connection:` never actually closing — sqlite3's
+context-manager protocol only manages commit/rollback). This task's
+brief explicitly asked to check whether that's the only instance of
+the pattern, matching this project's own repeated precedent that one
+instance of a bug class is worth checking for elsewhere (`matching.py`
+duplication, `download_dedup.py`, the lock-rejection classification
+at both call sites — see items 3/13/25).
+
+Grepped every `.connect()`/`sqlite3.connect`/`with ... as connection`
+across `database/`, every module — confirmed every real call site
+(`dashboard_service.py`, `library/service.py`, `library/scanner.py`,
+`library/matcher.py`, `library/metadata_service.py`,
+`spotify/sync_service.py`, `soulseek/download_service.py`, ~35 call
+sites total) goes through `Database.transaction()`, which already
+closes correctly in its own `finally` block — `connection.py` itself
+is the only place that ever calls the raw `.connect()`, and both of
+ITS own callers (`transaction()`, and `initialize()` since item 29's
+fix) already close it. No other instance of the pattern exists.
+
+Extended the audit to every other resource class named in the brief:
+- **HTTP clients** — grepped for `httpx.Client`/`httpx.AsyncClient`/
+  `self.client =`/`.close()` across every module: none exist anywhere.
+  Every HTTP call in this codebase (`spotify/client.py`,
+  `soulseek/client.py`, `spotify/auth.py`, `docker_setup.py`) uses
+  `httpx`'s stateless module-level `httpx.get`/`.post()` functions,
+  each of which opens and closes its own connection internally per
+  call — there's no persistent client object to leak in the first
+  place.
+- **File handles** — grepped for `open(` across every module (beyond
+  `webbrowser.open`, which isn't a file handle at all): zero raw
+  `open()` calls exist in application code. `config_store.py`/
+  `spotify/token_store.py` use `Path.write_text()`/`.read_text()`
+  (open-write-close or open-read-close in one call, no lingering
+  handle). `metadata.py`/`scanner.py`'s mutagen usage
+  (`MutagenFile(path)`, `MP3`/`FLAC`/`MP4`) never holds a raw file
+  descriptor between calls by mutagen's own design — confirmed by
+  reading the actual call sites, not assumed from mutagen's general
+  reputation.
+- **`HTTPServer`** — `callback_server.py::wait_for_callback()` already
+  calls `server.handle_request()` then `server.server_close()`; no gap
+  found.
+
+**§0b — `run_worker` bypass audit, also came back clean.** Grepped
+every `.connect(` across `src/seeker/ui/*.py` (~35 real signal
+connections, every `QTimer.timeout.connect` included:
+`MainWindow.poll_timer`'s three connections,
+`MainWindow.backend_poll_timer`, `OnboardingWizard`'s health-poll
+timer) and every `self.application.` reference in the same files.
+Cross-checked each one individually rather than sampling: every call
+that touches a real service method (`sync_service`, `library_service`,
+`track_matcher`, `download_service`, `dashboard_service`,
+`metadata_service`, `connect_spotify`, `persist_soulseek_config`) is
+routed through `run_worker`, confirmed call site by call site — the
+handful that call `self.application.*` directly and synchronously
+(`spotify_configured`/`soulseek_configured` boolean checks,
+`self.application._config_store` reads for rendering) are all cheap,
+non-blocking, already-in-memory property reads, not I/O. No bypass
+found anywhere.
+
+**Bug 1, found via a live repro, not theorized and left unverified.**
+Given the audits came back clean, moved to actually building and
+running the stress harness (§1 below) rather than assuming there was
+nothing left to find. The harness's own design — repeatedly opening
+and closing `SettingsWindow` mid-session, a completely ordinary real
+usage pattern — is what surfaced this.
+
+First real full-duration run (300s default) FAILED its own RSS-growth
+assertion: `AssertionError: RSS grew by 304.3MB over the run (ceiling
+250.0MB)`. Read the full sample table before concluding anything —
+the growth was a near-perfectly linear ~12-13MB per 15s interleaved
+cycle, for the entire run, zero plateau, correlated exactly with
+"settings reopened Nx" — while fd and thread counts stayed flat. This
+is a textbook leak signature, not normal front-loaded workload memory.
+
+First had to rule out the test harness's own design as the cause,
+since the harness's original draft appended every `SettingsWindow`
+instance to a list for `finally`-block cleanup — which would trivially
+explain linear growth regardless of what the app does, by construction.
+Fixed the harness to not retain that list (create, use, close, drop
+the reference — matching exactly what a real user does) and reran a
+short 75s dry run: the SAME slope persisted (287.9MB → 339.0MB across
+5 cycles), confirming this is not a test-harness artifact.
+
+Isolated further with a dedicated, minimal repro outside the full
+stress test (20-40 real `SettingsWindow(application)` → `.show()` →
+`.close()` → dereference cycles, `gc.collect()` between checkpoints,
+`gc.get_objects()` count tracked directly): RSS climbed ~2MB/iteration
+and `gc.get_objects()` climbed by a consistent ~66 objects/iteration —
+even with explicit `gc.collect()` calls, meaning these were genuinely
+reachable objects, not garbage waiting for a GC pass.
+
+Root cause: a parentless top-level `QMainWindow`'s `close()` only
+*hides* it by default in Qt/PySide6 — it does not destroy the
+underlying object unless `Qt.WidgetAttribute.WA_DeleteOnClose` is set.
+Confirmed by testing the fix directly in the same isolated repro
+before touching source: `w.setAttribute(Qt.WidgetAttribute
+.WA_DeleteOnClose, True)` before `.show()` cut the growth rate by
+~8x (2MB/iteration → 0.24MB/iteration; `gc.get_objects()` growth
+similarly reduced). Applied `WA_DeleteOnClose` to all three top-level
+`QMainWindow` subclasses in `ui/` — `SettingsWindow`, `OnboardingWizard`,
+and `MainWindow` (the last for consistency and test hygiene, even
+though it's normally only closed once per real app session, unlike
+Settings) — since all three share the identical parentless top-level
+construction pattern.
+
+**Bug 2, found by not accepting an 8x improvement as "good enough"
+without checking what the remaining ~13% actually was.** The
+`WA_DeleteOnClose` fix alone left a real, still-linear residual (~285
+`gc.get_objects()` growth per 5 iterations, consistent across 40
+real cycles) that `gc.collect()` never reduced. Rather than accept
+this as "probably just normal Python object churn," did a targeted
+type-count scan of `gc.get_objects()` after 15 real cycles, filtered
+to suspect type names: found **15 live `SettingsWindow`, 15 live
+`QThreadPool`, 30 live `Worker`, 30 live `WorkerSignals`** instances —
+every single one ever constructed, still alive, despite
+`_active_workers` itself correctly reporting empty (`0`) the whole
+time. The module-level registry was releasing its own reference
+correctly; something else was keeping the underlying objects alive
+regardless.
+
+Root cause, read directly from `workers.py`'s own `run_worker()`
+rather than guessed: `handle_finished`/`handle_error` are closures
+defined inside `run_worker()` that both reference `worker` itself (to
+call `_active_workers.discard(worker)`), and both are connected to
+`worker.signals.finished`/`.error`. This is a genuine reference cycle:
+`worker` → `worker.signals` (an attribute) → [the Qt-internal
+connection metadata registers `handle_finished`/`handle_error` as
+connected slots] → the closures reference `worker` again. Python's own
+cyclic garbage collector can in principle break a pure-Python
+reference cycle like this — but the Qt/shiboken side of a signal-slot
+connection isn't something Python's `gc` module can trace into (it
+doesn't expose the connection as a normal Python-visible reference),
+so from `gc`'s perspective there's no cycle to find at all; the
+objects just look permanently reachable. Confirmed this diagnosis
+directly rather than taking it as the only plausible explanation: it
+exactly matches the empirically observed data (all four suspect
+types present in equal counts — 15/15/30/30, exactly 2:1 for
+Worker/WorkerSignals to SettingsWindow, matching `_refresh_locations`
++ `_refresh_destinations` each spawning one worker per window
+construction).
+
+**First fix attempt: caused a real, reproducible segfault — caught by
+running the full test suite, not the isolated repro, which is exactly
+why "verify the fix broadly, not just where you found the bug" matters
+here.** Added a `_disconnect_worker_signals(worker)` helper calling
+`worker.signals.finished.disconnect()` and `worker.signals.error
+.disconnect()` from inside `handle_finished`/`handle_error`
+themselves — i.e., disconnecting a signal from within the very slot
+that signal's own emission had just invoked. The isolated repro
+looked perfect: `gc.get_objects()` completely flat across 40 cycles,
+zero live suspect objects afterward. `mypy --strict` clean.
+
+Running the FULL test suite (routine verification before considering
+this done) crashed instead: `Fatal Python error: Segmentation fault`,
+consistently, every run (checked 3+ times, not a one-off flake),
+always in the identical place —
+`pytestqt/plugin.py::_process_events` during
+`pytest_runtest_teardown`, right after
+`test_review_tab_renders_needs_review_candidates` (a `MainWindow`
+test using `qtbot.addWidget`) passed. Isolated which of the two
+same-session changes was actually responsible by reverting each
+independently against the full suite: removing `MainWindow`'s
+`WA_DeleteOnClose` alone did NOT stop the crash (identical trace,
+identical location) — removing the `_disconnect_worker_signals` calls
+did. Confirmed rather than assumed: mutating a QObject signal's
+connection list while that same signal is actively mid-emission is
+undefined behavior in Qt's C++ layer (the emission mechanism iterates
+its own connection list; disconnecting from inside the currently-
+invoked slot mutates that list out from under the iterator) — Python-
+level `try`/`except` cannot protect against undefined behavior in a
+C++ extension, which is consistent with the crash surfacing later
+(during a *different*, later test's teardown) rather than immediately
+at the point of the `.disconnect()` call itself — heap corruption
+manifesting downstream, not at its true origin.
+
+**Real fix: `Qt.ConnectionType.SingleShotConnection`, Qt's own
+built-in mechanism for exactly this** — confirmed available in this
+project's installed PySide6 (6.11.x) before relying on it. Both
+`worker.signals.finished.connect(handle_finished,
+Qt.ConnectionType.SingleShotConnection)` and the equivalent for
+`error` tell Qt itself to safely disconnect its own connection
+internally, immediately after that one emission finishes — entirely
+inside Qt's own C++ machinery, never mutating a connection list from
+Python code running mid-emission. One asymmetry
+`SingleShotConnection` alone doesn't cover: a `Worker` only ever emits
+ONE of `finished`/`error`, never both, so whichever signal doesn't
+fire never gets a chance to trigger its own single-shot disconnect and
+would keep its connection (and the cycle) alive forever. Fixed by
+having `handle_finished`/`handle_error` each explicitly disconnect
+only the *other*, non-firing signal — safe to do, since that one was
+genuinely never mid-emission at all (it just never fired).
+
+Reran the isolated 40-cycle repro: identical to the first (unsafe)
+fix's result — `gc.get_objects()` completely flat from cycle 5 through
+35, zero live suspect objects, confirming the combined fix (real
+`WA_DeleteOnClose` + the safe `SingleShotConnection` approach) is
+fully equivalent in effectiveness to the crashing version, without the
+crash. Ran the full test suite three times in a row afterward — clean
+every time (379 passed, 1 skipped), where it had crashed on literally
+every prior run with the unsafe version. `mypy --strict` clean
+throughout both fix attempts.
+
+**§1 — the stress harness itself: `tests/test_stress_e2e.py`.**
+Built reusing the exact "offscreen Qt, real `Application`, no fakes"
+pattern already proven throughout this project's live-verification
+history (items 22/26-28, and the packaging task's own retry) — real
+`Application()` against the real production DB/config, real
+`MainWindow`/`SettingsWindow` constructed directly and driven via real
+method calls under `QT_QPA_PLATFORM=offscreen`. `psutil` added as a
+dev dependency (`uv add --group dev psutil`) for cross-platform
+process-level sampling (RSS via `memory_info().rss`, open file
+descriptors via `num_fds()`, thread count via `num_threads()`) rather
+than shelling out to `ps`/`lsof`.
+
+Drives a genuinely overlapping, realistic sequence rather than a
+sequential scripted one: fires Sync/Scan/Match back to back without
+waiting for each to settle first (a real impatient user's actual
+clicking pattern); fires multiple concurrent download operations
+across two playlists — since `MainWindow`'s own `download_button` is
+single-selection by real UI design (one playlist at a time, no way to
+multi-select-and-download through the actual UI), this specifically
+calls `download_playlist()` directly through the same real
+`run_worker`/`QThreadPool` mechanism the UI itself uses, for multiple
+playlist names at once, genuinely exercising `DownloadService`
+concurrency beyond what one button can select — plus one real UI
+button click on the same playlist while those direct calls are still
+in flight; then sustains an interleaved loop for the real target
+duration (300s default, overridable via
+`SEEKER_STRESS_DURATION_SECONDS`): switches the selected playlist
+while background work may still be running, opens and closes a real
+`SettingsWindow` every cycle (the exact scenario that surfaced Bug 1),
+and — once, mid-session — changes `auto_match_threshold`/
+`needs_review_threshold` via the real Settings save button and
+confirms the SAME already-constructed `track_matcher` picks it up on
+its very next `match_all()` call with zero restart (matching item 28
+§4's own established precedent, now proven under a busier, more
+realistic session rather than an isolated unit test), restoring the
+original values in a `finally` block afterward and confirming the
+restoration via an independent reload.
+
+Samples real process metrics (RSS/fds/threads/`len(_active_workers)`)
+at every meaningful phase transition and every interleaved cycle,
+printing each sample live (`t=...s RSS=...MB fds=... threads=...
+active_workers=... <label>`) so a real run's full trajectory is
+visible, not just a final number. Asserts, at the end: `active_workers
+== 0` (every worker genuinely drained — the specific assertion that
+would have caught Bug 2 proactively), and bounded growth in RSS
+(<250MB), fd count (<40), and thread count (<40) — generous ceilings
+relative to the real numbers this task's own run produced (real growth
+was ~58MB/+15fds/+4threads over 302s), calibrated to catch a
+regression of the magnitude just found and fixed while tolerating
+normal real-workload variance.
+
+Gated with `requires_stress_opt_in`
+(`pytest.mark.skipif(os.environ.get("SEEKER_RUN_STRESS_TEST") != "1",
+...)`) — same "skip on missing real infra" discipline as
+`test_audio_analysis.py`'s X9-Pro-drive check (also checked inside the
+test itself, plus `spotify_configured`/`soulseek_configured`), but
+with an explicit opt-in gate layered on top, since unlike the drive
+check, having the infrastructure present isn't sufficient reason to
+run something this slow (minutes) and consequential (real Spotify
+sync, real config mutation, real concurrent download requests against
+production) by default.
+
+**§2/§3 — the real, sustained run (2026-08-29, after both fixes
+landed).** A short 45s dry run first confirmed the fix worked in the
+full app context, not just the isolated repro: RSS
+`229→251→279.5→274.0→275.6→276.6` across the phases — rising during
+real construction/sync/scan/match/threshold-change, then genuinely
+flat across the interleaved cycles (274.0→276.6 over 2 full cycles,
+a small, bounded, plausible amount), a complete reversal from the
+pre-fix run's relentless linear climb.
+
+Full 300s (302s actual) run against real production data, `1 passed
+in 302.93s`. Real trajectory, sampled at every phase and every 15s
+interleaved cycle: `t=0.0s RSS=218.1MB` (start) → `t=0.1s RSS=229.1MB`
+(`MainWindow` constructed, playlists loaded) → `t=1.9s RSS=251.5MB`
+(overlapping Sync/Scan/Match settled: 215 real playlists synced, one
+real library change found — `Added: 0, Updated: 1, Removed: 0,
+Unchanged: 3217` — tracks reclassified — `Auto: 9, Needs review: 0,
+Unmatched: 4`) → `t=1.9s RSS=251.6MB` (3 concurrent download
+operations fired: `download_playlist("Test")` and
+`download_playlist("240KM/H")` via direct `run_worker` calls, plus one
+real UI `download_button.click()` for "Test") → `t=2.1s RSS=275.1MB`
+(threshold changed mid-session, confirmed to affect the very next
+match run) → then 20 real interleaved cycles (playlist-switch +
+Settings open/close, one per ~15s) settling into a genuinely flat
+trajectory: `t=16.9s RSS=269.5MB` → `t=32.0s RSS=271.9MB` → ...
+→ `t=302.4s RSS=276.4MB` — a total of only ~4.5MB of growth across
+270 real seconds and 18 of those 20 cycles, ≈0.25MB/cycle, matching
+the isolated repro's own small legitimate residual exactly. Open file
+descriptors: `6 → 21`, flat across the entire interleaved phase (no
+growth from cycle 3 onward). Threads: `5 → 9`, fluctuating between 9
+and 14 throughout, never climbing. `active_workers`: `0` at every
+single sample, including the final one — every worker genuinely
+drained, every run.
+
+The real download dedup guard fired correctly for all 4 real tracks
+already mid-download from before this task started: `Already in
+progress for Prdk - ONE MORE NIGHT (downloading) — skipping`,
+`Already in progress for Balron, Audio - Breach (locked) —
+skipping`, `Already in progress for Zigi SC, A-Cray - Bit Perfect
+(downloading) — skipping`, `Already in progress for Jade Venom -
+Scared Now? - DIVERGENCE VI (locked) — skipping` (each logged twice —
+once for the direct `download_playlist("Test")` call, once for the
+real UI button click on the same playlist, confirming this guard
+correctly prevents a genuine double-submission race, not just a
+single call) — a real, pre-existing safety mechanism this task
+verified rather than assumed, not something built for this task.
+`download results after the full run: {'240KM/H': 'finished', 'Test':
+'finished'}` — both concurrent operations completed cleanly with no
+error.
+
+Confirmed the real production state was left exactly as found, not
+just asserted in-process: `seeker check` (a completely separate CLI
+invocation, run after the whole test finished) reported the identical
+`Auto-matched: 9` / `Unmatched (4)` breakdown as before the task
+started; the real `config.json`'s `auto_match_threshold`/
+`needs_review_threshold` were confirmed restored to `70.0`/`60.0` —
+the same real values item 28's own live verification set, not a
+stale or newly-invented pair.
+
+Tests: none added beyond `tests/test_stress_e2e.py` itself — this
+task's own verification IS that test, run for real, matching how
+packaging tasks (items 30/31) were verified by real build-and-run
+passes rather than unit tests. `mypy --strict` clean across all 60
+`src/` files throughout (including both fix attempts). Full suite: 379
+passed, 1 skipped, run three times in a row with zero crashes after
+the real fix landed.

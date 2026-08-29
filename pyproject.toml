@@ -26,6 +26,7 @@ build-backend = "uv_build"
 dev = [
     "dmgbuild>=1.6.7",
     "mypy>=2.3.1",
+    "psutil>=7.2.2",
     "pyinstaller>=6.22.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
