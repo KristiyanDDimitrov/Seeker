@@ -1237,7 +1237,8 @@ class MainWindow(QMainWindow):
         # A held reference is required — a local-only QMainWindow with
         # nothing else pointing at it gets garbage-collected as soon as
         # this method returns (same class of bug item 22's
-        # _active_workers registry exists to prevent, applied here to
-        # a window instead of a worker).
+        # ui/workers.py _callbacks registry exists to prevent for
+        # in-flight background tasks, applied here to a window
+        # instead).
         self.settings_window = SettingsWindow(self.application)
         self.settings_window.show()

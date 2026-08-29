@@ -5627,13 +5627,25 @@ not a structural elimination of the underlying two-lock-ordering
 hazard. Confirmed this distinction matters directly: on PySide6
 6.11.2 — a version that already carries all of this 2020-era work —
 the exact same hazard is still live-reproducible (see below), meaning
-the 2020 fix narrowed the race window without closing it. Also found
-QTBUG-93259, a related Qt-level report on cross-thread signal/mutex
-interaction, explicitly stating there's "no general solution at
-present" for that class of scenario — real, current confirmation that
-no single upstream fix exists to simply upgrade into; an
-application-level mitigation is the standard answer, not a
-workaround-of-last-resort.
+the 2020 fix narrowed the race window without closing it.
+
+**Correction (2026-08-30, in response to a follow-up review of this
+entry):** this paragraph originally also cited QTBUG-93259 as
+supporting evidence — re-verified directly against Qt's own bug
+tracker (its REST API, since the JS-rendered page returns no content
+to a plain fetch) and confirmed that citation was wrong. QTBUG-93259 is
+"Potential for deadlock when using BlockingQueuedConnection and waiting
+on emitting thread" — an application-shutdown scenario (a sender thread
+blocked emitting via `BlockingQueuedConnection` while the receiving
+thread has already stopped spinning its event loop and is itself
+waiting for the sender to finish), a different mechanism from the
+connect()/emit()/mutex-pool contention this fix addresses, which uses
+ordinary queued (not blocking) connections and has nothing to do with
+shutdown ordering. A search for a correct replacement Qt bug ID found a
+Qt Forum thread describing the right mechanism but no citable tracker
+entry — dropped rather than cited with a weak substitute. PYSIDE-1657
+above remains the accurate, independently-matching citation; no Qt-
+tracker citation stands in for the removed one.
 
 **Step 2 — audited every cross-thread signal connection in `ui/*.py`,
 call site by call site, not sampled — matching item 32's own
@@ -5795,4 +5807,173 @@ skipped**, run three times in a row.
 fixed" to fixed. `mypy --strict` clean across all `src/` files
 throughout every step of this task, including both the RLock spike and
 the dispatcher redesign.
+
+### 39, second addendum — closing two loose ends: a wrong citation, and
+a real native leak whose fix took three tries
+
+A follow-up review of the addendum above asked two direct questions
+before treating item 39 as closed: is the QTBUG-93259 citation actually
+correct, and does `setAutoDelete(False)` leak the native `Worker`
+object now that nothing frees it? Both turned out to have real
+answers, not just "looks fine."
+
+**Citation check — QTBUG-93259 was wrong, dropped.** Fetched the real
+issue directly from Qt's own tracker (`https://qt-project.atlassian.net
+/rest/api/2/issue/QTBUG-93259` — the JS-rendered `bugreports.qt.io`
+page itself returns no usable content to a plain fetch). Its actual
+title: "Potential for deadlock when using BlockingQueuedConnection and
+waiting on emitting thread" — an application-*shutdown* scenario (a
+sender thread blocked inside a `BlockingQueuedConnection` emit while
+the receiving thread has already stopped spinning its event loop and is
+itself waiting for the sender to finish). This fix's own hazard uses
+ordinary queued (not blocking) connections and has nothing to do with
+shutdown ordering — a different mechanism entirely, wrongly cited as
+supporting evidence in the addendum above. Searched for a correct
+replacement: found a Qt Forum thread describing the right mechanism
+(GIL/mutex-pool contention on connect/emit) but with no citable tracker
+entry attached to it. Dropped the citation rather than force a weak
+substitute, per the explicit instruction to do so. PYSIDE-1657 (already
+cited above) remains the one accurate, independently-matching citation
+for the actual mechanism.
+
+**Leak check — real, confirmed via native-object introspection, not
+just re-running the deadlock test.** The concern was specific:
+`gc.get_objects()` (this project's own item 32 methodology) only sees
+Python-side wrappers, not whether the underlying C++ object was
+actually freed — a leak on the native side could report clean under
+that check alone. Used `shiboken6.Shiboken.getAllValidWrappers()`
+(enumerates every currently-valid native-wrapped object app-wide) and
+`ownedByPython()`/`isValid()` instead. First finding, confirmed
+directly: `QThreadPool.start()` revokes Python's ownership tracking of
+a submitted `QRunnable` — `ownedByPython(worker)` flips `True → False`
+the instant `start()` returns, REGARDLESS of `autoDelete`. With
+`autoDelete` at its default (`True`), that's fine — `QThreadPool`
+itself deletes the native object once `run()` returns. With it
+disabled (as the addendum above set it), NOTHING was left responsible
+for ever freeing it: Python's own GC has no effect once ownership isn't
+Python's, and `QThreadPool` won't since `autoDelete` is off. Confirmed
+via the real check: 100 leaked native `Worker` objects per 100-worker
+cycle, growing unboundedly across repeated cycles, while
+`_active_workers`/`_callbacks` correctly reported empty the entire
+time — a leak completely invisible to the Python-only check.
+
+**Fixing it took three attempts, each one caught by live
+re-verification rather than assumed correct on paper — matching this
+project's own standing discipline (items 29/32) that a fix which
+"seems right" still needs to be run, not just reasoned about.**
+
+*Attempt 1 — pass `self` through the signal so a handler could delete
+it.* Reintroduced the EXACT autoDelete-style crash the original
+addendum had already fixed, at the same call site, for the same
+underlying reason: it re-created a way for something to touch a
+QRunnable whose native lifetime is Qt's own to manage. Caught by
+running the full suite, not the isolated deadlock repro — the isolated
+repro stayed green throughout, since it doesn't exercise this path;
+only `uv run pytest -q` (full suite) crashed, at
+`tests/test_ui_smoke.py::test_review_tab_renders_needs_review_
+candidates`'s own teardown, inside `pytestqt.plugin._process_events`.
+
+*Redesign — stop passing `self` through the signal at all.* `Worker`
+now carries a plain `task_id` int (an `itertools.count()` value assigned
+before submission); `_callbacks` is keyed by it. This is the right
+design independent of the crash (a QRunnable's cross-thread marshaling
+adds nothing the dispatcher needs, and a plain int has none of a
+QRunnable's own lifetime baggage) — but bisecting it against the SAME
+full-suite crash surfaced a second, independent fact: with `autoDelete`
+back at its *default* (`True`) and no Worker reference anywhere near
+the signal, the crash still reproduced, reliably, 5/5, in the same
+place. Isolated further via a minimal single-test repro (constructing
+`MainWindow`, which triggers two constructor-time background polls with
+no button/status_label at all, then letting pytest-qt's own teardown —
+weakref-based `addWidget`, `close()`+`deleteLater()`, then
+`processEvents()` — run) — reproduced standalone via pytest, but did
+NOT reproduce in an equivalent bare `QApplication` script performing
+the identical sequence, meaning something specific to pytest-qt's own
+per-test machinery (most plausibly its `qInstallMessageHandler`-based
+Qt log capture, installed fresh for every test and callable from any
+thread) shifts timing enough to expose the race deterministically.
+Re-enabling only `setAutoDelete(False)` — nothing else changed — made
+the exact same repro pass cleanly, 3/3. Conclusion, confirmed rather
+than assumed: `setAutoDelete(False)` is independently required
+regardless of what crosses the signal. The mechanism: `Worker` is a
+Python subclass carrying real Python state (`self.fn`, a bound closure,
+often itself holding references back into a QWidget); tearing that down
+on the background thread the instant `run()` returns — safe for a
+plain C++ `QRunnable`, but requiring real interpreter work (decref'ing
+`self.fn` and friends) for a Python subclass — has been confirmed, live,
+to race unsafely against ordinary main-thread Qt/Python activity in
+this environment.
+
+While isolating this, a related, genuinely independent bug was found
+and fixed: `test_backend_poll_runs_poll_downloads_off_the_main_thread`
+was waiting on `"thread" in recorded`, a flag set *inside* the
+background function itself (on the worker thread), rather than on the
+main-thread completion callback (`_backend_poll_in_progress` flipping
+`False`) — meaning the test could observe success and end (tearing down
+its window) before the queued completion signal had actually been
+delivered. Fixed to wait on the same main-thread flag
+`test_backend_poll_overlap_guard_skips_concurrent_tick` already
+correctly used. This didn't turn out to be sufficient on its own to
+stop the crash (the deeper `autoDelete` hazard above was the dominant
+cause), but it's a real, independent test-timing gap worth having fixed
+regardless — any queued-signal-based design has this exact hazard if a
+test doesn't wait for signal delivery, only the background function's
+own return.
+
+*Attempt 2 — with `setAutoDelete(False)` back and `task_id`-only
+signal, explicitly `shiboken6.Shiboken.delete()` the worker
+synchronously inside the dispatcher's own signal handler, obtaining the
+reference via a plain `_callbacks` dict lookup (never the signal
+payload).* Reintroduced the same crash class a third time, confirmed by
+disabling only this call (leaving everything else identical) and
+watching the minimal repro go from 5/5 crash back to 3/3 clean.
+Conclusion: deleting the native QRunnable while still inside the call
+stack of the very queued signal that just reported it done is itself
+unsafe here, regardless of how the reference to it was obtained.
+
+*Attempt 3 (the one that held up) — defer the same delete one
+event-loop iteration via `QTimer.singleShot(0, lambda:
+_delete_native_worker(worker))`, called from the same point in each
+handler.* Confirmed live, 5/5 clean on the minimal repro that reliably
+crashed both prior attempts.
+
+**Full re-verification of the final combination — `task_id`-only
+signal, `setAutoDelete(False)`, deferred `shiboken6.Shiboken.delete()`
+via `QTimer.singleShot(0, ...)`:**
+- Minimal crash repro: 5/5 clean (was 5/5 crash before this design).
+- Native leak check (`getAllValidWrappers()`, 20 cycles × 200 workers):
+  flat 0 valid native `Worker` wrappers at every checkpoint (was
+  unbounded growth to 4000 before any fix existed).
+- RSS over the same 20×200 run: +0.7MB total, consistent with ordinary
+  allocator noise, not a leak (the pre-fix run showed steady +MB
+  growth proportional to worker count).
+- `tests/_workers_deadlock_repro.py` (400 iterations) and
+  `tests/_workers_correctness_repro.py` (800 tasks): both clean.
+- `tests/test_workers_deadlock_regression.py` (50 subprocess trials):
+  2/2 tests passed.
+- Full repo-wide suite (`uv run pytest -q`): **455 passed, 1 skipped**,
+  run three times in a row, zero crashes.
+- `mypy --strict src/`: clean throughout every intermediate attempt and
+  the final design.
+
+**Call-site audit, re-confirmed rather than re-derived.** Grepped every
+`run_worker(` call across `src/seeker/ui/*.py`: 34 real call sites
+(`main_window.py`, `settings_window.py`, `wizard.py`,
+`library_location_picker.py`), all routed through the one shared
+dispatcher. Grepped for `WorkerSignals`/`.signals.` outside `workers.py`
+itself: none — the only remaining mentions are in `workers.py`'s own
+historical docstring comments explaining what the design replaced.
+
+**Ownership/deletion, answered directly, per the question this task
+opened with.** The native `Worker` object is now explicitly freed by
+`_delete_native_worker()`, called via `QTimer.singleShot(0, ...)` from
+`_handle_task_finished`/`_handle_task_error` — NOT by `_callbacks`'
+`.pop()` (a plain Python dict operation dropping a Python reference
+has no effect on the native side once `QThreadPool.start()` has
+transferred native ownership away from Python, confirmed via the
+`ownedByPython()` finding above) and NOT by `QThreadPool`'s own
+`autoDelete` (disabled, and confirmed independently required to avoid
+the crash class above). The one-event-loop-tick deferral is load-
+bearing, not cosmetic: deleting synchronously, even via a safely-
+obtained reference, reintroduced the crash; deferring it does not.
 

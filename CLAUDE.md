@@ -269,7 +269,56 @@ uv run mypy --strict src/  # type check — must stay clean
       a real regression test (`tests/test_workers_deadlock_regression.py`,
       50 subprocess trials with a hard wall-clock timeout each): 43/50
       hung on the pre-fix design, 0/50 (and 0/20 at ~4x the stress
-      level) on the fixed one. [HISTORY §39](docs/HISTORY.md#39)
+      level) on the fixed one.
+
+      **Follow-up (2026-08-30) closing two loose ends in the above,
+      done.** (1) A citation correction: docs/HISTORY.md's own item 39
+      addendum cited QTBUG-93259 as supporting evidence for "no general
+      upstream solution exists"; re-verified against Qt's own tracker
+      and that citation was wrong (QTBUG-93259 is a `BlockingQueued
+      Connection`-at-shutdown deadlock, a different mechanism) — dropped
+      rather than replaced with a weak substitute; PYSIDE-1657 remains
+      the accurate citation. (2) `setAutoDelete(False)` needed a real
+      native-leak check, not just a deadlock re-run — `gc.get_objects()`
+      only sees Python wrappers, not whether the native C++ QRunnable
+      was actually freed. Using `shiboken6.Shiboken.getAllValidWrappers
+      ()`/`ownedByPython()` (real native-side introspection) confirmed
+      a genuine leak: one native `Worker` object per completed task,
+      unboundedly, invisible to the Python-only check. **The fix needed
+      two more iterations, each one caught by live re-verification, not
+      assumed correct on the first attempt:** passing `self` through the
+      dispatcher signal (so a handler could delete it) reintroduced the
+      exact autoDelete-style crash even with `setAutoDelete(False)` —
+      fixed by having `Worker` carry a plain `task_id` int instead,
+      never `self`, across the signal. Confirming that alone was
+      insufficient too: a task_id-only signal with `autoDelete` back at
+      its *default* (`True`) still segfaulted reproducibly (5/5) in a
+      real pytest-qt teardown sequence — bisected live to prove
+      `setAutoDelete(False)` is independently required regardless of
+      what crosses the signal (tearing down a Python-subclassed
+      QRunnable from the worker thread the instant `run()` returns is
+      itself unsafe here). And a synchronous `shiboken6.Shiboken.delete
+      ()` call inside the dispatcher's own signal handler — even with a
+      `task_id`-only signal and the worker obtained via a plain dict
+      lookup, never the signal payload — reintroduced the same crash
+      class again; deferring that same delete one event-loop tick via
+      `QTimer.singleShot(0, ...)` was the combination confirmed live
+      (5/5 clean) to fix it. Re-verified clean via native-object counts
+      (flat 0 across 20 cycles × 200 workers, vs. unbounded growth
+      before) and RSS (+0.7MB total, allocator noise, not a leak), the
+      full deadlock regression test, and 3 consecutive full-suite runs
+      (455 passed / 1 skipped each). A related, independently real bug
+      surfaced during this investigation and was fixed alongside it:
+      `test_backend_poll_runs_poll_downloads_off_the_main_thread` was
+      waiting on a flag set *inside* the background function itself
+      rather than on the main-thread completion callback, letting the
+      test end (and its window get torn down) before the queued signal
+      was actually delivered — fixed to wait on the same main-thread
+      flag `test_backend_poll_overlap_guard_skips_concurrent_tick`
+      already correctly used. Call-site audit re-confirmed: all 34
+      `run_worker()` calls across `ui/*.py` still route through the one
+      shared dispatcher, no leftover ad hoc `connect()`. [HISTORY
+      §39](docs/HISTORY.md#39)
 
 ## Roadmap (direction, not urgent)
 

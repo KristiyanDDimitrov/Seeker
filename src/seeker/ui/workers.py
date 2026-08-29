@@ -1,8 +1,15 @@
+import itertools
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+import shiboken6
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QAbstractButton, QLabel
+
+# Plain, non-Qt correlation ids for in-flight tasks. The dispatcher
+# signal carries this, never the Worker/QRunnable instance itself — see
+# Worker's own docstring for the two things this avoids.
+_next_task_id = itertools.count()
 
 
 class Worker(QRunnable):
@@ -13,26 +20,61 @@ class Worker(QRunnable):
     long-running action in this app (sync, scan, match, download, the
     dashboard's status poll) goes through this — no per-screen bespoke
     threading.
+
+    Two real, independently-confirmed hazards shaped this design
+    (docs/HISTORY.md item 39) — both live-verified with a reproducible
+    subprocess repro, not reasoned about in the abstract:
+
+    1. `setAutoDelete(False)` is required, full stop, regardless of
+       what crosses the dispatcher signal. Confirmed live via bisection:
+       a task_id-only signal (no Worker reference anywhere in it) with
+       `autoDelete` left at its default (`True`) STILL segfaults
+       reproducibly (5/5) in a real pytest-qt teardown sequence, and
+       switching only `setAutoDelete(False)` back on — nothing else
+       changed — made the exact same repro pass cleanly. The mechanism:
+       `Worker` is a Python subclass carrying real Python state
+       (`self.fn`, a bound closure, often itself holding references
+       back into a QWidget). `QThreadPool`'s own auto-delete tears that
+       down on the WORKER thread the instant `run()` returns — safe for
+       a plain C++ QRunnable, but requires touching the Python
+       interpreter (decref'ing `self.fn` and friends) to tear down a
+       Python subclass instance, and doing that from a background
+       thread immediately after `run()` returns has been confirmed,
+       live, to race unsafely against ordinary main-thread Qt/Python
+       activity (e.g. a window closing while its own background poll
+       is still in flight — see docs/HISTORY.md item 39's regression
+       test and its own `test_backend_poll_runs_poll_downloads_off_
+       the_main_thread` fix for the closely related test-timing gap
+       this crash class also depends on).
+    2. Passing `self` through the signal (an earlier, briefly-tried
+       design) is independently wrong even with `setAutoDelete(False)`
+       correctly set: a QRunnable's lifetime is Qt's own to manage once
+       submitted, and marshaling that specific object across a queued
+       cross-thread connection adds a second, separate hazard on top of
+       (1) for no benefit — a plain `task_id` int carries everything
+       the dispatcher actually needs (a dict lookup keyed by it), with
+       none of a QRunnable's own cross-thread marshaling baggage.
+
+    The earlier native-memory-leak finding this task started from (an
+    unfreed native `Worker` per completed task, confirmed via
+    `shiboken6.Shiboken.getAllValidWrappers()`) is real given (1). Fixed
+    below, but NOT by a synchronous `shiboken6.Shiboken.delete()` call
+    inside the dispatcher's own signal handler — that was tried first
+    and confirmed live to reintroduce the exact same class of crash as
+    (1), even with the worker reference obtained via a plain dict
+    lookup keyed by `task_id` rather than the signal payload: deleting
+    the native QRunnable while still inside the call stack of the
+    queued signal that just reported it done is itself unsafe in this
+    environment. `QTimer.singleShot(0, ...)` defers the delete to the
+    NEXT event-loop iteration instead — confirmed live, this fully
+    avoids the crash while still freeing the native object with no
+    unbounded accumulation (see `_delete_native_worker`'s docstring).
     """
 
     def __init__(self, fn: Callable[[], Any]):
         super().__init__()
         self.fn = fn
-        # QThreadPool's C++ side auto-deletes a QRunnable the instant
-        # run() returns UNLESS told not to (confirmed live: a fresh
-        # QRunnable subclass's autoDelete() defaults to True). The
-        # dispatcher below passes `self` through a cross-thread queued
-        # signal as the LAST statement of run() — a real, reproducible
-        # segfault (caught by the full test suite, not the isolated
-        # repro — see docs/HISTORY.md item 39) traced to exactly this:
-        # QThreadPool deletes the underlying C++ object the moment
-        # run() returns, which can race ahead of the queued event
-        # actually being delivered/processed on the main thread, so
-        # `worker` in _handle_task_finished/_handle_task_error can
-        # already be a dangling reference to a deleted C++ object by
-        # the time it's used. The original per-task WorkerSignals
-        # design never hit this because it never passed the worker
-        # itself through any signal — only the plain result value.
+        self.task_id = next(_next_task_id)
         self.setAutoDelete(False)
 
     @Slot()
@@ -40,25 +82,9 @@ class Worker(QRunnable):
         try:
             result = self.fn()
         except Exception as error:
-            _dispatcher.task_error.emit(self, str(error))
+            _dispatcher.task_error.emit(self.task_id, str(error))
         else:
-            _dispatcher.task_finished.emit(self, result)
-
-
-# QRunnable isn't a QObject, so it can't be kept alive via Qt's own
-# parent-child ownership the way a QObject could — QThreadPool.start()
-# schedules it on a real OS thread and returns immediately, well before
-# run() actually executes there. Without a strong Python reference held
-# somewhere until it finishes, the local `worker` variable in
-# run_worker() below is the only reference, and it goes out of scope
-# the instant the function returns — long before the background thread
-# is done using it. Confirmed for real, not theoretical: without this
-# registry, a worker's result never arrived (silently GC'd before
-# run() executed) or, under different timing, the process segfaulted
-# outright (a cross-thread signal emit racing a half-finalized object).
-# This registry is the fix — every in-flight worker is kept alive here
-# until its own completion is dispatched.
-_active_workers: set[Worker] = set()
+            _dispatcher.task_finished.emit(self.task_id, result)
 
 
 class _Dispatcher(QObject):
@@ -120,20 +146,24 @@ class _Dispatcher(QObject):
     reliably broke the original design within its first attempt.
     """
 
-    task_finished = Signal(object, object)
-    task_error = Signal(object, str)
+    task_finished = Signal(int, object)
+    task_error = Signal(int, str)
 
 
 _dispatcher = _Dispatcher()
 
-# Keyed by id(worker), not the worker object itself — sidesteps any
-# question of whether a QRunnable subclass is safely hashable across
-# the shiboken binding. Safe from id() reuse: an entry is only ever
-# removed by that exact worker's own completion, in the same handler
-# that also drops it from _active_workers — so nothing else can free
-# (and Python can't recycle the address of) a worker whose entry is
-# still here.
+# Keyed by Worker.task_id (a plain int assigned before submission), not
+# by the worker itself — the dispatcher signal never carries the
+# QRunnable (see Worker's own docstring for why), so there's no
+# id()-reuse hazard to sidestep either: each task_id is unique for the
+# life of the process (itertools.count() never repeats), and an entry
+# is only ever removed by that exact task's own completion. The
+# `Worker` reference kept here (not passed through the signal) is what
+# lets the handlers below explicitly free the native object once
+# they're done with it, avoiding the leak `setAutoDelete(False)`
+# otherwise causes.
 _CallbackEntry = tuple[
+    Worker,
     QAbstractButton | None,
     QLabel | None,
     Callable[[Any], None] | None,
@@ -142,14 +172,26 @@ _CallbackEntry = tuple[
 _callbacks: dict[int, _CallbackEntry] = {}
 
 
-def _handle_task_finished(worker: object, result: Any) -> None:
-    entry = _callbacks.pop(id(worker), None)
-    _active_workers.discard(worker)
+def _delete_native_worker(worker: Worker) -> None:
+    """Frees the underlying C++ `QRunnable` once its own completion has
+    been fully handled. Always called via `QTimer.singleShot(0, ...)`
+    from the handlers below, never synchronously from within the
+    dispatcher signal handler itself — see Worker's own docstring for
+    why a synchronous call at that exact point was confirmed live to
+    reintroduce a crash. `isValid()` guards against ever double-
+    deleting the same native object.
+    """
+    if shiboken6.Shiboken.isValid(worker):
+        shiboken6.Shiboken.delete(worker)
+
+
+def _handle_task_finished(task_id: int, result: Any) -> None:
+    entry = _callbacks.pop(task_id, None)
 
     if entry is None:
         return
 
-    button, status_label, on_finished, _on_error = entry
+    worker, button, status_label, on_finished, _on_error = entry
 
     if button is not None:
         button.setEnabled(True)
@@ -168,15 +210,16 @@ def _handle_task_finished(worker: object, result: Any) -> None:
             if status_label is not None:
                 status_label.setText(f"Error: {error}")
 
+    QTimer.singleShot(0, lambda: _delete_native_worker(worker))
 
-def _handle_task_error(worker: object, message: str) -> None:
-    entry = _callbacks.pop(id(worker), None)
-    _active_workers.discard(worker)
+
+def _handle_task_error(task_id: int, message: str) -> None:
+    entry = _callbacks.pop(task_id, None)
 
     if entry is None:
         return
 
-    button, status_label, _on_finished, on_error = entry
+    worker, button, status_label, _on_finished, on_error = entry
 
     if button is not None:
         button.setEnabled(True)
@@ -189,6 +232,8 @@ def _handle_task_error(worker: object, message: str) -> None:
             on_error(message)
         except Exception as error:
             print(f"Error handling worker error callback: {error}")
+
+    QTimer.singleShot(0, lambda: _delete_native_worker(worker))
 
 
 # The one and only connect() for these two signals, for the life of
@@ -212,6 +257,13 @@ def run_worker(
     `on_error` is for callers that need to react to a failure beyond the
     status line (e.g. clearing an in-progress flag) — optional, and
     additive to the status-label behavior, not a replacement for it.
+
+    The returned `Worker` (and the one stored in `_callbacks`) is the
+    same reference kept alive by this dict entry until its own
+    completion is handled and its native object explicitly freed — see
+    `_delete_native_worker`'s and Worker's own docstrings for why
+    `setAutoDelete(False)` plus an explicit delete, rather than letting
+    `QThreadPool` auto-delete it, is the confirmed-safe combination.
     """
     if button is not None:
         button.setEnabled(False)
@@ -220,8 +272,7 @@ def run_worker(
         status_label.setText("")
 
     worker = Worker(fn)
-    _active_workers.add(worker)
-    _callbacks[id(worker)] = (button, status_label, on_finished, on_error)
+    _callbacks[worker.task_id] = (worker, button, status_label, on_finished, on_error)
 
     pool.start(worker)
 

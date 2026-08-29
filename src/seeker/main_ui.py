@@ -26,8 +26,9 @@ def main() -> None:
             dashboard.show()
             # Keep a reference alive past this function's return —
             # otherwise nothing holds the new window and Python would
-            # garbage-collect it immediately (same class of bug as
-            # ui/workers.py's _active_workers registry).
+            # garbage-collect it immediately (same class of bug
+            # ui/workers.py's _callbacks registry guards against for
+            # in-flight background tasks).
             qt_app.dashboard_window = dashboard  # type: ignore[attr-defined]
 
         window = OnboardingWizard(application, on_complete=show_dashboard)

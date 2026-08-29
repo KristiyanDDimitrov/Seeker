@@ -36,7 +36,7 @@ from seeker.application import Application
 from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.ui.main_window import MainWindow
 from seeker.ui.settings_window import SettingsWindow
-from seeker.ui.workers import _active_workers
+from seeker.ui.workers import _callbacks
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
 
@@ -92,7 +92,7 @@ class SampleLog:
             rss_mb=mem.rss / (1024 * 1024),
             num_fds=self.process.num_fds(),
             num_threads=self.process.num_threads(),
-            active_workers=len(_active_workers),
+            active_workers=len(_callbacks),
         )
         self.samples.append(entry)
         print(

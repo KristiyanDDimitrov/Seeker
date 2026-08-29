@@ -378,13 +378,14 @@ def test_worker_emits_finished_with_result():
     # `_dispatcher` (see workers.py's own docstring for why: a fresh
     # per-task QObject+connect()/disconnect() cycle was confirmed live
     # to cause a real, reproducible deadlock). Connect directly to the
-    # dispatcher and filter by worker identity, the same way
-    # _handle_task_finished itself does.
+    # dispatcher and filter by task_id, the same way _handle_task_finished
+    # itself does — the signal carries a plain int, never the Worker
+    # instance itself (see Worker's own docstring for why).
     worker = Worker(lambda: 42)
     results = []
 
-    def on_finished(w: object, result: object) -> None:
-        if w is worker:
+    def on_finished(task_id: int, result: object) -> None:
+        if task_id == worker.task_id:
             results.append(result)
 
     # Disconnected in finally — this connects to the one PERMANENT,
@@ -406,8 +407,8 @@ def test_worker_emits_error_on_exception():
     worker = Worker(boom)
     errors = []
 
-    def on_error(w: object, message: str) -> None:
-        if w is worker:
+    def on_error(task_id: int, message: str) -> None:
+        if task_id == worker.task_id:
             errors.append(message)
 
     workers_module._dispatcher.task_error.connect(on_error)
@@ -458,26 +459,27 @@ def test_run_worker_error_sets_status_label_and_reenables_button(qtbot):
 
 
 def test_run_worker_registry_releases_worker_on_both_success_and_error():
-    # The whole point of _active_workers (see workers.py's own comment)
-    # is to hold a strong reference until a worker is genuinely done —
-    # if cleanup only fired on the success path, a worker that raises
-    # would stay referenced forever, a real leak on every failed
-    # sync/scan/match/download. Asserted directly against the registry
-    # itself, not just inferred from button/label side effects.
+    # _callbacks (see workers.py's own comment) holds each in-flight
+    # task's callback entry, keyed by task_id, until that task's own
+    # completion pops it — if cleanup only fired on the success path, a
+    # worker that raises would stay referenced forever, a real leak on
+    # every failed sync/scan/match/download. Asserted directly against
+    # the registry itself, not just inferred from button/label side
+    # effects.
     class SynchronousPool:
         def start(self, worker):
             worker.run()
 
-    baseline = len(workers_module._active_workers)
+    baseline = len(workers_module._callbacks)
 
     run_worker(SynchronousPool(), lambda: "ok")
-    assert len(workers_module._active_workers) == baseline
+    assert len(workers_module._callbacks) == baseline
 
     def boom():
         raise RuntimeError("simulated failure")
 
     run_worker(SynchronousPool(), boom)
-    assert len(workers_module._active_workers) == baseline
+    assert len(workers_module._callbacks) == baseline
 
 
 def test_run_worker_on_finished_exception_does_not_propagate(qtbot):
@@ -556,14 +558,14 @@ def test_run_worker_on_finished_exception_still_releases_worker_registry(qtbot):
         def start(self, worker):
             worker.run()
 
-    baseline = len(workers_module._active_workers)
+    baseline = len(workers_module._callbacks)
 
     def render_that_raises(result):
         raise ValueError("malformed render data")
 
     run_worker(SynchronousPool(), lambda: "ok", on_finished=render_that_raises)
 
-    assert len(workers_module._active_workers) == baseline
+    assert len(workers_module._callbacks) == baseline
 
 
 def _make_active_download(
@@ -777,7 +779,24 @@ def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):
 
     window._trigger_backend_poll()
 
-    qtbot.waitUntil(lambda: "thread" in recorded, timeout=2000)
+    # Wait for the FULL round trip (the queued completion signal
+    # actually delivered on the main thread), not just for the
+    # background function itself to have returned — `recorded["thread"]`
+    # is set inside poll_downloads() on the worker thread, microseconds
+    # before run_worker()'s completion signal is even emitted, so
+    # waiting on it alone raced ahead of signal delivery (confirmed
+    # live: this caused a real, reproducible segfault in a LATER test's
+    # teardown, when the still-queued signal was finally delivered
+    # against this test's already-destroyed window/button — see
+    # CLAUDE.md/docs/HISTORY.md item 39). `_backend_poll_in_progress`
+    # only flips False from the main-thread on_finished callback, so
+    # waiting on it — same as test_backend_poll_overlap_guard_skips_
+    # concurrent_tick already correctly does — guarantees the signal
+    # was actually processed before the test ends.
+    qtbot.waitUntil(
+        lambda: "thread" in recorded and not window._backend_poll_in_progress,
+        timeout=2000,
+    )
 
     assert recorded["thread"] != threading.main_thread()
 
