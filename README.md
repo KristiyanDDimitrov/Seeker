@@ -52,26 +52,59 @@ Spotify  ──sync──>  local SQLite cache  ──match──>  scanned loca
    and optionally analyzed locally for BPM and (Camelot-notation) musical
    key.
 
+## Two interfaces, one service layer
+
+`seeker` ships both a CLI (`seeker`) and a desktop GUI (`seeker-ui`,
+built with [PySide6](https://doc.qt.io/qtforpython/)) — they're two
+presentation layers over the exact same `Application`/service code, not
+two separate implementations. Anything the CLI can do, the GUI can do,
+and vice versa; picking one over the other is purely a matter of
+preference.
+
+**`seeker-ui`** is the easier way to get started: an onboarding wizard
+walks through connecting Spotify (PKCE authorization — no manual token
+handling), registering a library location, and — optionally, skippable —
+standing up `slskd` via Docker, collecting your SoulSeek credentials and
+generating an API key for you rather than requiring you to hand-edit
+`.env` or click through slskd's own web UI. Once onboarding is done (or
+skipped for SoulSeek), a dashboard shows each playlist's tracks with
+live status, a Downloads tab shows every in-flight transfer, a Review
+tab handles confirming SoulSeek needs-review candidates and quality
+upgrades, and a Settings screen (library locations, playlist
+destinations, SoulSeek/Spotify connection management, and the
+auto-match/needs-review classification thresholds) covers everything
+you'd otherwise need `.env`/the CLI for.
+
+```
+uv run seeker-ui
+```
+
+**`seeker`** (the CLI) is the scriptable/scheduler-friendly path — see
+[Commands](#commands) below — and still requires the manual `.env`
+setup described under [Setup](#setup) if you never run the wizard.
+
 ## Architecture
 
 ```
-CLI (cli.py)
-  -> Application / services (application.py, spotify/sync_service.py, ...)
+Presentation layer (cli.py, ui/*)
+  -> Application / services (application.py, spotify/sync_service.py, dashboard_service.py, ...)
     -> Repositories (database/repositories/*)
       -> Database (database/connection.py, database/schema.py)
 ```
 
-This layering is a strict, enforced rule, not just a convention: **CLI
-code never imports or calls a repository directly.** Every CLI handler
-goes through `Application` (or a service it exposes). The reason is
-mundane but important for a project like this — the CLI is the thing
-that changes most often (new flags, new output formatting), and the
-repository layer is the thing where correctness matters most (raw SQL,
-transactions, foreign keys). Keeping a service layer between them means
-a CLI change can never accidentally skip validation, skip a transaction
-boundary, or run a query that bypasses the invariants the repositories
-maintain — and it means the service logic is testable without an
-argparse harness in the way.
+This layering is a strict, enforced rule, not just a convention:
+**presentation-layer code — CLI or GUI — never imports or calls a
+repository directly.** Every CLI handler and every Qt widget goes
+through `Application` (or a service it exposes). The reason is mundane
+but important for a project like this — the presentation layer is the
+thing that changes most often (new flags, new screens, new output
+formatting), and the repository layer is the thing where correctness
+matters most (raw SQL, transactions, foreign keys). Keeping a service
+layer between them means a UI change can never accidentally skip
+validation, skip a transaction boundary, or run a query that bypasses
+the invariants the repositories maintain — and it means the service
+logic is testable without an argparse harness or a Qt event loop in the
+way.
 
 Data access is raw SQL via a repository-per-table pattern (see
 `database/schema.py` and `database/repositories/*.py`), not an ORM —
@@ -102,15 +135,27 @@ src/seeker/
 │                             #   poll_downloads (status + file move)
 ├── library/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
+├── ui/                        # the seeker-ui GUI (PySide6)
+│   ├── main_window.py         # dashboard + Downloads/Review/tagging tabs
+│   ├── wizard.py               # onboarding: Spotify, library, SoulSeek
+│   ├── settings_window.py      # locations, destinations, connection, thresholds
+│   ├── library_location_picker.py  # shared folder-picker (wizard + Settings)
+│   └── workers.py              # QThreadPool worker wrapper every screen uses
 ├── models/{playlist,track,track_match,local_file,library_location,
-│           soulseek_file,download_request}.py
+│           soulseek_file,download_request,soulseek_review_candidate,
+│           active_download,track_status,upgrade_review}.py
 ├── audio_formats.py          # AUDIO_EXTENSIONS, shared by scanner + quality
 ├── metadata.py                # mutagen tag read/write, per audio format
 ├── audio_analysis.py          # BPM + Camelot key detection (librosa)
-├── config.py
+├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
+├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
+├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)
+├── download_dedup.py          # shared "same real candidate" dedup rule (download service + dashboard)
+├── config.py                  # .env-sourced fallback values (legacy/CLI-only path)
 ├── application.py
 ├── cli.py
-└── main.py
+├── main.py                    # `seeker` entry point
+└── main_ui.py                 # `seeker-ui` entry point
 ```
 
 ## Setup
@@ -136,15 +181,31 @@ the new location automatically — nothing to do by hand.
 
 1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
    and create an app.
-2. Add a Redirect URI matching what you'll set as `SPOTIFY_REDIRECT_URI`
-   below (e.g. `http://127.0.0.1:8888/callback` — must match exactly,
-   including the port).
+2. Add a Redirect URI: `http://127.0.0.1:8888/callback` (the wizard
+   shows/copies this exact value for you; it must match exactly,
+   including the port, whichever setup path you use below).
 3. Note the app's Client ID (no client secret is needed — `seeker`
    authorizes via PKCE).
 
-### 3. Configure environment variables
+### 3. Finish setup — pick one
 
-Create a `.env` file in the project root:
+**Recommended: the onboarding wizard.** Run `uv run seeker-ui`. On first
+launch it walks through connecting Spotify (paste the Client ID from
+step 2; a real browser window opens for the PKCE authorization), then
+registering a library location (a native folder picker), then —
+optionally, skippable — standing up `slskd`: it starts the bundled
+`docker-compose.yml` for you, collects your SoulSeek network
+username/password, and generates a `SLSKD_API_KEY` itself, so there's no
+`.env` file to hand-edit and no need to click through slskd's own web UI
+at all. Everything it collects is written to a `config.json` in the same
+per-user app-data directory as the database (see step 1) — not `.env` —
+and can be changed later from the Settings screen (Connection tab:
+re-authorize Spotify, update SoulSeek credentials, test the connection)
+without touching either file by hand. The wizard is resumable — closing
+and relaunching `seeker-ui` picks up wherever you left off.
+
+**Manual (CLI-only, or if you'd rather hand-edit config)** — create a
+`.env` file in the project root:
 
 ```
 SPOTIFY_CLIENT_ID=your-spotify-client-id
@@ -155,16 +216,21 @@ SLSKD_BASE_URL=http://localhost:5030
 SLSKD_API_KEY=your-slskd-api-key
 
 # Host filesystem path to slskd's own configured download directory
-# (see step 4) — required by `seeker downloads status` to move
-# completed files into your library.
+# (see the next section) — required by `seeker downloads status` to
+# move completed files into your library.
 SLSKD_DOWNLOAD_DIR=./slskd-data/downloads
 ```
 
-`SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI` are required at import time;
-the `SLSKD_*` variables are only enforced when a command actually needs
-them, so sync/scan/match/check work fine without `slskd` running.
+None of these are required just to launch `seeker`/`seeker-ui` —
+`SPOTIFY_CLIENT_ID`/`SPOTIFY_REDIRECT_URI` are only enforced once
+something actually needs Spotify auth (a real `sync`, or the wizard's
+own connect step), and the `SLSKD_*` variables only once a command
+needs SoulSeek, so `sync`/`scan`/`match`/`check` work fine with neither
+set. A value already present in `config.json` (from the wizard, or
+Settings) always wins over its `.env` counterpart — `.env` is purely a
+fallback for values the config store doesn't have.
 
-### 4. Run slskd (SoulSeek daemon)
+### 4. Run slskd (SoulSeek daemon) — only if you didn't use the wizard's SoulSeek step
 
 `seeker` talks to SoulSeek through [`slskd`](https://github.com/slskd/slskd),
 a self-hosted daemon with a REST API, rather than implementing the raw
@@ -188,6 +254,17 @@ moves it into the destination configured for that playlist (see
 `seeker playlists set-destination` below).
 
 ## Commands
+
+The table below is the CLI reference. Most of it has a direct `seeker-ui`
+equivalent: the Dashboard tab covers `sync`/`sync-tracks`/`scan`/`match`/
+`download`/tagging for whichever playlist is selected; the Downloads tab
+covers `downloads status`; the Review tab covers `downloads review` plus
+confirming/rejecting SoulSeek needs-review candidates (`check`'s
+"Needs review" section, with an action the CLI never had); and the
+Settings screen covers `library add`/`list`/`remove`, `playlists
+set-destination`, SoulSeek/Spotify connection management, and the
+auto-match/needs-review thresholds (editable there; hardcoded constants
+for the CLI).
 
 ```
 uv run seeker <command>
@@ -240,9 +317,13 @@ one-off decisions:
 - **Never touch a file without confirmation when it matters.** Replacing
   an already-downloaded file with a higher-quality version is the one
   filesystem-destructive action in the pipeline, and it's the one place
-  the CLI stops and asks — twice, once to confirm the replacement and
-  once to confirm deleting the old file — rather than acting
-  automatically.
+  both interfaces stop and ask — twice, once to confirm the replacement
+  and once to confirm deleting the old file (the CLI's `downloads
+  review` prompts; the GUI's Review tab has a Replace/Decline button
+  pair and a "Delete old file" checkbox) — rather than acting
+  automatically. Writing tags onto a file, by contrast, is treated as
+  non-destructive (it augments a file in place rather than replacing
+  it) and runs with no confirmation in either interface.
 
 ## Running tests
 
@@ -256,3 +337,13 @@ All external HTTP (Spotify, slskd) is mocked in tests — the suite never
 makes real network calls. A handful of tests that exercise real audio
 tag round-trips against files on an external drive are skipped
 automatically when that drive isn't mounted.
+
+UI tests use [`pytest-qt`](https://pytest-qt.readthedocs.io/) — real Qt
+widgets, no display required (they run headless in CI the same way they
+do locally). Consistent with the rest of the codebase's testing
+philosophy: real service-layer logic (`DashboardService`, threshold
+resolution, `config_store`, `download_dedup`, the connection-management
+methods on `Application`) gets real, direct coverage; thin Qt glue
+(widget construction, layout, button-click wiring already covered at
+the level established across `ui/`) gets smoke-level coverage rather
+than exhaustive testing of PySide6 itself.

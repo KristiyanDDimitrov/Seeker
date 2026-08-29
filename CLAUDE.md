@@ -2,8 +2,12 @@
 
 Personal DJ music library management assistant. Syncs Spotify playlists to a
 local SQLite cache (to minimize API calls against Spotify's rate/quota
-limits), and will eventually match cached tracks against a SoulSeek search
-to identify and download the highest-quality available file for each track.
+limits), matches cached tracks against a scanned local library, and — for
+whatever's missing — searches SoulSeek (via a self-hosted `slskd` daemon)
+to identify and download the highest-quality available file for each
+track, then tags matched files with Spotify's canonical metadata. Ships
+both a CLI (`seeker`) and a desktop GUI (`seeker-ui`, PySide6) over the
+same service layer — see README.md for the full command/screen reference.
 
 This is a portfolio project. Code quality, structure, and test coverage
 matter as much as functionality — prefer the idiomatic/correct approach over
@@ -55,8 +59,21 @@ src/seeker/
 │   ├── scanner.py, matcher.py, service.py
 │   └── metadata_service.py   # tag_tracks/tag_playlist — writes Spotify
 │                              #   metadata + art onto matched local files
+├── ui/                        # seeker-ui (PySide6) — presentation layer,
+│                              #   same layering rule as cli.py
+│   ├── main_window.py         # dashboard (tagging panel) + Downloads +
+│                              #   Review tabs, all on the same QTimer-
+│                              #   driven poll pattern
+│   ├── wizard.py               # onboarding: Spotify / library / SoulSeek
+│   ├── settings_window.py      # locations, destinations, connection
+│                              #   management, editable thresholds
+│   ├── library_location_picker.py  # folder-picker, shared by wizard +
+│                              #   Settings — see roadmap item 28 §1
+│   └── workers.py              # QThreadPool Worker + run_worker() — every
+│                              #   long-running UI action goes through this
 ├── models/{playlist,track,track_match,local_file,library_location,
-│           soulseek_file,download_request}.py
+│           soulseek_file,download_request,soulseek_review_candidate,
+│           active_download,track_status,upgrade_review}.py
 ├── matching.py               # shared fuzzy artist/title matching —
 │                              #   artist_matches, score_title,
 │                              #   resolve_text_source — used by BOTH
@@ -70,10 +87,24 @@ src/seeker/
 ├── audio_analysis.py          # analyze_audio (librosa BPM + Krumhansl-
 │                              #   Schmuckler key estimate), CAMELOT_MAP
 ├── audio_formats.py         # AUDIO_EXTENSIONS, shared by scanner + quality
-├── config.py
+├── dashboard_service.py       # DashboardService — playlist-scoped track
+│                              #   status + global active-downloads listing;
+│                              #   the one thing ui/ needed that no
+│                              #   existing service provided (item 22)
+├── config_store.py            # SeekerConfig — the UI-editable JSON store
+│                              #   (config.json); .env/config.py is now
+│                              #   only the fallback when a field is unset
+├── docker_setup.py            # Docker/slskd detection, bring-up,
+│                              #   health checks — shared by wizard.py and
+│                              #   settings_window.py
+├── download_dedup.py          # candidate_key/most_recent_per_candidate —
+│                              #   shared by DownloadService (write) and
+│                              #   DashboardService (read), see item 25
+├── config.py                  # .env-sourced fallback values
 ├── application.py
 ├── cli.py
-└── main.py
+├── main.py                    # `seeker` entry point
+└── main_ui.py                 # `seeker-ui` entry point
 ```
 
 ## Conventions
@@ -100,7 +131,9 @@ src/seeker/
 ```
 uv sync              # install deps
 uv run seeker         # run the CLI
-uv run pytest         # run tests (add pytest to dev deps if not present)
+uv run seeker-ui       # run the GUI (PySide6) — onboarding wizard on first launch
+uv run pytest         # run tests
+uv run mypy --strict src/  # type check — must stay clean
 ```
 
 ## Known issues / backlog
@@ -1058,6 +1091,201 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the X9 Pro drive is attached and slskd is up again this session,
     unblocking the drive-unmounted-skip tests too — unrelated to this
     task's own scope, just incidentally true for this run).
+
+29. **UI polish pass — done (2026-08-30).** Mirrors backend item 15's
+    six-area structure exactly, applied to everything built across Steps
+    3-8 (`ui/`, `main_ui.py`, `config_store.py`, `download_dedup.py`,
+    `dashboard_service.py`, the threshold-resolution wiring,
+    `Application`'s connection-management methods). An audit, not a
+    rewrite — most areas came back clean; two real bugs and several
+    real coverage gaps were found and fixed, same seriousness as item
+    15's own findings.
+
+    **Dead code — checked, none found.** `wizard.py`'s
+    `connect_spotify()`/`persist_soulseek_config()` extraction (item
+    28 §3) left thin callers behind, not unused duplicates — confirmed
+    by reading both call sites directly. No leftover single-panel
+    scaffolding from Step 3→5's `QTabWidget` restructure. No stray
+    debug prints or scratch scripts leaked into shipped files from the
+    heavy live-verification sessions across Steps 5-8 — checked via
+    `git ls-files` for anything scratch-shaped and `grep` for `print(`
+    outside the one legitimate, already-documented migration
+    notification in `config_store.py`. `ruff check --select
+    F401,F811,F841` across `src/`/`tests/` found two genuinely unused
+    imports (leftover from earlier drafts this session, not shipped
+    logic) — removed.
+
+    **`mypy --strict` — already clean, confirmed fresh (cache cleared,
+    re-run).** The specific PySide6 `Signal`/`Slot` stub-coverage
+    concern flagged going in — checked directly rather than assumed
+    either way: the entire `ui/` package has exactly one `type:
+    ignore` in it (`main_ui.py`, a dynamic `QApplication` attribute
+    assignment, unrelated to Signal/Slot at all), and `workers.py`
+    (the one module with real custom `Signal`/`Slot` definitions)
+    type-checks clean in isolation with zero ignores. PySide6's
+    bundled stubs are sufficient for this codebase's actual usage — no
+    scoped override needed, unlike `mutagen`'s real gap in item 15.
+
+    **Docstrings — the six specific items called out were all already
+    documented**, checked one at a time rather than assumed: the
+    2s/20s two-timer split and why (`main_window.py`), the overlap
+    guard, the threshold-inversion constraint and what it protects
+    (`settings_window.py`), the `role='settled'` decision plus the
+    broadened lock-classification fix it depended on
+    (`download_service.py::confirm_review_candidate`), the
+    `get_config` callable-not-snapshot reasoning (`matcher.py`,
+    mirrored in `download_service.py`), and `DownloadService.soulseek`'s
+    lazy-property fix. All six already carry the "why," a direct
+    result of this project's habit of writing that reasoning down at
+    the time each decision was made rather than after the fact.
+
+    **Error-handling audit — two real bugs found, not just the one
+    hypothesized going in.**
+    1. The specific failure mode flagged as "likely to matter most" —
+       does an uncaught exception inside a QTimer poll tick crash the
+       app or silently stop the timer — was traced for real, not
+       assumed: a script driving a real `QTimer` through 5 real ticks,
+       each raising inside its render callback, confirmed the app
+       neither crashes nor stops firing; PySide6's own default
+       exception hook prints a traceback and the timer schedule is
+       unaffected either way. The ORIGINAL hypothesis was wrong — but
+       tracing it surfaced a real, different gap: `ui/workers.py`'s
+       `run_worker()` never caught an exception raised inside a
+       caller's own `on_finished`/`on_error` callback (as opposed to
+       the fetch function itself, which was already wrapped) — nothing
+       in this codebase's OWN code guarded against a render bug, only
+       PySide6's implicit default handler did, an unverified safety
+       net rather than an intentional one. Fixed by wrapping both
+       callback invocations in `handle_finished`/`handle_error`,
+       printing a clear, attributable error and surfacing it to
+       `status_label` when the caller provided one — protects every
+       current and future `run_worker` caller from one shared fix,
+       matching this project's "shared thing lives at the lowest
+       layer that needs it" precedent.
+    2. Found investigating the first: a genuine `ResourceWarning:
+       unclosed database` surfaced during a coverage run.
+       `Database.initialize()` used `with self.connect() as
+       connection:` — sqlite3's own context-manager protocol only
+       manages commit/rollback, NOT closing the connection (unlike
+       `transaction()`'s explicit `finally: connection.close()`)  —
+       so every real `Application()` launch, and every test building
+       a fresh `Database`, leaked one real connection, relying on GC
+       to eventually finalize it. Fixed to match `transaction()`'s own
+       pattern exactly.
+
+       Also checked, per the brief: every wizard step making a real
+       network call (Docker health polling, OAuth) already has a real,
+       user-visible failure path — `check_slskd_health`/
+       `detect_docker_state` both swallow their own real exceptions
+       into a status enum rather than raising, so they never depended
+       on `run_worker`'s error path at all; the OAuth/bring-up flows
+       already pass `status_label` and surface failures correctly. No
+       gap found there.
+
+    **Coverage audit — real gaps closed, not a percentage chase.**
+    `ui/wizard.py` (63% → 93%): every prior test only checked which
+    step the wizard resumes at, never a real button click — the
+    Connect/Choose-Folder/Bring-Up/health-result action handlers had
+    zero coverage, a genuine gap given Settings' equivalent actions
+    were already tested this same way. Added direct tests for all of
+    it: Connect Spotify (calls `connect_spotify`, advances), Choose
+    Library Folder (registers the real location, advances, triggers
+    the Docker check), SoulSeek bring-up's three guards
+    (username/password, Docker-not-running, no-library-location) and
+    its real `docker compose` failure path (stderr surfaces to the
+    status label), the health-poll HEALTHY/BAD_CREDENTIALS/timeout
+    outcomes, and the three real `_render_docker_state` branches
+    (NOT_INSTALLED / INSTALLED_NOT_RUNNING on darwin / RUNNING) plus
+    `_on_launch_docker_clicked`'s success/failure paths. Remaining gap
+    (93%) is genuinely thin: clipboard glue, Linux/Windows-only
+    branches unreachable on this darwin test machine, and a couple of
+    lines that appear uncovered only because `pytest-cov` doesn't
+    reliably instrument code executed on a real `QThreadPool`
+    background thread (the code itself IS exercised — the test
+    asserting its real, correct output passes — coverage.py just
+    can't see inside that thread without extra configuration this
+    project doesn't otherwise need).
+
+    `Application.onboarding_complete` — real, consequential routing
+    logic (`main_ui.py` uses it to decide wizard vs. dashboard) that
+    had NEVER been asserted for its actual true/false correctness in
+    any test; the one existing exercise (`test_lazy_spotify_config.py`)
+    only confirms it doesn't raise, and runs in a subprocess coverage.py
+    can't see into anyway. Added direct tests for all four real
+    combinations (neither done, Spotify-only, library-only, both —
+    confirming SoulSeek is genuinely excluded from the condition, not
+    just asserted in a comment).
+
+    `docker_setup.py::bring_up_slskd` — no test anywhere exercised its
+    real body; every wizard/Settings test mocks it out entirely (there
+    being no reasonable way to unit-test a real `docker compose up`).
+    Added a direct test mocking only `subprocess.run`, confirming the
+    real env-var dict and command list it constructs — a genuine
+    regression risk given item 13's own history of getting the
+    SoulSeek-network-vs-web-UI env var names wrong once already.
+
+    **Explicitly judged not worth closing further**, same discipline
+    as item 15's own equivalent section: `application.py`'s remaining
+    lazy-init one-line getters (`track_matcher`, `metadata_service`,
+    `dashboard_service` property bodies) — item 15's own precedent
+    applies unchanged, testing them would mostly re-assert `if
+    self._x is None: self._x = X(...)`. `main_window.py`'s remaining
+    gaps are near-identical "no selection, show a message" guards
+    already established and tested for other actions in the same file
+    (the tagging panel's own no-selection tests), plus `_on_settings_clicked`'s
+    trivial window-open wiring (already smoke-tested for existence).
+    `settings_window.py`/`download_service.py`/`matcher.py`'s residual
+    gaps are the equivalent shape.
+
+    **Dependency audit — confirmed clean, nothing to fix.**
+    `pyside6>=6.11.2`/`pytest-qt>=4.5.0` are both declared with real,
+    currently-installed version floors (confirmed against `pytest`'s
+    own reported versions at collection time). Every external import
+    across `ui/`, `main_ui.py`, `dashboard_service.py`,
+    `config_store.py`, `download_dedup.py`, `docker_setup.py` resolves
+    to `PySide6`, `httpx`, or `platformdirs` — all three already
+    explicit `dependencies` entries. No scipy-style undeclared
+    transitive dependency found.
+
+    **README rewritten for both interfaces.** Previously CLI-only —
+    no mention of `seeker-ui`, the onboarding wizard, or Settings
+    anywhere. Now: a new "Two interfaces, one service layer" section
+    up front (the wizard replaces the old manual `.env`/slskd-web-UI
+    setup entirely, though that manual path still works and is kept
+    documented as the CLI-only alternative); the Architecture
+    diagram/prose already said "presentation layer" (item 22's own
+    fix) but the file-layout tree completely omitted `ui/`,
+    `main_ui.py`, `dashboard_service.py`, `config_store.py`,
+    `docker_setup.py`, `download_dedup.py` — added, with the same
+    one-line-purpose comments the rest of the tree already uses; the
+    Commands table gained a short "GUI equivalents" preamble; the
+    file-replacement confirmation design-principle bullet updated to
+    name both interfaces' actual controls, not just the CLI's prompts.
+
+    **`CLAUDE.md` spot-check — one real, significant staleness found
+    and fixed.** The opening description still said the app "will
+    eventually match cached tracks against a SoulSeek search" — false
+    for a very long time (roadmap items 4-17 built and live-verified
+    that entire pipeline) — rewritten to describe the real, current
+    system including both interfaces. The "Current layout" tree had
+    the exact "earlier, now-superseded shape" problem flagged as the
+    likely candidate — it predated Step 3 entirely and never gained a
+    single line for anything built since (`ui/`, `main_ui.py`,
+    `dashboard_service.py`, `config_store.py`, `docker_setup.py`,
+    `download_dedup.py` all missing) — brought current. The
+    Architecture section's own diagram/prose were already correct
+    (fixed once already, in item 22) — confirmed rather than assumed
+    stale just because the layout tree nearby was.
+
+    Tests: `run_worker`'s new defensive wrapping (5 new tests — no
+    propagation with/without a `status_label`, `on_error` callback
+    exceptions, registry cleanup still happens on a callback failure);
+    `Database.initialize()`'s connection-closing (1 new test, spying
+    on the real connection via a wrapped `connect()` rather than
+    trying to monkeypatch sqlite3's immutable C type directly); 15 new
+    `wizard.py` tests; 4 new `onboarding_complete` tests; 1 new
+    `bring_up_slskd` test. `mypy --strict` clean; full suite 377
+    passed.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
