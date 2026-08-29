@@ -31,6 +31,7 @@ from seeker.docker_setup import (
     slskd_data_dir,
 )
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
+from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.workers import run_worker
 
@@ -126,6 +127,7 @@ class OnboardingWizard(QMainWindow):
         ))
 
         dashboard_button = QPushButton("Open Spotify Developer Dashboard")
+        dashboard_button.setToolTip(help_text.TOOLTIP_OPEN_SPOTIFY_DASHBOARD)
         dashboard_button.clicked.connect(
             lambda: webbrowser.open(
                 "https://developer.spotify.com/dashboard"
@@ -138,6 +140,7 @@ class OnboardingWizard(QMainWindow):
             QLabel(f"Redirect URI: {DEFAULT_REDIRECT_URI}")
         )
         copy_button = QPushButton("Copy")
+        copy_button.setToolTip(help_text.TOOLTIP_COPY_REDIRECT_URI)
         copy_button.clicked.connect(self._copy_redirect_uri)
         redirect_row.addWidget(copy_button)
         layout.addLayout(redirect_row)
@@ -148,12 +151,14 @@ class OnboardingWizard(QMainWindow):
 
         self.client_id_field = QLineEdit()
         self.client_id_field.setPlaceholderText("Spotify Client ID")
+        self.client_id_field.setToolTip(help_text.TOOLTIP_CLIENT_ID_FIELD)
         self.client_id_field.textChanged.connect(
             self._update_connect_button_state
         )
         layout.addWidget(self.client_id_field)
 
         self.connect_button = QPushButton("Connect")
+        self.connect_button.setToolTip(help_text.TOOLTIP_CONNECT_SPOTIFY)
         self.connect_button.setEnabled(False)
         self.connect_button.clicked.connect(
             self._on_connect_spotify_clicked
@@ -212,6 +217,7 @@ class OnboardingWizard(QMainWindow):
         layout.addWidget(self.library_path_label)
 
         choose_button = QPushButton("Choose Folder...")
+        choose_button.setToolTip(help_text.TOOLTIP_CHOOSE_LIBRARY_FOLDER)
         choose_button.clicked.connect(
             self._on_choose_library_folder_clicked
         )
@@ -268,6 +274,9 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_username_field.setPlaceholderText(
             "SoulSeek username"
         )
+        self.soulseek_username_field.setToolTip(
+            help_text.TOOLTIP_SOULSEEK_USERNAME_FIELD
+        )
         layout.addWidget(self.soulseek_username_field)
 
         self.soulseek_password_field = QLineEdit()
@@ -277,9 +286,13 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_password_field.setEchoMode(
             QLineEdit.EchoMode.Password
         )
+        self.soulseek_password_field.setToolTip(
+            help_text.TOOLTIP_SOULSEEK_PASSWORD_FIELD
+        )
         layout.addWidget(self.soulseek_password_field)
 
         self.bring_up_button = QPushButton("Set up SoulSeek")
+        self.bring_up_button.setToolTip(help_text.TOOLTIP_BRING_UP_SOULSEEK)
         self.bring_up_button.clicked.connect(self._on_bring_up_clicked)
         layout.addWidget(self.bring_up_button)
 
@@ -292,6 +305,7 @@ class OnboardingWizard(QMainWindow):
         layout.addWidget(self.soulseek_status_label)
 
         skip_button = QPushButton("Set up later")
+        skip_button.setToolTip(help_text.TOOLTIP_SKIP_SOULSEEK)
         skip_button.clicked.connect(self._on_skip_soulseek_clicked)
         layout.addWidget(skip_button)
 
@@ -313,6 +327,9 @@ class OnboardingWizard(QMainWindow):
         if state == DockerState.NOT_INSTALLED:
             self.docker_state_label.setText("Docker isn't installed.")
             self.docker_action_button.setText("Download Docker Desktop")
+            self.docker_action_button.setToolTip(
+                help_text.TOOLTIP_DOWNLOAD_DOCKER
+            )
             self._connect_docker_action(
                 lambda: webbrowser.open(
                     "https://www.docker.com/products/docker-desktop/"
@@ -325,6 +342,9 @@ class OnboardingWizard(QMainWindow):
                     "Docker is installed but not running."
                 )
                 self.docker_action_button.setText("Launch Docker Desktop")
+                self.docker_action_button.setToolTip(
+                    help_text.TOOLTIP_LAUNCH_DOCKER
+                )
                 self._connect_docker_action(self._on_launch_docker_clicked)
             else:
                 # No "Desktop" app to assume on Linux — dockerd is
@@ -338,6 +358,9 @@ class OnboardingWizard(QMainWindow):
                     "again."
                 )
                 self.docker_action_button.setText("Check again")
+                self.docker_action_button.setToolTip(
+                    help_text.TOOLTIP_CHECK_DOCKER_AGAIN
+                )
                 self._connect_docker_action(self._refresh_docker_state)
             self.docker_action_button.show()
         else:
@@ -374,6 +397,9 @@ class OnboardingWizard(QMainWindow):
             )
 
         self.docker_action_button.setText("Check again")
+        self.docker_action_button.setToolTip(
+            help_text.TOOLTIP_CHECK_DOCKER_AGAIN
+        )
         self._disconnect_docker_action()
         self._connect_docker_action(self._refresh_docker_state)
 

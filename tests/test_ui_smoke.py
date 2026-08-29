@@ -2,7 +2,13 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from PySide6.QtCore import QItemSelectionModel
-from PySide6.QtWidgets import QCheckBox, QLabel, QProgressBar, QPushButton
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QLabel,
+    QMenu,
+    QProgressBar,
+    QPushButton,
+)
 
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
@@ -15,7 +21,8 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.ui.main_window import MainWindow
+from seeker.ui import help_text
+from seeker.ui.main_window import AboutDialog, MainWindow
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
 
@@ -199,6 +206,78 @@ def test_main_window_has_a_settings_button(qtbot):
 
     assert window.settings_button.text() == "Settings"
     assert window.settings_button.isEnabled()
+
+
+def test_main_window_toolbar_buttons_have_tooltips(qtbot):
+    # Task 1 — every clickable control gets a setToolTip(); spot-check
+    # the toolbar rather than every single control (per-row/per-tab
+    # controls are covered by their own dedicated tests below).
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    for button in (
+            window.sync_button,
+            window.scan_button,
+            window.match_button,
+            window.download_button,
+            window.settings_button,
+    ):
+        assert button.toolTip() != ""
+
+
+def test_main_window_has_help_menu_with_about_action(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    menu_bar = window.menuBar()
+    menu_titles = [menu.title() for menu in menu_bar.findChildren(QMenu)]
+    assert any("Help" in title for title in menu_titles)
+
+    help_menu = next(
+        menu for menu in menu_bar.findChildren(QMenu) if "Help" in menu.title()
+    )
+    action_texts = [action.text() for action in help_menu.actions()]
+    assert help_text.ABOUT_MENU_TEXT in action_texts
+
+
+def test_about_dialog_opens_without_crashing(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    dialog = AboutDialog(window)
+    qtbot.addWidget(dialog)
+
+    assert dialog.windowTitle() == help_text.ABOUT_DIALOG_TITLE
+
+
+def test_dashboard_downloads_review_tabs_have_persistent_subtitles(qtbot):
+    # Task 1 — a short, persistent (not hover-dependent) one-liner under
+    # each tab's own header.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    tabs = window.centralWidget()
+    dashboard_labels = [
+        widget.text()
+        for widget in tabs.widget(0).findChildren(QLabel)
+    ]
+    assert help_text.DASHBOARD_TAB_SUBTITLE in dashboard_labels
+
+    downloads_labels = [
+        widget.text()
+        for widget in tabs.widget(1).findChildren(QLabel)
+    ]
+    assert help_text.DOWNLOADS_TAB_SUBTITLE in downloads_labels
+
+    review_labels = [
+        widget.text()
+        for widget in tabs.widget(2).findChildren(QLabel)
+    ]
+    assert help_text.REVIEW_TAB_SUBTITLE in review_labels
 
 
 def test_main_window_populates_playlist_list_from_service(qtbot):

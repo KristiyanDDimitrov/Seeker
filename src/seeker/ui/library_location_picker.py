@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QAbstractButton, QFileDialog, QLabel, QWidget
 
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
+from seeker.ui import help_text
 from seeker.ui.workers import run_worker
 
 
@@ -13,7 +14,7 @@ def pick_and_add_library_location(
         thread_pool: QThreadPool,
         application: Application,
         name: str,
-        dialog_title: str = "Choose Music Folder",
+        dialog_title: str = help_text.LIBRARY_LOCATION_PICKER_DIALOG_TITLE,
         button: QAbstractButton | None = None,
         status_label: QLabel | None = None,
         on_path_picked: Callable[[str], None] | None = None,

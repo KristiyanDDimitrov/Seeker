@@ -1665,6 +1665,39 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the Downloads tab (the cell widget there is no longer always a bare
     `QProgressBar`; tests updated to look up the nested bar/label).
 
+34. **Contextual help in the UI — done (2026-08-29).** Presentation-only,
+    no service-layer changes. `ui/help_text.py` centralizes every piece
+    of UI copy as named constants — tooltips, tab subtitles, and the
+    new About dialog's text — so a control shared between two windows
+    (`library_location_picker.py`'s folder-picker flow, used by both
+    the wizard and Settings) has exactly one copy to edit, the same
+    "shared thing lives in exactly one place" discipline `matching.py`'s
+    consolidation already established for logic. Inventoried every
+    clickable control across `ui/*.py` directly (grepped every
+    `QPushButton(`/`QCheckBox(`/`QLineEdit(`/`clicked.connect`/
+    `toggled.connect` call site, not assumed from memory) — every one
+    of them, including per-row buttons built inside a render loop
+    (`_build_track_actions`, `_build_needs_review_actions`,
+    `_build_upgrade_actions`, the wizard's dynamically-relabeled
+    `docker_action_button`), now has `setToolTip()`.
+
+    A short, persistent (not hover-dependent) one-line subtitle sits
+    under each of `MainWindow`'s three tab headers (Dashboard,
+    Downloads, Review) and under `SettingsWindow`'s own header, above
+    its four internal tabs — required restructuring the Dashboard and
+    Downloads tabs' central widgets from a single top-level layout into
+    a `QVBoxLayout` wrapping [subtitle, existing content], since neither
+    had a natural place for one before. `MainWindow` gained a real
+    `QMenuBar` (`self.menuBar()` — a `QMainWindow` always has one
+    available even before anything's added to it) with a `Help` menu
+    and an "About Seeker" action, opening a new `AboutDialog` (in
+    `ui/main_window.py`, alongside the window that owns the menu) —
+    its version line reads `importlib.metadata.version("seeker")`
+    rather than a second hardcoded literal that could drift from
+    `pyproject.toml`, falling back to no version line at all if package
+    metadata isn't available (e.g. a frozen PyInstaller build with no
+    installed dist-info).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

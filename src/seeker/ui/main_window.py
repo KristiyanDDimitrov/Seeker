@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
+from importlib.metadata import version
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -36,6 +39,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
+from seeker.ui import help_text
 from seeker.ui.download_eta import DownloadEtaTracker
 from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import run_worker
@@ -83,6 +87,16 @@ _DOWNLOAD_STATUS_LABELS = {
 _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
 
 
+def _build_subtitle_label(text: str) -> QLabel:
+    # Persistent, not hover-dependent (Task 1) — a muted one-liner under
+    # each tab's own header, aimed at someone who never reads the
+    # README and goes straight into the app.
+    label = QLabel(text)
+    label.setStyleSheet("color: gray;")
+    label.setWordWrap(True)
+    return label
+
+
 def _build_progress_widget(
         download: ActiveDownload,
         eta_text: str | None,
@@ -115,6 +129,43 @@ def _build_progress_widget(
     layout.addWidget(QLabel(eta_text or "Calculating…"))
 
     return container
+
+
+class AboutDialog(QDialog):
+    """The Help menu's "About Seeker" entry — app description, real
+    installed version (read from package metadata rather than a second
+    hardcoded literal that could drift from pyproject.toml), and
+    support-the-creator links (Task 3; see settings_window.py-style
+    placement precedent — Help/About is one of two deliberate spots for
+    those, not the daily-use Dashboard/Downloads/Review screens).
+    """
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.ABOUT_DIALOG_TITLE)
+
+        layout = QVBoxLayout(self)
+
+        try:
+            installed_version = version("seeker")
+        except Exception:
+            # Package metadata isn't always available (e.g. a frozen
+            # PyInstaller build without an installed dist-info) — the
+            # dialog should still open, just without a version line.
+            installed_version = None
+
+        body = help_text.ABOUT_DIALOG_BODY
+        if installed_version is not None:
+            body += f"<p>Version {installed_version}</p>"
+
+        text_label = QLabel(body)
+        text_label.setTextFormat(Qt.TextFormat.RichText)
+        text_label.setWordWrap(True)
+        layout.addWidget(text_label)
+
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
 
 
 class MainWindow(QMainWindow):
@@ -181,7 +232,15 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
-        layout = QHBoxLayout(central)
+        central_outer = QVBoxLayout(central)
+        central_outer.setContentsMargins(0, 0, 0, 0)
+        central_outer.addWidget(
+            _build_subtitle_label(help_text.DASHBOARD_TAB_SUBTITLE)
+        )
+
+        dashboard_content = QWidget()
+        layout = QHBoxLayout(dashboard_content)
+        central_outer.addWidget(dashboard_content)
 
         self.playlist_list = QListWidget()
         self.playlist_list.currentItemChanged.connect(
@@ -214,6 +273,7 @@ class MainWindow(QMainWindow):
         right.addWidget(self.empty_state_label)
 
         self.sync_tracks_button = QPushButton("Sync tracks")
+        self.sync_tracks_button.setToolTip(help_text.TOOLTIP_SYNC_TRACKS)
         self.sync_tracks_button.clicked.connect(
             self._on_sync_tracks_clicked
         )
@@ -235,20 +295,29 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(right, 3)
 
+        downloads_tab = QWidget()
+        downloads_layout = QVBoxLayout(downloads_tab)
+        downloads_layout.addWidget(
+            _build_subtitle_label(help_text.DOWNLOADS_TAB_SUBTITLE)
+        )
+
         self.downloads_table = QTableWidget(0, 5)
         self.downloads_table.setHorizontalHeaderLabels(
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
+        downloads_layout.addWidget(self.downloads_table)
 
         review_tab = self._build_review_tab()
 
         tabs = QTabWidget()
         tabs.addTab(central, "Dashboard")
-        tabs.addTab(self.downloads_table, "Downloads")
+        tabs.addTab(downloads_tab, "Downloads")
         tabs.addTab(review_tab, "Review")
 
         self.setCentralWidget(tabs)
+
+        self._build_help_menu()
 
         toolbar = QToolBar("Actions")
         self.addToolBar(toolbar)
@@ -258,24 +327,43 @@ class MainWindow(QMainWindow):
         # cached tracks) — so selecting a playlist in the sidebar
         # doesn't imply these narrow to it. Only Download is scoped.
         self.sync_button = QPushButton("Sync all playlists")
+        self.sync_button.setToolTip(help_text.TOOLTIP_SYNC_ALL_PLAYLISTS)
         self.sync_button.clicked.connect(self._on_sync_clicked)
         toolbar.addWidget(self.sync_button)
 
         self.scan_button = QPushButton("Scan all locations")
+        self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
         self.scan_button.clicked.connect(self._on_scan_clicked)
         toolbar.addWidget(self.scan_button)
 
         self.match_button = QPushButton("Match all tracks")
+        self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
         self.match_button.clicked.connect(self._on_match_clicked)
         toolbar.addWidget(self.match_button)
 
         self.download_button = QPushButton("Download selected playlist")
+        self.download_button.setToolTip(
+            help_text.TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST
+        )
         self.download_button.clicked.connect(self._on_download_clicked)
         toolbar.addWidget(self.download_button)
 
         self.settings_button = QPushButton("Settings")
+        self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)
         self.settings_button.clicked.connect(self._on_settings_clicked)
         toolbar.addWidget(self.settings_button)
+
+    def _build_help_menu(self) -> None:
+        menu_bar = self.menuBar()
+        help_menu = menu_bar.addMenu("&Help")
+
+        about_action = QAction(help_text.ABOUT_MENU_TEXT, self)
+        about_action.triggered.connect(self._on_about_clicked)
+        help_menu.addAction(about_action)
+
+    def _on_about_clicked(self) -> None:
+        dialog = AboutDialog(self)
+        dialog.exec()
 
     def _build_tagging_controls(self) -> QHBoxLayout:
         # Shared by all three triggers (per-track, "Tag selected",
@@ -288,6 +376,9 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
 
         self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
+        self.analyze_audio_checkbox.setToolTip(
+            help_text.TOOLTIP_ANALYZE_AUDIO_CHECKBOX
+        )
         self.analyze_audio_checkbox.toggled.connect(
             self._on_analyze_audio_toggled
         )
@@ -295,21 +386,25 @@ class MainWindow(QMainWindow):
 
         self.bpm_min_edit = QLineEdit()
         self.bpm_min_edit.setPlaceholderText("Min BPM")
+        self.bpm_min_edit.setToolTip(help_text.TOOLTIP_BPM_MIN)
         self.bpm_min_edit.hide()
         controls.addWidget(self.bpm_min_edit)
 
         self.bpm_max_edit = QLineEdit()
         self.bpm_max_edit.setPlaceholderText("Max BPM")
+        self.bpm_max_edit.setToolTip(help_text.TOOLTIP_BPM_MAX)
         self.bpm_max_edit.hide()
         controls.addWidget(self.bpm_max_edit)
 
         self.tag_selected_button = QPushButton("Tag selected")
+        self.tag_selected_button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
         self.tag_selected_button.clicked.connect(
             self._on_tag_selected_clicked
         )
         controls.addWidget(self.tag_selected_button)
 
         self.tag_playlist_button = QPushButton("Tag playlist")
+        self.tag_playlist_button.setToolTip(help_text.TOOLTIP_TAG_PLAYLIST)
         self.tag_playlist_button.clicked.connect(
             self._on_tag_playlist_clicked
         )
@@ -385,6 +480,7 @@ class MainWindow(QMainWindow):
         actions_layout.setContentsMargins(0, 0, 0, 0)
 
         tag_button = QPushButton("Tag")
+        tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
         track_id = status.track.id
         tag_button.clicked.connect(
             lambda: self._on_tag_track_clicked(track_id, tag_button)
@@ -478,6 +574,7 @@ class MainWindow(QMainWindow):
         # item 26 §0/§1.
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.addWidget(_build_subtitle_label(help_text.REVIEW_TAB_SUBTITLE))
 
         layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
 
@@ -678,7 +775,9 @@ class MainWindow(QMainWindow):
         actions_layout.setContentsMargins(0, 0, 0, 0)
 
         confirm_button = QPushButton("Confirm")
+        confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_REVIEW_CANDIDATE)
         reject_button = QPushButton("Reject")
+        reject_button.setToolTip(help_text.TOOLTIP_REJECT_REVIEW_CANDIDATE)
 
         confirm_button.clicked.connect(
             lambda: self._on_confirm_review_candidate(track_id, confirm_button)
@@ -747,7 +846,9 @@ class MainWindow(QMainWindow):
         actions_layout.setContentsMargins(0, 0, 0, 0)
 
         replace_button = QPushButton("Replace")
+        replace_button.setToolTip(help_text.TOOLTIP_REPLACE_UPGRADE)
         decline_button = QPushButton("Decline")
+        decline_button.setToolTip(help_text.TOOLTIP_DECLINE_UPGRADE)
 
         # The "delete old file?" control only ever appears when there's
         # a real old file to delete — mirrors the CLI's own guard around
@@ -756,6 +857,9 @@ class MainWindow(QMainWindow):
         delete_checkbox: QCheckBox | None = None
         if details.old_file_path is not None:
             delete_checkbox = QCheckBox("Delete old file")
+            delete_checkbox.setToolTip(
+                help_text.TOOLTIP_DELETE_OLD_FILE_CHECKBOX
+            )
             actions_layout.addWidget(delete_checkbox)
 
         def on_replace() -> None:

@@ -4,6 +4,7 @@ from seeker.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
 )
+from seeker.ui import help_text
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -22,6 +23,24 @@ def make_application(tmp_path, monkeypatch) -> Application:
         _fake_user_data_dir(data_dir),
     )
     return Application()
+
+
+def test_wizard_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
+    # Task 1 — every clickable control across the wizard's three pages
+    # gets a setToolTip(), regardless of which step is currently shown
+    # (all three pages are constructed up front by QStackedWidget).
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    for widget in (
+            wizard.client_id_field,
+            wizard.connect_button,
+            wizard.soulseek_username_field,
+            wizard.soulseek_password_field,
+            wizard.bring_up_button,
+    ):
+        assert widget.toolTip() != ""
 
 
 def test_wizard_starts_at_spotify_step_when_nothing_configured(

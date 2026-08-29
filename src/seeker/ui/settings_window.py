@@ -34,6 +34,7 @@ from seeker.docker_setup import (
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
+from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.wizard import SLSKD_LOCAL_BASE_URL
 from seeker.ui.workers import run_worker
@@ -75,12 +76,23 @@ class SettingsWindow(QMainWindow):
         self.setWindowTitle("Seeker Settings")
         self.resize(700, 500)
 
+        central = QWidget()
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+
+        subtitle = QLabel(help_text.SETTINGS_WINDOW_SUBTITLE)
+        subtitle.setStyleSheet("color: gray;")
+        subtitle.setWordWrap(True)
+        central_layout.addWidget(subtitle)
+
         tabs = QTabWidget()
         tabs.addTab(self._build_locations_tab(), "Library Locations")
         tabs.addTab(self._build_destinations_tab(), "Playlist Destinations")
         tabs.addTab(self._build_connection_tab(), "Connection")
         tabs.addTab(self._build_thresholds_tab(), "Thresholds")
-        self.setCentralWidget(tabs)
+        central_layout.addWidget(tabs)
+
+        self.setCentralWidget(central)
 
         self._refresh_locations()
         self._refresh_destinations()
@@ -102,9 +114,13 @@ class SettingsWindow(QMainWindow):
         add_row = QHBoxLayout()
         self.new_location_name_field = QLineEdit()
         self.new_location_name_field.setPlaceholderText("Location name")
+        self.new_location_name_field.setToolTip(
+            help_text.TOOLTIP_NEW_LOCATION_NAME_FIELD
+        )
         add_row.addWidget(self.new_location_name_field)
 
         self.add_location_button = QPushButton("Choose Folder && Add")
+        self.add_location_button.setToolTip(help_text.TOOLTIP_ADD_LOCATION)
         self.add_location_button.clicked.connect(
             self._on_add_location_clicked
         )
@@ -146,6 +162,7 @@ class SettingsWindow(QMainWindow):
             )
 
             remove_button = QPushButton("Remove")
+            remove_button.setToolTip(help_text.TOOLTIP_REMOVE_LOCATION)
             name = location.name
             remove_button.clicked.connect(
                 lambda _=False, name=name: self._on_remove_location_clicked(
@@ -208,16 +225,25 @@ class SettingsWindow(QMainWindow):
 
         form = QFormLayout()
         self.destination_location_combo = QComboBox()
+        self.destination_location_combo.setToolTip(
+            help_text.TOOLTIP_DESTINATION_LOCATION_COMBO
+        )
         form.addRow("Library location:", self.destination_location_combo)
 
         self.destination_subfolder_field = QLineEdit()
         self.destination_subfolder_field.setPlaceholderText(
             "Optional subfolder"
         )
+        self.destination_subfolder_field.setToolTip(
+            help_text.TOOLTIP_DESTINATION_SUBFOLDER_FIELD
+        )
         form.addRow("Subfolder:", self.destination_subfolder_field)
         right.addLayout(form)
 
         self.save_destination_button = QPushButton("Save destination")
+        self.save_destination_button.setToolTip(
+            help_text.TOOLTIP_SAVE_DESTINATION
+        )
         self.save_destination_button.clicked.connect(
             self._on_save_destination_clicked
         )
@@ -344,9 +370,15 @@ class SettingsWindow(QMainWindow):
         self.spotify_client_id_field = QLineEdit()
         # Not actually secret — PKCE has no client secret component —
         # fine to display and edit in plain text.
+        self.spotify_client_id_field.setToolTip(
+            help_text.TOOLTIP_SPOTIFY_CLIENT_ID_FIELD
+        )
         spotify_form.addRow("Client ID:", self.spotify_client_id_field)
 
         self.reauthorize_spotify_button = QPushButton("Re-authorize")
+        self.reauthorize_spotify_button.setToolTip(
+            help_text.TOOLTIP_REAUTHORIZE_SPOTIFY
+        )
         self.reauthorize_spotify_button.clicked.connect(
             self._on_reauthorize_spotify_clicked
         )
@@ -370,6 +402,7 @@ class SettingsWindow(QMainWindow):
         self.soulseek_api_key_display = QLabel("Not configured")
         api_key_row.addWidget(self.soulseek_api_key_display)
         self.reveal_api_key_button = QPushButton("Show")
+        self.reveal_api_key_button.setToolTip(help_text.TOOLTIP_REVEAL_API_KEY)
         self.reveal_api_key_button.clicked.connect(
             self._on_toggle_api_key_visibility
         )
@@ -377,6 +410,9 @@ class SettingsWindow(QMainWindow):
         soulseek_form.addRow("API key:", api_key_row)
 
         self.test_connection_button = QPushButton("Test connection")
+        self.test_connection_button.setToolTip(
+            help_text.TOOLTIP_TEST_CONNECTION
+        )
         self.test_connection_button.clicked.connect(
             self._on_test_connection_clicked
         )
@@ -391,6 +427,9 @@ class SettingsWindow(QMainWindow):
         self.new_soulseek_username_field.setPlaceholderText(
             "SoulSeek username"
         )
+        self.new_soulseek_username_field.setToolTip(
+            help_text.TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD
+        )
         soulseek_form.addRow(
             "New username:", self.new_soulseek_username_field
         )
@@ -402,12 +441,18 @@ class SettingsWindow(QMainWindow):
         self.new_soulseek_password_field.setEchoMode(
             QLineEdit.EchoMode.Password
         )
+        self.new_soulseek_password_field.setToolTip(
+            help_text.TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD
+        )
         soulseek_form.addRow(
             "New password:", self.new_soulseek_password_field
         )
 
         self.update_credentials_button = QPushButton(
             "Update SoulSeek credentials"
+        )
+        self.update_credentials_button.setToolTip(
+            help_text.TOOLTIP_UPDATE_CREDENTIALS
         )
         self.update_credentials_button.clicked.connect(
             self._on_update_credentials_clicked
@@ -593,11 +638,17 @@ class SettingsWindow(QMainWindow):
         form = QFormLayout()
 
         self.auto_match_threshold_field = QLineEdit()
+        self.auto_match_threshold_field.setToolTip(
+            help_text.TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD
+        )
         form.addRow(
             "Auto-match threshold:", self.auto_match_threshold_field
         )
 
         self.needs_review_threshold_field = QLineEdit()
+        self.needs_review_threshold_field.setToolTip(
+            help_text.TOOLTIP_NEEDS_REVIEW_THRESHOLD_FIELD
+        )
         form.addRow(
             "Needs-review threshold:", self.needs_review_threshold_field
         )
@@ -605,6 +656,9 @@ class SettingsWindow(QMainWindow):
         layout.addLayout(form)
 
         self.save_thresholds_button = QPushButton("Save thresholds")
+        self.save_thresholds_button.setToolTip(
+            help_text.TOOLTIP_SAVE_THRESHOLDS
+        )
         self.save_thresholds_button.clicked.connect(
             self._on_save_thresholds_clicked
         )

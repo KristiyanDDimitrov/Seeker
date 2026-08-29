@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from PySide6.QtWidgets import QFileDialog, QPushButton
+from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton
 
 from seeker.application import SPOTIFY_TOKEN_PATH, Application
 from seeker.docker_setup import SlskdHealthCheckResult, SlskdHealthStatus
@@ -8,6 +8,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
+from seeker.ui import help_text
 from seeker.ui.settings_window import SettingsWindow
 
 
@@ -85,6 +86,47 @@ def add_location(application: Application, name: str, path) -> LibraryLocation:
 def add_playlist(application: Application, playlist: Playlist) -> None:
     with application.database.transaction() as connection:
         application.sync_service.playlists.save(playlist, connection)
+
+
+# --- Task 1: contextual help --------------------------------------------
+
+def test_settings_window_has_persistent_subtitle(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    labels = [
+        widget.text()
+        for widget in window.centralWidget().findChildren(QLabel)
+    ]
+    assert help_text.SETTINGS_WINDOW_SUBTITLE in labels
+
+
+def test_settings_window_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    for widget in (
+            window.new_location_name_field,
+            window.add_location_button,
+            window.destination_location_combo,
+            window.destination_subfolder_field,
+            window.save_destination_button,
+            window.spotify_client_id_field,
+            window.reauthorize_spotify_button,
+            window.reveal_api_key_button,
+            window.test_connection_button,
+            window.new_soulseek_username_field,
+            window.new_soulseek_password_field,
+            window.update_credentials_button,
+            window.auto_match_threshold_field,
+            window.needs_review_threshold_field,
+            window.save_thresholds_button,
+    ):
+        assert widget.toolTip() != ""
 
 
 # --- Library locations (§1) -------------------------------------------
