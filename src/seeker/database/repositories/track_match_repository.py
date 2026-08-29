@@ -77,6 +77,33 @@ class TrackMatchRepository:
 
         return _row_to_track_match(row)
 
+    def get_by_local_file_id(
+            self,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> list[TrackMatch]:
+        # A list, not a single optional -- local_file_id isn't the
+        # table's own primary key (track_id is), so nothing in the
+        # schema actually prevents more than one track's match from
+        # pointing at the same local file. Expected to be at most one
+        # in practice, but returning a list is the honest contract
+        # rather than assuming that and taking the first row.
+        rows = connection.execute(
+            """
+            SELECT
+                track_id,
+                local_file_id,
+                match_method,
+                score,
+                matched_at
+            FROM track_matches
+            WHERE local_file_id = ?
+            """,
+            (local_file_id,),
+        ).fetchall()
+
+        return [_row_to_track_match(row) for row in rows]
+
 
 def _row_to_track_match(row: sqlite3.Row) -> TrackMatch:
     return TrackMatch(

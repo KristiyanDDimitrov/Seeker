@@ -19,9 +19,13 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
 from seeker.file_deletion import delete_file
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
+from seeker.models.track_match import TrackMatch
 from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
 
 
@@ -83,10 +87,12 @@ class DuplicateService:
         database: Database,
         location_repository: LibraryLocationRepository,
         local_file_repository: LocalFileRepository,
+        track_match_repository: TrackMatchRepository,
     ):
         self.database = database
         self.locations = location_repository
         self.local_files = local_file_repository
+        self.track_matches = track_match_repository
 
     def _get_location_or_raise(
             self, location_name: str, connection: Any,
@@ -248,16 +254,29 @@ class DuplicateService:
 
         return groups
 
-    def delete_local_files(self, local_file_ids: list[int]) -> dict[str, Any]:
+    def delete_local_files(
+            self,
+            local_file_ids: list[int],
+            keep_local_file_id: int | None = None,
+    ) -> dict[str, Any]:
         """Deletes each given local file — both its `local_files` DB row
         and the real file on disk — used to resolve a duplicate group by
         removing every member except whichever one the caller decided to
-        keep. Deliberately has no notion of "groups" itself: the caller
-        (the UI, per its own double-confirm flow — see CLAUDE.md item
-        40) decides which specific ids to delete; this method trusts
-        that decision rather than re-deriving or re-validating it against
-        `find_duplicate_groups`' own clustering. Per-item try/except,
-        same batch-safety shape as `compute_fingerprints`.
+        keep. Deliberately has no notion of "groups" itself beyond
+        `keep_local_file_id`: the caller (the UI, per its own double-
+        confirm flow — see CLAUDE.md item 40) decides which specific ids
+        to delete; this method trusts that decision rather than
+        re-deriving or re-validating it against `find_duplicate_groups`'
+        own clustering. Per-item try/except, same batch-safety shape as
+        `compute_fingerprints`.
+
+        `keep_local_file_id`, when given, is the surviving file within
+        the same group — see `_repoint_or_clear_match`'s own docstring
+        for why a `track_matches` row pointing at a file being deleted
+        gets re-pointed to it rather than left to the schema's own
+        `ON DELETE SET NULL` cascade. `None` (no known survivor, e.g. a
+        caller deleting files with no group context at all) falls back
+        to that cascade, matching this method's original behavior.
 
         Order is deliberate and matters: for each file, the DB row is
         deleted FIRST, then the file on disk. These two steps aren't
@@ -270,20 +289,14 @@ class DuplicateService:
         `local_files` row pointing at a file that no longer exists, in
         the window before that same next scan repairs it — a state a
         matcher or tagger run in that window could act on and fail
-        against, which is worse than a merely-orphaned file. Checked
-        directly rather than assumed: `local_files.delete_by_id`
-        cascades `track_matches.local_file_id` to NULL via the schema's
-        own `ON DELETE SET NULL` (confirmed enforced —
-        `Database`/`connection.py` sets `PRAGMA foreign_keys = ON`), so
-        a track matched to a deleted duplicate goes back to unmatched
-        rather than being left pointing at a deleted row.
+        against, which is worse than a merely-orphaned file.
         """
         counts = {"deleted": 0, "failed": 0}
         details: list[dict[str, str]] = []
 
         for local_file_id in local_file_ids:
             try:
-                self._delete_one_local_file(local_file_id)
+                self._delete_one_local_file(local_file_id, keep_local_file_id)
             except Exception as error:
                 counts["failed"] += 1
                 details.append(
@@ -298,7 +311,11 @@ class DuplicateService:
 
         return {**counts, "details": details}
 
-    def _delete_one_local_file(self, local_file_id: int) -> None:
+    def _delete_one_local_file(
+            self,
+            local_file_id: int,
+            keep_local_file_id: int | None,
+    ) -> None:
         with self.database.transaction() as connection:
             local_file = self.local_files.get_by_id(local_file_id, connection)
 
@@ -309,6 +326,10 @@ class DuplicateService:
 
             location = self.locations.get_by_id(
                 local_file.location_id, connection,
+            )
+
+            self._repoint_or_clear_match(
+                local_file_id, keep_local_file_id, connection,
             )
             self.local_files.delete_by_id(local_file_id, connection)
 
@@ -330,6 +351,65 @@ class DuplicateService:
             raise RuntimeError(
                 f"removed from the library but could not delete "
                 f"{file_path}: {error}"
+            )
+
+    def _repoint_or_clear_match(
+            self,
+            local_file_id: int,
+            keep_local_file_id: int | None,
+            connection: Any,
+    ) -> None:
+        """If a `track_matches` row currently points at the file about
+        to be deleted, re-point it at the group's surviving file instead
+        of leaving it to fall back to the schema's `ON DELETE SET NULL`
+        cascade.
+
+        Confirmed live, not assumed, that this matters: the cascade
+        only nulls `local_file_id` — it leaves `match_method`/`score`
+        untouched, so a track that was `match_method='auto'` stays
+        `'auto'` with `local_file_id=NULL`. Checked directly what that
+        combination does downstream: `DashboardService._compute_status`
+        requires BOTH `match_method == "auto"` AND a resolvable
+        `local_file_id` for `IN_LIBRARY`, so the track falsely shows
+        `NOT_FOUND` — even though the group's other (often
+        higher-quality) copy is sitting right there. Checked the
+        actual re-download risk this could imply, not just the display
+        bug: `TrackRepository.get_unmatched_for_playlist` (what
+        `download_playlist` actually schedules against) filters on
+        `match_method IS NULL`, which stays FALSE for this row (it's
+        still `'auto'`) — so `download_playlist` does NOT pick it back
+        up either, meaning the track is stuck in limbo (shown missing,
+        never re-searched) rather than actually re-downloaded. Neither
+        outcome is acceptable, and re-pointing avoids both: no separate
+        "repoint" helper exists elsewhere to reuse (every real call site
+        — `TrackMatcher.match_all()`, `DownloadService
+        .apply_upgrade_decision`'s replace path — just constructs a
+        `TrackMatch` and calls `TrackMatchRepository.upsert()` directly;
+        that IS the reusable primitive, already used the same way here).
+        `match_method`/`score` are preserved as-is (not re-evaluated) —
+        the underlying audio is fingerprint-confirmed near-identical
+        (>= DUPLICATE_SIMILARITY_THRESHOLD), so the existing match's own
+        confidence is still the right thing to report; only
+        `matched_at` is refreshed to reflect that the pointer just
+        changed.
+        """
+        if keep_local_file_id is None:
+            return
+
+        matches = self.track_matches.get_by_local_file_id(
+            local_file_id, connection,
+        )
+
+        for match in matches:
+            self.track_matches.upsert(
+                TrackMatch(
+                    track_id=match.track_id,
+                    local_file_id=keep_local_file_id,
+                    match_method=match.match_method,
+                    score=match.score,
+                    matched_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                connection,
             )
 
 

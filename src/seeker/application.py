@@ -385,6 +385,7 @@ class Application:
                 self.database,
                 LibraryLocationRepository(self.database),
                 LocalFileRepository(self.database),
+                TrackMatchRepository(self.database),
             )
 
         return self._duplicate_service

@@ -83,6 +83,7 @@ def make_service(database: Database) -> DuplicateService:
         database,
         LibraryLocationRepository(database),
         LocalFileRepository(database),
+        TrackMatchRepository(database),
     )
 
 
@@ -355,6 +356,63 @@ def test_delete_local_files_cascades_track_match_to_unmatched(tmp_path):
 
     assert match is not None
     assert match.local_file_id is None
+
+
+def test_delete_local_files_repoints_match_to_the_kept_file(tmp_path):
+    # The real bug this guards against: without keep_local_file_id, the
+    # ON DELETE SET NULL cascade leaves match_method='auto' with
+    # local_file_id=NULL, which DashboardService._compute_status reports
+    # as NOT_FOUND even though the group's other, still-present copy is
+    # a fingerprint-confirmed duplicate of the exact same track. Passing
+    # keep_local_file_id must re-point the match there instead, and
+    # preserve the original match_method/score (no re-evaluation).
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    (music_dir / "low_quality.wav").write_bytes(b"fake audio data")
+    (music_dir / "high_quality.wav").write_bytes(b"fake audio data")
+    low_quality = add_local_file(database, location, "low_quality.wav", "wav", 3000)
+    high_quality = add_local_file(database, location, "high_quality.wav", "wav", 3000)
+
+    track_repo = TrackRepository(database)
+    match_repo = TrackMatchRepository(database)
+    original_matched_at = "2020-01-01T00:00:00+00:00"
+    with database.transaction() as connection:
+        track_repo.save(
+            Track(
+                id="t1", title="Title", artist="Artist", album="Album",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        match_repo.upsert(
+            TrackMatch(
+                track_id="t1",
+                local_file_id=low_quality.id,
+                match_method="auto",
+                score=87.5,
+                matched_at=original_matched_at,
+            ),
+            connection,
+        )
+
+    service = make_service(database)
+    result = service.delete_local_files(
+        [low_quality.id], keep_local_file_id=high_quality.id,
+    )
+
+    assert result["deleted"] == 1
+    assert result["failed"] == 0
+
+    with database.transaction() as connection:
+        match = match_repo.get_by_track_id("t1", connection)
+
+    assert match is not None
+    assert match.local_file_id == high_quality.id
+    assert match.match_method == "auto"
+    assert match.score == 87.5
+    assert match.matched_at != original_matched_at
 
 
 def test_delete_local_files_already_missing_id_counts_as_deleted(tmp_path):
