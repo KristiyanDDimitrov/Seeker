@@ -1785,6 +1785,92 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     deprioritized future option — not scoped or attempted as part of
     item 36. Direction, not urgent.
 
+38. **Duplicate/quality detector via fingerprinting — Phase 0 spike
+    done (2026-08-29); no production code yet, as scoped.** Verified
+    live against this machine and 3 real file pairs from the real
+    library, and found several real, load-bearing corrections to the
+    plan as originally briefed:
+
+    **The assumed import path (`pyacoustid.chromaprint.Fingerprinter`)
+    doesn't exist — checked, not assumed.** `pip install pyacoustid`
+    installs two separate top-level modules, `acoustid.py` (the
+    AcoustID *web-service* client — HTTP lookup/submit against
+    api.acoustid.org, which this project doesn't want at all, per
+    "prefer local execution over external services") and `chromaprint.py`
+    (a real ctypes binding to libchromaprint, MIT-licensed per its own
+    header, bundled in the same sdist) — imported as bare `import
+    chromaprint`, never as an `acoustid` submodule. **A real, separate
+    PyPI package literally named `chromaprint` exists and is a
+    same-name COLLISION with something unrelated (a colored-terminal-
+    output library)** — confirmed live by installing it and inspecting
+    its contents; never add `chromaprint` as a direct dependency name.
+
+    **Real macOS gotcha, confirmed live:** the bundled binding's loader
+    does a bare `ctypes.CDLL("libchromaprint.1.dylib")` with no path —
+    on this Apple Silicon Homebrew install, that fails
+    (`ImportError: couldn't find libchromaprint`) unless
+    `DYLD_FALLBACK_LIBRARY_PATH` includes `/opt/homebrew/lib`, since
+    dyld's default fallback search path doesn't include Homebrew's
+    prefix. This also raises at *import* time, not call time — a real
+    problem for an app that must still start cleanly when the library
+    isn't installed. Conclusion: don't depend on `pyacoustid`'s bundled
+    `chromaprint.py` as-is. A future `seeker/audio_fingerprint.py`
+    should adapt its small, real C-API surface (`chromaprint_new/free/
+    start/feed/finish/get_fingerprint/decode_fingerprint/dealloc` —
+    confirmed complete by reading the real binding's source) into
+    Seeker's own module with (a) an explicit candidate-path search list
+    per platform (Homebrew arm64/intel, Linux system paths, Windows DLL,
+    a `sys._MEIPASS` branch for a frozen build — mirroring
+    `docker_setup.py::compose_file_path()`'s own established pattern)
+    instead of a bare-name lookup, and (b) the "not installed" case
+    raised lazily, only when fingerprinting is actually invoked — the
+    same lazy-property discipline `Application.soulseek_client`/
+    `DownloadService.soulseek` already established (item 28).
+
+    **License, checked before deciding to bundle:** the C library
+    itself is LGPL-2.1-or-later (confirmed via `brew info chromaprint`
+    and its bundled `LICENSE.md`). Loading it dynamically via `ctypes`
+    (never statically linking it into a compiled extension) is the
+    correct, low-risk way to stay LGPL-compliant while bundling the
+    real `.dylib`/`.so` alongside a closed-source app — this is already
+    the approach being taken, not an extra step to add.
+
+    **Real clustering numbers, from 3 real file pairs in the real
+    library (not synthetic data):** same-format real MP3 duplicates
+    (`FISHER (OZ) - Losing It (Extended)`, 2 of 5 real copies found
+    across different Beatport-chart folders) scored **99.98%**
+    Hamming-distance similarity; a real cross-format duplicate pair
+    (`Bootie Brown, Tame Impala, Gorillaz - New Gold ...`, real FLAC
+    vs. a real lossy MP3 re-encode of the same track) scored **99.87%**
+    — confirming Chromaprint survives a real lossy transcode, which
+    matters since this library genuinely has both. An unrelated real
+    track pair (negative control) scored **57.81%** — a wide, clear
+    separation from the ~99.9% duplicate band, validating
+    Hamming-distance clustering as the right approach before writing
+    any production clustering code. Decoding used `soundfile.read(path,
+    dtype="int16", always_2d=True)` (not the fpcalc subprocess path, as
+    the task specified) fed to `Fingerprinter.feed()` in ~1-second
+    chunks (confirming the streaming contract, not just one big feed
+    call) — real MP3 and FLAC decoding both worked via `soundfile`
+    1.2.2/libsndfile 1.2.2, already an existing transitive dependency
+    (via `librosa`) with zero new Python dependency needed for decode.
+
+    **`libchromaprint` needed a real, non-trivial local install** —
+    `brew install chromaprint` pulled in `ffmpeg` and several codec
+    libraries (~90MB total) as real dependencies. A future CLI/UI
+    should check for the library's availability and degrade
+    gracefully (skip/warn) rather than crash, the same
+    "checked-before-use, not eagerly constructed" pattern
+    `soulseek_configured` already established — fingerprinting is
+    inherently an optional feature a real install may not have set up.
+
+    **Not yet built, deliberately, per the task's own phasing:** the
+    schema migration (`local_files.fingerprint`/`fingerprint_duration`/
+    `fingerprint_computed_at`), `seeker/audio_fingerprint.py` itself,
+    the location-scoped clustering/quality-scoring service, CLI
+    commands, and the UI tab are all still ahead — this entry covers
+    Phase 0 only. [HISTORY §38](docs/HISTORY.md#38)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

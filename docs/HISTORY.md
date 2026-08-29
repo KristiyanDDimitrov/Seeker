@@ -5031,3 +5031,243 @@ passes rather than unit tests. `mypy --strict` clean across all 60
 `src/` files throughout (including both fix attempts). Full suite: 379
 passed, 1 skipped, run three times in a row with zero crashes after
 the real fix landed.
+
+### 36
+
+Packaging polish follow-on task (macOS ad-hoc signing + `.dmg` readme,
+Windows Inno Setup installer, Linux noted only). The macOS half started
+from a real, wrong assumption in this project's own prior docs, caught
+by checking rather than trusting them.
+
+**The task's own ask — "add ad-hoc self-signing (`codesign -s -`) as a
+build step if it genuinely reduces friction" — turned out to already
+be true, and checking that (rather than just adding a redundant step)
+surfaced that this project's own README/`seeker.spec` had been
+describing the build inaccurately.** Read PyInstaller's actual
+installed source (`PyInstaller/utils/osx.py::sign_binary()`,
+`PyInstaller/building/osx.py::BUNDLE.assemble()`) rather than assuming
+from the spec's own `codesign_identity=None` setting: `sign_binary()`
+defaults `identity` to `'-'` (ad-hoc) whenever no real identity is
+given, and `BUNDLE.assemble()` unconditionally calls it — with
+`--deep` — against the whole built bundle, not just the individual
+Mach-O executable. This is not conditional on anything this project's
+spec sets; it happens on every `darwin` build via stock PyInstaller
+behavior.
+
+Confirmed live, not just read from source: ran a real
+`pyinstaller --noconfirm --clean packaging/seeker.spec` build and
+checked the real output. The build log itself said so directly
+(`"Re-signing the EXE"`, `"Signing the BUNDLE..."`); `codesign -dvvv
+dist/Seeker.app` showed `flags=0x2(adhoc)` / `Signature=adhoc` for
+real; `codesign --verify --deep --strict dist/Seeker.app` exited 0.
+Also checked what this does NOT achieve, so as not to overclaim it:
+`spctl --assess --type execute -vv dist/Seeker.app` still reports
+"rejected" — ad-hoc signing is not notarization, and Gatekeeper's
+first-launch-on-another-Mac warning is unaffected by it. This means
+`seeker.spec`'s own docstring and the README's "unsigned, unnotarized"
+language were real, if minor, inaccuracies — a real build already
+carries a valid (if ad-hoc, unidentified) signature — corrected both
+to "ad-hoc signed, not notarized" with the live evidence recorded
+inline.
+
+Added `packaging/Read Me First.txt` (the right-click → Open workaround,
+spelled out) to the `.dmg`'s `files`/`icon_locations` in
+`dmg_settings.py`, widening `window_rect` to `((100,100),(640,400))`
+to fit a third icon. Rebuilt the real `.dmg` and mounted it for real
+(`hdiutil attach`) to confirm the volume contains `Seeker.app`, the
+`Applications` symlink, and `Read Me First.txt` with the exact intended
+text — not just trusted the settings file's own intent.
+
+**Windows.** No Inno Setup or Windows environment exists in this
+session, so `packaging/seeker.iss` + `packaging/build_windows_installer.py`
+(mirroring `dmg_settings.py`/`build_dmg.py`'s exact chaining pattern)
+are written against Inno Setup's real, documented `[Setup]`/`[Files]`/
+`[Icons]`/`[Run]` section syntax and PyInstaller's own already-verified
+onedir output shape (`dist/Seeker/Seeker.exe` plus every bundled
+dependency) — not run or compiled. `AppId` is a fixed GUID generated
+once for this project
+(`08479AF0-7643-4688-B183-4E3A3431DE4D`) rather than left as a
+placeholder, since a real Inno Setup script needs one from the start to
+support in-place upgrades later; regenerating it later would break
+that guarantee for anyone who installed under the placeholder value —
+so it was generated for real now even though verification is deferred.
+
+**Linux.** Explicitly not attempted, matching the task's own scoping —
+tracked as CLAUDE.md roadmap item 37, a real future direction, not
+in-scope work.
+
+Tests: none added — matches items 30/31/32's own precedent that
+packaging work is verified by real build-and-run passes (this task's
+own `codesign`/`hdiutil` checks above), not unit tests. Full existing
+suite and `mypy --strict` both re-run clean after this task (no
+`src/seeker/*.py` files were touched at all — this task was entirely
+`packaging/`, `README.md`, `CLAUDE.md`).
+
+### 38
+
+Phase 0 spike for the duplicate/quality detector (roadmap item 5 in
+the original task brief): verify pyacoustid/chromaprint's real API,
+sample-format requirements, licensing, and OS-install story live,
+against real files from the real library — before writing any
+production code at all, per the task's own explicit phasing. Found
+several real corrections to the plan as briefed, not just confirmations
+of it — worth recording in full since a future session building the
+real module needs these, not a summary that hides how much the
+original assumption was off.
+
+**Environment start state, checked rather than assumed.** Neither
+`fpcalc` nor `libchromaprint` existed anywhere on this machine
+(`which fpcalc`/`which chromaprint` both empty; a full-disk `find` for
+`libchromaprint*` found nothing). `soundfile` (1.2.2, bundled
+libsndfile 1.2.2) was already present as an existing transitive
+dependency of `librosa` — confirmed via `import soundfile;
+soundfile.__libsndfile_version__` — so no new *Python* dependency was
+needed for decoding, only a new *system* one for the fingerprinting
+library itself. `pyacoustid` was not installed and is not a declared
+project dependency.
+
+**First real correction: the assumed import path is wrong.** The task
+brief said to verify "pyacoustid.chromaprint.Fingerprinter's actual
+streaming API." Running `import acoustid.chromaprint` (the literal
+assumed path) fails immediately: `ModuleNotFoundError: No module named
+'acoustid.chromaprint'; 'acoustid' is not a package` — `pip install
+pyacoustid` installs `acoustid.py` as a single flat module, not a
+package with submodules. Read `importlib.metadata.distribution
+('pyacoustid').files` directly rather than guessing further: the real
+distribution ships TWO sibling top-level modules,
+`acoustid.py` and `chromaprint.py` — the real Fingerprinter class lives
+at bare `chromaprint.Fingerprinter`, imported as `import chromaprint`,
+not nested under `acoustid` at all. Read `acoustid.py`'s own source to
+confirm this wasn't a fluke: its `fingerprint()` function itself does
+`import chromaprint` (top-level) and calls `chromaprint.Fingerprinter()`
+— same real shape.
+
+**Second real correction, and a genuinely risky one: a same-named PyPI
+package collision.** Tried `pip install chromaprint` directly (as a
+plausible alternative dependency name, before realizing it comes
+bundled with `pyacoustid`) and got a REAL, unrelated package — a
+colored-terminal-output library (`__description__`: "Python module to
+facilitate effortless color terminal output", version 0.1). Installing
+this instead of getting it via `pyacoustid` would have silently broken
+everything with a confusing, late failure (`chromaprint.Fingerprinter`
+wouldn't exist; the actual error would look like a missing-attribute
+bug, not a wrong-dependency bug). Recorded as a standing gotcha:
+`chromaprint.py`'s real availability comes from installing
+`pyacoustid`, never from installing a package literally named
+`chromaprint`.
+
+**Third real correction: importing the bundled binding at all crashed
+on this real machine, for a real, environment-specific reason.**
+`import chromaprint` (via `pyacoustid`, no other package installed)
+raised `ImportError: couldn't find libchromaprint` even though
+`brew install chromaprint` (see below) had already installed the real
+library. Read `chromaprint.py`'s own `_load_library`/`_guess_lib_name`
+functions directly: on `darwin`, it calls bare
+`ctypes.CDLL("libchromaprint.1.dylib")` — no explicit path — which
+relies on dyld's own default search behavior. Confirmed the real cause
+by checking `/opt/homebrew/lib/libchromaprint.1.dylib` exists (a real
+symlink into `/opt/homebrew/Cellar/chromaprint/1.6.1_1/lib/...`, from
+the brew install) and that setting
+`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` makes the same bare
+`ctypes.CDLL()` call succeed — dyld's own default fallback path
+(`$HOME/lib:/usr/local/lib:/usr/lib`) genuinely does not include
+Homebrew's Apple-Silicon prefix. This is a real, live-confirmed
+platform gotcha, not theoretical: a plain `import chromaprint` on a
+real, fully-updated Apple Silicon Homebrew install fails without an
+explicit environment variable or an explicit-path loader. Concluded
+from this that Seeker's own future module should NOT reuse
+`chromaprint.py`'s loader as-is — it needs a real, explicit
+candidate-path search (mirroring `docker_setup.py::compose_file_path()`'s
+already-established `sys._MEIPASS`-aware pattern for a frozen build)
+and must not raise at import time at all (this binding does, which
+would make merely importing a future `seeker.audio_fingerprint` module
+crash the whole app on a machine without the library installed — a
+real, avoidable regression risk).
+
+**License check, done before deciding anything about bundling.**
+`brew info chromaprint` reports the real license directly:
+`LGPL-2.1-or-later`, and a real `LICENSE.md` ships inside the Homebrew
+cellar path, confirming this rather than trusting the brew formula
+metadata alone. `chromaprint.py` itself (the ctypes *binding* file,
+distinct from the C library it binds to) carries its own MIT header
+("Distributed under the MIT license, see the LICENSE file for
+details."). Concluded: dynamic loading via `ctypes.CDLL` against a
+separately-installed or separately-bundled shared library (never
+statically linking `libchromaprint` into a compiled Python extension)
+is the standard, low-risk way to satisfy LGPL while still bundling the
+real `.dylib`/`.so` inside a PyInstaller build — this is already the
+approach ctypes forces by construction, so no extra compliance work is
+implied beyond keeping it dynamically loaded.
+
+**Real C API surface, confirmed complete by reading the real bound
+functions in `chromaprint.py` rather than assumed from memory:**
+`chromaprint_new`, `chromaprint_free`, `chromaprint_start`,
+`chromaprint_feed`, `chromaprint_finish`, `chromaprint_get_fingerprint`,
+`chromaprint_decode_fingerprint`, `chromaprint_encode_fingerprint`,
+`chromaprint_hash_fingerprint`, `chromaprint_dealloc`. The Python-level
+`Fingerprinter` class is a thin wrapper: `Fingerprinter(algorithm=
+ALGORITHM_TEST2)` (the real default) → `.start(sample_rate,
+num_channels)` → repeated `.feed(pcm_bytes)` (accepts `bytes`,
+`bytearray`, or `memoryview`; docstring/code both confirm 16-bit PCM,
+`len(data) // 2` samples per call) → `.finish()` returning the
+compressed+base64 fingerprint as `bytes`. `decode_fingerprint(data,
+base64=True)` is a REAL ctypes call into `chromaprint_decode_fingerprint`
+(not a pure-Python base64/varint decode, as might have been assumed
+without reading it) — returns a list of `uint32` sub-fingerprints
+suitable for direct Hamming-distance (XOR + popcount) comparison.
+
+**Real spike script, run against real files from the real library, not
+synthetic fixtures.** Queried the real, non-empty production DB
+directly (`sqlite3` against `~/Library/Application Support/Seeker/
+seeker.db`) for real duplicate candidates: grouped `local_files` by
+`lower(tag_artist), lower(tag_title)` with `COUNT(*) > 1` — found many
+real multi-copy groups (a real DJ library habit: the same track
+re-appearing across multiple "Beatport Top 100" monthly-chart folders).
+Picked two real pairs directly from that query:
+- Same-format: two real MP3 copies of `FISHER (OZ) - Losing It
+  (Extended)` (2 of 5 real copies found), same `duration_ms` (400509),
+  different file sizes (different encodes/sources despite being
+  labeled the same track).
+- Cross-format: a real FLAC (`Bootie Brown, Tame Impala, Gorillaz -
+  New Gold ... (Dom Dolla Remix Extended).flac`, 49MB) vs. a real MP3
+  of the identical track (14.9MB) — genuinely different encodings of
+  the same recording, exactly the case Chromaprint needs to survive
+  for this feature to be useful (a DJ's mixed FLAC/MP3 library is the
+  normal case, not an edge case).
+
+Decoded both pairs via `soundfile.read(path, dtype="int16",
+always_2d=True)`, fed to a real `Fingerprinter` in ~1-second chunks
+(deliberately not one single `feed()` call, to confirm the streaming
+contract works chunked, matching how a future real caller would stream
+a large file rather than loading it all before fingerprinting). Real
+results:
+- Same-format MP3 duplicate pair: **99.98%** Hamming-distance
+  similarity.
+- Cross-format FLAC/MP3 duplicate pair: **99.87%** similarity —
+  confirming real robustness to lossy transcoding.
+- Unrelated real track pair (negative control, the two duplicate
+  groups compared against each other): **57.81%** similarity — a wide,
+  clear gap from the ~99.9% duplicate band. Chromaprint's own landmark-
+  hash design has inherent baseline noise for any two 32-bit sub-
+  fingerprint windows being compared, so a non-zero baseline is
+  expected and not a red flag — the gap size is what matters, and it's
+  large.
+
+This confirms Hamming-distance clustering is a sound basis for the
+real clustering/scoring logic still to be built, without having
+written any of that logic yet.
+
+**What this spike deliberately does NOT cover yet, per the task's own
+phasing (Phase 0 only):** no schema migration, no
+`seeker/audio_fingerprint.py` module, no location-scoped clustering
+service, no CLI/UI. `brew install chromaprint` pulled in `ffmpeg` and
+several real codec libraries as dependencies (~90MB total,
+install-on-request) — a real, non-trivial footprint worth a future
+session designing around (checking availability gracefully rather than
+crashing, matching `soulseek_configured`'s own established pattern).
+
+The throwaway spike script itself
+(`fingerprint_spike.py`) lives only in this session's scratchpad
+directory, never committed — same treatment as every other diagnostic-
+only script in this project's history (item 30 §0's freeze spike,
+item 30's `verify_entrypoint.py`).
