@@ -9,7 +9,6 @@ from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_status import (
-    DOWNLOADING,
     IN_LIBRARY,
     NOT_FOUND,
     TrackStatus,
@@ -313,6 +312,92 @@ def test_run_worker_registry_releases_worker_on_both_success_and_error():
         raise RuntimeError("simulated failure")
 
     run_worker(SynchronousPool(), boom)
+    assert len(workers_module._active_workers) == baseline
+
+
+def test_run_worker_on_finished_exception_does_not_propagate(qtbot):
+    # A bug in a render/completion callback (not the fetch itself) must
+    # not escape run_worker uncontrolled — confirmed live this doesn't
+    # crash the app or stop the triggering QTimer either way, but
+    # nothing in this codebase's own code caught it before this fix;
+    # only PySide6's own default exception hook did, an implicit safety
+    # net rather than an intentional one.
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def render_that_raises(result):
+        raise ValueError("malformed render data")
+
+    # Must not raise out of this call.
+    run_worker(SynchronousPool(), lambda: "ok", on_finished=render_that_raises)
+
+
+def test_run_worker_on_finished_exception_surfaces_to_status_label(qtbot):
+    from PySide6.QtWidgets import QLabel
+
+    label = QLabel("")
+    qtbot.addWidget(label)
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def render_that_raises(result):
+        raise ValueError("malformed render data")
+
+    run_worker(
+        SynchronousPool(),
+        lambda: "ok",
+        status_label=label,
+        on_finished=render_that_raises,
+    )
+
+    assert "malformed render data" in label.text()
+
+
+def test_run_worker_on_finished_exception_without_status_label_still_safe(qtbot):
+    # The periodic-poll shape (e.g. the Downloads/Review tabs' 2s
+    # refresh) — no status_label wired at all, by design, so a fetch
+    # error doesn't flash a noisy message every tick. A render bug must
+    # still not propagate even here.
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def render_that_raises(result):
+        raise ValueError("malformed render data")
+
+    run_worker(SynchronousPool(), lambda: "ok", on_finished=render_that_raises)
+
+
+def test_run_worker_on_error_exception_does_not_propagate(qtbot):
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def boom():
+        raise RuntimeError("fetch failed")
+
+    def on_error_that_raises(message):
+        raise ValueError("bug in on_error handling")
+
+    # Must not raise out of this call either.
+    run_worker(SynchronousPool(), boom, on_error=on_error_that_raises)
+
+
+def test_run_worker_on_finished_exception_still_releases_worker_registry(qtbot):
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    baseline = len(workers_module._active_workers)
+
+    def render_that_raises(result):
+        raise ValueError("malformed render data")
+
+    run_worker(SynchronousPool(), lambda: "ok", on_finished=render_that_raises)
+
     assert len(workers_module._active_workers) == baseline
 
 

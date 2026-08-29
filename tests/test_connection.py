@@ -1,6 +1,8 @@
 import sqlite3
 import threading
 
+import pytest
+
 from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -129,6 +131,38 @@ def test_initialize_adds_progress_columns_without_losing_existing_data(
     assert row["size"] == 52_428_800
     assert row["bytes_transferred"] is None
     assert row["total_bytes"] is None
+
+
+def test_initialize_closes_its_connection(tmp_path, monkeypatch):
+    # Real bug, found via a real ResourceWarning during the UI polish
+    # pass's error-handling audit: `with self.connect() as connection:`
+    # only manages sqlite3's own commit/rollback transaction semantics,
+    # not the connection's lifetime — it never closed the connection,
+    # leaking one on every real Application() launch (and on every test
+    # that builds a fresh Database), relying on GC to eventually finalize
+    # it rather than closing deterministically like transaction() does.
+    # sqlite3.Connection is an immutable C type — its close() method
+    # can't be monkeypatched directly — so this captures the real
+    # connection initialize() actually used and checks it's genuinely
+    # closed afterward, the same reliable signal Python's own sqlite3
+    # module uses (a closed connection raises ProgrammingError on use).
+    database = Database(tmp_path / "seeker.db")
+    real_connect = database.connect
+    connections = []
+
+    def spying_connect():
+        connection = real_connect()
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(database, "connect", spying_connect)
+
+    database.initialize()
+
+    assert len(connections) == 1
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        connections[0].execute("SELECT 1")
 
 
 def test_initialize_is_idempotent_on_an_already_migrated_database(

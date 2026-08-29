@@ -80,7 +80,29 @@ def run_worker(
             button.setEnabled(True)
 
         if on_finished is not None:
-            on_finished(result)
+            # A bug in the caller's own render/completion logic (a
+            # malformed-data assumption violated, an index error, ...)
+            # must not be left to whatever PySide6's own default
+            # exception hook happens to do with it. Confirmed live,
+            # not assumed: on this version an unhandled exception here
+            # neither crashes the app nor stops the QTimer that
+            # triggered this poll from firing again — but it also
+            # leaves the failure completely invisible to an actual GUI
+            # user (only a raw traceback on stderr, which a
+            # non-terminal launch never shows), forever, every tick,
+            # with the table/panel just silently never updating again.
+            # Same "one bad item can't silently vanish" principle as
+            # every batch loop in this codebase (see CLAUDE.md item
+            # 15) — surfaced to status_label too, when the caller
+            # provided one, so a render bug is exactly as visible as
+            # any other error already is for that action.
+            try:
+                on_finished(result)
+            except Exception as error:
+                print(f"Error handling worker result: {error}")
+
+                if status_label is not None:
+                    status_label.setText(f"Error: {error}")
 
     def handle_error(message: str) -> None:
         _active_workers.discard(worker)
@@ -92,7 +114,10 @@ def run_worker(
             status_label.setText(message)
 
         if on_error is not None:
-            on_error(message)
+            try:
+                on_error(message)
+            except Exception as error:
+                print(f"Error handling worker error callback: {error}")
 
     worker.signals.finished.connect(handle_finished)
     worker.signals.error.connect(handle_error)

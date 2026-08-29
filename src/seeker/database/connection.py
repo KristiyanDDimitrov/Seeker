@@ -37,9 +37,25 @@ class Database:
             connection.close()
 
     def initialize(self) -> None:
-        with self.connect() as connection:
+        # `with self.connect() as connection:` looks equivalent but
+        # isn't — sqlite3.Connection's own __enter__/__exit__ only
+        # manage the transaction (commit on success, rollback on
+        # exception); unlike transaction() above, it never closes the
+        # connection. Every initialize() call (once per real
+        # Application() launch, and once per test that builds a fresh
+        # Database) was leaking a real connection, relying on GC to
+        # eventually finalize it — confirmed live via a real
+        # ResourceWarning: unclosed database, found during the UI
+        # polish pass's error-handling audit, not assumed from reading
+        # the diff alone.
+        connection = self.connect()
+
+        try:
             connection.executescript(SCHEMA)
             _migrate(connection)
+            connection.commit()
+        finally:
+            connection.close()
 
 
 # CREATE TABLE IF NOT EXISTS is a no-op against a pre-existing table, so a
