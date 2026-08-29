@@ -214,3 +214,22 @@ ABOUT_DIALOG_BODY = (
     "playlists to a local cache, matches them against your existing "
     "library, and searches SoulSeek for whatever's missing.</p>"
 )
+
+# --- Task 3: support-the-creator links -------------------------------------
+# Real URLs aren't ready yet — these two values are deliberately
+# marked, obvious placeholders, not fabricated look-real links. Replace
+# both with the real destination before this is shipped to anyone.
+SUPPORT_LINKS: dict[str, str] = {
+    "Revolut": "TODO: paste real Revolut link",
+    "PayPal": "TODO: paste real PayPal link",
+}
+
+TOOLTIP_SUPPORT_LINK = "Opens in your browser."
+
+DONE_PAGE_TITLE_HTML = "<h2>You're all set</h2>"
+DONE_PAGE_BODY = (
+    "Seeker is ready — sync your playlists, scan your library, and "
+    "start matching whenever you like."
+)
+DONE_PAGE_SUPPORT_PROMPT = "Enjoying Seeker?"
+DONE_PAGE_CONTINUE_BUTTON_TEXT = "Go to Dashboard"

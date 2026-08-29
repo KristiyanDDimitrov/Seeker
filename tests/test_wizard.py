@@ -43,6 +43,37 @@ def test_wizard_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
         assert widget.toolTip() != ""
 
 
+def test_done_page_support_buttons_open_placeholder_links(
+        qtbot, tmp_path, monkeypatch,
+):
+    from PySide6.QtWidgets import QPushButton
+
+    from seeker.ui import wizard as wizard_module
+
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    opened: list[str] = []
+    monkeypatch.setattr(
+        wizard_module.webbrowser, "open", lambda url: opened.append(url)
+    )
+
+    wizard.stack.setCurrentIndex(3)
+    done_page = wizard.stack.currentWidget()
+    buttons = [
+        widget
+        for widget in done_page.findChildren(QPushButton)
+        if widget.text().startswith("Support on")
+    ]
+    assert len(buttons) == len(help_text.SUPPORT_LINKS)
+
+    for button in buttons:
+        button.click()
+
+    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
+
+
 def test_wizard_starts_at_spotify_step_when_nothing_configured(
         qtbot, tmp_path, monkeypatch,
 ):
@@ -172,6 +203,15 @@ def test_wizard_skip_soulseek_advances_to_dashboard_without_credentials(
     assert wizard.stack.currentIndex() == 2
 
     wizard._on_skip_soulseek_clicked()
+
+    # Skipping now lands on the wizard's own "you're all set" page
+    # (Task 3's support-link placement) rather than closing immediately
+    # — on_complete only fires once that page's own Continue button is
+    # clicked.
+    assert wizard.stack.currentIndex() == 3
+    assert completed == []
+
+    wizard.continue_button.click()
 
     assert completed == [True]
 
@@ -406,6 +446,13 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
     assert persist_calls[0][1] == "real-api-key"
     assert persist_calls[0][3] == "realuser"
     assert persist_calls[0][4] == "realpass"
+    # Same done-page indirection as the skip path — on_complete fires
+    # only once the done page's own Continue button is clicked.
+    assert wizard.stack.currentIndex() == 3
+    assert completed == []
+
+    wizard.continue_button.click()
+
     assert completed == [True]
 
 

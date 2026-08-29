@@ -1,3 +1,4 @@
+import webbrowser
 from datetime import datetime, timezone
 from importlib.metadata import version
 from typing import Any
@@ -162,6 +163,19 @@ class AboutDialog(QDialog):
         text_label.setTextFormat(Qt.TextFormat.RichText)
         text_label.setWordWrap(True)
         layout.addWidget(text_label)
+
+        # Real URLs aren't ready yet — see help_text.SUPPORT_LINKS's own
+        # placeholder-URL warning. Same webbrowser.open() mechanism the
+        # Spotify OAuth flow already uses; no SDK, no embedded payment UI.
+        support_row = QHBoxLayout()
+        for name, url in help_text.SUPPORT_LINKS.items():
+            support_button = QPushButton(f"Support on {name}")
+            support_button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
+            support_button.clicked.connect(
+                lambda _=False, url=url: webbrowser.open(url)
+            )
+            support_row.addWidget(support_button)
+        layout.addLayout(support_row)
 
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.accept)

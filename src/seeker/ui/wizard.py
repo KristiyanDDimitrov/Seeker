@@ -98,6 +98,7 @@ class OnboardingWizard(QMainWindow):
         self.stack.addWidget(self._build_spotify_page())
         self.stack.addWidget(self._build_library_page())
         self.stack.addWidget(self._build_soulseek_page())
+        self.stack.addWidget(self._build_done_page())
 
         self.stack.setCurrentIndex(self._initial_step())
 
@@ -495,7 +496,7 @@ class OnboardingWizard(QMainWindow):
             self._stop_health_poll()
             self._persist_soulseek_config()
             self.soulseek_status_label.setText("SoulSeek is connected.")
-            self._advance_to_dashboard()
+            self._advance_to_done_page()
             return
 
         if result.status == SlskdHealthStatus.BAD_CREDENTIALS:
@@ -535,8 +536,44 @@ class OnboardingWizard(QMainWindow):
         )
 
     def _on_skip_soulseek_clicked(self) -> None:
-        self._advance_to_dashboard()
+        self._advance_to_done_page()
 
-    def _advance_to_dashboard(self) -> None:
+    def _advance_to_done_page(self) -> None:
+        self.stack.setCurrentIndex(3)
+
+    # --- Step 4: done (Task 3's support-the-creator placement) ---------
+
+    def _build_done_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        layout.addWidget(QLabel(help_text.DONE_PAGE_TITLE_HTML))
+        layout.addWidget(QLabel(help_text.DONE_PAGE_BODY))
+
+        # A single, low-key mention — not on any daily-use screen, per
+        # Task 3's own scoping. Real URLs aren't ready yet; see
+        # help_text.SUPPORT_LINKS's own placeholder-URL warning.
+        support_row = QHBoxLayout()
+        support_row.addWidget(QLabel(help_text.DONE_PAGE_SUPPORT_PROMPT))
+        for name, url in help_text.SUPPORT_LINKS.items():
+            support_button = QPushButton(f"Support on {name}")
+            support_button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
+            support_button.clicked.connect(
+                lambda _=False, url=url: webbrowser.open(url)
+            )
+            support_row.addWidget(support_button)
+        layout.addLayout(support_row)
+
+        layout.addStretch()
+
+        self.continue_button = QPushButton(
+            help_text.DONE_PAGE_CONTINUE_BUTTON_TEXT
+        )
+        self.continue_button.clicked.connect(self._finish)
+        layout.addWidget(self.continue_button)
+
+        return page
+
+    def _finish(self) -> None:
         self.close()
         self.on_complete()

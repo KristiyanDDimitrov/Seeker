@@ -253,6 +253,30 @@ def test_about_dialog_opens_without_crashing(qtbot):
     assert dialog.windowTitle() == help_text.ABOUT_DIALOG_TITLE
 
 
+def test_about_dialog_support_buttons_open_placeholder_links(qtbot, monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    opened: list[str] = []
+    monkeypatch.setattr(
+        main_window_module.webbrowser, "open", lambda url: opened.append(url)
+    )
+
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    buttons = [
+        widget
+        for widget in dialog.findChildren(QPushButton)
+        if widget.text().startswith("Support on")
+    ]
+    assert len(buttons) == len(help_text.SUPPORT_LINKS)
+
+    for button in buttons:
+        button.click()
+
+    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
+
+
 def test_dashboard_downloads_review_tabs_have_persistent_subtitles(qtbot):
     # Task 1 — a short, persistent (not hover-dependent) one-liner under
     # each tab's own header.

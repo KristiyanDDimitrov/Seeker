@@ -1698,6 +1698,33 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     metadata isn't available (e.g. a frozen PyInstaller build with no
     installed dist-info).
 
+35. **Support-the-creator links — done (2026-08-29).** **`SUPPORT_LINKS`
+    in `ui/help_text.py` holds two deliberately obvious placeholders
+    (`"TODO: paste real Revolut link"` / `"TODO: paste real PayPal
+    link"`), not fabricated-looking real URLs — replace both before this
+    ships to anyone.** Presentation-only: both `AboutDialog` (item 34)
+    and a new wizard "you're all set" page call `webbrowser.open()`
+    directly, the identical mechanism the Spotify OAuth flow already
+    uses — no SDK, no embedded payment UI, no runtime API call.
+
+    The wizard had no final screen at all before this (it closed and
+    called `on_complete()` the instant Spotify+library, or SoulSeek/
+    skip, finished) — confirmed live by reading `wizard.py` rather than
+    assumed, and confirmed with the user before inventing one, per the
+    task's own explicit instruction. Added a fourth stack page
+    (`_build_done_page`, index 3, never an `_initial_step()` resume
+    target — reaching it always requires finishing the same session's
+    flow first) shown via a new `_advance_to_done_page()` in place of
+    the old `_advance_to_dashboard()`'s immediate close+`on_complete()`;
+    a real "Go to Dashboard" button (`self.continue_button`) now does
+    that close+`on_complete()` call itself (`_finish()`). Both existing
+    call sites (`_handle_health_result`'s HEALTHY branch,
+    `_on_skip_soulseek_clicked`) now land on this page instead of
+    closing immediately — two existing tests asserting `on_complete`
+    fired right after skip/health-success were updated to assert
+    landing on the done page first, then click Continue. No mention on
+    the daily-use Dashboard/Downloads/Review screens, as scoped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
