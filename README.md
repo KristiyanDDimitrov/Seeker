@@ -347,3 +347,84 @@ methods on `Application`) gets real, direct coverage; thin Qt glue
 (widget construction, layout, button-click wiring already covered at
 the level established across `ui/`) gets smoke-level coverage rather
 than exhaustive testing of PySide6 itself.
+
+## Building a standalone app
+
+`seeker-ui` can be packaged as a self-contained desktop app (via
+[PyInstaller](https://pyinstaller.org/)) that a user can double-click to
+launch — no `uv`/Python install of their own required. This packages
+the Python/Qt application only; **Docker is not bundled and isn't meant
+to be** — the onboarding wizard's existing Docker detection/bring-up
+flow is unchanged, and a real, separate Docker install is still how
+`slskd` runs.
+
+```
+uv sync --group dev              # pulls in pyinstaller
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+```
+
+Output lands in `dist/`: a one-folder build (`dist/Seeker/`) on every
+platform, plus a real `.app` bundle (`dist/Seeker.app`) on macOS. Both
+are self-contained — `docker-compose.yml` (the one non-Python resource
+file this app needs at runtime, for the wizard/Settings' "bring up
+slskd" flow) is bundled alongside the code and located via
+`sys._MEIPASS` in a frozen build; `seeker/docker_setup.py::
+compose_file_path()` is the one place that branches on `sys.frozen` —
+everything else about a frozen run is identical to `uv run seeker-ui`.
+One-folder (not one-file) is a deliberate, verified choice: `librosa`'s
+`numba`-JIT'd inner loops cache to a stable on-disk location that a
+one-folder build reuses across runs (confirmed live — a warm run was
+~3x faster than a cold one); a one-file build re-extracts to a fresh
+temp directory on every launch, so that cache never persists and every
+run pays the cold-start cost (confirmed live — 15-20x slower, with no
+warm-up benefit, and no actual single-file-distribution need this app
+has).
+
+**Platform support:**
+
+| Platform | Status |
+| --- | --- |
+| macOS | Built and live-verified on this machine (see below) |
+| Windows | Spec is written and cross-platform (only the macOS `.app` `BUNDLE()` step is platform-gated) — **not run on a real Windows machine**, no such environment available here |
+| Linux | Same spec, same caveat — **not run on a real Linux machine** |
+
+Don't treat the Windows/Linux rows as verified just because the same
+`.spec` file covers them; they're the honest, written-but-unverified
+state until someone runs `pyinstaller packaging/seeker.spec` for real
+on those platforms.
+
+**macOS live verification, done for real (2026-08-29):** built the
+actual `.app`, launched it via `open dist/Seeker.app` (the same path a
+user double-clicking it takes) against this machine's real, existing
+production config/database. Confirmed real and non-fabricated: the
+process stays alive well past Qt/Cocoa's typical fail-fast window (10+
+seconds, steady ~180MB RSS, no crash report under
+`~/Library/Logs/DiagnosticReports`); every real dependency — PySide6/Qt,
+numpy, scipy, rapidfuzz — loaded its real compiled library into the
+process (`lsof`); and the real macOS unified log
+(`log show --predicate 'process == "Seeker"'`) shows a genuine AppKit
+window-initialization sequence (light/dark `NSApp` appearance
+resolution, the sequence Cocoa runs when actually preparing to render a
+window) with zero Python tracebacks. **Genuinely NOT verified, a real
+tooling gap in this environment, not skipped:** this session's shell
+has no Screen Recording or Accessibility permission grant, so neither
+`screencapture` nor `System Events` UI scripting could confirm what the
+window actually rendered, and neither could drive a real click through
+the wizard, Settings, or a sync/scan/match run. Someone with normal
+desktop access to a built `.app` should still do that pass before
+calling packaging fully done end-to-end — what's confirmed here is
+"boots and runs cleanly with the real environment," not "every screen
+was clicked through."
+
+**Also confirmed:** the build only pulls in runtime dependencies — a
+built app has zero `pytest`/`mypy`/`ruff` files anywhere in it (checked
+directly, not assumed from PyInstaller's import-analysis behavior).
+
+**Code signing / notarization is deliberately out of scope** — it
+needs a paid Apple Developer account and credentials only the project
+owner can provide. The build is unsigned; Gatekeeper will warn on
+first launch on any machine other than the one that built it (expected
+— not a bug to route around). The hook points for adding it later are
+documented directly in `packaging/seeker.spec`: `codesign_identity=`/
+`entitlements_file=` on the `EXE(...)` call, plus a real
+`xcrun notarytool`/`stapler` pass against the built `.app` afterward.

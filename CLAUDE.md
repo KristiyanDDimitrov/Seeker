@@ -1287,6 +1287,118 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     `bring_up_slskd` test. `mypy --strict` clean; full suite 377
     passed.
 
+30. **Standalone-app packaging (PyInstaller) — done, macOS
+    live-verified, Windows/Linux written-not-verified (2026-08-29).**
+    `packaging/seeker.spec` + `packaging/entrypoint.py` (a thin
+    `from seeker.main_ui import main; main()` — needed because
+    `main_ui.py` itself, like `main.py`, has no `__main__` guard; it's
+    invoked via `[project.scripts]`, which PyInstaller can't target
+    directly). One-folder mode (`COLLECT`, plus `BUNDLE()` for a real
+    macOS `.app`, gated on `sys.platform == "darwin"` — the rest of the
+    spec is already cross-platform). Docker is deliberately NOT
+    bundled — the wizard's existing detection/bring-up flow is
+    unchanged and still expects a real, separate Docker install.
+
+    **§0 de-risk, done first as scoped — genuinely a non-issue.**
+    `librosa`/`numba`/`llvmlite`/`soundfile` freeze cleanly with ZERO
+    custom hidden-import/`collect-all` directives — confirmed live by
+    building a minimal frozen binary that actually called
+    `analyze_audio()` against a real WAV and got byte-identical
+    BPM/key/confidence output to the unfrozen run.
+    `pyinstaller-hooks-contrib` (added as a dev dependency alongside
+    `pyinstaller` itself) already ships hooks for all four that
+    PyInstaller auto-discovers with no spec-file configuration at all
+    — explicit `--collect-all` for these was tried first and confirmed
+    **worse**, not just unnecessary (pulled in numba's own test suite).
+    **One-folder over one-file — verified, not assumed, per the task's
+    own instruction to check rather than take it as given:** the same
+    spike built both; one-folder's second run dropped from ~3.5s to
+    ~1.0s (numba's JIT cache persists in the stable directory),
+    one-file stayed ~21s cold / ~18s warm every single run (a
+    self-extracting temp dir means the JIT cache never persists) —
+    15-20x slower for a single-file-distribution property this app
+    doesn't need.
+
+    **§1 resource-path audit — one real, exactly-predicted gap found
+    and fixed.** `ui/wizard.py`'s `COMPOSE_FILE_PATH = Path("docker-
+    compose.yml")` (imported into `settings_window.py` too) was a bare
+    CWD-relative path — the "run `docker compose up` from the project
+    root" convention already documented there, but with no repo root
+    to be relative to once frozen. Fixed by moving path resolution
+    into `docker_setup.py::compose_file_path()` — same home as
+    `slskd_data_dir()` and the identical reasoning (`slskd_data_dir()`
+    was itself moved there in item 28 §3 so wizard.py and
+    settings_window.py never need to duplicate or cross-import a
+    UI-module constant). Branches on `sys.frozen`: unset (every normal
+    `uv run seeker-ui` dev run) → unchanged `Path("docker-compose.yml")`,
+    byte-identical to before; set (PyInstaller's bootloader sets it) →
+    resolves against `sys._MEIPASS`, the extracted/bundled resource
+    root PyInstaller sets in every frozen build. `docker-compose.yml`
+    is bundled via the spec's one `datas` entry, placed at the bundle
+    root to keep the lookup a flat one-level join on both sides.
+    Confirmed live in the actual built `.app`: the file lands at both
+    `Contents/Resources/docker-compose.yml` and
+    `Contents/Frameworks/docker-compose.yml` (PyInstaller's own
+    onedir→`.app` reorganization splits data/binaries across both
+    directories; which one `sys._MEIPASS` actually resolves to on
+    macOS didn't need pinning down further since the file exists at
+    both). Checked for other bundled-resource path assumptions
+    project-wide (templates, `.env`-adjacent config) — none exist;
+    `docker-compose.yml` was genuinely the only one.
+
+    **§2 spec file — done**, see above; nothing beyond the datas entry
+    and default `Analysis`/`EXE`/`COLLECT`/`BUNDLE` calls was needed.
+    Confirmed directly (not assumed from PyInstaller's import-analysis
+    behavior) that the built app carries zero `pytest`/`mypy`/`ruff`
+    files.
+
+    **§3 macOS build + live verification — built and run for real
+    against this machine's actual production config/DB, with an
+    honest, partial-but-real verification bar, not a full click-
+    through.** `open dist/Seeker.app` (the same path a user takes) kept
+    the process alive well past Qt/Cocoa's fail-fast window (10+
+    seconds, steady ~180MB RSS, no crash report under
+    `~/Library/Logs/DiagnosticReports`); `lsof` confirmed every real
+    dependency (PySide6/Qt, numpy, scipy, rapidfuzz) loaded its actual
+    compiled library into the process; the real macOS unified log
+    showed a genuine AppKit window-initialization sequence (light/dark
+    `NSApp` appearance resolution) with zero Python tracebacks.
+    **Real, confirmed environment gap, not skipped:** this session's
+    shell has no Screen Recording or Accessibility permission grant —
+    `screencapture` failed outright ("could not create image from
+    display") and `System Events` UI scripting returned inconsistent
+    permission errors across calls — so no screenshot and no scripted
+    click-through of the wizard, Settings, or a sync/scan/match run
+    was possible from here. Documented plainly in the README rather
+    than glossed over, same honesty bar as every other genuine gap in
+    this project's history (e.g. item 26's drive-unavailable sessions)
+    — "boots and runs cleanly against real data" is what's confirmed;
+    "every screen was clicked through" is not, and the README says so.
+
+    **§4 Windows/Linux — written, explicitly documented as
+    unverified**, no real machine available here. The spec needed no
+    platform-specific logic beyond the `darwin`-gated `BUNDLE()` call,
+    since `EXE`/`COLLECT` already target the host platform correctly.
+
+    **§5 code signing/notarization — correctly out of scope**, hook
+    points (`codesign_identity=`/`entitlements_file=` on `EXE(...)`)
+    left as documented no-ops in the spec's own docstring.
+
+    Tests: `compose_file_path()`'s two branches (unset `sys.frozen` →
+    unchanged `Path("docker-compose.yml")`; set → resolves against a
+    fake `sys._MEIPASS`) in `test_docker_setup.py` — the one place
+    this task's own "needs a real test confirming dev-mode behavior is
+    unchanged" instruction applied, since everything else in this task
+    was build tooling, not application logic. `mypy --strict` clean
+    throughout. Full suite hit 17 failures mid-task, all
+    `/Volumes/X9 Pro` `PermissionError`s from a transient sandbox gap
+    in this specific session (the mount showed attached via `diskutil
+    list` but a plain `ls` against it still returned `Operation not
+    permitted`) — unrelated to anything this task touched, and it
+    cleared on its own before the task finished: the final full run
+    came back **379 passed, 0 failed**.
+    [HISTORY §30](docs/HISTORY.md#30)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
