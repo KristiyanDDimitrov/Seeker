@@ -4,7 +4,7 @@ import webbrowser
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from PySide6.QtCore import QThreadPool, QTimer
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -66,6 +66,11 @@ class OnboardingWizard(QMainWindow):
             on_complete: Callable[[], None],
     ):
         super().__init__()
+        # See SettingsWindow's identical fix (CLAUDE.md's broad
+        # end-to-end stress test entry) — a parentless top-level
+        # QMainWindow's close() only hides it by default, never
+        # actually destroys it, unless this is set.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.on_complete = on_complete
         self.thread_pool = QThreadPool()

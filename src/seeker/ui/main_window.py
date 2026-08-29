@@ -103,6 +103,19 @@ def _build_progress_widget(download: ActiveDownload) -> QWidget:
 class MainWindow(QMainWindow):
     def __init__(self, application: Application):
         super().__init__()
+        # See SettingsWindow's identical fix (CLAUDE.md's broad
+        # end-to-end stress test entry) — a parentless top-level
+        # QMainWindow's close() only hides it by default, never
+        # actually destroys it, unless this is set. MainWindow is
+        # normally only closed once (app exit), but tests construct
+        # and close it repeatedly — this matters there even if it's
+        # rarely the operational hot path in real usage. Confirmed
+        # this specific attribute was never the cause of a real,
+        # separately-found segfault (see workers.py's own
+        # SingleShotConnection fix) — isolated by temporarily removing
+        # each of the two changes independently against the full test
+        # suite before concluding which one was actually responsible.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.thread_pool = QThreadPool()
         self.selected_playlist: Playlist | None = None

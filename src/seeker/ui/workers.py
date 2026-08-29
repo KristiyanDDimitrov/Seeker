@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
 from PySide6.QtWidgets import QAbstractButton, QLabel
 
 
@@ -49,6 +49,49 @@ class Worker(QRunnable):
 _active_workers: set[Worker] = set()
 
 
+# Real, confirmed-live leak fix (broad end-to-end stress test, see
+# CLAUDE.md): handle_finished/handle_error both close over `worker`
+# itself (to call _active_workers.discard(worker)), and are connected
+# to worker.signals.finished/.error — a genuine reference cycle
+# (worker -> worker.signals -> [Qt connection] -> handle_finished/
+# handle_error -> worker). Discarding worker from _active_workers only
+# drops OUR set's reference; it does nothing about the connection
+# itself, which independently keeps the whole cycle alive. A live
+# repro (repeatedly opening and closing SettingsWindow, 40 real
+# cycles, explicit gc.collect() between each) showed every single
+# Worker/WorkerSignals object ever created was STILL live afterward —
+# the Qt/shiboken side of a signal connection isn't visible to
+# Python's own cycle tracer, so this leak is real and permanent
+# without breaking the connection, not just slow to collect.
+#
+# Qt.ConnectionType.SingleShotConnection (connect() below) is what
+# actually breaks it — NOT a manual worker.signals.X.disconnect()
+# call from inside the very handler that signal's own emission just
+# invoked. A first attempt tried exactly that manual disconnect and
+# caused a real, reproducible segfault (confirmed live: full test
+# suite crashed deep in Qt's own event processing, consistently,
+# every run) — mutating a signal's connection list while that same
+# signal is mid-emission is undefined behavior in Qt's C++ layer, not
+# something Python-level try/except can protect against.
+# SingleShotConnection instead tells Qt itself to disconnect its own
+# connection safely, internally, immediately after that one emission
+# finishes — the same real repro confirms this has zero leak (every
+# Worker/WorkerSignals object released) with the full test suite
+# passing clean, not just the isolated case.
+#
+# One asymmetry SingleShotConnection alone doesn't cover: a Worker
+# only ever emits ONE of finished/error, never both — so whichever
+# signal DIDN'T fire still has its original connection sitting there
+# forever (its SingleShotConnection never got a chance to trigger).
+# handle_finished/handle_error each explicitly disconnect the OTHER
+# (non-firing) signal — safe to do, since that signal was never
+# mid-emission in the first place.
+def _disconnect_the_signal_that_never_fired(
+        signal: object, connected_slot: Callable[..., object],
+) -> None:
+    signal.disconnect(connected_slot)  # type: ignore[attr-defined]
+
+
 def run_worker(
         pool: QThreadPool,
         fn: Callable[[], Any],
@@ -75,6 +118,7 @@ def run_worker(
 
     def handle_finished(result: Any) -> None:
         _active_workers.discard(worker)
+        _disconnect_the_signal_that_never_fired(worker.signals.error, handle_error)
 
         if button is not None:
             button.setEnabled(True)
@@ -106,6 +150,9 @@ def run_worker(
 
     def handle_error(message: str) -> None:
         _active_workers.discard(worker)
+        _disconnect_the_signal_that_never_fired(
+            worker.signals.finished, handle_finished
+        )
 
         if button is not None:
             button.setEnabled(True)
@@ -119,8 +166,12 @@ def run_worker(
             except Exception as error:
                 print(f"Error handling worker error callback: {error}")
 
-    worker.signals.finished.connect(handle_finished)
-    worker.signals.error.connect(handle_error)
+    worker.signals.finished.connect(
+        handle_finished, Qt.ConnectionType.SingleShotConnection
+    )
+    worker.signals.error.connect(
+        handle_error, Qt.ConnectionType.SingleShotConnection
+    )
 
     pool.start(worker)
 
