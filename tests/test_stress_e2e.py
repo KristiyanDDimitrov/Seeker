@@ -20,25 +20,57 @@ just because someone happened to have everything configured.
 Kept as a durable regression guard, not a throwaway exploration
 script — re-run this deliberately after any change to worker/timer/
 connection lifecycle code, not just once.
+
+**Duplicates tab (roadmap items 5/40) added to the mix (2026-08-30).**
+This test predates the whole duplicate detector — it never exercised
+fingerprinting/clustering/delete worker traffic running concurrently
+with Sync/Scan/Match/Download. Deliberately scoped to a small,
+disposable library location with two synthetic, byte-identical WAV
+files (`_create_stress_duplicate_location`/`_cleanup_stress_duplicate_
+location` below), never the real X9 Pro library: `find_duplicate_
+groups()` recomputes an entire location's clustering from scratch on
+every call and is documented (CLAUDE.md item 39) to take ~10 real
+minutes over the real ~3,100-file production library — running that
+inside this test's ~5-minute default duration, or deleting a real file
+from the user's real library as part of an automated test, would defeat
+the point of a fast, safe, repeatable regression guard. The scratch
+location and its files are registered/scanned/fingerprinted/clustered/
+resolved (a real Delete click, real confirm checkbox, real worker path)
+through the exact same code every real user's Duplicates tab goes
+through — only the input data is disposable, not the mechanism.
 """
 
 import os
+import shutil
 import statistics
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import psutil
 import pytest
+import soundfile as sf
+from PySide6.QtWidgets import QCheckBox, QPushButton
 
 from seeker.application import Application
+from seeker.audio_fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
+from seeker.library.duplicate_service import DuplicateGroup
 from seeker.ui.main_window import MainWindow
 from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import _callbacks
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
+
+# A fixed, recognizable name rather than something timestamped — makes a
+# leftover from a crashed prior run trivially discoverable and lets
+# _create_stress_duplicate_location clean one up defensively before
+# registering its own, rather than accumulating "SeekerStressTest..."
+# locations in the real production DB run after run.
+STRESS_DUPLICATES_LOCATION_NAME = "SeekerStressTestDuplicates"
 
 requires_stress_opt_in = pytest.mark.skipif(
     os.environ.get("SEEKER_RUN_STRESS_TEST") != "1",
@@ -129,6 +161,80 @@ def _select_playlist(main_window: MainWindow, name: str) -> bool:
     return False
 
 
+def _select_duplicates_location(main_window: MainWindow, name: str) -> bool:
+    combo = main_window.duplicates_location_combo
+    for index in range(combo.count()):
+        if combo.itemText(index) == name:
+            combo.setCurrentIndex(index)
+            return True
+    return False
+
+
+def _create_stress_duplicate_location(application: Application) -> Path:
+    """Registers a small, disposable library location with two
+    byte-identical synthetic WAV files — real audio, decoded and
+    fingerprinted through the real libchromaprint binding, but not a
+    single byte of the real production library. Returns the scratch
+    directory; the caller is responsible for calling
+    _cleanup_stress_duplicate_location in a finally block regardless of
+    how the test exits.
+    """
+    scratch_dir = Path(
+        tempfile.mkdtemp(prefix="seeker_stress_duplicates_")
+    )
+
+    sample_rate = 44100
+    duration_seconds = 3
+    t = np.linspace(
+        0, duration_seconds, sample_rate * duration_seconds, endpoint=False,
+    )
+    tone = (0.2 * np.sin(2 * np.pi * 440.0 * t)).astype(np.float32)
+
+    sf.write(str(scratch_dir / "track_a.wav"), tone, sample_rate)
+    sf.write(str(scratch_dir / "track_a_copy.wav"), tone, sample_rate)
+
+    try:
+        # Best-effort cleanup of a same-named location left behind by a
+        # crashed prior run — remove_location() is a silent no-op if
+        # none exists (see LibraryService.remove_location).
+        application.library_service.remove_location(
+            STRESS_DUPLICATES_LOCATION_NAME
+        )
+
+        location = application.library_service.add_location(
+            STRESS_DUPLICATES_LOCATION_NAME, str(scratch_dir),
+        )
+        # Scoped to just this one location (LibraryScanner.scan), not
+        # LibraryService.scan_all() — scanning the real, huge X9 Pro
+        # location synchronously here, before the real overlapping
+        # sync/scan/match click flurry even starts, would both block
+        # test setup for real minutes and duplicate work the test's own
+        # Scan button click already does for every registered location,
+        # including this one.
+        application.library_service.scanner.scan(location)
+    except Exception:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+        raise
+
+    return scratch_dir
+
+
+def _cleanup_stress_duplicate_location(
+        application: Application, scratch_dir: Path,
+) -> None:
+    try:
+        application.library_service.remove_location(
+            STRESS_DUPLICATES_LOCATION_NAME
+        )
+    except Exception as error:
+        print(
+            f"[stress] failed to remove stress duplicates location from "
+            f"the real DB: {error}"
+        )
+    finally:
+        shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
 @requires_stress_opt_in
 def test_broad_end_to_end_stress(qapp):
     if not X9_PRO_ROOT.is_dir():
@@ -140,6 +246,8 @@ def test_broad_end_to_end_stress(qapp):
         pytest.skip("Spotify not configured in this environment")
     if not application.soulseek_configured:
         pytest.skip("SoulSeek not configured in this environment")
+    if not fingerprinting_is_available():
+        pytest.skip("libchromaprint not available in this environment")
 
     duration = float(
         os.environ.get(
@@ -156,8 +264,10 @@ def test_broad_end_to_end_stress(qapp):
     original_config = load_config(config_path)
 
     main_window: MainWindow | None = None
+    duplicates_scratch_dir: Path | None = None
 
     try:
+        duplicates_scratch_dir = _create_stress_duplicate_location(application)
         log.sample("start")
 
         main_window = MainWindow(application)
@@ -171,7 +281,25 @@ def test_broad_end_to_end_stress(qapp):
         main_window.sync_button.click()
         main_window.scan_button.click()
         main_window.match_button.click()
-        log.sample("sync/scan/match fired overlapping")
+
+        # --- Duplicates tab: switch to it for real (the same real
+        # QTabWidget.currentChanged path a user clicking the tab takes,
+        # including the lazy-load fix from CLAUDE.md's Known Issues
+        # entry) and fire Compute fingerprints on the disposable scratch
+        # location right alongside the sync/scan/match flurry above —
+        # genuine overlapping worker/QThreadPool traffic, not run
+        # sequentially after everything else settles.
+        tabs_widget = main_window.centralWidget()
+        tabs_widget.setCurrentIndex(main_window._duplicates_tab_index)
+        _pump(
+            qapp,
+            lambda: _select_duplicates_location(
+                main_window, STRESS_DUPLICATES_LOCATION_NAME,
+            ),
+            timeout=15.0,
+        )
+        main_window.compute_fingerprints_button.click()
+        log.sample("sync/scan/match + duplicates fingerprinting fired overlapping")
 
         settled = _pump(
             qapp,
@@ -185,6 +313,24 @@ def test_broad_end_to_end_stress(qapp):
         print(f"[stress] overlapping sync/scan/match settled: {settled}")
         print(f"[stress] status_label after settle: {main_window.status_label.text()!r}")
         log.sample("sync/scan/match settled")
+
+        # Compute fingerprints on 2 tiny synthetic WAVs finishes in well
+        # under a second in practice, but wait for real rather than
+        # assume it — then fire Find duplicates so ITS clustering work
+        # genuinely overlaps with the concurrent downloads fired next,
+        # not just with sync/scan/match above.
+        fingerprints_done = _pump(
+            qapp,
+            lambda: main_window.compute_fingerprints_button.isEnabled(),
+            timeout=30.0,
+        )
+        print(
+            f"[stress] duplicates fingerprinting settled: "
+            f"{fingerprints_done}, status="
+            f"{main_window.duplicates_status_label.text()!r}"
+        )
+        main_window.find_duplicates_button.click()
+        log.sample("duplicates: find fired, overlapping with downloads next")
 
         # --- Multiple concurrent downloads across playlists — more
         # than the two simultaneous real downloads previously verified
@@ -245,6 +391,7 @@ def test_broad_end_to_end_stress(qapp):
         # change a threshold mid-session, and keep sampling resource
         # usage throughout.
         threshold_changed = False
+        duplicates_delete_done = False
         settings_reopen_count = 0
         deadline = log.start + duration
 
@@ -278,6 +425,36 @@ def test_broad_end_to_end_stress(qapp):
             qapp.processEvents()
             settings_window = None
             settings_reopen_count += 1
+
+            # Duplicates delete lifecycle (item 40) — the deferred-
+            # delete action this stress test never exercised before.
+            # Waits (across cycles, up to SAMPLE_INTERVAL_SECONDS each)
+            # for the Find duplicates click fired above to land, then
+            # runs the real double-confirm flow (checkbox + button) a
+            # real user takes, through the real run_worker path, while
+            # downloads/backend-poll traffic from the sections above may
+            # still be in flight.
+            if not duplicates_delete_done and main_window._current_duplicate_groups:
+                group: DuplicateGroup = main_window._current_duplicate_groups[0]
+                actions = main_window.duplicates_table.cellWidget(0, 6)
+                assert actions is not None
+                checkbox = actions.findChildren(QCheckBox)[0]
+                delete_button = actions.findChildren(QPushButton)[0]
+                checkbox.setChecked(True)
+                delete_button.click()
+
+                deleted = _pump(
+                    qapp,
+                    lambda: group not in main_window._current_duplicate_groups,
+                    timeout=30.0,
+                )
+                print(
+                    f"[stress] duplicates: group delete completed="
+                    f"{deleted}, status="
+                    f"{main_window.duplicates_status_label.text()!r}"
+                )
+                duplicates_delete_done = True
+                log.sample("duplicates: group delete lifecycle exercised")
 
             # Mid-session threshold change, real Settings widgets, real
             # save button — confirmed to affect the NEXT match run
@@ -344,9 +521,34 @@ def test_broad_end_to_end_stress(qapp):
             f"[stress] download results after the full run: "
             f"{download_results}"
         )
+        print(
+            f"[stress] duplicates delete lifecycle exercised: "
+            f"{duplicates_delete_done}"
+        )
         log.sample("stress duration complete")
 
     finally:
+        # Give any still-genuinely-in-flight worker (a real slskd HTTP
+        # round trip from the 20s backend-poll timer, up to ~15s each,
+        # possibly several in sequence for poll_downloads()' locked/
+        # queued/downloading rows) a real chance to finish before
+        # closing the window and asserting active_workers == 0 below.
+        # Found live (CLAUDE.md item 41): without this wait, a
+        # backend-poll worker that started near the interleaved loop's
+        # own deadline could still be waiting on a real slskd response
+        # (in one real run, a 500 from slskd's own batches endpoint)
+        # when main_window.close() ran — not a leak, just this test's
+        # own fixed-duration loop not giving real, legitimately slow
+        # network I/O enough time to land before checking. A worker
+        # that genuinely never completes still fails the assertion
+        # below after this bounded wait — this only removes false
+        # failures from normal real-world network latency.
+        drained = _pump(qapp, lambda: len(_callbacks) == 0, timeout=60.0)
+        print(
+            f"[stress] outstanding workers drained before close: "
+            f"{drained} (active_workers={len(_callbacks)})"
+        )
+
         # Real cleanup, real restoration — this test must leave the
         # real production app in the exact state it found it in. Every
         # Settings window opened during the loop above was already
@@ -355,6 +557,10 @@ def test_broad_end_to_end_stress(qapp):
         if main_window is not None:
             main_window.close()
         qapp.processEvents()
+
+        if duplicates_scratch_dir is not None:
+            _cleanup_stress_duplicate_location(application, duplicates_scratch_dir)
+            print("[stress] disposable duplicates location + scratch files removed")
 
         save_config(original_config, config_path)
         application._config_store = original_config

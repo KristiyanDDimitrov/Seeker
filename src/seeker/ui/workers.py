@@ -82,9 +82,28 @@ class Worker(QRunnable):
         try:
             result = self.fn()
         except Exception as error:
-            _dispatcher.task_error.emit(self.task_id, str(error))
+            # A straggling worker — fn() was still genuinely running when
+            # the app started tearing down (window close, interpreter
+            # shutdown) — can reach this point after _dispatcher's own
+            # native QObject is already gone. Confirmed live via a
+            # standalone repro (shiboken6.Shiboken.delete(_dispatcher)
+            # while a worker thread was mid-sleep): emitting into a
+            # deleted QObject raises `RuntimeError: Signal source has
+            # been deleted` from THIS thread, uncaught — real fallout,
+            # first surfaced by tests/test_stress_e2e.py once the
+            # Duplicates tab gave it real background traffic to race
+            # against a slow real slskd retry (CLAUDE.md item 41).
+            # Nobody is listening once the dispatcher is gone regardless
+            # of why — dropping the result here is strictly safer than
+            # letting a background thread raise into whatever Qt/CPython
+            # happens to be doing during shutdown at that exact moment
+            # (this class's own docstring above is full of examples of
+            # exactly that kind of race turning into a real segfault).
+            if shiboken6.Shiboken.isValid(_dispatcher):
+                _dispatcher.task_error.emit(self.task_id, str(error))
         else:
-            _dispatcher.task_finished.emit(self.task_id, result)
+            if shiboken6.Shiboken.isValid(_dispatcher):
+                _dispatcher.task_finished.emit(self.task_id, result)
 
 
 class _Dispatcher(QObject):
