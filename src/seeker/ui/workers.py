@@ -3,13 +3,50 @@ from collections.abc import Callable
 from typing import Any
 
 import shiboken6
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, SignalInstance, Slot
 from PySide6.QtWidgets import QAbstractButton, QLabel
 
 # Plain, non-Qt correlation ids for in-flight tasks. The dispatcher
 # signal carries this, never the Worker/QRunnable instance itself — see
 # Worker's own docstring for the two things this avoids.
 _next_task_id = itertools.count()
+
+
+def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
+    """Emits into the shared dispatcher from a worker thread, silently
+    dropping the result if `_dispatcher`'s native QObject is gone by the
+    time this runs (interpreter shutdown, or a window closing while this
+    worker was still mid-flight — CLAUDE.md item 41).
+
+    **Why not a preceding `Shiboken.isValid(_dispatcher)` check instead
+    (item 41's original fix)?** That's check-then-act, and there is a
+    real, non-zero gap between confirming validity and actually calling
+    `.emit()` where teardown can land — proven live, not assumed
+    (`tests/_workers_teardown_race_repro.py`, which deterministically
+    forces deletion to land in exactly that gap): the check-then-act
+    version raised the same uncaught `RuntimeError` in every single
+    forced trial, because the check happening to pass tells you nothing
+    about the very next line. That test is the same "prove it, don't
+    reason about it" discipline item 39's own aborted `RLock` attempt
+    should have gotten the first time — CLAUDE.md item 42.
+
+    **The boundary that's actually safe, confirmed live rather than
+    assumed:** calling `.emit()` on a signal whose source QObject was
+    ALREADY deleted — including a deletion landing synchronously
+    immediately beforehand, the tightest possible version of this race —
+    always raises a clean, catchable `RuntimeError: Signal source has
+    been deleted`, never a segfault or a partial emit (confirmed via a
+    direct interactive check: delete, then emit, repeatedly — always the
+    same clean exception, never corruption). Wrapping the emit call
+    itself, rather than gating it behind a separate check, is what
+    actually closes the gap: there's no window left for teardown to land
+    in between "wrapped" and "called," because they're the same
+    statement.
+    """
+    try:
+        bound_signal.emit(*args)
+    except RuntimeError:
+        pass
 
 
 class Worker(QRunnable):
@@ -68,7 +105,15 @@ class Worker(QRunnable):
     environment. `QTimer.singleShot(0, ...)` defers the delete to the
     NEXT event-loop iteration instead — confirmed live, this fully
     avoids the crash while still freeing the native object with no
-    unbounded accumulation (see `_delete_native_worker`'s docstring).
+    unbounded accumulation (see `_schedule_native_delete`'s docstring).
+
+    3. A third hazard, closed after this docstring's other two (CLAUDE.md
+       item 42): `run()` reporting completion via the dispatcher can
+       still race a real teardown of `_dispatcher` itself (see item 41).
+       The fix isn't a validity check before the emit — that's
+       check-then-act with a real gap in between — it's wrapping the
+       emit call itself (`_emit_or_drop`, below); see that function's
+       own docstring for why this is the actual, verified-safe boundary.
     """
 
     def __init__(self, fn: Callable[[], Any]):
@@ -85,25 +130,17 @@ class Worker(QRunnable):
             # A straggling worker — fn() was still genuinely running when
             # the app started tearing down (window close, interpreter
             # shutdown) — can reach this point after _dispatcher's own
-            # native QObject is already gone. Confirmed live via a
-            # standalone repro (shiboken6.Shiboken.delete(_dispatcher)
-            # while a worker thread was mid-sleep): emitting into a
-            # deleted QObject raises `RuntimeError: Signal source has
-            # been deleted` from THIS thread, uncaught — real fallout,
-            # first surfaced by tests/test_stress_e2e.py once the
-            # Duplicates tab gave it real background traffic to race
-            # against a slow real slskd retry (CLAUDE.md item 41).
-            # Nobody is listening once the dispatcher is gone regardless
-            # of why — dropping the result here is strictly safer than
-            # letting a background thread raise into whatever Qt/CPython
-            # happens to be doing during shutdown at that exact moment
-            # (this class's own docstring above is full of examples of
-            # exactly that kind of race turning into a real segfault).
-            if shiboken6.Shiboken.isValid(_dispatcher):
-                _dispatcher.task_error.emit(self.task_id, str(error))
+            # native QObject is already gone (first surfaced by
+            # tests/test_stress_e2e.py once the Duplicates tab gave it
+            # real background traffic to race against a slow real slskd
+            # retry, CLAUDE.md item 41). Nobody is listening once the
+            # dispatcher is gone regardless of why — `_emit_or_drop`
+            # (see its own docstring) is what makes dropping the result
+            # here actually safe, including against the tighter race a
+            # plain pre-check can't close.
+            _emit_or_drop(_dispatcher.task_error, self.task_id, str(error))
         else:
-            if shiboken6.Shiboken.isValid(_dispatcher):
-                _dispatcher.task_finished.emit(self.task_id, result)
+            _emit_or_drop(_dispatcher.task_finished, self.task_id, result)
 
 
 class _Dispatcher(QObject):
@@ -193,15 +230,57 @@ _callbacks: dict[int, _CallbackEntry] = {}
 
 def _delete_native_worker(worker: Worker) -> None:
     """Frees the underlying C++ `QRunnable` once its own completion has
-    been fully handled. Always called via `QTimer.singleShot(0, ...)`
-    from the handlers below, never synchronously from within the
-    dispatcher signal handler itself — see Worker's own docstring for
-    why a synchronous call at that exact point was confirmed live to
-    reintroduce a crash. `isValid()` guards against ever double-
-    deleting the same native object.
+    been fully handled. Always called via `_schedule_native_delete`
+    below, never synchronously and never left to plain `QThreadPool`
+    autoDelete — see that function's own docstring for why. `isValid()`
+    guards against ever double-deleting the same native object — a
+    second, independent line of defense on top of
+    `_schedule_native_delete` never scheduling a given worker's delete
+    more than once in the first place (see its own docstring).
     """
     if shiboken6.Shiboken.isValid(worker):
         shiboken6.Shiboken.delete(worker)
+
+
+def _schedule_native_delete(worker: Worker) -> None:
+    """The only call site for `_delete_native_worker` — deferred one
+    event-loop tick via `QTimer.singleShot(0, ...)`. Do not "simplify"
+    this back to either of the two alternatives already tried and
+    confirmed live (docs/HISTORY.md item 39) to reintroduce the same
+    native-QObject-teardown-races-a-live-thread crash class:
+
+    - Plain `QThreadPool` autoDelete (the default `setAutoDelete(True)`)
+      tears the Python-subclassed `Worker` down ON THE WORKER THREAD the
+      instant `run()` returns — real Python state (`self.fn`, often a
+      closure holding references back into a QWidget) getting decref'd
+      from a background thread the moment control leaves it, racing
+      unsafely against ordinary main-thread Qt/Python activity. This is
+      why `Worker.__init__` calls `setAutoDelete(False)` — see Worker's
+      own docstring, point 1.
+    - A SYNCHRONOUS `shiboken6.Shiboken.delete()` call made directly
+      from inside the dispatcher's own signal handler (i.e., right here,
+      with no `QTimer.singleShot`) — tried first, and confirmed live to
+      crash just the same, even with the worker obtained via this dict
+      lookup rather than the signal payload: deleting the native
+      QRunnable while still on the call stack of the very queued signal
+      that just reported it done is itself unsafe in this environment.
+
+    Deferring to the next event-loop tick sidesteps both: by the time
+    this callback actually runs, the dispatcher signal that triggered it
+    is no longer on the call stack, and the delete happens on the main
+    thread with no other thread touching this `worker` at that point.
+
+    **Can this ever get scheduled twice for the same worker?** No —
+    structurally, not just by luck. `_handle_task_finished`/
+    `_handle_task_error` both `_callbacks.pop(task_id, None)` *before*
+    reaching this call, and `Worker.run()`'s own try/except/else emits
+    at most one of the two dispatcher signals per task — so at most one
+    handler invocation ever sees a non-`None` entry for a given
+    `task_id` to begin with; a hypothetical second invocation (there
+    isn't a real path to one, but even if there were) would find
+    `entry is None` and return before ever reaching this line.
+    """
+    QTimer.singleShot(0, lambda: _delete_native_worker(worker))
 
 
 def _handle_task_finished(task_id: int, result: Any) -> None:
@@ -229,7 +308,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
             if status_label is not None:
                 status_label.setText(f"Error: {error}")
 
-    QTimer.singleShot(0, lambda: _delete_native_worker(worker))
+    _schedule_native_delete(worker)
 
 
 def _handle_task_error(task_id: int, message: str) -> None:
@@ -252,7 +331,7 @@ def _handle_task_error(task_id: int, message: str) -> None:
         except Exception as error:
             print(f"Error handling worker error callback: {error}")
 
-    QTimer.singleShot(0, lambda: _delete_native_worker(worker))
+    _schedule_native_delete(worker)
 
 
 # The one and only connect() for these two signals, for the life of

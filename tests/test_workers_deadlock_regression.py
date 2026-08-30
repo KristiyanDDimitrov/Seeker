@@ -41,6 +41,7 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).parent
 DEADLOCK_REPRO = TESTS_DIR / "_workers_deadlock_repro.py"
 CORRECTNESS_REPRO = TESTS_DIR / "_workers_correctness_repro.py"
+TEARDOWN_RACE_REPRO = TESTS_DIR / "_workers_teardown_race_repro.py"
 
 # Matches the exact stress level confirmed live to hang the pre-fix
 # design 43/50 times (see module docstring) -- not tuned down for
@@ -101,3 +102,33 @@ def test_run_worker_delivers_correct_results_under_concurrency():
         f"stderr={result.stderr[-2000:]!r}"
     )
     assert "OK:" in result.stdout
+
+
+def test_worker_run_survives_dispatcher_torn_down_around_the_emit():
+    # CLAUDE.md item 42: closes a loose end in item 41's own fix -- a
+    # `Shiboken.isValid(_dispatcher)` check before the dispatcher emit
+    # is check-then-act, not atomic, and there's a real gap between the
+    # check and the `.emit()` call itself where teardown can land.
+    # Measured live before the real fix (`_emit_or_drop` in
+    # workers.py): forcing deletion into that exact gap escaped an
+    # uncaught RuntimeError in 50/50 trials against the pre-fix code --
+    # not a rare theoretical race. See _workers_teardown_race_repro.py's
+    # own docstring for the full mechanism and why this is deterministic
+    # rather than relying on incidental thread-scheduling luck.
+    result = subprocess.run(
+        [sys.executable, str(TEARDOWN_RACE_REPRO), str(DEADLOCK_TRIALS)],
+        capture_output=True,
+        text=True,
+        timeout=30.0,
+    )
+
+    assert result.returncode == 0, (
+        f"teardown-race repro failed: stdout={result.stdout!r} "
+        f"stderr={result.stderr[-2000:]!r}\n"
+        "This is the ui/workers.py check-then-act dispatcher-teardown "
+        "race regressing -- see CLAUDE.md item 42. Do not retry/skip "
+        "this; find whatever reintroduced a validity check ahead of "
+        "the dispatcher emit (rather than wrapping the emit itself)."
+    )
+    assert "RESULT already_dead_escapes=0/" in result.stdout, result.stdout
+    assert "check_then_act_escapes=0/" in result.stdout, result.stdout

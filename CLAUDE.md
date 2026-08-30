@@ -2362,6 +2362,57 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the real installed version), matching this project's own established
     floor-pinning convention.
 
+    **Follow-up (2026-08-30), closing two loose ends this item's own
+    `ui/workers.py` fix left open, plus the code comment it never got
+    around to.** The `Shiboken.isValid(_dispatcher)` check this item
+    added before the dispatcher emit was itself check-then-act, not
+    atomic — proven, not just suspected: a deterministic repro
+    (`tests/_workers_teardown_race_repro.py`) that forces
+    `_dispatcher`'s deletion into the exact gap between that check
+    returning True and the following `.emit()` call escaped an
+    uncaught `RuntimeError` in **50/50 forced trials** against this
+    item's shipped code — the same discipline item 39's own aborted
+    `threading.RLock` attempt should have gotten the first time
+    ("reduces the frequency" isn't "fixed"). Root cause confirmed live
+    too, not assumed: calling `.emit()` on a signal whose source
+    QObject was already deleted always raises this same clean,
+    catchable `RuntimeError` — never a segfault or partial state, even
+    when the deletion lands synchronously immediately beforehand — so
+    the actual safe boundary is wrapping the `.emit()` call itself, not
+    a preceding validity check. Fixed with `ui/workers.py::
+    _emit_or_drop()`, which both dispatcher-emit call sites in
+    `Worker.run()` now go through; re-running the same forced repro
+    against the fix: **0/50 escapes** (both the "dispatcher already
+    dead for `run()`'s entire duration" case and, for future-proofing,
+    the "check-then-act gap" case, which no longer even applies since
+    `run()` doesn't call `isValid` in that path anymore — the repro
+    reports whether that hook fired at all, so a future regression
+    reintroducing a check-then-act shape would be caught honestly
+    rather than the test silently passing for the wrong reason).
+
+    Second loose end: whether the deferred native-delete
+    (`QTimer.singleShot(0, ...)`) could ever get scheduled twice for
+    the same worker. Confirmed structurally impossible, not just
+    tested — `_handle_task_finished`/`_handle_task_error` both
+    `_callbacks.pop(task_id, None)` before scheduling it, and
+    `Worker.run()`'s own try/except/else emits at most one of the two
+    dispatcher signals per task, so at most one handler invocation ever
+    sees a non-`None` entry for a given `task_id` to begin with. Now
+    factored into a single `_schedule_native_delete()` helper (both
+    handlers call it instead of inlining `QTimer.singleShot(...)`
+    directly) whose docstring carries this guarantee plus the
+    previously-undocumented-at-the-call-site explanation of why plain
+    `QThreadPool` autoDelete and a synchronous delete from inside the
+    signal handler both failed — the comment item 40 asked for and
+    this file never confirmed landed, now in place specifically so a
+    future contributor can't "simplify" it back into either shape
+    without reading why not.
+
+    `mypy --strict` clean; full suite 471 passed / 1 skipped (the one
+    skip is `test_stress_e2e.py`'s own opt-in gate, unrelated to
+    Docker/the X9 Pro drive — no Docker-conditional skip exists
+    anywhere in the fast suite right now).
+
 42. **Custom app icon wired in and live-verified (2026-08-30) — closes
     the "no custom .icns/.ico" gaps items 30/31/36 all flagged as
     accepted-but-cosmetic.** `packaging/icons/seeker_icon.icns`/
