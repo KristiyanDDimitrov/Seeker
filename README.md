@@ -138,10 +138,12 @@ src/seeker/
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
 │                             #   + group-resolution delete action
 ├── ui/                        # the seeker-ui GUI (PySide6)
-│   ├── main_window.py         # dashboard + Downloads/Review/tagging tabs
+│   ├── main_window.py         # dashboard + Downloads/Review/Duplicates/tagging tabs
 │   ├── wizard.py               # onboarding: Spotify, library, SoulSeek
 │   ├── settings_window.py      # locations, destinations, connection, thresholds
 │   ├── library_location_picker.py  # shared folder-picker (wizard + Settings)
+│   ├── download_eta.py         # per-download speed/ETA tracker
+│   ├── help_text.py            # centralized tooltips/subtitles/About/support-link copy
 │   └── workers.py              # QThreadPool worker wrapper every screen uses
 ├── models/{playlist,track,track_match,local_file,library_location,
 │           soulseek_file,download_request,soulseek_review_candidate,
@@ -149,6 +151,7 @@ src/seeker/
 ├── audio_formats.py          # AUDIO_EXTENSIONS, shared by scanner + quality
 ├── metadata.py                # mutagen tag read/write, per audio format
 ├── audio_analysis.py          # BPM + Camelot key detection (librosa)
+├── audio_fingerprint.py       # libchromaprint ctypes binding, used by duplicate_service.py
 ├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
 ├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
 ├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)

@@ -57,18 +57,23 @@ src/seeker/
 │                            #   poll_downloads (status + file move)
 ├── library/
 │   ├── scanner.py, matcher.py, service.py
-│   └── metadata_service.py   # tag_tracks/tag_playlist — writes Spotify
+│   ├── metadata_service.py   # tag_tracks/tag_playlist — writes Spotify
 │                              #   metadata + art onto matched local files
+│   └── duplicate_service.py  # fingerprint-based duplicate clustering +
+│                              #   the group-resolution delete action (item 40)
 ├── ui/                        # seeker-ui (PySide6) — presentation layer,
 │                              #   same layering rule as cli.py
-│   ├── main_window.py         # dashboard (tagging panel) + Downloads +
-│                              #   Review tabs, all on the same QTimer-
-│                              #   driven poll pattern
+│   ├── main_window.py         # dashboard (tagging panel) + Downloads/
+│                              #   Review/Duplicates tabs, all on the same
+│                              #   QTimer-driven poll pattern
 │   ├── wizard.py               # onboarding: Spotify / library / SoulSeek
 │   ├── settings_window.py      # locations, destinations, connection
 │                              #   management, editable thresholds
 │   ├── library_location_picker.py  # folder-picker, shared by wizard +
 │                              #   Settings — see roadmap item 28 §1
+│   ├── download_eta.py         # per-download speed/ETA tracker (item 33)
+│   ├── help_text.py            # centralized tooltips/subtitles/About copy
+│                              #   (item 34), incl. SUPPORT_LINKS (item 35)
 │   └── workers.py              # QThreadPool Worker + run_worker() — every
 │                              #   long-running UI action goes through this
 ├── models/{playlist,track,track_match,local_file,library_location,
@@ -86,6 +91,10 @@ src/seeker/
 │                              #   library/metadata_service.py
 ├── audio_analysis.py          # analyze_audio (librosa BPM + Krumhansl-
 │                              #   Schmuckler key estimate), CAMELOT_MAP
+├── audio_fingerprint.py       # project-owned libchromaprint ctypes binding
+│                              #   — compute_fingerprint/similarity_from_
+│                              #   decoded, used by duplicate_service.py
+│                              #   (item 39)
 ├── audio_formats.py         # AUDIO_EXTENSIONS, shared by scanner + quality
 ├── dashboard_service.py       # DashboardService — playlist-scoped track
 │                              #   status + global active-downloads listing;
@@ -100,6 +109,9 @@ src/seeker/
 ├── download_dedup.py          # candidate_key/most_recent_per_candidate —
 │                              #   shared by DownloadService (write) and
 │                              #   DashboardService (read), see item 25
+├── file_deletion.py           # shared safe-file-delete primitive —
+│                              #   DownloadService (upgrade replace) and
+│                              #   DuplicateService (item 40) both use it
 ├── config.py                  # .env-sourced fallback values
 ├── application.py
 ├── cli.py
@@ -352,8 +364,11 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
    `filter_candidates` scores fuzzy title match against `artist + title`
    combined (bare-title-only scoring tanks the ratio for
    "Artist - Title"-style filenames), `quality_tier`/`effective_bitrate`
-   (flac/wav > mp3/m4a/aac/ogg, VBR bitrates distrusted), `select_best`
-   prefers practical-queue candidates. [HISTORY §5](docs/HISTORY.md#5)
+   (flac/wav > mp3/m4a/aac/ogg, VBR bitrates distrusted) feed candidate
+   selection, which prefers practical-queue candidates (the original
+   `select_best` from this item was itself unused dead code, removed in
+   item 15; `select_downloads`, added in item 8, is the real, current
+   selection entry point). [HISTORY §5](docs/HISTORY.md#5)
 6. **Phase 1 download orchestration — done.** `download_requests` table
    (`role`/`status` lifecycle: `queued → downloading →
    completed/failed`, plus `transfer_id`). Destination is per-playlist
@@ -1175,6 +1190,7 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the X9 Pro drive is attached and slskd is up again this session,
     unblocking the drive-unmounted-skip tests too — unrelated to this
     task's own scope, just incidentally true for this run).
+    [HISTORY §28](docs/HISTORY.md#28)
 
 29. **UI polish pass — done (2026-08-30).** Mirrors backend item 15's
     six-area structure exactly, applied to everything built across Steps
@@ -1369,7 +1385,7 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     trying to monkeypatch sqlite3's immutable C type directly); 15 new
     `wizard.py` tests; 4 new `onboarding_complete` tests; 1 new
     `bring_up_slskd` test. `mypy --strict` clean; full suite 377
-    passed.
+    passed. [HISTORY §29](docs/HISTORY.md#29)
 
 30. **Standalone-app packaging (PyInstaller) — done, macOS
     live-verified, Windows/Linux written-not-verified (2026-08-29).**
@@ -1863,7 +1879,7 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     **Linux — not scoped, tracked as a real future direction only** —
     see item 37 below (Linux AppImage/`.deb` packaging), not attempted
-    here.
+    here. [HISTORY §36](docs/HISTORY.md#36)
 
 37. Linux packaging (AppImage or `.deb`) is a real, deliberately
     deprioritized future option — not scoped or attempted as part of
@@ -2229,6 +2245,122 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     `mypy --strict` clean; full suite 470 passed / 1 skipped, run 3x.
     [HISTORY §40](docs/HISTORY.md#40)
+
+41. **Bounded verification pass (2026-08-30) — one real bug found and
+    fixed in `ui/workers.py`, the stress test extended to cover the
+    Duplicates tab, several stale docs cross-references fixed.**
+
+    **Support link.** The real Revolut link
+    (`https://revolut.me/kddimitrov`) replaced item 35's placeholder in
+    `help_text.SUPPORT_LINKS`. PayPal's is still a deliberate
+    placeholder — not ready yet, tracked separately.
+
+    **Stress test extended to cover the duplicate detector — done, and
+    it caught a real bug on the first live run.** `test_stress_e2e.py`
+    predated items 38-40 entirely; it never exercised fingerprinting/
+    clustering/delete worker traffic overlapping with Sync/Scan/Match/
+    Download. Extended to register a small, disposable library location
+    (two byte-identical synthetic WAVs, not a single byte of the real
+    X9 Pro library — `find_duplicate_groups()` recomputes a whole
+    location's clustering from scratch every call and costs ~10 real
+    minutes over the real ~3,100-file production library per item 39,
+    which would defeat the point of a fast, repeatable regression
+    guard), then fires Compute fingerprints/Find duplicates alongside
+    the existing sync/scan/match flurry and exercises a real Delete
+    click (checkbox + button) against the scratch group during the
+    interleaved loop.
+
+    **Real bug, found on the first live run, not reasoned about in the
+    abstract:** the run failed on `active_workers == 0` (1 worker still
+    registered after 300s+), and printed an uncaught
+    `RuntimeError: Signal source has been deleted` from
+    `ui/workers.py::Worker.run()`'s `_dispatcher.task_finished.emit(...)`
+    call, during process teardown. Root cause, confirmed via an isolated
+    repro (a `QThreadPool` worker mid-sleep while
+    `shiboken6.Shiboken.delete(_dispatcher)` was called from the main
+    thread): a straggling background worker — here, the 20s backend-poll
+    timer's `poll_downloads()` retrying a real `locked` download row
+    against slskd, which returned a real 500 from `/transfers/downloads/
+    batches` — can still be genuinely in flight when the app (or, in a
+    real quit, the interpreter) starts tearing down `_dispatcher`; when
+    the worker thread finally finishes and calls `.emit()`, the
+    dispatcher's native QObject is already gone. Not a leak in the
+    classic item-29/32 sense (the worker DOES eventually finish) — a
+    real shutdown-safety gap: nothing bounded how long a worker could
+    run, and nothing protected a late `.emit()` against a torn-down
+    dispatcher. Reachable in real usage too, not just this test: a user
+    quitting `seeker-ui` while a backend poll's slskd calls are still in
+    flight hits the identical race.
+
+    Fixed with the smallest change that closes it: `Worker.run()` now
+    checks `shiboken6.Shiboken.isValid(_dispatcher)` immediately before
+    each `.emit()` call and silently drops the result if it's gone —
+    nobody is listening once the dispatcher is torn down regardless of
+    why, and dropping the result is strictly safer than letting a
+    background thread raise into whatever Qt/CPython is doing mid-
+    shutdown (exactly the class of race this file's own pre-existing
+    docstring already documents turning into a real segfault once
+    before). Re-verified live against the same isolated repro: no more
+    exception, no more traceback, the worker's result is just dropped.
+    The stress test itself also got a real, matching fix — a bounded
+    (60s) drain wait for `active_workers == 0` before `main_window
+    .close()`, so a legitimately-slow-but-real network round trip gets
+    a fair chance to land before the leak-check assertion runs, rather
+    than the test crying wolf on ordinary network latency. A worker that
+    genuinely never completes still fails the assertion after the wait.
+
+    **Re-run clean after both fixes, real numbers, not just pass/fail:**
+    311s real duration, RSS 259.4MB → 398.0MB (Δ+138.7MB, under the
+    250MB ceiling — higher than item 32's own +58.1MB baseline, almost
+    entirely from the initial construction/sync/scan/match/duplicates
+    burst in the first ~2.5s; the remaining ~300s/20 interleaved cycles
+    added only ~9MB total, ≈0.45MB/cycle, the same legitimate-residual
+    order of magnitude item 32 established, not a growing leak), fds
+    6 → 27 (Δ+21, under 40), threads 5 → 14 (Δ+9, under 40),
+    `active_workers` at 0 at the end. Duplicates lifecycle genuinely
+    overlapped with the rest, not run sequentially: fingerprinting (2
+    files) and the group delete (`Deleted: 1, Failed: 0`) both completed
+    within the first 2.4s, while sync/scan/match and 3 concurrent
+    downloads were still in flight. The same real slskd 500 kept
+    recurring on later backend-poll cycles throughout the run (an
+    external, environmental condition — a genuinely flaky real peer/
+    file, unrelated to this fix) without ever again leaving a stray
+    active worker at the end, confirming the fix holds under repeat
+    exposure to the same failure, not just once. Scratch location and
+    files removed in `finally` every time, confirmed via the real
+    "Removed library location" log line. Full fast suite (470 passed /
+    1 skipped) and `mypy --strict` stay clean. [HISTORY §41](docs/HISTORY.md#41)
+
+    **Documentation consistency pass — several real staleness issues
+    found and fixed, not manufactured.** Two roadmap items (28, 29) had
+    matching detailed `docs/HISTORY.md` sections but, unlike every other
+    item, no `[HISTORY §N]` cross-reference link — added both; same gap
+    found and fixed for item 36. Item 5's own text described `select_
+    best` as the live candidate-selection function — genuinely stale:
+    item 15 later removed it as unused dead code, and item 8's
+    `select_downloads` is the real, current entry point — corrected
+    in place. Both this file's and README's "current layout" file trees
+    were missing three real files added since they were last updated
+    (`audio_fingerprint.py`, `library/duplicate_service.py`,
+    `file_deletion.py`, from items 38-40) plus two from items 33/34
+    (`ui/download_eta.py`, `ui/help_text.py`) — brought current in both
+    files. Checked, not just assumed: every numeric constant this file
+    cites (`AUTO_MATCH_THRESHOLD`, `DEFAULT_MAX_QUEUE`,
+    `MAX_UPGRADE_SHORTLIST`, `POLL_INTERVAL_MS`/`BACKEND_POLL_
+    INTERVAL_MS`, `STALL_SAMPLE_COUNT`, `CLIPPING_AMPLITUDE_THRESHOLD`,
+    `DUPLICATE_SIMILARITY_THRESHOLD`), every CLI command/flag name, the
+    Spotify field-name/endpoint history, the `SLSKD_*` env var names,
+    and the packaging `AppId` GUID all still match the real code —
+    confirmed via direct `grep` against source, not assumed correct
+    because they'd been correct before. One real code-side gap surfaced
+    incidentally while cross-checking item 29's own "no undeclared
+    transitive dependency" audit against the newer duplicate-detector
+    files: `numpy` is imported directly by `audio_fingerprint.py` and
+    `duplicate_service.py` (items 38/39) but was never added to
+    `pyproject.toml`'s `dependencies` — present only transitively via
+    `librosa`/`scipy`/`soundfile`. Added explicitly (`numpy>=2.5.2`,
+    the real installed version), matching this project's own established
+    floor-pinning convention.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

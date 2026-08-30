@@ -6313,3 +6313,271 @@ change in this task and remain accurate as written.
 `mypy --strict` clean; full suite 470 passed / 1 skipped, run 3 times
 in a row.
 
+### 41
+
+Bounded verification pass, three scoped tasks: swap the real Revolut
+support link in for item 35's placeholder; extend item 32's stress test
+to cover the duplicate detector (items 38-40), which it predates
+entirely; a documentation consistency pass across CLAUDE.md, README.md,
+and this file. Instructed explicitly to verify live rather than
+manufacture findings — the stress-test extension did surface a real
+bug on its first live run, investigated and fixed with the same rigor
+as item 39 rather than reasoned about in the abstract.
+
+**Support link — done, no narrative worth preserving.** One string
+swapped in `help_text.SUPPORT_LINKS`. PayPal's placeholder is untouched
+(not ready yet, out of scope here).
+
+**Stress test extension — design.** `test_stress_e2e.py` never
+exercised the Duplicates tab's fingerprinting/clustering/delete worker
+traffic overlapping with the rest of the app's background activity —
+it predates items 38-40 by several items. Two real constraints shaped
+the design, both settled with the user before writing any code (this
+task genuinely can't infer either from the codebase alone): (1)
+`delete_local_files` is real and destructive — running it against the
+real X9 Pro library's actual duplicate groups (a known real one exists
+per item 39's own live-verification write-up, the accidental
+`wetransfer_...`/`Sinthesis/YBBY` 100%-similarity pair) would delete a
+real file from the user's real library as a side effect of an automated
+test; (2) `find_duplicate_groups()` recomputes an entire location's
+clustering from scratch on every call and cost ~10 real minutes over
+the real ~3,100-file production library (item 39's own number) — running
+that inside a ~5-minute stress test would either force an awkward
+duration extension or make the run impractical to re-run casually. Both
+resolved by scoping to a small, disposable library location — two
+synthetic, byte-identical WAV files (a 440Hz sine tone via
+`soundfile.write`, no real audio content and nothing from the real
+library at all) registered, scanned, fingerprinted, clustered, and
+resolved through the exact same real code path (`DuplicateService`,
+`ui/main_window.py`'s real button click handlers, the real
+`run_worker`/`QThreadPool` mechanism) every real user's Duplicates tab
+uses — only the input data is disposable, not the mechanism being
+tested. Registered/cleaned up via `library_service.add_location`/
+`remove_location` directly (best-effort pre-cleanup of a same-named
+leftover from a crashed prior run, real `shutil.rmtree` of the scratch
+directory in every code path, success or failure, via a dedicated
+`_cleanup_stress_duplicate_location` helper called from the test's own
+`finally` block).
+
+Fired Compute fingerprints right alongside the existing sync/scan/match
+click flurry (genuine overlap, not sequenced after), waited for it to
+settle, then fired Find duplicates so ITS clustering work would overlap
+with the concurrent-downloads section that follows — deliberately
+threaded through the existing overlapping-fire structure rather than
+tacked on as a separate phase. The delete action (checkbox + button,
+mirroring the Review tab's own double-confirm shape, per item 40) is
+exercised once during the interleaved loop, gated on the same
+"do it once, track a flag" pattern the existing threshold-change block
+already uses, waiting up to 30s across cycles for `find_duplicate_
+groups()` to land before attempting it.
+
+**First live run — failed for real, not a test-authoring mistake.**
+`assert last.active_workers == 0` failed: 1 worker still registered
+after the full 300s+ run. Immediately after the failure, an uncaught
+```
+RuntimeError: Signal source has been deleted
+```
+printed from `ui/workers.py::Worker.run()`'s `_dispatcher.task_finished
+.emit(self.task_id, result)` line, alongside a genuinely real, external
+error: `poll_downloads()`'s locked-row retry got a real `500 Internal
+Server Error` from slskd's own `/api/v0/transfers/downloads/batches`
+endpoint for a specific real locked row
+(`(AMB025) Zenea - INFINITE/01. Zenea - Infinite.mp3`) that has been
+sitting in the real production DB since before this task, per its
+own real `download_requests` row (confirmed via a direct query: 1
+`locked`, 2 `downloading`, 2 `queued` rows exist in the real DB right
+now).
+
+**Root-cause investigation, live, not reasoned about in the abstract.**
+Read `ui/workers.py` in full first: `_dispatcher` is a module-level
+`_Dispatcher()` QObject, connected exactly once at import time, per
+item 39's own deadlock-fix design (see that item's addendum) —
+nothing in the file's own logic should ever delete it during a single
+test run. The error text itself (`RuntimeError: Signal source has been
+deleted`) is shiboken's own message for emitting a signal on a QObject
+whose native C++ side is already gone — meaning `_dispatcher`'s native
+object really was destroyed by the time the straggling worker thread's
+`run()` call reached its `.emit()` line, sometime during pytest's own
+post-test teardown (the message appeared in the log AFTER "1 failed in
+303.31s", i.e. after the test function itself had already returned).
+pytest-qt's `qapp` fixture is what actually owns the `QApplication`
+instance's lifetime in this test file (no local override), and its own
+session-end teardown is the natural point at which a leftover, unparented
+QObject like `_dispatcher` would get invalidated.
+
+Reproduced the exact mechanism in isolation, deliberately, before
+touching any source (`/private/tmp/.../repro_dispatcher.py`, a
+throwaway script, not committed): a real `QThreadPool`, a
+`run_worker()` call whose `fn()` sleeps 1.5s, then
+`shiboken6.Shiboken.delete(workers_mod._dispatcher)` called from the
+main thread while the worker is still mid-sleep, simulating what
+pytest-qt's teardown appears to do. Got the byte-identical error:
+```
+RuntimeError: Signal source has been deleted
+```
+— confirming the mechanism precisely, not just plausibly.
+
+**Why this matters beyond the test itself — confirmed, not assumed:**
+the same race is reachable in real production usage, not just pytest
+teardown. `_dispatcher`'s native object gets torn down at Qt/Python
+interpreter shutdown the same way regardless of what triggers it
+(pytest-qt's fixture teardown here; a real user quitting `seeker-ui`
+in the wild) — a straggling `QThreadPool` worker thread doing a real
+network call (the exact scenario here: `poll_downloads()` retrying a
+locked row against slskd) is not force-killed by Python on interpreter
+shutdown, so the identical "finishes late, emits into a deleted
+dispatcher" race can happen to a real user closing the app while a
+backend poll is mid-flight. This is squarely in the same hazard family
+this file's own docstring already documents at length (item 39's
+addendum) — a background thread's cross-thread signal emission racing
+against Qt/Python object teardown — just a new specific instance of it,
+not previously identified because nothing before this task gave the
+backend-poll timer's worker enough real, concurrent, overlapping load
+to make it likely to still be in flight at test-teardown time.
+
+**Fix — the smallest change that closes it, chosen over the
+alternatives considered.** Guard each `.emit()` call in `Worker.run()`
+with `shiboken6.Shiboken.isValid(_dispatcher)` immediately before
+calling it; if invalid, drop the result silently. Considered and
+rejected two alternatives before settling on this: (1) waiting for the
+thread pool to fully drain on `MainWindow.close()` (a `closeEvent`
+override calling `thread_pool.waitForDone(timeout)`) — a real, valid
+architectural fix for the underlying timing gap, but a genuine
+production UX/behavior change (blocking window close on network I/O)
+that wasn't clearly in scope for a bounded verification pass and wasn't
+needed to fix the crash itself; (2) catching `RuntimeError` broadly
+around the `.emit()` calls — works, but `isValid()` is the more precise,
+intention-revealing check (matches `_delete_native_worker`'s own
+existing `isValid()` guard two functions below in the same file,
+keeping the file internally consistent rather than introducing a
+second style for the same kind of check). Re-ran the exact same
+isolated repro script against the fixed code: no exception, no
+traceback, `on_finished` correctly never called (nobody is listening
+once the dispatcher is gone) — confirmed the fix closes the exact
+mechanism just reproduced, not a plausible-sounding guess.
+
+**Test-side fix, distinct from the app-side one, addressing the
+DIFFERENT half of the same finding.** The app-side fix stops a
+straggling worker from crashing; it does nothing about the test's own
+assertion still being a real race against genuine (if occasionally
+slow) network I/O — a worker that's still legitimately in flight when
+the interleaved loop's fixed duration ends would still fail `assert
+active_workers == 0` even with the crash fixed, and that failure would
+be a false one (the app itself did nothing wrong; the test just didn't
+wait long enough for real, bounded, in-progress work). Added a bounded
+(60s) drain wait — `_pump(qapp, lambda: len(_callbacks) == 0,
+timeout=60.0)` — in the test's own `finally` block, before
+`main_window.close()`. A worker that never completes at all (a genuine
+future regression) still fails the assertion after this wait elapses;
+this only removes false failures caused by ordinary real network
+latency the test has no business penalizing.
+
+**Re-verification — the same regression tests plus a full re-run,
+both clean.** `tests/test_ui_smoke.py`, `test_workers_deadlock_
+regression.py`, and `test_library_location_picker.py` (every existing
+test that touches `run_worker`/`_callbacks`/`_dispatcher`) — 70 passed,
+no change in behavior for the ordinary, non-straggling path. Full fast
+suite — 470 passed / 1 skipped, matching item 40's own last-recorded
+count exactly (confirms nothing else drifted while this task was in
+progress). `mypy --strict` clean on the touched files
+(`ui/workers.py`, `tests/test_stress_e2e.py`).
+
+Re-ran the full live stress test end to end with both fixes in place —
+**passed, 311s real duration.** Real resource numbers: RSS 259.4MB →
+398.0MB (Δ+138.7MB — under the 250MB ceiling, but genuinely higher than
+item 32's own +58.1MB baseline; nearly all of the growth (259→~395MB)
+lands in the first 2.5 real seconds — MainWindow construction plus the
+overlapping sync/scan/match/duplicates-fingerprinting/downloads burst —
+and the remaining ~300s across 20 interleaved cycles added only
+~9MB total, ≈0.45MB/cycle, the same order of magnitude as item 32's own
+documented ≈0.25MB/cycle legitimate residual, not a growing leak); open
+file descriptors 6 → 27 (Δ+21, under the 40 ceiling); threads 5 → 14
+(Δ+9, under the 40 ceiling); `active_workers` at 0 at the end, confirmed
+by the new drain-wait log line
+(`outstanding workers drained before close: True (active_workers=0)`).
+The Duplicates lifecycle genuinely overlapped with the rest, confirmed
+by real timestamps in the sample log, not assumed from firing order
+alone: fingerprinting (`Fingerprinted: 2, Skipped (already computed):
+0, Failed: 0`) and the group delete (`Deleted: 1, Failed: 0`) both
+completed by t=2.4s, while sync/scan/match and 3 concurrent download
+operations were still settling. The same real slskd 500 on the same
+real locked row recurred on essentially every later 20s backend-poll
+cycle for the rest of the 300s run (a real, external, pre-existing
+condition, unrelated to and unfixed by this task — that specific
+row's own resolution is out of scope here) without ever again leaving
+a stray active worker at the end of the run, confirming the fix holds
+under REPEATED exposure to the exact failure that first surfaced it,
+not just once by luck. Scratch location and files removed for real
+every time (`Removed library location 'SeekerStressTestDuplicates'.`
+in the log), and the real config store was confirmed restored to its
+original values.
+
+**Documentation consistency pass.** Not a rewrite — checked specific,
+concrete claims against the real current code rather than skimming for
+tone. Two real, load-bearing findings, plus several smaller ones:
+
+1. CLAUDE.md items 28 and 29 both have full, matching narrative
+   sections in this file, but — unlike every other numbered roadmap
+   item — carried no `[HISTORY §N]` cross-reference link at all. Same
+   gap found for item 36. All three added.
+2. Item 5's own text names `select_best` as `soulseek/quality.py`'s
+   live candidate-selection function. Checked directly: it doesn't
+   exist in the current file at all — `grep -n "^def " quality.py`
+   confirms it — because item 15 removed it as unused dead code, and
+   item 8's `select_downloads` is the real, current entry point.
+   Item 5's text corrected in place to name both facts (what it was,
+   and what superseded it) rather than silently swapping one name for
+   another and losing the history.
+3. Both CLAUDE.md's and README.md's "current/project layout" file
+   trees were missing three real files added by items 38-40
+   (`audio_fingerprint.py`, `library/duplicate_service.py`,
+   `file_deletion.py`) and two from items 33/34
+   (`ui/download_eta.py`, `ui/help_text.py`) — confirmed via a direct
+   `find src/seeker -name "*.py"` listing compared line by line
+   against both trees, not assumed stale from the dates alone. Both
+   brought current.
+4. Broad spot-check of specific, checkable claims across both files —
+   confirmed accurate, not changed: every numeric constant CLAUDE.md
+   cites by name and value (`AUTO_MATCH_THRESHOLD=90`/`NEEDS_REVIEW_
+   THRESHOLD=70`, `DEFAULT_MAX_QUEUE=200`, `MAX_UPGRADE_SHORTLIST=3`,
+   `POLL_INTERVAL_MS=2_000`/`BACKEND_POLL_INTERVAL_MS=20_000`,
+   `STALL_SAMPLE_COUNT=3`, `CLIPPING_AMPLITUDE_THRESHOLD=0.999`,
+   `DUPLICATE_SIMILARITY_THRESHOLD=0.95`) against the real current
+   source; every CLI command/flag named in README's command table
+   against `cli.py`'s actual `add_parser`/`add_argument` calls; the
+   Spotify endpoint-path/field-name history against the current
+   `get_playlist_tracks` body; the `SLSKD_USERNAME`/`SLSKD_SLSK_
+   USERNAME` env var distinction against `docker_setup.py` and
+   `docker-compose.yml`; the packaging `AppId` GUID against
+   `seeker.iss`; the `PlaylistNotFoundError` "three separate classes,
+   aliased at the cli.py import site" claim (there are actually four
+   in the codebase — `dashboard_service.py`'s own isn't imported by
+   `cli.py` at all, so the claim's own explicit scoping to "aliased at
+   the cli.py import site" is accurate as written, not stale — checked
+   rather than reflexively "fixed").
+5. One real code-side gap, not just a docs one, surfaced incidentally
+   while re-checking item 29's own "no scipy-style undeclared
+   transitive dependency" audit against files item 29 predates:
+   `numpy` is imported directly (`import numpy as np`) in both
+   `audio_fingerprint.py` and `duplicate_service.py` (items 38/39) but
+   was never added to `pyproject.toml`'s own `dependencies` list —
+   present at runtime only because `librosa`/`scipy`/`soundfile` all
+   depend on it transitively. Added explicitly
+   (`numpy>=2.5.2`, the real currently-installed version, matching
+   this project's own established floor-pinning convention — see
+   `psutil>=7.2.2` from item 32 for the identical precedent). `uv sync`
+   re-run clean after the change.
+
+Considered and deliberately left unchanged: the `docs/HISTORY.md#39`
+link inside CLAUDE.md's "Known issues" section for the workers-deadlock
+fix technically resolves to item 39's own main heading rather than its
+"addendum" sub-heading further down the same file where the deadlock
+narrative actually lives — but this matches an already-established
+precedent elsewhere in the same file (item 30's own `[HISTORY §30]`
+link points at its main heading the same way, with the "§3 retry"
+follow-up narrative living immediately below it, unlinked directly) —
+changing one without the other would be inconsistent, and getting a
+precise GFM heading-slug anchor right for a comma-and-em-dash-heavy
+heading is more likely to introduce a new broken link than fix an
+existing one. Left as consistent-with-precedent rather than "fixed."
+
