@@ -39,11 +39,12 @@ filesystem = "HFS+"
 files = [application, readme]
 symlinks = {"Applications": "/Applications"}
 
-# No custom .icns exists for this app yet — a known, documented
-# cosmetic gap (see README's "Building a standalone app"), not
-# attempted in this pass. Leaving `icon`/`badge_icon` unset falls
-# through to dmgbuild's own defaults (None) — the volume and its badge
-# just use the generic default icon; this is not an error condition.
+# The .dmg volume's own icon (shown in Finder's sidebar and on the
+# mounted volume itself). Resolved the same way `readme` is above —
+# dmgbuild `exec()`'s this file with no `__file__` in scope, so the
+# path is relative to the caller's cwd (packaging/build_dmg.py runs
+# with cwd=PROJECT_ROOT), not this file's own location.
+icon = defines.get("icon", "packaging/icons/seeker_icon.icns")  # noqa: F821
 
 window_rect = ((100, 100), (640, 400))
 default_view = "icon-view"

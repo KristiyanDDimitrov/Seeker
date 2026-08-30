@@ -35,9 +35,10 @@ AppVersion={#MyAppVersion}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-; No custom .icns/.ico exists for this app yet — same deliberately
-; deferred gap as the macOS build (see CLAUDE.md item 31); Inno Setup
-; falls back to a generic icon for the installer/uninstaller/shortcuts.
+; Installer/uninstaller executable icon — packaging/icons/seeker_icon.ico,
+; a compile-time-only path (Inno Setup embeds it directly into
+; Setup.exe), not something that needs to exist on the target machine.
+SetupIconFile=icons\seeker_icon.ico
 OutputDir=..\dist
 OutputBaseFilename=SeekerSetup
 Compression=lzma2
@@ -60,11 +61,15 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 ; dependency, including docker-compose.yml — see seeker.spec's own
 ; datas entry) — mirrors the .dmg copying the whole .app bundle.
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Installed alongside Seeker.exe so the [Icons] entries below have a
+; real on-disk path to point IconFilename at (a shortcut's icon path
+; must resolve on the target machine, unlike SetupIconFile= above).
+Source: "icons\seeker_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\seeker_icon.ico"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\seeker_icon.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\seeker_icon.ico"
 
 [Run]
 ; Matches the .dmg's own "no forced launch" spirit — offered, not

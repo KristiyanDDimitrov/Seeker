@@ -2362,6 +2362,46 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     the real installed version), matching this project's own established
     floor-pinning convention.
 
+42. **Custom app icon wired in and live-verified (2026-08-30) — closes
+    the "no custom .icns/.ico" gaps items 30/31/36 all flagged as
+    accepted-but-cosmetic.** `packaging/icons/seeker_icon.icns`/
+    `seeker_icon.ico` now wired into all four places that were
+    previously `None`/unset/generic-default: `seeker.spec`'s
+    `BUNDLE()` (macOS `.app`/Dock/Finder icon) and `EXE()` (picks
+    `.ico` on `win32`, `.icns` on `darwin`, `None` on Linux — `EXE`'s
+    icon param is only actually consumed on Windows/macOS); `dmg_
+    settings.py`'s `icon` setting (the `.dmg` volume icon — resolved
+    the same cwd-relative way `readme` already was, since dmgbuild
+    `exec()`'s the settings file with no `__file__` in scope, which a
+    first attempt using `__file__` learned the hard way); and
+    `seeker.iss`'s `SetupIconFile` (installer/uninstaller exe) plus a
+    `seeker_icon.ico` copy installed to `{app}` so the Start Menu/
+    Desktop `[Icons]` entries have a real on-disk `IconFilename` to
+    point at.
+
+    **Live-verified for real on macOS, not assumed from the diff.**
+    Rebuilt `Seeker.app` and `Seeker.dmg` for real. Screen-recording
+    permission is still absent in this environment (same gap item 30
+    hit), so verification went through `NSWorkspace.iconForFile:`/
+    `NSRunningApplication.icon` via `osascript` instead — the exact
+    APIs Finder and the Dock themselves call to render an icon, not a
+    proxy for them. Confirmed: the bundled `.icns` inside `Seeker.app`
+    byte-matches the source file and `Info.plist`'s `CFBundleIconFile`
+    points at it; `NSWorkspace.iconForFile:` on the built `.app`
+    renders the real custom icon; the real `.dmg`, mounted for real,
+    carries a `.VolumeIcon.icns` that byte-matches the source with the
+    Finder custom-icon flag set on the volume; and `NSRunningApplication
+    .icon` for the actually-launched, actually-running `Seeker` process
+    renders the same real custom icon — the literal thing the Dock
+    displays for a running app. All three surfaces (Finder, `.dmg`
+    volume, Dock) confirmed live.
+
+    **Windows stays written-but-unverified, as scoped** — no real
+    Windows machine in this environment; the `.iss`/`.spec` Windows
+    branches are correct by construction (mirroring the already-
+    verified macOS wiring) but not run for real, same standing caveat
+    as item 36.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

@@ -61,6 +61,22 @@ SRC_DIR = PROJECT_ROOT / "src"
 
 APP_NAME = "Seeker"
 
+ICONS_DIR = SPEC_DIR / "icons"
+ICON_ICNS = ICONS_DIR / "seeker_icon.icns"
+ICON_ICO = ICONS_DIR / "seeker_icon.ico"
+
+# EXE()'s icon is only actually applied on Windows (embeds it in
+# Seeker.exe, which the Inno Setup shortcuts then inherit) and macOS
+# (rarely visible — BUNDLE()'s own icon= below is what Finder/Dock
+# actually show); ignored on Linux. Pick the format each platform
+# understands rather than passing one file everywhere.
+if sys.platform == "win32":
+    EXE_ICON: str | None = str(ICON_ICO)
+elif sys.platform == "darwin":
+    EXE_ICON = str(ICON_ICNS)
+else:
+    EXE_ICON = None
+
 # The only bundled non-Python resource this app currently needs at
 # runtime — see seeker/docker_setup.py::compose_file_path(), which
 # resolves this same file via sys._MEIPASS in a frozen build. Placed
@@ -100,6 +116,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
+    icon=EXE_ICON,
     # Signing hook point (out of scope here, see module docstring):
     codesign_identity=None,
     entitlements_file=None,
@@ -125,7 +142,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name=f"{APP_NAME}.app",
-        icon=None,
+        icon=str(ICON_ICNS),
         bundle_identifier="com.seeker.app",
         info_plist={
             "NSHighResolutionCapable": True,
