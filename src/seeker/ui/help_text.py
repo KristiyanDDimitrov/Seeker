@@ -250,11 +250,11 @@ ABOUT_DIALOG_BODY = (
 )
 
 # --- Task 3: support-the-creator links -------------------------------------
-# Real URLs aren't ready yet — these two values are deliberately
-# marked, obvious placeholders, not fabricated look-real links. Replace
-# both with the real destination before this is shipped to anyone.
+# The PayPal URL isn't ready yet — deliberately marked as an obvious
+# placeholder, not a fabricated look-real link. Replace it with the real
+# destination before this is shipped to anyone.
 SUPPORT_LINKS: dict[str, str] = {
-    "Revolut": "TODO: paste real Revolut link",
+    "Revolut": "https://revolut.me/kddimitrov",
     "PayPal": "TODO: paste real PayPal link",
 }
 
