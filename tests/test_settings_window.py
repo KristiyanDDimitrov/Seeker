@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton
 
-from seeker.application import SPOTIFY_TOKEN_PATH, Application
+from seeker.application import Application
 from seeker.docker_setup import SlskdHealthCheckResult, SlskdHealthStatus
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
@@ -61,8 +61,8 @@ def make_application(tmp_path, monkeypatch) -> Application:
     # auth_manager.get_valid_token(), which would otherwise try a real
     # OAuth round-trip. A far-future expires_at means get_valid_token()
     # returns this cached token directly, no refresh/authorize call.
-    SPOTIFY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TokenStore(SPOTIFY_TOKEN_PATH).save(
+    application._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
+    TokenStore(application._spotify_token_path).save(
         SpotifyToken(
             access_token="fake-access",
             refresh_token="fake-refresh",

@@ -4,9 +4,10 @@ import pytest
 
 from seeker.application import (
     Application,
-    SPOTIFY_TOKEN_PATH,
     _migrate_legacy_database,
+    _migrate_legacy_spotify_token,
     _resolve_database_path,
+    _resolve_spotify_token_path,
 )
 from seeker.config_store import SeekerConfig, load_config, resolve_config_path, save_config
 from seeker.database.connection import Database
@@ -211,6 +212,135 @@ def test_application_does_not_migrate_when_new_database_already_exists(
         ).fetchone()
 
     assert row["name"] == "Current Real Playlist"
+
+
+def test_resolve_spotify_token_path_creates_directory_and_uses_platformdirs(
+        tmp_path, monkeypatch,
+):
+    fake_data_dir = tmp_path / "AppData" / "Seeker"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(fake_data_dir),
+    )
+
+    assert not fake_data_dir.exists()
+
+    token_path = _resolve_spotify_token_path()
+
+    assert token_path == fake_data_dir / "spotify_token.json"
+    assert fake_data_dir.is_dir()
+
+
+def test_migrate_legacy_spotify_token_moves_existing_file(tmp_path, capsys):
+    legacy_path = tmp_path / "old" / ".seeker" / "spotify_token.json"
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_text('{"access_token": "real-token"}')
+
+    new_path = tmp_path / "new" / "spotify_token.json"
+    new_path.parent.mkdir(parents=True)
+
+    migrated = _migrate_legacy_spotify_token(new_path, legacy_path=legacy_path)
+
+    assert migrated is True
+    assert not legacy_path.exists()
+    assert new_path.read_text() == '{"access_token": "real-token"}'
+
+    output = capsys.readouterr().out
+    assert "Migrated existing Spotify token" in output
+    assert str(legacy_path) in output
+    assert str(new_path) in output
+
+
+def test_migrate_legacy_spotify_token_does_nothing_when_neither_exists(
+        tmp_path,
+):
+    legacy_path = tmp_path / "old" / ".seeker" / "spotify_token.json"
+    new_path = tmp_path / "new" / "spotify_token.json"
+
+    migrated = _migrate_legacy_spotify_token(new_path, legacy_path=legacy_path)
+
+    assert migrated is False
+    assert not legacy_path.exists()
+    assert not new_path.exists()
+
+
+def test_migrate_legacy_spotify_token_does_not_overwrite_existing_new_token(
+        tmp_path,
+):
+    legacy_path = tmp_path / "old" / ".seeker" / "spotify_token.json"
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_text('{"access_token": "stale"}')
+
+    new_path = tmp_path / "new" / "spotify_token.json"
+    new_path.parent.mkdir(parents=True)
+    new_path.write_text('{"access_token": "current"}')
+
+    migrated = _migrate_legacy_spotify_token(new_path, legacy_path=legacy_path)
+
+    assert migrated is False
+    assert legacy_path.exists()
+    assert new_path.read_text() == '{"access_token": "current"}'
+
+
+def test_application_migrates_real_legacy_spotify_token_on_startup(
+        tmp_path, monkeypatch, capsys,
+):
+    # Mirrors test_application_migrates_real_legacy_database_on_startup
+    # above — the real bug this covers only ever showed up via an
+    # actual double-clicked .app launch (CWD forced to `/`), never the
+    # offscreen test harness, since chdir(tmp_path) here already makes
+    # the legacy path writable either way. This locks in that a
+    # pre-existing CWD-relative token gets moved into the same
+    # platformdirs directory the DB already uses, rather than left
+    # behind as dead weight or silently ignored.
+    monkeypatch.chdir(tmp_path)
+
+    legacy_token_path = tmp_path / ".seeker" / "spotify_token.json"
+    legacy_token_path.parent.mkdir(parents=True)
+    legacy_token_path.write_text('{"access_token": "real-legacy-token"}')
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+
+    app = Application()
+
+    new_token_path = data_dir / "spotify_token.json"
+    assert app._spotify_token_path == new_token_path
+    assert new_token_path.exists()
+    assert not legacy_token_path.exists()
+    assert new_token_path.read_text() == '{"access_token": "real-legacy-token"}'
+
+    output = capsys.readouterr().out
+    assert "Migrated existing Spotify token" in output
+
+
+def test_application_spotify_token_path_is_not_cwd_relative(
+        tmp_path, monkeypatch,
+):
+    # The actual bug: launched via a double-clicked .app, macOS sets
+    # CWD to `/` (read-only), so a CWD-relative token path would fail
+    # to even mkdir its parent. Simulated here by constructing the
+    # Application from a directory that is neither the project root
+    # nor the platformdirs data dir, and confirming the resolved token
+    # path still lands under the (fake) platformdirs directory, with
+    # no `.seeker` directory created anywhere near the CWD.
+    other_cwd = tmp_path / "some" / "unrelated" / "directory"
+    other_cwd.mkdir(parents=True)
+    monkeypatch.chdir(other_cwd)
+
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+
+    app = Application()
+
+    assert app._spotify_token_path == data_dir / "spotify_token.json"
+    assert not (other_cwd / ".seeker").exists()
 
 
 def test_application_soulseek_config_prefers_store_value_over_env(
@@ -467,8 +597,8 @@ def test_connect_spotify_force_reauthorize_clears_cached_token(
     app = _application_with_tmp_config(tmp_path, monkeypatch)
     monkeypatch.setattr(Application, "spotify", property(lambda self: None))
 
-    SPOTIFY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TokenStore(SPOTIFY_TOKEN_PATH).save(
+    app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
+    TokenStore(app._spotify_token_path).save(
         SpotifyToken(
             access_token="stale-access",
             refresh_token="stale-refresh",
@@ -482,7 +612,7 @@ def test_connect_spotify_force_reauthorize_clears_cached_token(
     # return this still-valid cached token and never re-trigger OAuth
     # at all — this is what makes "re-authorize" a real action instead
     # of a no-op for an already-connected setup.
-    assert not SPOTIFY_TOKEN_PATH.exists()
+    assert not app._spotify_token_path.exists()
 
 
 def test_connect_spotify_without_force_leaves_cached_token_untouched(
@@ -494,8 +624,8 @@ def test_connect_spotify_without_force_leaves_cached_token_untouched(
     app = _application_with_tmp_config(tmp_path, monkeypatch)
     monkeypatch.setattr(Application, "spotify", property(lambda self: None))
 
-    SPOTIFY_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TokenStore(SPOTIFY_TOKEN_PATH).save(
+    app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
+    TokenStore(app._spotify_token_path).save(
         SpotifyToken(
             access_token="still-valid",
             refresh_token="still-valid-refresh",
@@ -505,7 +635,7 @@ def test_connect_spotify_without_force_leaves_cached_token_untouched(
 
     app.connect_spotify("real-client-id")
 
-    assert SPOTIFY_TOKEN_PATH.exists()
+    assert app._spotify_token_path.exists()
 
 
 def test_persist_soulseek_config_updates_store_disk_and_resets_client(

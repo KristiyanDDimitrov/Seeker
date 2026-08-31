@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -9,6 +10,71 @@ from pathlib import Path
 
 import httpx
 import platformdirs
+
+# Explicit fallback for the two real-world locations `docker` (and any
+# other GUI-invoked CLI tool) commonly lives in but that a GUI launch's
+# minimal launchd PATH doesn't include — Docker Desktop's own CLI
+# symlink (/usr/local/bin) and Apple Silicon Homebrew (/opt/homebrew/
+# bin). path_helper below already covers /usr/local/bin (it's always
+# in /etc/paths) and often covers /opt/homebrew/bin too (when a real
+# /etc/paths.d/homebrew file exists), but that file isn't guaranteed on
+# every Homebrew install — Homebrew's own installer instructions rely
+# on a shell-profile `eval "$(brew shellenv)"` instead, which a GUI
+# launch never runs. Listed explicitly so detection doesn't silently
+# depend on that file happening to exist.
+_FALLBACK_BIN_DIRS = ("/opt/homebrew/bin", "/usr/local/bin")
+
+
+def ensure_full_path_environment() -> None:
+    """Extend os.environ["PATH"] to match what a real login/interactive
+    shell would have, not the minimal PATH a GUI-launched macOS app
+    actually gets.
+
+    Root cause (item 44, confirmed live via a real ephemeral
+    LaunchAgent probe — a genuine launchd-spawned process with no
+    shell in the chain, the same path a double-clicked .app takes):
+    a GUI launch's PATH is launchd's bare default,
+    `/usr/bin:/bin:/usr/sbin:/sbin` — it does NOT include
+    /usr/local/bin or /opt/homebrew/bin, since those are added by
+    `/usr/libexec/path_helper` reading /etc/paths + /etc/paths.d/*,
+    which only runs as part of a login shell's startup (/etc/zprofile
+    et al.), never as part of a GUI app launch. `uv run seeker-ui`
+    never hits this, since a terminal shell's PATH is already fully
+    resolved by the time it inherits it — the same "works via uv run,
+    breaks via a real double-click" shape as item 43's CWD bug, just
+    for PATH instead of CWD. Called once at Application startup,
+    before anything Docker-related runs, rather than patched into each
+    individual subprocess.run(["docker", ...]) call site — every
+    docker_setup.py call already passes env=None (inherit) or
+    `{**os.environ, ...}`, so mutating the process's own os.environ
+    here fixes every current and future call site at once.
+    """
+    try:
+        result = subprocess.run(
+            ["/usr/libexec/path_helper", "-s"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        match = re.search(r'PATH="([^"]*)"', result.stdout)
+        resolved_path = match.group(1) if match else ""
+    except Exception:
+        # Best-effort only — this runs unconditionally at Application
+        # startup (see the call site), so it must never be able to
+        # crash startup itself, on any platform, for any reason
+        # (path_helper doesn't exist at all outside macOS, and its
+        # output shape isn't a contract this code controls). The
+        # explicit _FALLBACK_BIN_DIRS below still get applied even
+        # when this fails entirely.
+        resolved_path = ""
+
+    entries = resolved_path.split(":") if resolved_path else []
+    entries += os.environ.get("PATH", "").split(":")
+    entries += list(_FALLBACK_BIN_DIRS)
+
+    merged = [entry for entry in dict.fromkeys(entries) if entry]
+    os.environ["PATH"] = os.pathsep.join(merged)
 
 
 def compose_file_path() -> Path:

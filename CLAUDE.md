@@ -605,8 +605,11 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     (never touches anything if a DB already exists at the new
     location — guards against a stale legacy file ever clobbering
     current data); does nothing if neither exists. Spotify token cache
-    (`.seeker/spotify_token.json`) is untouched by this, deliberately
-    scoped to the DB only. [HISTORY §18](docs/HISTORY.md#18)
+    was deliberately left CWD-relative at the time (`.seeker/
+    spotify_token.json`, out of scope for this item) — **this was a
+    real bug, fixed in item 43**, not a stable design choice; the token
+    cache now lives alongside the DB via the same mechanism.
+    [HISTORY §18](docs/HISTORY.md#18)
 19. **Local JSON config store for SoulSeek/slskd settings — done
     (2026-08-28).** `config_store.py`: `SeekerConfig` dataclass
     (`slskd_base_url`/`slskd_api_key`/`slskd_download_dir`), stored as
@@ -775,133 +778,34 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     instance of this has ever co-occurred with nonzero
     `bytes_transferred` on more than one sibling, so it's undefended
     rather than guarded speculatively. [HISTORY §25](docs/HISTORY.md#25)
-26. **Frontend Step 6: Review screen — done (2026-08-29).**
-    Two deliberately-deferred CLI-only flows get a real UI home: item
-    17's read-only SoulSeek needs-review tier gains its first real
-    confirm/reject action, and Phase 2's `seeker downloads review`
-    upgrade-confirmation flow gets exposed to a non-`input()` caller.
-
-    **§0 — `confirm_review_candidate(track_id)` /
-    `reject_review_candidate(track_id)` on `DownloadService` — done.**
-    Confirm requests as `role='settled'` (a human confirmation is a
-    stronger signal than an algorithmic top pick, so it auto-moves on
-    success rather than demanding a second confirmation via
-    `ready_for_review`) and clears the candidate row immediately once
-    requested; reject just deletes the row (no blacklist — the same
-    candidate can resurface on a later `download` run). **This is what
-    forced item 13's rejection-classification broadening** — see item
-    13 for the corrected rule itself; the design reasoning for why
-    `role='settled'` (not a dynamically-chosen role) is the right call
-    lives there too. A second, related fix:
-    `_retry_locked_request`'s success path used to unconditionally set
-    `'ready_for_review'`, correct only because a locked row had always
-    been `role='upgrade'` before now — a `role='settled'` row that
-    becomes locked and later succeeds now auto-moves and marks
-    `'completed'` directly, falling back to `'downloading'` (not a
-    false `'completed'`) if the file move doesn't actually find the
-    file, mirroring `poll_downloads()`'s own main-loop pattern.
-    `SoulseekReviewCandidate` gained a persisted `size` column (needed
-    for `request_download`, previously only used transiently) — a
-    legacy row predating this column is explicitly refused
+26. **Frontend Step 6: Review screen — done (2026-08-29).** Two
+    deliberately-deferred CLI-only flows get a real UI home: item 17's
+    read-only SoulSeek needs-review tier gains its first real
+    confirm/reject action (`confirm_review_candidate`/
+    `reject_review_candidate` on `DownloadService` — confirm requests
+    as `role='settled'`, not a dynamically-chosen role, since a human
+    confirmation is a stronger signal than an algorithmic top pick;
+    this is what forced item 13's rejection-classification broadening
+    to be unconditional rather than `role=='upgrade'`-scoped; reject
+    just deletes the row, no blacklist, so the same candidate can
+    resurface on a later `download` run), and Phase 2's
+    `seeker downloads review` upgrade-confirmation flow gets
+    exposed to a non-`input()` caller via
+    `get_upgrade_review_details`/`apply_upgrade_decision`. New Review
+    tab on `MainWindow` (needs-review table + pending-upgrades table),
+    both on the existing 2s local-DB-only poll timer.
+    `SoulseekReviewCandidate` gained a persisted `size` column; a
+    legacy row predating it is explicitly refused
     (`ReviewCandidateMissingSizeError`), not guessed.
 
-    **§1 — extracted Phase 2's replace/delete-old-file logic out of its
-    `input()` loop — done.** `get_upgrade_review_details(request_id)`
-    (read-only resolution shared by both callers) and
-    `apply_upgrade_decision(request_id, replace, delete_old=False)`
-    (the pure, `input()`-free mutation) on `DownloadService`, in
-    `models/upgrade_review.py`. `_confirm_upgrade` is now a thin
-    wrapper around the two real `input()` calls + one
-    `apply_upgrade_decision` call — behavior-preserving for the CLI.
-
-    **§2 — the two-section Qt Review screen — done.** New "Review" tab
-    on `MainWindow`: a needs-review-candidates table (Confirm/Reject
-    per row, calling §0's two methods) and a pending-upgrades table
-    (Replace/Decline per row, a "Delete old file" checkbox that only
-    appears when `old_file_path` is set — mirroring the CLI's own
-    guard, calling §1's `apply_upgrade_decision`). New
-    `DownloadService.get_pending_upgrade_reviews()` — no method
-    existed to list every `ready_for_review` row as resolved
-    `UpgradeReviewDetails` before this. Both tables refresh on the
-    existing 2s local-DB-only poll timer (cheap reads, no slskd calls)
-    and immediately after any action completes.
-
-    **Live verification — genuinely blocked by a real environment
-    constraint (external drive not attached this session), not
-    skipped.** slskd needs the real X9 Pro drive mounted (item 13);
-    confirmed directly it isn't attached here, and the pre-existing
-    `slskd` container correctly refused to start
-    (`mkdir /host_mnt/Volumes/X9 Pro: permission denied`) rather than
-    something being broken — left it exactly as found. This blocks
-    only the real happy path (a fresh `seeker download` to refresh a
-    legacy candidate's `size`, then a real confirm → `request_download`
-    → `ready_for_review` → replace). Everything not dependent on a
-    live slskd connection WAS verified live against the real,
-    production database: the `size`-column migration applied for real
-    on first real `Application()` construction since it landed; the
-    two real waiting candidates from item 17 (Prdk, Zigi SC/A-Cray)
-    read back correctly via `get_review_candidates()`; a direct
-    `confirm_review_candidate()` call against the real Prdk row
-    correctly raised `ReviewCandidateMissingSizeError` with zero
-    mutation; the real `MainWindow` (offscreen Qt, real `Application`,
-    no fakes) rendered both real candidates with working buttons; and
-    a real Confirm click, through the real worker/signal pipeline,
-    correctly surfaced that same error on the real status label.
-
-    **Retried (2026-08-30) on request, after the drive was reportedly
-    reconnected — still not actually attached to this machine.**
-    Checked at the OS level, not just via the container: `diskutil
-    list` shows no X9 Pro disk at all (not merely unmounted — the
-    physical device itself isn't enumerated), `/Volumes` unchanged, and
-    `system_profiler SPUSBDataType` returned nothing at all, even
-    outside this session's normal sandboxing. `docker start slskd` was
-    not attempted a second time given that — repeating item 26's
-    original mount-permission failure would have told us nothing new.
-    The real happy-path confirm/replace flow against Prdk/Zigi SC-A-Cray
-    genuinely remains unverified; nothing about this retry changes the
-    verified-vs-not split recorded above.
-
-    **Drive and slskd both became reachable later the same day —
-    Confirm exercised for real; Reject and Phase 2 Replace/Decline
-    remain genuinely unexercised, a real data-availability gap, not a
-    skipped step.** Once real infrastructure access returned, Prdk and
-    Zigi SC/A-Cray specifically stopped being valid test candidates for
-    Confirm — a separate task (Step 8 §4's threshold live-verification)
-    legitimately moved both out of `soulseek_review_candidates` via the
-    ordinary `download_playlist` pipeline, not via anyone clicking
-    Confirm, so the button itself still hadn't been exercised.
-
-    Checked for any other currently-real `soulseek_review_candidates`
-    row first — none existed. Ran real `seeker download` passes to try
-    to surface a fresh one (`240KM/H`, then re-checked `Test`); real
-    Soulseek results this time produced clean auto-tier settled matches
-    instead (Kamäleon requested and completed for real), not a
-    needs-review-band score — a genuine, unpredictable outcome of live
-    peer variability, not a test failure. Confirmed directly, not
-    assumed: every remaining real unmatched track across every
-    track-synced playlist (`Test`'s 4, `240KM/H`'s now-0) already has
-    an active `download_requests` row (`downloading`/`locked`/`queued`,
-    two of them — Prdk id 15, Zigi SC id 16 — genuinely stalled at 0
-    bytes transferred across multiple real polls, consistent with this
-    project's own documented history of these exact peers,
-    `musicmasterrdjpool`/`DJ-Promo`, being flaky), so no track is
-    available for a genuinely fresh search without either syncing
-    additional playlists' tracks from Spotify (a real, deliberate API
-    quota cost, out of scope for a verification pass) or waiting
-    indefinitely on rows with no sign of near-term resolution.
-
-    No `ready_for_review` row existed either, for the same reason —
-    Phase 2 Replace/Decline remain unexercised by a real click.
-    Per the explicit instruction not to manufacture data: this gap is
-    recorded honestly, same treatment as Step 5's mid-transfer timing
-    gap, rather than worked around. Mocked-UI-level coverage (11 tests
-    from the original §2 build) is what currently verifies Confirm/
-    Reject/Replace/Decline's wiring; only Confirm has additionally been
-    exercised via a real click against a real row (see item 27 for
-    why — the `ReviewCandidateMissingSizeError` refusal path, verified
-    live in the retry above).
-
-    [HISTORY §26](docs/HISTORY.md#26)
+    **Live verification status:** Confirm was exercised for real
+    (offscreen Qt, real `Application`, real DB) once the X9 Pro
+    drive/slskd became reachable. Reject and Phase 2 Replace/Decline
+    remain genuinely unexercised by a real click — a real
+    data-availability gap (no candidate/`ready_for_review` row existed
+    to click through), not a skipped step; recorded honestly rather
+    than worked around. Mocked-UI-level tests (11) cover all four
+    actions' wiring regardless. [HISTORY §26](docs/HISTORY.md#26)
 
 27. **Frontend Step 7: Tagging panel — done, live-verified for real
     (2026-08-30).**
@@ -960,237 +864,48 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     too. Full, genuine confirmation that the reported result matches
     the file's actual tags. [HISTORY §27](docs/HISTORY.md#27)
 
-28. **Frontend Step 8: Settings — done (2026-08-30).** A new
-    `SettingsWindow` (opened via a "Settings" toolbar button on
-    `MainWindow`) exposing config-store values the UI had no way to
-    view or edit before now: library locations, playlist destinations,
-    SoulSeek/Spotify connection management, and (the one genuine
-    refactor in this step, not just wiring) editable match-classification
-    thresholds. Four tabs, one per section below.
+28. **Frontend Step 8: Settings — done (2026-08-30).** New
+    `SettingsWindow` (toolbar button on `MainWindow`), four tabs: §1
+    library locations (list/add/remove, no confirmation on Remove —
+    matches the CLI's own `library remove`, which has none; folder-
+    picker extracted to `ui/library_location_picker.py`, shared with
+    the wizard); §2 playlist destinations
+    (`DownloadService.set_destination`); §3 Spotify/SoulSeek
+    connection management, extracted onto `Application` itself
+    (`connect_spotify`, `persist_soulseek_config`) so both the wizard
+    and Settings call the same code; §4 editable
+    auto-match/needs-review thresholds (the one genuine refactor, not
+    just wiring).
 
-    **§1 — library locations — done.** List (name/path/reachable),
-    add, remove — thin wiring over `LibraryService.list_locations`/
-    `add_location`/`remove_location`, no new backend logic. **No
-    confirmation prompt on Remove** — checked the CLI's own `library
-    remove` first (`handle_library`'s `remove` branch, `LibraryService
-    .remove_location` itself) and confirmed neither has one; adding a
-    heavier gate in Settings than the CLI's own established design
-    calls for would be inconsistent, same reasoning already applied to
-    the tagging panel's own no-confirmation design (item 27).
+    **Standing facts for future work touching this area:**
+    `Application.download_service` passes `soulseek_client` as
+    `SoulseekClient | None` — SoulSeek is optional/skippable in the
+    wizard, so `DownloadService` methods that don't need it
+    (`set_destination`, `get_review_candidates`,
+    `get_pending_upgrade_reviews`) must never force its construction;
+    only a `soulseek` property raises, lazily, when a method that
+    genuinely needs it is called. `connect_spotify(client_id,
+    force_reauthorize=False)` — `force_reauthorize=True` calls the new
+    `TokenStore.clear()` so "Re-authorize" isn't a no-op against an
+    already-valid cached token. `persist_soulseek_config` resets both
+    `_soulseek_client` and `_download_service` to `None` so stale
+    credentials/clients don't survive a mid-session credential change.
+    `matching.py`'s `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD`
+    stay hardcoded and config-unaware; `TrackMatcher`/`DownloadService`
+    instead take `get_config: Callable[[], SeekerConfig] | None` (a
+    **callable**, not a snapshot value — both are cached singletons for
+    the app's lifetime, so a plain value would go stale) and resolve
+    `config.threshold or default` fresh on every `match_all()`/
+    `download_playlist()` call — a Settings change takes effect
+    immediately, no restart.
 
-    New `ui/library_location_picker.py::pick_and_add_library_location()`
-    — the wizard's own "Choose your music library" folder-picker flow,
-    extracted so both the wizard and Settings' "Add location" call the
-    identical native-picker-then-register flow instead of a second
-    copy. The wizard hardcodes `name="Library"` (single-location
-    onboarding assumption); Settings passes a real user-typed name,
-    since it supports multiple named locations. An `on_path_picked`
-    callback (fires synchronously the moment a path is chosen, before
-    the worker-routed `add_location()` call even starts) preserves the
-    wizard's existing immediate-label-feedback behavior — the
-    extraction needed this to stay behavior-identical, not simplify it
-    away.
-
-    **§2 — playlist destinations — done.** A playlist list + a
-    location dropdown + a subfolder field, calling the existing
-    `DownloadService.set_destination(playlist_name, location_name,
-    subfolder)` directly — no new backend logic, as scoped.
-
-    **A real, pre-existing usability gap found and fixed while wiring
-    this up, not filed for later.** `Application.download_service`'s
-    property used to eagerly construct a real `SoulseekClient` (raising
-    if `SLSKD_BASE_URL`/`SLSKD_API_KEY` aren't set) as part of building
-    `DownloadService` itself — so merely *accessing* `download_service`
-    to call `set_destination()` (which never touches SoulSeek at all)
-    already failed for anyone who hadn't set up SoulSeek yet. Since
-    SoulSeek is the wizard's own optional, skippable third step, a real
-    user could easily reach Settings in exactly that state — this was a
-    genuine, reachable bug, not a hypothetical one, discovered by
-    actually building the destinations tab and hitting it live in a
-    test. Same root-cause class item 17 already fixed once for
-    `check`'s needs-review section (`soulseek_configured` as a cheap
-    check *before* touching `download_service`) — but that pattern
-    doesn't help here, since Settings genuinely needs to *use*
-    `download_service.set_destination()`, not just avoid touching it.
-
-    Fixed at the actual source instead: `DownloadService.__init__`'s
-    `soulseek_client` parameter is now `SoulseekClient | None`, stored
-    as `self._soulseek_client`; a new `soulseek` property raises the
-    same clear `RuntimeError` as before, but only when a method that
-    genuinely needs it (`download_playlist`, `poll_downloads`,
-    `confirm_review_candidate`, ...) is actually called — not at
-    construction. `Application.download_service` now passes
-    `self.soulseek_client if self.soulseek_configured else None`
-    instead of always forcing construction. `set_destination`/
-    `get_review_candidates`/`get_pending_upgrade_reviews` never
-    reference `self.soulseek` at all, so all three now work correctly
-    regardless of SoulSeek setup — confirmed directly, not just
-    inferred from the diff. `persist_soulseek_config` (§3) additionally
-    resets `self._download_service = None`, not just
-    `self._soulseek_client = None` — a `DownloadService` built earlier
-    in the session while genuinely unconfigured would otherwise keep
-    its `None` client forever, even after real credentials land later
-    in the same session.
-
-    **§3 — SoulSeek/Spotify connection-management extraction — done.**
-    Two pieces of wizard-only logic extracted onto `Application` itself
-    so Settings' "Re-authorize"/"Update SoulSeek credentials" actions
-    call the exact same code the wizard's first-time setup already
-    uses, not a second copy: `connect_spotify(client_id,
-    force_reauthorize=False)` and `persist_soulseek_config(base_url,
-    api_key, download_dir, username, password)`. The wizard's
-    `_on_connect_spotify_clicked`/`_persist_soulseek_config` are now
-    thin callers of these. `docker_setup.py`'s already-standalone
-    functions (`detect_docker_state`, `generate_api_key`,
-    `bring_up_slskd`, `check_slskd_health`) needed no extraction at
-    all — they were never wizard-entangled to begin with; only
-    `ui/wizard.py`'s own private `_slskd_data_dir()` helper (used to
-    resolve the exact same path a credential-update action also needs)
-    moved down to `docker_setup.py` as a public `slskd_data_dir()`.
-
-    **Real gap closed, not just moved: `connect_spotify`'s
-    `force_reauthorize` flag.** `SpotifyAuthManager.get_valid_token()`
-    silently returns an existing still-valid cached token without ever
-    opening the browser — correct for the wizard's first connect (no
-    token file exists yet) but would make Settings' "Re-authorize" a
-    complete no-op for an already-connected setup, the opposite of
-    what a user clicking "Re-authorize" wants. Fixed with a genuinely
-    new (if small) capability, not present before this task:
-    `TokenStore.clear()`, called only when `force_reauthorize=True`,
-    which deletes the cached token file so `get_valid_token()`'s
-    existing `token is None` branch runs a real fresh authorization.
-    `Application` gained a `SPOTIFY_TOKEN_PATH` constant (previously an
-    inline literal duplicated between `auth_manager`'s property and
-    what would have been a second copy in `connect_spotify`).
-    `persist_soulseek_config` also resets `self._soulseek_client = None`
-    — a real, necessary invalidation the ORIGINAL wizard code never
-    needed (nothing had constructed a `SoulseekClient` yet during
-    first-time onboarding) but Settings genuinely does, since it can
-    run against an already-connected, already-running app whose cached
-    client would otherwise keep pointing at the old base_url/api_key.
-
-    `SeekerConfig`'s new `slskd_username`/`slskd_password` fields (see
-    §4) get their first real writer here — `persist_soulseek_config`
-    is "exactly this real consumer" item 19 was waiting for.
-
-    Tests: `TokenStore.clear()` (removes an existing file, no-ops when
-    none exists); `connect_spotify()` persists to disk and the
-    in-memory `_config_store`, resets `_auth_manager`, and genuinely
-    reaches the OAuth trigger point (the real browser/callback
-    round-trip stays out of scope for a unit test, same treatment
-    `_authorize()` itself already gets — see item 15); the
-    `force_reauthorize` flag's two directions — clears an existing
-    cached token when `True`, leaves one untouched when `False` (the
-    wizard's own default path); `persist_soulseek_config()` persists
-    all five fields and resets `_soulseek_client`; `slskd_data_dir()`
-    resolves the platformdirs path correctly from its new home.
-    `mypy --strict` clean; full suite 323 passed.
-
-    **"Test connection" live-verified for real (2026-08-30)**, once
-    the Settings UI itself existed to exercise it through, per the
-    original plan — a real `SettingsWindow.test_connection_button`
-    click against the real, currently-running production `slskd`
-    container returned `HEALTHY` and rendered "Connected." The real
-    stored config's `slskd_username`/`slskd_password` correctly
-    displayed "Not configured" — confirmed accurate, not a bug: the
-    real setup's `config.json` predates this task's fields entirely
-    (it was written by the wizard before `persist_soulseek_config`
-    ever captured them), so there's genuinely nothing there yet; only
-    a real "Update SoulSeek credentials" run would populate them. A
-    full credential-rotation-and-recreate cycle against the real
-    production container was still NOT run for real, per the original
-    scoping — genuinely disruptive to working infrastructure for no
-    new information beyond what `bring_up_slskd`'s own existing tests
-    and item 23's live verification already cover.
-
-    **§4 — editable auto-match/needs-review thresholds — done.**
-    `AUTO_MATCH_THRESHOLD`/`NEEDS_REVIEW_THRESHOLD` stay hardcoded
-    constants in `matching.py`, which stays completely config-unaware
-    (same reasoning that already protects it from filesystem/DB
-    coupling). Neither constant is actually referenced inside any
-    `matching.py` function body, though — `score_title`/`artist_matches`
-    never compared against them at all; the real reference points were
-    `quality.py`'s `filter_candidates`/`find_best_needs_review_candidate`/
-    `select_downloads` and `matcher.py`'s `TrackMatcher.match_all()`.
-
-    `quality.py`'s three functions gained plain optional float
-    parameters (`auto_match_threshold`/`needs_review_threshold`,
-    defaulting to the `matching.py` constants) and stay just as pure as
-    before — no config awareness inside `quality.py` itself, mirroring
-    `matching.py`'s own purity rather than only half-applying it.
-    `TrackMatcher`/`DownloadService` are the real "service-layer
-    resolvers": both constructors gained `get_config: Callable[[],
-    SeekerConfig] | None = None` — a **callable**, not a snapshot
-    `SeekerConfig` value, because both are constructed once and cached
-    for the app's lifetime (`Application.track_matcher`/
-    `.download_service`) — a plain value captured at that first
-    construction would go stale the moment Settings saves a change.
-    `Application` supplies `lambda: self._config_store`, which always
-    reads its own current attribute; every write path that touches
-    `_config_store` already reassigns it in place (item 19's/23's
-    established `self.application._config_store = updated` pattern),
-    so this needed zero new synchronization mechanism.
-    `TrackMatcher.match_all()`/`DownloadService.download_playlist()`
-    resolve `config.threshold or matching.py's constant` **fresh on
-    every call** (never cached), so a Settings change takes effect on
-    the very next `library match`/`download` run with no restart.
-    `match_all()` also accepts explicit optional override arguments
-    (`None` = use config-or-default) — used directly by tests, and
-    available to any future caller that wants to preview a value before
-    saving it.
-
-    **Behavior-preserving, confirmed the same way every prior refactor
-    here was:** every existing call site (`filter_candidates(track,
-    files)`, `select_downloads(track, files)`, `match_all()` with no
-    args, every `TrackMatcher`/`DownloadService` constructed the way
-    every current test already does) is untouched — full suite passes
-    unmodified, only new tests added. `SeekerConfig` also gained
-    `slskd_username`/`slskd_password` (plain text, same 0600-permission
-    file as everything else in the store) — item 19 deliberately left
-    these out when the store was first built, "pending exactly this
-    real consumer"; Settings' connection-management section (§3) is
-    that consumer.
-
-    Tests: `filter_candidates`/`find_best_needs_review_candidate`
-    unchanged with no override, reclassify correctly with one — using
-    the real Prdk (70.4)/Zigi SC-A-Cray (73.2) reference data from item
-    17 directly, not synthetic scores; `match_all()` likewise, plus a
-    dedicated end-to-end test that sets a `get_config`-backed value
-    (mirroring the real `Application._config_store` reassignment
-    pattern) and confirms the SAME already-constructed `TrackMatcher`
-    reclassifies a real score on its very next call with zero
-    reconstruction; an equivalent end-to-end test at the
-    `DownloadService.download_playlist()` layer, using the real Prdk
-    search data — a needs_review-only result at the default threshold
-    becomes a real requested download once the config value is lowered
-    below its real score, mid-session, same service instance. Config
-    round-trip tests for all four new `SeekerConfig` fields.
-
-    **Live-verified for real against the production DB, X9 Pro drive
-    and slskd both attached again this session (2026-08-30).** Set
-    `auto_match_threshold=70.0`/`needs_review_threshold=60.0` via the
-    real `SettingsWindow` (offscreen Qt, real `Application`) — saved
-    correctly both in-memory and to the real `config.json` on disk. A
-    real `seeker download "Test"` immediately afterward (same session,
-    no restart) moved BOTH real reference candidates from
-    item 17 out of `soulseek_review_candidates` into genuinely
-    requested `download_requests` rows (`role='settled'`,
-    `status='queued'`, confirmed directly via `sqlite3` against the
-    real DB, not just CLI output) — Prdk from the same real peer
-    (`musicmasterrdjpool`) and file it had been sitting on since item
-    17, Zigi SC/A-Cray likewise (`DJ-Promo`). `soulseek_review_candidates`
-    was empty immediately after, confirming item 17's stale-candidate-
-    clearing logic fired correctly. A follow-up `seeker downloads
-    status` showed both genuinely transition to `Downloading` — this
-    is a real, live, end-to-end confirmation that a Settings-driven
-    threshold change reaches the exact same code path a real `download`
-    run uses, with no restart in between.
-
-    `mypy --strict` clean; full suite 352 passed (no skips this run —
-    the X9 Pro drive is attached and slskd is up again this session,
-    unblocking the drive-unmounted-skip tests too — unrelated to this
-    task's own scope, just incidentally true for this run).
-    [HISTORY §28](docs/HISTORY.md#28)
+    **Live-verified for real (2026-08-30):** "Test connection" against
+    the real running `slskd` container; a real threshold change via
+    Settings immediately moved the two real reference candidates from
+    item 17 (Prdk, Zigi SC/A-Cray) out of `soulseek_review_candidates`
+    into real requested downloads on the very next `seeker download`
+    run, same session, no restart. `mypy --strict` clean; full suite
+    352 passed. [HISTORY §28](docs/HISTORY.md#28)
 
 29. **UI polish pass — done (2026-08-30).** Mirrors backend item 15's
     six-area structure exactly, applied to everything built across Steps
@@ -2451,7 +2166,61 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     Windows machine in this environment; the `.iss`/`.spec` Windows
     branches are correct by construction (mirroring the already-
     verified macOS wiring) but not run for real, same standing caveat
-    as item 36.
+    as item 36. [HISTORY §42](docs/HISTORY.md#42)
+
+43. **Fix: Spotify token cache was still CWD-relative — done
+    (2026-08-31).** Item 18 migrated the DB to platformdirs but left
+    the Spotify token cache CWD-relative, assuming it was out of
+    scope — a real bug, since a double-clicked `.app` gets CWD = `/`
+    (the read-only Signed System Volume) from macOS, unlike `uv run
+    seeker-ui`'s writable project-root CWD, so saving the token after
+    a real OAuth completion failed with `[Errno 30] Read-only file
+    system: '.seeker'`. Fixed exactly mirroring item 18's own
+    DB-migration shape: `_resolve_spotify_token_path()` resolves into
+    the same per-user `platformdirs` directory, computed once per
+    `Application()` instance (`self._spotify_token_path`, not a module
+    constant) and migrated via a new `_migrate_legacy_spotify_token()`
+    sharing `_migrate_legacy_database`'s guard logic (factored into
+    `_migrate_legacy_file()`) — deliberately **not** `sys.frozen`-gated,
+    since the token cache has no reason to stay CWD-relative in dev
+    mode either. Live-verified two ways, not just by test: a real
+    Finder-equivalent launch (`open -W` against a diagnostic `.app`,
+    confirmed `cwd='/'`) completed the save without error, and this
+    dev machine's own real pre-existing legacy token was migrated and
+    successfully refreshed against Spotify's real token endpoint on a
+    real `uv run python` startup. [HISTORY §43](docs/HISTORY.md#43)
+
+44. **Fix: Docker detection was PATH-dependent and broke under a real
+    double-clicked `.app` — done (2026-08-31).** The wizard's Docker
+    step reported "not installed" and Settings' SoulSeek setup raised
+    `[Errno 2] No such file or directory: 'docker'` even with Docker
+    Desktop genuinely installed and running — a GUI launch gets
+    launchd's bare default PATH (`/usr/bin:/bin:/usr/sbin:/sbin`,
+    confirmed live via a real ephemeral LaunchAgent probe), which
+    excludes both `/usr/local/bin` (Docker Desktop's own CLI symlink)
+    and `/opt/homebrew/bin` (Apple Silicon Homebrew) — the same "works
+    via `uv run`, breaks via a real double-click" shape as item 43,
+    just for PATH instead of CWD. Fixed once at the shared layer:
+    `docker_setup.py::ensure_full_path_environment()` merges
+    `/usr/libexec/path_helper -s`'s output (what a real login shell
+    resolves via `/etc/paths`+`/etc/paths.d/*`) plus explicit
+    `/opt/homebrew/bin`/`/usr/local/bin` fallbacks into
+    `os.environ["PATH"]`, called once at the top of
+    `Application.__init__` — every `docker_setup.py` subprocess call
+    already inherits `os.environ` (`env=None` or
+    `{**os.environ, ...}`), so this fixes every current and future
+    Docker call site with no per-call-site change. Deliberately
+    best-effort: any failure of the `path_helper` probe itself falls
+    back to the explicit dirs rather than raising, since this runs
+    unconditionally at every `Application()` construction.
+    Live-verified, not just by test: a real launchd-spawned process
+    (an ephemeral LaunchAgent, since this sandbox's `open` was
+    confirmed to NOT reproduce a genuine minimal-PATH launch — see
+    HISTORY) started with the real minimal PATH, and after
+    `Application()` ran, `detect_docker_state()` — the exact function
+    both real UI surfaces call — correctly reported `RUNNING`,
+    matching this machine's actual Docker Desktop state.
+    [HISTORY §44](docs/HISTORY.md#44)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

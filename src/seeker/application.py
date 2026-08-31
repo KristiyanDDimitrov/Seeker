@@ -33,6 +33,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.dashboard_service import DashboardService
+from seeker.docker_setup import ensure_full_path_environment
 from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
@@ -51,10 +52,15 @@ from seeker.spotify.sync_service import SpotifySyncService
 # it was always created before.
 LEGACY_DATABASE_PATH = Path(".seeker/seeker.db")
 
-# Factored out (Step 8) so connect_spotify() below and the auth_manager
-# property don't hold two independent literals of the same path — a
-# real, if minor, drift risk the moment either one changed alone.
-SPOTIFY_TOKEN_PATH = Path(".seeker/spotify_token.json")
+# Same pre-platformdirs, CWD-relative story as LEGACY_DATABASE_PATH
+# above — this one was originally left CWD-relative on the (wrong)
+# assumption it was out of scope for that migration. A launch via
+# `uv run seeker-ui` has a writable CWD (the project root), but macOS
+# sets a double-clicked .app's CWD to `/` (the read-only Signed System
+# Volume), so the `.seeker` mkdir in _save_token() fails there — a
+# real bug only a real Finder launch surfaced, never the offscreen
+# harness. See LEGACY_SPOTIFY_TOKEN_PATH below.
+LEGACY_SPOTIFY_TOKEN_PATH = Path(".seeker/spotify_token.json")
 
 
 def _resolve_database_path() -> Path:
@@ -64,30 +70,62 @@ def _resolve_database_path() -> Path:
     return data_dir / "seeker.db"
 
 
-def _migrate_legacy_database(
-        new_path: Path,
-        legacy_path: Path = LEGACY_DATABASE_PATH,
-) -> bool:
+def _resolve_spotify_token_path() -> Path:
+    # Lives alongside the DB in the same per-user app-data directory —
+    # not CWD-relative, so it works identically whether launched via
+    # `uv run seeker-ui` or a double-clicked .app (see
+    # LEGACY_SPOTIFY_TOKEN_PATH above).
+    data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    return data_dir / "spotify_token.json"
+
+
+def _migrate_legacy_file(new_path: Path, legacy_path: Path, label: str) -> bool:
     # Only migrate into a genuinely fresh install — never overwrite a
-    # database that already exists at the new location (e.g. a second
-    # run after the migration already happened once).
+    # file that already exists at the new location (e.g. a second run
+    # after the migration already happened once).
     if new_path.exists() or not legacy_path.exists():
         return False
 
     shutil.move(str(legacy_path), str(new_path))
-    print(f"Migrated existing database from {legacy_path} to {new_path}.")
+    print(f"Migrated existing {label} from {legacy_path} to {new_path}.")
 
     return True
 
 
+def _migrate_legacy_database(
+        new_path: Path,
+        legacy_path: Path = LEGACY_DATABASE_PATH,
+) -> bool:
+    return _migrate_legacy_file(new_path, legacy_path, "database")
+
+
+def _migrate_legacy_spotify_token(
+        new_path: Path,
+        legacy_path: Path = LEGACY_SPOTIFY_TOKEN_PATH,
+) -> bool:
+    return _migrate_legacy_file(new_path, legacy_path, "Spotify token")
+
+
 class Application:
     def __init__(self) -> None:
+        # Must run before anything Docker-related (wizard/Settings'
+        # detect_docker_state/bring_up_slskd) — a GUI-launched .app
+        # gets launchd's minimal PATH, which doesn't include
+        # /usr/local/bin or /opt/homebrew/bin, so `docker` can't be
+        # found even when genuinely installed and running. See item 44.
+        ensure_full_path_environment()
+
         db_path = _resolve_database_path()
         _migrate_legacy_database(db_path)
 
         self.database = Database(db_path)
 
         self.database.initialize()
+
+        self._spotify_token_path = _resolve_spotify_token_path()
+        _migrate_legacy_spotify_token(self._spotify_token_path)
 
         # Same ordering principle as the DB migration above: run before
         # anything constructs a SoulseekClient, so soulseek_client/
@@ -148,7 +186,7 @@ class Application:
             self._auth_manager = SpotifyAuthManager(
                 client_id=self._spotify_client_id,
                 redirect_uri=self._spotify_redirect_uri,
-                token_path=SPOTIFY_TOKEN_PATH,
+                token_path=self._spotify_token_path,
             )
 
         return self._auth_manager
@@ -185,7 +223,7 @@ class Application:
         if force_reauthorize:
             from seeker.spotify.token_store import TokenStore
 
-            TokenStore(SPOTIFY_TOKEN_PATH).clear()
+            TokenStore(self._spotify_token_path).clear()
 
         # Triggers the existing OAuth flow via
         # auth_manager.get_valid_token() — opens the system browser and

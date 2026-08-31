@@ -6581,3 +6581,372 @@ precise GFM heading-slug anchor right for a comma-and-em-dash-heavy
 heading is more likely to introduce a new broken link than fix an
 existing one. Left as consistent-with-precedent rather than "fixed."
 
+### 42
+
+Custom app icon, closing the "no custom `.icns`/`.ico`" gap items
+30/31/36 each flagged and accepted as cosmetic. Wired into all four
+places that previously left icon fields `None`/unset/generic-default:
+`seeker.spec`'s `BUNDLE()` (macOS `.app`) and `EXE()` (picks `.ico` on
+`win32`, `.icns` on `darwin`, `None` on Linux, since `EXE`'s icon
+param is only consumed on Windows/macOS); `dmg_settings.py`'s `icon`
+setting (the `.dmg` volume icon); and `seeker.iss`'s `SetupIconFile`
+plus a `seeker_icon.ico` copy installed to `{app}` so the Start
+Menu/Desktop `[Icons]` entries have a real on-disk `IconFilename` to
+point at.
+
+**A real, small gotcha in `dmg_settings.py`, caught by checking rather
+than assuming the first attempt worked.** dmgbuild `exec()`'s the
+settings file as a plain script with no `__file__` in its own scope —
+a first pass resolving the icon path via `Path(__file__).parent`
+raised `NameError` the moment `dmgbuild` actually ran it. Fixed by
+resolving the icon path the same cwd-relative way the settings file's
+existing `readme` entry already did, rather than introducing a new
+resolution style.
+
+**Live verification, macOS — done for real, and it needed a second
+approach after the first one was blocked.** Screen-recording
+permission is absent in this environment (the identical gap item 30's
+own verification first hit) — `screencapture`/`System Events` can't
+be used, so there was no straightforward way to visually confirm an
+icon rendering in Finder or the Dock by taking a screenshot. Rather
+than settling for "the file exists inside the bundle" (true but not
+proof anything actually *renders* it), verification went through the
+same APIs Finder and the Dock themselves call to resolve an icon —
+`NSWorkspace.iconForFile:` and `NSRunningApplication.icon` — driven
+via `osascript`, a genuinely different mechanism from item 30/31's own
+`QT_QPA_PLATFORM=offscreen` workaround (that one substitutes for
+needing a display at all; this one substitutes for needing permission
+to *record* one).
+
+Rebuilt `Seeker.app` and `Seeker.dmg` for real first. Confirmed, in
+order: (1) the `.icns` bundled inside the built `.app` byte-matches
+`packaging/icons/seeker_icon.icns` and `Info.plist`'s
+`CFBundleIconFile` points at it; (2) `NSWorkspace.iconForFile:` called
+against the real built `.app` path renders the real custom icon, not
+the generic default; (3) the real `.dmg`, mounted for real via
+`hdiutil attach`, carries a `.VolumeIcon.icns` that byte-matches the
+source file, with the volume's Finder custom-icon flag set; (4) with
+`Seeker` actually launched and running, `NSRunningApplication.icon`
+for that real running process renders the same custom icon — the
+literal image the Dock itself displays for a running app, not a proxy
+for it. All three real surfaces a user would actually see (Finder, the
+`.dmg` volume, the Dock) confirmed live, not inferred from the diff or
+from the bundle's file listing alone.
+
+**Windows stays written-but-unverified, as scoped** — no real Windows
+machine in this environment. The `.iss`/`.spec` Windows branches
+mirror the already-verified macOS wiring structurally (same `icon`/
+`SetupIconFile` pattern, same "resolve relative to the packaging
+script" convention) but were not run or compiled for real — same
+standing caveat item 36 already recorded for the rest of Windows
+packaging.
+
+`mypy --strict` clean; no test changes (packaging config, not
+application logic — matches item 36's own precedent of not adding
+tests for build-tool wiring beyond what `test_docker_setup.py`
+already covers for path resolution).
+
+### 43
+
+Real bug report, from an actual Finder double-click launch of the
+packaged app (not the offscreen harness): entering a Spotify Client ID
+and completing the PKCE popup failed with `[Errno 30] Read-only file
+system: '.seeker'`.
+
+**Diagnosis.** Item 18 moved the DB to
+`platformdirs.user_data_dir("Seeker", appauthor=False)` but left the
+Spotify token cache (`SPOTIFY_TOKEN_PATH = Path(".seeker/
+spotify_token.json")`) as a bare, CWD-relative literal, on the
+documented assumption it was out of scope for that migration. That
+assumption was never checked against how a packaged `.app` actually
+launches. `uv run seeker-ui` runs with CWD = the project root, which
+is writable, so the bug was invisible in every prior dev-mode and
+offscreen-harness verification this project has done (items 22/26-32
+etc. all construct a real `Application` from a writable CWD). A real
+double-clicked `.app`, launched via macOS LaunchServices, gets CWD set
+to `/` — the Signed System Volume, mounted read-only on any modern
+macOS install. `SpotifyAuthManager._save_token()`'s `self.token_path
+.parent.mkdir(parents=True, exist_ok=True)` — resolving to `mkdir
+('.seeker')` relative to `/` — fails there with exactly the reported
+`OSError`. Confirmed directly on this machine, not assumed: `os.chdir
+('/'); os.mkdir('.seeker_verify_readonly_probe')` raised the
+byte-identical `[Errno 30] Read-only file system: '.seeker_verify_
+readonly_probe'`.
+
+**Fix**, mirroring item 18's own DB-migration shape exactly: new
+`_resolve_spotify_token_path()` resolves the token file into the same
+per-user `platformdirs` directory the DB already lives in; the
+move-if-fresh-install logic in `_migrate_legacy_database` was factored
+into a shared `_migrate_legacy_file(new_path, legacy_path, label)`
+(both migrators are now one-line wrappers over it), reused by a new
+`_migrate_legacy_spotify_token()` with the identical never-clobber
+guard. The token path moved from a module-level constant to a
+per-`Application`-instance attribute (`self._spotify_token_path`),
+computed and migrated once in `__init__`, immediately after the DB
+migration — both `auth_manager` and `connect_spotify()` now read it
+off `self`. Deliberately **not** a `sys.frozen`-gated branch (unlike
+`docker_setup.py::compose_file_path()`, which genuinely does need one)
+— nothing about the token cache is packaging-specific; it stops being
+CWD-relative in ordinary dev-mode runs too, since there was never a
+real reason for `uv run seeker-ui` from a directory other than the
+project root to resolve it differently.
+
+**Live verification — a real Finder-equivalent launch, since that is
+literally the only thing that ever caught this.** Built a throwaway
+diagnostic `.app` (`SeekerVerify`, not committed) reusing the exact
+same `Analysis` config as `packaging/seeker.spec` (same `pathex`, same
+bundled `docker-compose.yml`, zero hidden-import overrides) with a
+non-GUI entrypoint substituted in: it points `platformdirs` at an
+isolated, throwaway data directory under `$HOME` (never the real
+production DB/config), constructs a real `Application`, then calls the
+real `SpotifyAuthManager._save_token()` with a fake token — the exact
+method that raised the original error — logging the outcome to a fixed
+path under `$HOME` rather than opening a window. Launched via `open -W`
+against the built `.app`, the same LaunchServices path a real
+double-click takes (confirmed to actually reproduce the failure
+condition: the log recorded `cwd='/'`, matching the original report
+exactly). Result: `token_file_exists=True`,
+`no_seeker_dir_at_cwd=True`, `RESULT=SUCCESS` — the token landed under
+the isolated platformdirs directory with zero `.seeker` directory ever
+created at `/`. Diagnostic build artifacts and the isolated data
+directory were removed after verification.
+
+**Second, independent live verification, against this dev machine's
+own real pre-existing legacy token — not manufactured.** A real
+`.seeker/spotify_token.json` (445 bytes, real `access_token`/
+`refresh_token`/`expires_at` fields, `expires_at` already in the past
+by this point) existed at the project root from earlier real sessions,
+predating this fix. Rather than trust the isolated diagnostic build
+alone, ran a real `uv run python` startup (real CWD = project root,
+matching what `uv run seeker-ui` actually uses, real production
+`platformdirs` directory, no monkeypatching) that constructs
+`Application()` and then calls `app.auth_manager.get_valid_token()`.
+Confirmed, in order: the real legacy file was migrated for real (the
+existing `"Migrated existing Spotify token from ... to ..."` print
+fired, the old file was gone afterward, the new one existed at
+`~/Library/Application Support/Seeker/spotify_token.json`); and
+because the migrated token was genuinely expired,
+`get_valid_token()` performed a real refresh call against Spotify's
+own token endpoint using the real `refresh_token` and real
+`spotify_client_id` from `config.json` — this succeeded, returning a
+new token with `expires_at` about an hour out, proving the session
+coming out of migration is genuinely re-authorized end-to-end, not
+just that the file moved. The stray empty `.seeker/` directory left
+behind (`shutil.move` moves the file, not its parent) is expected and
+harmless — the identical leftover the DB migration in item 18 already
+produces.
+
+`mypy --strict` clean; full suite 477 passed / 1 skipped. Six new
+tests added to `test_application.py` mirroring the existing
+`_resolve_database_path`/`_migrate_legacy_database` test shapes for
+`_resolve_spotify_token_path`/`_migrate_legacy_spotify_token`, plus a
+dedicated CWD-independence test (constructs `Application` from a
+directory that is neither the project root nor the platformdirs data
+dir, confirms the token path still resolves under the latter and no
+`.seeker` directory is created near the CWD).
+
+### 44
+
+Real bug report, from an actual double-click launch of the packaged
+app: the wizard's Docker step reported "not installed" and Settings'
+SoulSeek setup raised `[Errno 2] No such file or directory: 'docker'`
+— even though Docker Desktop was genuinely installed and running.
+Given as a hypothesis up front: a GUI-launched macOS app gets a
+minimal PATH that doesn't include `/usr/local/bin`, unlike a terminal
+shell's fuller PATH — the same "works via `uv run`, breaks via a real
+double-click" shape as item 43's CWD bug, just for PATH instead of
+CWD.
+
+**Confirming the call sites, directly, per the task's own
+instruction.** Three `subprocess.run(["docker", ...])` calls in
+`docker_setup.py`, all bare-name lookups relying on PATH: two in
+`detect_docker_state()` (`docker --version`, `docker info`, neither
+passing an explicit `env=`, so both inherit the real process
+`os.environ` by Python's own default), and one in `bring_up_slskd()`
+(`docker compose -f ... up -d`, explicitly passing
+`env={**os.environ, ...}`). Both real UI surfaces route through these:
+`ui/wizard.py`'s Docker step calls `detect_docker_state`; `ui/
+settings_window.py`'s SoulSeek setup calls `bring_up_slskd`. All three
+call sites read PATH from the same source — the process's own
+`os.environ` — so a single fix mutating `os.environ["PATH"]` once,
+early, covers all three with no per-call-site change.
+
+**Diagnosing the actual PATH difference — needed two attempts, since
+the first one gave a misleading result.** First attempt: build a
+throwaway diagnostic `.app` (same pattern as item 43's `SeekerVerify`)
+and launch it via `open -W`, the same mechanism that correctly
+reproduced item 43's `cwd='/'`. This logged `raw_PATH=` as the FULL
+shell PATH, including this project's own `.venv/bin`, `/opt/homebrew/
+bin`, `/usr/local/bin`, etc. — and `detect_docker_state()` correctly
+reported `RUNNING` even with no fix applied at all. Taken at face
+value, this would have wrongly suggested the bug wasn't reproducible
+here, or wasn't real. Recognized as suspicious rather than accepted:
+a genuine LaunchServices-driven GUI launch should never inherit the
+launching shell's PATH by design — that's the entire premise of the
+bug report. This sandbox's `open` command was therefore not actually
+routing through the same launchd GUI-domain spawn a real user's
+double-click uses; something about this specific containerized/remote
+dev environment lets `open` leak the calling shell's environment
+through in a way a real Mac's Finder-driven launch does not.
+
+**Ground truth obtained a different way: a real, ephemeral
+LaunchAgent** — `launchctl bootstrap gui/$(id -u)` on a plist running
+bare `/usr/bin/env`, redirected to a log file, then `launchctl
+bootout` to remove it immediately after. This is unambiguously
+launchd-spawned with zero shell in the process chain, the same
+mechanism a double-clicked `.app` icon ultimately uses. Real, confirmed
+result:
+
+```
+OSLogRateLimit=64
+XPC_SERVICE_NAME=com.seeker.envprobe
+SSH_AUTH_SOCK=/var/run/com.apple.launchd.Fs8RjCle6b/Listeners
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+XPC_FLAGS=0x0
+LOGNAME=sinthesis
+USER=sinthesis
+HOME=/Users/sinthesis
+SHELL=/bin/zsh
+TMPDIR=/var/folders/dr/_sq38wgn0lq2wzy_0y6_t2xr0000gn/T/
+```
+
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin` — confirming the hypothesis
+exactly: no `/usr/local/bin`, no `/opt/homebrew/bin`. Cross-checked
+against `/etc/paths` (`/usr/local/bin` plus the four base dirs) and
+`/etc/paths.d/*` on this machine (`10-cryptex`, `10-pmk-global`,
+`MacGPG2`, and — notably — `homebrew`, containing `/opt/homebrew/
+bin`) — confirming these additional directories are real, but are only
+assembled by `/usr/libexec/path_helper`, which runs as part of a login
+shell's startup (`/etc/zprofile` et al.), never as part of a launchd
+GUI-domain spawn. Directly confirmed the failure itself, not just the
+missing directories: running `docker --version` with `PATH` forced to
+exactly `/usr/bin:/bin:/usr/sbin:/sbin` raised the byte-identical
+`FileNotFoundError: [Errno 2] No such file or directory: 'docker'`
+from the original report, and `shutil.which("docker", path=...)`
+against that same minimal PATH returned `None`. Also worth recording:
+this machine has TWO real `docker` binaries — Docker Desktop's own CLI
+symlink at `/usr/local/bin/docker` (→ `/Applications/Docker.app/
+Contents/Resources/bin/docker`) and a separate Homebrew-installed CLI
+at `/opt/homebrew/bin/docker` — either is sufficient once its
+directory is back on PATH, since both talk to the same real Docker
+daemon.
+
+**Fix**, at the shared layer, matching this project's own "shared
+thing lives at the lowest layer that needs it" precedent (same
+principle as `compose_file_path()`/`_resolve_spotify_token_path()`):
+new `docker_setup.py::ensure_full_path_environment()` runs
+`/usr/libexec/path_helper -s`, regex-extracts the resolved `PATH="..."`
+value, and merges it — plus the existing `os.environ["PATH"]`, plus an
+explicit `_FALLBACK_BIN_DIRS = ("/opt/homebrew/bin", "/usr/local/
+bin")` — into `os.environ["PATH"]`, deduplicated, order-preserving.
+The explicit fallback exists because `path_helper` only covers
+`/opt/homebrew/bin` when a real `/etc/paths.d/homebrew` file happens
+to exist (true on this particular dev machine, but not guaranteed —
+Homebrew's own installer instructions rely on a shell-profile `eval
+"$(brew shellenv)"` instead, which a GUI launch never runs). Called
+once, unconditionally, at the very top of `Application.__init__` —
+before the DB/token-path migrations added in item 43, and before
+anything Docker-related can run — rather than patched into each
+individual `subprocess.run(["docker", ...])` call site, since every
+one of them already reads from the process's own `os.environ` by
+default or by explicit `{**os.environ, ...}` construction.
+
+**A real robustness gap, found by the existing test suite, not
+invented speculatively.** The first version of this function only
+caught `(OSError, subprocess.SubprocessError)` around the
+`path_helper` call. Running the full suite surfaced a genuine failure:
+`test_wizard.py::test_launch_docker_clicked_success_updates_status_
+and_button` monkeypatches `subprocess.run` globally (via `seeker.ui.
+wizard.subprocess.run` — the same shared `subprocess` module object
+used everywhere, not scoped to `wizard.py`) to a fake returning `None`,
+then constructs a real `Application()` later in the same test. Since
+`Application.__init__` now calls `ensure_full_path_environment()`,
+which calls the now-faked `subprocess.run(["/usr/libexec/path_helper",
+"-s"], ...)`, the fake's `None` return crashed with `AttributeError:
+'NoneType' object has no attribute 'stdout'` — an exception type the
+narrow `except` clause didn't cover. This is exactly the kind of thing
+that must never be able to crash `Application` startup, since this
+function runs unconditionally on every construction, on every
+platform (including non-macOS, where `/usr/libexec/path_helper`
+doesn't exist at all) — fixed by broadening to a bare `except
+Exception`, with the explicit fallback dirs still applied regardless.
+A new regression test
+(`test_ensure_full_path_environment_never_raises_on_malformed_result`)
+locks this in directly, independent of the wizard test that happened
+to surface it.
+
+**Confirming `detect_docker_state()`'s three branches stay
+distinguishable, not just that `RUNNING` happens to work — done for
+the two branches this fix actually touches, honestly incomplete for
+the third.** The NOT_INSTALLED/INSTALLED_NOT_RUNNING/RUNNING branch
+logic itself is untouched by this fix (it only affects whether
+`docker` can be found on PATH at all, not what
+`detect_docker_state()` does once it is); the existing mocked unit
+tests for all three branches (`test_detect_docker_state_not_installed_
+when_docker_missing`/`_when_version_check_errors`,
+`_installed_not_running_when_info_fails`/`_when_info_times_out`,
+`_running_when_both_succeed`) already cover that logic directly and
+remained unaffected and passing. What genuinely needed a live check
+was the NOT_INSTALLED/RUNNING boundary this bug actually crossed: with
+`PATH` forced to the real, confirmed minimal
+`/usr/bin:/bin:/usr/sbin:/sbin`, `detect_docker_state()` reported
+`DockerState.NOT_INSTALLED` — reproducing the exact reported symptom
+on this real machine, with real Docker Desktop genuinely running.
+Calling `ensure_full_path_environment()` and re-checking immediately
+after: `DockerState.RUNNING` — matching this machine's actual state.
+INSTALLED_NOT_RUNNING was deliberately not exercised live against a
+real stopped daemon — stopping this machine's real, working Docker
+Desktop (which real slskd infrastructure depends on, per items 13/23)
+for a test would be a real disruptive action to working infrastructure
+with no clear benefit, since that branch's own logic is both untouched
+by this fix and already covered by the existing mocked test; recorded
+honestly as unexercised live rather than worked around, same
+discipline as item 26's own "Reject... remain genuinely unexercised by
+a real click" note.
+
+**Final live verification of the actual shipped fix — via a real
+launchd-spawned process, not `open`, since `open` was already shown
+above not to reproduce genuine launch conditions in this sandbox.**
+Built a second diagnostic `.app` (`SeekerVerifyDockerFix`, not
+committed, same `Analysis` config as `packaging/seeker.spec`) whose
+entrypoint constructs a real `Application` (platformdirs pointed at an
+isolated, throwaway directory — never the real production DB/config)
+and then calls the real, unmodified `detect_docker_state()` — the
+exact function both `wizard.py`'s Docker step and `settings_window
+.py`'s SoulSeek setup call. Launched its actual bundled executable
+(`Contents/MacOS/SeekerVerifyDockerFix`) directly via another real
+ephemeral LaunchAgent (`launchctl bootstrap`/`bootout`, identical
+mechanism to the ground-truth probe above). Real, confirmed result:
+
+```
+cwd='/'
+raw_PATH_before_application='/usr/bin:/bin:/usr/sbin:/sbin'
+PATH_after_application_init='/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/usr/local/MacGPG2/bin:/opt/homebrew/bin'
+which_docker_after_fix='/usr/local/bin/docker'
+detect_docker_state_after_fix=<DockerState.RUNNING: 'running'>
+RESULT=SUCCESS
+```
+
+`raw_PATH_before_application` confirms this launch genuinely started
+from the real minimal launchd PATH (not `open`'s misleadingly-full
+one); `PATH_after_application_init` confirms `Application.__init__`'s
+call to `ensure_full_path_environment()` fixed it for real, in a real
+frozen build, under a real launchd-spawned process; `which_docker_
+after_fix` and `detect_docker_state_after_fix` confirm both the raw
+discoverability mechanism and the actual function both real UI
+surfaces depend on now work correctly end-to-end. This exercises the
+shared root cause behind both surfaces (PATH-based binary
+discoverability at `Application` startup) rather than re-running each
+UI screen's own click-handling code, which items 26/28/30 already
+established coverage for separately and which this fix doesn't touch.
+All diagnostic build artifacts, ephemeral LaunchAgents, and log/probe
+files were removed immediately after each verification step — nothing
+left behind.
+
+`mypy --strict` clean; full suite 480 passed / 1 skipped — four new
+tests added to `test_docker_setup.py` (`path_helper`-output merging,
+fallback when `path_helper` is unavailable, no duplicate entries, and
+the malformed-result regression above), mirroring
+`compose_file_path()`'s existing test shape for a new
+`docker_setup.py` function.
+

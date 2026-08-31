@@ -1,3 +1,4 @@
+import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from seeker.docker_setup import (
     check_slskd_health,
     compose_file_path,
     detect_docker_state,
+    ensure_full_path_environment,
     generate_api_key,
     slskd_data_dir,
 )
@@ -85,9 +87,114 @@ def test_compose_file_path_resolves_against_meipass_when_frozen(monkeypatch):
     assert compose_file_path() == Path("/fake/bundle/root/docker-compose.yml")
 
 
+# item 44's real bug: a GUI-launched .app gets launchd's minimal PATH
+# (/usr/bin:/bin:/usr/sbin:/sbin — confirmed live via a real ephemeral
+# LaunchAgent probe, a genuine launchd-spawned process with no shell in
+# the chain), which excludes /usr/local/bin (Docker Desktop's own CLI
+# symlink) and /opt/homebrew/bin (Apple Silicon Homebrew) — so `docker`
+# genuinely can't be found even when installed and running.
+_MINIMAL_LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+
+def test_ensure_full_path_environment_merges_path_helper_output(
+        monkeypatch,
+):
+    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
+
+    def fake_run(args, **kwargs):
+        assert args == ["/usr/libexec/path_helper", "-s"]
+        return FakeCompletedProcess(
+            returncode=0,
+            stdout=(
+                'PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:'
+                '/bin:/usr/sbin:/sbin"; export PATH;\n'
+            ),
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ensure_full_path_environment()
+
+    entries = os.environ["PATH"].split(":")
+    assert "/usr/local/bin" in entries
+    assert "/opt/homebrew/bin" in entries
+    assert "/usr/bin" in entries
+
+
+def test_ensure_full_path_environment_falls_back_when_path_helper_unavailable(
+        monkeypatch,
+):
+    # path_helper genuinely doesn't exist on every platform this code
+    # might run on (only real on macOS) — must not raise, and must
+    # still get the explicit fallback dirs onto PATH.
+    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
+
+    def fake_run(args, **kwargs):
+        raise FileNotFoundError("/usr/libexec/path_helper: not found")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ensure_full_path_environment()
+
+    entries = os.environ["PATH"].split(":")
+    assert "/opt/homebrew/bin" in entries
+    assert "/usr/local/bin" in entries
+    # Original minimal PATH must survive, not be replaced.
+    assert "/usr/bin" in entries
+    assert "/bin" in entries
+
+
+# Real gap, found via test_wizard.py's own blanket
+# `monkeypatch.setattr("seeker.ui.wizard.subprocess.run", ...)` — since
+# `subprocess` is a single shared module object, that patch replaces
+# `subprocess.run` globally, not just for wizard.py's own calls. A
+# fake that returns something with no `.stdout` attribute (a plain
+# `None`, as that fixture's lambda does) crashed this function with an
+# uncaught AttributeError, which is unacceptable for something that
+# runs unconditionally at every `Application()` construction. This is
+# also a stand-in for any real, unanticipated subprocess.run() failure
+# mode on a target platform this code doesn't control.
+def test_ensure_full_path_environment_never_raises_on_malformed_result(
+        monkeypatch,
+):
+    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
+
+    ensure_full_path_environment()
+
+    entries = os.environ["PATH"].split(":")
+    assert "/opt/homebrew/bin" in entries
+    assert "/usr/local/bin" in entries
+
+
+def test_ensure_full_path_environment_does_not_duplicate_existing_entries(
+        monkeypatch,
+):
+    monkeypatch.setenv(
+        "PATH", f"/opt/homebrew/bin:{_MINIMAL_LAUNCHD_PATH}",
+    )
+
+    def fake_run(args, **kwargs):
+        return FakeCompletedProcess(
+            returncode=0,
+            stdout=(
+                'PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:'
+                '/bin:/usr/sbin:/sbin"; export PATH;\n'
+            ),
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ensure_full_path_environment()
+
+    entries = os.environ["PATH"].split(":")
+    assert entries.count("/opt/homebrew/bin") == 1
+
+
 class FakeCompletedProcess:
-    def __init__(self, returncode: int):
+    def __init__(self, returncode: int, stdout: str = ""):
         self.returncode = returncode
+        self.stdout = stdout
 
 
 def test_detect_docker_state_not_installed_when_docker_missing(monkeypatch):

@@ -175,13 +175,15 @@ dependency management — not `pip`/`poetry`.
 uv sync
 ```
 
-`seeker`'s SQLite cache lives in an OS-conventional per-user app-data
-directory (via [`platformdirs`](https://github.com/tox-dev/platformdirs)),
-not the project folder — e.g. `~/Library/Application Support/Seeker` on
-macOS, `~/.local/share/Seeker` on Linux, `%LOCALAPPDATA%\Seeker` on
-Windows. If a database from an older `.seeker/seeker.db` (relative to
-wherever you ran `seeker` from) is found on first run, it's moved into
-the new location automatically — nothing to do by hand.
+`seeker`'s SQLite cache and cached Spotify token both live in an
+OS-conventional per-user app-data directory (via
+[`platformdirs`](https://github.com/tox-dev/platformdirs)), not the
+project folder — e.g. `~/Library/Application Support/Seeker` on macOS,
+`~/.local/share/Seeker` on Linux, `%LOCALAPPDATA%\Seeker` on Windows.
+If a database or token file from an older CWD-relative `.seeker/`
+directory (relative to wherever you ran `seeker` from) is found on
+first run, it's moved into the new location automatically — nothing to
+do by hand.
 
 ### 2. Register a Spotify app
 
@@ -473,12 +475,13 @@ uv run python packaging/build_dmg.py
 `packaging/dmg_settings.py` lays out a standard drag-to-install
 volume: the app, an `/Applications` symlink, and a `Read Me First.txt`
 side by side, a sized window, no clutter (status bar/toolbar/sidebar
-all off). **No custom `.icns` exists for this app yet** — a known,
-acceptable cosmetic gap, deliberately deferred (guidance on what's
-wanted comes later — see CLAUDE.md); the volume and the app both fall
-through to PyInstaller/macOS's generic default icon rather than
-erroring. Background-image polish is similarly left out — optional,
-not required for a working installer.
+all off). **A custom icon (`packaging/icons/seeker_icon.icns`) is
+wired into `dmg_settings.py`'s `icon` setting and `seeker.spec`'s
+`BUNDLE()`**, live-verified on macOS — the built `.app` (via
+`NSWorkspace.iconForFile:`) and the mounted `.dmg` volume both render
+it for real, not the generic default (see CLAUDE.md item 42 for the
+verification detail). Background-image polish is still left out —
+optional, not required for a working installer.
 
 **`Read Me First.txt`** spells out the one real friction point an
 unsigned-by-a-paid-developer-account build has: first launch on any
@@ -575,10 +578,12 @@ uv run python packaging/build_windows_installer.py
 Produces `dist/SeekerSetup.exe`. `packaging/seeker.iss`'s `AppId` is a
 fixed GUID (generated once for this project) — Inno Setup uses it to
 recognize reinstalls/upgrades as the same app rather than installing
-side by side; never regenerate it. No custom `.ico` exists yet, the
-same deliberately deferred cosmetic gap as macOS's missing `.icns` —
-the installer, shortcuts, and uninstaller all fall back to a generic
-icon. No code signing is configured (Windows' equivalent of macOS's
+side by side; never regenerate it. A custom icon
+(`packaging/icons/seeker_icon.ico`) is wired into `seeker.iss`'s
+`SetupIconFile` and installed to `{app}` for the Start Menu/Desktop
+`[Icons]` entries — but, same as the rest of Windows packaging, this
+is written and not yet verified on a real Windows machine. No code
+signing is configured (Windows' equivalent of macOS's
 Gatekeeper warning — SmartScreen — will likely flag an unsigned
 `Setup.exe`; a real Windows code-signing certificate is a similar
 paid-prerequisite gap to Apple notarization, and is out of scope here
