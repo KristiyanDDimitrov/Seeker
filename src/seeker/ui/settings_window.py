@@ -54,8 +54,18 @@ def _test_connection_since() -> datetime:
     return datetime.now(timezone.utc)
 
 
+SETTINGS_TAB_LOCATIONS = "Library Locations"
+SETTINGS_TAB_DESTINATIONS = "Playlist Destinations"
+SETTINGS_TAB_CONNECTION = "Connection"
+SETTINGS_TAB_THRESHOLDS = "Thresholds"
+
+
 class SettingsWindow(QMainWindow):
-    def __init__(self, application: Application):
+    def __init__(
+            self,
+            application: Application,
+            initial_tab: str | None = None,
+    ):
         super().__init__()
         # Real, confirmed-live leak fix (broad end-to-end stress test,
         # see CLAUDE.md): a top-level QMainWindow with no parent isn't
@@ -88,12 +98,20 @@ class SettingsWindow(QMainWindow):
         subtitle.setWordWrap(True)
         central_layout.addWidget(subtitle)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_locations_tab(), "Library Locations")
-        tabs.addTab(self._build_destinations_tab(), "Playlist Destinations")
-        tabs.addTab(self._build_connection_tab(), "Connection")
-        tabs.addTab(self._build_thresholds_tab(), "Thresholds")
-        central_layout.addWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_locations_tab(), SETTINGS_TAB_LOCATIONS)
+        self.tabs.addTab(
+            self._build_destinations_tab(), SETTINGS_TAB_DESTINATIONS,
+        )
+        self.tabs.addTab(self._build_connection_tab(), SETTINGS_TAB_CONNECTION)
+        self.tabs.addTab(self._build_thresholds_tab(), SETTINGS_TAB_THRESHOLDS)
+        central_layout.addWidget(self.tabs)
+
+        if initial_tab is not None:
+            for index in range(self.tabs.count()):
+                if self.tabs.tabText(index) == initial_tab:
+                    self.tabs.setCurrentIndex(index)
+                    break
 
         self.setCentralWidget(central)
 

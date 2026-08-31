@@ -138,6 +138,22 @@ class LibraryService:
             for location in locations
         ]
 
+    def has_scanned_library(self) -> bool:
+        """Roadmap item 7's Dashboard "next step" CTA needs to
+        distinguish "tracks are cached but the library has never been
+        scanned" from "already scanned, matching just didn't find
+        anything" — but no `last_scanned_at` column exists on
+        `library_locations` (a schema change was explicitly out of
+        scope for that task), so this approximates it: true once at
+        least one `local_files` row exists anywhere. Known, accepted
+        limitation: a real scan of a location that genuinely contains
+        zero matching audio files would be indistinguishable from
+        "never scanned" by this proxy — not solvable without a schema
+        change, so not solved here.
+        """
+        with self.database.transaction() as connection:
+            return self.local_files.exists_any(connection)
+
     def remove_location(self, name: str) -> None:
         with self.database.transaction() as connection:
             location = self.locations.get_by_name(name, connection)

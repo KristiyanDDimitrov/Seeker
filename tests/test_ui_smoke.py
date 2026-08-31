@@ -76,14 +76,23 @@ class FakeDashboardService:
 
 
 class FakeLibraryService:
-    def __init__(self, locations: list | None = None):
+    def __init__(
+            self,
+            locations: list | None = None,
+            has_scanned_library: bool = True,
+    ):
         self._locations = locations or []
+        self._has_scanned_library = has_scanned_library
+        self.scan_all_calls = 0
 
     def scan_all(self) -> None:
-        pass
+        self.scan_all_calls += 1
 
     def list_locations(self) -> list:
         return self._locations
+
+    def has_scanned_library(self) -> bool:
+        return self._has_scanned_library
 
 
 class FakeDuplicateService:
@@ -256,12 +265,17 @@ class FakeApplication:
             fingerprint_result: dict | None = None,
             duplicate_groups: list | None = None,
             resolved_destination: tuple | None = None,
+            spotify_configured: bool = True,
+            has_scanned_library: bool = True,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.dashboard_service = FakeDashboardService(
             statuses, active_downloads,
         )
-        self.library_service = FakeLibraryService(locations)
+        self.library_service = FakeLibraryService(
+            locations, has_scanned_library,
+        )
+        self.spotify_configured = spotify_configured
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService(
             review_candidates, pending_upgrades, resolved_destination,
@@ -405,10 +419,11 @@ def test_main_window_has_a_settings_button(qtbot):
     assert window.settings_button.isEnabled()
 
 
-def test_main_window_toolbar_buttons_have_tooltips(qtbot):
+def test_main_window_global_action_buttons_have_tooltips(qtbot):
     # Task 1 — every clickable control gets a setToolTip(); spot-check
-    # the toolbar rather than every single control (per-row/per-tab
-    # controls are covered by their own dedicated tests below).
+    # the Dashboard's global action row (roadmap item 7 relocated these
+    # off the old QToolBar) rather than every single control (per-row/
+    # per-tab controls are covered by their own dedicated tests below).
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -421,6 +436,153 @@ def test_main_window_toolbar_buttons_have_tooltips(qtbot):
             window.settings_button,
     ):
         assert button.toolTip() != ""
+
+
+def test_global_action_buttons_have_the_renamed_labels(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.sync_button.text() == "Refresh playlists"
+    assert window.scan_button.text() == "Rescan library folders"
+    assert window.match_button.text() == "Re-match library"
+    assert window.download_button.text() == "Download selected playlist"
+
+
+# --- Dashboard "next step" CTA (roadmap item 7) -----------------------------
+
+def test_next_step_notice_hidden_when_nothing_selected_and_all_set_up(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        locations=[(
+            LibraryLocation(
+                id=1, name="Main", path="/music",
+                added_at="2026-01-01T00:00:00+00:00",
+            ),
+            True,
+        )],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.wait(50)
+    assert window.next_step_notice.isHidden()
+
+
+def test_next_step_notice_shows_connect_spotify_first(qtbot):
+    application = FakeApplication(spotify_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.next_step_notice.isHidden(), timeout=2000,
+    )
+    assert "spotify" in window.next_step_notice.text().lower()
+
+
+def test_next_step_action_button_opens_settings_on_the_connection_tab(
+        qtbot, monkeypatch,
+):
+    application = FakeApplication(spotify_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.next_step_notice.isHidden(), timeout=2000,
+    )
+    # Drive the dispatch method directly — exercising the exact click
+    # path a real InlineNotice action button takes without needing to
+    # locate/click the dynamically-built button widget itself.
+    window._on_next_step_action("settings_connection")
+
+    assert hasattr(window, "settings_window")
+    from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION
+    assert window.settings_window.tabs.tabText(
+        window.settings_window.tabs.currentIndex()
+    ) == SETTINGS_TAB_CONNECTION
+
+
+def test_next_step_notice_shows_download_count_and_triggers_download_flow(
+        qtbot, monkeypatch,
+):
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    statuses = [
+        TrackStatus(track=_make_track("t1"), state=NOT_FOUND),
+        TrackStatus(track=_make_track("t2"), state=NOT_FOUND),
+    ]
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=2)],
+        locations=[(location, True)],
+        statuses=statuses,
+        soulseek_configured=True,
+        resolved_destination=(location, "Test"),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: "2" in window.next_step_notice.text(), timeout=2000,
+    )
+    assert window.next_step_notice.text() == "2 tracks missing from 'Test'."
+
+    window._on_next_step_action("download")
+
+    qtbot.waitUntil(
+        lambda: application.download_service.download_playlist_calls != [],
+        timeout=2000,
+    )
+
+
+# --- Track-table empty states (roadmap item 7) ------------------------------
+
+def test_no_playlist_selected_shows_centred_empty_panel_no_button(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.track_area_stack.currentWidget() is window._track_empty_panel
+    assert "pick a playlist" in window.track_empty_label.text().lower()
+    assert window.sync_tracks_button.isHidden()
+
+
+def test_playlist_selected_no_tracks_shows_empty_panel_with_load_button(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=0)],
+        statuses=[],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    # Both "nothing selected yet" and "selected but empty" render the
+    # same panel widget — wait on the label text actually changing to
+    # the playlist-specific message, not just on the panel being
+    # current (already true before selection even happens).
+    qtbot.waitUntil(
+        lambda: "test" in window.track_empty_label.text().lower(),
+        timeout=2000,
+    )
+    assert window.track_area_stack.currentWidget() is window._track_empty_panel
+    assert not window.sync_tracks_button.isHidden()
+
+
+def test_playlist_with_tracks_shows_the_real_table(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        statuses=[TrackStatus(track=_make_track("t1"), state=NOT_FOUND)],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: window.track_area_stack.currentWidget() is window.track_table,
+        timeout=2000,
+    )
+    assert window.track_table.rowCount() == 1
 
 
 # --- Download destination dialog (roadmap item 6 §3, "no dead end") -------

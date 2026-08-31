@@ -2752,6 +2752,74 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     `mypy --strict` clean; full suite 567 passed / 1 skipped.
 
+51. **Visual guidance: Dashboard "next step" CTA — done, all four
+    states live-rendered (2026-08-31).** New `main_window.py` module-
+    level `_NextStepFacts`/`_NextStep`/`_decide_next_step()` — a pure
+    function (no Qt) deciding which single CTA to show from the
+    task's own condition table, tested directly with 11 synthetic-
+    fact tests (`tests/test_next_step.py`), no `MainWindow` needed.
+    Every fact it branches on comes from a real service/Application
+    call, gathered in one background-thread `_fetch_next_step_facts()`
+    per the task's own "which CTA to render is presentation logic and
+    stays in ui/, but every fact comes from a service method" split.
+    Two facts had no existing service method and needed one added:
+    `Application.spotify_configured` already existed (reused, same
+    signal `onboarding_complete` already trusts); new
+    `LibraryService.has_scanned_library()` did not.
+
+    **`has_scanned_library()` is a real, disclosed approximation, not
+    a precise fact — no schema change was in scope for this task, and
+    `library_locations` has no `last_scanned_at` column.** True once
+    any `local_files` row exists anywhere (new
+    `LocalFileRepository.exists_any()` — a cheap `SELECT 1 ... LIMIT 1`
+    existence check, not `get_all()`, given this project's real
+    production library is 3,000+ rows). Known, accepted limitation
+    documented at the source: a real scan of a location with
+    genuinely zero matching audio files is indistinguishable from
+    "never scanned" by this proxy.
+
+    Rendered via a new `InlineNotice` (`self.next_step_notice`, above
+    `dashboard_notice` — guidance and errors never overwrite each
+    other) with its existing action-button support; `None` from
+    `_decide_next_step` (no playlist selected, everything global
+    already satisfied) dismisses it rather than showing an empty
+    strip. Recomputed on playlist selection and the existing 2s
+    `poll_timer` tick — no new timer.
+
+    **Empty states, a real structural change, not just new copy.**
+    `track_table` and a new centred `_track_empty_panel` (one message
+    label + an optional action button, no bare grid) now live in a
+    `QStackedWidget` (`track_area_stack`), swapped explicitly rather
+    than the old "leave the table showing whatever it last held"
+    behavior. Three real, distinct states, not two: no playlist
+    selected at all (`_render_no_playlist_selected()` — new; the old
+    code simply returned early here and touched nothing, so this was a
+    genuine gap, not just unstyled) shows guidance with no button —
+    there's nothing to click but the list itself; a selected playlist
+    with no synced tracks yet shows the same panel with a real "Load
+    tracks" button (the old `empty_state_label`/loose `sync_tracks_
+    button` pair, now properly centered instead of stacked inline
+    above the table); anything else shows the real table.
+
+    **Renamed the cryptic global buttons and relocated them off the
+    old app-wide `QToolBar` entirely** (removed — nothing else used
+    it) — Sync → "Refresh playlists", Scan → "Rescan library folders",
+    Match → "Re-match library", onto the Dashboard page itself as a
+    secondary action row right after the CTA strip, per the task's own
+    placement. Download (playlist-scoped, the one exception — not
+    renamed, matching the CLI's own item-22 scope split) sits in the
+    same row. Global scope itself is unchanged — still all
+    playlists/locations/tracks regardless of what's selected.
+
+    All four real CTA states (Spotify not connected; missing tracks
+    with SoulSeek configured, showing a real "2 tracks missing from
+    'Test'" / "Download 2 missing tracks"; the quiet green "You're all
+    set for 'Test'" success line with no button; no playlist selected)
+    plus both empty-table states rendered offscreen and inspected
+    directly before committing — scratch, not committed.
+
+    `mypy --strict` clean; full suite 588 passed / 1 skipped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

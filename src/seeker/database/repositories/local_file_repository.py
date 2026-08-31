@@ -111,6 +111,15 @@ class LocalFileRepository:
             (tagged_at, local_file_id),
         )
 
+    def exists_any(self, connection: sqlite3.Connection) -> bool:
+        # A cheap existence check (roadmap item 7's Dashboard CTA needs
+        # "has anything ever been scanned," not the actual rows) rather
+        # than loading every local_files row via get_all() just to
+        # check non-emptiness — this project's real production library
+        # has 3,000+ rows (see CLAUDE.md item 39).
+        row = connection.execute("SELECT 1 FROM local_files LIMIT 1").fetchone()
+        return row is not None
+
     def get_all(self, connection: sqlite3.Connection) -> list[LocalFile]:
         rows = connection.execute(
             """

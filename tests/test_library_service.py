@@ -135,6 +135,24 @@ def test_rename_location_raises_a_clear_error_on_name_collision(tmp_path):
         service.rename_location(second.id, "Music")
 
 
+def test_has_scanned_library_false_with_no_local_files(tmp_path):
+    service = make_service(tmp_path)
+
+    assert service.has_scanned_library() is False
+
+
+def test_has_scanned_library_true_after_a_real_scan_finds_files(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    (library_root / "song.mp3").write_bytes(b"not real audio")
+
+    service = make_service(tmp_path)
+    service.add_location("Main", str(library_root))
+    service.scan_all()
+
+    assert service.has_scanned_library() is True
+
+
 def test_scan_all_skips_unreachable_location_without_touching_its_rows(
         tmp_path,
 ):

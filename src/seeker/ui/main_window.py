@@ -1,4 +1,5 @@
 import webbrowser
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version
 from typing import Any
@@ -26,7 +27,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
@@ -51,7 +51,11 @@ from seeker.ui import help_text, theme
 from seeker.ui.download_eta import DownloadEtaTracker
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import InlineNotice
-from seeker.ui.settings_window import SettingsWindow
+from seeker.ui.settings_window import (
+    SETTINGS_TAB_CONNECTION,
+    SETTINGS_TAB_LOCATIONS,
+    SettingsWindow,
+)
 from seeker.ui.workers import run_worker
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
@@ -165,6 +169,116 @@ def _build_nav_button(label: str) -> QPushButton:
     button.setProperty("navItem", True)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
+
+
+@dataclass
+class _NextStepFacts:
+    """Every real fact roadmap item 7's Dashboard "next step" CTA needs
+    to decide what to show — each field traces to one real service (or
+    Application) method; nothing here is computed or guessed. Bundled
+    into one dataclass purely so _fetch_next_step_facts() can gather
+    them in a single background-thread call rather than one run_worker
+    round trip per fact.
+    """
+    spotify_configured: bool
+    has_library_location: bool
+    has_cached_playlists: bool
+    selected_playlist_name: str | None
+    # None when no playlist is selected — deliberately distinct from an
+    # empty list (a real playlist with zero synced tracks yet).
+    track_statuses: list[TrackStatus] | None
+    has_scanned_library: bool
+    soulseek_configured: bool
+
+
+@dataclass
+class _NextStep:
+    message: str
+    kind: str
+    action_text: str | None
+    action: str | None
+
+
+def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
+    """Pure presentation logic (roadmap item 7's own explicit
+    instruction: "which CTA to render is presentation logic and stays
+    in ui/") — every fact it reads was already resolved by a real
+    service call in _fetch_next_step_facts(); this function only ever
+    branches on values already computed elsewhere. Returns None when
+    there's nothing to show at all (no playlist selected yet, with
+    every global prerequisite already satisfied — the existing empty-
+    state panel already covers "pick a playlist" there).
+    """
+    if not facts.spotify_configured:
+        return _NextStep(
+            "Connect Spotify to sync your playlists.",
+            "info", "Connect Spotify", "settings_connection",
+        )
+
+    if not facts.has_library_location:
+        return _NextStep(
+            "Add your music folder so Seeker can match what you "
+            "already have.",
+            "info", "Add music folder", "settings_locations",
+        )
+
+    if not facts.has_cached_playlists:
+        return _NextStep(
+            "Refresh your playlists from Spotify to get started.",
+            "info", "Refresh playlists", "sync",
+        )
+
+    if facts.selected_playlist_name is None or facts.track_statuses is None:
+        return None
+
+    playlist_name = facts.selected_playlist_name
+
+    if not facts.track_statuses:
+        return _NextStep(
+            f"Load '{playlist_name}''s tracks to see what's missing.",
+            "info", "Load tracks", "sync_tracks",
+        )
+
+    if not facts.has_scanned_library:
+        return _NextStep(
+            "Scan your library so Seeker knows what you already have.",
+            "info", "Scan library", "scan",
+        )
+
+    missing_count = sum(
+        1 for status in facts.track_statuses if status.state == NOT_FOUND
+    )
+    untagged_count = sum(
+        1 for status in facts.track_statuses
+        if status.state == IN_LIBRARY and status.tagged_at is None
+    )
+
+    if missing_count > 0:
+        if not facts.soulseek_configured:
+            return _NextStep(
+                "Set up SoulSeek downloading to fetch what's missing.",
+                "info", "Set up SoulSeek", "settings_connection",
+            )
+
+        plural = "s" if missing_count != 1 else ""
+        return _NextStep(
+            f"{missing_count} track{plural} missing from "
+            f"'{playlist_name}'.",
+            "info", f"Download {missing_count} missing track{plural}",
+            "download",
+        )
+
+    if untagged_count > 0:
+        plural = "s" if untagged_count != 1 else ""
+        return _NextStep(
+            f"{untagged_count} downloaded track{plural} still need "
+            f"Spotify metadata.",
+            "info", f"Tag {untagged_count} track{plural}", "tag_playlist",
+        )
+
+    return _NextStep(
+        f"You're all set for '{playlist_name}'.", "success", None, None,
+    )
 
 
 def _build_progress_widget(
@@ -385,9 +499,11 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 640)
 
         self._build_ui()
+        self._render_no_playlist_selected()
         self._load_playlists()
         self._poll_active_downloads()
         self._poll_review_items()
+        self._poll_next_step()
 
         # DB-polling pattern for live status: rebuild the visible model
         # each tick rather than diffing for minimal repaints — an
@@ -401,6 +517,7 @@ class MainWindow(QMainWindow):
         self.poll_timer.timeout.connect(self._poll_selected_playlist)
         self.poll_timer.timeout.connect(self._poll_active_downloads)
         self.poll_timer.timeout.connect(self._poll_review_items)
+        self.poll_timer.timeout.connect(self._poll_next_step)
         self.poll_timer.start()
 
         # Separate, slower timer: the only thing in this app that causes
@@ -457,35 +574,6 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(shell)
         self._show_page("dashboard")
-
-        toolbar = QToolBar("Actions")
-        self.addToolBar(toolbar)
-
-        # Sync/Scan/Match are deliberately labeled as global actions —
-        # same scope as the CLI (all playlists / all locations / all
-        # cached tracks) — so selecting a playlist in the sidebar
-        # doesn't imply these narrow to it. Only Download is scoped.
-        self.sync_button = QPushButton("Sync all playlists")
-        self.sync_button.setToolTip(help_text.TOOLTIP_SYNC_ALL_PLAYLISTS)
-        self.sync_button.clicked.connect(self._on_sync_clicked)
-        toolbar.addWidget(self.sync_button)
-
-        self.scan_button = QPushButton("Scan all locations")
-        self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
-        self.scan_button.clicked.connect(self._on_scan_clicked)
-        toolbar.addWidget(self.scan_button)
-
-        self.match_button = QPushButton("Match all tracks")
-        self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
-        self.match_button.clicked.connect(self._on_match_clicked)
-        toolbar.addWidget(self.match_button)
-
-        self.download_button = QPushButton("Download selected playlist")
-        self.download_button.setToolTip(
-            help_text.TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST
-        )
-        self.download_button.clicked.connect(self._on_download_clicked)
-        toolbar.addWidget(self.download_button)
 
     def _register_page(self, key: str, widget: QWidget) -> None:
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
@@ -554,7 +642,12 @@ class MainWindow(QMainWindow):
         # here from the toolbar.
         self.settings_button = QPushButton("Settings")
         self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)
-        self.settings_button.clicked.connect(self._on_settings_clicked)
+        # clicked emits a bool (checked state) — never connect it
+        # directly to _on_settings_clicked, whose first real parameter
+        # is initial_tab, not a checked flag.
+        self.settings_button.clicked.connect(
+            lambda: self._on_settings_clicked()
+        )
         layout.addWidget(self.settings_button)
 
         return sidebar
@@ -564,11 +657,57 @@ class MainWindow(QMainWindow):
         button = self._nav_buttons[key]
         button.setText(f"{label}  ({count})" if count > 0 else label)
 
+    def _build_dashboard_action_row(self) -> QHBoxLayout:
+        # Roadmap item 7 — relocated from the old global QToolBar
+        # (visible on every page regardless of which one was showing)
+        # onto the Dashboard page itself, right after the "next step"
+        # CTA, as secondary buttons — matches the task's own explicit
+        # placement. Sync/Scan/Match renamed from their old cryptic
+        # labels; still global-scoped (all playlists/locations/tracks,
+        # matching the CLI — item 22), unaffected by which playlist is
+        # selected. Download is playlist-scoped (the one exception) but
+        # lives in the same row since it's the other real action a user
+        # takes from here.
+        row = QHBoxLayout()
+
+        self.download_button = QPushButton("Download selected playlist")
+        self.download_button.setToolTip(
+            help_text.TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST
+        )
+        self.download_button.clicked.connect(self._on_download_clicked)
+        row.addWidget(self.download_button)
+
+        self.sync_button = QPushButton("Refresh playlists")
+        self.sync_button.setToolTip(help_text.TOOLTIP_SYNC_ALL_PLAYLISTS)
+        self.sync_button.clicked.connect(self._on_sync_clicked)
+        row.addWidget(self.sync_button)
+
+        self.scan_button = QPushButton("Rescan library folders")
+        self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
+        self.scan_button.clicked.connect(self._on_scan_clicked)
+        row.addWidget(self.scan_button)
+
+        self.match_button = QPushButton("Re-match library")
+        self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
+        self.match_button.clicked.connect(self._on_match_clicked)
+        row.addWidget(self.match_button)
+
+        row.addStretch()
+        return row
+
     def _build_dashboard_page(self) -> QWidget:
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(theme.SPACING_MD)
+
+        # Roadmap item 7 — "next step" guidance, one primary CTA at a
+        # time. Above dashboard_notice (errors/warnings), so guidance
+        # and errors never overwrite each other.
+        self.next_step_notice = InlineNotice()
+        content_layout.addWidget(self.next_step_notice)
+
+        content_layout.addLayout(self._build_dashboard_action_row())
 
         # Persistent, dismissible — outside the 2s poll's reach, unlike
         # status_label below (see notice.py's own docstring for why
@@ -609,21 +748,11 @@ class MainWindow(QMainWindow):
         self.track_table.customContextMenuRequested.connect(
             self._on_track_table_context_menu
         )
-        right.addWidget(self.track_table)
-
-        self.empty_state_label = QLabel(
-            "No cached tracks for this playlist yet."
-        )
-        self.empty_state_label.hide()
-        right.addWidget(self.empty_state_label)
-
-        self.sync_tracks_button = QPushButton("Sync tracks")
-        self.sync_tracks_button.setToolTip(help_text.TOOLTIP_SYNC_TRACKS)
-        self.sync_tracks_button.clicked.connect(
-            self._on_sync_tracks_clicked
-        )
-        self.sync_tracks_button.hide()
-        right.addWidget(self.sync_tracks_button)
+        self.track_area_stack = QStackedWidget()
+        self.track_area_stack.addWidget(self.track_table)
+        self._track_empty_panel = self._build_track_empty_panel()
+        self.track_area_stack.addWidget(self._track_empty_panel)
+        right.addWidget(self.track_area_stack)
 
         right.addLayout(self._build_tagging_controls())
 
@@ -1366,6 +1495,39 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, playlist)
             self.playlist_list.addItem(item)
 
+    def _build_track_empty_panel(self) -> QWidget:
+        # Roadmap item 7 — "No playlist selected, or an empty table,
+        # renders a small centred panel with one line of copy and the
+        # relevant button — not a bare grid." One panel, two real
+        # states (see _render_no_playlist_selected/_render_track_
+        # statuses): no playlist picked yet (no button — there's
+        # nothing to click but the list on the left), and a real
+        # playlist whose tracks haven't been loaded yet (a real "Load
+        # tracks" action).
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.addStretch()
+
+        self.track_empty_label = QLabel("")
+        self.track_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.track_empty_label.setWordWrap(True)
+        self.track_empty_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        layout.addWidget(self.track_empty_label)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        self.sync_tracks_button = QPushButton("Load tracks")
+        self.sync_tracks_button.setToolTip(help_text.TOOLTIP_SYNC_TRACKS)
+        self.sync_tracks_button.clicked.connect(
+            self._on_sync_tracks_clicked
+        )
+        button_row.addWidget(self.sync_tracks_button)
+        button_row.addStretch()
+        layout.addLayout(button_row)
+
+        layout.addStretch()
+        return panel
+
     def _on_playlist_selected(
             self,
             current: QListWidgetItem | None,
@@ -1377,9 +1539,11 @@ class MainWindow(QMainWindow):
             else None
         )
         self._poll_selected_playlist()
+        self._poll_next_step()
 
     def _poll_selected_playlist(self) -> None:
         if self.selected_playlist is None:
+            self._render_no_playlist_selected()
             return
 
         playlist_name = self.selected_playlist.name
@@ -1392,21 +1556,37 @@ class MainWindow(QMainWindow):
             on_finished=self._render_track_statuses,
         )
 
+    def _render_no_playlist_selected(self) -> None:
+        self._current_track_statuses = []
+        self.track_table.setRowCount(0)
+        self.track_empty_label.setText(
+            "Pick a playlist on the left to see its tracks."
+        )
+        self.sync_tracks_button.hide()
+        self.track_area_stack.setCurrentWidget(self._track_empty_panel)
+
     def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
         self._current_track_statuses = statuses
 
         if not statuses:
             self.track_table.setRowCount(0)
-            self.empty_state_label.show()
+            playlist_name = (
+                self.selected_playlist.name
+                if self.selected_playlist is not None
+                else ""
+            )
+            self.track_empty_label.setText(
+                f"'{playlist_name}''s tracks haven't been loaded yet."
+            )
             # Explicit, user-triggered sync only — never auto-fetched on
             # selection, since track syncing was deliberately split out
             # from playlist syncing to keep Spotify API calls scoped
             # and intentional (roadmap item 1).
             self.sync_tracks_button.show()
+            self.track_area_stack.setCurrentWidget(self._track_empty_panel)
             return
 
-        self.empty_state_label.hide()
-        self.sync_tracks_button.hide()
+        self.track_area_stack.setCurrentWidget(self.track_table)
 
         self.track_table.setRowCount(len(statuses))
 
@@ -1435,6 +1615,80 @@ class MainWindow(QMainWindow):
             self.track_table.setCellWidget(
                 row, 3, self._build_track_actions(status),
             )
+
+    def _fetch_next_step_facts(self) -> _NextStepFacts:
+        # Bundled into one background-thread call rather than one
+        # run_worker round trip per fact — each field still traces to
+        # exactly one real service/Application call, this just avoids
+        # a chain of sequential worker hops to gather them.
+        playlist_name = (
+            self.selected_playlist.name
+            if self.selected_playlist is not None
+            else None
+        )
+        track_statuses = (
+            self.application.dashboard_service
+            .get_playlist_track_status(playlist_name)
+            if playlist_name is not None
+            else None
+        )
+
+        return _NextStepFacts(
+            spotify_configured=self.application.spotify_configured,
+            has_library_location=bool(
+                self.application.library_service.list_locations()
+            ),
+            has_cached_playlists=bool(
+                self.application.sync_service.list_playlists()
+            ),
+            selected_playlist_name=playlist_name,
+            track_statuses=track_statuses,
+            has_scanned_library=(
+                self.application.library_service.has_scanned_library()
+            ),
+            soulseek_configured=self.application.soulseek_configured,
+        )
+
+    def _poll_next_step(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self._fetch_next_step_facts,
+            on_finished=self._render_next_step,
+        )
+
+    def _render_next_step(self, facts: _NextStepFacts) -> None:
+        step = _decide_next_step(facts)
+
+        if step is None:
+            self.next_step_notice.dismiss()
+            return
+
+        action = step.action
+        self.next_step_notice.show_message(
+            step.message,
+            kind=step.kind,
+            action_text=step.action_text,
+            on_action=(
+                (lambda: self._on_next_step_action(action))
+                if action is not None else None
+            ),
+        )
+
+    def _on_next_step_action(self, action: str) -> None:
+        if action == "settings_connection":
+            self._on_settings_clicked(SETTINGS_TAB_CONNECTION)
+        elif action == "settings_locations":
+            self._on_settings_clicked(SETTINGS_TAB_LOCATIONS)
+        elif action == "sync":
+            self._on_sync_clicked()
+        elif action == "sync_tracks":
+            self._on_sync_tracks_clicked()
+        elif action == "scan":
+            self._on_scan_clicked()
+        elif action == "download":
+            self._on_download_clicked()
+        elif action == "tag_playlist":
+            self._on_tag_playlist_clicked()
 
     def _poll_active_downloads(self) -> None:
         # Purely observational — a cheap local DB read via
@@ -1880,12 +2134,14 @@ class MainWindow(QMainWindow):
             on_finished=lambda _: self._poll_selected_playlist(),
         )
 
-    def _on_settings_clicked(self) -> None:
+    def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
         # A held reference is required — a local-only QMainWindow with
         # nothing else pointing at it gets garbage-collected as soon as
         # this method returns (same class of bug item 22's
         # ui/workers.py _callbacks registry exists to prevent for
         # in-flight background tasks, applied here to a window
         # instead).
-        self.settings_window = SettingsWindow(self.application)
+        self.settings_window = SettingsWindow(
+            self.application, initial_tab=initial_tab,
+        )
         self.settings_window.show()
