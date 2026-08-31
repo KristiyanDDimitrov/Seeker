@@ -2350,6 +2350,98 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     aware value) rather than assuming a naive-UTC value that would need
     a manual UTC-offset attach first; verified directly against the
     write sites before writing the formatter, not assumed either way.
+
+47. **Design system (dark theme + InlineNotice) — done, live-rendered
+    and checked, not just written (2026-08-31).** New `ui/theme.py`
+    (color/spacing/radius tokens, `apply_theme(app)` — Fusion style +
+    matching QPalette + one global QSS stylesheet, called once from
+    `main_ui.py` before any window is constructed) and `ui/notice.py`
+    (`InlineNotice` — a persistent, dismissible banner). Layout
+    conventions (24/20 page margins, action-row ordering) documented as
+    a docstring in `theme.py`; applying them to every existing page is
+    Phase 4's job, not done yet outside the two screens touched here
+    (Dashboard, `AboutDialog`).
+
+    **Root cause of "an error disappears before you've had time to
+    read it," found live, not hypothesized-and-guessed:**
+    `ui/workers.py::run_worker()` clears its target `status_label` to
+    `""` unconditionally at the START of every call, before the
+    background task runs. `MainWindow._poll_selected_playlist()` —
+    which passes `status_label=self.status_label` — runs on both the 2s
+    `poll_timer` tick AND after every real backend poll (item 45's own
+    new hook), completely independent of whatever the user was just
+    shown. So any validation error or selection-guard message written
+    to that one shared label had at most ~2 seconds, often far less,
+    before the very next poll tick silently wiped it — a structural
+    bug, not a timing one. Fixed by routing the Dashboard's actionable
+    messages (BPM-range validation, "select a track/playlist first")
+    through a new `self.dashboard_notice: InlineNotice`, which lives
+    outside `run_worker`'s `status_label` plumbing entirely.
+    `status_label` remains for genuinely disposable progress text
+    ("Tagging 3 selected track(s)...") that nobody needs to still see
+    a few seconds later. **Not yet swept everywhere** — one other real
+    instance of the identical bug class was spotted but left alone in
+    this pass (`_on_upgrade_decision_finished`'s Review-tab success
+    message, also written to the same shared `status_label`); a full
+    sweep of every remaining `status_label` call site for this same
+    class belongs to the broader Phase 3/4 rollout, not claimed done
+    here.
+
+    **Three more real, live-found Qt/QSS bugs, each confirmed via a
+    bisected minimal repro before being fixed — this is exactly why
+    the task's own "render real screens and look at the PNGs" rule
+    exists, not a formality:**
+    1. `QTableWidget::item { padding: ...; }` in the stylesheet
+       corrupts the paint of any `QPushButton` living inside a cell
+       *widget* (`setCellWidget` — used throughout this app's Actions/
+       Progress columns) into garbled, ghosted text. Real, reproducible
+       Qt/Fusion bug, bisected down to this exact rule via a minimal
+       standalone repro (confirmed clean with every other theme rule
+       present, corrupted the instant this one rule was added back).
+       Fixed by dropping it from `QTableWidget` (kept on `QListWidget`,
+       confirmed safe there since nothing in this app puts a widget
+       inside a `QListWidget` item) — a code comment in `theme.py`
+       documents why, so a future "just add cell padding back" doesn't
+       silently reintroduce this.
+    2. `InlineNotice(QWidget)`'s own per-instance `setStyleSheet()` call
+       (the colored border/background) silently did nothing — a plain
+       `QWidget` subclass doesn't paint its own stylesheet background/
+       border by default in Qt unless `Qt.WidgetAttribute
+       .WA_StyledBackground` is set. Fixed with that one attribute.
+    3. `InlineNotice`'s dismiss button (`setFixedWidth(28)`) rendered
+       with completely invisible text — the global `QPushButton` rule's
+       own horizontal padding (`6px 14px` = 28px of padding alone)
+       consumed the entire fixed width, leaving zero space for the
+       glyph. Fixed by dropping the fixed width (sized by its own
+       `sizeHint` like every other themed button) and using a plain
+       ASCII "X" instead of a Unicode "✕"/"×" glyph, avoiding any
+       dependency on multiplication-sign coverage in whatever font a
+       given platform falls back to.
+
+    **Screenshots, real widgets, real theme applied (scratch, not
+    committed):** Dashboard with a mix of all four track states plus a
+    live error `InlineNotice`; `AboutDialog` (a real dialog with one
+    primary "Close" button, left-aligned per the layout convention);
+    Downloads tab with a determinate 50%-complete progress bar and an
+    indeterminate queued one. All three inspected directly before
+    calling this done — the corrupted-button and invisible-dismiss-text
+    bugs above were both found this way, not by reading the QSS and
+    assuming it was fine.
+
+    New tests: `tests/test_notice.py` (6, `InlineNotice`'s show/hide/
+    dismiss/action-wiring behavior) and a regression test
+    (`test_dashboard_notice_survives_the_2s_poll_that_used_to_wipe_it`)
+    that calls `_poll_selected_playlist()` directly and asserts the
+    notice is untouched — the real mechanism that used to wipe it, not
+    a timer/sleep-based approximation. No automated test exists for the
+    three Qt/QSS rendering bugs themselves (a pixel-level visual
+    assertion isn't practical in this fast suite) — the durable guard
+    there is the code comment in `theme.py` plus this entry; the
+    render-and-look workflow is what would catch a regression, same as
+    it caught the original bug. `mypy --strict` clean; full suite 510
+    passed / 1 skipped. [HISTORY §47](docs/HISTORY.md#47)
+
+This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
 gets written — kept short enough to read in full before starting work.

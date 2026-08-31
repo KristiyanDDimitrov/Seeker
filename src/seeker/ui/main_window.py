@@ -45,9 +45,10 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.ui import help_text
+from seeker.ui import help_text, theme
 from seeker.ui.download_eta import DownloadEtaTracker
 from seeker.ui.formatting import format_timestamp
+from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import run_worker
 
@@ -152,6 +153,11 @@ class AboutDialog(QDialog):
         self.setWindowTitle(help_text.ABOUT_DIALOG_TITLE)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_XL, theme.SPACING_LG,
+            theme.SPACING_XL, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
 
         try:
             installed_version = version("seeker")
@@ -183,9 +189,13 @@ class AboutDialog(QDialog):
             support_row.addWidget(support_button)
         layout.addLayout(support_row)
 
+        close_row = QHBoxLayout()
         close_button = QPushButton("Close")
+        close_button.setProperty("variant", "primary")
         close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button)
+        close_row.addWidget(close_button)
+        close_row.addStretch()
+        layout.addLayout(close_row)
 
 
 class MainWindow(QMainWindow):
@@ -257,6 +267,12 @@ class MainWindow(QMainWindow):
         central_outer.addWidget(
             _build_subtitle_label(help_text.DASHBOARD_TAB_SUBTITLE)
         )
+
+        # Persistent, dismissible — outside the 2s poll's reach, unlike
+        # status_label below (see notice.py's own docstring for why
+        # that distinction is load-bearing, not cosmetic).
+        self.dashboard_notice = InlineNotice()
+        central_outer.addWidget(self.dashboard_notice)
 
         dashboard_content = QWidget()
         layout = QHBoxLayout(dashboard_content)
@@ -575,7 +591,7 @@ class MainWindow(QMainWindow):
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self.status_label.setText(str(error))
+            self.dashboard_notice.show_message(str(error), kind="error")
             return
 
         run_worker(
@@ -600,7 +616,7 @@ class MainWindow(QMainWindow):
         try:
             analyze_audio, bpm_range, _ = self._resolve_tag_options()
         except ValueError as error:
-            self.status_label.setText(str(error))
+            self.dashboard_notice.show_message(str(error), kind="error")
             return
 
         run_worker(
@@ -619,13 +635,15 @@ class MainWindow(QMainWindow):
         track_ids = self._selected_track_ids()
 
         if not track_ids:
-            self.status_label.setText("Select at least one track first.")
+            self.dashboard_notice.show_message(
+                "Select at least one track first.", kind="warning",
+            )
             return
 
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self.status_label.setText(str(error))
+            self.dashboard_notice.show_message(str(error), kind="error")
             return
 
         run_worker(
@@ -647,13 +665,15 @@ class MainWindow(QMainWindow):
 
     def _on_tag_playlist_clicked(self) -> None:
         if self.selected_playlist is None:
-            self.status_label.setText("Select a playlist first.")
+            self.dashboard_notice.show_message(
+                "Select a playlist first.", kind="warning",
+            )
             return
 
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self.status_label.setText(str(error))
+            self.dashboard_notice.show_message(str(error), kind="error")
             return
 
         playlist_name = self.selected_playlist.name

@@ -7149,3 +7149,111 @@ change alone (up from the 480 baseline: 3 new
 `test_download_service.py` tests for the indexing fix, 1 for the
 glob-escaping fix, 1 new UI test for the backend-poll refresh).
 
+### 47
+
+Task: build a dark design system (`ui/theme.py`, color/spacing tokens,
+one global QSS stylesheet) and a persistent `InlineNotice` widget,
+find and fix the real root cause of a reported "an error message
+disappears before you've had time to read it" bug, and — per an
+explicit instruction from a follow-up check-in — actually render real
+screens with the theme applied and look at the PNGs before calling any
+of it done, rather than trusting the QSS was correct by construction.
+
+**Root cause, confirmed by reading the code, not guessed.**
+`ui/workers.py::run_worker()`'s very first lines clear its
+`status_label` argument to `""`, unconditionally, before the
+background task even starts. `MainWindow._poll_selected_playlist()`
+passes `status_label=self.status_label` and is wired to both the 2s
+`poll_timer` (routine, always running) and, since item 45's own UI
+follow-on, the real backend-poll's completion callback too. Since
+these fire completely independently of whatever the user was just
+shown, any message written to that one shared label — a BPM-range
+validation error, "select a track first" — was live for, at most, the
+time until the next unrelated poll tick happened to fire. Confirmed
+this wasn't just a plausible theory by tracing the exact call chain
+rather than assuming it from the symptom description alone.
+
+Fixed with `InlineNotice`, a small `QWidget` with a colored left
+border by message kind (info/success/warning/error), an optional
+action button, and a dismiss button — deliberately outside
+`run_worker`'s `status_label` plumbing, so nothing routine can silently
+clear it. Wired into the Dashboard's four actionable message call
+sites (`_on_tag_track_clicked`/`_on_retag_track_clicked`/
+`_on_tag_selected_clicked`/`_on_tag_playlist_clicked`'s validation
+errors and selection guards). Left `status_label` in place for the two
+genuinely disposable progress strings ("Tagging N selected
+track(s)..."). **Deliberately not swept everywhere in this pass** —
+`_on_upgrade_decision_finished`'s Review-tab success message hits the
+identical bug (same shared `status_label`, same poll exposure) but
+was left as a known, recorded gap rather than fixed opportunistically
+outside this task's own Dashboard-focused scope; a full sweep is
+Phase 4-or-later work.
+
+**Screenshots surfaced three more real bugs — this is the part that
+justified the task's own "render and look" instruction, not a
+formality.** First render of the Dashboard with the new theme applied
+showed a `QPushButton` labeled "Tag" (inside a `QTableWidget`
+`setCellWidget`, the Actions column) rendering as garbled, ghosted
+text ("Iao" instead of "Tag") — visible immediately, not something a
+diff of the QSS text would ever catch.
+
+Bisected via a minimal standalone repro (a bare `QTableWidget` with one
+`setCellWidget(0, 0, container)` containing a `QPushButton`), adding
+back one theme rule at a time: clean with no theme at all; clean with
+`Fusion` + palette only; clean with the `QPushButton` rule alone; clean
+with `QWidget` + `QPushButton`; clean with `QTableWidget`'s
+background/border/selection rules added too; **corrupted the instant
+`QTableWidget::item { padding: 4px; }` was added** — confirmed by
+removing just that one rule and nothing else, which cleared it again.
+Real, reproducible Qt/Fusion behavior: styling `::item` padding on a
+`QTableWidget` corrupts the paint of a widget living in a cell via
+`setCellWidget`, not just the item's own text — and this app uses
+`setCellWidget` throughout (Actions/Progress columns across Dashboard,
+Downloads, Review, Duplicates), so this would have been a real,
+visible defect on every one of those tabs, not a cosmetic one-off.
+Fixed by dropping the rule from `QTableWidget` specifically (kept on
+`QListWidget`, confirmed safe there by checking directly: nothing in
+this app ever calls `setItemWidget` on a `QListWidget`) — a code
+comment in `theme.py` records the finding so a future "let's add cell
+padding back for polish" doesn't silently reintroduce it.
+
+Two smaller bugs surfaced fixing `InlineNotice` itself for its own
+screenshot. (1) Its per-instance `setStyleSheet()` call (the colored
+kind-based border) rendered as a plain, unstyled row — no border, no
+distinct background — even though the stylesheet text was correct.
+Root cause: a plain `QWidget` subclass does not paint its own
+stylesheet background/border by default in Qt (skipped for
+performance unless opted in) — needs
+`setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)`, which
+this widget never set. (2) Its dismiss button rendered with completely
+invisible text — zoomed into the screenshot and confirmed the glyph
+wasn't just an unsupported-Unicode blank box (the working hypothesis
+at first, since the glyph was a Unicode "✕") but genuinely absent
+entirely, border included. Real cause, found by checking the numbers
+rather than accepting the Unicode-coverage theory: `setFixedWidth(28)`
+left exactly zero content width once the global `QPushButton` rule's
+own `padding: 6px 14px` (28px of horizontal padding alone) was
+applied — the glyph was being laid out into negative space. Fixed by
+dropping the fixed width entirely (sized by `sizeHint`, like every
+other themed button) and switching to a plain ASCII "X" — kept as the
+right call even after finding the real cause, since it removes any
+remaining dependency on Unicode multiplication-sign glyph coverage in
+whatever font a given platform's Qt build falls back to.
+
+**Final screenshots, all three inspected directly, all clean:**
+Dashboard (four track states — in-library untagged, in-library
+tagged, not-found, needs-review — plus a live error `InlineNotice`
+showing the exact BPM-range validation message); `AboutDialog` (a real
+existing dialog, "Close" now styled `variant="primary"` and left-
+aligned per the layout convention, "Support on Revolut"/"Support on
+PayPal" buttons rendering as ordinary secondary buttons); Downloads
+tab (one determinate progress bar at a real 50%, one indeterminate
+queued bar). Saved to a session scratch directory, not committed, per
+the task's own instruction.
+
+`mypy --strict` clean; full suite 510 passed / 1 skipped (up from the
+503 baseline: 6 new `test_notice.py` tests, 1 new regression test
+calling `_poll_selected_playlist()` directly and asserting the notice
+survives it — the real mechanism that used to wipe messages, not a
+timer/sleep stand-in for it).
+

@@ -1310,7 +1310,32 @@ def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
     actions.findChildren(QPushButton)[0].click()
 
     assert application.metadata_service.tag_tracks_calls == []
-    assert "both" in window.status_label.text().lower()
+    assert "both" in window.dashboard_notice.text().lower()
+    assert not window.dashboard_notice.isHidden()
+
+
+def test_dashboard_notice_survives_the_2s_poll_that_used_to_wipe_it(qtbot):
+    # Regression test for the real root cause found while building
+    # Phase 3: run_worker() clears its target status_label to "" at the
+    # START of every call, and _poll_selected_playlist() (which passes
+    # status_label=self.status_label) runs on both the 2s poll_timer
+    # tick and after every real backend poll — so ANY message written
+    # to the old shared status_label had at most ~2s, often far less,
+    # before the next poll silently wiped it regardless of severity.
+    # InlineNotice lives outside run_worker's status_label plumbing
+    # entirely, so a real poll tick must never clear it.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.dashboard_notice.show_message("Something worth reading", kind="error")
+    assert not window.dashboard_notice.isHidden()
+
+    window._poll_selected_playlist()
+    qtbot.wait(50)
+
+    assert window.dashboard_notice.text() == "Something worth reading"
+    assert not window.dashboard_notice.isHidden()
 
 
 def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
@@ -1361,7 +1386,7 @@ def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
     window.tag_selected_button.click()
 
     assert application.metadata_service.tag_tracks_calls == []
-    assert "select" in window.status_label.text().lower()
+    assert "select" in window.dashboard_notice.text().lower()
 
 
 def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
@@ -1392,7 +1417,7 @@ def test_tag_playlist_without_selection_shows_message_and_makes_no_call(qtbot):
     window.tag_playlist_button.click()
 
     assert application.metadata_service.tag_playlist_calls == []
-    assert "playlist" in window.status_label.text().lower()
+    assert "playlist" in window.dashboard_notice.text().lower()
 
 
 def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):

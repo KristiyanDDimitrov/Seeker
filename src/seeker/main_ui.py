@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 
 from seeker.application import Application
 from seeker.ui.main_window import MainWindow
+from seeker.ui.theme import apply_theme
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -15,6 +16,10 @@ def main() -> None:
     application = Application()
 
     qt_app = QApplication(sys.argv)
+    # Before any window is constructed — apply_theme() sets Fusion
+    # (predictable QSS rendering on both macOS and Windows) plus the
+    # dark palette/stylesheet every window relies on.
+    apply_theme(qt_app)
 
     window: QMainWindow
 
