@@ -2310,7 +2310,46 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     26's human-confirmed matches, not something this fix introduced or
     was asked to change. [HISTORY §45](docs/HISTORY.md#45)
 
-This file and `docs/HISTORY.md` split the same information by shelf life:
+46. **Tagged tracks stop asking to be tagged — done (2026-08-31).**
+    `TrackStatus` gains `tagged_at: str | None` (ISO string, matching
+    this codebase's existing str-not-datetime convention for every
+    other stored timestamp — `matched_at`/`completed_at`/`LocalFile
+    .tagged_at` itself — deliberately NOT the `datetime` type an
+    earlier draft of this task specified, to stay consistent), resolved
+    in `DashboardService._compute_status` from the matched
+    `local_files` row. Dashboard Actions column:
+    `IN_LIBRARY`+untagged → the existing "Tag" button;
+    `IN_LIBRARY`+tagged → a muted "Tagged" label with a tooltip
+    showing the local date/time; anything else → blank, unchanged.
+    Right-click on a tagged row offers "Re-tag" (does nothing for an
+    untagged or not-in-library row).
+
+    **The backend `force` flag and CLI `--force` for `library tag`
+    turned out to already exist**, built in an earlier, uncommitted
+    session with no corresponding roadmap entry — confirmed by reading
+    `metadata_service.py`/`cli.py` directly before writing anything,
+    not assumed. Only the UI side (a "Re-tag already tagged files"
+    checkbox on the tagging panel, wired through `_resolve_tag_options`
+    into all three existing triggers, plus the per-row "Re-tag" menu
+    action which always forces regardless of the checkbox) and
+    `TrackStatus.tagged_at`/the Actions-column display were new.
+
+    New `ui/formatting.py` — `format_timestamp`/`format_file_size`/
+    `format_speed`/`format_duration_seconds`, shared by this, a future
+    History page, and the Downloads ETA. `download_eta.py`'s own
+    `format_eta_seconds` was moved in (re-exported under its old name
+    for backward compatibility) rather than kept as a second copy —
+    there was no pre-existing byte-size/speed formatter anywhere in
+    `ui/` to move (checked directly: the Downloads tab's progress bars
+    only ever used raw byte counts as a `QProgressBar` range/value, no
+    text formatting at all). **Real, confirmed fact used to write the
+    timestamp conversion correctly:** every stored timestamp in this
+    codebase (`tagged_at`/`matched_at`/`completed_at`) is written via
+    `datetime.now(timezone.utc).isoformat()` — timezone-AWARE UTC, not
+    naive — so `format_timestamp` uses `.astimezone()` (correct for an
+    aware value) rather than assuming a naive-UTC value that would need
+    a manual UTC-offset attach first; verified directly against the
+    write sites before writing the formatter, not assumed either way.
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
 gets written — kept short enough to read in full before starting work.

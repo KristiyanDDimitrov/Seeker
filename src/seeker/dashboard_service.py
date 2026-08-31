@@ -259,7 +259,10 @@ def _compute_status(
             and match.local_file_id is not None
             and match.local_file_id in local_files_by_id
     ):
-        return TrackStatus(track=track, state=IN_LIBRARY)
+        local_file = local_files_by_id[match.local_file_id]
+        return TrackStatus(
+            track=track, state=IN_LIBRARY, tagged_at=local_file.tagged_at,
+        )
 
     downloading = next(
         (r for r in requests if r.status in _DOWNLOADING_STATUSES), None

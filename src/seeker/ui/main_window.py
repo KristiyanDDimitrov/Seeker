@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -46,6 +47,7 @@ from seeker.models.track_status import (
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text
 from seeker.ui.download_eta import DownloadEtaTracker
+from seeker.ui.formatting import format_timestamp
 from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import run_worker
 
@@ -282,6 +284,12 @@ class MainWindow(QMainWindow):
         self.track_table.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
+        self.track_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.track_table.customContextMenuRequested.connect(
+            self._on_track_table_context_menu
+        )
         right.addWidget(self.track_table)
 
         self.empty_state_label = QLabel(
@@ -430,6 +438,12 @@ class MainWindow(QMainWindow):
         self.bpm_max_edit.hide()
         controls.addWidget(self.bpm_max_edit)
 
+        self.force_retag_checkbox = QCheckBox("Re-tag already tagged files")
+        self.force_retag_checkbox.setToolTip(
+            help_text.TOOLTIP_FORCE_RETAG_CHECKBOX
+        )
+        controls.addWidget(self.force_retag_checkbox)
+
         self.tag_selected_button = QPushButton("Tag selected")
         self.tag_selected_button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
         self.tag_selected_button.clicked.connect(
@@ -450,11 +464,14 @@ class MainWindow(QMainWindow):
         self.bpm_min_edit.setVisible(checked)
         self.bpm_max_edit.setVisible(checked)
 
-    def _resolve_tag_options(self) -> tuple[bool, tuple[float, float] | None]:
+    def _resolve_tag_options(
+            self,
+    ) -> tuple[bool, tuple[float, float] | None, bool]:
+        force = self.force_retag_checkbox.isChecked()
         analyze_audio = self.analyze_audio_checkbox.isChecked()
 
         if not analyze_audio:
-            return False, None
+            return False, None, force
 
         min_text = self.bpm_min_edit.text().strip()
         max_text = self.bpm_max_edit.text().strip()
@@ -463,7 +480,7 @@ class MainWindow(QMainWindow):
             # A range is optional even with analysis on — matches the
             # CLI, where --analyze-audio alone (no --bpm-range) is
             # perfectly valid.
-            return True, None
+            return True, None, force
 
         if not min_text or not max_text:
             raise ValueError(
@@ -471,7 +488,7 @@ class MainWindow(QMainWindow):
             )
 
         try:
-            return True, (float(min_text), float(max_text))
+            return True, (float(min_text), float(max_text)), force
         except ValueError:
             raise ValueError("BPM range must be numeric.")
 
@@ -512,20 +529,51 @@ class MainWindow(QMainWindow):
         container = QWidget()
         actions_layout = QHBoxLayout(container)
         actions_layout.setContentsMargins(0, 0, 0, 0)
-
-        tag_button = QPushButton("Tag")
-        tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
         track_id = status.track.id
-        tag_button.clicked.connect(
-            lambda: self._on_tag_track_clicked(track_id, tag_button)
-        )
-        actions_layout.addWidget(tag_button)
+
+        if status.tagged_at is None:
+            tag_button = QPushButton("Tag")
+            tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
+            tag_button.clicked.connect(
+                lambda: self._on_tag_track_clicked(track_id, tag_button)
+            )
+            actions_layout.addWidget(tag_button)
+        else:
+            tagged_label = QLabel("Tagged")
+            tagged_label.setProperty("badge", "muted")
+            tagged_label.setToolTip(
+                f"Tagged {format_timestamp(status.tagged_at)}"
+            )
+            actions_layout.addWidget(tagged_label)
 
         return container
 
+    def _on_track_table_context_menu(self, position: Any) -> None:
+        row = self.track_table.rowAt(position.y())
+
+        if row < 0 or row >= len(self._current_track_statuses):
+            return
+
+        status = self._current_track_statuses[row]
+
+        if status.state != IN_LIBRARY or status.tagged_at is None:
+            # Nothing this menu offers applies to an untagged or
+            # not-in-library row — same "no control where there's
+            # nothing real to do" precedent as the Actions column
+            # itself, just via a context menu instead of a blank cell.
+            return
+
+        menu = QMenu(self)
+        retag_action = QAction("Re-tag", self)
+        retag_action.triggered.connect(
+            lambda: self._on_retag_track_clicked(status.track.id)
+        )
+        menu.addAction(retag_action)
+        menu.exec(self.track_table.viewport().mapToGlobal(position))
+
     def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
         try:
-            analyze_audio, bpm_range = self._resolve_tag_options()
+            analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
             self.status_label.setText(str(error))
             return
@@ -536,8 +584,33 @@ class MainWindow(QMainWindow):
                 [track_id],
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
+                force=force,
             ),
             button=button,
+            status_label=self.status_label,
+            on_finished=self._render_tag_result,
+        )
+
+    def _on_retag_track_clicked(self, track_id: str) -> None:
+        # The context menu's "Re-tag" always forces, independent of the
+        # tagging panel's own checkbox — right-clicking a specific
+        # already-tagged row and choosing "Re-tag" is an explicit,
+        # unambiguous request to redo exactly this one file, the same
+        # way the CLI's --force does for a whole playlist.
+        try:
+            analyze_audio, bpm_range, _ = self._resolve_tag_options()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.metadata_service.tag_tracks(
+                [track_id],
+                analyze_audio=analyze_audio,
+                expected_bpm_range=bpm_range,
+                force=True,
+            ),
             status_label=self.status_label,
             on_finished=self._render_tag_result,
         )
@@ -550,7 +623,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            analyze_audio, bpm_range = self._resolve_tag_options()
+            analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
             self.status_label.setText(str(error))
             return
@@ -561,6 +634,7 @@ class MainWindow(QMainWindow):
                 track_ids,
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
+                force=force,
             ),
             button=self.tag_selected_button,
             status_label=self.status_label,
@@ -577,7 +651,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            analyze_audio, bpm_range = self._resolve_tag_options()
+            analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
             self.status_label.setText(str(error))
             return
@@ -590,6 +664,7 @@ class MainWindow(QMainWindow):
                 playlist_name,
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
+                force=force,
             ),
             button=self.tag_playlist_button,
             status_label=self.status_label,

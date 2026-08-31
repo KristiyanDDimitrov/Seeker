@@ -178,8 +178,8 @@ _EMPTY_TAG_RESULT = {
 class FakeMetadataService:
     def __init__(self, tag_result: dict | None = None):
         self._tag_result = tag_result or dict(_EMPTY_TAG_RESULT)
-        self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None]] = []
-        self.tag_playlist_calls: list[tuple[str, bool, tuple | None]] = []
+        self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None, bool]] = []
+        self.tag_playlist_calls: list[tuple[str, bool, tuple | None, bool]] = []
 
     def tag_tracks(
             self,
@@ -189,7 +189,7 @@ class FakeMetadataService:
             force: bool = False,
     ) -> dict:
         self.tag_tracks_calls.append(
-            (track_ids, analyze_audio, expected_bpm_range)
+            (track_ids, analyze_audio, expected_bpm_range, force)
         )
         return self._tag_result
 
@@ -201,7 +201,7 @@ class FakeMetadataService:
             force: bool = False,
     ) -> dict:
         self.tag_playlist_calls.append(
-            (playlist_name, analyze_audio, expected_bpm_range)
+            (playlist_name, analyze_audio, expected_bpm_range, force)
         )
         return self._tag_result
 
@@ -1074,8 +1074,14 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
     assert window.review_upgrades_table.rowCount() == 1
 
 
-def _make_track_status(track_id: str = "t1", state: str = IN_LIBRARY) -> TrackStatus:
-    return TrackStatus(track=_make_track(track_id), state=state)
+def _make_track_status(
+        track_id: str = "t1",
+        state: str = IN_LIBRARY,
+        tagged_at: str | None = None,
+) -> TrackStatus:
+    return TrackStatus(
+        track=_make_track(track_id), state=state, tagged_at=tagged_at,
+    )
 
 
 def test_tag_button_appears_only_for_in_library_tracks(qtbot):
@@ -1096,6 +1102,130 @@ def test_tag_button_appears_only_for_in_library_tracks(qtbot):
     assert not_found_actions.findChildren(QPushButton) == []
 
 
+def test_tagged_track_shows_muted_label_instead_of_tag_button(qtbot):
+    statuses = [
+        _make_track_status(
+            track_id="t1", state=IN_LIBRARY,
+            tagged_at="2026-08-30T12:00:00+00:00",
+        ),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    actions = window.track_table.cellWidget(0, 3)
+    assert actions.findChildren(QPushButton) == []
+    labels = actions.findChildren(QLabel)
+    assert [label.text() for label in labels] == ["Tagged"]
+    assert "2026" in labels[0].toolTip()
+
+
+def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
+    statuses = [
+        _make_track_status(
+            track_id="t5", state=IN_LIBRARY,
+            tagged_at="2026-08-30T12:00:00+00:00",
+        ),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+    # The panel-wide force checkbox is deliberately left unchecked —
+    # Re-tag via the context menu must force regardless of it.
+    assert window.force_retag_checkbox.isChecked() is False
+
+    window._on_retag_track_clicked("t5")
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_tracks_calls == [
+        (["t5"], False, None, True),
+    ]
+
+
+def test_context_menu_offers_nothing_for_an_untagged_or_missing_row(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
+        _make_track_status(track_id="t2", state=NOT_FOUND),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+
+    # Neither row offers a real "Re-tag" action — an untagged row has
+    # nothing to re-tag, and a not-in-library row has no local file at
+    # all. Calling the handler directly (no real QMenu popup in an
+    # offscreen test) must simply do nothing, not raise.
+    window._on_track_table_context_menu(window.track_table.visualItemRect(
+        window.track_table.item(0, 0)
+    ).center())
+    window._on_track_table_context_menu(window.track_table.visualItemRect(
+        window.track_table.item(1, 0)
+    ).center())
+
+
+def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
+    statuses = [
+        _make_track_status(
+            track_id="t7", state=IN_LIBRARY,
+            tagged_at="2026-08-30T12:00:00+00:00",
+        ),
+    ]
+    playlists = [Playlist(id="p1", name="240KM/H", track_count=1)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(statuses)
+    window.force_retag_checkbox.setChecked(True)
+
+    actions = window.track_table.cellWidget(0, 3)
+    tag_button = actions.findChildren(QPushButton)[0] if actions.findChildren(
+        QPushButton
+    ) else None
+    # This row is already tagged, so the per-row control is the muted
+    # label, not a button — exercise the panel-wide checkbox via "Tag
+    # selected" and "Tag playlist" instead, both of which apply
+    # regardless of a row's own tagged state.
+    assert tag_button is None
+
+    selection_model = window.track_table.selectionModel()
+    selection_model.select(
+        window.track_table.model().index(0, 0),
+        QItemSelectionModel.SelectionFlag.Select
+        | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    window.tag_selected_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_tracks_calls == [
+        (["t7"], False, None, True),
+    ]
+
+    qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
+    window.playlist_list.setCurrentRow(0)
+    window.tag_playlist_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_playlist_calls == [
+        ("240KM/H", False, None, True),
+    ]
+
+
 def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
     statuses = [_make_track_status(track_id="t7", state=IN_LIBRARY)]
     application = FakeApplication()
@@ -1113,7 +1243,7 @@ def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
         timeout=2000,
     )
     assert application.metadata_service.tag_tracks_calls == [
-        (["t7"], False, None),
+        (["t7"], False, None, False),
     ]
 
 
@@ -1160,7 +1290,7 @@ def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
         timeout=2000,
     )
     assert application.metadata_service.tag_tracks_calls == [
-        (["t9"], True, (160.0, 180.0)),
+        (["t9"], True, (160.0, 180.0), False),
     ]
 
 
@@ -1212,10 +1342,13 @@ def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
         lambda: application.metadata_service.tag_tracks_calls != [],
         timeout=2000,
     )
-    track_ids, analyze_audio, bpm_range = application.metadata_service.tag_tracks_calls[0]
+    track_ids, analyze_audio, bpm_range, force = (
+        application.metadata_service.tag_tracks_calls[0]
+    )
     assert set(track_ids) == {"s1", "s3"}
     assert analyze_audio is False
     assert bpm_range is None
+    assert force is False
 
 
 def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
@@ -1247,7 +1380,7 @@ def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
         timeout=2000,
     )
     assert application.metadata_service.tag_playlist_calls == [
-        ("240KM/H", False, None),
+        ("240KM/H", False, None, False),
     ]
 
 

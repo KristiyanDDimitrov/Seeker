@@ -80,7 +80,11 @@ def seed_track(
         service.tracks.save_playlist_track(playlist_id, track_id, connection)
 
 
-def seed_local_file(service: DashboardService, filename: str = "song.mp3") -> int:
+def seed_local_file(
+        service: DashboardService,
+        filename: str = "song.mp3",
+        tagged_at: str | None = None,
+) -> int:
     with service.database.transaction() as connection:
         location_count = connection.execute(
             "SELECT COUNT(*) FROM library_locations"
@@ -113,8 +117,15 @@ def seed_local_file(service: DashboardService, filename: str = "song.mp3") -> in
             location_id, filename, connection,
         )
 
-    assert local_file is not None
-    assert local_file.id is not None
+        assert local_file is not None
+        assert local_file.id is not None
+
+        # upsert() deliberately never writes tagged_at (a routine scan
+        # must not wipe existing tagging state, same pattern as bpm/
+        # fingerprint) — mark_tagged() is the real, separate write path.
+        if tagged_at is not None:
+            service.local_files.mark_tagged(local_file.id, tagged_at, connection)
+
     return local_file.id
 
 
@@ -215,6 +226,22 @@ def test_in_library_state_for_auto_match_with_real_local_file(tmp_path):
     assert len(statuses) == 1
     assert statuses[0].state == IN_LIBRARY
     assert statuses[0].soulseek_candidate is None
+    assert statuses[0].tagged_at is None
+
+
+def test_in_library_state_surfaces_real_tagged_at(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    local_file_id = seed_local_file(
+        service, tagged_at="2026-08-30T12:00:00+00:00",
+    )
+    seed_match(service, "t1", "auto", local_file_id=local_file_id, score=95.0)
+
+    statuses = service.get_playlist_track_status("Playlist")
+
+    assert statuses[0].state == IN_LIBRARY
+    assert statuses[0].tagged_at == "2026-08-30T12:00:00+00:00"
 
 
 def test_downloading_state_surfaces_real_progress(tmp_path):

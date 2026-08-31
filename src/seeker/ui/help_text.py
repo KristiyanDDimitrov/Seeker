@@ -85,6 +85,10 @@ TOOLTIP_TAG_TRACK_ROW = (
     "Write Spotify's canonical metadata onto this track's matched local "
     "file."
 )
+TOOLTIP_FORCE_RETAG_CHECKBOX = (
+    "Redo the text/art tag write and analysis even for files already "
+    "tagged — e.g. after Spotify's metadata changed."
+)
 
 # --- Review tab ------------------------------------------------------------
 

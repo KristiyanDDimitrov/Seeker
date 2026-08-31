@@ -27,3 +27,9 @@ class TrackStatus:
     # real, live progress (see Task 2). None/None for every other state.
     bytes_transferred: int | None = None
     total_bytes: int | None = None
+    # Only meaningful when state == IN_LIBRARY — the resolved local
+    # file's own tagged_at, an ISO 8601 UTC string (matching
+    # LocalFile.tagged_at/TrackMatch.matched_at/DownloadRequest.
+    # completed_at's existing str-not-datetime convention throughout
+    # this codebase), or None if the file has never been tagged.
+    tagged_at: str | None = None

@@ -14,6 +14,13 @@ speed/ETA string, with no new I/O.
 from dataclasses import dataclass
 from datetime import datetime
 
+# format_duration_seconds now lives in ui/formatting.py, shared with the
+# History page and the Downloads tab's other size/speed display — this
+# re-export keeps every existing call site (including this module's own
+# describe() below and every test importing format_eta_seconds from
+# here) byte-for-byte unchanged.
+from seeker.ui.formatting import format_duration_seconds as format_eta_seconds
+
 
 @dataclass
 class _Sample:
@@ -28,20 +35,6 @@ class _Sample:
 # the cap on how many samples are retained per request — describe()
 # never needs more than this many.
 STALL_SAMPLE_COUNT = 3
-
-
-def format_eta_seconds(seconds: float) -> str:
-    total_seconds = max(int(round(seconds)), 0)
-
-    if total_seconds < 60:
-        return f"{total_seconds}s"
-
-    minutes, secs = divmod(total_seconds, 60)
-    if minutes < 60:
-        return f"{minutes}m {secs}s"
-
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes}m"
 
 
 class DownloadEtaTracker:
