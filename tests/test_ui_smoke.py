@@ -245,6 +245,97 @@ def test_main_window_constructs_without_crashing(qtbot):
     assert window.windowTitle() == "Seeker"
 
 
+# --- Sidebar shell (Phase 4) ------------------------------------------------
+
+def test_default_and_minimum_window_size(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert (window.width(), window.height()) == (1180, 760)
+    assert window.minimumWidth() == 960
+    assert window.minimumHeight() == 640
+
+
+def test_dashboard_is_the_default_active_page(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.stacked_widget.currentIndex() == window._page_indices["dashboard"]
+    assert window._nav_buttons["dashboard"].isChecked()
+
+
+def test_show_page_switches_stack_and_updates_checked_nav_button(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("downloads")
+
+    assert window.stacked_widget.currentIndex() == window._page_indices["downloads"]
+    assert window._nav_buttons["downloads"].isChecked()
+    assert not window._nav_buttons["dashboard"].isChecked()
+
+
+def test_nav_buttons_are_mutually_exclusive_and_settings_is_not_one_of_them(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    # Every real page (Dashboard/Downloads/Review/Duplicates/History)
+    # plus Help share one exclusive QButtonGroup.
+    assert set(window._nav_buttons) == {
+        "dashboard", "downloads", "review", "duplicates", "history", "help",
+    }
+    assert window._nav_group.exclusive()
+    for key in window._nav_buttons:
+        assert window._nav_buttons[key] in window._nav_group.buttons()
+
+    # Settings opens the existing dialog directly — it was never one of
+    # the "tab bodies" this shell turns into pages, so it's a plain,
+    # non-checkable button, not a member of the exclusive nav group.
+    assert not window.settings_button.isCheckable()
+    assert window.settings_button not in window._nav_group.buttons()
+
+
+def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._nav_buttons["downloads"].text() == "Downloads"
+    assert window._nav_buttons["review"].text() == "Review"
+
+    window._render_active_downloads(
+        [_make_active_download(track_id="d1"), _make_active_download(track_id="d2")]
+    )
+    assert window._nav_buttons["downloads"].text() == "Downloads  (2)"
+
+    window._render_review_items(
+        ([(_make_track("t1"), _make_review_candidate("t1"))], [])
+    )
+    assert window._nav_buttons["review"].text() == "Review  (1)"
+
+    # Back to zero must drop the badge entirely, not show "(0)".
+    window._render_active_downloads([])
+    assert window._nav_buttons["downloads"].text() == "Downloads"
+
+
+def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    history_page = window.stacked_widget.widget(window._page_indices["history"])
+    history_labels = [w.text() for w in history_page.findChildren(QLabel)]
+    assert help_text.HISTORY_PAGE_SUBTITLE in history_labels
+
+    help_page = window.stacked_widget.widget(window._page_indices["help"])
+    help_labels = [w.text() for w in help_page.findChildren(QLabel)]
+    assert help_text.HELP_PAGE_SUBTITLE in help_labels
+
+
 def test_main_window_has_a_settings_button(qtbot):
     # Thin glue coverage only — opening the real SettingsWindow needs a
     # real Application (library_service.list_locations, sync_service,
@@ -329,29 +420,34 @@ def test_about_dialog_support_buttons_open_placeholder_links(qtbot, monkeypatch)
     assert set(opened) == set(help_text.SUPPORT_LINKS.values())
 
 
-def test_dashboard_downloads_review_tabs_have_persistent_subtitles(qtbot):
+def test_dashboard_downloads_review_pages_have_persistent_subtitles(qtbot):
     # Task 1 — a short, persistent (not hover-dependent) one-liner under
-    # each tab's own header.
+    # each page's own header. Phase 4 moved these from a QTabWidget into
+    # a sidebar-driven QStackedWidget — each page is looked up by its
+    # own registered index, not a bare tab position.
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    tabs = window.centralWidget()
+    stack = window.stacked_widget
     dashboard_labels = [
         widget.text()
-        for widget in tabs.widget(0).findChildren(QLabel)
+        for widget in stack.widget(window._page_indices["dashboard"])
+        .findChildren(QLabel)
     ]
     assert help_text.DASHBOARD_TAB_SUBTITLE in dashboard_labels
 
     downloads_labels = [
         widget.text()
-        for widget in tabs.widget(1).findChildren(QLabel)
+        for widget in stack.widget(window._page_indices["downloads"])
+        .findChildren(QLabel)
     ]
     assert help_text.DOWNLOADS_TAB_SUBTITLE in downloads_labels
 
     review_labels = [
         widget.text()
-        for widget in tabs.widget(2).findChildren(QLabel)
+        for widget in stack.widget(window._page_indices["review"])
+        .findChildren(QLabel)
     ]
     assert help_text.REVIEW_TAB_SUBTITLE in review_labels
 
@@ -1492,16 +1588,15 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
 
 # --- Duplicates tab (roadmap item 5) ---------------------------------------
 #
-# Locations load lazily, only once the tab is actually shown (see
-# main_window.py's own comment on _on_tab_changed for why — an eager
+# Locations load lazily, only once the page is actually shown (see
+# main_window.py's own comment on _on_page_changed for why — an eager
 # worker here, run during every MainWindow construction, was confirmed
 # live to cause a real, reproducible deadlock under this test suite's
 # own rapid-fire construction pattern). Tests below drive that
 # explicitly rather than relying on construction alone.
 
 def _switch_to_duplicates_tab(window) -> None:
-    tabs = window.centralWidget()
-    tabs.setCurrentIndex(window._duplicates_tab_index)
+    window._show_page("duplicates")
 
 
 def test_duplicates_tab_has_persistent_subtitle(qtbot):
@@ -1509,9 +1604,10 @@ def test_duplicates_tab_has_persistent_subtitle(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    tabs = window.centralWidget()
-    duplicates_tab = tabs.widget(window._duplicates_tab_index)
-    labels = [w.text() for w in duplicates_tab.findChildren(QLabel)]
+    duplicates_page = window.stacked_widget.widget(
+        window._duplicates_page_index
+    )
+    labels = [w.text() for w in duplicates_page.findChildren(QLabel)]
 
     assert help_text.DUPLICATES_TAB_SUBTITLE in labels
 
@@ -1547,7 +1643,7 @@ def test_switching_to_duplicates_tab_loads_locations_lazily(qtbot):
 
 def test_switching_to_duplicates_tab_twice_loads_locations_once(qtbot):
     # Deliberately does NOT drive a second real tab-switch/worker round
-    # trip — see main_window.py's own _on_tab_changed comment: spawning
+    # trip — see main_window.py's own _on_page_changed comment: spawning
     # overlapping run_worker() calls in tight succession was confirmed
     # live to risk a real Qt-connection-mutex/GIL deadlock under this
     # suite's own rapid MainWindow churn (CLAUDE.md/docs/HISTORY.md).
@@ -1563,7 +1659,7 @@ def test_switching_to_duplicates_tab_twice_loads_locations_once(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._on_tab_changed(window._duplicates_tab_index)
+    window._on_page_changed(window._duplicates_page_index)
     qtbot.waitUntil(
         lambda: window.duplicates_location_combo.count() == 1, timeout=2000,
     )
@@ -1573,7 +1669,7 @@ def test_switching_to_duplicates_tab_twice_loads_locations_once(qtbot):
     # A second call must be a pure no-op — checked by asserting the
     # combo's contents are untouched, not by spawning another worker.
     window.duplicates_location_combo.clear()
-    window._on_tab_changed(window._duplicates_tab_index)
+    window._on_page_changed(window._duplicates_page_index)
 
     assert window.duplicates_location_combo.count() == 0
 

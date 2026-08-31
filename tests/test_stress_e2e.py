@@ -282,15 +282,14 @@ def test_broad_end_to_end_stress(qapp):
         main_window.scan_button.click()
         main_window.match_button.click()
 
-        # --- Duplicates tab: switch to it for real (the same real
-        # QTabWidget.currentChanged path a user clicking the tab takes,
-        # including the lazy-load fix from CLAUDE.md's Known Issues
-        # entry) and fire Compute fingerprints on the disposable scratch
-        # location right alongside the sync/scan/match flurry above —
-        # genuine overlapping worker/QThreadPool traffic, not run
-        # sequentially after everything else settles.
-        tabs_widget = main_window.centralWidget()
-        tabs_widget.setCurrentIndex(main_window._duplicates_tab_index)
+        # --- Duplicates page: switch to it for real (the same real
+        # QStackedWidget.currentChanged path a user clicking the sidebar
+        # nav item takes, including the lazy-load fix from CLAUDE.md's
+        # Known Issues entry) and fire Compute fingerprints on the
+        # disposable scratch location right alongside the sync/scan/
+        # match flurry above — genuine overlapping worker/QThreadPool
+        # traffic, not run sequentially after everything else settles.
+        main_window._show_page("duplicates")
         _pump(
             qapp,
             lambda: _select_duplicates_location(

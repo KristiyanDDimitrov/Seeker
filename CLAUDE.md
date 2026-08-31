@@ -2488,6 +2488,94 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     Dashboard's Actions-column context. `mypy --strict` clean; full
     suite 511 passed / 1 skipped.
 
+48. **Shell restructure: sidebar instead of tabs — done, all six pages
+    rendered and inspected (2026-08-31).** `MainWindow`'s `QTabWidget`
+    replaced with a fixed-`SIDEBAR_WIDTH=200` sidebar (`BG_SIDEBAR`,
+    the "Seeker" wordmark, then Dashboard/Downloads/Review/Duplicates/
+    History as checkable nav buttons in one exclusive `QButtonGroup`,
+    a stretch, then Help/Settings pinned at the bottom) driving a
+    `QStackedWidget`. Each existing tab body became a page via one
+    shared `_build_page(title, subtitle, content)` helper — title +
+    the existing `help_text.py` subtitle above the content, identical
+    `24/20` page margins and `12px` spacing everywhere, per Phase 3's
+    own documented layout convention (this is the first place that
+    convention is actually enforced by code rather than copied by
+    hand). `_show_page(key)` sets the stack index and the matching nav
+    button's checked state; `_register_page`/`self._page_indices: dict
+    [str, int]` replace the old bare tab-index bookkeeping.
+    `_on_tab_changed`/`_duplicates_tab_index` renamed
+    `_on_page_changed`/`_duplicates_page_index` — same lazy-load-on-
+    first-real-visit logic, unchanged (`QStackedWidget.currentChanged`
+    is the identical signal shape `QTabWidget` gave it). Window default
+    `1180×760`, minimum `960×640`.
+
+    **Settings deliberately stays a dialog, not a page — a scope
+    decision, not an oversight.** The task's own framing ("existing
+    tab bodies become pages — this is a shell change, not a rewrite of
+    each screen's contents") only covers what was already a tab body;
+    `SettingsWindow` was never one — it was already a separate modal
+    `QDialog` opened from the toolbar. Converting its own internal
+    4-tab structure into stacked shell pages would be exactly the kind
+    of screen-content rewrite the task explicitly scoped out. It's now
+    a plain, non-checkable button relocated to the sidebar's bottom
+    section (next to Help, per the task's own placement), not a member
+    of the exclusive nav `QButtonGroup` — clicking it opens the
+    unchanged dialog; nothing about "which page is active" needs to
+    track it.
+
+    **History and Help are real nav slots now, placeholder content —
+    a deliberate, documented choice, not scope creep.** Both future
+    pages (History is item 10 of the larger brief this shell serves,
+    Help is item 11) get a real sidebar entry and a real
+    `QStackedWidget` page now, each with its own real
+    title/subtitle (`help_text.HISTORY_PAGE_SUBTITLE`/
+    `HELP_PAGE_SUBTITLE`) and a one-line "coming in a future update"
+    placeholder body — so the sidebar's final shape is correct today,
+    and a later phase only needs to replace the placeholder content,
+    never touch navigation wiring. The existing Help menu → About
+    Seeker action in the real `QMenuBar` is untouched and unrelated —
+    kept per the task's own "keep the real QMenuBar" instruction.
+
+    **Nav badges** (`_update_nav_badge`) read counts already computed
+    by the existing 2s poll — `_render_active_downloads`
+    (`len(downloads)`) and `_render_review_items`
+    (`len(candidates) + len(upgrades)`) — no new poll added. Text-based
+    (`"Downloads  (2)"`, plain `"Downloads"` at zero — never `"(0)"`),
+    not a separate sibling badge widget, so each nav item stays one
+    real `QButtonGroup` member with no composite-row plumbing.
+
+    **Nav item styling reuses Phase 3's own established gotchas
+    correctly, not by luck.** `QPushButton` is already painted through
+    Qt's style system (confirmed in Phase 3: unlike a plain `QWidget`,
+    it needs no `WA_StyledBackground`), so a checkable, flat
+    `QPushButton` with a `navItem="true"` property is sufficient — the
+    `[navItem="true"]:checked` QSS rule (`ACCENT_SUBTLE` fill + 3px
+    `ACCENT` left border) needed no new workaround. The sidebar panel
+    itself, a plain `QWidget`, DOES need
+    `WA_StyledBackground` for its own `#sidebarPanel` background rule —
+    applied from the start this time, not found the hard way again.
+
+    **All six pages rendered offscreen and inspected directly** (per
+    the task's own "grab a PNG of every page and look at it"
+    instruction) — scratch, not committed. Confirmed live: the active
+    nav item's accent left-border/fill, the wordmark, badge text
+    (`"Downloads  (2)"` with real seeded data), Settings' distinct
+    (non-flat, bordered) look versus the flat nav buttons, and default
+    window sizing (`1180×760`, confirmed via `window.size()`).
+
+    New tests: default/minimum window size, Dashboard-is-default-
+    active-page, `_show_page` switches both the stack and the checked
+    nav button, the nav group's exclusivity and that Settings is
+    genuinely excluded from it, live badge counts (including the
+    zero-count "no badge, not `(0)`" case), and that History/Help pages
+    exist with their own real subtitles. Existing Duplicates-tab-
+    lazy-load tests updated to the new `_show_page`/`_page_indices`/
+    `_on_page_changed` shape rather than deleted. The opt-in stress
+    test's own duplicates-tab-switch line updated to `_show_page`
+    too (not exercised in this pass — real-drive-gated, per its own
+    documented opt-in scope). `mypy --strict` clean; full suite 517
+    passed / 1 skipped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

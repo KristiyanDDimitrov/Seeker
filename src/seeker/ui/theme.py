@@ -211,6 +211,33 @@ QPushButton[variant="danger"]:hover {{
     color: {TEXT};
 }}
 
+/* Sidebar nav items — transparent by default (deliberately NOT the
+ordinary QPushButton surface/border look above; a flat text-only
+button reads better in a list of nav items than a row of boxed
+buttons), ACCENT_SUBTLE fill + a 3px ACCENT left border when the
+active page's own nav button is checked. */
+QPushButton[navItem="true"] {{
+    background-color: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: 0px;
+    text-align: left;
+    padding: 8px {SPACING_MD}px;
+    color: {TEXT_MUTED};
+}}
+
+QPushButton[navItem="true"]:hover {{
+    background-color: {BG_SURFACE_2};
+    color: {TEXT};
+}}
+
+QPushButton[navItem="true"]:checked {{
+    background-color: {ACCENT_SUBTLE};
+    border-left: 3px solid {ACCENT};
+    color: {TEXT};
+    font-weight: 600;
+}}
+
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit {{
     background-color: {BG_SURFACE};
     border: 1px solid {BORDER};

@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -94,15 +94,75 @@ _DOWNLOAD_STATUS_LABELS = {
 # unset by design, not zeroed).
 _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
 
+# Untuned constant — a fixed sidebar width narrow enough to leave real
+# room for content, wide enough that "Duplicates" (the longest nav
+# label) never wraps or clips.
+SIDEBAR_WIDTH = 200
+
+# key -> (nav label, page title). One source of truth for both the
+# sidebar button text (via _update_nav_badge, which appends a live
+# count to the label half) and the page header's own title — a nav
+# label and its page title only ever differ if a future page wants
+# them to (none do yet).
+_NAV_PAGES = (
+    ("dashboard", "Dashboard"),
+    ("downloads", "Downloads"),
+    ("review", "Review"),
+    ("duplicates", "Duplicates"),
+    ("history", "History"),
+)
+
 
 def _build_subtitle_label(text: str) -> QLabel:
     # Persistent, not hover-dependent (Task 1) — a muted one-liner under
     # each tab's own header, aimed at someone who never reads the
     # README and goes straight into the app.
     label = QLabel(text)
-    label.setStyleSheet("color: gray;")
+    label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
     label.setWordWrap(True)
     return label
+
+
+def _build_page(title: str, subtitle: str, content: QWidget) -> QWidget:
+    # Every page in the shell gets the identical [title, subtitle,
+    # content] shape and the identical page-level margins (Phase 3's
+    # own documented layout convention) — this is the one place that
+    # convention actually gets enforced, rather than each page copying
+    # setContentsMargins/setSpacing by hand and drifting.
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(
+        theme.SPACING_XL, theme.SPACING_LG,
+        theme.SPACING_XL, theme.SPACING_LG,
+    )
+    layout.setSpacing(theme.SPACING_MD)
+
+    title_label = QLabel(title)
+    title_label.setStyleSheet(
+        f"font-size: 18px; font-weight: 600; color: {theme.TEXT};"
+    )
+    layout.addWidget(title_label)
+    layout.addWidget(_build_subtitle_label(subtitle))
+    layout.addWidget(content, 1)
+
+    return page
+
+
+def _build_nav_button(label: str) -> QPushButton:
+    # A checkable, flat QPushButton rather than a bespoke widget —
+    # QPushButton is already painted through Qt's style system (unlike
+    # a plain QWidget, which needs WA_StyledBackground — see notice.py/
+    # the sidebar's own comment), so its checked state can be styled
+    # directly via the `[navItem="true"]:checked` QSS rule with no
+    # extra plumbing. Text-only badge counts (via _update_nav_badge)
+    # rather than a separate sibling widget, to keep one exclusive
+    # QButtonGroup member per nav item instead of a composite row.
+    button = QPushButton(label)
+    button.setCheckable(True)
+    button.setFlat(True)
+    button.setProperty("navItem", True)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
 
 
 def _build_progress_widget(
@@ -229,7 +289,8 @@ class MainWindow(QMainWindow):
         self._current_track_statuses: list[TrackStatus] = []
 
         self.setWindowTitle("Seeker")
-        self.resize(1000, 600)
+        self.resize(1180, 760)
+        self.setMinimumSize(960, 640)
 
         self._build_ui()
         self._load_playlists()
@@ -262,22 +323,171 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer.start()
 
     def _build_ui(self) -> None:
-        central = QWidget()
-        central_outer = QVBoxLayout(central)
-        central_outer.setContentsMargins(0, 0, 0, 0)
-        central_outer.addWidget(
-            _build_subtitle_label(help_text.DASHBOARD_TAB_SUBTITLE)
+        self._build_help_menu()
+
+        shell = QWidget()
+        shell_layout = QHBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
+
+        shell_layout.addWidget(self._build_sidebar())
+
+        self.stacked_widget = QStackedWidget()
+        shell_layout.addWidget(self.stacked_widget, 1)
+
+        self._page_indices: dict[str, int] = {}
+        self._register_page("dashboard", self._build_dashboard_page())
+        self._register_page("downloads", self._build_downloads_page())
+        self._register_page("review", _build_page(
+            "Review", help_text.REVIEW_TAB_SUBTITLE,
+            self._build_review_content(),
+        ))
+        self._register_page("duplicates", _build_page(
+            "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
+            self._build_duplicates_content(),
+        ))
+        self._register_page("history", self._build_history_page())
+        self._register_page("help", self._build_help_page())
+
+        # Locations load lazily, the first time this page is actually
+        # shown, rather than eagerly in _build_ui() — every MainWindow
+        # construction runs _build_ui() once, and an eager worker here
+        # was confirmed live to compound into a real, reproducible
+        # deadlock (Qt's internal connection-list mutex vs. the GIL)
+        # under the rapid, repeated MainWindow construction this
+        # project's own test suite does — see CLAUDE.md/docs/HISTORY.md.
+        # A real user only reaches this page by clicking it, which is
+        # comparatively rare and human-paced, so this never fires in a
+        # tight loop the way construction does.
+        self._duplicates_page_index = self._page_indices["duplicates"]
+        self._duplicates_locations_loaded = False
+        self.stacked_widget.currentChanged.connect(self._on_page_changed)
+
+        self.setCentralWidget(shell)
+        self._show_page("dashboard")
+
+        toolbar = QToolBar("Actions")
+        self.addToolBar(toolbar)
+
+        # Sync/Scan/Match are deliberately labeled as global actions —
+        # same scope as the CLI (all playlists / all locations / all
+        # cached tracks) — so selecting a playlist in the sidebar
+        # doesn't imply these narrow to it. Only Download is scoped.
+        self.sync_button = QPushButton("Sync all playlists")
+        self.sync_button.setToolTip(help_text.TOOLTIP_SYNC_ALL_PLAYLISTS)
+        self.sync_button.clicked.connect(self._on_sync_clicked)
+        toolbar.addWidget(self.sync_button)
+
+        self.scan_button = QPushButton("Scan all locations")
+        self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
+        self.scan_button.clicked.connect(self._on_scan_clicked)
+        toolbar.addWidget(self.scan_button)
+
+        self.match_button = QPushButton("Match all tracks")
+        self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
+        self.match_button.clicked.connect(self._on_match_clicked)
+        toolbar.addWidget(self.match_button)
+
+        self.download_button = QPushButton("Download selected playlist")
+        self.download_button.setToolTip(
+            help_text.TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST
         )
+        self.download_button.clicked.connect(self._on_download_clicked)
+        toolbar.addWidget(self.download_button)
+
+    def _register_page(self, key: str, widget: QWidget) -> None:
+        self._page_indices[key] = self.stacked_widget.addWidget(widget)
+
+    def _show_page(self, key: str) -> None:
+        self.stacked_widget.setCurrentIndex(self._page_indices[key])
+
+        button = self._nav_buttons.get(key)
+        if button is not None:
+            button.setChecked(True)
+
+    def _build_sidebar(self) -> QWidget:
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebarPanel")
+        # A plain QWidget subclass doesn't paint its own stylesheet
+        # background by default in Qt (see notice.py's identical
+        # WA_StyledBackground fix, found live in Phase 3) — the
+        # `#sidebarPanel` QSS rule below would otherwise silently do
+        # nothing.
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        sidebar.setFixedWidth(SIDEBAR_WIDTH)
+        sidebar.setStyleSheet(
+            f"#sidebarPanel {{ background-color: {theme.BG_SIDEBAR}; "
+            f"border-right: 1px solid {theme.BORDER}; }}"
+        )
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(
+            theme.SPACING_MD, theme.SPACING_LG,
+            theme.SPACING_MD, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_XS)
+
+        wordmark = QLabel("Seeker")
+        wordmark.setStyleSheet(
+            f"font-size: 16px; font-weight: 700; color: {theme.TEXT}; "
+            f"padding-bottom: {theme.SPACING_MD}px;"
+        )
+        layout.addWidget(wordmark)
+
+        self._nav_group = QButtonGroup(self)
+        self._nav_group.setExclusive(True)
+        self._nav_buttons: dict[str, QPushButton] = {}
+
+        for key, label in _NAV_PAGES:
+            button = _build_nav_button(label)
+            self._nav_group.addButton(button)
+            self._nav_buttons[key] = button
+            button.clicked.connect(
+                lambda _checked=False, key=key: self._show_page(key)
+            )
+            layout.addWidget(button)
+
+        layout.addStretch()
+
+        help_button = _build_nav_button("Help")
+        self._nav_group.addButton(help_button)
+        self._nav_buttons["help"] = help_button
+        help_button.clicked.connect(lambda: self._show_page("help"))
+        layout.addWidget(help_button)
+
+        # Settings deliberately stays a plain (non-checkable, non-nav-
+        # group) button that opens the existing SettingsWindow dialog —
+        # it was never one of the "tab bodies" this shell restructure
+        # turns into pages (see the task's own scoping), just relocated
+        # here from the toolbar.
+        self.settings_button = QPushButton("Settings")
+        self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)
+        self.settings_button.clicked.connect(self._on_settings_clicked)
+        layout.addWidget(self.settings_button)
+
+        return sidebar
+
+    def _update_nav_badge(self, key: str, count: int) -> None:
+        label = dict(_NAV_PAGES).get(key) or key.capitalize()
+        button = self._nav_buttons[key]
+        button.setText(f"{label}  ({count})" if count > 0 else label)
+
+    def _build_dashboard_page(self) -> QWidget:
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(theme.SPACING_MD)
 
         # Persistent, dismissible — outside the 2s poll's reach, unlike
         # status_label below (see notice.py's own docstring for why
         # that distinction is load-bearing, not cosmetic).
         self.dashboard_notice = InlineNotice()
-        central_outer.addWidget(self.dashboard_notice)
+        content_layout.addWidget(self.dashboard_notice)
 
         dashboard_content = QWidget()
         layout = QHBoxLayout(dashboard_content)
-        central_outer.addWidget(dashboard_content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(dashboard_content, 1)
 
         self.playlist_list = QListWidget()
         self.playlist_list.currentItemChanged.connect(
@@ -338,79 +548,58 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(right, 3)
 
-        downloads_tab = QWidget()
-        downloads_layout = QVBoxLayout(downloads_tab)
-        downloads_layout.addWidget(
-            _build_subtitle_label(help_text.DOWNLOADS_TAB_SUBTITLE)
+        return _build_page(
+            "Dashboard", help_text.DASHBOARD_TAB_SUBTITLE, content,
         )
+
+    def _build_downloads_page(self) -> QWidget:
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.downloads_table = QTableWidget(0, 5)
         self.downloads_table.setHorizontalHeaderLabels(
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
-        downloads_layout.addWidget(self.downloads_table)
+        layout.addWidget(self.downloads_table)
 
-        review_tab = self._build_review_tab()
-        duplicates_tab = self._build_duplicates_tab()
-
-        tabs = QTabWidget()
-        tabs.addTab(central, "Dashboard")
-        tabs.addTab(downloads_tab, "Downloads")
-        tabs.addTab(review_tab, "Review")
-        tabs.addTab(duplicates_tab, "Duplicates")
-
-        # Locations load lazily, the first time this tab is actually
-        # shown, rather than eagerly in _build_ui() — every MainWindow
-        # construction runs _build_ui() once, and an eager worker here
-        # was confirmed live to compound into a real, reproducible
-        # deadlock (Qt's internal connection-list mutex vs. the GIL)
-        # under the rapid, repeated MainWindow construction this
-        # project's own test suite does — see CLAUDE.md/docs/HISTORY.md.
-        # A real user only reaches this tab by clicking it, which is
-        # comparatively rare and human-paced, so this never fires in a
-        # tight loop the way construction does.
-        self._duplicates_tab_index = tabs.indexOf(duplicates_tab)
-        self._duplicates_locations_loaded = False
-        tabs.currentChanged.connect(self._on_tab_changed)
-
-        self.setCentralWidget(tabs)
-
-        self._build_help_menu()
-
-        toolbar = QToolBar("Actions")
-        self.addToolBar(toolbar)
-
-        # Sync/Scan/Match are deliberately labeled as global actions —
-        # same scope as the CLI (all playlists / all locations / all
-        # cached tracks) — so selecting a playlist in the sidebar
-        # doesn't imply these narrow to it. Only Download is scoped.
-        self.sync_button = QPushButton("Sync all playlists")
-        self.sync_button.setToolTip(help_text.TOOLTIP_SYNC_ALL_PLAYLISTS)
-        self.sync_button.clicked.connect(self._on_sync_clicked)
-        toolbar.addWidget(self.sync_button)
-
-        self.scan_button = QPushButton("Scan all locations")
-        self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
-        self.scan_button.clicked.connect(self._on_scan_clicked)
-        toolbar.addWidget(self.scan_button)
-
-        self.match_button = QPushButton("Match all tracks")
-        self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
-        self.match_button.clicked.connect(self._on_match_clicked)
-        toolbar.addWidget(self.match_button)
-
-        self.download_button = QPushButton("Download selected playlist")
-        self.download_button.setToolTip(
-            help_text.TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST
+        return _build_page(
+            "Downloads", help_text.DOWNLOADS_TAB_SUBTITLE, content,
         )
-        self.download_button.clicked.connect(self._on_download_clicked)
-        toolbar.addWidget(self.download_button)
 
-        self.settings_button = QPushButton("Settings")
-        self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)
-        self.settings_button.clicked.connect(self._on_settings_clicked)
-        toolbar.addWidget(self.settings_button)
+    def _build_history_page(self) -> QWidget:
+        # Placeholder — the real History page (derived from
+        # download_requests/local_files, no new table) is a future
+        # phase. The nav slot exists now so the sidebar's final shape
+        # is already correct.
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        placeholder = QLabel(help_text.HISTORY_PAGE_PLACEHOLDER)
+        placeholder.setStyleSheet(f"color: {theme.TEXT_FAINT};")
+        placeholder.setWordWrap(True)
+        layout.addWidget(placeholder)
+        layout.addStretch()
+
+        return _build_page(
+            "History", help_text.HISTORY_PAGE_SUBTITLE, content,
+        )
+
+    def _build_help_page(self) -> QWidget:
+        # Placeholder — the real Help page (walkthrough,
+        # troubleshooting, "where your data lives") is a future phase.
+        # The existing Help menu -> About Seeker action is unaffected.
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        placeholder = QLabel(help_text.HELP_PAGE_PLACEHOLDER)
+        placeholder.setStyleSheet(f"color: {theme.TEXT_FAINT};")
+        placeholder.setWordWrap(True)
+        layout.addWidget(placeholder)
+        layout.addStretch()
+
+        return _build_page("Help", help_text.HELP_PAGE_SUBTITLE, content)
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()
@@ -693,7 +882,7 @@ class MainWindow(QMainWindow):
         )
         self.status_label.setText(f"Tagging playlist '{playlist_name}'...")
 
-    def _build_review_tab(self) -> QWidget:
+    def _build_review_content(self) -> QWidget:
         # Two independent sections, per item 26: SoulSeek needs-review
         # candidates (item 17's tier, gaining its first real
         # confirm/reject action here) and Phase 2 upgrade confirmations
@@ -704,7 +893,7 @@ class MainWindow(QMainWindow):
         # item 26 §0/§1.
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.addWidget(_build_subtitle_label(help_text.REVIEW_TAB_SUBTITLE))
+        layout.setContentsMargins(0, 0, 0, 0)
 
         layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
 
@@ -726,7 +915,7 @@ class MainWindow(QMainWindow):
 
         return tab
 
-    def _build_duplicates_tab(self) -> QWidget:
+    def _build_duplicates_content(self) -> QWidget:
         # Fingerprint computation + clustering/scoring were built and
         # live-verified first, read-only, per roadmap item 5's own
         # build order; the delete action below (item 40) is the later,
@@ -735,9 +924,7 @@ class MainWindow(QMainWindow):
         # of them.
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        layout.addWidget(
-            _build_subtitle_label(help_text.DUPLICATES_TAB_SUBTITLE)
-        )
+        layout.setContentsMargins(0, 0, 0, 0)
 
         controls = QHBoxLayout()
 
@@ -793,9 +980,9 @@ class MainWindow(QMainWindow):
 
         return tab
 
-    def _on_tab_changed(self, index: int) -> None:
+    def _on_page_changed(self, index: int) -> None:
         if (
-                index == self._duplicates_tab_index
+                index == self._duplicates_page_index
                 and not self._duplicates_locations_loaded
         ):
             self._duplicates_locations_loaded = True
@@ -1170,6 +1357,7 @@ class MainWindow(QMainWindow):
         )
 
     def _render_active_downloads(self, downloads: list[ActiveDownload]) -> None:
+        self._update_nav_badge("downloads", len(downloads))
         self.downloads_table.setRowCount(len(downloads))
 
         for row, download in enumerate(downloads):
@@ -1218,6 +1406,7 @@ class MainWindow(QMainWindow):
             data: tuple[NeedsReviewCandidates, PendingUpgrades],
     ) -> None:
         candidates, upgrades = data
+        self._update_nav_badge("review", len(candidates) + len(upgrades))
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
 

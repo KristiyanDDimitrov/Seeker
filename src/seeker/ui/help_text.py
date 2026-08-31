@@ -38,6 +38,19 @@ SETTINGS_WINDOW_SUBTITLE = (
     "Library locations, playlist destinations, Spotify/SoulSeek "
     "connections, and match-classification thresholds."
 )
+HISTORY_PAGE_SUBTITLE = (
+    "Recently downloaded and tagged tracks, in one place."
+)
+HISTORY_PAGE_PLACEHOLDER = (
+    "The History page is coming in a future update."
+)
+HELP_PAGE_SUBTITLE = (
+    "How Seeker works, troubleshooting, and where your data lives."
+)
+HELP_PAGE_PLACEHOLDER = (
+    "The full Help page is coming in a future update — for now, see "
+    "Help → About Seeker in the menu bar."
+)
 
 # --- MainWindow toolbar ---------------------------------------------------
 
