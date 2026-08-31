@@ -1,3 +1,4 @@
+import glob
 import shutil
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.file_deletion import delete_file
+from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.download_request import DownloadRequest
@@ -669,9 +671,14 @@ class DownloadService:
                     )
                     continue
 
-                if self._move_completed_file(request) is not None:
+                move_result = self._move_completed_file(request)
+
+                if move_result is not None:
                     self._update_status(request.id, "completed")
                     counts["completed"] += 1
+                    self._index_and_match_settled_download(
+                        request, move_result, counts,
+                    )
                 else:
                     counts[request.status] += 1
             except Exception as error:
@@ -901,8 +908,19 @@ class DownloadService:
             # future poll, so the next run's main pending loop retries
             # the move instead of this row silently claiming a
             # completion that never actually happened.
-            if self._move_completed_file(request) is not None:
+            move_result = self._move_completed_file(request)
+
+            if move_result is not None:
                 counts["completed"] += 1
+                # Same indexing gap as poll_downloads()'s main loop
+                # (see _index_and_match_settled_download's own
+                # docstring) — this branch reaches 'completed' for a
+                # role='settled' row too (a human-confirmed needs-review
+                # candidate that turned out to be locked), so it needs
+                # the identical fix, not a second copy of it.
+                self._index_and_match_settled_download(
+                    request, move_result, counts,
+                )
             else:
                 status = "downloading"
 
@@ -1049,7 +1067,19 @@ class DownloadService:
             return None
 
         basename = Path(request.filename.replace("\\", "/")).name
-        matches = list(Path(self.slskd_download_dir).rglob(basename))
+        # rglob() treats its argument as a glob PATTERN, not a literal
+        # name — real Soulseek filenames routinely contain '[', ']'
+        # (release tags like "[www.dj-promo.org]", "[FLAC]"), which
+        # fnmatch interprets as a character class. Unescaped, a real
+        # completed download with such a filename silently never
+        # matches here (an empty `matches` list, not an error) and
+        # stays stuck in 'downloading' forever, never moved or indexed
+        # — found live while verifying the Phase 1 indexing fix against
+        # a real completed transfer whose filename contained exactly
+        # this pattern. glob.escape() makes the lookup literal again.
+        matches = list(
+            Path(self.slskd_download_dir).rglob(glob.escape(basename))
+        )
 
         if not matches:
             return None
@@ -1071,6 +1101,83 @@ class DownloadService:
         )
 
         return (location, relative_path)
+
+    def _index_and_match_settled_download(
+            self,
+            request: DownloadRequest,
+            move_result: tuple[LibraryLocation, str],
+            counts: dict[str, int],
+    ) -> None:
+        # An ordinary settled download previously left the file moved
+        # into place but otherwise invisible to the rest of the app:
+        # index_single_file() only ever ran on the confirmed-upgrade
+        # path (apply_upgrade_decision, below), never here. So the file
+        # never got a local_files row, never got a track_matches row,
+        # and the track stayed NOT_FOUND on the Dashboard forever —
+        # DashboardService._compute_status requires BOTH an 'auto'
+        # track_matches row AND a resolvable local_file_id for
+        # IN_LIBRARY — with no ordinary Match run able to fix it either,
+        # since match_all() only ever considers local_files rows that
+        # already exist. It also left get_unmatched_for_playlist()
+        # (which filters on track_matches.match_method IS NULL)
+        # thinking the track was still unmatched, so a second
+        # `download`/Download-click run would genuinely re-search and
+        # re-request a file already sitting on disk — get_active_for_
+        # track's creation-time dedup guard only covers ACTIVE requests
+        # (excludes 'completed'), so it did nothing to prevent this.
+        #
+        # Fixed by mirroring apply_upgrade_decision's own index+match
+        # tail. match_method='auto' is set unconditionally, regardless
+        # of the computed fuzzy score: this exact file was searched,
+        # filtered by quality.py, and downloaded FOR this exact track —
+        # that provenance is a stronger signal than filename fuzzy-
+        # matching, the same reasoning item 26 used when a human-
+        # confirmed needs-review candidate is requested as
+        # role='settled'. Unlike apply_upgrade_decision's hardcoded
+        # score=100.0 sentinel, the real find_best_match() score is
+        # computed and stored here so a genuinely bad pairing stays
+        # visible in the data instead of being hidden behind a fake
+        # perfect score.
+        #
+        # Wrapped in its own try/except, per this codebase's standing
+        # per-item batch rule: an indexing/matching failure must not
+        # undo the 'completed' status the caller already set (the file
+        # really did download successfully), and must not abort the
+        # rest of this poll_downloads() run.
+        try:
+            location, relative_path = move_result
+
+            with self.database.transaction() as connection:
+                local_file = index_single_file(
+                    location, relative_path, self.local_files, connection,
+                )
+
+                track = self.tracks.get_by_id(request.track_id, connection)
+                score = None
+
+                if track is not None:
+                    match = find_best_match(track, [local_file])
+                    if match is not None:
+                        score = match[1]
+
+                self.track_matches.upsert(
+                    TrackMatch(
+                        track_id=request.track_id,
+                        local_file_id=local_file.id,
+                        match_method="auto",
+                        score=score,
+                        matched_at=datetime.now(timezone.utc).isoformat(),
+                    ),
+                    connection,
+                )
+
+            counts["indexed"] = counts.get("indexed", 0) + 1
+        except Exception as error:
+            counts["index_failed"] = counts.get("index_failed", 0) + 1
+            print(
+                f"  Warning: downloaded '{request.filename}' but failed "
+                f"to index/match it into the library: {error}"
+            )
 
     def get_upgrade_review_details(
             self,

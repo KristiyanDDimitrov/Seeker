@@ -1303,6 +1303,12 @@ class MainWindow(QMainWindow):
         def on_poll_finished(_: object) -> None:
             self._backend_poll_in_progress = False
             self._sample_download_progress()
+            # A settled download completing during this real poll (Phase
+            # 1's indexing fix) flips a track straight to IN_LIBRARY —
+            # refresh the selected playlist's own track table right now
+            # rather than waiting up to POLL_INTERVAL_MS for the next
+            # 2s display tick to happen to catch it.
+            self._poll_selected_playlist()
 
         def on_poll_error(_: str) -> None:
             self._backend_poll_in_progress = False

@@ -983,6 +983,217 @@ def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
     assert get_status(service, "t1") == "completed"
 
 
+def test_settled_completion_indexes_and_matches_the_downloaded_file(
+        tmp_path,
+):
+    # Phase 1 fix: a plain, ordinary settled download previously left
+    # the moved file completely invisible to the rest of the app — no
+    # local_files row, no track_matches row — so the track stayed
+    # NOT_FOUND on the Dashboard forever and get_unmatched_for_playlist
+    # kept offering it up for re-download even though it was already on
+    # disk. See CLAUDE.md roadmap item 45 / docs/HISTORY.md.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Dom Dolla - Rhyme Dust.mp3").write_bytes(b"not real audio")
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+    track_matches = TrackMatchRepository(database)
+    local_files = LocalFileRepository(database)
+    download_requests = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+        playlists.save(
+            Playlist(id="p1", name="Test", track_count=1), connection,
+        )
+        playlists.set_destination("p1", location.id, None, connection)
+
+        tracks.save(
+            Track(
+                id="t1", title="Rhyme Dust", artist="Dom Dolla",
+                album="Rhyme Dust", duration_ms=215_000,
+            ),
+            connection,
+        )
+        tracks.save_playlist_track("p1", "t1", connection)
+
+        download_requests.add(
+            DownloadRequest(
+                track_id="t1",
+                username="peer1",
+                filename="Dom Dolla - Rhyme Dust.mp3",
+                format="mp3",
+                quality_descriptor="mp3",
+                role="settled",
+                status="downloading",
+                transfer_id="tx-1",
+                size=1_000,
+                requested_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
+        playlists, tracks, locations, download_requests, track_matches,
+        local_files, SoulseekReviewCandidateRepository(database),
+        str(slskd_dir),
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert counts.get("indexed") == 1
+    assert counts.get("index_failed") is None
+
+    with database.transaction() as connection:
+        local_file = local_files.get_by_location_and_relative_path(
+            location.id, "Dom Dolla - Rhyme Dust.mp3", connection,
+        )
+        assert local_file is not None
+
+        match = track_matches.get_by_track_id("t1", connection)
+        assert match is not None
+        assert match.match_method == "auto"
+        assert match.local_file_id == local_file.id
+        assert match.score is not None
+
+        unmatched = tracks.get_unmatched_for_playlist("p1", connection)
+        assert unmatched == []
+
+
+def test_settled_completion_moves_a_filename_with_glob_special_characters(
+        tmp_path,
+):
+    # Real, live-found bug: _move_completed_file's rglob(basename) treats
+    # the basename as a glob PATTERN, not a literal name. Real Soulseek
+    # filenames routinely contain '[' ']' (release tags like
+    # "[www.dj-promo.org]"), which fnmatch interprets as a character
+    # class — an unescaped lookup silently finds nothing (empty list, no
+    # error) and the file is never moved, staying stuck 'downloading'
+    # forever. Reproduced live against a real completed transfer with
+    # exactly this filename shape while verifying the Phase 1 indexing
+    # fix end-to-end.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    slskd_dir = tmp_path / "slskd_downloads" / "Some Release [FLAC]"
+    slskd_dir.mkdir(parents=True)
+    filename = "Artist - Title (Mix) [www.dj-promo.org].mp3"
+    (slskd_dir / filename).write_bytes(b"not real audio")
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+    track_matches = TrackMatchRepository(database)
+    local_files = LocalFileRepository(database)
+    download_requests = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+        playlists.save(
+            Playlist(id="p1", name="Test", track_count=1), connection,
+        )
+        playlists.set_destination("p1", location.id, None, connection)
+
+        tracks.save(
+            Track(
+                id="t1", title="Title", artist="Artist",
+                album="Album", duration_ms=200_000,
+            ),
+            connection,
+        )
+        tracks.save_playlist_track("p1", "t1", connection)
+
+        download_requests.add(
+            DownloadRequest(
+                track_id="t1",
+                username="peer1",
+                filename=f"Some Release [FLAC]\\{filename}",
+                format="mp3",
+                quality_descriptor="mp3",
+                role="settled",
+                status="downloading",
+                transfer_id="tx-1",
+                size=1_000,
+                requested_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
+        playlists, tracks, locations, download_requests, track_matches,
+        local_files, SoulseekReviewCandidateRepository(database),
+        str(tmp_path / "slskd_downloads"),
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert (lib_root / filename).exists()
+
+    with database.transaction() as connection:
+        local_file = local_files.get_by_location_and_relative_path(
+            location.id, filename, connection,
+        )
+        assert local_file is not None
+
+
+def test_settled_completion_index_failure_still_counts_as_completed(
+        tmp_path, monkeypatch,
+):
+    # An indexing/matching failure (e.g. a real file-read error) must
+    # not undo the 'completed' status — the file genuinely did
+    # download successfully — and must not raise out of poll_downloads
+    # and abort the rest of the batch. Counted separately as
+    # 'index_failed' so it's visible rather than silently swallowed.
+    service = make_service(tmp_path, {"t1": "Completed, Succeeded"})
+    seed_pending_request(service, "t1")
+
+    fake_location = LibraryLocation(
+        id=1, name="Main", path=str(tmp_path), added_at="2026-01-01"
+    )
+    monkeypatch.setattr(
+        service,
+        "_move_completed_file",
+        lambda request: (fake_location, "missing-file-not-on-disk.mp3"),
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert counts.get("index_failed") == 1
+    assert get_status(service, "t1") == "completed"
+
+
 def test_poll_downloads_mid_batch_exception_does_not_abort_remaining_requests(
         tmp_path,
 ):

@@ -2222,6 +2222,94 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     matching this machine's actual Docker Desktop state.
     [HISTORY §44](docs/HISTORY.md#44)
 
+45. **Fix: a completed settled download never entered the library —
+    done, live-verified (2026-08-31).** `poll_downloads()`'s ordinary
+    settled-completion branch called `_move_completed_file()` and
+    stopped — it never called `scanner.index_single_file()` or wrote a
+    `track_matches` row the way the upgrade-confirmation path
+    (`apply_upgrade_decision`) always has. A completed download stayed
+    `NOT_FOUND` on the Dashboard forever (`DashboardService
+    ._compute_status` requires both `match_method='auto'` AND a
+    resolvable `local_file_id`) and stayed invisible to `Match`
+    (`match_all()` only ever considers `local_files` rows that already
+    exist) — and `get_unmatched_for_playlist` (filters on
+    `match_method IS NULL`) would have let a second `download` run
+    genuinely re-search and re-request a file already on disk, since
+    item 16's creation-time dedup guard (`get_active_for_track`) only
+    covers ACTIVE requests, not `completed` ones.
+
+    Fixed by adding `DownloadService._index_and_match_settled_download()`
+    — mirrors `apply_upgrade_decision`'s own index+match tail exactly,
+    called from both places `poll_downloads()` reaches a real settled
+    completion (the main pending loop, and `_retry_locked_request`'s
+    completed branch for a human-confirmed needs-review candidate that
+    turned out locked). `match_method='auto'` is set unconditionally —
+    provenance (this exact file was searched, filtered, and downloaded
+    FOR this exact track) is a stronger signal than fuzzy matching, the
+    same reasoning item 26 used for `confirm_review_candidate`. Unlike
+    `apply_upgrade_decision`'s hardcoded `score=100.0` sentinel, the
+    real score is computed via `library/matcher.py`'s existing
+    `find_best_match(track, [local_file])` (a list of one — no new
+    scoring function needed) and stored as-is, so a genuinely bad
+    pairing stays visible in the data. Wrapped in its own try/except
+    per the standing per-item batch rule — an indexing failure can't
+    undo the already-set `completed` status or abort the rest of the
+    poll; counted separately as `indexed`/`index_failed` in the
+    returned counts dict.
+
+    **A second real, independent bug was found live while verifying
+    this fix end-to-end, and fixed in the same pass, since it was
+    directly blocking verification:** `_move_completed_file` located
+    the downloaded file via `Path(slskd_download_dir).rglob(basename)`
+    — `rglob()` treats its argument as a glob PATTERN, not a literal
+    name. Real Soulseek filenames routinely contain `[` `]` (release
+    tags like `[www.dj-promo.org]`, `[FLAC]`), which `fnmatch`
+    interprets as a character class — the lookup silently returns an
+    empty list (no exception, no warning) and the file is never moved,
+    staying stuck `downloading` forever. Fixed with `glob.escape()`
+    around the basename.
+
+    **Live-verified against real production data, both bugs together**
+    (2026-08-31): a real in-flight `download_requests` row (id 16,
+    track "Bit Perfect" by Zigi SC/A-Cray) had genuinely finished
+    transferring on slskd's side (`bytesTransferred == size`,
+    `state: "Completed, Succeeded"` confirmed directly via slskd's own
+    API) but was stuck `downloading` in the DB — exactly the glob bug
+    above, on a filename containing `[www.dj-promo.org]`. After both
+    fixes, a real `seeker downloads status` run: moved the real file to
+    its real destination; created a real `local_files` row (id 3241,
+    real tags read via mutagen — `tag_artist="A-Cray, Zigi SC"`,
+    `duration_ms=306259`); created a real `track_matches` row
+    (`match_method='auto'`, `score=63.64`, genuinely below
+    `AUTO_MATCH_THRESHOLD=70` and left visible rather than hidden, per
+    the design above); `DashboardService.get_playlist_track_status`
+    confirmed `IN_LIBRARY` for the track; `get_unmatched_for_playlist`
+    confirmed the track no longer appears. A UI follow-on was added
+    too — `MainWindow._trigger_backend_poll`'s `on_finished` now also
+    calls `_poll_selected_playlist()`, so the Dashboard's track table
+    refreshes immediately after a real backend poll instead of waiting
+    up to 2s for the next display tick; covered by a new Qt test
+    (`test_backend_poll_refreshes_selected_playlist_track_table`).
+
+    **No legacy backfill was actually needed.** Queried the real
+    production DB for any other `role='settled', status='completed'`
+    row with no `track_matches` row before writing any code, per the
+    task's own instruction to reproduce against real data first —
+    found none; every one of the 5 real completed rows already had a
+    match (recovered manually in a prior session, per item 27's own
+    documented Kamäleon fix). A real `seeker library scan` +
+    `seeker library match` afterward recovered one unrelated,
+    genuinely-organic match (`Breach` by Balron, Audio, auto/100.0 — a
+    file already on the real drive, unconnected to any tracked
+    download) and, as an interesting but out-of-scope-to-fix side
+    effect, demoted the just-fixed Bit Perfect match from `auto` back
+    to `needs_review` at the identical score (63.6, below the 70
+    threshold) — `match_all()` recomputes every `track_matches` row
+    uniformly from scratch on every run with no notion of "provenance-
+    confirmed," a pre-existing property that applies equally to item
+    26's human-confirmed matches, not something this fix introduced or
+    was asked to change. [HISTORY §45](docs/HISTORY.md#45)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

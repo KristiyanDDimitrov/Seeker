@@ -815,6 +815,28 @@ def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):
     assert recorded["thread"] != threading.main_thread()
 
 
+def test_backend_poll_refreshes_selected_playlist_track_table(qtbot):
+    # Phase 1 UI follow-on: a settled download completing during a real
+    # backend poll should flip the Dashboard to IN_LIBRARY immediately,
+    # not wait up to the 2s display tick to happen to catch it.
+    application = FakeApplication(soulseek_configured=True)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.selected_playlist = Playlist(
+        id="p1", name="Test Playlist", track_count=1,
+    )
+    dashboard_service = application.dashboard_service
+    assert isinstance(dashboard_service, FakeDashboardService)
+    dashboard_service.calls.clear()
+
+    window._trigger_backend_poll()
+
+    qtbot.waitUntil(
+        lambda: "Test Playlist" in dashboard_service.calls, timeout=2000,
+    )
+
+
 def test_backend_poll_skipped_when_soulseek_not_configured(qtbot):
     application = FakeApplication(soulseek_configured=False)
     calls = []

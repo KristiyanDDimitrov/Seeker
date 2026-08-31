@@ -6950,3 +6950,202 @@ the malformed-result regression above), mirroring
 `compose_file_path()`'s existing test shape for a new
 `docker_setup.py` function.
 
+### 45
+
+Real bug report: after tracks download successfully, the Dashboard
+keeps showing them as "Not found," and "Match all tracks" doesn't fix
+it. Given as a hypothesis up front (per item 8's own documented text):
+the upgrade-confirmation path (`apply_upgrade_decision`) already calls
+`scanner.index_single_file()` to register a replaced file into
+`local_files` immediately, "unlike settled downloads, which rely on
+the next library scan" — so an ordinary settled download gets moved
+into place and then genuinely nothing indexes it and nothing creates a
+`track_matches` row.
+
+**Confirmed by reading the code directly before touching anything.**
+`poll_downloads()`'s main pending loop, on a settled completion:
+
+```python
+if self._move_completed_file(request) is not None:
+    self._update_status(request.id, "completed")
+    counts["completed"] += 1
+else:
+    counts[request.status] += 1
+```
+
+— nothing else. Compared directly against `apply_upgrade_decision`
+(the confirmed-upgrade path), which after the identical
+`_move_completed_file` call also runs `index_single_file()` and
+`track_matches.upsert(..., match_method="auto", score=100.0, ...)`.
+The asymmetry is real and exactly as hypothesized.
+
+**Second consequence, checked rather than assumed:**
+`get_unmatched_for_playlist` filters on
+`tm.track_id IS NULL OR tm.match_method IS NULL` — with no
+`track_matches` row at all, a track in this state genuinely still
+counts as unmatched. `get_active_for_track` (item 16's creation-time
+dedup guard, checked inside `download_playlist()`) filters
+`status NOT IN ('completed', 'failed', 'superseded')` — a `completed`
+row is not "active." So a second `download`/Download-click run would
+genuinely re-search and re-request a file already sitting on disk, not
+just leave the Dashboard display wrong. Confirmed by reading both
+queries directly, not inferred.
+
+**Reproduction against real data, before writing any fix, per the
+task's own instruction.** Queried the real production DB for
+`role='settled', status='completed'` rows with no matching
+`track_matches` row: **zero found.** All 5 real completed rows already
+had a match — recovered manually in a prior session (item 27's own
+documented live-verification: "`Kamäleon - Quadrat` had a real
+completed download sitting unindexed... a real `seeker library scan` +
+`seeker library match` picked it up"). So the specific stale-row shape
+described in the bug report no longer existed in production at the
+moment of reproduction — the underlying code defect was still real and
+directly confirmed by reading the code above, just not currently
+manifesting as a stuck row (because someone had already manually
+worked around it once).
+
+Instead, a real currently-IN-FLIGHT case was available and used for
+live verification instead: `download_requests` id 16 (track "Bit
+Perfect" by Zigi SC/A-Cray, `role='settled'`) was sitting at
+`status='downloading'`. A direct query against slskd's own
+`GET /api/v0/transfers/downloads/{username}/{transferId}` showed
+`state: "Completed, Succeeded"`, `bytesTransferred == size ==
+12257951` — the real transfer had genuinely finished, slskd already
+knew it, but the DB still said "downloading." This is the fix's real
+target case (a settled completion `poll_downloads()` hasn't yet
+processed), just caught mid-flight rather than as a legacy row.
+
+**Fix.** New `DownloadService._index_and_match_settled_download()`,
+called from the settled-completion branch of `poll_downloads()`'s main
+loop, and from `_retry_locked_request`'s own `status == "completed"`
+branch (a second, independent call site reaching the identical gap —
+a human-confirmed needs-review candidate, requested as `role='settled'`
+per item 26, that turned out locked and later succeeded on retry). Both
+call sites now pass the `(location, relative_path)` tuple
+`_move_completed_file` already returns straight into the new method.
+
+Reused rather than reinvented: `index_single_file()` (already shared
+with the scan loop and the upgrade path — item 8's own precedent) and
+`library/matcher.py`'s `find_best_match(track, candidates)`, called
+with a one-item candidate list (`[local_file]`) rather than extracting
+a new single-pair function — `find_best_match` already handles "no
+match" (an artist mismatch) by returning `None`, which the new method
+treats as an unscored match rather than a failure. `match_method='auto'`
+is set unconditionally regardless of the computed score — provenance
+(this file was searched, filtered by `quality.py`, and downloaded FOR
+this exact track) outweighs fuzzy-matching confidence, the same
+reasoning item 26 already established for `confirm_review_candidate`.
+Unlike `apply_upgrade_decision`'s hardcoded `score=100.0`, the real
+computed score is stored, so a bad pairing is visible in the data
+rather than hidden behind a sentinel — this was a deliberate choice to
+NOT copy `apply_upgrade_decision`'s exact sentinel, made explicit in a
+code comment at the call site so a future reader doesn't "fix" the
+inconsistency by copying the wrong one back. `TrackMatchRepository
+.upsert()`'s existing `ON CONFLICT(track_id) DO UPDATE` already
+handles "repoint rather than duplicate" with no extra logic needed.
+Wrapped in its own try/except (this codebase's standing per-item batch
+rule) so an indexing failure can't undo the already-set `completed`
+status (the file really did download) or abort the rest of the poll —
+counted separately via new `indexed`/`index_failed` keys in the
+returned counts dict.
+
+**A second, independent real bug was found live while running this
+verification, and fixed in the same pass since it was directly
+blocking it, per the task's own "fix what you find immediately"
+instruction.** After the fix above, polling the real in-flight "Bit
+Perfect" request still didn't move the file — no exception, no printed
+warning, just silently stuck. Traced to `_move_completed_file`:
+
+```python
+basename = Path(request.filename.replace("\\", "/")).name
+matches = list(Path(self.slskd_download_dir).rglob(basename))
+if not matches:
+    return None
+```
+
+`Path.rglob()` treats its argument as a glob PATTERN via `fnmatch`, not
+a literal filename. The real basename here was `"A-Cray, Zigi SC - Bit
+Perfect (Original Mix) [www.dj-promo.org].mp3"` — `fnmatch` interprets
+`[www.dj-promo.org]` as a character class, so the pattern silently
+matched nothing even though the real file was sitting exactly where
+expected. Confirmed directly with a real Python REPL against the real
+slskd download directory: `Path(...).rglob(basename)` → `[]`;
+`Path(...).rglob(glob.escape(basename))` → the real file, found. Real
+Soulseek filenames very commonly carry `[...]` release/uploader tags
+(`[www.dj-promo.org]`, `[FLAC]`, label/scene tags), so this wasn't an
+edge case — it silently broke the move step for a meaningful share of
+real downloads, with the request left permanently stuck `downloading`
+and no diagnostic output at all (the `if not matches: return None`
+branch has no print statement, unlike the two other early-return
+branches in the same method). Fixed with `glob.escape(basename)`
+around the `rglob()` call.
+
+**Live-verified end-to-end, both fixes together, against the real
+in-flight request (2026-08-31).** A real `seeker downloads status` run:
+printed `Moved 'A-Cray, Zigi SC - Bit Perfect (Original Mix)
+[www.dj-promo.org].mp3' to /Volumes/X9 Pro/Music/Test/Music/Test`
+(confirmed on the real disk afterward, including the AppleDouble
+sidecar the scanner already knows to filter — item 2); `download_
+requests` id 16 → `status='completed'`, real `completed_at`;
+`local_files` gained a real new row (id 3241) with real mutagen-read
+tags (`tag_artist="A-Cray, Zigi SC"`, `tag_title="Bit Perfect (Original
+Mix)"`, `duration_ms=306259`); `track_matches` gained a real row
+(`local_file_id=3241`, `match_method='auto'`, `score=63.6363...` — a
+real, honestly-low score, correctly visible rather than hidden);
+`DashboardService.get_playlist_track_status("Test")` returned
+`IN_LIBRARY` for this track (`tagged_at=None`, correctly, since it
+hasn't been tagged yet); `TrackRepository.get_unmatched_for_playlist`
+for the real "Test" playlist no longer included it. A real, non-fake
+`Application()` was used for every one of these checks, not just the
+CLI's own summary output.
+
+**UI follow-on.** `MainWindow._trigger_backend_poll`'s `on_finished`
+callback now also calls `self._poll_selected_playlist()`, so the
+Dashboard's own track table refreshes immediately after a real backend
+poll completes rather than waiting up to `POLL_INTERVAL_MS` (2s) for
+the next unrelated display tick to happen to catch the change. New Qt
+test `test_backend_poll_refreshes_selected_playlist_track_table`
+(offscreen, a real `MainWindow`, a fake `DashboardService` recording
+calls) confirms `get_playlist_track_status` is called with the
+selected playlist's name once the backend poll's queued completion
+signal is actually delivered — mirrors the existing
+`test_backend_poll_runs_poll_downloads_off_the_main_thread`'s own
+`qtbot.waitUntil` pattern (item 32/39's documented reason for waiting
+on the main-thread-flipped flag, not a worker-thread-set one).
+
+**No legacy backfill migration needed, confirmed rather than assumed.**
+Per the reproduction step above, zero real stale rows existed in
+production at the time of the fix. Still ran the requested real
+`seeker library scan` + `seeker library match` afterward, both against
+the real production library, to check for anything this fix wouldn't
+retroactively reach on its own (an already-completed-and-moved-but-
+never-indexed file predating this session, the classic item 27
+shape): the scan found and indexed one genuinely new, previously-
+undiscovered file (`Breach` by Balron, Audio — auto-matched at
+100.0), unconnected to any tracked `download_requests` row at all, so
+this was an ordinary organic library file the scan simply hadn't seen
+before, not a recovered legacy case. **Net recovered by backfill: 0**
+(the bug's damage was fully addressed live, in-flight, by the code fix
+itself; the scan's one new match was incidental, not a backfill).
+
+**A real, interesting, out-of-scope-to-fix interaction, recorded
+honestly rather than silently worked around:** that same `library
+match` run **demoted** the just-fixed Bit Perfect match from `auto`
+(score 63.6) to `needs_review` (identical score, now correctly sorted
+into the needs_review band since 63.6 < `AUTO_MATCH_THRESHOLD=70`).
+`match_all()` recomputes every `track_matches` row from scratch, for
+every track, on every run — it has no concept of "provenance-confirmed"
+and never has (this applies equally, and already did before this fix,
+to item 26's human-confirmed needs-review matches — nothing about
+those is protected from a later ordinary re-match either). This isn't
+a bug introduced by this fix, and the task didn't ask for permanent
+protection against a future explicit re-match — recorded here as a
+standing fact for anyone touching `match_all()` or this fix later, not
+actioned further.
+
+`mypy --strict` clean; full suite 484 passed / 1 skipped for this
+change alone (up from the 480 baseline: 3 new
+`test_download_service.py` tests for the indexing fix, 1 for the
+glob-escaping fix, 1 new UI test for the backend-poll refresh).
+
