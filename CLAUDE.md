@@ -2855,6 +2855,66 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     Spotify-not-connected scene. `mypy --strict` clean; full suite 595
     passed / 1 skipped.
 
+52. **Wizard: say why the SoulSeek login failed — done, live-verified
+    against real slskd (2026-08-31).** The protocol genuinely can't
+    distinguish "wrong password on my own account" from "that
+    username belongs to someone else" (confirmed live — see below) —
+    Step 3's credential form gains a radio pair, "I already have a
+    SoulSeek account" (default) / "Create a new SoulSeek account",
+    with a line explaining SoulSeek has no separate signup. On
+    `BAD_CREDENTIALS`, the copy branches on which radio is checked:
+    existing-account mode keeps the username/password and says to
+    check the password (case-sensitive); new-account mode clears and
+    focuses the username field with a "already taken" message. The
+    real raw log detail is never dropped — moved to the status label's
+    tooltip (the task's own documented alternative to a "Details"
+    expander) in every branch, cleared at the start of each new
+    attempt so a stale one can't linger into a later result. Username
+    validated before attempting (non-empty, no leading/trailing
+    whitespace) — real SoulSeek character constraints weren't cheaply
+    confirmable, so nothing beyond that was guessed at, per the task's
+    own instruction.
+
+    **A real third state, confirmed live via two genuinely disposable
+    throwaway slskd containers — never the real production one —
+    exactly the diagnostic-instance discipline this project already
+    used for packaging verification (items 30/31).** `check_slskd_
+    health` gains `SlskdHealthStatus.KICKED` and its own
+    `KICKED_LOG_PATTERNS`, both new. Confirmed real, distinct log text
+    — genuinely disjoint from the existing bad-credentials patterns:
+    `"Disconnected from the Soulseek server: another client logged in
+    using the same username"` (preceded by an Information-level
+    `"Kicked from server."`). Real production slskd confirmed
+    completely undisturbed throughout (checked directly before and
+    after) — the throwaway container was the one that got kicked, not
+    the other way around. Wizard shows "Another client is already
+    logged in with this username," the real detail behind the
+    tooltip as with the other branches.
+
+    **A second, independent real finding from the same live session,
+    directly informing how the "bad password" test itself had to be
+    designed — see HISTORY §52 for the full narrative:** a brand-new,
+    never-before-used username does not produce a rejection at all —
+    it silently creates a new account and logs in successfully, live-
+    confirming CLAUDE.md's own already-documented "no separate
+    signup" fact from a different angle. A genuine bad-credentials
+    rejection therefore requires the REAL, already-registered
+    username with a wrong password — not just any made-up one.
+
+    Timeout branch's copy now says what to check (Docker still
+    running, credentials correct, working internet connection) rather
+    than just that it timed out. New tests: one per
+    `_handle_health_result` mode (existing-account bad-credentials,
+    new-account bad-credentials, kicked — mirroring the existing
+    HEALTHY/timeout coverage's own shape), the whitespace-username
+    rejection, and the radio pair's default state. All four real
+    wizard states (default, both bad-credentials modes, kicked)
+    rendered offscreen and inspected directly — scratch, not
+    committed.
+
+    `mypy --strict` clean; full suite 600 passed / 1 skipped.
+    [HISTORY §52](docs/HISTORY.md#52)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

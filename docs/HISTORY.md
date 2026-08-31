@@ -7502,3 +7502,101 @@ sanitizer, the UI-first error-message fixes — is covered in CLAUDE.md's
 own item 50 entry; this HISTORY entry exists specifically to preserve
 the three real investigations above in full.
 
+### 52
+
+Task: give the wizard's SoulSeek credential form real, distinguishing
+copy for a rejection — the protocol itself can't tell "wrong password
+on my own account" from "that username belongs to someone else" apart,
+so ask the user which one they're doing — and confirm live whether the
+third state item 23 flagged as "observed but unclassified" ("kicked,
+another client already logged in") has a real, distinct log substring
+worth its own classification.
+
+**Live verification plan, and why the real production slskd was never
+touched.** The real, already-connected production `slskd` container
+(username `seekerapp`) was up and healthy for this whole session. The
+obvious first idea — temporarily change its credentials via `PATCH
+/api/v0/options` to force a real rejection, then change them back —
+was checked against the real live swagger spec first rather than
+attempted blind: the `soulseek` section of `OptionsOverlay` only
+exposes `listenIpAddress`/`listenPort` for runtime patching:
+credentials aren't patchable at all through that endpoint. Directly
+editing the real persisted `slskd-data/slskd.yml` and restarting the
+real container was ruled out too — too high a blast radius for a real,
+working connection just to observe some log text. Used a genuinely
+disposable, throwaway `docker run` container instead (fresh, isolated
+data directory; different host ports; never `docker compose`d against
+the real `docker-compose.yml` at all) — the exact same "diagnostic
+instance, not the real one" discipline this project already
+established for packaging verification (items 30/31's `SeekerVerify`
+builds).
+
+**First real, live-found surprise, before ever reaching the intended
+test.** The first throwaway container was configured with a made-up,
+never-before-used username and a made-up password, expecting a clean
+rejection. It connected successfully instead — `state:
+"Connected, LoggedIn"`. This is CLAUDE.md's own already-documented
+"SoulSeek has no separate signup" fact, now confirmed live from an
+angle nobody had actually exercised before: a brand-new username
+doesn't fail login, it silently creates a real new account and logs
+in. This meant the intended "bad password" test needed a real,
+already-registered username — not just any string — so the real
+`seekerapp` username (read directly from the persisted `slskd-data/
+slskd.yml`, never displayed insecurely) was used with a deliberately
+wrong password instead.
+
+**Real bad-password rejection, confirmed live, matching the already-
+documented pattern exactly.** With the real `seekerapp` username and
+a wrong password, the throwaway container genuinely disconnected —
+`state: "Disconnected"` — and its own `/api/v0/logs` carried two real
+Error entries: `"Disconnected from the Soulseek server: invalid
+username or password"` and `"Failed to reconnect: \"The server
+rejected login attempt: INVALIDPASS"` (the second one really is
+truncated exactly there in slskd's own log text — not a parsing
+artifact on this project's side, confirmed by checking the raw
+message length directly). Both match `BAD_CREDENTIALS_LOG_PATTERNS`
+exactly as already documented — confirmed fresh against a real 2026-
+08-31 run, not just trusted from the original 2026-08-28 finding.
+
+**Real "kicked" rejection, confirmed live using two throwaway
+containers, the real production one never touched.** Reconfigured the
+same throwaway container with the REAL `seekerapp` username and its
+REAL password (both read from the persisted YAML) and started it
+while the real production container was still connected as that same
+user. It never even got the chance to fully log in — its own logs
+showed `"Logged in to the Soulseek server as \"seekerapp"` immediately
+followed by `"Kicked from server."` (Information level) and then the
+real, distinct Error line: `"Disconnected from the Soulseek server:
+another client logged in using the same username"`. Checked
+immediately afterward, not assumed: the real production `slskd`
+container's own `/api/v0/application` still reported `"Connected,
+LoggedIn"` — the older, already-established connection won, and the
+newer throwaway one was the one rejected. This message is genuinely
+disjoint from the bad-credentials pattern set (no shared words),
+confirmed safe to add as its own `KICKED_LOG_PATTERNS`/
+`SlskdHealthStatus.KICKED` classification without any risk of
+colliding with the existing one.
+
+**Cleanup, confirmed complete.** Both throwaway containers (`docker rm
+-f`) and their scratch data directories were removed immediately after
+the two real tests above; the real production `slskd` container and
+its real `slskd-data/` were never modified at any point — checked
+directly (`docker ps -a --filter name=slskd` showing only the real,
+original, still-healthy container) rather than assumed clean from the
+plan alone.
+
+**No structured error code exists to pin to instead of substring
+matching, checked again for this new pattern the same way item 23
+already checked for the first two** — the real captured log entries'
+own shape (`{timestamp, context, level, message}`) has no
+"exception-code" or "reason" field, only free-text `message`. Same
+accepted risk as `BAD_CREDENTIALS_LOG_PATTERNS`: a future slskd
+version could reword this text, and it's worth re-checking after any
+upgrade.
+
+The wizard-side work (the radio pair, per-branch copy, the tooltip-
+held real detail, username whitespace validation, the improved
+timeout copy) is covered in CLAUDE.md's own item 52 entry — this
+HISTORY entry exists specifically to preserve the live investigation
+in full, including the real production-account-safety verification.
+

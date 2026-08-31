@@ -271,6 +271,18 @@ TOOLTIP_SUBFOLDER_PER_PLAYLIST_CHECKBOX = (
 )
 TOOLTIP_SOULSEEK_USERNAME_FIELD = "Your SoulSeek network username (created on first login, not chosen in advance)."
 TOOLTIP_SOULSEEK_PASSWORD_FIELD = "Your SoulSeek network password."
+SOULSEEK_ACCOUNT_MODE_EXPLANATION = (
+    "SoulSeek has no separate signup — the account below is created "
+    "the first time these credentials connect, so if you're creating "
+    "a new one, the username has to be one nobody has taken."
+)
+TOOLTIP_EXISTING_SOULSEEK_ACCOUNT_RADIO = (
+    "You already have a SoulSeek username and password."
+)
+TOOLTIP_NEW_SOULSEEK_ACCOUNT_RADIO = (
+    "This will be your first time connecting with this username — it "
+    "gets created automatically if nobody else has taken it."
+)
 TOOLTIP_BRING_UP_SOULSEEK = (
     "Start slskd via Docker and connect it to the SoulSeek network with "
     "these credentials."

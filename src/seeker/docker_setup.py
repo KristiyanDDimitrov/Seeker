@@ -204,10 +204,24 @@ SLSKD_HEALTHY_STATE = "Connected, LoggedIn"
 # upgrade.
 BAD_CREDENTIALS_LOG_PATTERNS = ("invalid username or password", "invalidpass")
 
+# Roadmap item 8 — the third real state item 23's own comment above
+# already flagged as observed-but-unclassified. Confirmed live
+# (2026-08-31) via two genuinely disposable, throwaway slskd containers
+# (never the real production one — see docs/HISTORY.md item 8 for the
+# full setup): logging a second client in with the SAME real,
+# already-connected username produces a real, distinct Error-level log
+# line — "Disconnected from the Soulseek server: another client logged
+# in using the same username" — preceded by an Information-level
+# "Kicked from server." This substring is genuinely disjoint from
+# BAD_CREDENTIALS_LOG_PATTERNS above (no shared words), so checking it
+# first or after makes no difference to correctness.
+KICKED_LOG_PATTERNS = ("another client logged in using the same username",)
+
 
 class SlskdHealthStatus(Enum):
     HEALTHY = "healthy"
     BAD_CREDENTIALS = "bad_credentials"
+    KICKED = "kicked"
     NOT_READY = "not_ready"
 
 
@@ -285,6 +299,15 @@ def check_slskd_health(
             ):
                 return SlskdHealthCheckResult(
                     SlskdHealthStatus.BAD_CREDENTIALS,
+                    detail=str(entry.get("message")),
+                )
+
+            if any(
+                    pattern in message
+                    for pattern in KICKED_LOG_PATTERNS
+            ):
+                return SlskdHealthCheckResult(
+                    SlskdHealthStatus.KICKED,
                     detail=str(entry.get("message")),
                 )
     except httpx.HTTPError:

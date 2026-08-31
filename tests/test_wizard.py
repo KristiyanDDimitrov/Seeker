@@ -562,9 +562,7 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
     assert completed == [True]
 
 
-def test_health_result_bad_credentials_shows_real_detail_and_stays(
-        qtbot, tmp_path, monkeypatch,
-):
+def _build_wizard_at_soulseek_step(qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(
         "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
     )
@@ -586,6 +584,22 @@ def test_health_result_bad_credentials_shows_real_detail_and_stays(
     )
     qtbot.addWidget(wizard)
 
+    return wizard, completed
+
+
+# Roadmap item 8 — one test per real _handle_health_result mode,
+# mirroring the existing HEALTHY/timeout coverage's own shape.
+
+def test_health_result_bad_credentials_existing_account_mode(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard, completed = _build_wizard_at_soulseek_step(
+        qtbot, tmp_path, monkeypatch,
+    )
+    # Default radio state — "I already have a SoulSeek account".
+    assert wizard.existing_account_radio.isChecked()
+    wizard.soulseek_username_field.setText("realuser")
+
     wizard._handle_health_result(
         SlskdHealthCheckResult(
             SlskdHealthStatus.BAD_CREDENTIALS,
@@ -593,9 +607,73 @@ def test_health_result_bad_credentials_shows_real_detail_and_stays(
         )
     )
 
-    assert "invalid username or password" in wizard.soulseek_status_label.text()
+    text = wizard.soulseek_status_label.text()
+    assert "rejected that username and password" in text
+    assert "case-sensitive" in text
+    # The username field is untouched in this mode — nothing about
+    # "wrong password on my own account" implies the username itself
+    # was the problem.
+    assert wizard.soulseek_username_field.text() == "realuser"
+    # The real, raw detail is never dropped — available on hover
+    # regardless of which branch's copy is shown.
+    assert wizard.soulseek_status_label.toolTip() == "invalid username or password"
     assert completed == []
     assert wizard.stack.currentIndex() == 2
+
+
+def test_health_result_bad_credentials_new_account_mode(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard, completed = _build_wizard_at_soulseek_step(
+        qtbot, tmp_path, monkeypatch,
+    )
+    wizard.new_account_radio.setChecked(True)
+    wizard.soulseek_username_field.setText("takenusername")
+    wizard.soulseek_password_field.setText("mypassword")
+
+    wizard._handle_health_result(
+        SlskdHealthCheckResult(
+            SlskdHealthStatus.BAD_CREDENTIALS,
+            detail="invalid username or password",
+        )
+    )
+
+    text = wizard.soulseek_status_label.text()
+    assert "'takenusername'" in text
+    assert "already taken" in text
+    # Username cleared so the user can pick a different one; password
+    # kept — only the username was the problem here. The code also
+    # calls setFocus() on the field (confirmed by reading
+    # _handle_bad_credentials directly) — not re-asserted via
+    # hasFocus() here, since window-activation-dependent focus state
+    # is not reliably observable under the offscreen QPA platform this
+    # suite runs under.
+    assert wizard.soulseek_username_field.text() == ""
+    assert wizard.soulseek_password_field.text() == "mypassword"
+    assert wizard.soulseek_status_label.toolTip() == "invalid username or password"
+    assert completed == []
+
+
+def test_health_result_kicked_shows_distinct_message(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard, completed = _build_wizard_at_soulseek_step(
+        qtbot, tmp_path, monkeypatch,
+    )
+
+    real_detail = (
+        "Disconnected from the Soulseek server: another client logged "
+        "in using the same username"
+    )
+    wizard._handle_health_result(
+        SlskdHealthCheckResult(SlskdHealthStatus.KICKED, detail=real_detail)
+    )
+
+    text = wizard.soulseek_status_label.text()
+    assert "already logged in" in text
+    assert text != real_detail  # plain-language, not the raw log line
+    assert wizard.soulseek_status_label.toolTip() == real_detail
+    assert completed == []
 
 
 def test_bring_up_soulseek_blocked_when_docker_not_running(
@@ -636,6 +714,59 @@ def test_bring_up_soulseek_blocked_when_docker_not_running(
 
     assert calls == []
     assert wizard.soulseek_status_label.text() == "Docker isn't running yet."
+
+
+def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.RUNNING,
+    )
+    calls = []
+    monkeypatch.setattr(
+        "seeker.ui.wizard.bring_up_slskd",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    application.library_service.add_location("Library", str(tmp_path))
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+    wizard._library_location_path = str(tmp_path)
+
+    wizard.soulseek_username_field.setText(" realuser")
+    wizard.soulseek_password_field.setText("realpass")
+    wizard.bring_up_button.click()
+
+    assert calls == []
+    assert "leading or trailing spaces" in wizard.soulseek_status_label.text()
+
+
+def test_soulseek_account_mode_radios_default_to_existing_account(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    assert wizard.existing_account_radio.isChecked()
+    assert not wizard.new_account_radio.isChecked()
 
 
 def test_bring_up_soulseek_blocked_when_no_library_location(

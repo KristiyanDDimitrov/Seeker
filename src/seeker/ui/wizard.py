@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QHBoxLayout,
     QLabel,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -319,6 +321,39 @@ class OnboardingWizard(QMainWindow):
 
         layout.addWidget(QLabel("SoulSeek network account:"))
 
+        account_mode_explanation = QLabel(
+            help_text.SOULSEEK_ACCOUNT_MODE_EXPLANATION
+        )
+        account_mode_explanation.setWordWrap(True)
+        layout.addWidget(account_mode_explanation)
+
+        # Roadmap item 8 — the protocol itself can't distinguish "wrong
+        # password on my own account" from "that username belongs to
+        # someone else" (both converge on the identical INVALIDPASS
+        # rejection — confirmed live, see docker_setup.py's own
+        # BAD_CREDENTIALS_LOG_PATTERNS comment). Asking which one the
+        # user is doing is the only way to give useful copy on a
+        # rejection.
+        self._soulseek_account_mode_group = QButtonGroup(self)
+        self.existing_account_radio = QRadioButton(
+            "I already have a SoulSeek account"
+        )
+        self.existing_account_radio.setChecked(True)
+        self.existing_account_radio.setToolTip(
+            help_text.TOOLTIP_EXISTING_SOULSEEK_ACCOUNT_RADIO
+        )
+        self._soulseek_account_mode_group.addButton(
+            self.existing_account_radio
+        )
+        layout.addWidget(self.existing_account_radio)
+
+        self.new_account_radio = QRadioButton("Create a new SoulSeek account")
+        self.new_account_radio.setToolTip(
+            help_text.TOOLTIP_NEW_SOULSEEK_ACCOUNT_RADIO
+        )
+        self._soulseek_account_mode_group.addButton(self.new_account_radio)
+        layout.addWidget(self.new_account_radio)
+
         self.soulseek_username_field = QLineEdit()
         self.soulseek_username_field.setPlaceholderText(
             "SoulSeek username"
@@ -453,8 +488,24 @@ class OnboardingWizard(QMainWindow):
         self._connect_docker_action(self._refresh_docker_state)
 
     def _on_bring_up_clicked(self) -> None:
-        username = self.soulseek_username_field.text().strip()
+        raw_username = self.soulseek_username_field.text()
         password = self.soulseek_password_field.text()
+
+        # Real SoulSeek username character constraints (allowed
+        # length, allowed characters) aren't cheaply confirmable here
+        # — not guessed at. Only validating what's genuinely certain:
+        # non-empty, and no leading/trailing whitespace, which would
+        # otherwise be silently stripped somewhere downstream and
+        # leave the user unsure which literal string is "the"
+        # username they registered.
+        if raw_username != raw_username.strip():
+            self.soulseek_status_label.setText(
+                "Remove the leading or trailing spaces from your "
+                "SoulSeek username."
+            )
+            return
+
+        username = raw_username
 
         if not username or not password:
             self.soulseek_status_label.setText(
@@ -504,6 +555,10 @@ class OnboardingWizard(QMainWindow):
         )
         self.soulseek_progress.show()
         self.soulseek_status_label.setText("Starting SoulSeek...")
+        # A stale detail from an earlier attempt (e.g. the first
+        # rejection this same session) must not linger into whatever
+        # this new attempt ends up showing.
+        self.soulseek_status_label.setToolTip("")
 
     def _start_health_poll(self, api_key: str) -> None:
         self._slskd_api_key = api_key
@@ -544,23 +599,58 @@ class OnboardingWizard(QMainWindow):
             self._stop_health_poll()
             self._persist_soulseek_config()
             self.soulseek_status_label.setText("SoulSeek is connected.")
+            self.soulseek_status_label.setToolTip("")
             self._advance_to_done_page()
             return
 
         if result.status == SlskdHealthStatus.BAD_CREDENTIALS:
             self._stop_health_poll()
+            self._handle_bad_credentials(result.detail)
+            return
+
+        if result.status == SlskdHealthStatus.KICKED:
+            self._stop_health_poll()
             self.soulseek_status_label.setText(
-                f"SoulSeek rejected your credentials: {result.detail}"
+                "Another client is already logged in with this "
+                "username."
             )
+            self.soulseek_status_label.setToolTip(result.detail or "")
             return
 
         if self._health_poll_elapsed >= HEALTH_POLL_TIMEOUT_SECONDS:
             self._stop_health_poll()
             self.soulseek_status_label.setText(
                 "SoulSeek didn't finish connecting within "
-                f"{HEALTH_POLL_TIMEOUT_SECONDS:.0f}s. Check your "
-                "Docker setup and try again."
+                f"{HEALTH_POLL_TIMEOUT_SECONDS:.0f}s. Check that Docker "
+                "is still running, that your SoulSeek username and "
+                "password are correct, and that this machine has a "
+                "working internet connection, then try again."
             )
+
+    def _handle_bad_credentials(self, detail: str | None) -> None:
+        # The protocol itself can't distinguish these two cases (both
+        # converge on the identical INVALIDPASS rejection — confirmed
+        # live) — the radio pair from the credential form is the only
+        # real signal available for which message applies.
+        if self.new_account_radio.isChecked():
+            username = self.soulseek_username_field.text()
+            self.soulseek_status_label.setText(
+                f"The username '{username}' is already taken on the "
+                f"SoulSeek network. Pick a different one and try again."
+            )
+            # Keep the password (still probably the one they meant to
+            # use going forward) — only the username needs to change.
+            self.soulseek_username_field.clear()
+            self.soulseek_username_field.setFocus()
+        else:
+            self.soulseek_status_label.setText(
+                "SoulSeek rejected that username and password. Check "
+                "the password — usernames are case-sensitive."
+            )
+
+        # Never dropped — the real log line stays available on hover,
+        # regardless of which branch's copy is shown.
+        self.soulseek_status_label.setToolTip(detail or "")
 
     def _stop_health_poll(self) -> None:
         if self._health_poll_timer is not None:

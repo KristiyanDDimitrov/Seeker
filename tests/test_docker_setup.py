@@ -359,14 +359,14 @@ def test_check_slskd_health_detects_real_bad_credentials_log_pattern(
     assert "invalid username or password" in result.detail.lower()
 
 
-def test_check_slskd_health_not_ready_when_disconnected_for_unrelated_reason(
-        monkeypatch,
-):
-    # Real, confirmed-live finding: a "kicked, another client already
-    # logged in" disconnect lands at the exact same "Disconnected"
-    # state as a bad-credentials rejection — only a log entry matching
-    # the confirmed bad-credential pattern should classify as
-    # BAD_CREDENTIALS; anything else must not be misclassified.
+def test_check_slskd_health_kicked_when_another_client_logs_in(monkeypatch):
+    # Roadmap item 8 — real, confirmed-live text (two genuinely
+    # disposable throwaway slskd containers, never the real production
+    # one; see docs/HISTORY.md item 8): a "kicked, another client
+    # already logged in with this username" disconnect lands at the
+    # exact same "Disconnected" state as a bad-credentials rejection,
+    # but is a real, distinct, confirmable log line — must classify as
+    # its own KICKED status, not BAD_CREDENTIALS and not NOT_READY.
     def fake_get(url, headers=None, timeout=None):
         if url.endswith("/api/v0/application"):
             return FakeResponse(200, {"server": {"state": "Disconnected"}})
@@ -380,6 +380,35 @@ def test_check_slskd_health_not_ready_when_disconnected_for_unrelated_reason(
                     "message": "Disconnected from the Soulseek server: "
                                 "another client logged in using the same "
                                 "username",
+                },
+            ],
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
+
+    assert result.status == SlskdHealthStatus.KICKED
+    assert result.detail is not None
+    assert "another client" in result.detail.lower()
+
+
+def test_check_slskd_health_not_ready_for_a_genuinely_unrelated_error(
+        monkeypatch,
+):
+    # A real error unrelated to either confirmed pattern set must not
+    # be misclassified as BAD_CREDENTIALS or KICKED.
+    def fake_get(url, headers=None, timeout=None):
+        if url.endswith("/api/v0/application"):
+            return FakeResponse(200, {"server": {"state": "Disconnected"}})
+
+        return FakeResponse(
+            200,
+            [
+                {
+                    "timestamp": AFTER_SINCE,
+                    "level": "Error",
+                    "message": "Error initializing shares: disk read error",
                 },
             ],
         )
