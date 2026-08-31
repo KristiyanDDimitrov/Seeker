@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -36,6 +37,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
+from seeker.ui.notice import InlineNotice
 from seeker.ui.wizard import SLSKD_LOCAL_BASE_URL
 from seeker.ui.workers import run_worker
 
@@ -104,6 +106,12 @@ class SettingsWindow(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
+        # Persistent, dismissible — for the one real error this tab can
+        # produce that's worth more than a transient status line: "this
+        # path is already registered as X" (roadmap item 5 §4).
+        self.locations_notice = InlineNotice()
+        layout.addWidget(self.locations_notice)
+
         self.locations_table = QTableWidget(0, 4)
         self.locations_table.setHorizontalHeaderLabels(
             ["Name", "Path", "Reachable", "Actions"]
@@ -112,19 +120,17 @@ class SettingsWindow(QMainWindow):
         layout.addWidget(self.locations_table)
 
         add_row = QHBoxLayout()
-        self.new_location_name_field = QLineEdit()
-        self.new_location_name_field.setPlaceholderText("Location name")
-        self.new_location_name_field.setToolTip(
-            help_text.TOOLTIP_NEW_LOCATION_NAME_FIELD
-        )
-        add_row.addWidget(self.new_location_name_field)
-
-        self.add_location_button = QPushButton("Choose Folder && Add")
+        # No name field — the location is registered immediately under
+        # the picked folder's own basename (auto-suffixed on a name
+        # collision) and is renameable afterward via the table's own
+        # Rename action (roadmap item 5 §1).
+        self.add_location_button = QPushButton("Add location…")
         self.add_location_button.setToolTip(help_text.TOOLTIP_ADD_LOCATION)
         self.add_location_button.clicked.connect(
             self._on_add_location_clicked
         )
         add_row.addWidget(self.add_location_button)
+        add_row.addStretch()
         layout.addLayout(add_row)
 
         self.locations_status_label = QLabel("")
@@ -161,6 +167,27 @@ class SettingsWindow(QMainWindow):
                 row, 2, QTableWidgetItem("Yes" if reachable else "No"),
             )
 
+            actions = QWidget()
+            actions_layout = QHBoxLayout(actions)
+            actions_layout.setContentsMargins(0, 0, 0, 0)
+
+            # Loaded from the DB via list_locations() above, so .id is
+            # always set for a real row.
+            assert location.id is not None
+            location_id = location.id
+            current_name = location.name
+
+            rename_button = QPushButton("Rename")
+            rename_button.setToolTip(help_text.TOOLTIP_RENAME_LOCATION)
+            rename_button.clicked.connect(
+                lambda _=False, location_id=location_id,
+                current_name=current_name:
+                    self._on_rename_location_clicked(
+                        location_id, current_name,
+                    )
+            )
+            actions_layout.addWidget(rename_button)
+
             remove_button = QPushButton("Remove")
             remove_button.setToolTip(help_text.TOOLTIP_REMOVE_LOCATION)
             name = location.name
@@ -169,29 +196,49 @@ class SettingsWindow(QMainWindow):
                     name
                 )
             )
-            self.locations_table.setCellWidget(row, 3, remove_button)
+            actions_layout.addWidget(remove_button)
+
+            self.locations_table.setCellWidget(row, 3, actions)
 
     def _on_add_location_clicked(self) -> None:
-        name = self.new_location_name_field.text().strip()
-
-        if not name:
-            self.locations_status_label.setText(
-                "Enter a name for this location first."
-            )
-            return
+        self.locations_notice.dismiss()
 
         pick_and_add_library_location(
             self,
             self.thread_pool,
             self.application,
-            name,
             button=self.add_location_button,
-            status_label=self.locations_status_label,
             on_finished=lambda _: self._on_location_added(),
+            on_error=lambda message: self.locations_notice.show_message(
+                message, kind="error",
+            ),
+        )
+
+    def _on_rename_location_clicked(
+            self, location_id: int, current_name: str,
+    ) -> None:
+        new_name, accepted = QInputDialog.getText(
+            self, "Rename Location", "New name:", text=current_name,
+        )
+        new_name = new_name.strip()
+
+        if not accepted or not new_name or new_name == current_name:
+            return
+
+        self.locations_notice.dismiss()
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.library_service.rename_location(
+                location_id, new_name,
+            ),
+            on_finished=lambda _: self._on_location_added(),
+            on_error=lambda message: self.locations_notice.show_message(
+                message, kind="error",
+            ),
         )
 
     def _on_location_added(self) -> None:
-        self.new_location_name_field.clear()
         self._refresh_locations()
         # A new location changes what's available to pick as a
         # playlist destination too.

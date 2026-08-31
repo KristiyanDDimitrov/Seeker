@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QLabel, QPushButton
 
 from seeker.application import Application
 from seeker.docker_setup import SlskdHealthCheckResult, SlskdHealthStatus
@@ -110,7 +110,6 @@ def test_settings_window_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
     qtbot.addWidget(window)
 
     for widget in (
-            window.new_location_name_field,
             window.add_location_button,
             window.destination_location_combo,
             window.destination_subfolder_field,
@@ -145,11 +144,14 @@ def test_locations_tab_lists_existing_locations(qtbot, tmp_path, monkeypatch):
     assert window.locations_table.item(0, 2).text() == "Yes"
 
 
-def test_add_location_calls_add_location_with_chosen_name_and_path(
+def test_add_location_uses_the_chosen_folders_own_basename_as_the_name(
         qtbot, tmp_path, monkeypatch,
 ):
+    # No name field anywhere in this flow (roadmap item 5) — a single
+    # click picks a folder and registers it immediately under its own
+    # basename.
     application = make_application(tmp_path, monkeypatch)
-    chosen_path = tmp_path / "chosen"
+    chosen_path = tmp_path / "Chosen"
     chosen_path.mkdir()
 
     monkeypatch.setattr(
@@ -159,7 +161,6 @@ def test_add_location_calls_add_location_with_chosen_name_and_path(
     window = SettingsWindow(application)
     qtbot.addWidget(window)
 
-    window.new_location_name_field.setText("Chosen")
     window.add_location_button.click()
 
     qtbot.waitUntil(
@@ -170,15 +171,17 @@ def test_add_location_calls_add_location_with_chosen_name_and_path(
     assert locations[0][0].path == str(chosen_path)
 
 
-def test_add_location_without_a_name_shows_message_and_makes_no_call(
+def test_add_location_for_an_already_registered_path_shows_an_inline_notice(
         qtbot, tmp_path, monkeypatch,
 ):
     application = make_application(tmp_path, monkeypatch)
-    called = []
+    existing_path = tmp_path / "Music"
+    existing = add_location(application, "Music", existing_path)
+
     monkeypatch.setattr(
         QFileDialog,
         "getExistingDirectory",
-        lambda *a, **k: called.append(1) or str(tmp_path),
+        lambda *a, **k: str(existing_path),
     )
 
     window = SettingsWindow(application)
@@ -186,8 +189,85 @@ def test_add_location_without_a_name_shows_message_and_makes_no_call(
 
     window.add_location_button.click()
 
-    assert called == []
-    assert "name" in window.locations_status_label.text().lower()
+    qtbot.waitUntil(
+        lambda: not window.locations_notice.isHidden(), timeout=2000,
+    )
+    assert existing.name in window.locations_notice.text()
+    # No duplicate row was added — still just the one real location.
+    assert application.library_service.list_locations()[0][0].name == "Music"
+    assert len(application.library_service.list_locations()) == 1
+
+
+def test_rename_location_updates_the_table(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+    )
+    location = application.library_service.list_locations()[0][0]
+
+    monkeypatch.setattr(
+        QInputDialog, "getText", lambda *a, **k: ("My Music", True),
+    )
+    window._on_rename_location_clicked(location.id, "Main")
+
+    qtbot.waitUntil(
+        lambda: window.locations_table.item(0, 0).text() == "My Music",
+        timeout=2000,
+    )
+
+
+def test_rename_location_cancelled_makes_no_call(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+    )
+    location = application.library_service.list_locations()[0][0]
+
+    monkeypatch.setattr(
+        QInputDialog, "getText", lambda *a, **k: ("Ignored", False),
+    )
+    window._on_rename_location_clicked(location.id, "Main")
+
+    assert window.locations_table.item(0, 0).text() == "Main"
+
+
+def test_rename_location_collision_shows_an_inline_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music1")
+    add_location(application, "Other", tmp_path / "music2")
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.locations_table.rowCount() == 2, timeout=2000,
+    )
+    other = next(
+        loc for loc, _ in application.library_service.list_locations()
+        if loc.name == "Other"
+    )
+
+    monkeypatch.setattr(
+        QInputDialog, "getText", lambda *a, **k: ("Main", True),
+    )
+    window._on_rename_location_clicked(other.id, "Other")
+
+    qtbot.waitUntil(
+        lambda: not window.locations_notice.isHidden(), timeout=2000,
+    )
+    assert "Main" in window.locations_notice.text()
 
 
 def test_remove_location_calls_remove_location_with_correct_name(
@@ -203,8 +283,10 @@ def test_remove_location_calls_remove_location_with_correct_name(
         lambda: window.locations_table.rowCount() == 1, timeout=2000,
     )
 
-    remove_button = window.locations_table.cellWidget(0, 3)
-    assert isinstance(remove_button, QPushButton)
+    actions = window.locations_table.cellWidget(0, 3)
+    remove_button = next(
+        b for b in actions.findChildren(QPushButton) if b.text() == "Remove"
+    )
     remove_button.click()
 
     qtbot.waitUntil(

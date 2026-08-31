@@ -13,26 +13,35 @@ def pick_and_add_library_location(
         parent: QWidget,
         thread_pool: QThreadPool,
         application: Application,
-        name: str,
         dialog_title: str = help_text.LIBRARY_LOCATION_PICKER_DIALOG_TITLE,
         button: QAbstractButton | None = None,
         status_label: QLabel | None = None,
         on_path_picked: Callable[[str], None] | None = None,
         on_finished: Callable[[LibraryLocation], None] | None = None,
+        on_error: Callable[[str], None] | None = None,
 ) -> None:
     """Open a native folder picker and, if the user picked something,
     register it as a library location — the onboarding wizard's own
     "Choose your music library" step, extracted so Settings' "Add
     location" action can call the identical flow instead of a second
-    copy. The wizard hardcodes name="Library" (a single-location
-    onboarding assumption); Settings passes a real user-chosen name,
-    since it supports multiple named locations.
+    copy. Roadmap item 5: no name is ever collected here — the name
+    comes from the picked folder's own basename
+    (`LibraryService.add_location_from_path`, auto-suffixed on a name
+    collision), renameable afterward rather than chosen up front. Both
+    the wizard's single onboarding location and Settings' multi-
+    location flow share this identical behavior now.
 
     on_path_picked (optional) fires synchronously the moment a real
-    path is chosen, before add_location() runs on the worker thread —
-    the wizard uses this for immediate label feedback while the
-    (usually near-instant, but still worker-routed) registration is
+    path is chosen, before add_location_from_path() runs on the worker
+    thread — the wizard uses this for immediate label feedback while
+    the (usually near-instant, but still worker-routed) registration is
     still in flight.
+
+    on_error (optional) is additive to run_worker's own status_label
+    error handling, per run_worker's own contract — for a caller (e.g.
+    Settings) that wants a real `LibraryLocationPathAlreadyRegisteredError`
+    surfaced somewhere more persistent than a status line, such as an
+    InlineNotice.
     """
     path = QFileDialog.getExistingDirectory(parent, dialog_title)
 
@@ -43,7 +52,7 @@ def pick_and_add_library_location(
         on_path_picked(path)
 
     def do_add_location() -> LibraryLocation:
-        return application.library_service.add_location(name, path)
+        return application.library_service.add_location_from_path(path)
 
     run_worker(
         thread_pool,
@@ -51,4 +60,5 @@ def pick_and_add_library_location(
         button=button,
         status_label=status_label,
         on_finished=on_finished,
+        on_error=on_error,
     )

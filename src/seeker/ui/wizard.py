@@ -235,7 +235,6 @@ class OnboardingWizard(QMainWindow):
             self,
             self.thread_pool,
             self.application,
-            "Library",
             status_label=self.library_status_label,
             on_path_picked=self.library_path_label.setText,
             on_finished=lambda location: self._advance_from_library(

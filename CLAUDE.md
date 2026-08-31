@@ -2576,6 +2576,56 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     documented opt-in scope). `mypy --strict` clean; full suite 517
     passed / 1 skipped.
 
+49. **Library locations: pick the folder first, name it later — done
+    (2026-08-31).** `LibraryService.add_location_from_path(path)` (new,
+    the UI's real entry point) derives the name from the picked
+    folder's own basename, auto-suffixing on a name collision ("Music",
+    "Music (2)", checked via a bounded loop —
+    `MAX_NAME_SUFFIX_ATTEMPTS=50`, untuned, purely a sanity ceiling
+    against a real bug, not a real-world limit) and raising
+    `LibraryLocationPathAlreadyRegisteredError` (carries the real
+    existing `LibraryLocation`) if the path is already registered,
+    checked with a new repository `get_by_path()` before ever
+    attempting the insert — `library_locations.path` was already
+    schema-`UNIQUE` (confirmed by reading `schema.py` directly, not
+    assumed), so this check turns what would otherwise be a raw
+    `IntegrityError` into a real, named "already registered as X"
+    message. `add_location(name, path)` (the CLI's own explicit-name
+    entry point) is unchanged. New `LibraryService.rename_location(id,
+    name)` → repository `update_name()`, which converts a name-
+    collision `IntegrityError` into the identical clean `RuntimeError`
+    shape `add()` already used.
+
+    `library_location_picker.py` (already shared between the wizard
+    and Settings) dropped its `name` parameter entirely — both callers
+    now go through the identical no-name flow, so the wizard's own
+    onboarding location is named after its folder too, not the
+    previous hardcoded `"Library"` literal. Settings' Locations tab:
+    the name `QLineEdit` is gone; "Choose Folder && Add" is now a
+    single "Add location…" button; each row gained a "Rename" action
+    (a `QInputDialog.getText` prompt, not a heavier inline-edit widget
+    — matches the task's own "a small Rename affordance" framing) next
+    to the existing "Remove"; a new `self.locations_notice: InlineNotice`
+    surfaces the "already registered as X" and rename-collision errors
+    persistently, per the task's own explicit ask — everything else
+    (Add/Remove progress) stays on the existing transient
+    `locations_status_label`, since Settings has no poll timer for
+    Phase 3's vanishing-message bug to apply to here.
+
+    Rendered and inspected directly (scratch, not committed): confirmed
+    the single Add button, the Rename/Remove pair per row, and a real
+    `InlineNotice` correctly naming the pre-existing location on a
+    duplicate-path attempt — caught via a properly-isolated pytest
+    fixture render after an earlier, broken ad hoc verification script
+    (a stub monkeypatch that no-op'd `chdir`/`setattr`) briefly wrote a
+    real row into the live production database; found immediately via
+    a direct `sqlite3` check against the real DB file, confirmed the
+    stray row had zero linked `local_files`/destination references,
+    and removed it through the real `LibraryService.remove_location()`
+    — verified clean afterward. Recorded here rather than glossed over.
+
+    `mypy --strict` clean; full suite 527 passed / 1 skipped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

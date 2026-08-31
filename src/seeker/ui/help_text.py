@@ -156,15 +156,16 @@ TOOLTIP_DELETE_DUPLICATES_BUTTON = (
 
 # --- Settings: Library Locations tab --------------------------------------
 
-TOOLTIP_NEW_LOCATION_NAME_FIELD = "A short name for this folder, e.g. \"Main Library\"."
 TOOLTIP_ADD_LOCATION = (
     "Pick a folder on disk and register it as a place Seeker scans for "
-    "audio files."
+    "audio files — named after the folder itself; rename it anytime "
+    "below."
 )
 TOOLTIP_REMOVE_LOCATION = (
     "Unregister this location. Files already matched or tagged are "
     "unaffected — nothing on disk is touched."
 )
+TOOLTIP_RENAME_LOCATION = "Give this location a different display name."
 
 # --- Settings: Playlist Destinations tab ----------------------------------
 

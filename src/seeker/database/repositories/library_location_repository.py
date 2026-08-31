@@ -81,6 +81,48 @@ class LibraryLocationRepository:
 
         return _row_to_location(row)
 
+    def get_by_path(
+            self,
+            path: str,
+            connection: sqlite3.Connection,
+    ) -> LibraryLocation | None:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                path,
+                added_at
+            FROM library_locations
+            WHERE path = ?
+            """,
+            (path,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return _row_to_location(row)
+
+    def update_name(
+            self,
+            location_id: int,
+            name: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        try:
+            connection.execute(
+                "UPDATE library_locations SET name = ? WHERE id = ?",
+                (name, location_id),
+            )
+        except sqlite3.IntegrityError as error:
+            if "library_locations.name" in str(error):
+                raise RuntimeError(
+                    f"A location named '{name}' already exists."
+                ) from error
+
+            raise
+
     def get_by_id(
             self,
             location_id: int,

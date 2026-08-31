@@ -290,7 +290,9 @@ def test_choose_library_folder_registers_location_and_advances(
 
     qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
     locations = application.library_service.list_locations()
-    assert [loc.name for loc, _ in locations] == ["Library"]
+    # Name comes from the picked folder's own basename now — no name
+    # field anywhere in this flow, wizard included (roadmap item 5).
+    assert [loc.name for loc, _ in locations] == ["music"]
     assert locations[0][0].path == str(chosen_path)
 
 

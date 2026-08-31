@@ -7349,3 +7349,75 @@ asserts `"chunk" in bar.styleSheet()`; new
 covers the Dashboard's own per-track progress cell, which shares the
 same helper. `mypy --strict` clean; full suite 511 passed / 1 skipped.
 
+### 49
+
+Task: replace Settings' type-a-name-then-pick-a-folder library location
+flow with pick-first, name-from-folder, renameable-after — shared code
+path with the wizard's own single-location step.
+
+**A real incident during this task's own live verification, recorded
+honestly rather than smoothed over.** After wiring the new Settings
+UI, wrote a throwaway script to render the Locations tab for visual
+review (per this project's own "grab a PNG and look at it" discipline).
+The script needed `test_settings_window.py`'s `make_application()`
+helper, which takes a real pytest `monkeypatch` fixture — outside a
+real pytest run, no such fixture exists, so the script substituted a
+hand-written stub object with no-op `chdir`/`setattr`/`delenv`
+methods, intending it to be a harmless stand-in.
+
+It wasn't harmless. `make_application()` calls `monkeypatch.chdir
+(tmp_path)` specifically to isolate the real `.env`-relative fallback
+paths — with a no-op stub, that isolation silently never happened, and
+`Application()` resolved its real `platformdirs` data directory (CWD-
+independent since item 18, so the broken chdir stub didn't even matter
+for that part — the DB path was never going to be sandboxed by `cwd`
+alone) and opened the real, live production database. The script then
+called `add_location(application, "Music", tmp_path / "Music")`
+against that real `Application`, writing a real row into the real
+`library_locations` table.
+
+**Caught immediately, not discovered later.** The very next screenshot
+showed three rows instead of the expected one — two of them, "Test"
+and "x9-pro", were recognizable as this machine's own real, known
+production locations from prior roadmap items. Rather than assume
+best-effort cleanup ("it's just a location row, no big deal"), checked
+the actual damage directly: `sqlite3 ... "SELECT ... FROM
+library_locations"` confirmed the exact stray row (id 5, name
+"Music", path a real `/var/folders/.../tmp.../Music` temp directory);
+`SELECT COUNT(*) FROM local_files WHERE location_id=5` and the
+equivalent for `playlists.download_location_id` both confirmed zero —
+nothing had scanned, matched, or set a destination against it yet, so
+it carried no cascading references to worry about. Removed through the
+real, ordinary `Application().library_service.remove_location("Music")`
+— the same code path a real user's "Remove" click takes, not a raw
+`DELETE` — and re-checked the table afterward to confirm exactly the
+original two real rows remained, nothing else disturbed.
+
+**Fixed at the source for the rest of this task's verification:**
+re-rendered using a real pytest-driven script instead (a `def
+test_render_...(qtbot, tmp_path, monkeypatch)` function, run via a real
+`pytest` invocation so `monkeypatch` is the genuine fixture, not a
+hand-rolled stand-in) — confirmed clean both by the render itself (one
+real, isolated location row, not the production three) and by a direct
+`sqlite3` check against the production DB immediately after, showing
+it untouched.
+
+**Standing lesson for any future one-off verification script in this
+project:** a hand-written stub for a pytest fixture is only safe if
+every method it no-ops is confirmed to have no real side effect when
+skipped — "harmless-looking" isn't the same as verified-harmless, and
+a stub silently defeating test isolation (rather than raising or
+visibly failing) is exactly the shape that lets a scratch script touch
+real production state without any error to catch it. A genuine pytest
+invocation of a real test function is safer than an ad hoc script
+faking fixture behavior, and should be preferred whenever the render
+needs anything a fixture (like `monkeypatch`) would normally provide.
+
+The actual feature work itself (`LibraryService.add_location_from_path`/
+`rename_location`, the repository's `get_by_path`/`update_name`,
+`library_location_picker.py`'s name parameter removed, Settings'
+single "Add location…" button + per-row Rename/Remove) is covered in
+CLAUDE.md's own item 49 entry — this HISTORY entry exists specifically
+to preserve the incident and its resolution in full, per this file's
+own stated purpose.
+
