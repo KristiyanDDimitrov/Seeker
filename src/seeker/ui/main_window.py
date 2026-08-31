@@ -1661,17 +1661,46 @@ class MainWindow(QMainWindow):
 
         if step is None:
             self.next_step_notice.dismiss()
-            return
+        else:
+            action = step.action
+            self.next_step_notice.show_message(
+                step.message,
+                kind=step.kind,
+                action_text=step.action_text,
+                on_action=(
+                    (lambda: self._on_next_step_action(action))
+                    if action is not None else None
+                ),
+            )
 
-        action = step.action
-        self.next_step_notice.show_message(
-            step.message,
-            kind=step.kind,
-            action_text=step.action_text,
-            on_action=(
-                (lambda: self._on_next_step_action(action))
-                if action is not None else None
-            ),
+        # The action row's own Download button offers the exact same
+        # download_playlist() call, against the exact same unmatched-
+        # tracks set, as the CTA's own "download" action (confirmed:
+        # get_unmatched_for_playlist filters match_method IS NULL,
+        # which already excludes needs-review tracks either way — so
+        # there is no genuine scope difference to preserve between
+        # them today). Showing both at once is a real duplicate
+        # action, not two different things that happen to look
+        # similar — hide the row's copy while the CTA is already
+        # offering it, rather than inventing a second, artificially
+        # different scope. Re-shown once anything else is the current
+        # CTA (or once the CTA has nothing to show at all), so it
+        # stays available as an ordinary manual action.
+        self.download_button.setVisible(
+            step is None or step.action != "download"
+        )
+
+        # Disabled, not hidden, for every other action-row button —
+        # matches the CTA strip's own point (don't present an action
+        # that genuinely can't do anything yet) without the row's
+        # width jumping around on every fact change.
+        self.download_button.setEnabled(
+            facts.selected_playlist_name is not None
+        )
+        self.sync_button.setEnabled(facts.spotify_configured)
+        self.scan_button.setEnabled(facts.has_library_location)
+        self.match_button.setEnabled(
+            facts.has_cached_playlists and facts.has_library_location
         )
 
     def _on_next_step_action(self, action: str) -> None:

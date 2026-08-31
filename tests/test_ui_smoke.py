@@ -536,6 +536,105 @@ def test_next_step_notice_shows_download_count_and_triggers_download_flow(
     )
 
 
+def test_action_row_download_button_hides_while_cta_offers_the_same_action(
+        qtbot,
+):
+    # download_button and the CTA's own "download" action both call the
+    # identical download_playlist() against the identical unmatched-
+    # tracks set — showing both is a real duplicate, not two distinct
+    # actions, so the row's copy hides while the CTA already offers it.
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        locations=[(location, True)],
+        statuses=[TrackStatus(track=_make_track("t1"), state=NOT_FOUND)],
+        soulseek_configured=True,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: window.download_button.isHidden(), timeout=2000,
+    )
+
+
+def test_action_row_download_button_visible_when_cta_offers_something_else(
+        qtbot,
+):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        statuses=[],  # CTA offers "Load tracks", not "download".
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    assert not window.download_button.isHidden()
+
+
+def test_download_button_disabled_with_no_playlist_selected(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.wait(50)
+    assert not window.download_button.isEnabled()
+
+
+def test_sync_button_disabled_when_spotify_not_connected(qtbot):
+    application = FakeApplication(spotify_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.sync_button.isEnabled(), timeout=2000,
+    )
+
+
+def test_scan_button_disabled_with_no_library_location(qtbot):
+    application = FakeApplication(locations=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.scan_button.isEnabled(), timeout=2000,
+    )
+
+
+def test_match_button_disabled_with_nothing_to_match(qtbot):
+    application = FakeApplication(playlists=[], locations=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.match_button.isEnabled(), timeout=2000,
+    )
+
+
+def test_all_action_buttons_enabled_once_everything_is_set_up(qtbot):
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        locations=[(location, True)],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.sync_button.isEnabled()
+        and window.scan_button.isEnabled()
+        and window.match_button.isEnabled(),
+        timeout=2000,
+    )
+    _select_first_playlist(window, qtbot)
+    assert window.download_button.isEnabled()
+
+
 # --- Track-table empty states (roadmap item 7) ------------------------------
 
 def test_no_playlist_selected_shows_centred_empty_panel_no_button(qtbot):
@@ -590,6 +689,12 @@ def test_playlist_with_tracks_shows_the_real_table(qtbot):
 def _select_first_playlist(window, qtbot) -> None:
     qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
     window.playlist_list.setCurrentRow(0)
+    # Selecting also kicks off the "next step" facts fetch
+    # (_poll_next_step), which independently enables/disables
+    # download_button — wait for it to actually land rather than
+    # racing a click against a button that may still be disabled from
+    # the pre-selection (no playlist selected) render.
+    qtbot.waitUntil(lambda: window.download_button.isEnabled(), timeout=2000)
 
 
 def test_download_with_no_selection_shows_a_warning_notice(qtbot):

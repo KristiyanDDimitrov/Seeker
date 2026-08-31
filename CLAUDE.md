@@ -2820,6 +2820,41 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     `mypy --strict` clean; full suite 588 passed / 1 skipped.
 
+    **Follow-up (2026-08-31), three real gaps found by re-inspecting
+    the item's own screenshots rather than assuming them clean, all
+    fixed in the same pass.** (1) The action row's own "Download
+    selected playlist" and the CTA's own "Download N missing tracks"
+    were genuinely the same action, not just visually similar —
+    confirmed by reading `get_unmatched_for_playlist`'s query
+    directly (`match_method IS NULL`, which already excludes needs-
+    review tracks from BOTH paths), so there was never a real scope
+    difference to preserve between them. Fixed by hiding
+    `download_button` specifically while the CTA's own current action
+    is `"download"` (`step.action != "download"` in
+    `_render_next_step`), shown again the instant the CTA moves on to
+    anything else — not a second, artificially-different scope
+    invented just to justify two buttons. (2) All four action-row
+    buttons rendered enabled regardless of whether their action could
+    do anything — same `_render_next_step` call now also sets
+    `.setEnabled(...)` on all four from the identical facts bundle
+    already being computed for the CTA itself (no second fetch):
+    Download needs a selected playlist; Sync needs
+    `spotify_configured`; Scan needs `has_library_location`; Match
+    needs both `has_cached_playlists` and `has_library_location`.
+    Disabled rather than hidden, so the row's width doesn't jump
+    around as facts change. (3) Existing dialog-flow UI tests raced
+    against this new disabled-by-default initial state (the very
+    first `_poll_next_step()` call, before any playlist is selected,
+    now genuinely disables `download_button`) — fixed at the shared
+    `_select_first_playlist()` test helper (wait for
+    `download_button.isEnabled()`, not just the selection itself),
+    rather than patching each affected test individually. Re-rendered
+    both screens that originally showed the problems and confirmed
+    directly: exactly one Download CTA visible in the missing-tracks
+    scene; all four action-row buttons visibly muted/disabled in the
+    Spotify-not-connected scene. `mypy --strict` clean; full suite 595
+    passed / 1 skipped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
