@@ -2434,12 +2434,59 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     that calls `_poll_selected_playlist()` directly and asserts the
     notice is untouched — the real mechanism that used to wipe it, not
     a timer/sleep-based approximation. No automated test exists for the
-    three Qt/QSS rendering bugs themselves (a pixel-level visual
-    assertion isn't practical in this fast suite) — the durable guard
-    there is the code comment in `theme.py` plus this entry; the
-    render-and-look workflow is what would catch a regression, same as
-    it caught the original bug. `mypy --strict` clean; full suite 510
-    passed / 1 skipped. [HISTORY §47](docs/HISTORY.md#47)
+    two remaining Qt/QSS rendering bugs (`WA_StyledBackground`, the
+    `QTableWidget::item` cell-widget corruption — a pixel-level visual
+    assertion isn't practical in this fast suite); the durable guard
+    there is the code comment in `theme.py` plus this entry — see the
+    follow-up below for why the progress-bar bug's own guard didn't
+    stay in that same "code-comment only" category. `mypy --strict`
+    clean; full suite 510 passed / 1 skipped. [HISTORY
+    §47](docs/HISTORY.md#47)
+
+    **Follow-up (2026-08-31), three requested fixes before Phase 4,
+    all confirmed live.** (1) Widened the surface/border contrast steps
+    (`BG_APP #100E15`, `BG_SIDEBAR #15121D`, `BG_SURFACE #1D1929`,
+    `BG_SURFACE_2 #29243A`, `BORDER #3A344E`, `BORDER_STRONG #4E4768`
+    — text/accent/status colors unchanged) so default buttons read as
+    clickable against both a page background and a table-cell
+    background. (2) **Queued/indeterminate progress bar investigated
+    for real root cause, not just reskinned.** The code was already
+    correct — `_build_progress_widget` genuinely calls
+    `bar.setRange(0, 0)` for a queued/no-bytes-yet row, Qt's real
+    native indeterminate mode. Confirmed via a bisected minimal repro
+    that the actual cause was the stylesheet: Qt's native indeterminate
+    mode paints an animated, moving diagonal-striped pattern by
+    default, but the INSTANT any `QProgressBar::chunk` rule matches a
+    bar — regardless of what properties it sets — Qt switches that
+    sub-control to the QSS box-model painter for every state of that
+    bar, indeterminate included, which has no concept of the native
+    busy animation and paints a static solid rect instead (confirmed:
+    a bare `QProgressBar { ... }` container rule with zero `::chunk`
+    rule preserves the real animated stripe perfectly; adding any
+    `::chunk` rule back, even one with no `background-color` at all,
+    replaces it with a static block). There is no `:indeterminate`
+    pseudo-state in Qt's QSS to scope a rule around this. Fixed by
+    removing `QProgressBar::chunk` from the global stylesheet entirely
+    and adding `theme.style_determinate_progress_bar(bar)` — a
+    per-instance `setStyleSheet()` call applied ONLY at the two real
+    call sites once a bar is confirmed determinate (`main_window.py`'s
+    Downloads-tab and Dashboard per-track progress cells), never to an
+    indeterminate one. Now covered by real tests, not just a code
+    comment: `test_downloads_tab_progress_bar_indeterminate_with_no_
+    bytes_yet` asserts `bar.styleSheet() == ""`,
+    `test_downloads_tab_progress_bar_determinate_with_real_bytes` and
+    the new `test_dashboard_downloading_progress_bar_gets_the_accent_
+    chunk_style` assert `"chunk" in bar.styleSheet()` — a regression
+    that started applying the accent fill unconditionally (the exact
+    shape of the original bug) would now fail a fast test, not just
+    require a human to re-render and notice. (3) Re-rendered
+    `phase3_dashboard.png` and `phase3_downloads.png` (same scratch
+    paths as before, same scenes) and inspected both directly: the
+    queued row now shows the real animated stripe pattern, clearly
+    distinct from the downloading row's solid 50% fill; button borders
+    read as clearly clickable in both the toolbar (page-level) and the
+    Dashboard's Actions-column context. `mypy --strict` clean; full
+    suite 511 passed / 1 skipped.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

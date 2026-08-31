@@ -21,17 +21,17 @@ a rewrite).
 """
 
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QProgressBar, QWidget
 
 # --- Color tokens ----------------------------------------------------------
 
-BG_APP = "#121016"
-BG_SIDEBAR = "#17141F"
-BG_SURFACE = "#1C1926"
-BG_SURFACE_2 = "#232030"
+BG_APP = "#100E15"
+BG_SIDEBAR = "#15121D"
+BG_SURFACE = "#1D1929"
+BG_SURFACE_2 = "#29243A"
 
-BORDER = "#302C3E"
-BORDER_STRONG = "#423C55"
+BORDER = "#3A344E"
+BORDER_STRONG = "#4E4768"
 
 TEXT = "#ECEAF3"
 TEXT_MUTED = "#9E98B3"
@@ -71,6 +71,25 @@ def set_variant(widget: QWidget, variant: str | None) -> None:
     widget.setProperty("variant", variant)
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def style_determinate_progress_bar(bar: QProgressBar) -> None:
+    """Apply the accent chunk fill to a genuinely DETERMINATE
+    QProgressBar (a real range + value already set) — never to an
+    indeterminate one (`setRange(0, 0)`). See the stylesheet's own
+    `QProgressBar::chunk` comment for why this can't just be a global
+    QSS rule: any `::chunk` rule at all, regardless of its properties,
+    replaces Qt's native animated "busy" indicator with a static block
+    for every QProgressBar it matches, indeterminate ones included. A
+    per-instance stylesheet, applied only here, keeps that global rule
+    from ever existing in the first place.
+    """
+    bar.setStyleSheet(
+        f"QProgressBar::chunk {{"
+        f"  background-color: {ACCENT};"
+        f"  border-radius: {RADIUS_CONTROL}px;"
+        f"}}"
+    )
 
 
 def apply_theme(app: QApplication) -> None:
@@ -258,10 +277,22 @@ QProgressBar {{
     max-height: 14px;
 }}
 
-QProgressBar::chunk {{
-    background-color: {ACCENT};
-    border-radius: {RADIUS_CONTROL}px;
-}}
+/* Deliberately no global `QProgressBar::chunk` rule here — found live
+while re-rendering the Downloads tab: a genuinely indeterminate bar
+(setRange(0, 0), Qt's own native "busy" mode) renders as an animated,
+moving diagonal-striped pattern by default — but the INSTANT any
+`::chunk` rule matches a QProgressBar, Qt switches that sub-control to
+the QSS box-model painter for ALL its states, indeterminate included,
+which has no concept of the native busy animation and just paints a
+static solid rect instead. Confirmed by bisection: a bare
+`QProgressBar {{ ... }}` container rule alone preserves the native
+animated stripe; adding ANY `::chunk` rule back (even one with no
+background-color at all) replaces it with a static block that reads as
+"stuck at 100%," not "in progress." There is no `:indeterminate`
+pseudo-state in Qt's QSS to scope a `::chunk` rule around, so the
+accent fill for a genuinely DETERMINATE bar is applied locally, per
+instance, via `style_determinate_progress_bar()` below — never here,
+never globally. */
 
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;

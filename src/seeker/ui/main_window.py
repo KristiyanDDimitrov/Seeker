@@ -126,6 +126,7 @@ def _build_progress_widget(
 
     bar.setRange(0, request.total_bytes)
     bar.setValue(request.bytes_transferred)
+    theme.style_determinate_progress_bar(bar)
 
     # ETA only ever shown once the bar is determinate, per Task 2's own
     # scoping — the indeterminate branch above is left exactly as it
@@ -1147,6 +1148,7 @@ class MainWindow(QMainWindow):
                 progress = QProgressBar()
                 progress.setMaximum(status.total_bytes)
                 progress.setValue(status.bytes_transferred)
+                theme.style_determinate_progress_bar(progress)
                 self.track_table.setCellWidget(row, 2, progress)
             else:
                 self.track_table.setCellWidget(row, 2, QWidget())

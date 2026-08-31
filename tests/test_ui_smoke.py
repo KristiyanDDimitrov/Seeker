@@ -19,6 +19,7 @@ from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_status import (
+    DOWNLOADING,
     IN_LIBRARY,
     NOT_FOUND,
     TrackStatus,
@@ -647,6 +648,15 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     assert isinstance(bar, QProgressBar)
     assert bar.minimum() == 0
     assert bar.maximum() == 0
+    # Real, live-found bug (Phase 3): ANY QProgressBar::chunk QSS rule
+    # matching a bar, even one applied only to determinate bars
+    # elsewhere, replaces Qt's native animated "busy" indeterminate
+    # indicator with a static solid block that reads as "stuck at
+    # 100%." The accent chunk fill must never be applied to an
+    # indeterminate bar — asserting no local stylesheet override here
+    # is what would catch a regression that started calling
+    # theme.style_determinate_progress_bar() unconditionally.
+    assert bar.styleSheet() == ""
 
 
 def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
@@ -668,6 +678,10 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
     assert bar is not None
     assert bar.maximum() == 1_000
     assert bar.value() == 500
+    # The accent chunk fill IS a per-instance stylesheet override, not
+    # a global QSS rule (see theme.py's own QProgressBar::chunk
+    # comment) — a determinate bar must actually receive it.
+    assert "chunk" in bar.styleSheet()
 
 
 def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
@@ -1082,6 +1096,27 @@ def _make_track_status(
     return TrackStatus(
         track=_make_track(track_id), state=state, tagged_at=tagged_at,
     )
+
+
+def test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style(qtbot):
+    # This cell is only ever rendered determinate (blank otherwise — see
+    # _render_track_statuses), but it shares theme.py's
+    # style_determinate_progress_bar() with the Downloads tab's own bar,
+    # so it needs the identical guard against a regression that skips
+    # applying it.
+    status = TrackStatus(
+        track=_make_track("t1"), state=DOWNLOADING,
+        bytes_transferred=500, total_bytes=1_000,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses([status])
+
+    bar = window.track_table.cellWidget(0, 2)
+    assert isinstance(bar, QProgressBar)
+    assert "chunk" in bar.styleSheet()
 
 
 def test_tag_button_appears_only_for_in_library_tracks(qtbot):

@@ -7257,3 +7257,95 @@ calling `_poll_selected_playlist()` directly and asserting the notice
 survives it — the real mechanism that used to wipe messages, not a
 timer/sleep stand-in for it).
 
+### 47, follow-up — the queued progress bar's real root cause
+
+A follow-up check-in flagged that the queued/indeterminate progress
+bar in the Downloads-tab screenshot looked like a full solid violet
+block — "looks complete," not "waiting" — and asked for the actual
+root cause, not a reskin, plus explicit instructions on what to check
+first: whether the queued row genuinely calls `setRange(0, 0)`
+(native indeterminate), and whether the QSS chunk color was flattening
+Qt's own indeterminate animation.
+
+**Checked the code first, per the instruction.**
+`_build_progress_widget` in `main_window.py` does call
+`bar.setRange(0, 0)` for a queued/no-bytes-yet row — real Qt
+indeterminate mode, not a determinate bar defaulting to a misleading
+full value. So the bug was never in the widget logic.
+
+**Bisected the actual cause via a minimal standalone repro**, the same
+method that found Phase 3's original `QTableWidget::item` bug. Four
+variants, one `QProgressBar` with `setRange(0, 0)`, grabbed as a PNG
+each time: (1) no theme at all — real Qt/Fusion native indeterminate
+mode renders as an animated, diagonally-striped "barber pole" pattern,
+confirmed visually distinct from a solid fill; (2) `Fusion` style with
+no stylesheet — identical striped pattern, confirmed the style itself
+isn't the cause; (3) the theme's full `QProgressBar`/`QProgressBar
+::chunk` rules together — reproduced the bug exactly, a static solid
+block; (4) **only the `QProgressBar { ... }` container rule, with the
+`::chunk` rule removed entirely** — the real animated stripe came
+back, clean. This isolates the cause to the mere PRESENCE of a
+`QProgressBar::chunk` selector matching the widget, not to its
+specific `background-color` value — confirmed by testing a container-
+only stylesheet with the `::chunk` rule entirely absent, which was
+sufficient on its own to restore native animation.
+
+**Why this happens, understood rather than just observed:** Qt's
+`QStyleSheetStyle` treats a sub-control (`::chunk`) as either
+"unstyled" (native primitive painting, including any style-specific
+animation logic like Fusion's busy-indicator sweep) or "styled" (the
+generic QSS box-model painter takes over completely for that
+sub-control, on every state of the widget). Matching ANY rule against
+`::chunk` — even one that sets no visually distinguishing property —
+flips the widget into the styled path permanently for that sub-control,
+which has no busy-animation concept at all and just paints a rect
+sized by whatever `value()`/`range()` heuristic the style falls back
+to for the ambiguous `(0, 0)` indeterminate range. There is no
+`:indeterminate` pseudo-state in Qt's QSS syntax to scope a `::chunk`
+rule to only the determinate case.
+
+**Fix:** removed `QProgressBar::chunk` from the global app-wide
+stylesheet in `theme.py` entirely (documented in a code comment there,
+so a future "let's polish the fill color" doesn't silently reintroduce
+this exact bug), and added `theme.style_determinate_progress_bar(bar)`
+— a small helper applying the accent chunk fill via a PER-INSTANCE
+`setStyleSheet()` call, invoked only at the two real call sites in
+`main_window.py` (the Downloads-tab progress cell and the Dashboard's
+own per-track progress cell) after a bar is confirmed determinate
+(`setRange(0, total)` + `setValue(...)` already called). An
+indeterminate bar now never has any `::chunk` rule applied to it at
+all, at any level — global or local — so it keeps Qt's real native
+animated indicator.
+
+**Verified live, not assumed from the fix's logic alone:** re-ran the
+same minimal repro with the fix in place — an indeterminate bar built
+via `theme.apply_theme()` (global stylesheet, no local override) shows
+the real animated stripe; a determinate bar built with
+`style_determinate_progress_bar()` applied shows a clean solid accent
+fill at the correct value. Then re-rendered the actual Downloads tab
+screenshot (two real rows — one downloading at a real 50%, one
+queued) and confirmed the same result at the real widget level, not
+just in isolation.
+
+Also fixed in the same pass, per an explicit instruction: widened the
+theme's surface/border tokens (`BG_APP`/`BG_SIDEBAR`/`BG_SURFACE`/
+`BG_SURFACE_2`/`BORDER`/`BORDER_STRONG`, all six touched, no other
+tokens changed) so a default (non-primary) button reads as clickable
+against both a page-level background and a table-cell background —
+checked directly that `QTableWidget` has `setAlternatingRowColors`
+disabled everywhere in this app (confirmed via grep — zero call
+sites), so every row is genuinely `BG_SURFACE`, never the same tone as
+a default button's own `BG_SURFACE_2`, regardless of row parity.
+
+New/extended tests, real code-level regression guards rather than
+just a code comment this time (the progress-bar bug specifically is
+now caught by a fast assertion, unlike the other two Phase 3 QSS bugs,
+which still rely on the code comment + render-and-look workflow):
+`test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet` now
+also asserts `bar.styleSheet() == ""`;
+`test_downloads_tab_progress_bar_determinate_with_real_bytes` now
+asserts `"chunk" in bar.styleSheet()`; new
+`test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style`
+covers the Dashboard's own per-track progress cell, which shares the
+same helper. `mypy --strict` clean; full suite 511 passed / 1 skipped.
+
