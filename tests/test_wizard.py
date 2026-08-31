@@ -294,6 +294,110 @@ def test_choose_library_folder_registers_location_and_advances(
     # field anywhere in this flow, wizard included (roadmap item 5).
     assert [loc.name for loc, _ in locations] == ["music"]
     assert locations[0][0].path == str(chosen_path)
+    # Both destination checkboxes default checked (roadmap item 6 §5) —
+    # a first-time user should now be unable to reach the "no
+    # destination configured" dead end at all.
+    assert application._config_store.default_download_location_id == (
+        locations[0][0].id
+    )
+    assert (
+        application._config_store.default_download_subfolder_per_playlist
+        is True
+    )
+
+
+def test_library_folder_step_destination_checkboxes_default_checked(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    assert wizard.download_into_library_checkbox.isChecked()
+    assert wizard.subfolder_per_playlist_checkbox.isChecked()
+    assert not wizard.subfolder_per_playlist_checkbox.isHidden()
+
+    wizard.download_into_library_checkbox.setChecked(False)
+    assert wizard.subfolder_per_playlist_checkbox.isHidden()
+
+
+def test_unchecking_download_into_library_skips_the_default_destination(
+        qtbot, tmp_path, monkeypatch,
+):
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.NOT_INSTALLED,
+    )
+
+    chosen_path = tmp_path / "music"
+    chosen_path.mkdir()
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *a, **k: str(chosen_path),
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    wizard.download_into_library_checkbox.setChecked(False)
+    wizard._on_choose_library_folder_clicked()
+
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    assert application._config_store.default_download_location_id is None
+
+
+def test_unchecking_subfolder_per_playlist_persists_false(
+        qtbot, tmp_path, monkeypatch,
+):
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.NOT_INSTALLED,
+    )
+
+    chosen_path = tmp_path / "music"
+    chosen_path.mkdir()
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *a, **k: str(chosen_path),
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    wizard.subfolder_per_playlist_checkbox.setChecked(False)
+    wizard._on_choose_library_folder_clicked()
+
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    assert application._config_store.default_download_location_id is not None
+    assert (
+        application._config_store.default_download_subfolder_per_playlist
+        is False
+    )
 
 
 def test_bring_up_soulseek_requires_username_and_password(

@@ -596,11 +596,18 @@ def run(
     except LibraryUnavailableError as error:
         print(str(error))
         sys.exit(1)
+    except NoDestinationConfiguredError as error:
+        # The exception's own message is deliberately interface-neutral
+        # (shared with the UI, which must never be told to run a shell
+        # command — roadmap item 6 §2) — the CLI appends its own
+        # command-line guidance here instead of baking it into the
+        # shared message.
+        print(f"{error} Run 'seeker playlists set-destination' first.")
+        sys.exit(1)
     except (
             PlaylistNotFoundError,
             SyncPlaylistNotFoundError,
             MetadataPlaylistNotFoundError,
-            NoDestinationConfiguredError,
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
             DuplicateLibraryLocationNotFoundError,

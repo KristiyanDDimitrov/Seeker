@@ -1,9 +1,11 @@
 import threading
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QLabel,
     QMenu,
     QProgressBar,
@@ -11,6 +13,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
 )
 
+from seeker.config_store import SeekerConfig
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
@@ -26,7 +29,7 @@ from seeker.models.track_status import (
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text
-from seeker.ui.main_window import AboutDialog, MainWindow
+from seeker.ui.main_window import AboutDialog, DestinationDialog, MainWindow
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
 
@@ -129,6 +132,7 @@ class FakeDownloadService:
             self,
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
+            resolved_destination: tuple | None = None,
     ):
         self._review_candidates = review_candidates or []
         self._pending_upgrades = pending_upgrades or []
@@ -136,8 +140,39 @@ class FakeDownloadService:
         self.reject_review_candidate_calls: list[str] = []
         self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
         self.apply_upgrade_decision_result: str | None = "Replaced with /new/path"
+        # None means "no resolvable destination" — the roadmap item 6
+        # §3 dead-end case the DestinationDialog exists to close.
+        self._resolved_destination = resolved_destination
+        self.set_destination_calls: list[tuple[str, str, str | None]] = []
+        self.download_playlist_calls: list[str] = []
+
+    def get_resolved_destination(self, playlist_name: str) -> tuple | None:
+        return self._resolved_destination
+
+    def set_destination(
+            self,
+            playlist_name: str,
+            location_name: str,
+            subfolder: str | None = None,
+    ) -> None:
+        self.set_destination_calls.append(
+            (playlist_name, location_name, subfolder)
+        )
+        # A real set_destination call is exactly what makes the
+        # destination resolvable on a subsequent check — mirrored here
+        # so a test can drive the dialog flow through to a real
+        # download_playlist() call afterward, the same way the real
+        # DownloadService's own state would change.
+        self._resolved_destination = (
+            LibraryLocation(
+                id=1, name=location_name, path="/fake",
+                added_at="2026-01-01T00:00:00+00:00",
+            ),
+            subfolder,
+        )
 
     def download_playlist(self, playlist_name: str) -> dict:
+        self.download_playlist_calls.append(playlist_name)
         return {"requested": 0, "skipped": 0, "failed": 0, "total": 0}
 
     def poll_downloads(self) -> dict:
@@ -220,6 +255,7 @@ class FakeApplication:
             locations: list | None = None,
             fingerprint_result: dict | None = None,
             duplicate_groups: list | None = None,
+            resolved_destination: tuple | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.dashboard_service = FakeDashboardService(
@@ -228,13 +264,31 @@ class FakeApplication:
         self.library_service = FakeLibraryService(locations)
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService(
-            review_candidates, pending_upgrades,
+            review_candidates, pending_upgrades, resolved_destination,
         )
         self.metadata_service = FakeMetadataService(tag_result)
         self.duplicate_service = FakeDuplicateService(
             fingerprint_result, duplicate_groups,
         )
         self.soulseek_configured = soulseek_configured
+        # settings_window.py already reaches into this attribute
+        # directly on the real Application (see its own §threshold/
+        # §connection tabs) — mirrored here rather than adding a
+        # second, fake-only access pattern.
+        self._config_store = SeekerConfig()
+        self.persist_default_destination_calls: list[tuple[int, bool]] = []
+
+    def persist_default_destination(
+            self, location_id: int, subfolder_per_playlist: bool,
+    ) -> None:
+        self.persist_default_destination_calls.append(
+            (location_id, subfolder_per_playlist)
+        )
+        self._config_store = replace(
+            self._config_store,
+            default_download_location_id=location_id,
+            default_download_subfolder_per_playlist=subfolder_per_playlist,
+        )
 
 
 def test_main_window_constructs_without_crashing(qtbot):
@@ -367,6 +421,204 @@ def test_main_window_toolbar_buttons_have_tooltips(qtbot):
             window.settings_button,
     ):
         assert button.toolTip() != ""
+
+
+# --- Download destination dialog (roadmap item 6 §3, "no dead end") -------
+
+def _select_first_playlist(window, qtbot) -> None:
+    qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
+    window.playlist_list.setCurrentRow(0)
+
+
+def test_download_with_no_selection_shows_a_warning_notice(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.download_button.click()
+
+    assert "playlist" in window.dashboard_notice.text().lower()
+    assert not window.dashboard_notice.isHidden()
+
+
+def test_download_with_a_resolvable_destination_skips_the_dialog(qtbot):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists, resolved_destination=(location, "Test"),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.download_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.download_service.download_playlist_calls == ["Test"]
+    # No destination needed setting — it was already resolvable.
+    assert application.download_service.set_destination_calls == []
+    assert application.persist_default_destination_calls == []
+
+
+def test_download_with_no_destination_opens_dialog_prefilled_with_playlist_name(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(location, True)],
+        resolved_destination=None,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    opened_dialogs = []
+    monkeypatch.setattr(
+        DestinationDialog, "exec",
+        lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
+    )
+
+    window.download_button.click()
+
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    dialog = opened_dialogs[0]
+    # Prefilled: the only real location, and the subfolder defaults to
+    # the playlist's own name.
+    assert dialog.selected_location_id() == 1
+    assert dialog.subfolder_field.text() == "Test"
+    assert dialog.remember_checkbox.isChecked()
+    # Rejected — no destination call, no download.
+    assert application.download_service.set_destination_calls == []
+    assert application.download_service.download_playlist_calls == []
+
+
+def test_download_dialog_prefills_the_configured_default_location(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    main_location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    other_location = LibraryLocation(
+        id=2, name="Other", path="/other", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(main_location, True), (other_location, True)],
+        resolved_destination=None,
+    )
+    application._config_store = replace(
+        application._config_store, default_download_location_id=2,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    opened_dialogs = []
+    monkeypatch.setattr(
+        DestinationDialog, "exec",
+        lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
+    )
+
+    window.download_button.click()
+
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    assert opened_dialogs[0].selected_location_id() == 2
+
+
+def test_download_dialog_confirmed_with_remember_calls_set_destination_then_downloads(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(location, True)],
+        resolved_destination=None,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    monkeypatch.setattr(
+        DestinationDialog, "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.download_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.download_service.set_destination_calls == [
+        ("Test", "Main", "Test"),
+    ]
+    assert application.persist_default_destination_calls == []
+    assert application.download_service.download_playlist_calls == ["Test"]
+
+
+def test_download_dialog_confirmed_without_remember_persists_the_default(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(location, True)],
+        resolved_destination=None,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    def fake_exec(self):
+        self.remember_checkbox.setChecked(False)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(DestinationDialog, "exec", fake_exec)
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.download_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.download_service.set_destination_calls == []
+    assert application.persist_default_destination_calls == [(1, True)]
+    assert application.download_service.download_playlist_calls == ["Test"]
+
+
+def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(
+        qtbot,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(
+        playlists=playlists, locations=[], resolved_destination=None,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden(), timeout=2000,
+    )
+    assert "location" in window.dashboard_notice.text().lower()
 
 
 def test_main_window_has_help_menu_with_about_action(qtbot):

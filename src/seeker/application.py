@@ -267,6 +267,29 @@ class Application:
         # method forever, even after real credentials just landed.
         self._download_service = None
 
+    def persist_default_destination(
+            self,
+            location_id: int,
+            subfolder_per_playlist: bool,
+    ) -> None:
+        """Persist the fallback destination roadmap item 6 adds — used
+        once a playlist has no destination of its own (see
+        DownloadService._resolve_destination). No client/service reset
+        needed, unlike persist_soulseek_config's credential change:
+        DownloadService already reads config fresh via its own
+        get_config callable on every resolution, never a cached
+        snapshot.
+        """
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(
+            current,
+            default_download_location_id=location_id,
+            default_download_subfolder_per_playlist=subfolder_per_playlist,
+        )
+        save_config(updated, config_path)
+        self._config_store = updated
+
     @property
     def spotify(self) -> SpotifyClient:
         if self._spotify is None:

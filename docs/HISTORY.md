@@ -7421,3 +7421,84 @@ CLAUDE.md's own item 49 entry — this HISTORY entry exists specifically
 to preserve the incident and its resolution in full, per this file's
 own stated purpose.
 
+### 50
+
+Task: kill the "no configured destination" dead end (default
+destination config, a UI dialog so Download never dead-ends, a
+filename sanitizer, a UI-first error-message audit).
+
+**Real, load-bearing bug found while wiring the default fallback into
+the actual file-move step, not just the upfront `download_playlist()`
+guard.** The upfront guard was easy to update — swap the old
+`if playlist.download_location_id is None: raise ...` for a call to
+the new `_resolve_destination()`. But `_move_completed_file()` (what
+actually moves a completed download once it lands, on a LATER poll
+cycle) resolves its destination differently: via
+`PlaylistRepository.get_by_track_id()`, whose query carried
+`WHERE p.download_location_id IS NOT NULL` — confirmed by reading the
+query directly, not assumed from the method name. Left as-is, a track
+whose only playlist relies on the new default fallback would never
+even be RETURNED by this query, so the file would silently never move
+— a real regression this task would have introduced, not fixed, if
+the two resolution points hadn't been checked against each other.
+Confirmed the filter had exactly one real caller (grepped every
+`get_by_track_id` call site) before removing it, and updated the
+caller to iterate every returned playlist and resolve the first one
+that actually works, rather than trusting `playlists[0]`.
+
+**A second real gotcha, in `config_store.py`, caught by reading the
+actual load path rather than trusting the module's own "flat additive
+JSON" framing.** That framing (documented in the file's own module
+docstring) is true for a MISSING key — `load_config()` doesn't crash
+on one. It doesn't cover the fact that `load_config()` still
+constructs `SeekerConfig` from an explicit, hand-written list of
+`data.get(...)` calls, one per field — a new field left out of that
+list would silently reset to its dataclass default on every load,
+regardless of what was actually saved on disk. Caught before it became
+a real bug (both new fields were added to the explicit list from the
+start), verified with a round-trip test and a separate
+missing-key-uses-defaults test.
+
+**A third real interaction, found live while writing this task's own
+tests — traced with actual debug prints, not guessed at.** A new test
+for the Settings default-destination group called the real
+`Application.persist_default_destination()` right after directly
+setting `application._config_store` in memory (an existing test
+convenience from `test_settings_window.py`'s own `make_application()`
+helper — a fake Spotify token set in memory only, never saved to
+disk, so `sync_service` construction wouldn't attempt a real OAuth
+round-trip). The test then failed with the combo staying empty — looked
+at first like the new UI code wasn't populating it.
+
+Added temporary debug prints directly to `_refresh_destinations()`/
+`_render_destinations()` in `settings_window.py` (removed afterward)
+rather than guessing further, and reproduced via a genuine
+pytest-driven script (per item 49's own now-standing lesson — no
+hand-rolled monkeypatch stub). The real cause: `persist_default_destination()`
+calls `load_config(config_path)` first, then applies its own change on
+top of that FRESH-FROM-DISK config — the same pattern
+`persist_soulseek_config()` already used, and correct there: every
+real `_config_store` mutation in this codebase immediately calls
+`save_config()`, so disk and memory never actually drift apart in real
+usage. But the test's fake token was set directly on
+`application._config_store` and never saved — so the disk reload
+silently discarded it, and the NEXT real access to
+`application.sync_service` (inside `_refresh_destinations()`'s own
+fetch function) hit a real, live `SPOTIFY_CLIENT_ID is not configured`
+error, which `run_worker`'s `on_error` swallowed into the status
+label rather than crashing the test outright.
+
+Confirmed this was a test-setup artifact, not a production bug, by
+checking whether anything in real usage could leave `_config_store`
+out of sync with disk before calling one of these persist_* methods —
+nothing does; every mutation path saves immediately. Fixed the test
+(set `_config_store` directly via `dataclasses.replace()`, matching
+how the fake token itself was already set up) rather than changing
+correct production code.
+
+The rest of this task's work — the destination dialog, the wizard
+checkboxes, the Settings default-destination group, the filename
+sanitizer, the UI-first error-message fixes — is covered in CLAUDE.md's
+own item 50 entry; this HISTORY entry exists specifically to preserve
+the three real investigations above in full.
+

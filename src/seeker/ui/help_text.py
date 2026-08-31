@@ -69,6 +69,22 @@ TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST = (
     "Search SoulSeek and request downloads for the selected playlist's "
     "still-unmatched tracks."
 )
+
+# --- Destination dialog (roadmap item 6 §3 — "no dead end") ---------------
+
+DESTINATION_DIALOG_TITLE = "Set a Download Destination"
+DESTINATION_DIALOG_INTRO = (
+    "'{playlist}' doesn't have a download destination yet. Choose "
+    "where its downloads should go, then Seeker will continue."
+)
+TOOLTIP_REMEMBER_DESTINATION_CHECKBOX = (
+    "Checked: use this destination for '{playlist}' every time. "
+    "Unchecked: make this the default for every playlist that doesn't "
+    "have its own destination."
+)
+NO_LOCATIONS_FOR_DESTINATION_DIALOG = (
+    "Add a library location in Settings before downloading."
+)
 TOOLTIP_OPEN_SETTINGS = (
     "Library locations, playlist destinations, connections, and "
     "match thresholds."
@@ -169,6 +185,18 @@ TOOLTIP_RENAME_LOCATION = "Give this location a different display name."
 
 # --- Settings: Playlist Destinations tab ----------------------------------
 
+TOOLTIP_DEFAULT_LOCATION_COMBO = (
+    "Where downloads land for any playlist that doesn't have its own "
+    "destination set below."
+)
+TOOLTIP_DEFAULT_SUBFOLDER_PER_PLAYLIST_CHECKBOX = (
+    "Put each playlist's downloads in their own subfolder, named after "
+    "the playlist, inside the location above."
+)
+TOOLTIP_SAVE_DEFAULT_DESTINATION = (
+    "Save this as the fallback destination for every playlist without "
+    "its own."
+)
 TOOLTIP_DESTINATION_LOCATION_COMBO = (
     "Which registered library location completed downloads for this "
     "playlist should move into."
@@ -232,6 +260,14 @@ TOOLTIP_CONNECT_SPOTIFY = (
 )
 TOOLTIP_CHOOSE_LIBRARY_FOLDER = (
     "Pick the folder Seeker should scan for your existing audio files."
+)
+TOOLTIP_DOWNLOAD_INTO_LIBRARY_CHECKBOX = (
+    "Make this folder the default destination for new SoulSeek "
+    "downloads, so playlists without their own destination just work."
+)
+TOOLTIP_SUBFOLDER_PER_PLAYLIST_CHECKBOX = (
+    "Give each playlist its own subfolder inside this location, named "
+    "after the playlist."
 )
 TOOLTIP_SOULSEEK_USERNAME_FIELD = "Your SoulSeek network username (created on first login, not chosen in advance)."
 TOOLTIP_SOULSEEK_PASSWORD_FIELD = "Your SoulSeek network password."

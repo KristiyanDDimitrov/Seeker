@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -260,7 +261,14 @@ class SettingsWindow(QMainWindow):
 
     def _build_destinations_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QHBoxLayout(tab)
+        outer = QVBoxLayout(tab)
+
+        outer.addWidget(self._build_default_destination_group())
+
+        content = QWidget()
+        layout = QHBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(content, 1)
 
         self.destinations_playlist_list = QListWidget()
         self.destinations_playlist_list.currentItemChanged.connect(
@@ -304,6 +312,77 @@ class SettingsWindow(QMainWindow):
 
         return tab
 
+    def _build_default_destination_group(self) -> QWidget:
+        # Roadmap item 6 §4 — the fallback DownloadService resolves to
+        # once a playlist has no destination of its own (§1); also
+        # what the Dashboard's own "no dead end" dialog (§3) writes to
+        # when its "Remember this for this playlist" checkbox is left
+        # unchecked. Deliberately above the per-playlist overrides
+        # below, not beside them — this is the first thing a real user
+        # should notice on this tab, per the task's own layout ask.
+        group = QGroupBox("Default Destination")
+        layout = QFormLayout(group)
+
+        self.default_location_combo = QComboBox()
+        self.default_location_combo.setToolTip(
+            help_text.TOOLTIP_DEFAULT_LOCATION_COMBO
+        )
+        layout.addRow("Library location:", self.default_location_combo)
+
+        self.default_subfolder_per_playlist_checkbox = QCheckBox(
+            "Subfolder per playlist"
+        )
+        self.default_subfolder_per_playlist_checkbox.setChecked(True)
+        self.default_subfolder_per_playlist_checkbox.setToolTip(
+            help_text.TOOLTIP_DEFAULT_SUBFOLDER_PER_PLAYLIST_CHECKBOX
+        )
+        layout.addRow("", self.default_subfolder_per_playlist_checkbox)
+
+        save_row = QHBoxLayout()
+        self.save_default_destination_button = QPushButton(
+            "Save default destination"
+        )
+        self.save_default_destination_button.setProperty("variant", "primary")
+        self.save_default_destination_button.setToolTip(
+            help_text.TOOLTIP_SAVE_DEFAULT_DESTINATION
+        )
+        self.save_default_destination_button.clicked.connect(
+            self._on_save_default_destination_clicked
+        )
+        save_row.addWidget(self.save_default_destination_button)
+        save_row.addStretch()
+        layout.addRow(save_row)
+
+        self.default_destination_status_label = QLabel("")
+        layout.addRow(self.default_destination_status_label)
+
+        return group
+
+    def _on_save_default_destination_clicked(self) -> None:
+        location_id = self.default_location_combo.currentData()
+
+        if location_id is None:
+            self.default_destination_status_label.setText(
+                "Select a library location first."
+            )
+            return
+
+        subfolder_per_playlist = (
+            self.default_subfolder_per_playlist_checkbox.isChecked()
+        )
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.persist_default_destination(
+                location_id, subfolder_per_playlist,
+            ),
+            button=self.save_default_destination_button,
+            status_label=self.default_destination_status_label,
+            on_finished=lambda _: self.default_destination_status_label.setText(
+                "Default destination saved."
+            ),
+        )
+
     def _refresh_destinations(self) -> None:
         def fetch() -> tuple[
             list[Playlist], list[tuple[LibraryLocation, bool]]
@@ -338,6 +417,21 @@ class SettingsWindow(QMainWindow):
         self.destinations_playlist_list.clear()
         for playlist in playlists:
             self.destinations_playlist_list.addItem(playlist.name)
+
+        self.default_location_combo.clear()
+        self.default_location_combo.addItem("(none)", None)
+        for location, _ in locations:
+            self.default_location_combo.addItem(location.name, location.id)
+
+        config = self.application._config_store
+        if config.default_download_location_id is not None:
+            index = self.default_location_combo.findData(
+                config.default_download_location_id
+            )
+            self.default_location_combo.setCurrentIndex(max(index, 0))
+        self.default_subfolder_per_playlist_checkbox.setChecked(
+            config.default_download_subfolder_per_playlist
+        )
 
     def _on_destination_playlist_selected(
             self,

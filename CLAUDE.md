@@ -2626,6 +2626,132 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
 
     `mypy --strict` clean; full suite 527 passed / 1 skipped.
 
+50. **Kill the "no configured destination" dead end — done, live-
+    rendered (2026-08-31).** `SeekerConfig` gains
+    `default_download_location_id: int | None` and
+    `default_download_subfolder_per_playlist: bool = True`. **Real
+    gotcha, not just additive-by-design:** `config_store.py`'s own
+    "flat additive JSON" design only means a MISSING key can't crash a
+    load — `load_config()` still lists every field explicitly via
+    `data.get(...)`, so the two new fields had to be added there by
+    hand or they'd silently reset to their dataclass defaults on every
+    load, discarding a real saved value. Fixed; covered by a round-trip
+    test and a missing-key-uses-defaults test.
+
+    New `DownloadService._resolve_destination(playlist)` — a
+    playlist-specific `download_location_id`/`download_subfolder`
+    always wins; otherwise falls back to the configured default, with
+    the playlist's own name (sanitized) as the subfolder when the
+    toggle is on. Resolved through `_get_config()` fresh on every call,
+    not a snapshot — this project's standing rule, so a Settings
+    change takes effect with no restart. New public
+    `get_resolved_destination(playlist_name)` (read-only wrapper) is
+    what the UI checks before ever calling `download_playlist()`.
+
+    **A real, load-bearing gotcha found and fixed while wiring the
+    fallback into the actual file-move step, not just the upfront
+    guard:** `PlaylistRepository.get_by_track_id()` — the query
+    `_move_completed_file()` uses to find a completed download's
+    destination — filtered `WHERE p.download_location_id IS NOT NULL`.
+    Left as-is, a track whose only playlist relied on the NEW default
+    fallback would never even be returned by this query, so the file
+    would silently never move — the exact "stuck, no visible error"
+    shape item 45 already hunted once for a different reason. Filter
+    removed (confirmed it has exactly one real caller); the caller now
+    iterates every returned playlist and takes the first one
+    `_resolve_destination()` can actually resolve, rather than
+    blindly trusting `playlists[0]`.
+
+    New top-level `seeker/filename_sanitize.py::sanitize_path_component()`
+    — no prior sanitizer existed anywhere in this codebase (checked
+    first). Replaces path separators (both `/` and `\`), Windows-
+    reserved punctuation, and control characters with `-`; strips
+    trailing dots/spaces (a real, confirmed Windows folder-creation
+    failure mode, not cosmetic); falls back to `"Untitled"` if nothing
+    usable survives. Tested against real playlist names pulled live
+    from this project's own production database, not synthetic ones —
+    `"240KM/H"`, `"Node: Reloaded"`, `"Lotus // Trap"`.
+
+    **UI-first error audit (§2), the full list found and fixed —
+    two, both real, both reachable from the GUI:** (1)
+    `NoDestinationConfiguredError`'s message (`download_playlist`) said
+    "Run 'seeker playlists set-destination' first" — shared by the CLI
+    and the UI. Made interface-neutral; the CLI now appends its own
+    command-line guidance in its own exception handler instead of
+    baking it into the shared message. (2)
+    `ReviewCandidateMissingSizeError` (`confirm_review_candidate`,
+    Review tab's Confirm action — CLI never calls this method at all,
+    confirmed by grep) said "re-run 'seeker download'"; rewritten to
+    reference the Dashboard's Download button instead. A full grep
+    across `src/seeker/` for `.env`/shell-command-shaped strings found
+    nothing else real — the rest were code comments or CLI-only
+    `print()`s, which are correctly allowed to reference commands.
+
+    **No dead end (§3):** `DestinationDialog` (new, in `main_window.py`
+    next to `AboutDialog`) — location combo (prefilled: the configured
+    default, else the only location if there's exactly one), subfolder
+    field (prefilled with the raw, unsanitized playlist name —
+    sanitizing happens later, at actual move time, not display time),
+    "Remember this for this playlist" (checked). Confirming ALWAYS
+    persists somewhere real — never a one-time, unpersisted choice —
+    because `_resolve_destination()` is re-evaluated later, on a
+    separate poll cycle, when the file actually completes; nothing
+    durable would be left for it to find otherwise. Checked → calls
+    the existing `set_destination()` (playlist-specific). Unchecked →
+    calls new `Application.persist_default_destination()` (the
+    app-wide default) — the only other real destination concept that
+    exists; deliberately always persists
+    `subfolder_per_playlist=True` in that branch (the field was shown
+    prefilled with the playlist's own name, so "per playlist" is the
+    honest reading of what was displayed, even if the text was hand-
+    edited for this one confirmation — a known, accepted simplification
+    of that edge case, not silently dropped).
+
+    **Settings → Destinations (§4):** new "Default Destination"
+    `QGroupBox`, genuinely above the per-playlist overrides (not beside
+    them) — location combo + subfolder-per-playlist checkbox + a
+    primary "Save default destination" button, prefilled from the real
+    current config on tab load.
+
+    **Wizard (§5):** right after the library folder is picked, two
+    checkboxes — "Download new tracks into this folder" / "in a
+    subfolder per playlist" — both checked by default, the second
+    hidden while the first is unchecked (same show/hide-on-toggle
+    convention as the Dashboard's own BPM-range fields). Confirming
+    persists the default destination via the same
+    `persist_default_destination()` Settings uses — one real
+    mechanism, not two. A genuinely first-time user can no longer
+    reach the dead end at all.
+
+    Rendered and inspected directly (scratch, not committed):
+    `DestinationDialog` with a real slash-containing playlist name
+    ("240KM/H") shown correctly as display text (only sanitized at
+    actual filesystem-move time); Settings' Destinations tab with the
+    new default group visibly above the per-playlist section; the
+    wizard's library step with both checkboxes.
+
+    **A second real, live-found interaction, caught while writing this
+    phase's own tests, not a production bug:** a test called the real
+    `Application.persist_default_destination()` after directly setting
+    `application._config_store` in memory (a fake-Spotify-token test
+    convenience already established in `test_settings_window.py`).
+    `persist_default_destination()` (like the pre-existing
+    `persist_soulseek_config()`) reloads from disk first
+    (`load_config()`) before applying its own change — correct and
+    safe in real usage, since every `_config_store` mutation already
+    goes through `save_config()` immediately, so disk and memory never
+    actually drift apart outside a test harness — but it silently
+    discarded the test's in-memory-only fake token, breaking a later,
+    unrelated `sync_service` access in the same test with a real
+    `SPOTIFY_CLIENT_ID is not configured` error that looked at first
+    like a UI bug. Traced with real debug prints (not guessed) to the
+    disk-reload line specifically. Fixed the TEST (set
+    `_config_store` directly via `replace()`, matching how the fake
+    token was set up in the first place) rather than changing
+    production code that was never actually wrong.
+
+    `mypy --strict` clean; full suite 567 passed / 1 skipped.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

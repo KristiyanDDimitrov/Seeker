@@ -317,6 +317,97 @@ def test_destinations_tab_lists_playlists_and_locations(
     assert window.destination_location_combo.findText("Main") != -1
 
 
+def test_default_destination_group_lists_locations(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.default_location_combo.count() > 1, timeout=2000,
+    )
+    assert window.default_location_combo.findText("Main") != -1
+    # Checked by default, per the task's own spec.
+    assert window.default_subfolder_per_playlist_checkbox.isChecked()
+
+
+def test_save_default_destination_persists_to_the_real_application(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    location = add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.default_location_combo.count() > 1, timeout=2000,
+    )
+    combo_index = window.default_location_combo.findData(location.id)
+    window.default_location_combo.setCurrentIndex(combo_index)
+    window.default_subfolder_per_playlist_checkbox.setChecked(False)
+
+    window.save_default_destination_button.click()
+
+    qtbot.waitUntil(
+        lambda: window.default_destination_status_label.text() != "",
+        timeout=2000,
+    )
+    assert (
+        application._config_store.default_download_location_id
+        == location.id
+    )
+    assert (
+        application._config_store.default_download_subfolder_per_playlist
+        is False
+    )
+
+
+def test_save_default_destination_without_a_location_shows_message(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    window.save_default_destination_button.click()
+
+    assert "location" in window.default_destination_status_label.text().lower()
+
+
+def test_default_destination_prefills_existing_config_value(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    location = add_location(application, "Main", tmp_path / "music")
+    # Set directly on the in-memory config rather than via
+    # persist_default_destination(): that method reloads from disk
+    # first (real, safe production behavior — _config_store and disk
+    # are always kept in sync by every persist_* method — but
+    # make_application's own fake Spotify token setup above is
+    # deliberately in-memory-only/never persisted, so a disk reload
+    # here would silently discard it and break sync_service access
+    # later in this test).
+    application._config_store = replace(
+        application._config_store,
+        default_download_location_id=location.id,
+        default_download_subfolder_per_playlist=False,
+    )
+
+    window = SettingsWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.default_location_combo.count() > 1, timeout=2000,
+    )
+    assert window.default_location_combo.currentData() == location.id
+    assert not window.default_subfolder_per_playlist_checkbox.isChecked()
+
+
 def test_save_destination_calls_set_destination_with_selected_values(
         qtbot, tmp_path, monkeypatch,
 ):

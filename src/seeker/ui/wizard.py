@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -30,6 +31,7 @@ from seeker.docker_setup import (
     generate_api_key,
     slskd_data_dir,
 )
+from seeker.models.library_location import LibraryLocation
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
@@ -224,11 +226,40 @@ class OnboardingWizard(QMainWindow):
         )
         layout.addWidget(choose_button)
 
+        # Roadmap item 6 §5 — set up a real default destination right
+        # here, so a first-time user can never reach the "no
+        # destination configured" dead end at all. Both checked by
+        # default: this is the common case (someone setting up Seeker
+        # for the first time wants downloads to just work).
+        self.download_into_library_checkbox = QCheckBox(
+            "Download new tracks into this folder"
+        )
+        self.download_into_library_checkbox.setChecked(True)
+        self.download_into_library_checkbox.setToolTip(
+            help_text.TOOLTIP_DOWNLOAD_INTO_LIBRARY_CHECKBOX
+        )
+        self.download_into_library_checkbox.toggled.connect(
+            self._on_download_into_library_toggled
+        )
+        layout.addWidget(self.download_into_library_checkbox)
+
+        self.subfolder_per_playlist_checkbox = QCheckBox(
+            "in a subfolder per playlist"
+        )
+        self.subfolder_per_playlist_checkbox.setChecked(True)
+        self.subfolder_per_playlist_checkbox.setToolTip(
+            help_text.TOOLTIP_SUBFOLDER_PER_PLAYLIST_CHECKBOX
+        )
+        layout.addWidget(self.subfolder_per_playlist_checkbox)
+
         self.library_status_label = QLabel("")
         layout.addWidget(self.library_status_label)
 
         layout.addStretch()
         return page
+
+    def _on_download_into_library_toggled(self, checked: bool) -> None:
+        self.subfolder_per_playlist_checkbox.setVisible(checked)
 
     def _on_choose_library_folder_clicked(self) -> None:
         pick_and_add_library_location(
@@ -237,14 +268,32 @@ class OnboardingWizard(QMainWindow):
             self.application,
             status_label=self.library_status_label,
             on_path_picked=self.library_path_label.setText,
-            on_finished=lambda location: self._advance_from_library(
-                location.path
-            ),
+            on_finished=self._advance_from_library,
         )
 
-    def _advance_from_library(self, location_path: str) -> None:
-        self._library_location_path = location_path
+    def _advance_from_library(self, location: LibraryLocation) -> None:
+        self._library_location_path = location.path
         self.library_status_label.setText("Library registered.")
+
+        if not self.download_into_library_checkbox.isChecked():
+            self._continue_past_library_step()
+            return
+
+        # Loaded from the DB via add_location_from_path, so .id is set.
+        assert location.id is not None
+        subfolder_per_playlist = (
+            self.subfolder_per_playlist_checkbox.isChecked()
+        )
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.persist_default_destination(
+                location.id, subfolder_per_playlist,  # type: ignore[arg-type]
+            ),
+            on_finished=lambda _: self._continue_past_library_step(),
+        )
+
+    def _continue_past_library_step(self) -> None:
         self.stack.setCurrentIndex(2)
         self._refresh_docker_state()
 

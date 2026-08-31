@@ -109,6 +109,18 @@ class PlaylistRepository:
             track_id: str,
             connection: sqlite3.Connection,
     ) -> list[Playlist]:
+        # No download_location_id filter — roadmap item 6's default-
+        # destination fallback means a playlist with no
+        # playlist-specific destination can still resolve one (the
+        # configured default), so the caller (DownloadService's own
+        # destination resolution) needs every playlist a track belongs
+        # to, not just the ones already carrying an explicit override.
+        # This filter used to live here; removing it without also
+        # teaching the one real caller (_move_completed_file) to
+        # resolve the default itself would have silently broken every
+        # default-destination download exactly the way item 45's own
+        # indexing gap did — checked and fixed together, not left as a
+        # trap for whichever caller happened to exist first.
         rows = connection.execute(
             """
             SELECT
@@ -121,7 +133,6 @@ class PlaylistRepository:
             FROM playlists p
             JOIN playlist_tracks pt ON pt.playlist_id = p.id
             WHERE pt.track_id = ?
-            AND p.download_location_id IS NOT NULL
             ORDER BY p.name
             """,
             (track_id,),

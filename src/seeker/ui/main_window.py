@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
+from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -257,6 +259,96 @@ class AboutDialog(QDialog):
         close_row.addWidget(close_button)
         close_row.addStretch()
         layout.addLayout(close_row)
+
+
+class DestinationDialog(QDialog):
+    """Roadmap item 6 §3 — "no dead end": shown instead of letting
+    Download raise NoDestinationConfiguredError. Confirming it always
+    persists a real destination somewhere (never a one-time,
+    unpersisted choice — DownloadService._resolve_destination is
+    re-evaluated later, on a separate poll cycle, when the file
+    actually completes, so nothing durable would be left for it to
+    find otherwise) and then the caller continues straight into the
+    real download.
+    """
+
+    def __init__(
+            self,
+            parent: QWidget,
+            playlist_name: str,
+            locations: list[LibraryLocation],
+            default_location_id: int | None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.DESTINATION_DIALOG_TITLE)
+        self._locations = locations
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_LG, theme.SPACING_LG,
+            theme.SPACING_LG, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
+
+        intro = QLabel(
+            help_text.DESTINATION_DIALOG_INTRO.format(playlist=playlist_name)
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        form = QFormLayout()
+
+        self.location_combo = QComboBox()
+        for location in locations:
+            self.location_combo.addItem(location.name, location.id)
+        form.addRow("Location:", self.location_combo)
+
+        # Prefill: the configured default, else the only location if
+        # there's exactly one — never left on an arbitrary first entry
+        # when there's a real, obvious choice.
+        preselect_id = default_location_id
+        if preselect_id is None and len(locations) == 1:
+            preselect_id = locations[0].id
+        if preselect_id is not None:
+            index = self.location_combo.findData(preselect_id)
+            if index >= 0:
+                self.location_combo.setCurrentIndex(index)
+
+        self.subfolder_field = QLineEdit(playlist_name)
+        form.addRow("Subfolder:", self.subfolder_field)
+
+        layout.addLayout(form)
+
+        self.remember_checkbox = QCheckBox("Remember this for this playlist")
+        self.remember_checkbox.setChecked(True)
+        self.remember_checkbox.setToolTip(
+            help_text.TOOLTIP_REMEMBER_DESTINATION_CHECKBOX.format(
+                playlist=playlist_name,
+            )
+        )
+        layout.addWidget(self.remember_checkbox)
+
+        button_row = QHBoxLayout()
+        self.confirm_button = QPushButton("Download")
+        self.confirm_button.setProperty("variant", "primary")
+        self.confirm_button.clicked.connect(self.accept)
+        button_row.addWidget(self.confirm_button)
+        button_row.addStretch()
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
+
+    def selected_location_id(self) -> int | None:
+        data = self.location_combo.currentData()
+        return int(data) if data is not None else None
+
+    def selected_subfolder(self) -> str | None:
+        text = self.subfolder_field.text().strip()
+        return text or None
+
+    def remember_for_playlist(self) -> bool:
+        return self.remember_checkbox.isChecked()
 
 
 class MainWindow(QMainWindow):
@@ -1660,11 +1752,107 @@ class MainWindow(QMainWindow):
 
     def _on_download_clicked(self) -> None:
         if self.selected_playlist is None:
-            self.status_label.setText("Select a playlist first.")
+            self.dashboard_notice.show_message(
+                "Select a playlist first.", kind="warning",
+            )
             return
 
         playlist_name = self.selected_playlist.name
 
+        # Roadmap item 6 §3 — check resolvability first rather than
+        # letting download_playlist() raise and dead-end the user at
+        # an error. Shares DownloadService._resolve_destination with
+        # the real move step (via get_resolved_destination), so this
+        # can never drift into a second, different notion of
+        # "resolvable."
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service
+            .get_resolved_destination(playlist_name),
+            button=self.download_button,
+            on_finished=lambda resolved: self._on_destination_checked(
+                playlist_name, resolved,
+            ),
+        )
+
+    def _on_destination_checked(
+            self,
+            playlist_name: str,
+            resolved: tuple[LibraryLocation, str | None] | None,
+    ) -> None:
+        if resolved is not None:
+            self._start_download(playlist_name)
+            return
+
+        run_worker(
+            self.thread_pool,
+            self.application.library_service.list_locations,
+            on_finished=lambda locations: self._open_destination_dialog(
+                playlist_name, locations,
+            ),
+        )
+
+    def _open_destination_dialog(
+            self,
+            playlist_name: str,
+            locations: list[tuple[LibraryLocation, bool]],
+    ) -> None:
+        if not locations:
+            self.dashboard_notice.show_message(
+                help_text.NO_LOCATIONS_FOR_DESTINATION_DIALOG,
+                kind="warning",
+            )
+            return
+
+        location_objects = [location for location, _ in locations]
+        default_location_id = (
+            self.application._config_store.default_download_location_id
+        )
+
+        dialog = DestinationDialog(
+            self, playlist_name, location_objects, default_location_id,
+        )
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        location_id = dialog.selected_location_id()
+
+        if location_id is None:
+            return
+
+        subfolder = dialog.selected_subfolder()
+        remember_for_playlist = dialog.remember_for_playlist()
+
+        def do_persist() -> None:
+            if remember_for_playlist:
+                location = next(
+                    loc for loc in location_objects if loc.id == location_id
+                )
+                self.application.download_service.set_destination(
+                    playlist_name, location.name, subfolder,
+                )
+            else:
+                # Not remembered specifically for this playlist — the
+                # only other real destination concept is the app-wide
+                # default (roadmap item 6 §1), so this becomes that.
+                # Deliberately always True for the subfolder-per-
+                # playlist toggle here: the field was prefilled with
+                # the playlist's own name, so treating this choice as
+                # "per playlist" matches what was actually shown,
+                # even if the text was hand-edited to something else
+                # for this one confirmation.
+                self.application.persist_default_destination(
+                    location_id, True,
+                )
+
+        run_worker(
+            self.thread_pool,
+            do_persist,
+            on_finished=lambda _: self._start_download(playlist_name),
+        )
+
+    def _start_download(self, playlist_name: str) -> None:
         run_worker(
             self.thread_pool,
             lambda: self.application.download_service.download_playlist(

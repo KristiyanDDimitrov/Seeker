@@ -106,6 +106,42 @@ def test_save_then_load_round_trips_threshold_fields(tmp_path):
     assert loaded.needs_review_threshold == 65.0
 
 
+def test_save_then_load_round_trips_default_destination_fields(tmp_path):
+    # Roadmap item 6 — default_download_location_id must round-trip as
+    # a real int (not just present-vs-missing), and
+    # default_download_subfolder_per_playlist must round-trip its
+    # actual False value, not silently fall back to its True default.
+    path = tmp_path / "config.json"
+
+    original = SeekerConfig(
+        default_download_location_id=4,
+        default_download_subfolder_per_playlist=False,
+    )
+
+    save_config(original, path)
+    loaded = load_config(path)
+
+    assert loaded == original
+    assert loaded.default_download_location_id == 4
+    assert loaded.default_download_subfolder_per_playlist is False
+
+
+def test_load_config_missing_default_destination_fields_uses_documented_defaults(
+        tmp_path,
+):
+    # A config.json predating this field must load cleanly (this
+    # project's own flat-additive-JSON design) — no location id set,
+    # and the subfolder toggle defaults True (matches SeekerConfig's
+    # own field default).
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.default_download_location_id is None
+    assert loaded.default_download_subfolder_per_playlist is True
+
+
 def test_load_config_missing_file_returns_defaults_no_crash(tmp_path):
     path = tmp_path / "does-not-exist" / "config.json"
 

@@ -668,6 +668,36 @@ def test_persist_soulseek_config_updates_store_disk_and_resets_client(
     assert reloaded.slskd_password == "real-password"
 
 
+def test_persist_default_destination_updates_store_and_disk(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    app.persist_default_destination(4, False)
+
+    assert app._config_store.default_download_location_id == 4
+    assert app._config_store.default_download_subfolder_per_playlist is False
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.default_download_location_id == 4
+    assert reloaded.default_download_subfolder_per_playlist is False
+
+
+def test_persist_default_destination_reflected_by_download_service_immediately(
+        tmp_path, monkeypatch,
+):
+    # No cached-client reset needed here, unlike persist_soulseek_config
+    # — DownloadService reads config fresh via get_config on every
+    # resolution, never a cached snapshot (this project's standing
+    # rule for every config-backed threshold).
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    service = app.download_service
+
+    app.persist_default_destination(7, True)
+
+    assert service._get_config().default_download_location_id == 7
+
+
 def test_download_service_constructs_without_soulseek_configured(
         tmp_path, monkeypatch,
 ):

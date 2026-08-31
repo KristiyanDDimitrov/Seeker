@@ -27,11 +27,13 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.file_deletion import delete_file
+from seeker.filename_sanitize import sanitize_path_component
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
+from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -189,6 +191,31 @@ class DownloadService:
             f"'{location_name}'{suffix}"
         )
 
+    def get_resolved_destination(
+            self,
+            playlist_name: str,
+    ) -> tuple[LibraryLocation, str | None] | None:
+        """Read-only — the UI's own check before ever calling
+        download_playlist() (roadmap item 6 §3): resolvable now (a
+        playlist-specific destination, or the configured default) means
+        proceed straight to the real download; None means show the
+        "set a destination" dialog first rather than letting
+        download_playlist() raise NoDestinationConfiguredError and dead-
+        end the user. Shares _resolve_destination with the real move
+        step, so this is never a second, drifting notion of
+        "resolvable."
+        """
+        with self.database.transaction() as connection:
+            playlist = self.playlists.get_by_name(playlist_name, connection)
+
+            if playlist is None:
+                raise PlaylistNotFoundError(
+                    f"No playlist named '{playlist_name}' has been "
+                    f"synced."
+                )
+
+        return self._resolve_destination(playlist)
+
     def download_playlist(self, playlist_name: str) -> dict[str, int]:
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
@@ -199,10 +226,19 @@ class DownloadService:
                     f"synced."
                 )
 
-            if playlist.download_location_id is None:
+            if self._resolve_destination(playlist) is None:
+                # Interface-neutral wording, deliberately — this
+                # exception is shared by both the CLI and the UI
+                # (roadmap item 6 §2: a GUI-facing message must never
+                # tell someone to run a shell command). The CLI's own
+                # handler appends its own command-line guidance when it
+                # catches this; the UI instead proactively resolves the
+                # destination via a real dialog before ever calling
+                # download_playlist() with none configured (§3), so it
+                # should only ever see this in a genuine race.
                 raise NoDestinationConfiguredError(
-                    f"'{playlist_name}' has no configured destination. "
-                    f"Run 'seeker playlists set-destination' first."
+                    f"'{playlist_name}' has no download destination "
+                    f"configured yet."
                 )
 
             unmatched_tracks = self.tracks.get_unmatched_for_playlist(
@@ -505,13 +541,17 @@ class DownloadService:
         if candidate.size is None:
             # A legacy row persisted before `size` existed on this
             # table (item 26) — can't call request_download without it.
-            # Re-running `seeker download` for the track's playlist
-            # refreshes this row with a real size the normal way,
-            # rather than this method guessing or defaulting one.
+            # Downloading the track's playlist again refreshes this row
+            # with a real size the normal way, rather than this method
+            # guessing or defaulting one. UI-first wording (roadmap
+            # item 6 §2) — this reaches the GUI directly via the
+            # Review tab's Confirm action, so it must describe the fix
+            # in UI terms, not a CLI command.
             raise ReviewCandidateMissingSizeError(
                 f"Review candidate for track {track_id} predates size "
-                f"tracking — re-run 'seeker download' for its playlist "
-                f"to refresh it before confirming."
+                f"tracking — download its playlist again (Dashboard → "
+                f"select the playlist → Download) to refresh it before "
+                f"confirming."
             )
 
         transfer_id = self.soulseek.request_download(
@@ -1026,6 +1066,51 @@ class DownloadService:
                 request_id, bytes_transferred, total_bytes, connection,
             )
 
+    def _resolve_destination(
+            self,
+            playlist: Playlist,
+    ) -> tuple[LibraryLocation, str | None] | None:
+        """A playlist-specific download_location_id/download_subfolder
+        always wins when set. Otherwise falls back to the configured
+        default destination (roadmap item 6) — resolved through
+        _get_config(), not a snapshot, so a Settings-driven change
+        takes effect on the very next call, matching this project's
+        standing rule for every other config-backed threshold. The
+        playlist's own name becomes the subfolder (sanitized — a real
+        playlist name, "240KM/H", contains a literal path separator)
+        only when default_download_subfolder_per_playlist is on.
+        Returns None when neither resolves to a real, still-registered
+        location — the caller's job to report that clearly.
+        """
+        with self.database.transaction() as connection:
+            if playlist.download_location_id is not None:
+                location = self.locations.get_by_id(
+                    playlist.download_location_id, connection,
+                )
+
+                if location is not None:
+                    return location, playlist.download_subfolder
+
+            config = self._get_config()
+
+            if config.default_download_location_id is None:
+                return None
+
+            default_location = self.locations.get_by_id(
+                config.default_download_location_id, connection,
+            )
+
+        if default_location is None:
+            return None
+
+        subfolder = (
+            sanitize_path_component(playlist.name)
+            if config.default_download_subfolder_per_playlist
+            else None
+        )
+
+        return default_location, subfolder
+
     def _move_completed_file(
             self,
             request: DownloadRequest,
@@ -1043,28 +1128,23 @@ class DownloadService:
                 connection,
             )
 
-            if not playlists:
-                print(
-                    f"  Warning: no configured destination found for "
-                    f"track {request.track_id}; leaving "
-                    f"'{request.filename}' in place."
-                )
-                return None
+        resolved = None
 
-            playlist = playlists[0]
+        for playlist in playlists:
+            resolved = self._resolve_destination(playlist)
 
-            # get_by_track_id's own query filters to
-            # download_location_id IS NOT NULL, so every playlist it
-            # returns has one set.
-            assert playlist.download_location_id is not None
+            if resolved is not None:
+                break
 
-            location = self.locations.get_by_id(
-                playlist.download_location_id,
-                connection,
+        if resolved is None:
+            print(
+                f"  Warning: no configured destination found for "
+                f"track {request.track_id}; leaving "
+                f"'{request.filename}' in place."
             )
-
-        if location is None:
             return None
+
+        location, subfolder = resolved
 
         basename = Path(request.filename.replace("\\", "/")).name
         # rglob() treats its argument as a glob PATTERN, not a literal
@@ -1086,8 +1166,8 @@ class DownloadService:
 
         destination_dir = Path(location.path)
 
-        if playlist.download_subfolder:
-            destination_dir = destination_dir / playlist.download_subfolder
+        if subfolder:
+            destination_dir = destination_dir / subfolder
 
         destination_dir.mkdir(parents=True, exist_ok=True)
 

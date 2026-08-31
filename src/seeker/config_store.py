@@ -27,6 +27,13 @@ class SeekerConfig:
     # TrackMatcher/DownloadService, never cached at import time.
     auto_match_threshold: float | None = None
     needs_review_threshold: float | None = None
+    # Roadmap item 6 (the "no configured destination" dead end): a
+    # playlist-specific download_location_id/download_subfolder still
+    # wins when set — this is only the fallback once neither is. None
+    # means "no default configured yet," the same unset-means-nothing
+    # convention as every other optional field here.
+    default_download_location_id: int | None = None
+    default_download_subfolder_per_playlist: bool = True
 
 
 def resolve_config_path() -> Path:
@@ -60,6 +67,10 @@ def load_config(path: Path) -> SeekerConfig:
         slskd_password=data.get("slskd_password"),
         auto_match_threshold=data.get("auto_match_threshold"),
         needs_review_threshold=data.get("needs_review_threshold"),
+        default_download_location_id=data.get("default_download_location_id"),
+        default_download_subfolder_per_playlist=data.get(
+            "default_download_subfolder_per_playlist", True,
+        ),
     )
 
 

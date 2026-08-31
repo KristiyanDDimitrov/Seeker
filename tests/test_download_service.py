@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -35,6 +36,8 @@ from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import SoulseekDownloadError, TransferStatus
 from seeker.soulseek.download_service import (
     DownloadService,
+    NoDestinationConfiguredError,
+    PlaylistNotFoundError,
     ReviewCandidateMissingSizeError,
     ReviewCandidateNotFoundError,
     _build_search_query,
@@ -1165,6 +1168,291 @@ def test_settled_completion_moves_a_filename_with_glob_special_characters(
             location.id, filename, connection,
         )
         assert local_file is not None
+
+
+# --- Default destination (roadmap item 6) ----------------------------------
+
+def test_get_resolved_destination_none_when_nothing_configured(tmp_path):
+    service = make_service(tmp_path, states={})
+
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=0), connection,
+        )
+
+    assert service.get_resolved_destination("Test") is None
+
+
+def test_get_resolved_destination_raises_for_unknown_playlist(tmp_path):
+    service = make_service(tmp_path, states={})
+
+    with pytest.raises(PlaylistNotFoundError):
+        service.get_resolved_destination("Nope")
+
+
+def test_get_resolved_destination_resolves_via_the_default(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(name="Main", path=str(lib_root), added_at="2026-01-01"),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+        playlists.save(Playlist(id="p1", name="Test", track_count=0), connection)
+
+    config = SeekerConfig(default_download_location_id=location.id)
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={}),
+        playlists, TrackRepository(database), locations,
+        DownloadRequestRepository(database), TrackMatchRepository(database),
+        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        slskd_download_dir=None,
+        get_config=lambda: config,
+    )
+
+    resolved = service.get_resolved_destination("Test")
+
+    assert resolved is not None
+    resolved_location, subfolder = resolved
+    assert resolved_location.name == "Main"
+    assert subfolder == "Test"
+
+
+def test_download_playlist_raises_interface_neutral_error_with_no_destination(
+        tmp_path,
+):
+    # Shared by the CLI and the UI (roadmap item 6 §2) — must never
+    # mention a shell command, since the UI can't be told to "run"
+    # anything. The CLI appends its own command-line guidance
+    # separately (see cli.py's own NoDestinationConfiguredError catch).
+    service = make_service(tmp_path, states={})
+
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="Test", track_count=0), connection,
+        )
+
+    with pytest.raises(NoDestinationConfiguredError) as excinfo:
+        service.download_playlist("Test")
+
+    message = str(excinfo.value)
+    assert "seeker" not in message.lower()
+    assert "run" not in message.lower()
+
+
+def test_download_playlist_succeeds_with_only_a_default_destination_configured(
+        tmp_path,
+):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(name="Main", path=str(lib_root), added_at="2026-01-01"),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+        playlists.save(Playlist(id="p1", name="Test", track_count=0), connection)
+        # Deliberately NOT calling playlists.set_destination — only a
+        # default is configured, nothing playlist-specific.
+
+    config = SeekerConfig(default_download_location_id=location.id)
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={}),
+        playlists, TrackRepository(database), locations,
+        DownloadRequestRepository(database), TrackMatchRepository(database),
+        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        slskd_download_dir=None,
+        get_config=lambda: config,
+    )
+
+    # No unmatched tracks seeded — this call only needs to get PAST the
+    # destination guard without raising; it would have raised
+    # NoDestinationConfiguredError before ever reaching the empty-track
+    # loop if the default weren't being resolved.
+    result = service.download_playlist("Test")
+
+    assert result["requested"] == 0
+    assert result["skipped"] == 0
+    assert result["failed"] == 0
+
+
+def _seed_default_destination_scenario(
+        tmp_path,
+        playlist_name: str,
+        subfolder_per_playlist: bool,
+        playlist_specific_location_name: str | None = None,
+):
+    """Shared setup for the default-destination file-placement tests
+    below: one real completed settled download, a default location
+    configured via SeekerConfig, and optionally a SECOND, playlist-
+    specific location/destination to prove it still wins over the
+    default when both are set.
+    """
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    default_root = tmp_path / "default_music"
+    default_root.mkdir()
+
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Artist - Title.mp3").write_bytes(b"not real audio")
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Default", path=str(default_root), added_at="2026-01-01",
+            ),
+            connection,
+        )
+        default_location = locations.get_by_name("Default", connection)
+
+        playlists.save(
+            Playlist(id="p1", name=playlist_name, track_count=1), connection,
+        )
+
+        if playlist_specific_location_name is not None:
+            specific_root = tmp_path / "specific_music"
+            specific_root.mkdir()
+            locations.add(
+                LibraryLocation(
+                    name=playlist_specific_location_name,
+                    path=str(specific_root), added_at="2026-01-01",
+                ),
+                connection,
+            )
+            specific_location = locations.get_by_name(
+                playlist_specific_location_name, connection,
+            )
+            playlists.set_destination(
+                "p1", specific_location.id, None, connection,
+            )
+
+        tracks.save(
+            Track(
+                id="t1", title="Title", artist="Artist",
+                album="Album", duration_ms=200_000,
+            ),
+            connection,
+        )
+        tracks.save_playlist_track("p1", "t1", connection)
+
+        DownloadRequestRepository(database).add(
+            DownloadRequest(
+                track_id="t1",
+                username="peer1",
+                filename="Artist - Title.mp3",
+                format="mp3",
+                quality_descriptor="mp3",
+                role="settled",
+                status="downloading",
+                transfer_id="tx-1",
+                size=1_000,
+                requested_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    config = SeekerConfig(
+        default_download_location_id=default_location.id,
+        default_download_subfolder_per_playlist=subfolder_per_playlist,
+    )
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
+        playlists, tracks, locations, DownloadRequestRepository(database),
+        TrackMatchRepository(database), LocalFileRepository(database),
+        SoulseekReviewCandidateRepository(database),
+        str(slskd_dir),
+        get_config=lambda: config,
+    )
+
+    return service, default_root
+
+
+def test_settled_completion_uses_default_destination_with_playlist_subfolder(
+        tmp_path,
+):
+    service, default_root = _seed_default_destination_scenario(
+        tmp_path, playlist_name="Test", subfolder_per_playlist=True,
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert (default_root / "Test" / "Artist - Title.mp3").exists()
+
+
+def test_settled_completion_uses_default_destination_with_no_subfolder(
+        tmp_path,
+):
+    service, default_root = _seed_default_destination_scenario(
+        tmp_path, playlist_name="Test", subfolder_per_playlist=False,
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert (default_root / "Artist - Title.mp3").exists()
+    assert not (default_root / "Test").exists()
+
+
+def test_settled_completion_sanitizes_a_real_playlist_name_with_a_slash(
+        tmp_path,
+):
+    # "240KM/H" is a real playlist name in this project's own
+    # production database — a raw '/' in a subfolder name would
+    # otherwise be silently interpreted as a path separator.
+    service, default_root = _seed_default_destination_scenario(
+        tmp_path, playlist_name="240KM/H", subfolder_per_playlist=True,
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    assert (default_root / "240KM-H" / "Artist - Title.mp3").exists()
+    assert not (default_root / "240KM").exists()
+
+
+def test_playlist_specific_destination_wins_over_the_default(tmp_path):
+    service, default_root = _seed_default_destination_scenario(
+        tmp_path, playlist_name="Test", subfolder_per_playlist=True,
+        playlist_specific_location_name="Specific",
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 1
+    # Landed in the playlist-specific location, not the default one.
+    assert not (default_root / "Test" / "Artist - Title.mp3").exists()
+
+    with service.database.transaction() as connection:
+        specific_location = service.locations.get_by_name(
+            "Specific", connection,
+        )
+
+    assert (
+        Path(specific_location.path) / "Artist - Title.mp3"
+    ).exists()
 
 
 def test_settled_completion_index_failure_still_counts_as_completed(
