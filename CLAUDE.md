@@ -2915,6 +2915,68 @@ numbers/timestamps — lives in `docs/HISTORY.md`, same item numbers.
     `mypy --strict` clean; full suite 600 passed / 1 skipped.
     [HISTORY §52](docs/HISTORY.md#52)
 
+53. **Downloads: aggregate remaining-time header — done (2026-09-01).**
+    `DownloadEtaTracker.aggregate(downloads: list[tuple[int, int |
+    None]])` — `(request_id, total_bytes)` pairs for every currently
+    active download on the Downloads page — returns a new `AggregateEta`
+    dataclass. Only downloads with >= 2 samples, a positive latest
+    delta, and a known `total_bytes` contribute
+    (`eta = sum(remaining bytes over contributors) / sum(their current
+    speeds)`); everything else (genuinely queued/no samples yet, still
+    calculating, stalled, or a `total_bytes` that's still unknown) is
+    counted but excluded from the sum. `_classify()` factors the same
+    three-way state `describe()` already computed for one download
+    (Calculating/Stalled/Contributing) out into a reusable per-request
+    helper, so `aggregate()` classifies every active download the same
+    way `describe()` classifies one, instead of a second, drifting copy
+    of the same logic.
+
+    `format_aggregate_header()` (pure, no Qt) renders the Downloads
+    page's header line: `"About {eta} remaining · {N} transferring ·
+    {M} queued (no estimate)"`, dropping the third clause entirely when
+    `M == 0`. With zero contributors it reads `"Waiting for transfers to
+    start"` normally, or `"All active transfers stalled"` specifically
+    when every non-contributing download is STALLED (not just
+    "hasn't started yet") — `AggregateEta.all_non_contributors_stalled`
+    tracks this explicitly rather than inferring it from counts alone.
+    **Standing fact:** the non-contributing bucket is always labelled
+    "queued" in the header regardless of a download's real DB `status`
+    — a `downloading` row with zero bytes yet or a stalled one reads
+    identically to the user either way ("not currently making progress
+    I can estimate"), which is the only thing this header communicates;
+    splitting it further wouldn't be actionable. `AGGREGATE_ETA_TOOLTIP`
+    explains the queued-transfers exclusion (Soulseek queue waits aren't
+    predictable — folding them in would make the number look more
+    precise than it is), matching item 33's own aggregate-affecting
+    design principle.
+
+    Wired into `MainWindow` as a new `downloads_eta_label` above the
+    Downloads table, rendered from `_render_active_downloads` on the
+    existing 2s poll (no new timer) — collapses to an empty string
+    (not a reserved-but-blank strip) whenever there are zero active
+    downloads, matching item 27's "blank cell, not a misleading control"
+    precedent.
+
+    **Recon (per the task's own explicit "recon only, do not build on
+    it" scope) — done, real finding, not inferred:** a real, live
+    `GET /api/v0/transfers/downloads/{username}/{id}` against a
+    genuinely queued transfer (`state: "Queued, Remotely"`) confirmed
+    `placeInQueue` IS declared in slskd's own real
+    `slskd.Transfers.Transfer` schema (confirmed via the live
+    `/swagger/v0/swagger.json`) — but is absent from the actual
+    response body entirely for this real queued transfer, not present
+    as `null` (grepped the raw JSON directly). slskd's serializer omits
+    null properties, so the field exists in the type but this real
+    transfer's own queue position isn't currently known/reported by
+    slskd itself. Confirms, with a concrete technical reason rather
+    than just restating the existing tooltip claim, why nothing reads
+    this field yet — a future revision could poll for it and treat a
+    still-null value as "unknown," but that's a decision for later, not
+    made here.
+
+    `mypy --strict` clean; full suite 614 passed / 1 skipped.
+    [HISTORY §53](docs/HISTORY.md#53)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

@@ -1249,6 +1249,67 @@ def test_downloads_tab_renders_rows_across_playlists(qtbot):
     assert window.downloads_table.item(1, 3).text() == "Retrying (locked)"
 
 
+# --- Downloads aggregate remaining-time header (Task 9) --------------------
+
+def test_downloads_aggregate_header_blank_with_no_active_downloads(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([])
+
+    assert window.downloads_eta_label.text() == ""
+    assert window.downloads_eta_label.toolTip() == ""
+
+
+def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(qtbot):
+    download = ActiveDownload(
+        request=DownloadRequest(
+            id=1, track_id="t1", username="peer1", filename="file.flac",
+            format="flac", status="downloading",
+            requested_at="2026-01-01T00:00:00+00:00",
+            bytes_transferred=500, total_bytes=1_000,
+        ),
+        track=Track(
+            id="t1", title="Title", artist="Artist", album="Album",
+            duration_ms=200_000,
+        ),
+        playlist_name="Playlist A",
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    # aggregate() reads from _eta_tracker's own recorded samples, not
+    # from the ActiveDownload snapshot itself — feed it two directly,
+    # the same way _record_eta_samples does on a real 20s backend poll.
+    window._eta_tracker.record(1, 200, datetime(2026, 1, 1, tzinfo=timezone.utc))
+    window._eta_tracker.record(1, 500, datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc))
+
+    window._render_active_downloads([download])
+
+    assert "remaining" in window.downloads_eta_label.text()
+    assert "1 transferring" in window.downloads_eta_label.text()
+    assert window.downloads_eta_label.toolTip() != ""
+
+
+def test_downloads_aggregate_header_reports_waiting_with_no_samples(qtbot):
+    download = _make_active_download(
+        status="queued", bytes_transferred=None, total_bytes=1_000,
+    )
+    download.request.id = 1
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    assert window.downloads_eta_label.text() == (
+        "Waiting for transfers to start · 0 transferring · "
+        "1 queued (no estimate)"
+    )
+
+
 def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     download = _make_active_download(
         status="queued", bytes_transferred=None, total_bytes=None,

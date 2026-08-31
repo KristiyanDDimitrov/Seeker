@@ -7600,3 +7600,78 @@ timeout copy) is covered in CLAUDE.md's own item 52 entry — this
 HISTORY entry exists specifically to preserve the live investigation
 in full, including the real production-account-safety verification.
 
+
+### 53
+
+Task 9's own brief scoped one piece as explicit recon, separate from
+the aggregate-ETA implementation itself: make one real
+`GET /api/v0/transfers/downloads/{username}/{id}` call against the
+live slskd and report whether a queue-position field (`placeInQueue`
+or similar) genuinely exists in the response — recon only, nothing
+was to be built on the answer either way.
+
+**Finding a real queued transfer to call it against.** A plain
+`GET /api/v0/transfers/downloads` against the real, already-running
+production slskd container returned every currently-tracked transfer
+grouped by peer; scanning the real response by `state` found 8
+`Completed, Succeeded`, 4 `Completed, Rejected`, and exactly one
+`Queued, Remotely` — a real, live, currently-queued download
+(`musicmasterrdjpool`, filename ending
+`Prdk - One More Night (Clean) 4A 87.mp3`, id
+`4c16e111-4f4a-46ad-96e7-25d8743811b3`).
+
+**The real per-transfer call.** `GET /api/v0/transfers/downloads/
+musicmasterrdjpool/4c16e111-4f4a-46ad-96e7-25d8743811b3` returned:
+
+```json
+{
+  "id": "4c16e111-4f4a-46ad-96e7-25d8743811b3",
+  "username": "musicmasterrdjpool",
+  "direction": "Download",
+  "filename": "DJPOOLS\\2026\\MONTHS\\FEB\\20\\The Mash Up 20 FEB\\Prdk - One More Night (Clean) 4A 87.mp3",
+  "size": 9251601,
+  "state": "Queued, Remotely",
+  "requestedAt": "2026-08-31T16:17:35.8155068",
+  "enqueuedAt": "2026-08-31T16:17:36.1261647",
+  "bytesTransferred": 0,
+  "averageSpeed": 0,
+  "attempts": 1,
+  "removed": false,
+  "bytesRemaining": 9251601,
+  "percentComplete": 0
+}
+```
+
+No `placeInQueue` field anywhere in the real body — confirmed by
+`grep`-ing the raw JSON text directly rather than just eyeballing the
+formatted output, ruling out a pretty-printer dropping it.
+
+**Checked the real schema too, not just this one response.** slskd's
+own live `/swagger/v0/swagger.json`, `components.schemas
+["slskd.Transfers.Transfer"].properties`, DOES declare a real
+`placeInQueue` field — so this isn't a case of the field not existing
+at all; it's declared in the real type. Re-grepped the entire raw
+`/api/v0/transfers/downloads` listing (every peer, every transfer, not
+just the one queued one) for the literal string `placeInQueue` and
+found zero occurrences anywhere, including as an explicit `null` —
+consistent with slskd's JSON serializer omitting null-valued
+properties from the response entirely rather than emitting them as
+`null`.
+
+**Conclusion, exactly as scoped — reported, not acted on.** The field
+exists in slskd's own real type but isn't currently populated for this
+real, live queued transfer, so slskd itself doesn't currently know (or
+isn't currently reporting) this transfer's real remote queue position.
+This gives the existing "Soulseek queue waits aren't predictable"
+design rationale (already used for `AGGREGATE_ETA_TOOLTIP`) a concrete,
+live-confirmed technical backing rather than just restating it as an
+assumption. No code reads `placeInQueue` — a future revision could
+poll for it and treat a still-absent value as "unknown," but per the
+brief's own explicit scope, that decision is left for later, not made
+here.
+
+The aggregate-ETA implementation itself (`aggregate()`,
+`format_aggregate_header()`, the Downloads-page header wiring) is
+covered in CLAUDE.md's own item 53 entry — this HISTORY entry exists
+specifically to preserve the real recon call/response/schema-check
+detail.

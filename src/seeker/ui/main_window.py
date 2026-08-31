@@ -48,7 +48,11 @@ from seeker.models.track_status import (
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text, theme
-from seeker.ui.download_eta import DownloadEtaTracker
+from seeker.ui.download_eta import (
+    AGGREGATE_ETA_TOOLTIP,
+    DownloadEtaTracker,
+    format_aggregate_header,
+)
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import (
@@ -777,6 +781,13 @@ class MainWindow(QMainWindow):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Task 9's aggregate remaining-time header — text only, empty
+        # (no reserved-but-blank strip) whenever there's nothing active
+        # to summarize; see _render_aggregate_eta.
+        self.downloads_eta_label = QLabel("")
+        self.downloads_eta_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        layout.addWidget(self.downloads_eta_label)
 
         self.downloads_table = QTableWidget(0, 5)
         self.downloads_table.setHorizontalHeaderLabels(
@@ -1734,6 +1745,7 @@ class MainWindow(QMainWindow):
     def _render_active_downloads(self, downloads: list[ActiveDownload]) -> None:
         self._update_nav_badge("downloads", len(downloads))
         self.downloads_table.setRowCount(len(downloads))
+        self._render_aggregate_eta(downloads)
 
         for row, download in enumerate(downloads):
             track = download.track
@@ -1759,6 +1771,25 @@ class MainWindow(QMainWindow):
             self.downloads_table.setCellWidget(
                 row, 4, _build_progress_widget(download, eta_text),
             )
+
+    def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:
+        # No reserved-but-blank strip when there's nothing active — the
+        # empty string collapses the label to zero height, matching
+        # this project's "blank, not a misleading control" precedent
+        # (item 27) rather than showing "0 transferring" forever.
+        if not downloads:
+            self.downloads_eta_label.setText("")
+            self.downloads_eta_label.setToolTip("")
+            return
+
+        pairs = [
+            (download.request.id, download.request.total_bytes)
+            for download in downloads
+            if download.request.id is not None
+        ]
+        result = self._eta_tracker.aggregate(pairs)
+        self.downloads_eta_label.setText(format_aggregate_header(result))
+        self.downloads_eta_label.setToolTip(AGGREGATE_ETA_TOOLTIP)
 
     def _poll_review_items(self) -> None:
         # Both halves are cheap, local-DB-only reads (like
