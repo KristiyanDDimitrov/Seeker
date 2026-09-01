@@ -22,7 +22,8 @@ DASHBOARD_TAB_SUBTITLE = (
 )
 DOWNLOADS_TAB_SUBTITLE = (
     "Every SoulSeek transfer currently in progress, across all "
-    "playlists — updates automatically."
+    "playlists — updates automatically. A finished transfer stays "
+    "visible here for about a minute, then moves to the History page."
 )
 REVIEW_TAB_SUBTITLE = (
     "Confirm or reject SoulSeek matches that weren't clean enough to "

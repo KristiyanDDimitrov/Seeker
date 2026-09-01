@@ -185,6 +185,7 @@ class FakeDownloadService:
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
             resolved_destination: tuple | None = None,
+            download_playlist_result: dict | None = None,
     ):
         self._review_candidates = review_candidates or []
         self._pending_upgrades = pending_upgrades or []
@@ -197,6 +198,10 @@ class FakeDownloadService:
         self._resolved_destination = resolved_destination
         self.set_destination_calls: list[tuple[str, str, str | None]] = []
         self.download_playlist_calls: list[str] = []
+        self._download_playlist_result = download_playlist_result or {
+            "requested": 0, "skipped": 0, "failed": 0, "total": 0,
+            "already_in_progress": [],
+        }
 
     def get_resolved_destination(self, playlist_name: str) -> tuple | None:
         return self._resolved_destination
@@ -225,7 +230,7 @@ class FakeDownloadService:
 
     def download_playlist(self, playlist_name: str) -> dict:
         self.download_playlist_calls.append(playlist_name)
-        return {"requested": 0, "skipped": 0, "failed": 0, "total": 0}
+        return self._download_playlist_result
 
     def poll_downloads(self) -> dict:
         return {}
@@ -313,6 +318,7 @@ class FakeApplication:
             has_scanned_library: bool = True,
             history_events: list | None = None,
             needs_review_matches: list | None = None,
+            download_playlist_result: dict | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.history_service = FakeHistoryService(history_events)
@@ -333,6 +339,7 @@ class FakeApplication:
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService(
             review_candidates, pending_upgrades, resolved_destination,
+            download_playlist_result,
         )
         self.metadata_service = FakeMetadataService(tag_result)
         self.duplicate_service = FakeDuplicateService(
@@ -1102,6 +1109,100 @@ def test_download_with_a_resolvable_destination_skips_the_dialog(qtbot):
     # No destination needed setting — it was already resolvable.
     assert application.download_service.set_destination_calls == []
     assert application.persist_default_destination_calls == []
+
+
+# --- Roadmap item 56 Phase 5.1: download button feedback -------------------
+
+def test_download_button_shows_starting_immediately_on_click(qtbot):
+    # Roadmap item 56 Phase 5.1 — the real bug: the button previously
+    # gave no feedback that anything had started.
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists, resolved_destination=(location, "Test"),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.download_button.click()
+
+    # Synchronous, main-thread state set at click time — true
+    # immediately, not just eventually once some worker lands.
+    assert window.download_button.text() == "Starting download…"
+    assert not window.download_button.isEnabled()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.download_playlist_calls != [],
+        timeout=2000,
+    )
+    qtbot.waitUntil(
+        lambda: window.download_button.text() == "Download selected playlist",
+        timeout=2000,
+    )
+    assert window.download_button.isEnabled()
+
+
+def test_download_button_resets_when_dialog_is_cancelled(qtbot, monkeypatch):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(location, True)],
+        resolved_destination=None,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    monkeypatch.setattr(
+        DestinationDialog, "exec", lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: window.download_button.text() == "Download selected playlist",
+        timeout=2000,
+    )
+    assert window.download_button.isEnabled()
+    assert application.download_service.download_playlist_calls == []
+
+
+def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
+    # Roadmap item 56 Phase 5.1 — how many downloads were requested,
+    # and how many tracks were skipped because they were already in
+    # flight (Phase 5.2's own real dedup guard reports through here).
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        resolved_destination=(location, "Test"),
+        download_playlist_result={
+            "requested": 2, "skipped": 3, "failed": 0, "total": 5,
+            "already_in_progress": [
+                "Artist A - Title A", "Artist B - Title B", "Artist C - Title C",
+            ],
+        },
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "Requested 2" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+    assert "3 already downloading/downloaded" in window.dashboard_notice.text()
 
 
 def test_download_with_no_destination_opens_dialog_prefilled_with_playlist_name(
@@ -1959,6 +2060,116 @@ def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
 
     bar = window.downloads_table.cellWidget(0, 4)
     assert not isinstance(bar, QProgressBar)
+
+
+# --- Roadmap item 56 Phase 5.4: a finished download must not read as
+# "Stalled" ------------------------------------------------------------
+
+def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
+    # The real bug, reproduced directly: sample a completed row 3 times
+    # with identical bytes (exactly what the 20s backend-poll loop used
+    # to do for a recently-finished row still inside
+    # RECENTLY_FINISHED_WINDOW_SECONDS) — old behavior would eventually
+    # report "Stalled" once _is_stalled's 3-identical-sample threshold
+    # was reached; the real fix is that a terminal row's status is
+    # never even routed to describe()/the tracker at all.
+    download = _make_active_download(
+        status="completed", bytes_transferred=1_000, total_bytes=1_000,
+    )
+    download.request.id = 1
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i in range(3):
+        window._eta_tracker.record(1, 1_000, now + timedelta(seconds=i * 20))
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    label_texts = [
+        child.text() for child in container.findChildren(QLabel)
+    ]
+    assert "Completed" in label_texts
+    assert "Stalled" not in label_texts
+    # Evicted immediately, not left for the row to eventually drop out
+    # of get_active_downloads() on its own.
+    assert 1 not in window._eta_tracker._history
+
+
+def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
+    download = _make_active_download(
+        status="completed", bytes_transferred=1_000, total_bytes=1_000,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    bar = container.findChild(QProgressBar)
+    assert bar is not None
+    assert bar.value() == bar.maximum()
+
+
+def test_terminal_progress_widget_shows_ready_for_review_label(qtbot):
+    download = _make_active_download(
+        status="ready_for_review", role="upgrade",
+        bytes_transferred=1_000, total_bytes=1_000,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    container = window.downloads_table.cellWidget(0, 4)
+    label_texts = [
+        child.text() for child in container.findChildren(QLabel)
+    ]
+    assert "Ready for review" in label_texts
+
+
+def test_terminal_progress_widget_for_failed_is_blank_not_a_bar(qtbot):
+    download = _make_active_download(
+        status="failed", bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([download])
+
+    widget = window.downloads_table.cellWidget(0, 4)
+    assert not isinstance(widget, QProgressBar)
+    assert widget.findChild(QProgressBar) is None
+
+
+def test_aggregate_header_excludes_terminal_rows_from_queued_count(qtbot):
+    # Roadmap item 56 Phase 5.4 §4 — a completed row was previously
+    # folded into the "queued (no estimate)" figure.
+    completed = _make_active_download(
+        track_id="t1", status="completed",
+        bytes_transferred=1_000, total_bytes=1_000,
+    )
+    completed.request.id = 1
+    queued = _make_active_download(
+        track_id="t2", status="queued",
+        bytes_transferred=None, total_bytes=1_000,
+    )
+    queued.request.id = 2
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_active_downloads([completed, queued])
+
+    assert window.downloads_eta_label.text() == (
+        "Waiting for transfers to start · 0 transferring · "
+        "1 queued (no estimate)"
+    )
 
 
 def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):

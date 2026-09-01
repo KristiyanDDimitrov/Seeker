@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
+from seeker.models.download_request import DownloadRequest
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -107,10 +108,20 @@ _DOWNLOAD_STATUS_LABELS = {
 }
 
 # Statuses where a progress bar means anything at all — a locked/
-# shortlisted/failed row has no real, current transfer to show progress
-# for (see CLAUDE.md: a rejection leaves bytes_transferred/total_bytes
-# unset by design, not zeroed).
-_PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
+# shortlisted row has no real, current transfer to show progress for
+# (see CLAUDE.md: a rejection leaves bytes_transferred/total_bytes
+# unset by design, not zeroed). "failed" is deliberately absent too —
+# it gets its own terminal branch below, not this one.
+_PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
+
+# Roadmap item 56 Phase 5.4 — a row in any of these will never report
+# new progress again. Branched on BEFORE ever consulting the ETA
+# tracker, which is the actual fix for "a finished download reads as
+# Stalled": the tracker has no concept of "this row is done," so
+# feeding it more identical-bytes samples from a completed/failed/
+# ready_for_review row eventually looks exactly like a genuinely stuck
+# in-progress download (STALL_SAMPLE_COUNT identical samples) to it.
+_DOWNLOAD_TERMINAL_STATUSES = {"completed", "failed", "ready_for_review"}
 
 _HISTORY_EVENT_LABELS = {
     DOWNLOADED: "Downloaded",
@@ -336,11 +347,45 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     )
 
 
+def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
+    # Roadmap item 56 Phase 5.4 — a fixed label, never the ETA tracker,
+    # for a row that will never report new progress again.
+    if request.status == "failed":
+        return QWidget()  # blank, not a misleading full/empty bar
+
+    bar = QProgressBar()
+
+    if request.total_bytes and request.bytes_transferred is not None:
+        bar.setRange(0, request.total_bytes)
+        bar.setValue(request.bytes_transferred)
+    else:
+        # A completed/ready_for_review row should always have real
+        # bytes (item 20's standing rule), but render a full bar rather
+        # than crash/guess if a real one somehow doesn't.
+        bar.setRange(0, 1)
+        bar.setValue(1)
+
+    theme.style_determinate_progress_bar(bar)
+
+    label_text = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
+
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(bar, 1)
+    layout.addWidget(QLabel(label_text))
+
+    return container
+
+
 def _build_progress_widget(
         download: ActiveDownload,
         eta_text: str | None,
 ) -> QWidget:
     request = download.request
+
+    if request.status in _DOWNLOAD_TERMINAL_STATUSES:
+        return _build_terminal_progress_widget(request)
 
     if request.status not in _PROGRESS_ELIGIBLE_STATUSES:
         return QWidget()
@@ -2219,11 +2264,25 @@ class MainWindow(QMainWindow):
             self.downloads_table.setItem(row, 3, QTableWidgetItem(status_text))
 
             request = download.request
-            eta_text = (
-                self._eta_tracker.describe(request.id, request.total_bytes)
-                if request.id is not None and request.total_bytes
-                else None
-            )
+            is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
+
+            if is_terminal:
+                # Roadmap item 56 Phase 5.4 — evicted the moment a
+                # terminal status is seen, not left to evict_except()'s
+                # once-per-poll sweep; the ETA tracker is never
+                # consulted for this row at all below.
+                if request.id is not None:
+                    self._eta_tracker.evict(request.id)
+                eta_text = None
+            else:
+                eta_text = (
+                    self._eta_tracker.describe(
+                        request.id, request.total_bytes,
+                    )
+                    if request.id is not None and request.total_bytes
+                    else None
+                )
+
             self.downloads_table.setCellWidget(
                 row, 4, _build_progress_widget(download, eta_text),
             )
@@ -2238,10 +2297,17 @@ class MainWindow(QMainWindow):
             self.downloads_eta_label.setToolTip("")
             return
 
+        # Roadmap item 56 Phase 5.4 — a terminal row (completed/failed/
+        # ready_for_review, still visible for
+        # RECENTLY_FINISHED_WINDOW_SECONDS) has nothing left to
+        # estimate; counting it here previously folded it into the
+        # header's "queued (no estimate)" figure, which reads as
+        # actively waiting rather than already finished.
         pairs = [
             (download.request.id, download.request.total_bytes)
             for download in downloads
             if download.request.id is not None
+            and download.request.status not in _DOWNLOAD_TERMINAL_STATUSES
         ]
         result = self._eta_tracker.aggregate(pairs)
         self.downloads_eta_label.setText(format_aggregate_header(result))
@@ -2674,6 +2740,14 @@ class MainWindow(QMainWindow):
             on_finished=lambda _: self._poll_selected_playlist(),
         )
 
+    def _set_download_button_busy(self) -> None:
+        self.download_button.setEnabled(False)
+        self.download_button.setText("Starting download…")
+
+    def _reset_download_button(self) -> None:
+        self.download_button.setEnabled(True)
+        self.download_button.setText("Download selected playlist")
+
     def _on_download_clicked(self) -> None:
         if self.selected_playlist is None:
             self.dashboard_notice.show_message(
@@ -2682,6 +2756,19 @@ class MainWindow(QMainWindow):
             return
 
         playlist_name = self.selected_playlist.name
+
+        # Roadmap item 56 Phase 5.1 — the button previously gave no
+        # feedback at all that anything had started, across this
+        # entire multi-step chain (resolvability check, maybe a
+        # destination dialog, then the real download). Disabled +
+        # relabeled here and re-asserted at the top of every
+        # continuation below (run_worker's own success-path
+        # `button.setEnabled(True)` would otherwise flip it back on
+        # between hops) so it never reads "enabled but says Starting
+        # download…" at any point in the chain; reset on every real
+        # exit path (cancelled dialog, no locations, real completion,
+        # or a genuine error via on_error).
+        self._set_download_button_busy()
 
         # Roadmap item 6 §3 — check resolvability first rather than
         # letting download_playlist() raise and dead-end the user at
@@ -2693,10 +2780,10 @@ class MainWindow(QMainWindow):
             self.thread_pool,
             lambda: self.application.download_service
             .get_resolved_destination(playlist_name),
-            button=self.download_button,
             on_finished=lambda resolved: self._on_destination_checked(
                 playlist_name, resolved,
             ),
+            on_error=lambda _message: self._reset_download_button(),
         )
 
     def _on_destination_checked(
@@ -2708,12 +2795,15 @@ class MainWindow(QMainWindow):
             self._start_download(playlist_name)
             return
 
+        self._set_download_button_busy()
+
         run_worker(
             self.thread_pool,
             self.application.library_service.list_locations,
             on_finished=lambda locations: self._open_destination_dialog(
                 playlist_name, locations,
             ),
+            on_error=lambda _message: self._reset_download_button(),
         )
 
     def _open_destination_dialog(
@@ -2722,6 +2812,7 @@ class MainWindow(QMainWindow):
             locations: list[tuple[LibraryLocation, bool]],
     ) -> None:
         if not locations:
+            self._reset_download_button()
             self.dashboard_notice.show_message(
                 help_text.NO_LOCATIONS_FOR_DESTINATION_DIALOG,
                 kind="warning",
@@ -2738,11 +2829,13 @@ class MainWindow(QMainWindow):
         )
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._reset_download_button()
             return
 
         location_id = dialog.selected_location_id()
 
         if location_id is None:
+            self._reset_download_button()
             return
 
         subfolder = dialog.selected_subfolder()
@@ -2770,22 +2863,56 @@ class MainWindow(QMainWindow):
                     location_id, True,
                 )
 
+        self._set_download_button_busy()
+
         run_worker(
             self.thread_pool,
             do_persist,
             on_finished=lambda _: self._start_download(playlist_name),
+            on_error=lambda _message: self._reset_download_button(),
         )
 
     def _start_download(self, playlist_name: str) -> None:
+        self._set_download_button_busy()
+
         run_worker(
             self.thread_pool,
             lambda: self.application.download_service.download_playlist(
                 playlist_name
             ),
-            button=self.download_button,
             status_label=self.status_label,
-            on_finished=lambda _: self._poll_selected_playlist(),
+            on_finished=self._on_download_finished,
+            on_error=lambda _message: self._reset_download_button(),
         )
+
+    def _on_download_finished(self, result: dict[str, Any]) -> None:
+        self._reset_download_button()
+        self._poll_selected_playlist()
+
+        requested = result["requested"]
+        skipped = result["skipped"]
+        already_in_progress = result.get("already_in_progress", [])
+
+        message = (
+            f"Requested {requested} download"
+            f"{'s' if requested != 1 else ''}"
+        )
+
+        if already_in_progress:
+            message += (
+                f" — {len(already_in_progress)} already "
+                f"downloading/downloaded, skipped"
+            )
+        elif skipped:
+            message += f" — {skipped} skipped (no candidate found)"
+
+        # A nudge to the Downloads page, not a forced navigation — its
+        # own nav badge already reflects the new in-flight count on the
+        # next 2s poll tick.
+        message += ". See the Downloads page for progress."
+
+        kind = "success" if requested else "info"
+        self.dashboard_notice.show_message(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:
         if self.selected_playlist is None:

@@ -601,6 +601,51 @@ def test_download_playlist_skips_track_with_existing_active_request(
     assert rows[0]["status"] == "locked"
 
 
+def test_download_playlist_skips_track_with_a_completed_request(tmp_path):
+    # Roadmap item 56 Phase 5.2 — the real bug: a `completed` row was
+    # never "active" under the old guard, so nothing stopped
+    # download_playlist() from re-searching and re-requesting a track
+    # that was already fully downloaded. Confirmed live against the
+    # real production DB: 3 download_requests rows for the same real
+    # track (Kamäleon - Quadrat), two different real files landed on
+    # disk. This is that exact shape, reproduced with a fake client.
+    service = make_service(tmp_path, states={})
+    _seed_single_unmatched_track(
+        service, tmp_path, "kamaleon-track", "Kamäleon", "Quadrat",
+    )
+    seed_pending_request(
+        service,
+        transfer_id="old-transfer-1",
+        track_id="kamaleon-track",
+        role="settled",
+        status="completed",
+        filename="Kamäleon - Quadrat.mp3",
+        username="torogod",
+    )
+
+    result = service.download_playlist("Test")
+
+    assert result["requested"] == 0
+    assert result["skipped"] == 1
+    assert result["already_in_progress"] == ["Kamäleon - Quadrat"]
+    # The guard fires before ever searching or requesting again — a
+    # second, differently-named file from a different peer must never
+    # even be searched for.
+    assert service.soulseek.search_calls == []
+    assert service.soulseek.request_download_calls == []
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT id, status FROM download_requests "
+            "WHERE track_id = 'kamaleon-track'"
+        ).fetchall()
+
+    # Still exactly one row — no second, differently-named candidate
+    # requested for a track that's already in the library.
+    assert len(rows) == 1
+    assert rows[0]["status"] == "completed"
+
+
 def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
         tmp_path,
 ):
@@ -1079,6 +1124,142 @@ def test_settled_completion_indexes_and_matches_the_downloaded_file(
 
         unmatched = tracks.get_unmatched_for_playlist("p1", connection)
         assert unmatched == []
+
+
+def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
+        tmp_path,
+):
+    # Roadmap item 56 Phase 5.3 — a safety net for the same class of
+    # bug 5.2 targets, for a case 5.2's own creation-time guard can't
+    # catch: a request created before the track was matched by
+    # something else (e.g. a manual scan+match, or a second download
+    # that finished first). By definition, a settled download landing
+    # after track_matches already points at a real local file is now
+    # an upgrade candidate, not a first arrival — it must go to
+    # ready_for_review, never silently auto-move a second file.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+    # The file the ALREADY-matched local_files row points at.
+    (lib_root / "Kamäleon - Quadrat.mp3").write_bytes(b"already in library")
+
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Kamäleon - Quadrat Master.wav").write_bytes(
+        b"a second, differently-named download"
+    )
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+    track_matches = TrackMatchRepository(database)
+    local_files = LocalFileRepository(database)
+    download_requests = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01"
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+        playlists.save(
+            Playlist(id="p1", name="Test", track_count=1), connection,
+        )
+        playlists.set_destination("p1", location.id, None, connection)
+
+        tracks.save(
+            Track(
+                id="t1", title="Quadrat", artist="Kamäleon",
+                album="Quadrat", duration_ms=245_818,
+            ),
+            connection,
+        )
+        tracks.save_playlist_track("p1", "t1", connection)
+
+        # The track is ALREADY matched to a real local file — simulates
+        # a prior, independent download or scan+match having already
+        # settled this track.
+        local_files.upsert(
+            LocalFile(
+                location_id=location.id,
+                relative_path="Kamäleon - Quadrat.mp3",
+                filename="Kamäleon - Quadrat.mp3",
+                format="mp3",
+                size_bytes=19,
+                mtime=1.0,
+                scanned_at="2026-01-01",
+            ),
+            connection,
+        )
+        existing_local_file = local_files.get_by_location_and_relative_path(
+            location.id, "Kamäleon - Quadrat.mp3", connection,
+        )
+        track_matches.upsert(
+            TrackMatch(
+                track_id="t1",
+                local_file_id=existing_local_file.id,
+                match_method="auto",
+                score=100.0,
+                matched_at="2026-01-01",
+            ),
+            connection,
+        )
+
+        # A second, real 'settled' request for the same track, from a
+        # different peer, with a different filename — just succeeded.
+        download_requests.add(
+            DownloadRequest(
+                track_id="t1",
+                username="VinceThePrince",
+                filename="Kamäleon - Quadrat Master.wav",
+                format="wav",
+                quality_descriptor="wav",
+                role="settled",
+                status="downloading",
+                transfer_id="tx-2",
+                size=1_000,
+                requested_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={"tx-2": "Completed, Succeeded"}),
+        playlists, tracks, locations, download_requests, track_matches,
+        local_files, SoulseekReviewCandidateRepository(database),
+        str(slskd_dir),
+    )
+
+    counts = service.poll_downloads()
+
+    assert counts["completed"] == 0
+    assert counts["ready_for_review"] == 1
+
+    with database.transaction() as connection:
+        # The second file was never moved into the library.
+        assert (lib_root / "Kamäleon - Quadrat Master.wav").exists() is False
+        assert (slskd_dir / "Kamäleon - Quadrat Master.wav").exists() is True
+
+        # The original match is untouched — still pointing at the
+        # first, already-library file.
+        match = track_matches.get_by_track_id("t1", connection)
+        assert match.local_file_id == existing_local_file.id
+
+        pending = download_requests.get_pending(connection)
+        assert pending == []
+
+        ready = [
+            r for r in download_requests.get_all(connection)
+            if r.status == "ready_for_review"
+        ]
+        assert len(ready) == 1
+        assert ready[0].transfer_id == "tx-2"
 
 
 def test_settled_completion_moves_a_filename_with_glob_special_characters(

@@ -131,6 +131,30 @@ def test_evict_except_keeps_ids_still_active():
     assert tracker.describe(1, 1_000) == "3s"
 
 
+def test_evict_drops_a_single_id_immediately():
+    # Roadmap item 56 Phase 5.4 — the real fix for "a finished download
+    # reads as Stalled": evict() removes one id the moment its row is
+    # seen as terminal, without needing evict_except()'s once-per-poll
+    # sweep over the whole active set.
+    tracker = DownloadEtaTracker()
+    now = datetime.now(timezone.utc)
+    tracker.record(1, 200, now - timedelta(seconds=1))
+    tracker.record(1, 400, now)
+    tracker.record(2, 100, now)
+
+    tracker.evict(1)
+
+    assert 1 not in tracker._history
+    assert 2 in tracker._history
+    assert tracker.describe(1, 1_000) == "Calculating…"
+
+
+def test_evict_a_never_tracked_id_is_a_no_op():
+    tracker = DownloadEtaTracker()
+
+    tracker.evict(999)  # must not raise
+
+
 def test_tracks_multiple_requests_independently():
     tracker = DownloadEtaTracker()
     now = datetime.now(timezone.utc)

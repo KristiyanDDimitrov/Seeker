@@ -303,6 +303,64 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
+    def get_requests_blocking_redownload(
+            self,
+            track_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[DownloadRequest]:
+        """Every row that should stop download_playlist() from
+        re-requesting this track: any non-terminal status (queued/
+        downloading/locked/shortlisted/ready_for_review) OR a completed
+        row — deliberately excludes only failed/superseded, the two
+        states that genuinely mean "that attempt didn't work, a fresh
+        one is fine."
+
+        Distinct from get_active_for_track above, which a completed row
+        does NOT count as "active" for by design (roadmap item 56 Phase
+        5.2, a real bug this closes): two real, differently-named files
+        landed for the same track (Kamäleon - Quadrat, confirmed in the
+        real production DB) because a completed request wasn't
+        "active," so nothing stopped download_playlist() from
+        re-searching and re-requesting an already-fully-downloaded
+        track. Keyed on track_id alone, deliberately NOT
+        download_dedup.candidate_key — that key includes filename,
+        which is exactly why two differently-named files from two
+        different peers slipped through as "different candidates"
+        before this fix.
+
+        Known limitation, not solved here: there is currently no way to
+        deliberately re-request a track that already has a completed
+        row — if that becomes wanted, it needs an explicit override
+        parameter on download_playlist(), not a weakening of this
+        guard.
+        """
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at,
+                bytes_transferred,
+                total_bytes
+            FROM download_requests
+            WHERE track_id = ?
+            AND status NOT IN ('failed', 'superseded')
+            """,
+            (track_id,),
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
     def get_active_candidates(
             self,
             track_id: str,

@@ -8686,3 +8686,84 @@ to the real production DB elsewhere.
 
 `mypy --strict` clean; full suite 718 passed / 1 skipped, run 3 times
 in a row, no flakiness this time.
+
+### 56, Phase 5 — download UX and the duplicate-download bug
+
+One causal chain, exactly as Phase 0.5 traced it: no feedback → the
+user re-clicked → the existing dedup guard didn't cover a `completed`
+row → two real, differently-named files landed for one track.
+
+**5.1 — immediate feedback.** Audited every `run_worker()` call site in
+`main_window.py` (31 total) for whether it passes `button=` — every
+other user-triggered action already did, or has no applicable button
+widget (a context-menu action, a standing poll timer) where the
+existing `status_label`/`InlineNotice` mechanisms already give adequate
+feedback; the download button was the one real, substantive gap. Fixed
+with `_set_download_button_busy()`/`_reset_download_button()` managed
+manually across the button's real 3-hop chain (resolvability check →
+maybe a destination dialog → the real download), since `run_worker`'s
+own per-call `button=` handling would otherwise flicker the button
+enabled between hops. A real result notice via `InlineNotice` reports
+requested/skipped/already-in-progress counts.
+
+**5.2 — the real fix.** New `DownloadRequestRepository.
+get_requests_blocking_redownload()` — deliberately a NEW method, not a
+redefinition of the existing, already-widely-referenced
+`get_active_for_track()` (item 16's own precedent, still correct for
+its original purpose) — excludes only `failed`/`superseded`, so a
+`completed` row now blocks a re-download the same way an in-flight one
+already did. Keyed on `track_id` alone, deliberately not
+`download_dedup.candidate_key` (which includes `filename` — exactly
+why two differently-named files from two different peers slipped
+through before). `download_playlist()`'s return gained
+`already_in_progress: list[str]` so the UI can report specifically
+which tracks were skipped for this reason, distinct from "no candidate
+found."
+
+**5.3 — a safety net for what 5.2 alone can't catch**: a request
+created BEFORE the track was matched by something else (a manual
+scan+match, or a second download finishing first). New
+`DownloadService._track_already_has_a_matched_file(track_id)`, checked
+before `_move_completed_file` at BOTH real automatic-completion call
+sites (the main `poll_downloads()` loop and `_retry_locked_request`'s
+own completion branch — the latter's existing code comment already
+explains why a human-confirmed-via-item-26 candidate auto-moves without
+a second confirmation; this check is a genuinely different concern —
+avoiding a duplicate file on disk — and applies on top of that
+reasoning, not against it). Deliberately NOT applied to
+`apply_upgrade_decision`'s own replace action — a human explicitly
+clicking "Replace" is the one place overwriting an existing match is
+the whole point.
+
+**5.4 — root-caused, not just reskinned.** Confirmed directly: a
+just-completed row stays visible for `RECENTLY_FINISHED_WINDOW_SECONDS
+= 60`, still gets sampled by the real 20s backend-poll cycle
+(`_sample_download_progress`), and since its bytes never change again,
+3 identical samples trip `_is_stalled()` — the exact "Calculating,
+then Stalled, then vanishes" sequence reported, reproduced directly in
+a new test before touching any code. Fixed by branching on status
+FIRST: new `_DOWNLOAD_TERMINAL_STATUSES` (completed/failed/
+ready_for_review) get a fixed label + a full/cleared bar from a new
+`_build_terminal_progress_widget`, never routed to the ETA tracker at
+all; a new `DownloadEtaTracker.evict(id)` drops the id the instant its
+row is seen as terminal, not left to `evict_except()`'s once-per-poll
+sweep. Checked, not assumed (§4's own explicit ask): terminal rows
+WERE being folded into `format_aggregate_header()`'s "queued (no
+estimate)" figure — `_render_aggregate_eta` now filters them out
+first. Real, disclosed scope trim: the brief's suggested "Completed —
+moved to *destination*" per-row detail wasn't built — no destination
+path is captured anywhere on `DownloadRequest`/`ActiveDownload`, and
+adding it would need either a schema change or a live per-playlist
+resolve call bundled into the poll; the page subtitle instead explains
+the 60-second-then-moves-to-History behavior, which addresses the
+same "make the disappearance intelligible" intent without the added
+plumbing.
+
+**Real live verification against the production slskd instance and
+DB, not just the test suite**: `seeker downloads status` ran clean
+end-to-end (one real, transient 500 from slskd's own retry endpoint
+for an unrelated locked candidate — expected real-world flakiness,
+already handled by the existing per-item try/except, not a regression).
+
+`mypy --strict` clean; full suite 730 passed / 1 skipped, run 3 times
+in a row, no flakiness.

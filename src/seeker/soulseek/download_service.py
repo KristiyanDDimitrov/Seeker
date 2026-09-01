@@ -3,6 +3,7 @@ import shutil
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
@@ -216,7 +217,7 @@ class DownloadService:
 
         return self._resolve_destination(playlist)
 
-    def download_playlist(self, playlist_name: str) -> dict[str, int]:
+    def download_playlist(self, playlist_name: str) -> dict[str, Any]:
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
 
@@ -262,6 +263,12 @@ class DownloadService:
         requested = 0
         skipped = 0
         failed = 0
+        # Roadmap item 56 Phase 5.1 — distinct from the generic
+        # `skipped` count so the UI can tell "already downloading/
+        # downloaded" apart from "no real candidate found" (the two
+        # skip reasons below are otherwise indistinguishable from the
+        # return value alone).
+        already_in_progress: list[str] = []
 
         for track in unmatched_tracks:
             # One bad track (search timeout, malformed response, a
@@ -272,26 +279,38 @@ class DownloadService:
             # dropped without being counted anywhere.
             try:
                 with self.database.transaction() as connection:
-                    active = self.download_requests.get_active_for_track(
-                        track.id, connection
+                    blocking = (
+                        self.download_requests
+                        .get_requests_blocking_redownload(
+                            track.id, connection,
+                        )
                     )
 
-                if active:
+                if blocking:
                     # A request for this exact track is already in
                     # flight (queued/downloading/locked/shortlisted/
-                    # ready_for_review) — re-running download_playlist
-                    # must not pile on a duplicate, otherwise-identical
-                    # row for the same candidate. Confirmed live: two
-                    # runs against a still-'locked' upgrade created two
-                    # rows before this guard existed.
+                    # ready_for_review) OR already completed —
+                    # re-running download_playlist must not pile on a
+                    # duplicate, otherwise-identical row for the same
+                    # candidate, and must not re-download a track
+                    # that's already sitting in the library. Confirmed
+                    # live, both cases: two runs against a still-
+                    # 'locked' upgrade created two rows before the
+                    # original (narrower) guard existed (item 16); two
+                    # differently-named files landed for the same real
+                    # track (Kamäleon - Quadrat) because a completed
+                    # row wasn't "active" under that narrower guard.
                     statuses = ", ".join(
-                        sorted({request.status for request in active})
+                        sorted({request.status for request in blocking})
                     )
                     print(
                         f"  Already in progress for {track.artist} - "
                         f"{track.title} ({statuses}) — skipping."
                     )
                     skipped += 1
+                    already_in_progress.append(
+                        f"{track.artist} - {track.title}"
+                    )
                     continue
 
                 print(f"Searching: {track.artist} - {track.title}")
@@ -370,6 +389,7 @@ class DownloadService:
             "skipped": skipped,
             "failed": failed,
             "total": len(unmatched_tracks),
+            "already_in_progress": already_in_progress,
         }
 
     def _request_upgrade_shortlist(
@@ -711,6 +731,20 @@ class DownloadService:
                     )
                     continue
 
+                if self._track_already_has_a_matched_file(request.track_id):
+                    # Roadmap item 56 Phase 5.3 — a real safety net,
+                    # not a hypothetical: this is what closes the gap
+                    # 5.2's dedup guard alone couldn't (a candidate
+                    # requested before that guard existed, or matched
+                    # by some other path in the meantime). By
+                    # definition this settled download is now an
+                    # upgrade candidate.
+                    self._update_status(request.id, "ready_for_review")
+                    self._supersede_others_for_track(
+                        request.track_id, request.id,
+                    )
+                    continue
+
                 move_result = self._move_completed_file(request)
 
                 if move_result is not None:
@@ -873,6 +907,30 @@ class DownloadService:
                 track_id, keep_id, connection,
             )
 
+    def _track_already_has_a_matched_file(self, track_id: str) -> bool:
+        """Roadmap item 56 Phase 5.3 — a safety net for the same class
+        of bug 5.2 targets: before an automatic completion moves a
+        settled download into place, check whether track_matches
+        already points at a real local file for this track. By
+        definition, a settled download landing after that is now an
+        upgrade candidate, not a first arrival — §8's own design
+        already says an upgrade is never auto-moved, so this reuses
+        that same rule for a settled download that turns out to be
+        redundant. Deliberately NOT applied to apply_upgrade_decision's
+        own replace action — a human explicitly clicking "Replace" is
+        the one place overwriting an existing match is exactly the
+        point, not a bug to prevent.
+        """
+        with self.database.transaction() as connection:
+            existing_match = self.track_matches.get_by_track_id(
+                track_id, connection,
+            )
+
+        return (
+            existing_match is not None
+            and existing_match.local_file_id is not None
+        )
+
     def _retry_locked_request(
             self, request: DownloadRequest, counts: dict[str, int],
     ) -> None:
@@ -940,7 +998,17 @@ class DownloadService:
         else:
             status = "downloading" if state != "Requested" else "queued"
 
-        if status == "completed":
+        if (
+                status == "completed"
+                and self._track_already_has_a_matched_file(request.track_id)
+        ):
+            # Roadmap item 56 Phase 5.3 — same safety net as the main
+            # poll_downloads() loop: even a role='settled' row that's
+            # already human-confirmed once (item 26's own reasoning
+            # just above) must not silently create a second file for a
+            # track something else already matched in the meantime.
+            status = "ready_for_review"
+        elif status == "completed":
             # Mirror poll_downloads()'s own main-loop pattern: only
             # persist 'completed' if the file is genuinely found and
             # moved. If not, fall back to 'downloading' — the real

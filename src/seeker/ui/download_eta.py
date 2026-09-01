@@ -116,6 +116,19 @@ class DownloadEtaTracker:
         # the last STALL_SAMPLE_COUNT samples.
         del samples[:-STALL_SAMPLE_COUNT]
 
+    def evict(self, request_id: int) -> None:
+        """Drop one tracked id immediately — roadmap item 56 Phase 5.4:
+        a row that just reached a terminal status (completed/failed/
+        ready_for_review) will never report new progress again, so
+        continuing to sample it would eventually misclassify it as
+        "Stalled" (3 identical-bytes samples, the same signal a
+        genuinely stuck in-progress download would produce) rather than
+        just correctly reading as finished. Called the moment a row's
+        status is seen to be terminal, not left to evict_except()'s own
+        once-per-poll sweep.
+        """
+        self._history.pop(request_id, None)
+
     def evict_except(self, active_request_ids: set[int]) -> None:
         """Drop every tracked id that's no longer in the current
         get_active_downloads() result — a completed/failed/superseded

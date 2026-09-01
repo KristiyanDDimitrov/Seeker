@@ -926,6 +926,35 @@ compress it here before moving on to the next item.
     bug found and fixed in-pass: `test_metadata_service.py` tests were
     silently sharing the REAL persistent cache path before being given
     isolated per-test cache dirs. [HISTORY §56](docs/HISTORY.md#56)
+60. **Download UX and the duplicate-download bug (Phase 5) — done, one
+    causal chain closed end to end.** No feedback → user re-clicked →
+    the existing dedup guard didn't cover a `completed` row → two real,
+    differently-named files landed for one track (confirmed live in
+    Phase 0.5 against the real Kamäleon - Quadrat track). **5.1**:
+    download button audited against every other `run_worker()` call
+    site (31 total) — it was the one real gap; fixed with manually-
+    managed busy/reset state across its real 3-hop chain (button=
+    alone would flicker between hops) plus a real `InlineNotice`
+    result. **5.2, the real fix**: new
+    `get_requests_blocking_redownload()` (a NEW repository method, not
+    a redefinition of the existing, already-referenced
+    `get_active_for_track()`) also blocks a `completed` row, keyed on
+    `track_id` alone — `download_dedup.candidate_key` includes
+    `filename`, exactly why two different peers' files slipped through
+    before. **5.3**: `_track_already_has_a_matched_file()` — a safety
+    net at both real automatic-completion call sites (never
+    `apply_upgrade_decision`'s own explicit human "Replace" action) for
+    the gap 5.2's creation-time guard can't catch (a request predating
+    a match made by something else). **5.4**: reproduced the exact
+    "Calculating → Stalled → vanishes" sequence directly before fixing
+    it — a terminal row (completed/failed/ready_for_review) never
+    reaches the ETA tracker at all now, evicted immediately via a new
+    `DownloadEtaTracker.evict(id)`; the aggregate header's "queued (no
+    estimate)" figure no longer double-counts them either (checked, not
+    assumed). Scope trim, disclosed: no per-row "moved to *destination*"
+    detail — no destination path is captured on `DownloadRequest`
+    anywhere; the page subtitle explains the 60s-then-History behavior
+    instead. [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
