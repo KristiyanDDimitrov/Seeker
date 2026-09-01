@@ -853,132 +853,58 @@ compress it here before moving on to the next item.
     **`LICENSE`** (MIT, Copyright (c) 2026 Kristiyan Dimitrov) +
     `pyproject.toml`'s `license`/`license-files` fields.
     [HISTORY §55](docs/HISTORY.md#55)
-56. **Matching correctness (Phase 1 of a larger work block) — done, two
-    hypotheses refuted by live data first: the artist gate wasn't
-    rejecting three real BMTH tracks (real tag data confirmed True), and
-    cover art wasn't being appended (all 3 formats already replace).**
-    `matching.py` gained an `aggressive: bool = False` param (default
-    preserves `quality.py`'s exact behavior) and `evaluate_match()`,
-    which softens the old hard artist gate — an unconfirmed-but-not-
-    contradicted source still scores, capped at
-    `ARTIST_UNCONFIRMED_SCORE_CAP`. `library/matcher.py` tries `tag_artist`
-    → filename → parent dir → grandparent dir. `LibraryService.
-    scan_and_match()` chains scan+match in one call (`seeker library scan
-    --match`; UI's scan CTA now does both). Real before/after: Auto
-    26→27, Needs review 2→1, all three files reaching 100.0.
-    [HISTORY §56](docs/HISTORY.md#56)
-57. **Local needs-review match review flow (Phase 2) — done, closes item
-    7 and item 45's demotion bug.** New `track_matches.confirmed_at`
-    (guarded `ALTER TABLE`, verified against the real DB); `match_all()`
-    skips any row with it set — a human-confirmed match no longer gets
-    silently demoted by a later re-match. `LibraryService.
-    get_needs_review_matches`/`confirm_match`/`reject_match` (no
-    double-confirm gate — item 27's precedent, nothing on disk is
-    touched); `seeker review` CLI; Review page gains a third table
-    section. Dashboard double-click on a NEEDS_REVIEW/AWAITING_REVIEW
-    cell jumps to and selects the matching Review row. Real live
-    verification against the production DB: confirmed the one real
-    remaining needs-review row, re-ran match, confirmed it survived with
-    its real score intact (not a 100.0 sentinel).
-    [HISTORY §56](docs/HISTORY.md#56)
-58. **Settings becomes an in-window page (Phase 3) — done, reverses item
-    48's "stays a separate dialog" decision.** `SettingsWindow
-    (QMainWindow)` → `SettingsPage(QWidget)`, hosted in `MainWindow`'s
-    `QStackedWidget`; `WA_DeleteOnClose` dropped (no longer a top-level
-    window). `_build_page()` gained a real `header_extra` extension
-    point for the "← Back" button; the page's own hand-styled subtitle
-    is gone in favor of `_build_page`'s (that routing *was* the "misprinted
-    header" fix). Every navigation path funnels through `_show_page()`,
-    which now also tracks `_previous_page_key` and fires settings-exit
-    invalidation (`_refresh_duplicates_locations()` + `_poll_next_step()`)
-    regardless of path. About button wired via a callable to avoid a
-    circular import with `main_window.py`'s `AboutDialog`. **Re-verified
-    stress test found a real, reproduced (2x) RSS-growth increase over
-    the old ceiling — investigated, not dismissed: the growth genuinely
-    plateaus (tail range 1.7MB), confirming legitimate one-time cost
-    from settings-exit's 2 new worker round-trips per cycle, not a leak.
-    Ceiling raised 250→300MB with the real numbers recorded; a new
-    tail-plateau assertion (`MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB`) now
-    actually checks the leak signature the old test only printed.**
-    [HISTORY §56](docs/HISTORY.md#56)
-59. **Tagging: cover art, honest reporting, caching (Phase 4) — done,
-    re-scoped by Phase 0.4's own findings.** The append-not-replace
-    hypothesis (4.1's original framing) was already refuted before this
-    phase started — `embed_album_art` already replaces correctly for
-    all 3 formats. 4.1 became real FLAC `Picture` field polish instead
-    (`desc`/`width`/`height` via a new dependency-free
-    `_read_image_dimensions` JPEG/PNG reader, live-verified against a
-    real Spotify CDN image: 640x640; `depth=24` is a documented
-    assumption, not computed). **4.2 — the real fix**: `_tag_one_track`
-    now tracks an explicit art outcome
-    (`written`/`no_url`/`download_failed`/`embed_failed`/
-    `format_unsupported`) instead of a silent `print()`-only warning; a
-    new `tagged_without_art` count (CLI + UI) and a `details` entry per
-    affected track (the `no_url` case tells the user to re-run
-    `sync-tracks`). UI routes the headline through `InlineNotice` (item
-    47) — "Tagged 34 tracks — 12 without cover art." **4.3**: new
-    top-level `seeker/album_art_cache.py::AlbumArtCache` — in-memory +
-    on-disk (platformdirs user CACHE dir, not data), keyed by a SHA-256
-    hash of the URL. Live-verified against Spotify's real CDN: first
-    fetch 0.395s (94,118 real bytes), cached refetch 0.000s, identical
-    bytes. Consumes zero Spotify Web API quota either way (CDN fetch,
-    not the Web API) — bandwidth/latency win only. Real test-isolation
-    bug found and fixed in-pass: `test_metadata_service.py` tests were
-    silently sharing the REAL persistent cache path before being given
-    isolated per-test cache dirs. [HISTORY §56](docs/HISTORY.md#56)
-60. **Download UX and the duplicate-download bug (Phase 5) — done, one
-    causal chain closed end to end.** No feedback → user re-clicked →
-    the existing dedup guard didn't cover a `completed` row → two real,
-    differently-named files landed for one track (confirmed live in
-    Phase 0.5 against the real Kamäleon - Quadrat track). **5.1**:
-    download button audited against every other `run_worker()` call
-    site (31 total) — it was the one real gap; fixed with manually-
-    managed busy/reset state across its real 3-hop chain (button=
-    alone would flicker between hops) plus a real `InlineNotice`
-    result. **5.2, the real fix**: new
-    `get_requests_blocking_redownload()` (a NEW repository method, not
-    a redefinition of the existing, already-referenced
-    `get_active_for_track()`) also blocks a `completed` row, keyed on
-    `track_id` alone — `download_dedup.candidate_key` includes
-    `filename`, exactly why two different peers' files slipped through
-    before. **5.3**: `_track_already_has_a_matched_file()` — a safety
-    net at both real automatic-completion call sites (never
-    `apply_upgrade_decision`'s own explicit human "Replace" action) for
-    the gap 5.2's creation-time guard can't catch (a request predating
-    a match made by something else). **5.4**: reproduced the exact
-    "Calculating → Stalled → vanishes" sequence directly before fixing
-    it — a terminal row (completed/failed/ready_for_review) never
-    reaches the ETA tracker at all now, evicted immediately via a new
-    `DownloadEtaTracker.evict(id)`; the aggregate header's "queued (no
-    estimate)" figure no longer double-counts them either (checked, not
-    assumed). Scope trim, disclosed: no per-row "moved to *destination*"
-    detail — no destination path is captured on `DownloadRequest`
-    anywhere; the page subtitle explains the 60s-then-History behavior
-    instead. [HISTORY §56](docs/HISTORY.md#56)
-61. **Duplicates tab (Phase 6) — done, three real fixes and one
-    "could not reproduce."** 6.1: the location combo's "load once
-    ever" gate (item 39's real deadlock fix, construction-time
-    specific) removed — a page SHOW is human-paced and doesn't
-    reintroduce that hazard, so it now refreshes on every visit,
-    preserving the current selection. 6.2: the reported "Actions
-    column is empty" bug could NOT be reproduced via the real
-    `DuplicateService`/real fingerprinting/real async click path
-    specified — kept as a permanent regression test rather than a
-    fabricated fix; theme.py's item-47 QSS hazard confirmed still
-    absent. 6.3: "Keep all" (new `KEEP_ALL_DUPLICATES_ID` sentinel in
-    each group's `QButtonGroup`) plus Location/Path columns and an
-    exact-full-paths delete-confirmation dialog. **Real Qt gotcha
-    found live: `QButtonGroup.addButton(button, id=-1)` doesn't set
-    the id to `-1` at all — Qt reserves that value as its own "auto-
-    assign" sentinel and silently substitutes a different id
-    (`checkedId()` returned `-2`, confirmed via direct repro) — fixed
-    by using `0` instead.** Groups of 3/4 already worked by
-    construction, now with explicit tests. 6.4: new `duplicate_
-    cleanups` table (verified against the real, non-empty production
-    DB); `delete_local_files` measures real `bytes_freed` via
-    `Path.stat()` before either delete step, falling back to the
-    stored `size_bytes` column on a stat failure. UI/CLI milestone,
+56. **Matching correctness (Phase 1) — done, two hypotheses refuted by live
+    data.** `matching.py` gained `aggressive: bool` + `evaluate_match()` —
+    an unconfirmed-but-not-contradicted artist source still scores, capped
+    at `ARTIST_UNCONFIRMED_SCORE_CAP`. `library/matcher.py` tries
+    tag→filename→parent→grandparent dir. `scan_and_match()` chains
+    scan+match in one call. Real before/after: Auto 26→27, Needs review
+    2→1, all three files reaching 100.0. [HISTORY §56](docs/HISTORY.md#56)
+57. **Local needs-review review flow (Phase 2) — done, closes items 7 and 45's
+    demotion bug.** New `track_matches.confirmed_at`; `match_all()` skips
+    any row with it set — a human-confirmed match can no longer be
+    silently demoted.
+    `get_needs_review_matches`/`confirm_match`/`reject_match`; `seeker
+    review` CLI; Review page gains a third table section; Dashboard
+    double-click jumps to it. [HISTORY §56](docs/HISTORY.md#56)
+58. **Settings becomes an in-window page (Phase 3) — done, reverses item 48's
+    "stays a separate dialog" decision.** `SettingsWindow` →
+    `SettingsPage(QWidget)`, hosted in the sidebar's `QStackedWidget`;
+    `_show_page()` fires settings-exit invalidation regardless of nav
+    path. Stress-test RSS ceiling raised 250→300MB with real numbers —
+    investigated (a genuine plateau, not a leak), not just relaxed; a new
+    tail-plateau assertion checks that signature directly. [HISTORY §56](docs/HISTORY.md#56)
+59. **Tagging: cover art, honest reporting, caching (Phase 4) — done.** FLAC
+    `Picture` gained real `desc`/`width`/`height`. `_tag_one_track` now
+    tracks an explicit art outcome instead of a silent `print()`; new
+    `tagged_without_art` count + per-track detail. New
+    `album_art_cache.py::AlbumArtCache` (platformdirs CACHE dir,
+    SHA-256-keyed) — zero extra Spotify Web API quota, CDN-only. [HISTORY §56](docs/HISTORY.md#56)
+60. **Download UX and the duplicate-download bug (Phase 5) — done.** New
+    `get_requests_blocking_redownload()` also blocks a `completed` row —
+    the real gap (item 25's guard didn't cover it).
+    `_track_already_has_a_matched_file()` is a safety net at both auto-
+    completion sites. `DownloadEtaTracker.evict(id)` fixes the
+    "Calculating → Stalled → vanishes" bug for terminal rows. Download
+    button gets manually-managed busy/reset state. [HISTORY §56](docs/HISTORY.md#56)
+61. **Duplicates tab (Phase 6) — done, three real fixes and one "could not
+    reproduce."** Location combo now refreshes on every page show, not
+    once-ever. The reported "Actions column empty" bug was NOT
+    reproducible — kept as a permanent regression test, not a fabricated
+    fix. **Gotcha:** `QButtonGroup.addButton(id=-1)` doesn't set the id to
+    `-1` — Qt reserves it as its own auto-assign sentinel; use `0`
+    instead. New `duplicate_cleanups` table + a reclaimed-space milestone,
     hidden at zero. [HISTORY §56](docs/HISTORY.md#56)
+62. **Sharing & Uploads (Phase 7) — done, live-verified end to end against
+    disposable throwaway containers, never production.** New
+    `sharing_service.py` (`Application.sharing_service`), `seeker sharing
+    status` CLI, lazy-loaded Sharing page. `PATCH /api/v0/options` has no
+    `shares` key — a share dir only changes by editing files and
+    recreating the container. **Standing rule:** resolve real
+    host↔container paths via `docker inspect`, never `docker-
+    compose.yml`'s own fallback text. One item still outstanding across
+    all seven phases: a real attended stress-test re-run — see HISTORY for
+    the diagnosis + a faster repro command. [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

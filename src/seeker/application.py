@@ -40,6 +40,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
 from seeker.models.data_locations import DataLocations
+from seeker.sharing_service import SharingService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
 from seeker.spotify.auth_manager import SpotifyAuthManager
@@ -148,6 +149,7 @@ class Application:
         self._dashboard_service: DashboardService | None = None
         self._duplicate_service: DuplicateService | None = None
         self._history_service: HistoryService | None = None
+        self._sharing_service: SharingService | None = None
 
     @property
     def _spotify_client_id(self) -> str | None:
@@ -269,6 +271,7 @@ class Application:
         # reset too, it would keep raising on any SoulSeek-dependent
         # method forever, even after real credentials just landed.
         self._download_service = None
+        self._sharing_service = None
 
     def persist_default_destination(
             self,
@@ -469,6 +472,21 @@ class Application:
             )
 
         return self._history_service
+
+    @property
+    def sharing_service(self) -> SharingService:
+        if self._sharing_service is None:
+            # Same soulseek_configured-gated construction shape as
+            # download_service above -- a caller that only wants
+            # is_self_managed()/preview_add_location must not be forced
+            # to have SoulSeek configured at all.
+            self._sharing_service = SharingService(
+                self.soulseek_client if self.soulseek_configured else None,
+                self.database,
+                LibraryLocationRepository(self.database),
+            )
+
+        return self._sharing_service
 
     @property
     def data_locations(self) -> DataLocations:

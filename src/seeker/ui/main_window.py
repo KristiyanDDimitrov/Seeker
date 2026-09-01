@@ -55,6 +55,12 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
+from seeker.sharing_service import (
+    LocationShareState,
+    ShareStatus,
+    SharingApplyResult,
+    UploadStatus,
+)
 from seeker.ui import help_text, theme
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 from seeker.ui.download_eta import (
@@ -69,6 +75,7 @@ from seeker.ui.settings_window import (
     SETTINGS_TAB_LOCATIONS,
     SettingsPage,
 )
+from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
@@ -156,6 +163,7 @@ _NAV_PAGES = (
     ("downloads", "Downloads"),
     ("review", "Review"),
     ("duplicates", "Duplicates"),
+    ("sharing", "Sharing"),
     ("history", "History"),
 )
 
@@ -248,6 +256,20 @@ def _build_nav_button(label: str) -> QPushButton:
     button.setProperty("navItem", True)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
+
+
+@dataclass
+class _SharingSnapshot:
+    """Everything the Sharing page (roadmap item 62, Phase 7) needs to
+    render one background-thread fetch — bundled the same way
+    _NextStepFacts bundles the Dashboard CTA's facts, so run_worker's
+    single-callable contract only needs one round trip per refresh
+    instead of four (status/self-managed/reconciliation/uploads)."""
+    configured: bool
+    status: ShareStatus | None
+    self_managed: bool
+    reconciliation: list[LocationShareState]
+    uploads: list[UploadStatus]
 
 
 @dataclass
@@ -674,6 +696,7 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer = QTimer(self)
         self.backend_poll_timer.setInterval(BACKEND_POLL_INTERVAL_MS)
         self.backend_poll_timer.timeout.connect(self._trigger_backend_poll)
+        self.backend_poll_timer.timeout.connect(self._trigger_sharing_poll)
         self.backend_poll_timer.start()
 
     def _build_ui(self) -> None:
@@ -700,6 +723,7 @@ class MainWindow(QMainWindow):
             "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
             self._build_duplicates_content(),
         ))
+        self._register_page("sharing", self._build_sharing_page())
         self._register_page("history", self._build_history_page())
         self._register_page("help", self._build_help_page())
 
@@ -735,6 +759,16 @@ class MainWindow(QMainWindow):
         # actually appear) doesn't reintroduce that hazard; only the
         # original "fetch at construction time" trigger did.
         self._duplicates_page_index = self._page_indices["duplicates"]
+        # Roadmap item 62 (Phase 7.6) — lazy-loaded like Duplicates
+        # (first real page SHOW, never at construction — see item 39's
+        # deadlock), but ALSO joins the standing 20s backend_poll_timer
+        # once visited, same shape as Downloads' own real-slskd-call
+        # poll — sharing status/uploads are live external state, not a
+        # one-shot local read like Duplicates/History.
+        self._sharing_page_index = self._page_indices["sharing"]
+        self._sharing_page_visited = False
+        self._sharing_poll_in_progress = False
+        self._upload_eta_tracker = UploadEtaTracker()
         # Same lazy-load-on-first-real-visit reasoning as Duplicates
         # above — a plain, cheap local-DB read, but there's no reason
         # to pay it on every MainWindow construction when a real user
@@ -1131,6 +1165,268 @@ class MainWindow(QMainWindow):
             self.history_table.setItem(
                 row, 3, QTableWidgetItem(event.detail),
             )
+
+    def _build_sharing_page(self) -> QWidget:
+        # Roadmap item 62 (Phase 7) — what Seeker is giving back to the
+        # SoulSeek network it downloads from. See help_text.py's
+        # SHARING_FRAMING_BODY for why this page frames things honestly
+        # rather than as a persuasive pitch.
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACING_LG)
+
+        framing_label = QLabel(help_text.SHARING_FRAMING_BODY)
+        framing_label.setTextFormat(Qt.TextFormat.RichText)
+        framing_label.setWordWrap(True)
+        layout.addWidget(framing_label)
+
+        controls = QHBoxLayout()
+        self.sharing_summary_label = QLabel("")
+        controls.addWidget(self.sharing_summary_label, 1)
+
+        self.sharing_refresh_button = QPushButton("Refresh")
+        self.sharing_refresh_button.setToolTip(help_text.TOOLTIP_SHARING_REFRESH)
+        self.sharing_refresh_button.clicked.connect(self._refresh_sharing)
+        controls.addWidget(self.sharing_refresh_button)
+        layout.addLayout(controls)
+
+        self.sharing_status_label = QLabel("")
+        layout.addWidget(self.sharing_status_label)
+
+        self.sharing_locations_table = QTableWidget(0, 5)
+        self.sharing_locations_table.setHorizontalHeaderLabels(
+            ["Location", "Shared", "Container Path", "Files", "Action"]
+        )
+        self.sharing_locations_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.sharing_locations_table)
+
+        uploads_label = QLabel("Currently uploading")
+        uploads_label.setStyleSheet(
+            f"font-weight: 600; color: {theme.TEXT};"
+        )
+        layout.addWidget(uploads_label)
+
+        self.sharing_uploads_table = QTableWidget(0, 4)
+        self.sharing_uploads_table.setHorizontalHeaderLabels(
+            ["Peer", "File", "State", "Progress"]
+        )
+        self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
+        self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.sharing_uploads_table)
+
+        self._current_sharing_reconciliation: list[LocationShareState] = []
+        self._current_sharing_self_managed = False
+
+        return _build_page("Sharing", help_text.SHARING_TAB_SUBTITLE, content)
+
+    def _gather_sharing_snapshot(self) -> _SharingSnapshot:
+        if not self.application.soulseek_configured:
+            return _SharingSnapshot(
+                configured=False, status=None, self_managed=False,
+                reconciliation=[], uploads=[],
+            )
+
+        service = self.application.sharing_service
+
+        return _SharingSnapshot(
+            configured=True,
+            status=service.get_status(),
+            self_managed=service.is_self_managed(),
+            reconciliation=service.get_reconciliation(),
+            uploads=service.get_uploads(),
+        )
+
+    def _refresh_sharing(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self._gather_sharing_snapshot,
+            button=self.sharing_refresh_button,
+            status_label=self.sharing_status_label,
+            on_finished=self._render_sharing,
+        )
+
+    def _trigger_sharing_poll(self) -> None:
+        if not self._sharing_page_visited:
+            return
+
+        if self._sharing_poll_in_progress:
+            return
+
+        if not self.application.soulseek_configured:
+            return
+
+        self._sharing_poll_in_progress = True
+
+        def on_finished(snapshot: _SharingSnapshot) -> None:
+            self._sharing_poll_in_progress = False
+            self._render_sharing(snapshot)
+
+        def on_error(_: str) -> None:
+            self._sharing_poll_in_progress = False
+
+        run_worker(
+            self.thread_pool,
+            self._gather_sharing_snapshot,
+            on_finished=on_finished,
+            on_error=on_error,
+        )
+
+    def _render_sharing(self, snapshot: _SharingSnapshot) -> None:
+        self._current_sharing_reconciliation = snapshot.reconciliation
+        self._current_sharing_self_managed = snapshot.self_managed
+
+        if not snapshot.configured:
+            self.sharing_summary_label.setText(
+                help_text.SHARING_UNCONFIGURED_NOTICE
+            )
+            self.sharing_locations_table.setRowCount(0)
+            self.sharing_uploads_table.setRowCount(0)
+            return
+
+        status = snapshot.status
+        assert status is not None
+
+        managed_note = (
+            "Managed by Seeker." if snapshot.self_managed
+            else "Not managed by Seeker — sharing changes need manual steps."
+        )
+        self.sharing_summary_label.setText(
+            f"{status.directories} directories, {status.files} files "
+            f"shared. {managed_note}"
+        )
+
+        self._render_sharing_locations_table(snapshot.reconciliation)
+        self._render_sharing_uploads_table(snapshot.uploads)
+
+    def _render_sharing_locations_table(
+            self, reconciliation: list[LocationShareState],
+    ) -> None:
+        table = self.sharing_locations_table
+        table.setRowCount(len(reconciliation))
+
+        for row, state in enumerate(reconciliation):
+            table.setItem(row, 0, QTableWidgetItem(state.location.name))
+            table.setItem(
+                row, 1, QTableWidgetItem("Yes" if state.shared else "No"),
+            )
+            table.setItem(
+                row, 2,
+                QTableWidgetItem(
+                    state.share.local_path if state.share else ""
+                ),
+            )
+            table.setItem(
+                row, 3,
+                QTableWidgetItem(
+                    str(state.share.files) if state.share
+                    and state.share.files is not None else ""
+                ),
+            )
+
+            if state.shared:
+                table.setCellWidget(row, 4, QLabel("Shared"))
+                continue
+
+            button = QPushButton("Add to my SoulSeek share")
+            button.setToolTip(help_text.TOOLTIP_ADD_LOCATION_TO_SHARE)
+            button.clicked.connect(
+                lambda _checked=False, location=state.location:
+                self._on_add_location_to_share_clicked(location)
+            )
+            table.setCellWidget(row, 4, button)
+
+    def _render_sharing_uploads_table(
+            self, uploads: list[UploadStatus],
+    ) -> None:
+        table = self.sharing_uploads_table
+        table.setRowCount(len(uploads))
+
+        active_keys: set[tuple[str, str]] = set()
+        now = datetime.now(timezone.utc)
+
+        for row, upload in enumerate(uploads):
+            table.setItem(
+                row, 0, QTableWidgetItem(upload.username or "")
+            )
+            table.setItem(
+                row, 1, QTableWidgetItem(upload.filename or "")
+            )
+            table.setItem(row, 2, QTableWidgetItem(upload.state or ""))
+
+            progress_text = ""
+
+            if (
+                    upload.username is not None
+                    and upload.filename is not None
+                    and upload.bytes_transferred is not None
+            ):
+                key = (upload.username, upload.filename)
+                active_keys.add(key)
+                self._upload_eta_tracker.record(
+                    key, upload.bytes_transferred, now,
+                )
+                progress_text = self._upload_eta_tracker.describe(
+                    key, upload.size,
+                )
+
+            table.setItem(row, 3, QTableWidgetItem(progress_text))
+
+        self._upload_eta_tracker.evict_except(active_keys)
+
+        if not uploads:
+            table.setRowCount(1)
+            table.setSpan(0, 0, 1, 4)
+            table.setItem(0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL))
+
+    def _on_add_location_to_share_clicked(
+            self, location: LibraryLocation,
+    ) -> None:
+        service = self.application.sharing_service
+        plan = service.preview_add_location(location)
+
+        if not self._current_sharing_self_managed:
+            QMessageBox.information(
+                self,
+                help_text.SHARING_ADD_CONFIRM_TITLE,
+                help_text.SHARING_NOT_SELF_MANAGED_NOTICE
+                + "\n\n"
+                + plan.compose_volume_line.strip()
+                + "\n"
+                + plan.slskd_share_directory_line.strip(),
+            )
+            return
+
+        confirmed = QMessageBox.question(
+            self,
+            help_text.SHARING_ADD_CONFIRM_TITLE,
+            help_text.format_add_to_share_confirm_body(
+                location.name, location.path, plan.container_path,
+            ),
+        )
+
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: service.add_location_to_share(location, confirm=True),
+            status_label=self.sharing_status_label,
+            on_finished=self._on_add_location_to_share_finished,
+        )
+
+    def _on_add_location_to_share_finished(
+            self, result: SharingApplyResult,
+    ) -> None:
+        ready_note = "" if result.became_ready else " Still finishing the scan."
+        self.sharing_status_label.setText(
+            f"'{result.location.name}' shared — "
+            f"{result.directories_after} directories, "
+            f"{result.files_after} files "
+            f"(was {result.directories_before}/{result.files_before})."
+            + ready_note
+        )
+        self._refresh_sharing()
 
     def _build_help_page(self) -> QWidget:
         # Real content (walkthrough/troubleshooting/data locations),
@@ -1718,6 +2014,10 @@ class MainWindow(QMainWindow):
         if index == self._duplicates_page_index:
             self._refresh_duplicates_locations()
             self._refresh_duplicates_milestone()
+
+        if index == self._sharing_page_index:
+            self._sharing_page_visited = True
+            self._refresh_sharing()
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True

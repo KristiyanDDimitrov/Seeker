@@ -451,6 +451,27 @@ def test_broad_end_to_end_stress(qapp):
             qapp.processEvents()
             settings_reopen_count += 1
 
+            # Sharing page (roadmap item 62, Phase 7) — real, live
+            # get_status/is_self_managed/get_reconciliation/get_uploads
+            # calls against the real production slskd, overlapping with
+            # every other real worker traffic this loop already fires.
+            # Deliberately READ-ONLY: unlike Duplicates' delete action
+            # (exercised against a disposable synthetic scratch
+            # location above), Sharing's write path
+            # (add_location_to_share) recreates the real production
+            # slskd container and rewrites real docker-compose.yml/
+            # slskd.yml — there's no disposable analog for that, so it
+            # stays unexercised here rather than silently mutating real
+            # infrastructure as a side effect of an automated test.
+            main_window._show_page("sharing")
+            _pump(
+                qapp,
+                lambda: bool(main_window.sharing_summary_label.text()),
+                timeout=15.0,
+            )
+            main_window._show_page("dashboard")
+            qapp.processEvents()
+
             # Duplicates delete lifecycle (item 40) — the deferred-
             # delete action this stress test never exercised before.
             # Waits (across cycles, up to SAMPLE_INTERVAL_SECONDS each)
@@ -461,7 +482,12 @@ def test_broad_end_to_end_stress(qapp):
             # still be in flight.
             if not duplicates_delete_done and main_window._current_duplicate_groups:
                 group: DuplicateGroup = main_window._current_duplicate_groups[0]
-                actions = main_window.duplicates_table.cellWidget(0, 6)
+                # Column 7 ("Actions") — the table gained a "Keep" radio
+                # column (index 6) in roadmap item 56 Phase 6.3, pushing
+                # Actions from 6 to 7; this stress test (opt-in, so it
+                # wasn't caught by that phase's own test-suite sweep)
+                # still referenced the pre-Phase-6.3 index.
+                actions = main_window.duplicates_table.cellWidget(0, 7)
                 assert actions is not None
                 checkbox = actions.findChildren(QCheckBox)[0]
                 delete_button = actions.findChildren(QPushButton)[0]
@@ -549,6 +575,10 @@ def test_broad_end_to_end_stress(qapp):
         print(
             f"[stress] duplicates delete lifecycle exercised: "
             f"{duplicates_delete_done}"
+        )
+        print(
+            f"[stress] sharing page summary after final visit: "
+            f"{main_window.sharing_summary_label.text()!r}"
         )
         log.sample("stress duration complete")
 

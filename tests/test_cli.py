@@ -46,6 +46,7 @@ class FakeApplication:
             duplicate_service=None,
             history_service=None,
             library_service=None,
+            sharing_service=None,
     ):
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
@@ -54,6 +55,7 @@ class FakeApplication:
         self.duplicate_service = duplicate_service
         self.history_service = history_service
         self.library_service = library_service
+        self.sharing_service = sharing_service
 
 
 class FakeLibraryServiceForCli:
@@ -759,3 +761,113 @@ def test_review_reject_calls_reject_match(tmp_path, capsys):
     assert library_service.reject_match_calls == ["track1"]
     assert library_service.confirm_match_calls == []
     assert "Rejected" in capsys.readouterr().out
+
+
+class FakeSharingServiceForCli:
+    def __init__(self, status, self_managed, reconciliation):
+        self._status = status
+        self._self_managed = self_managed
+        self._reconciliation = reconciliation
+
+    def get_status(self):
+        return self._status
+
+    def is_self_managed(self) -> bool:
+        return self._self_managed
+
+    def get_reconciliation(self):
+        return self._reconciliation
+
+
+class FakeShareStatus:
+    def __init__(self, ready, scanning, directories, files):
+        self.ready = ready
+        self.scanning = scanning
+        self.directories = directories
+        self.files = files
+
+
+class FakeShareEntry:
+    def __init__(self, local_path, directories, files):
+        self.local_path = local_path
+        self.directories = directories
+        self.files = files
+
+
+class FakeLocationShareState:
+    def __init__(self, location_name, shared, share=None):
+        class Location:
+            def __init__(self, name):
+                self.name = name
+
+        self.location = Location(location_name)
+        self.shared = shared
+        self.share = share
+
+
+def test_sharing_status_reports_when_not_configured(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+
+    cli.run(
+        FakeApplication(matcher, soulseek_configured=False),
+        ["sharing", "status"],
+    )
+
+    output = capsys.readouterr().out
+    assert "isn't configured" in output
+
+
+def test_sharing_status_reports_self_managed_and_reconciliation(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    sharing_service = FakeSharingServiceForCli(
+        status=FakeShareStatus(
+            ready=True, scanning=False, directories=2, files=10,
+        ),
+        self_managed=True,
+        reconciliation=[
+            FakeLocationShareState(
+                "Music", True,
+                FakeShareEntry("/shared/music", 2, 10),
+            ),
+            FakeLocationShareState("Other", False),
+        ],
+    )
+
+    cli.run(
+        FakeApplication(
+            matcher,
+            soulseek_configured=True,
+            sharing_service=sharing_service,
+        ),
+        ["sharing", "status"],
+    )
+
+    output = capsys.readouterr().out
+    assert "managed by Seeker's own docker-compose.yml" in output
+    assert "Music: shared as /shared/music" in output
+    assert "Other: not shared" in output
+
+
+def test_sharing_status_reports_not_self_managed(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    sharing_service = FakeSharingServiceForCli(
+        status=FakeShareStatus(
+            ready=True, scanning=False, directories=0, files=0,
+        ),
+        self_managed=False,
+        reconciliation=[],
+    )
+
+    cli.run(
+        FakeApplication(
+            matcher,
+            soulseek_configured=True,
+            sharing_service=sharing_service,
+        ),
+        ["sharing", "status"],
+    )
+
+    output = capsys.readouterr().out
+    assert "NOT managed by Seeker" in output

@@ -345,6 +345,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     duplicates_parser.add_argument("location_name")
 
+    sharing_parser = subparsers.add_parser(
+        "sharing",
+        help="SoulSeek sharing status — what you're giving back.",
+    )
+
+    sharing_subparsers = sharing_parser.add_subparsers(
+        dest="sharing_command",
+    )
+
+    sharing_subparsers.add_parser(
+        "status",
+        help="Real-time slskd share status and per-location reconciliation.",
+    )
+
     return parser
 
 def handle_playlists(
@@ -711,6 +725,48 @@ def handle_history(
         )
 
 
+def handle_sharing(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.sharing_command != "status":
+        print("Usage: seeker sharing status")
+        return
+
+    if not application.soulseek_configured:
+        print("SoulSeek isn't configured yet — set it up in Settings first.")
+        return
+
+    service = application.sharing_service
+    status = service.get_status()
+
+    print(
+        f"Shares ready: {status.ready}, scanning: {status.scanning}, "
+        f"{status.directories} directories, {status.files} files."
+    )
+
+    if service.is_self_managed():
+        print("slskd is managed by Seeker's own docker-compose.yml.")
+    else:
+        print(
+            "slskd is NOT managed by Seeker — sharing a new location "
+            "requires editing its config yourself."
+        )
+
+    print()
+    print("Library locations:")
+
+    for state in service.get_reconciliation():
+        if state.shared and state.share is not None:
+            print(
+                f"  {state.location.name}: shared as "
+                f"{state.share.local_path} "
+                f"({state.share.directories} dirs, {state.share.files} files)"
+            )
+        else:
+            print(f"  {state.location.name}: not shared")
+
+
 def run(
     application: Application,
     args: list[str] | None = None,
@@ -749,6 +805,9 @@ def run(
 
         elif parsed.command == "history":
             handle_history(application, parsed)
+
+        elif parsed.command == "sharing":
+            handle_sharing(application, parsed)
     except SpotifyRateLimitedError as error:
         print(str(error))
         sys.exit(1)

@@ -201,6 +201,61 @@ class FakeHistoryService:
         return self._events
 
 
+class FakeSharingService:
+    def __init__(
+            self,
+            status=None,
+            self_managed: bool = True,
+            reconciliation: list | None = None,
+            uploads: list | None = None,
+    ):
+        self._status = status
+        self._self_managed = self_managed
+        self._reconciliation = reconciliation or []
+        self._uploads = uploads or []
+        self.add_location_to_share_calls: list = []
+
+    def get_status(self):
+        return self._status
+
+    def is_self_managed(self) -> bool:
+        return self._self_managed
+
+    def get_reconciliation(self) -> list:
+        return self._reconciliation
+
+    def get_uploads(self) -> list:
+        return self._uploads
+
+    def preview_add_location(self, location):
+        from seeker.sharing_service import SharingPlan
+
+        return SharingPlan(
+            location=location,
+            container_path=f"/shared/{location.name}",
+            compose_volume_line=(
+                f'      - "{location.path}:/shared/{location.name}:ro"'
+            ),
+            slskd_share_directory_line=f"    - /shared/{location.name}",
+        )
+
+    def add_location_to_share(self, location, confirm: bool):
+        self.add_location_to_share_calls.append((location, confirm))
+
+        from seeker.sharing_service import SharingApplyResult
+
+        return SharingApplyResult(
+            location=location,
+            compose_backup_path=Path("/fake/docker-compose.yml.bak"),
+            slskd_yml_backup_path=Path("/fake/slskd.yml.bak"),
+            directories_before=0,
+            files_before=0,
+            directories_after=1,
+            files_after=1,
+            became_ready=True,
+        )
+
+
 class FakeDownloadService:
     def __init__(
             self,
@@ -341,6 +396,7 @@ class FakeApplication:
             history_events: list | None = None,
             needs_review_matches: list | None = None,
             download_playlist_result: dict | None = None,
+            sharing_service=None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.history_service = FakeHistoryService(history_events)
@@ -368,6 +424,7 @@ class FakeApplication:
             fingerprint_result, duplicate_groups,
         )
         self.soulseek_configured = soulseek_configured
+        self.sharing_service = sharing_service or FakeSharingService()
         # settings_window.py already reaches into this attribute
         # directly on the real Application (see its own §threshold/
         # §connection tabs) — mirrored here rather than adding a
@@ -440,8 +497,8 @@ def test_nav_buttons_are_mutually_exclusive_including_settings(qtbot):
     # dialog" decision, so it's now a real, checkable nav-group member
     # like every other page.
     assert set(window._nav_buttons) == {
-        "dashboard", "downloads", "review", "duplicates", "history",
-        "help", "settings",
+        "dashboard", "downloads", "review", "duplicates", "sharing",
+        "history", "help", "settings",
     }
     assert window._nav_group.exclusive()
     for key in window._nav_buttons:
@@ -3855,3 +3912,159 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(qtbot, monkeypatc
     delete_ids, keep_id, _location_id = application.duplicate_service.delete_local_files_calls[0]
     assert keep_id == 200
     assert sorted(delete_ids) == [201, 202, 203]
+
+
+# --- Sharing page (roadmap item 62, Phase 7) --------------------------------
+
+def _make_location(location_id: int, name: str, path: str) -> LibraryLocation:
+    return LibraryLocation(
+        id=location_id, name=name, path=path,
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+
+
+def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
+    application = FakeApplication(soulseek_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    qtbot.waitUntil(
+        lambda: bool(window.sharing_summary_label.text()), timeout=2000,
+    )
+    assert "isn't configured" not in window.sharing_summary_label.text() or True
+    from seeker.ui import help_text
+    assert (
+        window.sharing_summary_label.text()
+        == help_text.SHARING_UNCONFIGURED_NOTICE
+    )
+    assert window.sharing_locations_table.rowCount() == 0
+
+
+def test_sharing_renders_reconciliation_and_uploads(qtbot):
+    from seeker.sharing_service import LocationShareState, ShareEntry, ShareStatus
+
+    location = _make_location(1, "Music", "/Volumes/Drive/Music")
+    other = _make_location(2, "Other", "/Volumes/Drive/Other")
+    status = ShareStatus(
+        ready=True, scanning=False, scan_pending=False, faulted=False,
+        directories=1, files=5, shares=[],
+    )
+    reconciliation = [
+        LocationShareState(
+            location=location, shared=True,
+            share=ShareEntry(
+                id="1", alias="music", local_path="/shared/music",
+                is_excluded=False, directories=1, files=5,
+            ),
+        ),
+        LocationShareState(location=other, shared=False, share=None),
+    ]
+    sharing_service = FakeSharingService(
+        status=status, self_managed=True, reconciliation=reconciliation,
+        uploads=[],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    qtbot.waitUntil(
+        lambda: window.sharing_locations_table.rowCount() == 2, timeout=2000,
+    )
+    assert window.sharing_locations_table.item(0, 1).text() == "Yes"
+    assert window.sharing_locations_table.item(1, 1).text() == "No"
+    assert isinstance(
+        window.sharing_locations_table.cellWidget(1, 4), QPushButton,
+    )
+    assert window.sharing_uploads_table.item(0, 0).text() == (
+        help_text.NO_UPLOADS_LABEL
+    )
+
+
+def test_sharing_add_to_share_button_calls_service_after_confirm(
+        qtbot, monkeypatch,
+):
+    from seeker.sharing_service import LocationShareState
+
+    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    from seeker.sharing_service import ShareStatus
+
+    sharing_service = FakeSharingService(
+        status=ShareStatus(
+            ready=True, scanning=False, scan_pending=False,
+            faulted=False, directories=0, files=0, shares=[],
+        ),
+        self_managed=True,
+        reconciliation=[
+            LocationShareState(location=location, shared=False, share=None),
+        ],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _confirm_yes(monkeypatch)
+
+    window._show_page("sharing")
+    qtbot.waitUntil(
+        lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
+    )
+
+    button = window.sharing_locations_table.cellWidget(0, 4)
+    button.click()
+
+    qtbot.waitUntil(
+        lambda: bool(sharing_service.add_location_to_share_calls),
+        timeout=2000,
+    )
+    called_location, confirm = sharing_service.add_location_to_share_calls[0]
+    assert called_location.name == "Other"
+    assert confirm is True
+
+
+def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
+        qtbot, monkeypatch,
+):
+    from seeker.sharing_service import LocationShareState
+
+    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    from seeker.sharing_service import ShareStatus
+
+    sharing_service = FakeSharingService(
+        status=ShareStatus(
+            ready=True, scanning=False, scan_pending=False,
+            faulted=False, directories=0, files=0, shares=[],
+        ),
+        self_managed=False,
+        reconciliation=[
+            LocationShareState(location=location, shared=False, share=None),
+        ],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    info_calls = []
+    monkeypatch.setattr(
+        QMessageBox, "information",
+        lambda *a, **k: info_calls.append(a),
+    )
+
+    window._show_page("sharing")
+    qtbot.waitUntil(
+        lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
+    )
+
+    button = window.sharing_locations_table.cellWidget(0, 4)
+    button.click()
+
+    assert len(info_calls) == 1
+    assert sharing_service.add_location_to_share_calls == []

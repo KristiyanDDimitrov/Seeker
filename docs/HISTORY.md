@@ -8856,3 +8856,340 @@ rule. Verified end to end against the real production `Application()`:
 
 `mypy --strict` clean; full suite 744 passed / 1 skipped, run 3 times
 in a row, no flakiness.
+
+### 56, Phase 7 — Sharing & Uploads
+
+The largest new piece of this work block: what Seeker itself gives
+back to the SoulSeek network it downloads from. Built in the order the
+brief specified — live API verification BEFORE any client code.
+
+**7.2 — live slskd API verification, against a disposable throwaway
+container only, never the real production one.** Built
+`seeker_swagger_repro` (ports 15030/15031/15300, session scratchpad
+dir, `SLSKD_SWAGGER=true`, `SLSKD_REMOTE_CONFIGURATION=true`, a
+`slskd.yml` with auth disabled) — the fake/auto-created-account finding
+from item 52 held again (`throwaway_repro_user`/`throwaway_repro_pass`
+logged in cleanly with no prior registration). Fetched the real
+72-path swagger schema and made real live calls, confirming/correcting
+several things CLAUDE.md had never documented:
+- `GET /api/v0/shares` returns `{"local": [share, ...]}` — nested under
+  a `"local"` key, NOT a bare array. Each share: `id`, `alias`,
+  `isExcluded`, `localPath` (the CONTAINER-side path), `raw`,
+  `remotePath`, `directories`, `files`.
+- `GET /api/v0/application`'s `shares` block has `ready`/`scanning`/
+  `directories`/`files` (already known, item 53) PLUS `scanPending`/
+  `faulted`/`cancelled`/`scanProgress`/`hosts` — new findings.
+- `PUT /api/v0/shares` triggers a real rescan — confirmed with a real
+  file added to the shared dir, `files` count going `0 -> 1` after.
+- `PATCH /api/v0/options`'s `OptionsOverlay` schema has no `shares` key
+  anywhere at all — only `soulseek.listenIpAddress`/`listenPort` are
+  patchable. Share directories genuinely cannot be changed via the
+  API, confirmed from the schema itself, not inferred from a failed
+  attempt.
+- `GET /api/v0/transfers/uploads` is a flat array (unlike downloads,
+  scoped by username in the URL) — returned `[]` live; no real upload
+  was in flight to observe a populated shape, so `sharing_service
+  .py`'s `_parse_upload` is deliberately defensive (`dict.get`
+  everywhere), not assumed beyond what downloads' shared `Transfer`
+  schema already confirms (`state`/`bytesTransferred`/`size`).
+
+Cleanup: `docker rm -f seeker_swagger_repro`, scratch dir removed,
+confirmed the real production `slskd` container (`7a149e4b5d6b`)
+untouched and still healthy throughout via `docker ps`/a real
+`/api/v0/application` call against it.
+
+**A second, dev-machine-specific real finding, needed for 7.5's write
+path.** This repo's own `slskd-data/slskd.yml` looked, at a glance,
+like the real active share directory was never set (the top ~300
+lines are a fully commented default-template reference block). The
+real, active, uncommented `shares: / directories: - /shared/music`
+section lives much further down (line 352) — `grep`, not `head`,
+confirmed this. Separately, `docker inspect slskd --format
+'{{range .Mounts}}...'` confirmed the real running container's `/app`
+mount source is this repo's own `./slskd-data` (not the platformdirs
+path `docker_setup.slskd_data_dir()` would suggest) — meaning this
+dev instance was brought up manually from the repo root at some point,
+not exclusively via the wizard's `bring_up_slskd()`. Lesson applied
+directly to `sharing_service.py`: never trust `docker-compose.yml`'s
+own `${VAR:-default}` fallback text, or `slskd_data_dir()`, as the
+real current mount — always resolve real host↔container paths via
+`docker inspect <container> --format '{{json .Mounts}}'` on the actual
+running container. This is also how `is_self_managed()` detects
+self-managed-ness: confirmed live that `docker compose` stamps every
+container it creates with a `com.docker.compose.project.config_files`
+label naming the exact compose file used — compared against
+`docker_setup.compose_file_path()`, resolved. Any failure to read this
+(Docker down, container missing, label absent) conservatively returns
+`False` — never risk rewriting infrastructure this app can't prove it
+owns.
+
+**7.1/7.3 — framing copy + service layer.** `help_text.py`'s
+`SHARING_FRAMING_BODY` explains locked files (a peer's own leecher
+restriction, not something Seeker can see in advance) and upload
+priority (real, but no published formula/guarantee) honestly, framed
+as "be a genuine sharer, see that you are" rather than a persuasive
+pitch. New top-level `seeker/sharing_service.py` (`SharingService`),
+exposed as `Application.sharing_service`, constructed the same
+soulseek_configured-gated way as `download_service` (a caller that
+only wants `is_self_managed()`/`preview_add_location()` must not be
+forced to have SoulSeek configured). New CLI `seeker sharing status`
+for parity with `seeker downloads status`.
+
+**7.4 — reconciliation.** `get_reconciliation()` matches each
+`library_locations` row (a real host path) against the live shares
+(container paths) by resolving BOTH through the same live
+`docker inspect` mount mapping — a location is "shared" only when its
+real host path is the `Source` of a mount whose `Destination` a real
+share's `localPath` also resolves through. Docker/slskd unreachable
+degrades to "everything reads unshared" rather than raising, since
+this is a read-only status view, not a mutation.
+
+**7.5 — the gated write path.** `add_location_to_share()`: requires
+`confirm=True` (raises `ValueError` otherwise), requires
+`is_self_managed()` (raises `SharingWriteNotAllowedError` otherwise —
+degrades to a read-only preview/guidance dialog in the UI instead of
+attempting a write), requires the location isn't already shared
+(`ShareAlreadyExistsError`). Backs up both `docker-compose.yml` and
+the real live `slskd.yml` (resolved via the live `/app` mount, not an
+assumed path) with a UTC timestamp suffix BEFORE writing either.
+`_insert_compose_volume_line`/`_insert_slskd_share_directory` are
+small, purpose-built line-based text editors (no YAML dependency added
+— this project already avoids adding dependencies casually, and these
+only ever need to understand the exact shape of a file this app itself
+maintains) — the slskd.yml inserter specifically targets the real
+ACTIVE `shares:`/`directories:` block, not the commented default
+template near the top, verified with a dedicated test asserting the
+commented block stays untouched. The new share mount is always
+`:ro` — not configurable, matching the framing copy's own "be a
+genuine sharer" spirit (never mount your library writable to a share
+you don't control). Recreate is `docker compose up -d` with the
+CURRENT live-resolved `SLSKD_DATA_DIR`/`SLSKD_SHARE_PATH` explicitly
+passed through (not the compose file's own hardcoded fallback text),
+reusing item 13's own already-documented, already-verified finding
+that omitting the network-credential env vars on a recreate is safe —
+slskd falls through to what's already persisted in `slskd.yml` rather
+than clobbering it. Polls `/api/v0/application` for
+`ready && !scanning && !scanPending` up to `SHARE_READY_TIMEOUT_
+SECONDS = 120.0` (untuned, flagged same as every other threshold in
+this codebase), reporting real before/after directory/file counts
+either way.
+
+**7.6 — Uploads view.** New sidebar page, lazy-loaded on first visit
+like Duplicates (never at MainWindow construction — item 39's
+deadlock), joining the existing 20s `backend_poll_timer` once visited
+(same shape as Downloads' own real-slskd-call poll) rather than a
+separate new `QTimer`. New `ui/upload_eta.py`'s `UploadEtaTracker` is
+a deliberately SEPARATE tracker from `DownloadEtaTracker` — keyed by
+`(username, filename)`, not an int `download_requests.id`, since an
+upload has no row in this app's own database at all (purely live
+slskd-side state) — reuses the same `(username, filename)` pairing
+`download_dedup.py` already established elsewhere in this codebase for
+identifying one real candidate transfer.
+
+**Out of scope, explicitly** (not scoped or attempted as part of this
+phase, same as item 37's Linux-packaging disclosure): upload groups/
+priorities/limits configuration, buddy-list management, unlock-request
+messaging to a specific locked peer, and locking your own shared files
+from specific users. All are real slskd features, just not what this
+phase's brief asked for.
+
+`mypy --strict` clean across 79 source files; full suite **766 passed**
+(744 + 15 new `test_sharing_service.py` + 4 new Sharing-page
+`test_ui_smoke.py` tests + 3 new `test_cli.py` tests), run 3 times in a
+row, no flakiness. A pre-existing, unrelated bug in the opt-in stress
+test was found and fixed while extending it for this phase (see below)
+— `test_stress_e2e.py` isn't part of this 3x re-run since it's opt-in
+and slow.
+
+**Extending the opt-in stress test (`test_stress_e2e.py`) to cover the
+Sharing page — one real pre-existing bug fixed, one real attempted run
+inconclusive, disclosed honestly rather than reported as a pass.**
+Added a read-only Sharing-page visit into the existing interleaved
+navigation loop (deliberately excluding `add_location_to_share` — it
+recreates the real production slskd container and rewrites real
+`docker-compose.yml`/`slskd.yml`, and there's no disposable analog the
+way Duplicates' delete action has one). Running it for the first time
+surfaced a real, pre-existing, unrelated bug: `duplicates_table`
+gained a "Keep" column in Phase 6.3 (7 columns -> 8), pushing its
+Actions column from index 6 to 7 — `test_ui_smoke.py` was swept for
+this at the time, but this file wasn't (it's opt-in, so Phase 6.3's
+own 3x-in-a-row re-run never touched it). Fixed the stale index.
+
+**A real, attempted full run of the extended test (2026-09-01,
+20:36-21:57 local) did not reach a usable result and was killed
+deliberately, not left to finish.** ~81 minutes elapsed against the
+test's nominal 5-minute interleaved-loop duration, with the process
+confirmed alive throughout (steady, slow CPU-time growth — not a flat
+0% deadlock signature) but never producing output (the `| tail -200`
+piping means nothing prints until the whole run finishes) and never
+reaching the point where it registers its own disposable duplicates
+location's cleanup. **Genuinely unknown, not guessed:** whether this
+was real Spotify rate-limit backoff across a full 215-playlist sync
+(`sync_button.click()` runs before the interleaved loop even starts)
+or a silent stall on something requiring attention this unattended run
+couldn't provide (e.g. a permission prompt) — a `kill -INT` was tried
+first specifically to give the test's own `finally` cleanup a chance
+to run and distinguish these, but showed no meaningful CPU response
+within 30s either, which is itself not conclusive proof of either
+cause. Killed via `kill -KILL` on the user's explicit instruction
+rather than left running or reported as a pass. Real cleanup performed
+by hand afterward (the process died before its own `finally` block
+could run): the leftover `SeekerStressTestDuplicates` library_locations
+row (id 10) and its temp directory were removed directly against the
+real production DB; `config.json` was confirmed still at its real
+baseline values (the threshold-change step happens well inside the
+interleaved loop, past where this run ever got); `docker-compose.yml`
+had no working-tree diff and no `.bak-*` files existed anywhere; the
+real production `slskd` container's `CreatedAt` (2026-08-31 19:17:29)
+predates this run entirely, confirming it was never recreated. **This
+phase's closing verification relies on the earlier, real, successful
+Phase 3 stress-test run (CLAUDE.md item 58 / this file's own Phase 3
+section) for the RSS/fd/thread-growth signature — not on a fresh run
+from this session.** A fresh, ATTENDED run of the now-fixed,
+now-Sharing-extended test (someone present to notice a stall vs. a
+slow-but-real backoff in real time) is still genuinely needed before
+trusting this specific extension's numbers; not treated as done here.
+
+**Recommendation for the attended re-run, prepared for when Kris is
+back:** don't just lower `SEEKER_STRESS_DURATION_SECONDS` — that only
+shortens the interleaved loop *after* setup, and this run's real
+bottleneck (whichever it was) happened before the loop ever started.
+Two concrete changes for a useful attended check: (1) run it directly,
+without the `| tail -200` pipe this session used — that pipe buffers
+ALL output until the process exits, so nothing streams live; drop it
+so `[stress]` lines and `main_window.status_label` prints appear in
+real time. (2) `SEEKER_STRESS_DURATION_SECONDS=90` (or similar) for a
+short interleaved-loop portion once setup completes, specifically to
+exercise the new Sharing-page visit a few times without waiting out
+the full 300s default. Concretely:
+`SEEKER_RUN_STRESS_TEST=1 SEEKER_STRESS_DURATION_SECONDS=90
+QT_QPA_PLATFORM=offscreen uv run pytest tests/test_stress_e2e.py -q -s`
+— run in an interactive terminal, not backgrounded, so a real stall
+(vs. a slow real Spotify sync) is visible immediately rather than
+inferred from CPU-time deltas after the fact.
+
+### 62, follow-up — real live verification of `add_location_to_share`
+and the real uploads-transfer schema, both requested explicitly before
+Phase 7 could be considered done.
+
+**1. `add_location_to_share` end-to-end, against a real disposable
+throwaway slskd container — full real run, not mocked.** Unit tests
+alone weren't sufficient given what this path touches (real file
+writes, a real container recreate) — matches this project's own
+standing precedent (item 52) for anything this consequential.
+
+A real blocker surfaced immediately: `SharingService` hardcoded
+`SLSKD_CONTAINER_NAME = "slskd"` with no override, so it could never
+be pointed at a second, disposable container without colliding with
+the name production's own container already holds — genuinely
+untestable as originally written, not just inconvenient. Fixed
+properly (not a test-only hack): `SharingService.__init__` gained a
+`container_name: str = SLSKD_CONTAINER_NAME` parameter, threaded
+through both real call sites (`is_self_managed`/`get_reconciliation`/
+`add_location_to_share`'s own mount lookup); `Application.sharing_service`
+uses the default, so real production behavior is unchanged.
+`mypy --strict` clean, all 15 existing `test_sharing_service.py` tests
+still pass unmodified.
+
+Built `slskd_sharing_e2e_repro` (disposable, ports 15230/15231/15300,
+real disposable SoulSeek credentials — auto-created per item 52's
+already-confirmed behavior). **Second real, previously-undocumented
+finding along the way:** `slskd --envars` (run against the base image
+directly, disposable) reveals `SLSKD_SHARED_DIR <string[]>` — a real
+env var for bootstrapping an initial share. Using it DID make the
+share live immediately (`GET /api/v0/shares` reported it correctly,
+1 real file) — but a real check of the container's own mounted
+`slskd.yml` showed its modification time unchanged from the base
+image's shipped default (334 lines, still the fully-commented
+template, NO active `shares:` block) — meaning **an env-var-only share
+configuration is never persisted back into `slskd.yml` on disk.** This
+means production's real active `shares: / directories:` block (found
+at line 352 back in the original 7.2 investigation) did NOT come from
+this repo's own env-var-driven bring-up mechanism — its real origin
+predates this app's automation (a direct Web UI save or a manual edit,
+neither confirmed, both plausible) and stays unconfirmed; not guessed
+further. This matters concretely: `add_location_to_share`'s own
+`_insert_slskd_share_directory` correctly REQUIRES a pre-existing
+active block and raises if none exists — now confirmed to be a real,
+load-bearing precondition, not a hypothetical one, since a fresh
+env-var-only bring-up genuinely doesn't satisfy it. Seeded the
+throwaway's `slskd.yml` directly with the same real active-block shape
+production has, then restarted the container to confirm the seeded
+file (not just the env var) was what actually took effect (files
+count came back identically after restart, sourced from the yml this
+time).
+
+**Real, live, full run against the seeded throwaway container:**
+- `is_self_managed()` → `True` (real docker-label comparison).
+- Before: `directories=0, files=1`.
+- `preview_add_location` → container_path `/shared/New Location`,
+  correct `:ro` compose line, correct slskd directory line.
+- `add_location_to_share(confirm=True)` → `became_ready=True`; real
+  before/after: **`(0, 1) -> (0, 2)`** — the new location's one real
+  file was picked up. Both backup files created and confirmed to
+  contain the PRE-edit content (`grep -c "New Location"` on each
+  backup → `0`). `docker-compose.yml` gained exactly one new `:ro`
+  volume line at the real host path; `slskd.yml`'s real active block
+  gained exactly one new directory line, its commented default-template
+  block untouched. Container's real `Created` timestamp confirmed the
+  recreate actually happened; `docker inspect`'s real `.Mounts` showed
+  both shares mounted correctly post-recreate. Reconciliation
+  afterward correctly reported the location `shared=True` with a real,
+  matching `ShareEntry`. Cleaned up (`docker compose down -v`, scratch
+  dir removed); real production `slskd` container confirmed untouched
+  throughout (unchanged `CreatedAt`).
+
+**2. The real uploads-transfer schema — partially verified: the
+declared shape is now confirmed with certainty; a real POPULATED live
+instance was not obtainable in this environment, disclosed honestly
+rather than forced or guessed.** Attempted a real two-peer transfer
+(two disposable containers, A sharing a distinctive test file, B
+requesting it) to capture a genuine live entry. A real, distributed
+network SEARCH from B for A's file returned zero results twice (15s
+and 45s waits) — plausible for two brand-new leaf peers with no
+established distributed-search relay yet, not something forced
+further. Fell back to a DIRECT `request_download` (B -> A, by
+username+filename+size, bypassing search) and got a real, informative
+failure instead of a populated transfer: `"Failed to connect to user
+...: Failed to establish a direct or indirect message connection to
+...(<real-WAN-IP>:50300)"` (HTTP 500). **Real, diagnosed cause, not a
+guess:** both disposable containers run on this same host and are
+reported to the real Soulseek server at the same public IP; only
+production's own container's peer port has real inbound
+reachability/port-forwarding on this network, so neither direct nor
+indirect (server-relayed) connection could complete for a second
+container. Confirmed A's own `/api/v0/transfers/uploads` stayed `[]`
+throughout — the failure happened at connection establishment, before
+any transfer object was ever created. **Deliberately did not
+redirect this test at the real production instance to force a
+populated result** — that would mean directing disposable test traffic
+at Kris's real shared library outside what this phase's brief
+authorized.
+
+Fell back to the real, authoritative alternative: fetched the live
+`slskd.Transfers.Transfer` schema from the real swagger contract
+(`SLSKD_SWAGGER=true` on the same throwaway container — a live
+container's own declared API contract, not documentation or
+memory). It has `"additionalProperties": false`, meaning this list is
+genuinely exhaustive, not partial: `id`, `batchId` (nullable),
+`username` (nullable — confirms `_parse_upload`'s existing
+None-handling was correct, not overcautious), `direction`, `filename`
+(nullable), `size`, `state`, `requestedAt`, `enqueuedAt` (nullable),
+`startedAt` (nullable), `endedAt` (nullable), `bytesTransferred`,
+`averageSpeed`, `placeInQueue` (nullable — and CLAUDE.md item 53
+already found this one specifically OMITTED ENTIRELY, not just null,
+on a real live queued DOWNLOAD transfer; not independently
+re-confirmed for the upload direction this session since no live
+upload instance was obtainable), `exception` (nullable), `attempts`,
+`nextAttemptAt` (nullable), `removed`, plus three read-only derived
+fields (`bytesRemaining`, `elapsedTime`, `remainingTime`) and
+`percentComplete`. A real `id` field exists (a stable per-transfer
+UUID) that `sharing_service.py`'s `UploadEtaTracker` does NOT use as
+its key — deliberately kept as `(username, filename)` instead, matching
+`download_dedup.py`'s existing "key on real identity, not an ephemeral
+internal id" precedent elsewhere in this codebase; not changed, since
+neither is wrong for a pure speed-sampling use and a retry naturally
+getting a fresh `id` is desirable there (a genuine restart should reset
+the ETA estimate). `_parse_upload`'s existing field names
+(`username`/`filename`/`state`/`bytesTransferred`/`size`) match the
+real schema exactly — no code change needed.

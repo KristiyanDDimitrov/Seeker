@@ -48,6 +48,10 @@ HISTORY_PAGE_SUBTITLE = (
 HELP_PAGE_SUBTITLE = (
     "How Seeker works, troubleshooting, and where your data lives."
 )
+SHARING_TAB_SUBTITLE = (
+    "What your slskd is sharing back to the SoulSeek network, and who's "
+    "currently downloading from you."
+)
 
 HELP_WALKTHROUGH_BODY = (
     "<h3>How Seeker works</h3>"
@@ -253,6 +257,79 @@ def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
         f"{listed}\n\n"
         f"This cannot be undone."
     )
+
+# --- Sharing page (roadmap item 62, Phase 7) --------------------------------
+# SoulSeek only works because peers share files back — Seeker downloads
+# from other people's shares, so this page frames what Seeker itself is
+# giving back, honestly: what real mechanics affect it (locked files,
+# leecher groups) and what Seeker deliberately can't promise (there's no
+# protocol-level guarantee that sharing unlocks anything for you
+# specifically). The goal isn't a persuasive pitch — it's "be a genuine
+# sharer, see that you are, and see what you're giving back."
+
+SHARING_FRAMING_BODY = (
+    "<h3>Why this page exists</h3>"
+    "<p>SoulSeek has no central library — every file available to "
+    "download exists because someone chose to share it. Seeker's own "
+    "downloads only work because other people are sharing.</p>"
+    "<p><b>Locked files</b> — some peers only share with users who are "
+    "themselves sharing enough back (a \"leecher\" restriction most "
+    "clients, including slskd, can enable). A file showing as locked in "
+    "a search result isn't necessarily unavailable to you forever — it "
+    "depends on that peer's own sharing rules, which Seeker has no way "
+    "to see in advance.</p>"
+    "<p><b>Upload priority</b> — clients (again including slskd) can "
+    "give queue priority to peers who share more. There's no published "
+    "formula, and it varies by peer — sharing more can help, but "
+    "SoulSeek's protocol makes no guarantee about it.</p>"
+    "<p>This page won't promise sharing unlocks anything specific for "
+    "you. It just shows, honestly, what's actually shared right now and "
+    "who's actually downloading it — so you can see whether you're a "
+    "genuine participant in the network you're relying on.</p>"
+)
+
+TOOLTIP_SHARING_REFRESH = (
+    "Re-check slskd's real share status and who's currently downloading "
+    "from you."
+)
+TOOLTIP_ADD_LOCATION_TO_SHARE = (
+    "Share this library location's files with the SoulSeek network, "
+    "read-only. Recreates the slskd container — takes a moment."
+)
+SHARING_ADD_CONFIRM_TITLE = "Share this location?"
+SHARING_NOT_SELF_MANAGED_NOTICE = (
+    "This slskd isn't one Seeker set up itself, so Seeker won't rewrite "
+    "its configuration. Use the preview below as a guide to add this "
+    "share yourself."
+)
+SHARING_UNCONFIGURED_NOTICE = (
+    "Set up SoulSeek in Settings to see sharing status."
+)
+
+
+def format_add_to_share_confirm_body(
+        location_name: str,
+        location_path: str,
+        container_path: str,
+) -> str:
+    """Names the exact folder about to be shared and where it lands
+    inside the container — mirrors format_delete_duplicates_confirm_body's
+    "name what's about to happen, don't just say 'are you sure'"
+    convention for any action confirmation on real user data/infra."""
+    return (
+        f"This will share '{location_path}' (library location "
+        f"'{location_name}') with the SoulSeek network, read-only, as "
+        f"{container_path}.\n\n"
+        f"Seeker will back up docker-compose.yml and slskd.yml first, "
+        f"then recreate the slskd container. This can take a minute."
+    )
+
+
+TOOLTIP_UPLOADS_TABLE = (
+    "Real-time transfers other SoulSeek peers are currently downloading "
+    "from your shares."
+)
+NO_UPLOADS_LABEL = "No one is currently downloading from you."
 
 # --- History page -----------------------------------------------------------
 
