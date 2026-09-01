@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from seeker.config_store import SeekerConfig
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
@@ -134,6 +135,16 @@ class FakeDuplicateService:
 class FakeTrackMatcher:
     def match_all(self) -> dict:
         return {"auto": 0, "needs_review": 0, "unmatched": 0}
+
+
+class FakeHistoryService:
+    def __init__(self, events: list | None = None):
+        self._events = events or []
+        self.get_recent_events_calls = 0
+
+    def get_recent_events(self, limit: int = 50) -> list:
+        self.get_recent_events_calls += 1
+        return self._events
 
 
 class FakeDownloadService:
@@ -267,8 +278,10 @@ class FakeApplication:
             resolved_destination: tuple | None = None,
             spotify_configured: bool = True,
             has_scanned_library: bool = True,
+            history_events: list | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
+        self.history_service = FakeHistoryService(history_events)
         self.dashboard_service = FakeDashboardService(
             statuses, active_downloads,
         )
@@ -402,6 +415,124 @@ def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
     help_page = window.stacked_widget.widget(window._page_indices["help"])
     help_labels = [w.text() for w in help_page.findChildren(QLabel)]
     assert help_text.HELP_PAGE_SUBTITLE in help_labels
+
+
+# --- History page (roadmap Phase 10) ----------------------------------------
+
+def _make_history_event(
+        event_type: str = DOWNLOADED,
+        occurred_at: str = "2026-01-02T00:00:00+00:00",
+        track_artist: str = "ZENEA",
+        track_title: str = "INFINITE",
+        playlist_name: str = "240KM/H",
+        detail: str = "FLAC from peer1",
+) -> HistoryEvent:
+    return HistoryEvent(
+        occurred_at=occurred_at, event_type=event_type,
+        track_artist=track_artist, track_title=track_title,
+        playlist_name=playlist_name, detail=detail,
+    )
+
+
+def test_history_page_has_the_right_table_columns(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    labels = [
+        window.history_table.horizontalHeaderItem(i).text()
+        for i in range(window.history_table.columnCount())
+    ]
+    assert labels == ["When", "What", "Track", "Detail"]
+
+
+def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
+    events = [
+        _make_history_event(),
+        _make_history_event(
+            event_type=TAGGED, occurred_at="2026-01-01T00:00:00+00:00",
+            track_artist="Kamäleon", track_title="Quadrat",
+            playlist_name="Test", detail="Tagged with Spotify metadata",
+        ),
+    ]
+    application = FakeApplication(history_events=events)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("history")
+
+    qtbot.waitUntil(
+        lambda: window.history_table.rowCount() == 2, timeout=2000,
+    )
+    assert application.history_service.get_recent_events_calls == 1
+    assert window.history_table.item(0, 1).text() == "Downloaded"
+    assert "ZENEA - INFINITE" in window.history_table.item(0, 2).text()
+    assert window.history_table.item(1, 1).text() == "Tagged"
+
+    # Lazy-load-once, same precedent as Duplicates — switching away and
+    # back must not refetch.
+    window._show_page("dashboard")
+    window._show_page("history")
+    assert application.history_service.get_recent_events_calls == 1
+
+
+def test_history_page_empty_state_message(qtbot):
+    application = FakeApplication(history_events=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("history")
+
+    qtbot.waitUntil(
+        lambda: "no downloaded or tagged" in
+        window.history_status_label.text().lower(),
+        timeout=2000,
+    )
+    assert window.history_table.rowCount() == 0
+
+
+def test_history_filter_combo_filters_by_event_type(qtbot):
+    events = [
+        _make_history_event(event_type=DOWNLOADED),
+        _make_history_event(event_type=TAGGED),
+    ]
+    application = FakeApplication(history_events=events)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("history")
+    qtbot.waitUntil(
+        lambda: window.history_table.rowCount() == 2, timeout=2000,
+    )
+
+    downloaded_index = window.history_filter_combo.findData(DOWNLOADED)
+    window.history_filter_combo.setCurrentIndex(downloaded_index)
+
+    assert window.history_table.rowCount() == 1
+    assert window.history_table.item(0, 1).text() == "Downloaded"
+
+    all_index = window.history_filter_combo.findData(None)
+    window.history_filter_combo.setCurrentIndex(all_index)
+    assert window.history_table.rowCount() == 2
+
+
+def test_history_refresh_button_refetches(qtbot):
+    application = FakeApplication(history_events=[_make_history_event()])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("history")
+    qtbot.waitUntil(
+        lambda: application.history_service.get_recent_events_calls == 1,
+        timeout=2000,
+    )
+
+    window.history_refresh_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.history_service.get_recent_events_calls == 2,
+        timeout=2000,
+    )
 
 
 def test_main_window_has_a_settings_button(qtbot):

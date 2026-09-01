@@ -34,6 +34,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.dashboard_service import DashboardService
 from seeker.docker_setup import ensure_full_path_environment
+from seeker.history_service import HistoryService
 from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
@@ -145,6 +146,7 @@ class Application:
         self._metadata_service: MetadataService | None = None
         self._dashboard_service: DashboardService | None = None
         self._duplicate_service: DuplicateService | None = None
+        self._history_service: HistoryService | None = None
 
     @property
     def _spotify_client_id(self) -> str | None:
@@ -450,6 +452,20 @@ class Application:
             )
 
         return self._duplicate_service
+
+    @property
+    def history_service(self) -> HistoryService:
+        if self._history_service is None:
+            self._history_service = HistoryService(
+                self.database,
+                DownloadRequestRepository(self.database),
+                LocalFileRepository(self.database),
+                TrackMatchRepository(self.database),
+                TrackRepository(self.database),
+                PlaylistRepository(self.database),
+            )
+
+        return self._history_service
 
     @property
     def onboarding_complete(self) -> bool:

@@ -39,10 +39,10 @@ SETTINGS_WINDOW_SUBTITLE = (
     "connections, and match-classification thresholds."
 )
 HISTORY_PAGE_SUBTITLE = (
-    "Recently downloaded and tagged tracks, in one place."
-)
-HISTORY_PAGE_PLACEHOLDER = (
-    "The History page is coming in a future update."
+    "Recently downloaded and tagged tracks, in one place. Derived from "
+    "current data, not a permanent log — an event disappears if its "
+    "underlying file or match is later removed, and download failures "
+    "aren't shown here (see the Downloads page for those)."
 )
 HELP_PAGE_SUBTITLE = (
     "How Seeker works, troubleshooting, and where your data lives."
@@ -168,6 +168,15 @@ TOOLTIP_DELETE_DUPLICATES_CHECKBOX = (
 TOOLTIP_DELETE_DUPLICATES_BUTTON = (
     "Delete every file in this group except the one selected to keep. "
     "Only takes effect once the checkbox above is checked."
+)
+
+# --- History page -----------------------------------------------------------
+
+TOOLTIP_HISTORY_FILTER_COMBO = (
+    "Show every event, or just downloads / just tagging actions."
+)
+TOOLTIP_HISTORY_REFRESH_BUTTON = (
+    "Re-check current data for recently downloaded and tagged tracks."
 )
 
 # --- Settings: Library Locations tab --------------------------------------

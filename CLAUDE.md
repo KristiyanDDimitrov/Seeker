@@ -63,22 +63,28 @@ src/seeker/
 │                              #   the group-resolution delete action (item 40)
 ├── ui/                        # seeker-ui (PySide6) — presentation layer,
 │                              #   same layering rule as cli.py
-│   ├── main_window.py         # dashboard (tagging panel) + Downloads/
-│                              #   Review/Duplicates tabs, all on the same
-│                              #   QTimer-driven poll pattern
+│   ├── main_window.py         # sidebar (Dashboard/Downloads/Review/
+│                              #   Duplicates/History/Help) + QStackedWidget
+│                              #   pages, all on the same QTimer-driven poll
+│                              #   pattern (item 48)
 │   ├── wizard.py               # onboarding: Spotify / library / SoulSeek
 │   ├── settings_window.py      # locations, destinations, connection
 │                              #   management, editable thresholds
 │   ├── library_location_picker.py  # folder-picker, shared by wizard +
 │                              #   Settings — see roadmap item 28 §1
-│   ├── download_eta.py         # per-download speed/ETA tracker (item 33)
+│   ├── download_eta.py         # per-download speed/ETA tracker (item 33),
+│                              #   aggregate() header (item 53)
+│   ├── formatting.py           # format_timestamp/file_size/speed/duration
+│                              #   — shared by History, tagged-at, ETA
+│   ├── theme.py                # dark theme tokens + apply_theme() (item 47)
+│   ├── notice.py               # InlineNotice — persistent banner (item 47)
 │   ├── help_text.py            # centralized tooltips/subtitles/About copy
 │                              #   (item 34), incl. SUPPORT_LINKS (item 35)
 │   └── workers.py              # QThreadPool Worker + run_worker() — every
 │                              #   long-running UI action goes through this
 ├── models/{playlist,track,track_match,local_file,library_location,
 │           soulseek_file,download_request,soulseek_review_candidate,
-│           active_download,track_status,upgrade_review}.py
+│           active_download,track_status,upgrade_review,history_event}.py
 ├── matching.py               # shared fuzzy artist/title matching —
 │                              #   artist_matches, score_title,
 │                              #   resolve_text_source — used by BOTH
@@ -100,6 +106,9 @@ src/seeker/
 │                              #   status + global active-downloads listing;
 │                              #   the one thing ui/ needed that no
 │                              #   existing service provided (item 22)
+├── history_service.py         # HistoryService.get_recent_events() —
+│                              #   derived-only view over download_requests/
+│                              #   local_files, no new table (item 54)
 ├── config_store.py            # SeekerConfig — the UI-editable JSON store
 │                              #   (config.json); .env/config.py is now
 │                              #   only the fallback when a field is unset
@@ -809,6 +818,24 @@ compress it here before moving on to the next item.
     slskd doesn't currently report queue position for this transfer, a
     concrete reason (not just restated caution) behind not reading this
     field yet. [HISTORY §53](docs/HISTORY.md#53)
+54. **History page — done.** `HistoryService.get_recent_events(limit)`
+    derives two event kinds from existing tables only, no schema change:
+    completed `download_requests` rows (deduped via the same
+    `most_recent_per_candidate` rule as items 24/25) and
+    `local_files.tagged_at`. Deliberately excludes failed downloads — no
+    failure-reason column is persisted, so that event could never show
+    an honest detail (see the Downloads page instead). `ui/formatting
+    .format_timestamp` is reused as-is by both the History page and
+    `seeker history [--limit N]` — confirmed live against real DB rows
+    that `completed_at`/`tagged_at` are genuinely timezone-aware UTC
+    (matching its docstring), so no fix was needed there. UI: When/What/
+    Track/Detail table + a client-side filter combo (no re-query),
+    lazy-loaded on first visit like Duplicates, manual Refresh (no poll
+    timer — a look-back view, not a live one). **Standing limit, stated
+    in both the page subtitle and CLI help:** this is a derived view,
+    not an append-only log — an event disappears the moment the row it
+    came from does (e.g. a Duplicates-tab delete removes a downloaded
+    file's event too).
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

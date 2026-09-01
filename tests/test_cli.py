@@ -43,12 +43,14 @@ class FakeApplication:
             download_service=None,
             sync_service=None,
             duplicate_service=None,
+            history_service=None,
     ):
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
         self.download_service = download_service
         self.sync_service = sync_service
         self.duplicate_service = duplicate_service
+        self.history_service = history_service
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -477,3 +479,89 @@ def test_library_fingerprint_unknown_location_exits_nonzero(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert "Nonexistent" in output
+
+
+class FakeHistoryServiceForCli:
+    def __init__(self, events):
+        self._events = events
+        self.get_recent_events_calls: list[int] = []
+
+    def get_recent_events(self, limit):
+        self.get_recent_events_calls.append(limit)
+        return self._events
+
+
+def test_history_prints_each_event(tmp_path, capsys):
+    from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
+
+    matcher = make_matcher(tmp_path)
+    events = [
+        HistoryEvent(
+            occurred_at="2026-01-02T00:00:00+00:00",
+            event_type=DOWNLOADED,
+            track_artist="ZENEA",
+            track_title="INFINITE",
+            playlist_name="240KM/H",
+            detail="FLAC from peer1",
+        ),
+        HistoryEvent(
+            occurred_at="2026-01-01T00:00:00+00:00",
+            event_type=TAGGED,
+            track_artist="Kamäleon",
+            track_title="Quadrat",
+            playlist_name="Test",
+            detail="Tagged with Spotify metadata",
+        ),
+    ]
+    history_service = FakeHistoryServiceForCli(events)
+
+    cli.run(
+        FakeApplication(matcher, history_service=history_service),
+        ["history"],
+    )
+
+    output = capsys.readouterr().out
+    assert "ZENEA - INFINITE" in output
+    assert "Downloaded" in output
+    assert "Kamäleon - Quadrat" in output
+    assert "Tagged" in output
+    assert history_service.get_recent_events_calls == [50]
+
+
+def test_history_default_limit_used_when_flag_omitted(tmp_path, capsys):
+    from seeker.history_service import DEFAULT_LIMIT
+
+    matcher = make_matcher(tmp_path)
+    history_service = FakeHistoryServiceForCli([])
+
+    cli.run(
+        FakeApplication(matcher, history_service=history_service),
+        ["history"],
+    )
+
+    assert history_service.get_recent_events_calls == [DEFAULT_LIMIT]
+
+
+def test_history_limit_flag_overrides_default(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    history_service = FakeHistoryServiceForCli([])
+
+    cli.run(
+        FakeApplication(matcher, history_service=history_service),
+        ["history", "--limit", "5"],
+    )
+
+    assert history_service.get_recent_events_calls == [5]
+
+
+def test_history_empty_prints_a_clear_message(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    history_service = FakeHistoryServiceForCli([])
+
+    cli.run(
+        FakeApplication(matcher, history_service=history_service),
+        ["history"],
+    )
+
+    output = capsys.readouterr().out
+    assert "No downloaded or tagged tracks yet." in output

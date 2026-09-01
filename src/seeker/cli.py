@@ -3,6 +3,7 @@ import sys
 
 from seeker.application import Application
 from seeker.audio_fingerprint import FingerprintingUnavailableError
+from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
 from seeker.library.duplicate_service import (
     LibraryLocationNotFoundError as DuplicateLibraryLocationNotFoundError,
 )
@@ -22,6 +23,10 @@ from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
     find_close_playlist_matches,
 )
+# Pure-function formatter, no Qt/PySide6 dependency (see its own
+# docstring) — CLI and UI share the exact same local-time conversion
+# rather than the CLI growing a second copy.
+from seeker.ui.formatting import format_timestamp
 
 
 def resolve_playlist_or_offer_sync(
@@ -174,6 +179,27 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Interactively confirm or decline pending upgrade "
             "replacements."
+        ),
+    )
+
+    history_parser = subparsers.add_parser(
+        "history",
+        help=(
+            "Recently downloaded and tagged tracks, derived from "
+            "existing data — not a permanent log (see --help)."
+        ),
+    )
+    history_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            f"Max events to show (default {DEFAULT_HISTORY_LIMIT}). "
+            "Derived from current download_requests/local_files rows "
+            "only — an event disappears if the row it came from is "
+            "later deleted (e.g. via 'library duplicates'), and "
+            "download failures aren't shown at all (no failure reason "
+            "is persisted to describe them honestly)."
         ),
     )
 
@@ -558,6 +584,28 @@ def handle_check(
     for artist, title in unmatched:
         print(f"  {artist} - {title}")
 
+
+def handle_history(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    limit = parsed.limit if parsed.limit is not None else DEFAULT_HISTORY_LIMIT
+    events = application.history_service.get_recent_events(limit=limit)
+
+    if not events:
+        print("No downloaded or tagged tracks yet.")
+        return
+
+    for event in events:
+        when = format_timestamp(event.occurred_at)
+        what = "Downloaded" if event.event_type == "downloaded" else "Tagged"
+        print(
+            f"{when}  {what:<10}  {event.track_artist} - "
+            f"{event.track_title} ({event.playlist_name})  "
+            f"{event.detail}"
+        )
+
+
 def run(
     application: Application,
     args: list[str] | None = None,
@@ -590,6 +638,9 @@ def run(
 
         elif parsed.command == "downloads":
             handle_downloads(application, parsed)
+
+        elif parsed.command == "history":
+            handle_history(application, parsed)
     except SpotifyRateLimitedError as error:
         print(str(error))
         sys.exit(1)

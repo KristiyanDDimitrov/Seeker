@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
+from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
@@ -103,6 +104,11 @@ _DOWNLOAD_STATUS_LABELS = {
 # for (see CLAUDE.md: a rejection leaves bytes_transferred/total_bytes
 # unset by design, not zeroed).
 _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading", "ready_for_review", "completed"}
+
+_HISTORY_EVENT_LABELS = {
+    DOWNLOADED: "Downloaded",
+    TAGGED: "Tagged",
+}
 
 # Untuned constant — a fixed sidebar width narrow enough to leave real
 # room for content, wide enough that "Duplicates" (the longest nav
@@ -574,6 +580,12 @@ class MainWindow(QMainWindow):
         # tight loop the way construction does.
         self._duplicates_page_index = self._page_indices["duplicates"]
         self._duplicates_locations_loaded = False
+        # Same lazy-load-on-first-real-visit reasoning as Duplicates
+        # above — a plain, cheap local-DB read, but there's no reason
+        # to pay it on every MainWindow construction when a real user
+        # may never open this page in a given session.
+        self._history_page_index = self._page_indices["history"]
+        self._history_loaded = False
         self.stacked_widget.currentChanged.connect(self._on_page_changed)
 
         self.setCentralWidget(shell)
@@ -801,22 +813,112 @@ class MainWindow(QMainWindow):
         )
 
     def _build_history_page(self) -> QWidget:
-        # Placeholder — the real History page (derived from
-        # download_requests/local_files, no new table) is a future
-        # phase. The nav slot exists now so the sidebar's final shape
-        # is already correct.
+        # Derived entirely from existing download_requests/local_files
+        # rows via Application.history_service — no new table, no new
+        # poll timer (this is a "look back" view, not an active-
+        # progress one like Downloads; a manual Refresh button is
+        # enough). The honest "not a permanent log" limits live in
+        # HISTORY_PAGE_SUBTITLE, not repeated here.
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
-        placeholder = QLabel(help_text.HISTORY_PAGE_PLACEHOLDER)
-        placeholder.setStyleSheet(f"color: {theme.TEXT_FAINT};")
-        placeholder.setWordWrap(True)
-        layout.addWidget(placeholder)
-        layout.addStretch()
+
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("Show:"))
+
+        self.history_filter_combo = QComboBox()
+        self.history_filter_combo.setToolTip(
+            help_text.TOOLTIP_HISTORY_FILTER_COMBO
+        )
+        self.history_filter_combo.addItem("All", None)
+        self.history_filter_combo.addItem("Downloaded", DOWNLOADED)
+        self.history_filter_combo.addItem("Tagged", TAGGED)
+        self.history_filter_combo.currentIndexChanged.connect(
+            self._render_history_table
+        )
+        controls.addWidget(self.history_filter_combo)
+
+        controls.addStretch()
+
+        self.history_refresh_button = QPushButton("Refresh")
+        self.history_refresh_button.setToolTip(
+            help_text.TOOLTIP_HISTORY_REFRESH_BUTTON
+        )
+        self.history_refresh_button.clicked.connect(self._refresh_history)
+        controls.addWidget(self.history_refresh_button)
+
+        layout.addLayout(controls)
+
+        self.history_status_label = QLabel("")
+        layout.addWidget(self.history_status_label)
+
+        self.history_table = QTableWidget(0, 4)
+        self.history_table.setHorizontalHeaderLabels(
+            ["When", "What", "Track", "Detail"]
+        )
+        self.history_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.history_table)
+
+        # Raw, unfiltered events from the last real fetch — the filter
+        # combo re-renders from this in memory rather than re-querying,
+        # since it's already a bounded, already-fetched list (DEFAULT_
+        # LIMIT), not a live/paginated one.
+        self._history_events: list[HistoryEvent] = []
 
         return _build_page(
             "History", help_text.HISTORY_PAGE_SUBTITLE, content,
         )
+
+    def _refresh_history(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.history_service.get_recent_events,
+            button=self.history_refresh_button,
+            status_label=self.history_status_label,
+            on_finished=self._on_history_fetched,
+        )
+
+    def _on_history_fetched(self, events: list[HistoryEvent]) -> None:
+        self._history_events = events
+        self._render_history_table()
+
+    def _render_history_table(self) -> None:
+        selected_type = self.history_filter_combo.currentData()
+        events = (
+            self._history_events if selected_type is None
+            else [
+                event for event in self._history_events
+                if event.event_type == selected_type
+            ]
+        )
+
+        if not self._history_events:
+            self.history_status_label.setText(
+                "No downloaded or tagged tracks yet."
+            )
+        else:
+            self.history_status_label.setText("")
+
+        self.history_table.setRowCount(len(events))
+
+        for row, event in enumerate(events):
+            self.history_table.setItem(
+                row, 0, QTableWidgetItem(format_timestamp(event.occurred_at)),
+            )
+            self.history_table.setItem(
+                row, 1,
+                QTableWidgetItem(_HISTORY_EVENT_LABELS[event.event_type]),
+            )
+            self.history_table.setItem(
+                row, 2,
+                QTableWidgetItem(
+                    f"{event.track_artist} - {event.track_title} "
+                    f"({event.playlist_name})"
+                ),
+            )
+            self.history_table.setItem(
+                row, 3, QTableWidgetItem(event.detail),
+            )
 
     def _build_help_page(self) -> QWidget:
         # Placeholder — the real Help page (walkthrough,
@@ -1219,6 +1321,10 @@ class MainWindow(QMainWindow):
         ):
             self._duplicates_locations_loaded = True
             self._refresh_duplicates_locations()
+
+        if index == self._history_page_index and not self._history_loaded:
+            self._history_loaded = True
+            self._refresh_history()
 
     def _refresh_duplicates_locations(self) -> None:
         run_worker(
