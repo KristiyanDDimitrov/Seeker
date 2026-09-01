@@ -610,9 +610,31 @@ class DownloadService:
         self._clear_review_candidate(track_id)
 
     def poll_downloads(self) -> dict[str, int]:
+        # Temporary diagnostic (roadmap item 63, not a behavior change) —
+        # a real, timestamped call-frequency log for the still-open
+        # locked-retry burst investigation. `_trigger_backend_poll`'s own
+        # overlap guard should make this print at most once per real 20s
+        # BACKEND_POLL_INTERVAL_MS tick; three isolated repros confirmed
+        # exactly that in isolation, but a real attended run showed a
+        # genuinely bursty ~1/3.5s-then-quiet-then-~1/8-9s pattern that
+        # none of those repros reproduced (see CLAUDE.md item 63 /
+        # docs/HISTORY.md item 63). Watch THIS line's own real timestamps
+        # during the next attended run rather than inferring cadence from
+        # printed retry-line counts, which undercounted the real rate by
+        # 2x last time (each retry prints two lines, not one). Remove
+        # once the real cause is found and fixed.
+        print(
+            f"[poll_downloads] {datetime.now(timezone.utc).isoformat()} "
+            f"called"
+        )
+
         with self.database.transaction() as connection:
             pending = self.download_requests.get_pending(connection)
             locked = self.download_requests.get_locked(connection)
+
+        print(
+            f"[poll_downloads] pending={len(pending)} locked={len(locked)}"
+        )
 
         counts = {
             "queued": 0,

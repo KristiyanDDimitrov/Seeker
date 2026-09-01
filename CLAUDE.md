@@ -905,6 +905,27 @@ compress it here before moving on to the next item.
     compose.yml`'s own fallback text. One item still outstanding across
     all seven phases: a real attended stress-test re-run — see HISTORY for
     the diagnosis + a faster repro command. [HISTORY §56](docs/HISTORY.md#56)
+63. **Open, real bug found live during Phase 7's attended stress-test
+    re-run: `poll_downloads()`'s locked-file retry (items 13/14/25) fires
+    in a genuine, bursty, faster-than-20s pattern against real production
+    slskd — root cause still unknown, not yet fixed.** Real corrected
+    rate (each retry prints TWO lines, not one — a first read overcounted
+    2x): **~1 retry/3.5s for ~8.5min, then a ~5-6min silent gap, then
+    ~1/8-9s** — not a simple "polls too often" story. Three isolated
+    repros (fake network; heavy real `QThreadPool` saturation; real local
+    slskd against a throwaway DB) ALL show correct, clean 20.0s cadence —
+    ruling out the timer, `_backend_poll_in_progress`'s overlap guard,
+    `DownloadService`'s own retry logic, thread-pool saturation, and real
+    slskd's basic response timing as standalone causes. Two remaining,
+    untested candidates: real production DB scale (a large real `pending`
+    list, not the repros' near-empty one), and the full concurrent-
+    traffic combination (3 simultaneous `download_playlist()` calls +
+    fingerprinting + duplicates-find + the poll timer, all real, all at
+    once) — test these TOGETHER in one attended run, not separately. A
+    temporary, real timestamped diagnostic (`[poll_downloads] ... called`
+    / `pending=N locked=N`, no behavior change) is now in
+    `poll_downloads()` itself — remove once root-caused.
+    [HISTORY §63](docs/HISTORY.md#63)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

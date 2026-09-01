@@ -9193,3 +9193,126 @@ getting a fresh `id` is desirable there (a genuine restart should reset
 the ETA estimate). `_parse_upload`'s existing field names
 (`username`/`filename`/`state`/`bytesTransferred`/`size`) match the
 real schema exactly — no code change needed.
+
+### 63
+
+Open investigation, genuinely unresolved — found live during Phase 7's
+attended stress-test re-run (2026-09-01, PID 21050,
+`SEEKER_STRESS_DURATION_SECONDS=90`), unrelated to Sharing/Uploads
+itself. Reported here in full per this project's own standing "record
+an unreproducible/unresolved finding honestly rather than fabricate a
+fix" precedent (items 39, 61 §6.2).
+
+**What was observed live.** After sync/scan/match settled (~15s, real
+and healthy — contrast the earlier, killed 81-minute run), the test
+entered a real burst of `"Failed to retry locked '@@rwvnt\Club &
+Dance\Labels\Ambra\(AMB025) Zenea - INFINITE\01. Zenea - Infinite.mp3':
+Server error '500 Internal Server Error'..."` lines against the real
+local slskd — hundreds of them, growing continuously across a real
+~18-minute observation window. First hypothesis (many stale duplicate
+`locked` rows for the same track, per item 25's own disclosed gap) was
+checked directly against the real production DB and refuted: exactly
+**one** real row (`download_requests.id=13`, `status='locked'`, real,
+pre-existing since 2026-08-28 — not created by this test). Sent
+`SIGINT` first (no response within several seconds — the loop kept
+growing), then `SIGKILL`. Verified afterward: production `slskd`
+untouched and healthy (unchanged `CreatedAt`), the one real `locked`
+row unmodified/not duplicated, `config.json` untouched. Cleaned up the
+run's own leftover `SeekerStressTestDuplicates` library location by
+hand.
+
+**A first, hasty conclusion ("probably fine, just normal cadence") was
+wrong and corrected before it shipped.** An initial hand-wave average
+(total lines / elapsed time ≈ one retry per ~20s) looked consistent
+with the timer's own cadence — but that average silently blended a
+genuine fast burst with a genuine silent gap, and didn't yet account
+for each real retry printing TWO lines (the app's own `print`, plus
+httpx's `HTTPStatusError` continuation line), which had made the raw
+line-count growth read as roughly double the real retry count.
+Redone properly against the exact elapsed-time anchors recorded live
+(`ps -p`'s own `ELAPSED` column, paired with `wc -l` at each check):
+
+```
+t=0s->520s   (Δ520s):  +295 lines = ~147.5 retries  (~1 per 3.5s)
+t=520s->836s (Δ316s):  +0 lines   = silent (no retries at all)
+t=836s->1058s(Δ222s):  +54 lines = ~27.0 retries    (~1 per 8.2s)
+t=1058s->1095s(Δ37s):  +8 lines  = ~4.0 retries     (~1 per 9.2s)
+```
+
+A genuinely bursty, three-phase real pattern — fast, then silent, then
+slower-but-still-too-fast — not a uniform "polls slightly too often"
+story. This rules out a simple constant-factor explanation (e.g. "the
+timer interval is secretly 3.5s instead of 20s") on its own.
+
+**Three isolated, controlled repros, each closer to the real
+conditions, ALL came back clean — the core mechanism is not buggy in
+isolation.** All three seed a disposable DB with exactly one
+`download_requests` row at `status='locked'` (matching the real
+production row's shape) and pump a real `MainWindow`'s real Qt event
+loop for 90 real seconds the same way `test_stress_e2e.py`'s own
+`_pump()` does (`processEvents()` + `time.sleep()`), then count real
+`request_download()` calls:
+
+1. Real `DownloadService`, real `MainWindow`/timer/guard, an
+   instant-failing stubbed `SoulseekClient` (no real network): **4
+   calls, deltas 20.00s/20.03s.**
+2. Same, plus heavy artificial load on the SAME `window.thread_pool`
+   (a 500ms `QTimer` submitting 5 slow 2s `run_worker()` tasks per
+   tick — 895 tasks total over the run, against a real
+   `maxThreadCount()` of 14, deliberately mirroring the real stress
+   test's simultaneous `download_playlist()` x3 + fingerprinting +
+   duplicates-find + the new Sharing-page poll all competing for
+   worker threads): **3 calls, deltas ~28.6s/29.0s** — saturation
+   *slowed* the cadence, never sped it up.
+3. Real `DownloadService`, real **local slskd** (safe: a throwaway DB,
+   and a fake, nonexistent `username`/`filename` so no real peer or
+   real data was ever touched), real `MainWindow`/timer: **4 calls,
+   deltas 20.04s/20.00s/20.03s.**
+
+Static tracing backs the repros up: `_retry_locked_request` (`soulseek/
+download_service.py`) has exactly ONE call site in the whole `src/`
+tree (inside `poll_downloads()`'s own `for request in locked:` loop);
+`poll_downloads()` itself has exactly two call sites in the whole
+`src/` tree (`cli.py`'s `handle_downloads`, unused by the GUI/stress
+test, and `main_window.py`'s `_trigger_backend_poll`, guarded by
+`_backend_poll_in_progress`); the download button's own click chain
+(`_on_download_clicked` → `_on_destination_checked` → `_start_download`)
+never touches polling at all; and the shared dispatcher's
+`_callbacks.pop(task_id, None)` pattern (`ui/workers.py`) makes even a
+hypothetical duplicate signal delivery for the same task a structural
+no-op, not a second real dispatch. `get_locked()`'s query is a plain
+`SELECT ... WHERE status = 'locked'` with no JOIN — cannot return
+duplicate rows for one real primary key. No stray/leftover process was
+found running concurrently against the real DB at the time (`ps aux`
+checked clean afterward, though this wasn't checked *during* the live
+run itself — a real, disclosed gap in the forensics, not filled in).
+
+**Genuinely open — two untested candidates, not yet distinguished,
+flagged for the next attended run to test TOGETHER (not separately,
+since the real bursty pattern may only need the real combination):**
+(1) real production DB **scale** — the repros' DB has exactly one
+`download_requests` row total; the real run's concurrent
+`download_playlist()` calls create a real, much larger `pending` list
+that `poll_downloads()`'s own pending-loop (running immediately before
+the locked-loop, same transaction) has to process every single call,
+with real network latency per row — untested whether a large enough
+pending list changes the locked-loop's own effective call frequency
+somehow; (2) the full **concurrent-traffic combination** — repro 2
+tested thread-pool saturation from dumb sleep-tasks, not real
+`download_playlist()`/fingerprinting/duplicates-find traffic actually
+exercising `DownloadService`'s own real methods concurrently with
+`poll_downloads()`, which could interact differently (e.g. real SQLite
+transaction contention across `Database.transaction()`'s
+per-call connections, untested).
+
+**Instrumentation added for the next attended run, not a fix:** a
+temporary, timestamped `print()` at the very top of `poll_downloads()`
+(`[poll_downloads] {utc iso timestamp} called`) plus one more
+reporting `pending`/`locked` row counts — gives real per-call timestamps
+directly, instead of the error-prone approach this investigation
+started with (inferring cadence from retry-error line counts, which
+undercounted the real rate by ~2x on the first pass because each retry
+prints two lines). Remove once root-caused. `mypy --strict` clean; full
+suite 766 passed (this diagnostic print doesn't touch any
+`capsys`-asserting test's exact-match expectations — all existing
+assertions are substring checks).
