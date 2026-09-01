@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLabel,
     QMenu,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QRadioButton,
@@ -31,6 +32,7 @@ from seeker.models.track_status import (
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text
 from seeker.ui.main_window import AboutDialog, DestinationDialog, MainWindow
+from seeker.update_check import UpdateCheckResult, UpdateStatus
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
 
@@ -1033,6 +1035,156 @@ def test_main_window_has_help_menu_with_about_action(qtbot):
     )
     action_texts = [action.text() for action in help_menu.actions()]
     assert help_text.ABOUT_MENU_TEXT in action_texts
+    assert help_text.CHECK_FOR_UPDATES_MENU_TEXT in action_texts
+
+
+# --- Check for updates (roadmap Phase 11) -----------------------------------
+# check_for_update() must fire ONLY from this one Help menu action —
+# never at construction, never on a timer. See main_window.py's own
+# _build_help_menu/_on_check_for_updates_clicked and update_check.py's
+# docstring for the real-external-dependency reasoning.
+
+def test_check_for_update_is_not_called_during_construction(qtbot, monkeypatch):
+    calls: list[None] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: calls.append(None),
+    )
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.wait(50)
+    assert calls == []
+
+
+def test_check_for_updates_click_runs_check_for_update_via_worker(
+        qtbot, monkeypatch,
+):
+    calls: list[None] = []
+
+    def fake_check_for_update():
+        calls.append(None)
+        return UpdateCheckResult(UpdateStatus.UP_TO_DATE, latest_version="v1.0.0")
+
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update", fake_check_for_update,
+    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: None)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+
+    qtbot.waitUntil(lambda: calls == [None], timeout=2000)
+    qtbot.waitUntil(
+        lambda: window.check_for_updates_action.isEnabled(), timeout=2000,
+    )
+
+
+def test_up_to_date_dialog_shows_installed_version(qtbot, monkeypatch):
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.UP_TO_DATE, latest_version="v1.0.0",
+            installed_version="1.0.0",
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    assert "up to date" in shown[0].text().lower()
+    assert "1.0.0" in shown[0].text()
+
+
+def test_update_available_dialog_shows_both_versions_and_link(
+        qtbot, monkeypatch,
+):
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.UPDATE_AVAILABLE, latest_version="v1.3.0",
+            installed_version="1.2.0",
+            release_url="https://github.com/example/repo/releases/v1.3.0",
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    text = shown[0].text()
+    assert "v1.3.0" in text
+    assert "1.2.0" in text
+    assert "https://github.com/example/repo/releases/v1.3.0" in text
+
+
+def test_unavailable_dialog_shows_the_reason(qtbot, monkeypatch):
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.UNAVAILABLE,
+            reason="No releases have been published yet.",
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    assert "No releases have been published yet." in shown[0].text()
+
+
+def test_check_for_updates_action_disabled_while_running_and_reenabled(
+        qtbot, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(UpdateStatus.UP_TO_DATE, latest_version="v1"),
+    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: None)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.check_for_updates_action.isEnabled()
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(
+        lambda: window.check_for_updates_action.isEnabled(), timeout=2000,
+    )
 
 
 def test_about_dialog_opens_without_crashing(qtbot):

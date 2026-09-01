@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -49,6 +50,7 @@ from seeker.models.track_status import (
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text, theme
+from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
     DownloadEtaTracker,
@@ -943,9 +945,67 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._on_about_clicked)
         help_menu.addAction(about_action)
 
+        # Real, live GitHub call — user-triggered ONLY (this one menu
+        # action), never on a timer or anywhere near startup/
+        # construction. See update_check.py's own docstring for why.
+        self.check_for_updates_action = QAction(
+            help_text.CHECK_FOR_UPDATES_MENU_TEXT, self,
+        )
+        self.check_for_updates_action.triggered.connect(
+            self._on_check_for_updates_clicked
+        )
+        help_menu.addAction(self.check_for_updates_action)
+
     def _on_about_clicked(self) -> None:
         dialog = AboutDialog(self)
         dialog.exec()
+
+    def _on_check_for_updates_clicked(self) -> None:
+        self.check_for_updates_action.setEnabled(False)
+        run_worker(
+            self.thread_pool,
+            check_for_update,
+            on_finished=self._show_update_check_result,
+            on_error=self._on_update_check_error,
+        )
+
+    def _show_update_check_result(self, result: UpdateCheckResult) -> None:
+        self.check_for_updates_action.setEnabled(True)
+
+        box = QMessageBox(self)
+        box.setWindowTitle(help_text.UPDATE_CHECK_DIALOG_TITLE)
+
+        if result.status == UpdateStatus.UP_TO_DATE:
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(
+                f"You're up to date (v{result.installed_version})."
+            )
+        elif result.status == UpdateStatus.UPDATE_AVAILABLE:
+            box.setIcon(QMessageBox.Icon.Information)
+            text = (
+                f"A new version is available: {result.latest_version} "
+                f"(you have v{result.installed_version})."
+            )
+            if result.release_url:
+                text += f"<br><a href=\"{result.release_url}\">" \
+                        f"View the release</a>"
+                box.setTextFormat(Qt.TextFormat.RichText)
+            box.setText(text)
+        else:
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setText(f"Couldn't check for updates: {result.reason}")
+
+        box.exec()
+
+    def _on_update_check_error(self, message: str) -> None:
+        # check_for_update() itself never raises (see its own
+        # docstring) — this only exists as a defensive fallback for a
+        # failure in run_worker's own dispatch, not an expected path.
+        self.check_for_updates_action.setEnabled(True)
+        QMessageBox.warning(
+            self, help_text.UPDATE_CHECK_DIALOG_TITLE,
+            f"Couldn't check for updates: {message}",
+        )
 
     def _build_tagging_controls(self) -> QHBoxLayout:
         # Shared by all three triggers (per-track, "Tag selected",

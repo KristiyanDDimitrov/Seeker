@@ -121,6 +121,9 @@ src/seeker/
 ├── file_deletion.py           # shared safe-file-delete primitive —
 │                              #   DownloadService (upgrade replace) and
 │                              #   DuplicateService (item 40) both use it
+├── update_check.py            # check_for_update() — one unauthenticated
+│                              #   GitHub-releases GET, user-triggered only
+│                              #   (Help menu), never raises (item 55)
 ├── config.py                  # .env-sourced fallback values
 ├── application.py
 ├── cli.py
@@ -836,6 +839,25 @@ compress it here before moving on to the next item.
     not an append-only log — an event disappears the moment the row it
     came from does (e.g. a Duplicates-tab delete removes a downloaded
     file's event too).
+55. **Update check (GitHub releases) — done, update-check portion only;
+    About/Help copy wiring deferred.** `seeker/update_check.py::
+    check_for_update()` — one unauthenticated GET against
+    `api.github.com/repos/.../releases/latest`, comparing
+    `packaging.version.Version` against the installed
+    `importlib.metadata.version("seeker")`. **Never raises** — every
+    anticipated failure (timeout, non-2xx, malformed JSON, unparseable
+    tag) gets a specific `UNAVAILABLE(reason)`, and an outer catch-all
+    covers anything unanticipated too, since this fires from a manual
+    Help-menu click and must never take the app down with it. **Real,
+    confirmed facts:** this repo currently has zero published releases
+    — `GET .../releases/latest` returns a real `404`
+    (`{"message": "Not Found", ...}`), reported as `UNAVAILABLE("No
+    releases have been published yet.")`; GitHub's unauthenticated rate
+    limit is real and shared per source IP (60/hour, confirmed via
+    response headers) — never call this from a timer or poll loop, only
+    the one explicit user action. Wired to fire ONLY from Help ->
+    "Check for updates…" via `run_worker()` — confirmed by grep that
+    nothing calls it at construction or from any timer.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

@@ -324,6 +324,14 @@ ABOUT_DIALOG_BODY = (
     "library, and searches SoulSeek for whatever's missing.</p>"
 )
 
+# --- Update check (Phase 11) -------------------------------------------
+# GitHub-releases-based — see update_check.py's own docstring for the
+# real external-dependency caution (rate limits, "never raises").
+# User-triggered only, from this one menu action.
+
+CHECK_FOR_UPDATES_MENU_TEXT = "Check for updates…"
+UPDATE_CHECK_DIALOG_TITLE = "Check for Updates"
+
 # --- Task 3: support-the-creator links -------------------------------------
 # The PayPal URL isn't ready yet — deliberately marked as an obvious
 # placeholder, not a fabricated look-real link. Replace it with the real
