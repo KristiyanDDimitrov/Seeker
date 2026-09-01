@@ -193,6 +193,15 @@ TOOLTIP_DELETE_OLD_FILE_CHECKBOX = (
     "Also delete the file being replaced from disk, not just from the "
     "library record."
 )
+TOOLTIP_CONFIRM_LOCAL_MATCH = (
+    "Confirm this local file is the right match. It won't be demoted or "
+    "recomputed by a future re-match."
+)
+TOOLTIP_REJECT_LOCAL_MATCH = (
+    "Discard this match. It isn't blacklisted — a later match run can "
+    "surface it again."
+)
+TOOLTIP_DOUBLE_CLICK_TO_REVIEW = "Double-click to review this track."
 
 # --- Duplicates tab ---------------------------------------------------------
 

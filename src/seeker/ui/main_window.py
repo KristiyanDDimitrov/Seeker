@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -41,6 +41,7 @@ from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
+from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -554,6 +555,11 @@ class MainWindow(QMainWindow):
         # needed to resolve a multi-selection back to real track ids for
         # "Tag selected" (Step 7).
         self._current_track_statuses: list[TrackStatus] = []
+        # Set by a Dashboard double-click on a NEEDS_REVIEW/AWAITING_
+        # REVIEW row (roadmap item 56 §2.4); consumed once by
+        # _focus_pending_review_row the next time the Review page's data
+        # actually loads.
+        self._pending_review_focus_track_id: str | None = None
 
         self.setWindowTitle("Seeker")
         self.resize(1180, 760)
@@ -645,12 +651,20 @@ class MainWindow(QMainWindow):
     def _register_page(self, key: str, widget: QWidget) -> None:
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
 
-    def _show_page(self, key: str) -> None:
+    def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         self.stacked_widget.setCurrentIndex(self._page_indices[key])
 
         button = self._nav_buttons.get(key)
         if button is not None:
             button.setChecked(True)
+
+        if key == "review" and focus_track_id is not None:
+            self._pending_review_focus_track_id = focus_track_id
+            # The Review tables are already on the standing 2s
+            # poll_timer regardless of which page is visible (item 48's
+            # pattern) — this explicit call just avoids making the user
+            # wait up to 2s to see the row get selected.
+            self._poll_review_items()
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QWidget()
@@ -814,6 +828,14 @@ class MainWindow(QMainWindow):
         )
         self.track_table.customContextMenuRequested.connect(
             self._on_track_table_context_menu
+        )
+        # Roadmap item 56 §2.4 — double-clicking a NEEDS_REVIEW/
+        # AWAITING_REVIEW row jumps straight to the Review page. Wired
+        # on cellDoubleClicked (not itemDoubleClicked) since the target
+        # column can hold plain text with no QTableWidgetItem guarantee
+        # beyond what _render_track_statuses always sets.
+        self.track_table.cellDoubleClicked.connect(
+            self._on_track_table_cell_double_clicked
         )
         self.track_area_stack = QStackedWidget()
         self.track_area_stack.addWidget(self.track_table)
@@ -1419,6 +1441,19 @@ class MainWindow(QMainWindow):
         self.review_upgrades_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.review_upgrades_table)
 
+        # Third section — roadmap item 56 Phase 2, closing item 7's
+        # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
+        # from the SoulSeek candidates table above) never had a
+        # confirm/reject UI at all before this.
+        layout.addWidget(QLabel("Local library matches needing confirmation"))
+
+        self.review_local_table = QTableWidget(0, 5)
+        self.review_local_table.setHorizontalHeaderLabels(
+            ["Track", "Matched file", "Location", "Score", "Actions"]
+        )
+        self.review_local_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.review_local_table)
+
         return tab
 
     def _build_duplicates_content(self) -> QWidget:
@@ -1886,7 +1921,22 @@ class MainWindow(QMainWindow):
             state_text = _STATE_LABELS[status.state]
             if status.soulseek_candidate is not None:
                 state_text += " (SoulSeek candidate found)"
-            self.track_table.setItem(row, 1, QTableWidgetItem(state_text))
+            status_item = QTableWidgetItem(state_text)
+
+            # Roadmap item 56 §2.4 — only these two states have anything
+            # to jump to on the Review page; every other status is a
+            # genuine no-op on double-click, so only these get the
+            # affordance rather than a misleading cue on every row.
+            if status.state in (NEEDS_REVIEW, AWAITING_REVIEW):
+                status_item.setToolTip(
+                    help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
+                )
+                font = status_item.font()
+                font.setUnderline(True)
+                status_item.setFont(font)
+                status_item.setForeground(QColor(theme.ACCENT))
+
+            self.track_table.setItem(row, 1, status_item)
 
             if (
                     status.state == DOWNLOADING
@@ -1904,6 +1954,21 @@ class MainWindow(QMainWindow):
             self.track_table.setCellWidget(
                 row, 3, self._build_track_actions(status),
             )
+
+    def _on_track_table_cell_double_clicked(
+            self, row: int, _column: int,
+    ) -> None:
+        if row < 0 or row >= len(self._current_track_statuses):
+            return
+
+        status = self._current_track_statuses[row]
+
+        if status.state not in (NEEDS_REVIEW, AWAITING_REVIEW):
+            # A genuine no-op — every other status has nothing to jump
+            # to, so double-clicking those rows must not navigate at all.
+            return
+
+        self._show_page("review", focus_track_id=status.track.id)
 
     def _fetch_next_step_facts(self) -> _NextStepFacts:
         # Bundled into one background-thread call rather than one
@@ -2070,14 +2135,22 @@ class MainWindow(QMainWindow):
         self.downloads_eta_label.setToolTip(AGGREGATE_ETA_TOOLTIP)
 
     def _poll_review_items(self) -> None:
-        # Both halves are cheap, local-DB-only reads (like
+        # All three halves are cheap, local-DB-only reads (like
         # get_active_downloads above) — no real slskd network calls, so
         # this belongs on the 2s display-refresh timer, not the 20s
-        # backend-poll one. Bundled into one worker call rather than two
-        # so both tables update from the same consistent DB snapshot.
-        def fetch() -> tuple[NeedsReviewCandidates, PendingUpgrades]:
+        # backend-poll one. Bundled into one worker call rather than
+        # three so every table updates from the same consistent DB
+        # snapshot.
+        def fetch() -> tuple[
+                NeedsReviewCandidates, PendingUpgrades,
+                list[NeedsReviewMatch],
+        ]:
             service = self.application.download_service
-            return (service.get_review_candidates(), service.get_pending_upgrade_reviews())
+            return (
+                service.get_review_candidates(),
+                service.get_pending_upgrade_reviews(),
+                self.application.library_service.get_needs_review_matches(),
+            )
 
         run_worker(
             self.thread_pool,
@@ -2087,12 +2160,19 @@ class MainWindow(QMainWindow):
 
     def _render_review_items(
             self,
-            data: tuple[NeedsReviewCandidates, PendingUpgrades],
+            data: tuple[
+                NeedsReviewCandidates, PendingUpgrades,
+                list[NeedsReviewMatch],
+            ],
     ) -> None:
-        candidates, upgrades = data
-        self._update_nav_badge("review", len(candidates) + len(upgrades))
+        candidates, upgrades, local_matches = data
+        self._update_nav_badge(
+            "review", len(candidates) + len(upgrades) + len(local_matches),
+        )
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
+        self._render_local_needs_review_matches(local_matches)
+        self._focus_pending_review_row(upgrades, local_matches)
 
     def _render_needs_review_candidates(
             self,
@@ -2256,6 +2336,123 @@ class MainWindow(QMainWindow):
             self.status_label.setText(message)
 
         self._poll_review_items()
+
+    def _render_local_needs_review_matches(
+            self,
+            matches: list[NeedsReviewMatch],
+    ) -> None:
+        self.review_local_table.setRowCount(len(matches))
+
+        for row, match in enumerate(matches):
+            label = f"{match.track_artist} - {match.track_title}"
+            self.review_local_table.setItem(row, 0, QTableWidgetItem(label))
+            self.review_local_table.setItem(
+                row, 1, QTableWidgetItem(match.local_file_path),
+            )
+            self.review_local_table.setItem(
+                row, 2, QTableWidgetItem(match.location_name),
+            )
+            self.review_local_table.setItem(
+                row, 3, QTableWidgetItem(f"{match.score:.1f}"),
+            )
+            self.review_local_table.setCellWidget(
+                row, 4, self._build_local_review_actions(match.track_id),
+            )
+
+    def _build_local_review_actions(self, track_id: str) -> QWidget:
+        container = QWidget()
+        actions_layout = QHBoxLayout(container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        confirm_button = QPushButton("Confirm")
+        confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_LOCAL_MATCH)
+        reject_button = QPushButton("Reject")
+        reject_button.setToolTip(help_text.TOOLTIP_REJECT_LOCAL_MATCH)
+
+        confirm_button.clicked.connect(
+            lambda: self._on_confirm_local_match(track_id, confirm_button)
+        )
+        reject_button.clicked.connect(
+            lambda: self._on_reject_local_match(track_id, reject_button)
+        )
+
+        actions_layout.addWidget(confirm_button)
+        actions_layout.addWidget(reject_button)
+
+        return container
+
+    def _on_confirm_local_match(
+            self,
+            track_id: str,
+            button: QPushButton,
+    ) -> None:
+        # No file on disk is touched by confirm_match() — no double-
+        # confirm gate, matching item 27's precedent that this project's
+        # confirmation gate is for file replacement, not DB state.
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.library_service.confirm_match(
+                track_id
+            ),
+            button=button,
+            status_label=self.status_label,
+            on_finished=self._on_local_review_decision_finished,
+        )
+
+    def _on_reject_local_match(
+            self,
+            track_id: str,
+            button: QPushButton,
+    ) -> None:
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.library_service.reject_match(
+                track_id
+            ),
+            button=button,
+            status_label=self.status_label,
+            on_finished=self._on_local_review_decision_finished,
+        )
+
+    def _on_local_review_decision_finished(self, _result: None) -> None:
+        self._poll_review_items()
+        self._poll_selected_playlist()
+
+    def _focus_pending_review_row(
+            self,
+            upgrades: PendingUpgrades,
+            local_matches: list[NeedsReviewMatch],
+    ) -> None:
+        # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW Dashboard cell
+        # (roadmap item 56 Phase 2 §2.4) sets _pending_review_focus_
+        # track_id and switches to this page; once the real data has
+        # actually loaded, this scrolls to and selects the matching row
+        # — a track that turns out to have nothing here yet (e.g. a
+        # locked/shortlisted AWAITING_REVIEW row, not yet ready_for_
+        # review) just lands on the page with nothing selected, rather
+        # than erroring.
+        track_id = self._pending_review_focus_track_id
+
+        if track_id is None:
+            return
+
+        self._pending_review_focus_track_id = None
+
+        for row, details in enumerate(upgrades):
+            if details.track.id == track_id:
+                self.review_upgrades_table.selectRow(row)
+                item = self.review_upgrades_table.item(row, 0)
+                if item is not None:
+                    self.review_upgrades_table.scrollToItem(item)
+                return
+
+        for row, match in enumerate(local_matches):
+            if match.track_id == track_id:
+                self.review_local_table.selectRow(row)
+                local_item = self.review_local_table.item(row, 0)
+                if local_item is not None:
+                    self.review_local_table.scrollToItem(local_item)
+                return
 
     def _trigger_backend_poll(self) -> None:
         if self._backend_poll_in_progress:

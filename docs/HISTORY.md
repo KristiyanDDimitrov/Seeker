@@ -8414,3 +8414,80 @@ locations), landing on the identical 27/1/1 result.
 
 `mypy --strict` clean; full suite 681 passed / 1 skipped, run 3 times in
 a row.
+
+### 56, Phase 2 — local needs-review matches get a real review flow
+
+Closes roadmap item 7's long-outstanding gap (a `review` command for
+needs-review LOCAL-FILE matches, distinct from the SoulSeek-side
+confirm/reject item 26 already built) and item 45's pre-existing
+demotion bug — confirmed in Phase 0's own 0.3 investigation: `track_
+matches` had no provenance concept at all, so `match_all()` could
+silently demote a human-confirmed match back to `needs_review` on its
+next run.
+
+**Schema.** `track_matches.confirmed_at TEXT NULL`, guarded
+`_add_column_if_missing` (same one-off pattern as every prior column).
+**Verified against the real, non-empty production DB**, not just a
+fresh one: backed up `seeker.db`, ran `Database.initialize()` against
+the real file — the new column appeared via `PRAGMA table_info`, the
+real 29-row count was unchanged, `confirmed_at` was `NULL` for all 29
+(a genuinely new column, not silently repurposing something).
+
+**Repository.** `TrackMatchRepository.confirm(track_id, confirmed_at,
+connection)` — a targeted `UPDATE` setting only `match_method='auto'`
+and `confirmed_at`, deliberately NOT touching `local_file_id`/`score`
+(the real computed score stays visible, same reasoning item 45 already
+established for `_index_and_match_settled_download` — a bad pairing
+must stay visible in the data, never hidden behind a `100.0` sentinel).
+New `delete(track_id, connection)` for reject (no blacklist, mirroring
+`reject_review_candidate`'s item 26 precedent). `match_all()` now loads
+existing matches first and skips recomputing (counting straight into
+`"auto"`) any row with a non-null `confirmed_at`.
+
+**Service layer**, all on `LibraryService` (which needed a new optional
+`playlist_repo` constructor dependency for the playlist-scoped variant,
+alongside the existing optional `track_matcher`):
+`get_needs_review_matches(playlist_name=None)` returns a new
+`NeedsReviewMatch` per row — track artist/title, matched file's
+relative path + location name, score, AND the tag values that were
+actually compared, since the whole point is showing a human *why* it
+scored where it did, not just the number. `confirm_match(track_id)` /
+`reject_match(track_id)` — no double-confirm gate (item 27's
+precedent: this project's confirmation gate is for file replacement,
+not DB state; nothing on disk is touched here).
+
+**CLI.** `seeker review [playlist_name] [--confirm TRACK_ID] [--reject
+TRACK_ID]` — new top-level command (distinct from the existing
+`seeker downloads review`, which is for SoulSeek upgrade candidates).
+
+**UI.** Review page gains a third section ("Local library matches
+needing confirmation") on the existing 2s poll, bundled into the same
+`_poll_review_items()` worker call as the other two sections so all
+three tables render from one consistent DB snapshot. Nav badge count
+now sums all three. Dashboard double-click (§2.4): a `NEEDS_REVIEW`/
+`AWAITING_REVIEW` status cell gets a tooltip + underlined accent-colored
+text (every other status is a genuine no-op, not just an unstyled
+click); double-clicking it calls `_show_page("review", focus_track_id=
+...)`, which sets a pending-focus id and immediately re-polls (rather
+than waiting up to 2s for the standing timer); once the real data
+loads, `_focus_pending_review_row` selects and scrolls to the matching
+row in whichever of the two actionable tables (pending upgrades or
+local matches) actually has it — a track with nothing there yet (e.g.
+a `locked`/`shortlisted` `AWAITING_REVIEW` row not yet `ready_for_
+review`) just lands on the page with nothing selected, not an error.
+
+**Real live verification, end to end, against the live production DB
+(2026-09-01), not just the test suite.** `seeker review` listed the one
+real remaining needs-review row (`Zigi SC, A-Cray - Bit Perfect`,
+score 63.6 — the same real track item 45's own HISTORY entry already
+covers). `seeker review --confirm <track_id>` confirmed it; a real
+`seeker library match` re-run immediately after reported `Needs review:
+0` (down from 1) with `Auto: 28` (up from 27); `seeker review` again
+reported "None."; and the raw DB row was read back directly —
+`match_method='auto'`, the real score `63.636...` (NOT a `100.0`
+sentinel), and a real `confirmed_at` timestamp. This is the actual,
+concrete closure of item 45's demotion bug, not just a test asserting
+the code path exists.
+
+`mypy --strict` clean; full suite 700 passed / 1 skipped, run 3 times
+in a row.

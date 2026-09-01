@@ -263,12 +263,13 @@ compress it here before moving on to the next item.
    basename lookup under `SLSKD_DOWNLOAD_DIR` once
    `get_download_status` reports `Succeeded` (bare `"Completed"` with no
    outcome flag is NOT treated as done). [HISTORY §6](docs/HISTORY.md#6)
-7. `check` reports auto/needs-review/unmatched already; a `review`
-   command to confirm/reject needs-review *local-file* matches is still
-   outstanding (superseded in spirit by the Soulseek-side confirm/reject
-   in item 26, but the local-file-match version was never built).
-   `download_playlist` only ever targeted `match_method IS NULL` tracks
-   — needs-review tracks are deliberately left alone. [HISTORY §7](docs/HISTORY.md#7)
+7. `check` reports auto/needs-review/unmatched already. **The local-file
+   `review` command called out as outstanding here is now built — see
+   item 56 Phase 2** (`seeker review` / `LibraryService.get_needs_
+   review_matches`/`confirm_match`/`reject_match`, plus a Review-page UI
+   section). `download_playlist` only ever targeted `match_method IS
+   NULL` tracks — needs-review tracks are deliberately left alone.
+   [HISTORY §7](docs/HISTORY.md#7)
 8. **Phase 2 upgrade-tracking — done.** `quality.select_downloads(track,
    files)` returns `(settled, upgrade)` — practical top pick means no
    upgrade; an impractical top pick becomes `upgrade` (requested in
@@ -851,27 +852,33 @@ compress it here before moving on to the next item.
     `pyproject.toml`'s `license`/`license-files` fields.
     [HISTORY §55](docs/HISTORY.md#55)
 56. **Matching correctness (Phase 1 of a larger work block) — done, two
-    real hypotheses refuted by live data first.** The artist gate was
-    NOT what rejected three real needs-review/unmatched BMTH tracks
-    (`artist_matches` was already `True` for all three, real tag data)
-    — the real cause was missing `(feat. X)` clauses and Spotify's own
-    letter-spacing dot stylization (`"R.i.p."`) that a local rip's tag
-    drops. Cover art was NOT being appended (`clear_pictures()`/
-    `setall`/dict-replace already replace correctly in all 3 formats) —
-    Phase 4 is re-scoped accordingly. `matching.py`'s
-    `normalize_filename_text`/`artist_matches`/`score_title` gained an
-    `aggressive: bool = False` param (default preserves `quality.py`'s
-    exact behavior, verified via its unmodified test suite); new
-    `evaluate_match()` softens the old hard artist gate — an
-    unconfirmable (not contradicted) source still scores, capped at
-    `ARTIST_UNCONFIRMED_SCORE_CAP`. `library/matcher.py` tries
-    `tag_artist` → filename → parent dir → grandparent dir in order.
-    `LibraryService.scan_and_match()` chains scan+match in one call
-    (`seeker library scan --match`; UI's "Scan library" CTA now does
-    both) — the guided scan action used to leave files unmatched until
-    a separate, non-obvious "Re-match library" click. Real before/after
-    against the live DB: Auto 26→27, Needs review 2→1, all three named
-    files reaching a real 100.0. [HISTORY §56](docs/HISTORY.md#56)
+    hypotheses refuted by live data first: the artist gate wasn't
+    rejecting three real BMTH tracks (real tag data confirmed True), and
+    cover art wasn't being appended (all 3 formats already replace).**
+    `matching.py` gained an `aggressive: bool = False` param (default
+    preserves `quality.py`'s exact behavior) and `evaluate_match()`,
+    which softens the old hard artist gate — an unconfirmed-but-not-
+    contradicted source still scores, capped at
+    `ARTIST_UNCONFIRMED_SCORE_CAP`. `library/matcher.py` tries `tag_artist`
+    → filename → parent dir → grandparent dir. `LibraryService.
+    scan_and_match()` chains scan+match in one call (`seeker library scan
+    --match`; UI's scan CTA now does both). Real before/after: Auto
+    26→27, Needs review 2→1, all three files reaching 100.0.
+    [HISTORY §56](docs/HISTORY.md#56)
+57. **Local needs-review match review flow (Phase 2) — done, closes item
+    7 and item 45's demotion bug.** New `track_matches.confirmed_at`
+    (guarded `ALTER TABLE`, verified against the real DB); `match_all()`
+    skips any row with it set — a human-confirmed match no longer gets
+    silently demoted by a later re-match. `LibraryService.
+    get_needs_review_matches`/`confirm_match`/`reject_match` (no
+    double-confirm gate — item 27's precedent, nothing on disk is
+    touched); `seeker review` CLI; Review page gains a third table
+    section. Dashboard double-click on a NEEDS_REVIEW/AWAITING_REVIEW
+    cell jumps to and selects the matching Review row. Real live
+    verification against the production DB: confirmed the one real
+    remaining needs-review row, re-ran match, confirmed it survived with
+    its real score intact (not a 100.0 sentinel).
+    [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

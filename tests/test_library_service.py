@@ -7,6 +7,9 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
@@ -16,8 +19,10 @@ from seeker.library.scanner import LibraryUnavailableError
 from seeker.library.service import (
     LibraryLocationPathAlreadyRegisteredError,
     LibraryService,
+    PlaylistNotFoundError,
 )
 from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
 
@@ -48,7 +53,55 @@ def make_service_with_matcher(tmp_path) -> LibraryService:
         LibraryLocationRepository(database),
         LocalFileRepository(database),
         track_matcher=track_matcher,
+        playlist_repo=PlaylistRepository(database),
     )
+
+
+def seed_needs_review_track_and_file(service: LibraryService) -> None:
+    """A track/local_file pair whose real fuzzy score (85.71, confirmed
+    directly via find_best_match before writing this fixture, not
+    guessed) lands in the needs_review band (70-89 by default
+    thresholds) — "Blinding Lights" vs. a locally-tagged "Blinding
+    Lights Edit".
+    """
+    track_matcher = service.track_matcher
+    assert track_matcher is not None
+
+    with service.database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO library_locations (name, path, added_at) "
+            "VALUES (?, ?, ?)",
+            ("Main", "/music", "2026-01-01T00:00:00+00:00"),
+        )
+        location_id = connection.execute(
+            "SELECT id FROM library_locations WHERE name = 'Main'"
+        ).fetchone()[0]
+
+        track_matcher.tracks.save(
+            Track(
+                id="track1",
+                title="Blinding Lights",
+                artist="The Weeknd",
+                album="After Hours",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        track_matcher.local_files.upsert(
+            LocalFile(
+                location_id=location_id,
+                relative_path="song.mp3",
+                filename="song.mp3",
+                format="mp3",
+                size_bytes=1_000,
+                mtime=1.0,
+                scanned_at="2026-01-01T00:00:00+00:00",
+                tag_artist="The Weeknd",
+                tag_title="Blinding Lights Edit",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
 
 
 def test_add_location_raises_for_nonexistent_path(tmp_path):
@@ -289,3 +342,115 @@ def test_scan_and_match_chains_scan_then_match_in_one_call(tmp_path):
 
     assert stored is not None
     assert stored.match_method == "auto"
+
+
+# --- Roadmap item 56 Phase 2: local-file needs-review flow --------------
+
+def test_get_needs_review_matches_requires_a_track_matcher(tmp_path):
+    service = make_service(tmp_path)
+
+    with pytest.raises(RuntimeError, match="track_matcher"):
+        service.get_needs_review_matches()
+
+
+def test_get_needs_review_matches_returns_real_pairing_context(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+
+    counts = service.track_matcher.match_all()
+    assert counts["needs_review"] == 1
+
+    results = service.get_needs_review_matches()
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.track_id == "track1"
+    assert result.track_artist == "The Weeknd"
+    assert result.track_title == "Blinding Lights"
+    assert result.location_name == "Main"
+    assert result.local_file_path == "song.mp3"
+    assert result.tag_artist == "The Weeknd"
+    assert result.tag_title == "Blinding Lights Edit"
+    assert 70.0 <= result.score < 90.0
+
+
+def test_get_needs_review_matches_scoped_to_playlist_excludes_others(
+        tmp_path,
+):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="My Playlist", track_count=1),
+            connection,
+        )
+        service.track_matcher.tracks.save_playlist_track(
+            "p1", "track1", connection
+        )
+        service.playlists.save(
+            Playlist(id="p2", name="Other Playlist", track_count=0),
+            connection,
+        )
+
+    assert len(service.get_needs_review_matches("My Playlist")) == 1
+    assert service.get_needs_review_matches("Other Playlist") == []
+
+
+def test_get_needs_review_matches_unknown_playlist_raises(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+
+    with pytest.raises(PlaylistNotFoundError):
+        service.get_needs_review_matches("Does Not Exist")
+
+
+def test_confirm_match_stamps_confirmed_at_without_a_100_score_sentinel(
+        tmp_path,
+):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+
+    with service.database.transaction() as connection:
+        before = service.track_matcher.track_matches.get_by_track_id(
+            "track1", connection
+        )
+
+    service.confirm_match("track1")
+
+    with service.database.transaction() as connection:
+        after = service.track_matcher.track_matches.get_by_track_id(
+            "track1", connection
+        )
+
+    assert after.match_method == "auto"
+    assert after.confirmed_at is not None
+    # The real computed score stays visible — never overwritten with a
+    # 100.0 sentinel (item 45's precedent).
+    assert after.score == before.score
+    assert after.local_file_id == before.local_file_id
+
+    # And it now genuinely survives a re-match, end to end.
+    counts = service.track_matcher.match_all()
+    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+
+
+def test_reject_match_deletes_the_row_no_blacklist(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+
+    service.reject_match("track1")
+
+    with service.database.transaction() as connection:
+        stored = service.track_matcher.track_matches.get_by_track_id(
+            "track1", connection
+        )
+
+    assert stored is None
+
+    # No blacklist — the same candidate can resurface on a later match
+    # run (item 26's deliberate non-feature, mirrored here).
+    counts = service.track_matcher.match_all()
+    assert counts["needs_review"] == 1

@@ -22,12 +22,15 @@ from seeker.models.data_locations import DataLocations
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
+from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_status import (
+    AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
+    NEEDS_REVIEW,
     NOT_FOUND,
     TrackStatus,
 )
@@ -85,11 +88,15 @@ class FakeLibraryService:
             self,
             locations: list | None = None,
             has_scanned_library: bool = True,
+            needs_review_matches: list | None = None,
     ):
         self._locations = locations or []
         self._has_scanned_library = has_scanned_library
         self.scan_all_calls = 0
         self.scan_and_match_calls = 0
+        self._needs_review_matches = needs_review_matches or []
+        self.confirm_match_calls: list[str] = []
+        self.reject_match_calls: list[str] = []
 
     def scan_all(self) -> None:
         self.scan_all_calls += 1
@@ -100,6 +107,17 @@ class FakeLibraryService:
             "added": 0, "updated": 0, "removed": 0, "unchanged": 0,
             "auto": 0, "needs_review": 0, "unmatched": 0,
         }
+
+    def get_needs_review_matches(
+            self, playlist_name: str | None = None,
+    ) -> list:
+        return self._needs_review_matches
+
+    def confirm_match(self, track_id: str) -> None:
+        self.confirm_match_calls.append(track_id)
+
+    def reject_match(self, track_id: str) -> None:
+        self.reject_match_calls.append(track_id)
 
     def list_locations(self) -> list:
         return self._locations
@@ -291,6 +309,7 @@ class FakeApplication:
             spotify_configured: bool = True,
             has_scanned_library: bool = True,
             history_events: list | None = None,
+            needs_review_matches: list | None = None,
     ):
         self.sync_service = FakeSyncService(playlists)
         self.history_service = FakeHistoryService(history_events)
@@ -305,7 +324,7 @@ class FakeApplication:
             statuses, active_downloads,
         )
         self.library_service = FakeLibraryService(
-            locations, has_scanned_library,
+            locations, has_scanned_library, needs_review_matches,
         )
         self.spotify_configured = spotify_configured
         self.track_matcher = FakeTrackMatcher()
@@ -413,7 +432,7 @@ def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
     assert window._nav_buttons["downloads"].text() == "Downloads  (2)"
 
     window._render_review_items(
-        ([(_make_track("t1"), _make_review_candidate("t1"))], [])
+        ([(_make_track("t1"), _make_review_candidate("t1"))], [], [])
     )
     assert window._nav_buttons["review"].text() == "Review  (1)"
 
@@ -2224,6 +2243,163 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
         lambda: window.review_needs_table.rowCount() == 1, timeout=2000,
     )
     assert window.review_upgrades_table.rowCount() == 1
+
+
+def _make_needs_review_match(track_id: str = "t1") -> NeedsReviewMatch:
+    return NeedsReviewMatch(
+        track_id=track_id,
+        track_artist="Artist",
+        track_title="Title",
+        local_file_id=1,
+        local_file_path="Music/song.mp3",
+        location_name="Main",
+        score=85.7,
+        tag_artist="Artist",
+        tag_title="Title Edit",
+    )
+
+
+def test_review_tab_renders_local_needs_review_matches(qtbot):
+    matches = [_make_needs_review_match()]
+    application = FakeApplication(needs_review_matches=matches)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+    )
+    assert window.review_local_table.item(0, 0).text() == "Artist - Title"
+    assert window.review_local_table.item(0, 1).text() == "Music/song.mp3"
+    assert window.review_local_table.item(0, 2).text() == "Main"
+    assert window.review_local_table.item(0, 3).text() == "85.7"
+    assert window.review_local_table.cellWidget(0, 4) is not None
+
+
+def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
+    application = FakeApplication(
+        needs_review_matches=[_make_needs_review_match(track_id="tc")]
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+    )
+    confirm_button = window.review_local_table.cellWidget(
+        0, 4
+    ).findChildren(QPushButton)[0]
+    confirm_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.library_service.confirm_match_calls == ["tc"],
+        timeout=2000,
+    )
+
+
+def test_review_tab_reject_local_match_calls_reject_match(qtbot):
+    application = FakeApplication(
+        needs_review_matches=[_make_needs_review_match(track_id="tc")]
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+    )
+    reject_button = window.review_local_table.cellWidget(
+        0, 4
+    ).findChildren(QPushButton)[1]
+    reject_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.library_service.reject_match_calls == ["tc"],
+        timeout=2000,
+    )
+
+
+def test_review_nav_badge_counts_all_three_sections(qtbot):
+    application = FakeApplication(
+        review_candidates=[
+            (_make_track(track_id="tc"), _make_review_candidate(track_id="tc"))
+        ],
+        pending_upgrades=[_make_upgrade_details(request_id=5)],
+        needs_review_matches=[_make_needs_review_match(track_id="tl")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window._nav_buttons["review"].text() == "Review  (3)",
+        timeout=2000,
+    )
+
+
+# --- Roadmap item 56 §2.4: Dashboard double-click -> Review -----------------
+
+def test_double_clicking_needs_review_row_navigates_to_review_and_selects_it(
+        qtbot,
+):
+    status = _make_track_status(track_id="t1", state=NEEDS_REVIEW)
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        statuses=[status],
+        needs_review_matches=[_make_needs_review_match(track_id="t1")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(lambda: window.track_table.rowCount() == 1, timeout=2000)
+    window._on_track_table_cell_double_clicked(0, 1)
+
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["review"]
+    )
+    qtbot.waitUntil(
+        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+    )
+    qtbot.waitUntil(
+        lambda: window.review_local_table.selectedItems() != [],
+        timeout=2000,
+    )
+    assert window.review_local_table.currentRow() == 0
+
+
+def test_double_clicking_in_library_row_is_a_no_op(qtbot):
+    status = _make_track_status(track_id="t1", state=IN_LIBRARY)
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+        statuses=[status],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(lambda: window.track_table.rowCount() == 1, timeout=2000)
+    window._on_track_table_cell_double_clicked(0, 1)
+
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["dashboard"]
+    )
+
+
+def test_needs_review_status_cell_has_tooltip_other_states_dont(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=2)],
+        statuses=[
+            _make_track_status(track_id="t1", state=NEEDS_REVIEW),
+            _make_track_status(track_id="t2", state=IN_LIBRARY),
+        ],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(lambda: window.track_table.rowCount() == 2, timeout=2000)
+    assert window.track_table.item(0, 1).toolTip() != ""
+    assert window.track_table.item(1, 1).toolTip() == ""
 
 
 def _make_track_status(

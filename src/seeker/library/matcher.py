@@ -161,8 +161,24 @@ class TrackMatcher:
         with self.database.transaction() as connection:
             tracks = self.tracks.get_all(connection)
             local_files = self.local_files.get_all(connection)
+            existing_matches = {
+                match.track_id: match
+                for match in self.track_matches.get_all(connection)
+            }
 
             for track in tracks:
+                # A human-confirmed match (roadmap item 56 Phase 2) must
+                # survive a re-match untouched — this is what closes item
+                # 45's pre-existing demotion bug (match_all() used to
+                # recompute every row from scratch with no concept of
+                # "already confirmed," so a later run could silently
+                # demote a just-confirmed match back to needs_review).
+                existing = existing_matches.get(track.id)
+
+                if existing is not None and existing.confirmed_at is not None:
+                    counts["auto"] += 1
+                    continue
+
                 candidates = [
                     local_file
                     for local_file in local_files

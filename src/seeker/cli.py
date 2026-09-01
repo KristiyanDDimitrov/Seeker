@@ -11,6 +11,9 @@ from seeker.library.metadata_service import (
     PlaylistNotFoundError as MetadataPlaylistNotFoundError,
 )
 from seeker.library.scanner import LibraryUnavailableError
+from seeker.library.service import (
+    PlaylistNotFoundError as LibraryReviewPlaylistNotFoundError,
+)
 from seeker.models.playlist import Playlist
 from seeker.soulseek.client import SoulseekDownloadError
 from seeker.soulseek.download_service import (
@@ -149,6 +152,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Also list each auto-matched track with score and filename.",
+    )
+
+    review_parser = subparsers.add_parser(
+        "review",
+        help=(
+            "Confirm or reject needs-review LOCAL-FILE matches (distinct "
+            "from 'downloads review', which is for SoulSeek upgrade "
+            "candidates)."
+        ),
+    )
+    review_parser.add_argument(
+        "playlist_name",
+        nargs="?",
+        default=None,
+        help=(
+            "Scope the listing to a single playlist. Omit to list "
+            "across all synced playlists."
+        ),
+    )
+    review_parser.add_argument(
+        "--confirm",
+        metavar="TRACK_ID",
+        default=None,
+        help="Confirm a needs-review match as correct.",
+    )
+    review_parser.add_argument(
+        "--reject",
+        metavar="TRACK_ID",
+        default=None,
+        help="Reject a needs-review match (no blacklist — it can "
+             "resurface on a later match run).",
     )
 
     download_parser = subparsers.add_parser(
@@ -598,6 +632,50 @@ def handle_check(
         print(f"  {artist} - {title}")
 
 
+def handle_review(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.confirm:
+        application.library_service.confirm_match(parsed.confirm)
+        print(f"Confirmed match for track {parsed.confirm}.")
+        return
+
+    if parsed.reject:
+        application.library_service.reject_match(parsed.reject)
+        print(f"Rejected match for track {parsed.reject}.")
+        return
+
+    playlist_name = None
+
+    if parsed.playlist_name:
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
+        playlist_name = playlist.name
+        print(f"Needs-review local-file matches for '{playlist.name}':")
+    else:
+        print("Needs-review local-file matches across all synced playlists:")
+
+    matches = application.library_service.get_needs_review_matches(
+        playlist_name
+    )
+
+    if not matches:
+        print("  None.")
+        return
+
+    for match in matches:
+        print(
+            f"  [{match.track_id}] {match.track_artist} - "
+            f"{match.track_title} (score: {match.score:.1f})"
+        )
+        print(
+            f"      -> {match.location_name}: {match.local_file_path} "
+            f"(tag: {match.tag_artist!r} - {match.tag_title!r})"
+        )
+
+
 def handle_history(
         application: Application,
         parsed: argparse.Namespace,
@@ -646,6 +724,9 @@ def run(
         elif parsed.command == "library":
             handle_library(application, parsed)
 
+        elif parsed.command == "review":
+            handle_review(application, parsed)
+
         elif parsed.command == "download":
             handle_download(application, parsed)
 
@@ -672,6 +753,7 @@ def run(
             PlaylistNotFoundError,
             SyncPlaylistNotFoundError,
             MetadataPlaylistNotFoundError,
+            LibraryReviewPlaylistNotFoundError,
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
             DuplicateLibraryLocationNotFoundError,

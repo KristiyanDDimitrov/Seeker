@@ -322,6 +322,7 @@ class Application:
                 LibraryLocationRepository(self.database),
                 LocalFileRepository(self.database),
                 track_matcher=self.track_matcher,
+                playlist_repo=PlaylistRepository(self.database),
             )
 
         return self._library_service

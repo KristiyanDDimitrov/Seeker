@@ -246,6 +246,46 @@ def test_untagged_file_matches_via_filename_alone():
     assert score >= 90
 
 
+def test_match_all_never_recomputes_a_confirmed_row(tmp_path):
+    # Roadmap item 56 Phase 2 — closes item 45's pre-existing demotion
+    # bug: a human-confirmed match must survive a re-match untouched,
+    # even when the underlying candidate would otherwise now score
+    # low enough to demote (or vanish) on a fresh recompute.
+    matcher = make_matcher(tmp_path)
+
+    track = make_track()
+    local_file = make_local_file()
+
+    seed(matcher, track, local_file)
+    matcher.match_all()
+
+    with matcher.database.transaction() as connection:
+        matcher.track_matches.confirm(
+            track.id, "2026-01-01T00:00:00+00:00", connection,
+        )
+
+    with matcher.database.transaction() as connection:
+        # Sabotage the candidate so a fresh recompute would score it far
+        # below even needs_review — proves the row is genuinely skipped,
+        # not coincidentally re-arriving at the same classification.
+        sabotaged = replace(local_file, tag_artist="Nothing Like It At All")
+        matcher.local_files.upsert(sabotaged, connection)
+
+    counts = matcher.match_all()
+
+    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+
+    with matcher.database.transaction() as connection:
+        stored = matcher.track_matches.get_by_track_id(track.id, connection)
+
+    assert stored.match_method == "auto"
+    assert stored.confirmed_at == "2026-01-01T00:00:00+00:00"
+    # local_file_id/score are untouched by confirm() itself — still the
+    # real values from the original, honest match_all() run.
+    assert stored.local_file_id is not None
+    assert stored.score >= 90
+
+
 def _seed_track_with_match(
         matcher: TrackMatcher,
         connection,

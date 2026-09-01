@@ -9,6 +9,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
 from seeker.models.local_file import LocalFile
+from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -56,9 +57,13 @@ class FakeApplication:
 
 
 class FakeLibraryServiceForCli:
-    def __init__(self):
+    def __init__(self, needs_review_matches: list | None = None):
         self.scan_all_calls = 0
         self.scan_and_match_calls = 0
+        self._needs_review_matches = needs_review_matches or []
+        self.get_needs_review_matches_calls: list[str | None] = []
+        self.confirm_match_calls: list[str] = []
+        self.reject_match_calls: list[str] = []
 
     def scan_all(self) -> dict:
         self.scan_all_calls += 1
@@ -70,6 +75,18 @@ class FakeLibraryServiceForCli:
             "added": 1, "updated": 0, "removed": 0, "unchanged": 0,
             "auto": 1, "needs_review": 0, "unmatched": 0,
         }
+
+    def get_needs_review_matches(
+            self, playlist_name: str | None = None,
+    ) -> list:
+        self.get_needs_review_matches_calls.append(playlist_name)
+        return self._needs_review_matches
+
+    def confirm_match(self, track_id: str) -> None:
+        self.confirm_match_calls.append(track_id)
+
+    def reject_match(self, track_id: str) -> None:
+        self.reject_match_calls.append(track_id)
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -612,3 +629,98 @@ def test_library_scan_with_match_flag_calls_scan_and_match(tmp_path):
 
     assert library_service.scan_and_match_calls == 1
     assert library_service.scan_all_calls == 0
+
+
+# --- Roadmap item 56 Phase 2: `seeker review` ----------------------------
+
+def test_review_lists_needs_review_matches_across_all_playlists(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    match = NeedsReviewMatch(
+        track_id="track1",
+        track_artist="The Weeknd",
+        track_title="Blinding Lights",
+        local_file_id=1,
+        local_file_path="song.mp3",
+        location_name="Main",
+        score=85.71,
+        tag_artist="The Weeknd",
+        tag_title="Blinding Lights Edit",
+    )
+    library_service = FakeLibraryServiceForCli(needs_review_matches=[match])
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["review"],
+    )
+
+    assert library_service.get_needs_review_matches_calls == [None]
+    output = capsys.readouterr().out
+    assert "[track1]" in output
+    assert "The Weeknd - Blinding Lights" in output
+    assert "score: 85.7" in output
+    assert "song.mp3" in output
+
+
+def test_review_empty_prints_a_clear_message(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli(needs_review_matches=[])
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["review"],
+    )
+
+    output = capsys.readouterr().out
+    assert "None." in output
+
+
+def test_review_scoped_to_playlist_resolves_the_name_first(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli()
+    sync_service = FakeSyncService(
+        [Playlist(id="p1", name="My Playlist", track_count=1)]
+    )
+
+    cli.run(
+        FakeApplication(
+            matcher,
+            library_service=library_service,
+            sync_service=sync_service,
+        ),
+        ["review", "My Playlist"],
+    )
+
+    assert library_service.get_needs_review_matches_calls == ["My Playlist"]
+
+
+def test_review_confirm_calls_confirm_match(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli()
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["review", "--confirm", "track1"],
+    )
+
+    assert library_service.confirm_match_calls == ["track1"]
+    assert library_service.reject_match_calls == []
+    assert library_service.get_needs_review_matches_calls == []
+    assert "Confirmed" in capsys.readouterr().out
+
+
+def test_review_reject_calls_reject_match(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli()
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["review", "--reject", "track1"],
+    )
+
+    assert library_service.reject_match_calls == ["track1"]
+    assert library_service.confirm_match_calls == []
+    assert "Rejected" in capsys.readouterr().out

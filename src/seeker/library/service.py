@@ -8,9 +8,13 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.playlist_repository import (
+    PlaylistRepository,
+)
 from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
+from seeker.models.needs_review_match import NeedsReviewMatch
 
 
 class LibraryLocationPathAlreadyRegisteredError(RuntimeError):
@@ -20,6 +24,10 @@ class LibraryLocationPathAlreadyRegisteredError(RuntimeError):
             f"'{existing.path}' is already registered as "
             f"'{existing.name}'."
         )
+
+
+class PlaylistNotFoundError(RuntimeError):
+    pass
 
 
 # Untuned constant — how many auto-suffix attempts (" (2)", " (3)", ...)
@@ -36,16 +44,19 @@ class LibraryService:
         location_repo: LibraryLocationRepository,
         local_file_repo: LocalFileRepository,
         track_matcher: TrackMatcher | None = None,
+        playlist_repo: PlaylistRepository | None = None,
     ):
         self.database = database
         self.locations = location_repo
         self.local_files = local_file_repo
         self.scanner = LibraryScanner(local_file_repo, database)
-        # Optional — only scan_and_match() needs it (roadmap item 56).
-        # Every existing caller that constructs a LibraryService without
-        # one (tests included) is unaffected; scan_all()/scan a location
-        # alone still work with no matcher at all.
+        # Both optional — only scan_and_match()/get_needs_review_matches()
+        # etc. need them (roadmap item 56). Every existing caller that
+        # constructs a LibraryService without them (tests included) is
+        # unaffected; scan_all()/scan a location alone still work with
+        # neither.
         self.track_matcher = track_matcher
+        self.playlists = playlist_repo
 
     def add_location(self, name: str, path: str) -> LibraryLocation:
         resolved_path = Path(path)
@@ -223,3 +234,134 @@ class LibraryService:
         match_counts = self.track_matcher.match_all()
 
         return {**scan_totals, **match_counts}
+
+    def get_needs_review_matches(
+            self,
+            playlist_name: str | None = None,
+    ) -> list[NeedsReviewMatch]:
+        """Roadmap item 56 Phase 2 — closes item 7's long-outstanding
+        gap: a `review` command/screen for needs_review LOCAL-FILE
+        matches (distinct from the Soulseek-side review candidates
+        DownloadService already exposes). Resolved with enough context
+        for a human to judge the pairing, not just the bare score.
+        """
+        if self.track_matcher is None:
+            raise RuntimeError(
+                "get_needs_review_matches() requires a track_matcher — "
+                "this LibraryService was constructed without one."
+            )
+
+        with self.database.transaction() as connection:
+            if playlist_name is not None:
+                if self.playlists is None:
+                    raise RuntimeError(
+                        "get_needs_review_matches(playlist_name=...) "
+                        "requires a playlist repository — this "
+                        "LibraryService was constructed without one."
+                    )
+
+                playlist = self.playlists.get_by_name(
+                    playlist_name, connection
+                )
+
+                if playlist is None:
+                    raise PlaylistNotFoundError(
+                        f"No playlist named '{playlist_name}' has been "
+                        f"synced."
+                    )
+
+                tracks = self.track_matcher.tracks.get_all_for_playlist(
+                    playlist.id, connection
+                )
+            else:
+                tracks = self.track_matcher.tracks.get_all(connection)
+
+            tracks_by_id = {track.id: track for track in tracks}
+            matches = self.track_matcher.track_matches.get_all(connection)
+
+            results = []
+
+            for match in matches:
+                if match.match_method != "needs_review":
+                    continue
+
+                track = tracks_by_id.get(match.track_id)
+
+                if track is None or match.local_file_id is None:
+                    continue
+
+                local_file = self.local_files.get_by_id(
+                    match.local_file_id, connection
+                )
+
+                if local_file is None:
+                    continue
+
+                location = self.locations.get_by_id(
+                    local_file.location_id, connection
+                )
+
+                # Loaded from the DB via get_by_id above, so .id is set.
+                assert local_file.id is not None
+
+                results.append(
+                    NeedsReviewMatch(
+                        track_id=track.id,
+                        track_artist=track.artist,
+                        track_title=track.title,
+                        local_file_id=local_file.id,
+                        local_file_path=local_file.relative_path,
+                        location_name=(
+                            location.name if location is not None else "?"
+                        ),
+                        # A needs_review-classified match always has a
+                        # real numeric score (that's what put it in this
+                        # bucket) — same `or 0.0` type-satisfying pattern
+                        # generate_match_report() already uses.
+                        score=match.score or 0.0,
+                        tag_artist=local_file.tag_artist,
+                        tag_title=local_file.tag_title,
+                    )
+                )
+
+        results.sort(key=lambda item: item.score, reverse=True)
+
+        return results
+
+    def confirm_match(self, track_id: str) -> None:
+        """A human confirmed a needs_review local-file match — sets
+        match_method='auto' and stamps confirmed_at, WITHOUT touching
+        local_file_id/score (the real computed score stays visible
+        rather than a 100.0 sentinel — item 45's precedent). No file on
+        disk is touched, so no double-confirm gate — this project's
+        confirmation gate is for file replacement, not DB state (item
+        27's precedent).
+        """
+        if self.track_matcher is None:
+            raise RuntimeError(
+                "confirm_match() requires a track_matcher — this "
+                "LibraryService was constructed without one."
+            )
+
+        with self.database.transaction() as connection:
+            self.track_matcher.track_matches.confirm(
+                track_id,
+                datetime.now(timezone.utc).isoformat(),
+                connection,
+            )
+
+    def reject_match(self, track_id: str) -> None:
+        """Deletes the track_matches row entirely — the track returns to
+        unmatched and becomes eligible for download. No blacklist,
+        matching reject_review_candidate's deliberate non-feature (item
+        26): the same candidate can resurface on a later match run, and
+        that is fine.
+        """
+        if self.track_matcher is None:
+            raise RuntimeError(
+                "reject_match() requires a track_matcher — this "
+                "LibraryService was constructed without one."
+            )
+
+        with self.database.transaction() as connection:
+            self.track_matcher.track_matches.delete(track_id, connection)

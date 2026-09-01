@@ -89,6 +89,9 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "local_files", "fingerprint_computed_at", "TEXT"
     )
+    _add_column_if_missing(
+        connection, "track_matches", "confirmed_at", "TEXT"
+    )
 
 
 def _add_column_if_missing(
