@@ -11,7 +11,124 @@ investigation. If you're trying to understand *why* a fix looks the way
 it does, or want the full evidence behind a "verified live" claim, this
 is the file to read — `CLAUDE.md` deliberately does not repeat it.
 
-Entries are numbered to match `CLAUDE.md`'s roadmap items exactly (1-32).
+Numbered entries match `CLAUDE.md`'s roadmap items exactly (currently
+1-53, with a few lettered sub-addenda for follow-on fixes to an
+existing item). The "Known issues / backlog" section below mirrors
+`CLAUDE.md`'s own section of the same name, one slugged heading per
+bullet, for the handful of early fixes that predate the numbered
+roadmap.
+
+---
+
+## Known issues / backlog
+
+### CLI bypassed Application for playlist listing
+
+`cli.py::handle_playlists` instantiated `PlaylistRepository` directly
+instead of going through `Application`, violating this project's own
+layering rule (presentation code must never call a repository
+directly). Fixed to go through `application.sync_service`/
+`application.download_service` exclusively, matching every other CLI
+handler. Exact point of the fix is uncertain — it was already correct
+by the time the polish pass (item 15) audited the CLI layer, likely
+folded into an earlier phase's cleanup rather than done as its own
+dedicated change.
+
+### matcher and quality fuzzy-matching logic drifted apart twice
+
+`library/matcher.py` and `soulseek/quality.py` each had their own copy
+of the artist/title fuzzy-matching logic (`artist_matches`, title
+scoring, `normalize_filename_text`), and the two copies drifted apart
+twice — same root cause as the `AUDIO_EXTENSIONS` duplication (item 2's
+scanner/quality split), just not caught as early.
+
+**First drift.** `quality.py` was fixed to score artist+title combined
+instead of title-only (item 5, the 62.5-on-a-clean-match discovery);
+`matcher.py` never got that fix, so a real download
+(`3AMDISCO - Get Back.wav`, untagged WAV, `240KM/H` playlist) stayed
+unmatched even once indexed.
+
+**Second drift, found investigating the first.** `matcher.py`'s
+`artist_matches(track.artist, candidate.tag_artist)` hard-gated on
+`tag_artist` with no filename fallback — `tag_artist is None` (routine
+for WAVs; mutagen extracted no tags at all here) rejected the
+candidate outright before title scoring ever ran, whereas `quality.py`
+never had this problem because `SoulseekFile` has no tag concept at
+all — it always passed the normalized filename itself as the "local
+artist" for containment-checking.
+
+**Fix.** Consolidated both into `seeker/matching.py` (`artist_matches`,
+`score_title`, `resolve_text_source`, `normalize_filename_text`,
+`AUTO_MATCH_THRESHOLD`, `NEEDS_REVIEW_THRESHOLD`) —
+`resolve_text_source(tag_value, filename)` gives both call sites
+(artist and title) the same tag-or-filename-stem fallback, so
+`matcher.py` now falls back to filename-containment for a null
+`tag_artist` exactly like `quality.py` already did. Applying
+`quality.py`'s combined-scoring fix naively to `matcher.py` caused a
+*new* regression, caught by the existing
+`test_close_match_scores_at_least_90_and_lands_in_auto` test: a clean,
+correctly-tagged match (`tag_title` with no artist in it, e.g.
+"Blinding Lights") scored *worse* combined (73.2) than title-only
+(100), because the combined fix was specifically compensating for
+artist-prefixed filenames, not clean tags. Fixed `score_title` to
+compute both title-only and combined scores and take the max — robust
+to either shape without needing to know which one `local_title_source`
+actually is.
+
+**Verified against real data:** `seeker library match` auto-matches
+`3amdisco - Get Back` at score 94.44 against the real untagged WAV
+(`local_file_id` 3218), and `seeker check` reflects it as matched
+instead of unmatched. See
+`tests/test_matcher.py::test_untagged_file_matches_via_filename_alone`.
+
+### Spotify field-name history: get_current_user_playlists
+
+`SpotifyClient.get_current_user_playlists` was reading
+`playlist["tracks"]["total"]`. Live `/me/playlists` responses never
+contain a `tracks` key — the per-playlist total is under
+`playlist["items"]["total"]` instead (confirmed against all 214 real
+playlists synced in item 1's real run, 0 had `tracks`). This code path
+had never actually run against the live API before (blocked on Spotify
+dev quota), so the earlier "fix" to `tracks` was never live-verified
+and was wrong. Fixed for real once quota reset;
+`tests/test_spotify_client.py` updated to match.
+
+### Spotify field-name and endpoint history: get_playlist_tracks
+
+`SpotifyClient.get_playlist_tracks` was reading `item.get("item")`
+instead of `item.get("track")` — the reverse of what turned out to be
+correct, discovered through two rounds of live verification rather
+than one lucky guess.
+
+**Endpoint path.** Originally `/playlists/{id}/items`, changed to
+`/playlists/{id}/tracks` based on pre-migration docs, then a live 403
+plus current Spotify developer community reports confirmed Spotify's
+Feb 2026 API migration deprecated `/playlists/{id}/tracks` in favor of
+`/playlists/{id}/items` — so the path is back to `/playlists/{id}/items`
+for real.
+
+**Per-entry field, same root cause, second symptom.** Originally read
+each entry's payload from `entry["track"]`, "corrected" to
+`entry["item"]` when the endpoint path was first fixed, but that
+field-name change was never live-verified — the switch to `/items`
+silently swapped `seeker sync-tracks` to the `/items` endpoint but the
+parsing logic still read `"track"`, so every entry was skipped and
+playlists synced "0 tracks" for real playlists with real tracks (found
+live against `240KM/H`, playlist `1xfPRHLLuGBLlB3bIo5kA5`, 3 real
+tracks). A raw unparsed GET confirmed: the paging envelope's `items`
+array is fine (3 entries, `total: 3`, `next: null`), but no entry has
+a `"track"` key at all — the per-track payload now lives under
+`entry["item"]`, and the old `"track"` key is repurposed as a
+*boolean* type-discriminator field living inside that `item` dict
+(`item["track"] == True` for tracks, presumably `False` for podcast
+episodes) alongside `item["type"] == "track"`.
+
+**Fix.** Field name resolved to `item` for real this time, with an
+explicit `track_data.get("type") != "track"` filter added as a
+defensive skip for non-track entries, using the real discriminator
+field rather than relying only on empty `artists` as an incidental
+signal. `tests/test_spotify_client.py` updated to match the real live
+entry shape and to cover the non-track skip.
 
 ---
 
@@ -5032,6 +5149,82 @@ passes rather than unit tests. `mypy --strict` clean across all 60
 passed, 1 skipped, run three times in a row with zero crashes after
 the real fix landed.
 
+### 33
+
+Task: a per-download speed/ETA estimate on the Downloads tab.
+`ui/download_eta.py::DownloadEtaTracker` — purely in-memory, keyed by
+`download_requests.id`, no schema/service-layer changes. Confirmed
+directly, not assumed: `Application.dashboard_service` is a cached
+singleton for the app's whole lifetime, the identical pattern
+`track_matcher` already relies on (item 28 §4) — see
+`test_dashboard_service_is_a_cached_singleton_across_app_lifetime`.
+
+Samples are recorded only on `MainWindow`'s 20s
+`BACKEND_POLL_INTERVAL_MS` cycle — `_trigger_backend_poll`'s
+`on_finished` chains a fresh `get_active_downloads()` fetch into
+`_record_eta_samples` — never on the 2s display-refresh tick, which
+would just re-diff against the same DB row `poll_downloads()` hasn't
+touched since the last real network poll. Speed = delta bytes / delta
+t between the last two samples for a given request id;
+"Calculating…" until a second sample exists or the latest delta is
+non-positive; "Stalled" once `STALL_SAMPLE_COUNT = 3` (untuned)
+consecutive samples report identical bytes — deliberately more than
+one flat sample before calling it a stall. History is capped at 3
+samples per id and evicted the moment an id drops out of
+`get_active_downloads()` — this project has hunted the
+unbounded-growth version of this leak class before, for real Qt
+objects (items 29/32), so the same discipline applies here even for
+plain Python state. ETA only ever renders once a download's progress
+bar is determinate — the indeterminate-bar behavior is untouched.
+
+### 34
+
+Task: contextual help in the UI. Presentation-only, no service-layer
+changes. `ui/help_text.py` centralizes every piece of UI copy as
+named constants — tooltips, tab subtitles, the About dialog's text —
+so a control shared between two windows
+(`library_location_picker.py`'s folder-picker flow) has exactly one
+copy to edit, the same "shared thing lives in exactly one place"
+discipline `matching.py`'s consolidation established for logic.
+Inventoried every clickable control across `ui/*.py` directly (grepped
+every `QPushButton(`/`QCheckBox(`/`QLineEdit(`/`clicked.connect`/
+`toggled.connect` call site, not assumed from memory), including
+per-row buttons built inside a render loop — every one now has
+`setToolTip()`.
+
+A short, persistent one-line subtitle sits under each of `MainWindow`'s
+three tab headers and under `SettingsWindow`'s own header — required
+restructuring the Dashboard and Downloads tabs' central widgets into a
+`QVBoxLayout` wrapping [subtitle, existing content]. `MainWindow`
+gained a real `QMenuBar` with a `Help` menu and an "About Seeker"
+action opening a new `AboutDialog`, whose version line reads
+`importlib.metadata.version("seeker")` rather than a second hardcoded
+literal that could drift from `pyproject.toml`, falling back to no
+version line if package metadata isn't available (e.g. a frozen build
+with no installed dist-info).
+
+### 35
+
+Task: support-the-creator links. `SUPPORT_LINKS` in `ui/help_text.py`
+held two deliberately obvious placeholders (real Revolut link filled
+in by item 41; PayPal's stayed a placeholder). Presentation-only: both
+`AboutDialog` (item 34) and a new wizard "you're all set" page call
+`webbrowser.open()` directly, the identical mechanism the Spotify
+OAuth flow already uses.
+
+The wizard had no final screen at all before this — confirmed live by
+reading `wizard.py` rather than assumed, and confirmed with the user
+before inventing one. Added a fourth stack page (`_build_done_page`,
+index 3, never an `_initial_step()` resume target) shown via a new
+`_advance_to_done_page()` in place of the old
+`_advance_to_dashboard()`'s immediate close+`on_complete()`; a real
+"Go to Dashboard" button (`self.continue_button`) now does that
+close+`on_complete()` call itself (`_finish()`). Both existing call
+sites (`_handle_health_result`'s HEALTHY branch,
+`_on_skip_soulseek_clicked`) now land on this page instead of closing
+immediately. No mention on the daily-use Dashboard/Downloads/Review
+screens, as scoped.
+
 ### 36
 
 Packaging polish follow-on task (macOS ad-hoc signing + `.dmg` readme,
@@ -7149,6 +7342,41 @@ change alone (up from the 480 baseline: 3 new
 `test_download_service.py` tests for the indexing fix, 1 for the
 glob-escaping fix, 1 new UI test for the backend-poll refresh).
 
+### 46
+
+Task: tagged tracks should stop asking to be tagged.
+`TrackStatus` gains `tagged_at: str | None` (ISO string, matching this
+codebase's existing str-not-datetime convention for every other stored
+timestamp — deliberately not the `datetime` type an earlier draft of
+this task specified), resolved in `DashboardService._compute_status`
+from the matched `local_files` row. Dashboard Actions column:
+`IN_LIBRARY`+untagged → the existing "Tag" button; `IN_LIBRARY`+tagged
+→ a muted "Tagged" label with a tooltip showing the local date/time;
+anything else → blank, unchanged. Right-click on a tagged row offers
+"Re-tag."
+
+**The backend `force` flag and CLI `--force` for `library tag` turned
+out to already exist**, built in an earlier, uncommitted session with
+no corresponding roadmap entry — confirmed by reading
+`metadata_service.py`/`cli.py` directly before writing anything, not
+assumed. Only the UI side (a "Re-tag already tagged files" checkbox on
+the tagging panel, wired through `_resolve_tag_options`, plus the
+per-row "Re-tag" menu action) and `TrackStatus.tagged_at`/the
+Actions-column display were new.
+
+New `ui/formatting.py` — `format_timestamp`/`format_file_size`/
+`format_speed`/`format_duration_seconds`, shared by this, a future
+History page, and the Downloads ETA. `download_eta.py`'s own
+`format_eta_seconds` was moved in (re-exported under its old name)
+rather than kept as a second copy. **Real, confirmed fact used to
+write the timestamp conversion correctly:** every stored timestamp in
+this codebase is written via `datetime.now(timezone.utc).isoformat()`
+— timezone-AWARE UTC, not naive — so `format_timestamp` uses
+`.astimezone()` (correct for an aware value) rather than assuming a
+naive-UTC value that would need a manual UTC-offset attach first;
+verified directly against the write sites before writing the
+formatter.
+
 ### 47
 
 Task: build a dark design system (`ui/theme.py`, color/spacing tokens,
@@ -7349,6 +7577,51 @@ asserts `"chunk" in bar.styleSheet()`; new
 covers the Dashboard's own per-track progress cell, which shares the
 same helper. `mypy --strict` clean; full suite 511 passed / 1 skipped.
 
+### 48
+
+Task: replace `MainWindow`'s `QTabWidget` shell with a sidebar.
+Fixed-`SIDEBAR_WIDTH=200` sidebar (`BG_SIDEBAR`, the "Seeker"
+wordmark, then Dashboard/Downloads/Review/Duplicates/History as
+checkable nav buttons in one exclusive `QButtonGroup`, a stretch, then
+Help/Settings pinned at the bottom) driving a `QStackedWidget`. Each
+existing tab body became a page via one shared `_build_page(title,
+subtitle, content)` helper — title + the existing `help_text.py`
+subtitle above the content, identical `24/20` page margins and `12px`
+spacing everywhere, per Phase 3's own documented layout convention
+(the first place that convention is enforced by code rather than
+copied by hand). `_show_page(key)` sets the stack index and the
+matching nav button's checked state; `_on_tab_changed`/
+`_duplicates_tab_index` renamed `_on_page_changed`/
+`_duplicates_page_index` — same lazy-load-on-first-real-visit logic,
+unchanged. Window default `1180×760`, minimum `960×640`.
+
+**Settings deliberately stays a dialog, not a page** — it was never a
+tab body to begin with (already a separate modal `QDialog`); converting
+its own internal 4-tab structure into stacked shell pages would be a
+screen-content rewrite the task explicitly scoped out. Relocated to
+the sidebar's bottom section next to Help, not a member of the
+exclusive nav `QButtonGroup`.
+
+**History and Help are real nav slots now, placeholder content** — a
+deliberate, documented choice: both future pages get a real sidebar
+entry and a real `QStackedWidget` page now, each with its own real
+title/subtitle and a one-line "coming in a future update" placeholder
+body, so the sidebar's final shape is correct today and a later phase
+only needs to replace the placeholder content.
+
+**Nav badges** (`_update_nav_badge`) read counts already computed by
+the existing 2s poll — no new poll added. Text-based (`"Downloads
+(2)"`, plain `"Downloads"` at zero — never `"(0)"`), not a separate
+sibling badge widget. **Nav item styling:** a checkable, flat
+`QPushButton` with a `navItem="true"` property needed no
+`WA_StyledBackground` workaround (already painted through Qt's style
+system, confirmed in Phase 3) — but the sidebar panel itself, a plain
+`QWidget`, DOES need `WA_StyledBackground` for its own `#sidebarPanel`
+background rule.
+
+All six pages rendered offscreen and inspected directly before calling
+this done. `mypy --strict` clean; full suite 517 passed / 1 skipped.
+
 ### 49
 
 Task: replace Settings' type-a-name-then-pick-a-folder library location
@@ -7413,13 +7686,43 @@ invocation of a real test function is safer than an ad hoc script
 faking fixture behavior, and should be preferred whenever the render
 needs anything a fixture (like `monkeypatch`) would normally provide.
 
-The actual feature work itself (`LibraryService.add_location_from_path`/
-`rename_location`, the repository's `get_by_path`/`update_name`,
-`library_location_picker.py`'s name parameter removed, Settings'
-single "Add location…" button + per-row Rename/Remove) is covered in
-CLAUDE.md's own item 49 entry — this HISTORY entry exists specifically
-to preserve the incident and its resolution in full, per this file's
-own stated purpose.
+**The feature work.** `LibraryService.add_location_from_path(path)`
+(new, the UI's real entry point) derives the name from the picked
+folder's own basename, auto-suffixing on a name collision ("Music",
+"Music (2)", checked via a bounded loop — `MAX_NAME_SUFFIX_ATTEMPTS=50`,
+untuned, purely a sanity ceiling against a real bug, not a real-world
+limit) and raising `LibraryLocationPathAlreadyRegisteredError` (carries
+the real existing `LibraryLocation`) if the path is already registered
+— checked with a new repository `get_by_path()` before ever attempting
+the insert, since `library_locations.path` was already schema-`UNIQUE`
+(confirmed by reading `schema.py` directly), turning what would
+otherwise be a raw `IntegrityError` into a real, named "already
+registered as X" message. `add_location(name, path)` (the CLI's own
+explicit-name entry point) is unchanged. New
+`LibraryService.rename_location(id, name)` → repository
+`update_name()`, converting a name-collision `IntegrityError` into the
+identical clean `RuntimeError` shape `add()` already used.
+
+`library_location_picker.py` (already shared between the wizard and
+Settings) dropped its `name` parameter entirely — both callers now go
+through the identical no-name flow, so the wizard's own onboarding
+location is named after its folder too, not the previous hardcoded
+`"Library"` literal. Settings' Locations tab: the name `QLineEdit` is
+gone; "Choose Folder && Add" is now a single "Add location…" button;
+each row gained a "Rename" action (a `QInputDialog.getText` prompt, not
+a heavier inline-edit widget) next to the existing "Remove"; a new
+`self.locations_notice: InlineNotice` surfaces the "already registered
+as X" and rename-collision errors persistently — everything else
+(Add/Remove progress) stays on the existing transient
+`locations_status_label`, since Settings has no poll timer for Phase
+3's vanishing-message bug to apply to here.
+
+Rendered and inspected directly (scratch, not committed): confirmed
+the single Add button, the Rename/Remove pair per row, and a real
+`InlineNotice` correctly naming the pre-existing location on a
+duplicate-path attempt.
+
+`mypy --strict` clean; full suite 527 passed / 1 skipped.
 
 ### 50
 
@@ -7496,11 +7799,121 @@ nothing does; every mutation path saves immediately. Fixed the test
 how the fake token itself was already set up) rather than changing
 correct production code.
 
-The rest of this task's work — the destination dialog, the wizard
-checkboxes, the Settings default-destination group, the filename
-sanitizer, the UI-first error-message fixes — is covered in CLAUDE.md's
-own item 50 entry; this HISTORY entry exists specifically to preserve
-the three real investigations above in full.
+**The feature work.** `SeekerConfig` gains
+`default_download_location_id: int | None` and
+`default_download_subfolder_per_playlist: bool = True`. New
+`DownloadService._resolve_destination(playlist)` — a playlist-specific
+`download_location_id`/`download_subfolder` always wins; otherwise
+falls back to the configured default, with the playlist's own name
+(sanitized) as the subfolder when the toggle is on. Resolved through
+`_get_config()` fresh on every call, not a snapshot — this project's
+standing rule, so a Settings change takes effect with no restart. New
+public `get_resolved_destination(playlist_name)` (read-only wrapper) is
+what the UI checks before ever calling `download_playlist()`.
+
+New top-level `seeker/filename_sanitize.py::sanitize_path_component()`
+— no prior sanitizer existed anywhere in this codebase (checked
+first). Replaces path separators (both `/` and `\`), Windows-reserved
+punctuation, and control characters with `-`; strips trailing
+dots/spaces (a real, confirmed Windows folder-creation failure mode,
+not cosmetic); falls back to `"Untitled"` if nothing usable survives.
+Tested against real playlist names pulled live from this project's own
+production database — `"240KM/H"`, `"Node: Reloaded"`,
+`"Lotus // Trap"`.
+
+**UI-first error audit, two real fixes, both reachable from the GUI:**
+(1) `NoDestinationConfiguredError`'s message (`download_playlist`) said
+"Run 'seeker playlists set-destination' first" — shared by the CLI and
+the UI. Made interface-neutral; the CLI now appends its own
+command-line guidance in its own exception handler instead of baking
+it into the shared message. (2) `ReviewCandidateMissingSizeError`
+(`confirm_review_candidate`, Review tab's Confirm action — CLI never
+calls this method at all) said "re-run 'seeker download'"; rewritten
+to reference the Dashboard's Download button instead.
+
+**No dead end:** `DestinationDialog` (new, in `main_window.py` next to
+`AboutDialog`) — location combo (prefilled: the configured default,
+else the only location if there's exactly one), subfolder field
+(prefilled with the raw, unsanitized playlist name — sanitizing
+happens later, at actual move time), "Remember this for this
+playlist" (checked). Confirming ALWAYS persists somewhere real —
+because `_resolve_destination()` is re-evaluated later, on a separate
+poll cycle, when the file actually completes. Checked → calls the
+existing `set_destination()` (playlist-specific). Unchecked → calls
+new `Application.persist_default_destination()` (the app-wide
+default).
+
+**Settings → Destinations:** new "Default Destination" `QGroupBox`,
+genuinely above the per-playlist overrides — location combo +
+subfolder-per-playlist checkbox + a primary "Save default destination"
+button, prefilled from the real current config on tab load.
+
+**Wizard:** right after the library folder is picked, two checkboxes —
+"Download new tracks into this folder" / "in a subfolder per
+playlist" — both checked by default, the second hidden while the
+first is unchecked. Confirming persists the default destination via
+the same `persist_default_destination()` Settings uses.
+
+`mypy --strict` clean; full suite 567 passed / 1 skipped.
+
+### 51
+
+Task: a Dashboard "next step" CTA plus real empty states. New
+`main_window.py` module-level `_NextStepFacts`/`_NextStep`/
+`_decide_next_step()` — a pure function (no Qt) deciding which single
+CTA to show, tested directly with 11 synthetic-fact tests, no
+`MainWindow` needed. Every fact it branches on comes from a real
+service/Application call, gathered in one background-thread
+`_fetch_next_step_facts()`. `Application.spotify_configured` already
+existed (reused); new `LibraryService.has_scanned_library()` did not.
+
+**`has_scanned_library()` is a real, disclosed approximation** — no
+schema change was in scope, and `library_locations` has no
+`last_scanned_at` column. True once any `local_files` row exists
+anywhere (new `LocalFileRepository.exists_any()`, a cheap existence
+check, not `get_all()`). Known, accepted limitation: a real scan of a
+location with genuinely zero matching audio files is
+indistinguishable from "never scanned" by this proxy.
+
+Rendered via a new `InlineNotice` (`self.next_step_notice`, above
+`dashboard_notice` — guidance and errors never overwrite each other).
+Recomputed on playlist selection and the existing 2s `poll_timer` tick
+— no new timer.
+
+**Empty states, a real structural change.** `track_table` and a new
+centred `_track_empty_panel` now live in a `QStackedWidget`
+(`track_area_stack`), swapped explicitly. Three distinct states: no
+playlist selected (guidance, no button); a selected playlist with no
+synced tracks yet (same panel with a real "Load tracks" button);
+anything else (the real table).
+
+Renamed the cryptic global toolbar buttons and moved them onto the
+Dashboard page itself as a secondary action row: Sync → "Refresh
+playlists", Scan → "Rescan library folders", Match → "Re-match
+library." Download (playlist-scoped) sits in the same row. Global
+scope itself is unchanged.
+
+`mypy --strict` clean; full suite 588 passed / 1 skipped.
+
+**Follow-up, two real gaps found by re-inspecting the item's own
+screenshots.** (1) The action row's "Download selected playlist" and
+the CTA's own "Download N missing tracks" were genuinely the same
+action (confirmed via `get_unmatched_for_playlist`'s query — needs-
+review tracks already excluded from both). Fixed by hiding
+`download_button` specifically while the CTA's current action is
+`"download"`, shown again once the CTA moves on to anything else. (2)
+All four action-row buttons rendered enabled regardless of whether
+their action could do anything — `_render_next_step` now also sets
+`.setEnabled(...)` on all four from the same facts bundle already
+computed for the CTA: Download needs a selected playlist; Sync needs
+`spotify_configured`; Scan needs a library location; Match needs both
+cached playlists and a library location. Disabled rather than hidden,
+so the row's width doesn't jump around. Fixed the resulting test race
+at the shared `_select_first_playlist()` helper (wait for
+`download_button.isEnabled()`, not just the selection) rather than
+patching each affected test individually.
+
+`mypy --strict` clean; full suite 595 passed / 1 skipped.
 
 ### 52
 
@@ -7594,12 +8007,26 @@ accepted risk as `BAD_CREDENTIALS_LOG_PATTERNS`: a future slskd
 version could reword this text, and it's worth re-checking after any
 upgrade.
 
-The wizard-side work (the radio pair, per-branch copy, the tooltip-
-held real detail, username whitespace validation, the improved
-timeout copy) is covered in CLAUDE.md's own item 52 entry — this
-HISTORY entry exists specifically to preserve the live investigation
-in full, including the real production-account-safety verification.
+**The wizard-side work.** Step 3's credential form gains a radio pair,
+"I already have a SoulSeek account" (default) / "Create a new SoulSeek
+account", with a line explaining SoulSeek has no separate signup. On
+`BAD_CREDENTIALS`, the copy branches on which radio is checked:
+existing-account mode keeps the username/password and says to check
+the password (case-sensitive); new-account mode clears and focuses
+the username field with an "already taken" message. The real raw log
+detail is never dropped — moved to the status label's tooltip in
+every branch, cleared at the start of each new attempt. Username
+validated before attempting (non-empty, no leading/trailing
+whitespace) — real SoulSeek character constraints weren't cheaply
+confirmable, so nothing beyond that was guessed at. `SlskdHealthStatus
+.KICKED`/`KICKED_LOG_PATTERNS` give the newly-classified third state
+its own wizard message ("Another client is already logged in with
+this username"), distinct from `BAD_CREDENTIALS`. Timeout branch's
+copy now says what to check (Docker still running, credentials
+correct, working internet connection) rather than just that it timed
+out.
 
+`mypy --strict` clean; full suite 600 passed / 1 skipped.
 
 ### 53
 
@@ -7670,8 +8097,27 @@ poll for it and treat a still-absent value as "unknown," but per the
 brief's own explicit scope, that decision is left for later, not made
 here.
 
-The aggregate-ETA implementation itself (`aggregate()`,
-`format_aggregate_header()`, the Downloads-page header wiring) is
-covered in CLAUDE.md's own item 53 entry — this HISTORY entry exists
-specifically to preserve the real recon call/response/schema-check
-detail.
+**The feature work.** `DownloadEtaTracker.aggregate(downloads:
+list[tuple[int, int | None]])` — `(request_id, total_bytes)` pairs for
+every currently active download on the Downloads page — returns a new
+`AggregateEta` dataclass. Only downloads with >= 2 samples, a positive
+latest delta, and a known `total_bytes` contribute (`eta = sum(
+remaining bytes over contributors) / sum(their current speeds)`);
+everything else (queued/no samples yet, still calculating, stalled, or
+unknown `total_bytes`) is counted but excluded from the sum.
+`_classify()` factors the same three-way state `describe()` already
+computed for one download (Calculating/Stalled/Contributing) out into
+a reusable per-request helper, so `aggregate()` reuses the identical
+logic instead of a second, drifting copy.
+
+`format_aggregate_header()` (pure, no Qt) renders the Downloads page's
+header line: `"About {eta} remaining · {N} transferring · {M} queued
+(no estimate)"`, dropping the third clause when `M == 0`; reads
+"Waiting for transfers to start" with zero contributors, or "All
+active transfers stalled" specifically when every non-contributor is
+STALLED rather than just not-yet-started. Wired into `MainWindow` as a
+new `downloads_eta_label` above the Downloads table, rendered from
+`_render_active_downloads` on the existing 2s poll (no new timer) —
+collapses to an empty string when there are zero active downloads.
+
+`mypy --strict` clean; full suite 614 passed / 1 skipped.
