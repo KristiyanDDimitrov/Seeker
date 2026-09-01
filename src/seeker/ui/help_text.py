@@ -141,6 +141,8 @@ TOOLTIP_OPEN_SETTINGS = (
     "Library locations, playlist destinations, connections, and "
     "match thresholds."
 )
+TOOLTIP_SETTINGS_BACK = "Return to the page you were on before Settings."
+TOOLTIP_SETTINGS_ABOUT = "About Seeker — version, license, support links."
 TOOLTIP_SYNC_TRACKS = (
     "Pull this playlist's full track list from Spotify — never done "
     "automatically, to keep API calls intentional."

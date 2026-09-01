@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QLabel, QPushButton
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QPushButton
 
 from seeker.application import Application
 from seeker.docker_setup import SlskdHealthCheckResult, SlskdHealthStatus
@@ -9,7 +9,7 @@ from seeker.models.playlist import Playlist
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 from seeker.ui import help_text
-from seeker.ui.settings_window import SettingsWindow
+from seeker.ui.settings_window import SettingsPage
 
 
 def _fake_user_data_dir(data_dir):
@@ -89,24 +89,19 @@ def add_playlist(application: Application, playlist: Playlist) -> None:
 
 
 # --- Task 1: contextual help --------------------------------------------
-
-def test_settings_window_has_persistent_subtitle(qtbot, tmp_path, monkeypatch):
-    application = make_application(tmp_path, monkeypatch)
-
-    window = SettingsWindow(application)
-    qtbot.addWidget(window)
-
-    labels = [
-        widget.text()
-        for widget in window.centralWidget().findChildren(QLabel)
-    ]
-    assert help_text.SETTINGS_WINDOW_SUBTITLE in labels
+#
+# The persistent subtitle itself moved out of SettingsPage and into
+# MainWindow's shared _build_page() wrapper (roadmap item 56 Phase 3
+# §3.2 — routing through the same helper every other page uses is what
+# fixed the real misprinted-header bug) — covered by
+# test_ui_smoke.py::test_settings_page_shows_its_subtitle_via_build_page
+# now, not here, since SettingsPage on its own no longer renders one.
 
 
 def test_settings_window_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     for widget in (
@@ -134,7 +129,7 @@ def test_locations_tab_lists_existing_locations(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -158,7 +153,7 @@ def test_add_location_uses_the_chosen_folders_own_basename_as_the_name(
         QFileDialog, "getExistingDirectory", lambda *a, **k: str(chosen_path),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.add_location_button.click()
@@ -184,7 +179,7 @@ def test_add_location_for_an_already_registered_path_shows_an_inline_notice(
         lambda *a, **k: str(existing_path),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.add_location_button.click()
@@ -202,7 +197,7 @@ def test_rename_location_updates_the_table(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -225,7 +220,7 @@ def test_rename_location_cancelled_makes_no_call(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -248,7 +243,7 @@ def test_rename_location_collision_shows_an_inline_notice(
     add_location(application, "Main", tmp_path / "music1")
     add_location(application, "Other", tmp_path / "music2")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -276,7 +271,7 @@ def test_remove_location_calls_remove_location_with_correct_name(
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -306,7 +301,7 @@ def test_destinations_tab_lists_playlists_and_locations(
         application, Playlist(id="p1", name="240KM/H", track_count=3),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -323,7 +318,7 @@ def test_default_destination_group_lists_locations(
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -340,7 +335,7 @@ def test_save_default_destination_persists_to_the_real_application(
     application = make_application(tmp_path, monkeypatch)
     location = add_location(application, "Main", tmp_path / "music")
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -371,7 +366,7 @@ def test_save_default_destination_without_a_location_shows_message(
 ):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.save_default_destination_button.click()
@@ -398,7 +393,7 @@ def test_default_destination_prefills_existing_config_value(
         default_download_subfolder_per_playlist=False,
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -417,7 +412,7 @@ def test_save_destination_calls_set_destination_with_selected_values(
         application, Playlist(id="p1", name="240KM/H", track_count=3),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
@@ -449,7 +444,7 @@ def test_save_destination_without_selected_playlist_shows_message(
 ):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.save_destination_button.click()
@@ -470,7 +465,7 @@ def test_connection_tab_displays_current_config_values(
         slskd_api_key="real-api-key",
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     assert window.spotify_client_id_field.text() == "fake-client-id"
@@ -488,7 +483,7 @@ def test_reveal_api_key_toggle_shows_and_hides_the_real_value(
         application._config_store, slskd_api_key="real-api-key",
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.reveal_api_key_button.click()
@@ -511,7 +506,7 @@ def test_reauthorize_spotify_calls_connect_spotify_with_force_flag(
         ),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.spotify_client_id_field.setText("new-client-id")
@@ -536,7 +531,7 @@ def test_test_connection_reports_healthy_result(qtbot, tmp_path, monkeypatch):
         ),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.test_connection_button.click()
@@ -558,7 +553,7 @@ def test_test_connection_without_config_shows_message_and_makes_no_call(
         lambda *a, **k: calls.append(1),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.test_connection_button.click()
@@ -594,7 +589,7 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
         "seeker.ui.settings_window.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     # _locations_by_name is populated by the async _refresh_locations()
@@ -631,7 +626,7 @@ def test_update_credentials_without_username_or_password_makes_no_call(
         lambda **kwargs: calls.append(1),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.update_credentials_button.click()
@@ -650,7 +645,7 @@ def test_update_credentials_without_a_library_location_shows_message(
         lambda **kwargs: calls.append(1),
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.new_soulseek_username_field.setText("realuser")
@@ -668,7 +663,7 @@ def test_thresholds_tab_prefilled_with_hardcoded_defaults_when_unset(
 ):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     assert window.auto_match_threshold_field.text() == "90.0"
@@ -685,7 +680,7 @@ def test_thresholds_tab_prefilled_with_existing_config_value(
         needs_review_threshold=60.0,
     )
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     assert window.auto_match_threshold_field.text() == "85.0"
@@ -695,7 +690,7 @@ def test_thresholds_tab_prefilled_with_existing_config_value(
 def test_save_thresholds_persists_valid_values(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.auto_match_threshold_field.setText("85")
@@ -712,7 +707,7 @@ def test_save_thresholds_rejects_inverted_pair(qtbot, tmp_path, monkeypatch):
     # ever reaching the config store.
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.auto_match_threshold_field.setText("70")
@@ -729,7 +724,7 @@ def test_save_thresholds_rejects_equal_pair(qtbot, tmp_path, monkeypatch):
     # nothing — also a real logic bug.
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.auto_match_threshold_field.setText("80")
@@ -742,7 +737,7 @@ def test_save_thresholds_rejects_equal_pair(qtbot, tmp_path, monkeypatch):
 def test_save_thresholds_rejects_non_numeric_input(qtbot, tmp_path, monkeypatch):
     application = make_application(tmp_path, monkeypatch)
 
-    window = SettingsWindow(application)
+    window = SettingsPage(application)
     qtbot.addWidget(window)
 
     window.auto_match_threshold_field.setText("not a number")

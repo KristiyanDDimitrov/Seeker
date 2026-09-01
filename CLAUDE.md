@@ -725,7 +725,9 @@ compress it here before moving on to the next item.
     tab-index bookkeeping; `QStackedWidget.currentChanged` gives the
     same lazy-load-on-first-visit signal shape `QTabWidget` did.
     Settings deliberately stays a separate dialog, not a shell page (it
-    was never a tab body). History/Help get real nav slots with
+    was never a tab body). **Reversed in item 56 Phase 3 — Settings is
+    now a real shell page** (in fullscreen, a separate window read as a
+    dead end with no way back). History/Help get real nav slots with
     placeholder content now, so a later phase only replaces content, not
     navigation wiring. Nav badges read counts already computed by the
     existing 2s poll — no new poll. A checkable flat `QPushButton` needs
@@ -878,6 +880,26 @@ compress it here before moving on to the next item.
     verification against the production DB: confirmed the one real
     remaining needs-review row, re-ran match, confirmed it survived with
     its real score intact (not a 100.0 sentinel).
+    [HISTORY §56](docs/HISTORY.md#56)
+58. **Settings becomes an in-window page (Phase 3) — done, reverses item
+    48's "stays a separate dialog" decision.** `SettingsWindow
+    (QMainWindow)` → `SettingsPage(QWidget)`, hosted in `MainWindow`'s
+    `QStackedWidget`; `WA_DeleteOnClose` dropped (no longer a top-level
+    window). `_build_page()` gained a real `header_extra` extension
+    point for the "← Back" button; the page's own hand-styled subtitle
+    is gone in favor of `_build_page`'s (that routing *was* the "misprinted
+    header" fix). Every navigation path funnels through `_show_page()`,
+    which now also tracks `_previous_page_key` and fires settings-exit
+    invalidation (`_refresh_duplicates_locations()` + `_poll_next_step()`)
+    regardless of path. About button wired via a callable to avoid a
+    circular import with `main_window.py`'s `AboutDialog`. **Re-verified
+    stress test found a real, reproduced (2x) RSS-growth increase over
+    the old ceiling — investigated, not dismissed: the growth genuinely
+    plateaus (tail range 1.7MB), confirming legitimate one-time cost
+    from settings-exit's 2 new worker round-trips per cycle, not a leak.
+    Ceiling raised 250→300MB with the real numbers recorded; a new
+    tail-plateau assertion (`MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB`) now
+    actually checks the leak signature the old test only printed.**
     [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:

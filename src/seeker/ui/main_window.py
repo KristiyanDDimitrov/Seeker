@@ -66,7 +66,7 @@ from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import (
     SETTINGS_TAB_CONNECTION,
     SETTINGS_TAB_LOCATIONS,
-    SettingsWindow,
+    SettingsPage,
 )
 from seeker.ui.workers import run_worker
 
@@ -146,12 +146,23 @@ def _build_subtitle_label(text: str) -> QLabel:
     return label
 
 
-def _build_page(title: str, subtitle: str, content: QWidget) -> QWidget:
+def _build_page(
+        title: str,
+        subtitle: str,
+        content: QWidget,
+        header_extra: QWidget | None = None,
+) -> QWidget:
     # Every page in the shell gets the identical [title, subtitle,
     # content] shape and the identical page-level margins (Phase 3's
     # own documented layout convention) — this is the one place that
     # convention actually gets enforced, rather than each page copying
     # setContentsMargins/setSpacing by hand and drifting.
+    #
+    # header_extra (roadmap item 56 Phase 3) — an optional widget placed
+    # to the LEFT of the title, in the same row. Only the Settings page
+    # uses this today (its "← Back" button), but it's a real, reusable
+    # extension point rather than a Settings-specific special case
+    # bolted onto this shared helper.
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(
@@ -160,11 +171,20 @@ def _build_page(title: str, subtitle: str, content: QWidget) -> QWidget:
     )
     layout.setSpacing(theme.SPACING_MD)
 
+    title_row = QHBoxLayout()
+    title_row.setSpacing(theme.SPACING_SM)
+
+    if header_extra is not None:
+        title_row.addWidget(header_extra)
+
     title_label = QLabel(title)
     title_label.setStyleSheet(
         f"font-size: 18px; font-weight: 600; color: {theme.TEXT};"
     )
-    layout.addWidget(title_label)
+    title_row.addWidget(title_label)
+    title_row.addStretch()
+
+    layout.addLayout(title_row)
     layout.addWidget(_build_subtitle_label(subtitle))
     layout.addWidget(content, 1)
 
@@ -625,6 +645,25 @@ class MainWindow(QMainWindow):
         self._register_page("history", self._build_history_page())
         self._register_page("help", self._build_help_page())
 
+        # Roadmap item 56 Phase 3 — Settings reversed from item 48's
+        # separate-dialog decision into a real page, hosted the same
+        # way as everything else here. header_extra is _build_page's
+        # own extension point (see its docstring), used only by this
+        # page today.
+        self.settings_back_button = QPushButton("← Back")
+        self.settings_back_button.setToolTip(help_text.TOOLTIP_SETTINGS_BACK)
+        self.settings_back_button.clicked.connect(
+            self._on_settings_back_clicked
+        )
+        self.settings_page = SettingsPage(
+            self.application, on_about_requested=self._on_about_clicked,
+        )
+        self._register_page("settings", _build_page(
+            "Settings", help_text.SETTINGS_WINDOW_SUBTITLE,
+            self.settings_page, header_extra=self.settings_back_button,
+        ))
+        self._settings_page_index = self._page_indices["settings"]
+
         # Locations load lazily, the first time this page is actually
         # shown, rather than eagerly in _build_ui() — every MainWindow
         # construction runs _build_ui() once, and an eager worker here
@@ -643,6 +682,14 @@ class MainWindow(QMainWindow):
         # may never open this page in a given session.
         self._history_page_index = self._page_indices["history"]
         self._history_loaded = False
+        # Tracks the currently-shown page key so the Settings back
+        # button (roadmap item 56 Phase 3) knows where to return to,
+        # and so _on_page_changed can detect "we just left Settings"
+        # regardless of which navigation path was used (sidebar click,
+        # back button, or a CTA/double-click action — every one of them
+        # goes through _show_page).
+        self._current_page_key = "dashboard"
+        self._previous_page_key = "dashboard"
         self.stacked_widget.currentChanged.connect(self._on_page_changed)
 
         self.setCentralWidget(shell)
@@ -652,6 +699,19 @@ class MainWindow(QMainWindow):
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
+        # Roadmap item 56 Phase 3 — every navigation path in this app
+        # (sidebar click, the Settings back button, a Dashboard CTA
+        # action, a double-click) already goes through this one method,
+        # so it's the single place both the back button's "where to
+        # return to" and the settings-exit invalidation (§3.3) can hook
+        # into without needing a Settings-specific special case at each
+        # call site.
+        if key == "settings" and self._current_page_key != "settings":
+            self._previous_page_key = self._current_page_key
+        elif self._current_page_key == "settings" and key != "settings":
+            self._invalidate_after_leaving_settings()
+
+        self._current_page_key = key
         self.stacked_widget.setCurrentIndex(self._page_indices[key])
 
         button = self._nav_buttons.get(key)
@@ -665,6 +725,22 @@ class MainWindow(QMainWindow):
             # pattern) — this explicit call just avoids making the user
             # wait up to 2s to see the row get selected.
             self._poll_review_items()
+
+    def _on_settings_back_clicked(self) -> None:
+        self._show_page(self._previous_page_key)
+
+    def _invalidate_after_leaving_settings(self) -> None:
+        # Roadmap item 56 Phase 3 §3.3 — a Settings change can affect
+        # the Duplicates page's location combo (a location added/
+        # removed) and the Dashboard's own next-step CTA (Spotify/
+        # library-location/threshold facts). Both already have a real
+        # refresh method; this just calls them immediately on exit
+        # rather than waiting for their own standing poll/lazy-load to
+        # eventually catch up. Phase 6.1 (Duplicates combo refresh)
+        # later reuses this exact same _refresh_duplicates_locations()
+        # call, not a second one.
+        self._refresh_duplicates_locations()
+        self._poll_next_step()
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QWidget()
@@ -716,12 +792,16 @@ class MainWindow(QMainWindow):
         help_button.clicked.connect(lambda: self._show_page("help"))
         layout.addWidget(help_button)
 
-        # Settings deliberately stays a plain (non-checkable, non-nav-
-        # group) button that opens the existing SettingsWindow dialog —
-        # it was never one of the "tab bodies" this shell restructure
-        # turns into pages (see the task's own scoping), just relocated
-        # here from the toolbar.
-        self.settings_button = QPushButton("Settings")
+        # Roadmap item 56 Phase 3 — reversed from item 48's "Settings
+        # deliberately stays a separate dialog" decision: in fullscreen,
+        # a second window reads as a dead end with no way back to the
+        # shell. Now a real, checkable, nav-group page like Help, just
+        # built individually (like Help) rather than via the generic
+        # _NAV_PAGES loop, since it needs the initial_tab-aware handler
+        # below, not the loop's plain `_show_page(key)`.
+        self.settings_button = _build_nav_button("Settings")
+        self._nav_group.addButton(self.settings_button)
+        self._nav_buttons["settings"] = self.settings_button
         self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)
         # clicked emits a bool (checked state) — never connect it
         # directly to _on_settings_clicked, whose first real parameter
@@ -2692,13 +2772,12 @@ class MainWindow(QMainWindow):
         )
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
-        # A held reference is required — a local-only QMainWindow with
-        # nothing else pointing at it gets garbage-collected as soon as
-        # this method returns (same class of bug item 22's
-        # ui/workers.py _callbacks registry exists to prevent for
-        # in-flight background tasks, applied here to a window
-        # instead).
-        self.settings_window = SettingsWindow(
-            self.application, initial_tab=initial_tab,
-        )
-        self.settings_window.show()
+        # Roadmap item 56 Phase 3 — self.settings_page is a single,
+        # long-lived page built once in _build_ui() (item 22's "held
+        # reference" concern that used to apply to a per-open
+        # SettingsWindow no longer applies at all: this widget is never
+        # constructed-and-discarded).
+        if initial_tab is not None:
+            self.settings_page.select_tab(initial_tab)
+
+        self._show_page("settings")

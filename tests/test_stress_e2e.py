@@ -60,7 +60,6 @@ from seeker.audio_fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.ui.main_window import MainWindow
-from seeker.ui.settings_window import SettingsWindow
 from seeker.ui.workers import _callbacks
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
@@ -95,9 +94,34 @@ SAMPLE_INTERVAL_SECONDS = 15.0
 # real workload memory use (loading 215 playlists' worth of Qt table
 # rows, librosa's own numpy buffers during a scan, etc. all cost real,
 # legitimate, bounded memory).
-MAX_ACCEPTABLE_RSS_GROWTH_MB = 250.0
+#
+# Raised from 250.0 (roadmap item 56 Phase 3, re-verified 2026-09-01
+# against this branch's Settings-page conversion): two real, consecutive
+# runs measured 263.2MB/266.3MB total growth, both real re-runs from a
+# genuinely clean baseline, not one-off noise. Investigated properly
+# before touching this number, not just relaxed to make the failure go
+# away — the full per-sample table showed WHY: the interleaved loop's
+# RSS climbed from 480MB (t=15.5s) to ~527MB and then genuinely
+# PLATEAUED for the run's entire last ~120s (9 consecutive samples, all
+# within a 2MB band) — the exact "not a leak" shape this comment already
+# described, not the "monotonic, unbounded climb" this ceiling exists to
+# catch. Root cause of the real, legitimate increase: §3.3's settings-
+# exit invalidation (_refresh_duplicates_locations()/_poll_next_step())
+# now fires two extra real run_worker round-trips per Settings
+# navigation cycle, work this test's interleaved loop didn't exercise at
+# this frequency before Settings became a persistent page. See the new
+# tail-plateau assertion below for the check that actually targets the
+# leak signature this ceiling alone couldn't distinguish from legitimate
+# extra steady-state work.
+MAX_ACCEPTABLE_RSS_GROWTH_MB = 300.0
 MAX_ACCEPTABLE_FD_GROWTH = 40
 MAX_ACCEPTABLE_THREAD_GROWTH = 40
+# A genuine leak keeps climbing even in the run's own tail; legitimate
+# one-time warm-up cost (allocator arenas reaching a working-set size,
+# Qt object pools stabilizing) does not. Checked over the last quarter
+# of samples (>= 3) — tight enough to catch real continued growth,
+# generous enough to absorb ordinary sample-to-sample jitter.
+MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB = 20.0
 
 
 @dataclass
@@ -403,26 +427,28 @@ def test_broad_end_to_end_stress(qapp):
                 if _select_playlist(main_window, name):
                     _pump(qapp, lambda: True, timeout=0.5)
 
-            # Open and close Settings repeatedly — the real risk named
-            # in §0: does a closed-but-not-deleted window, and its own
-            # QThreadPool, actually get released, or does resource
-            # usage climb with every open/close cycle? Deliberately NOT
-            # tracked in a list that outlives this iteration — holding
-            # every instance alive would make this test measure its
-            # own retention, not the app's real close()/cleanup
-            # behavior. Only `.close()` plus dropping the local
-            # reference, exactly what a real user closing the window
-            # actually does.
-            settings_window: SettingsWindow | None = SettingsWindow(application)
-            settings_window.show()
+            # Navigate to and away from the Settings PAGE repeatedly —
+            # roadmap item 56 Phase 3 turned Settings from a separate,
+            # per-open QMainWindow (the original real leak this section
+            # was built to catch, item 32) into a single, persistent
+            # page hosted in main_window's own QStackedWidget. The real
+            # risk this section now needs to catch is different:
+            # main_window.settings_page is never reconstructed, so
+            # there's no per-cycle window-lifecycle leak left in THIS
+            # path any more — but repeated _show_page() navigation while
+            # other background work (downloads, backend poll) is still
+            # in flight is itself a real, not-yet-exercised interaction,
+            # and settings-exit now fires real background work of its
+            # own (_invalidate_after_leaving_settings, §3.3).
+            main_window._show_page("settings")
             _pump(
                 qapp,
-                lambda w=settings_window: w.locations_table.rowCount() >= 0,
+                lambda: main_window.settings_page
+                .locations_table.rowCount() >= 0,
                 timeout=5.0,
             )
-            settings_window.close()
+            main_window._show_page("dashboard")
             qapp.processEvents()
-            settings_window = None
             settings_reopen_count += 1
 
             # Duplicates delete lifecycle (item 40) — the deferred-
@@ -460,7 +486,10 @@ def test_broad_end_to_end_stress(qapp):
             # without any restart, exercising the already-constructed
             # real track_matcher live (see CLAUDE.md item 28 §4).
             if not threshold_changed:
-                live_settings: SettingsWindow | None = SettingsWindow(application)
+                # Real Settings widgets, real save button, on the SAME
+                # persistent main_window.settings_page — no separate
+                # window to construct/close any more (item 56 Phase 3).
+                live_settings = main_window.settings_page
                 new_auto = (original_config.auto_match_threshold or 90.0) - 1.0
                 new_needs_review = (
                     original_config.needs_review_threshold or 70.0
@@ -493,9 +522,6 @@ def test_broad_end_to_end_stress(qapp):
                     "match run after a live threshold change failed: "
                     f"{main_window.status_label.text()!r}"
                 )
-                live_settings.close()
-                qapp.processEvents()
-                live_settings = None
                 threshold_changed = True
                 print(
                     "[stress] live threshold change "
@@ -607,6 +633,15 @@ def test_broad_end_to_end_stress(qapp):
         f"{statistics.mean(rss_values[len(rss_values) // 2 :]):.1f}MB"
     )
 
+    tail_size = max(len(rss_values) // 4, 3)
+    tail_values = rss_values[-tail_size:]
+    tail_range = max(tail_values) - min(tail_values)
+    print(
+        f"[stress] RSS tail plateau check: last {tail_size} samples "
+        f"range={tail_range:.1f}MB (min={min(tail_values):.1f}MB, "
+        f"max={max(tail_values):.1f}MB)"
+    )
+
     # Every worker must have drained by the time the run is over — a
     # nonzero count here means something never fired its
     # finished/error signal, which is exactly the class of bug a
@@ -619,6 +654,18 @@ def test_broad_end_to_end_stress(qapp):
     assert rss_growth < MAX_ACCEPTABLE_RSS_GROWTH_MB, (
         f"RSS grew by {rss_growth:.1f}MB over the run (ceiling "
         f"{MAX_ACCEPTABLE_RSS_GROWTH_MB}MB) — possible leak"
+    )
+    # The actual leak signature this whole test hunts for: a genuine
+    # leak keeps climbing all the way to the end, even after any
+    # legitimate one-time warm-up cost has already happened earlier in
+    # the run. A flat tail is real evidence of "grew once, then
+    # stabilized" — the raw total-growth ceiling above can't tell that
+    # apart from "still climbing," but this can.
+    assert tail_range < MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB, (
+        f"RSS was still moving by {tail_range:.1f}MB across the run's "
+        f"last {tail_size} samples (ceiling "
+        f"{MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB}MB) — real evidence of "
+        "continued growth, not just a one-time warm-up cost"
     )
     assert fd_growth < MAX_ACCEPTABLE_FD_GROWTH, (
         f"open file descriptors grew by {fd_growth} over the run "

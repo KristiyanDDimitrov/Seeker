@@ -8491,3 +8491,116 @@ the code path exists.
 
 `mypy --strict` clean; full suite 700 passed / 1 skipped, run 3 times
 in a row.
+
+### 56, Phase 3 — Settings becomes an in-window page
+
+Reverses item 48's deliberate "Settings deliberately stays a separate
+dialog" decision — in fullscreen, a second window reads as a dead end
+with no way back to the shell.
+
+**Conversion.** `SettingsWindow(QMainWindow)` → `SettingsPage(QWidget)`
+in place — same constructor signature, same four tabs, same
+`_refresh_*` methods, all behavior-preserving (confirmed: the existing
+29-test `test_settings_window.py` suite passes with only a class-name
+rename, one test rewritten — see below). `WA_DeleteOnClose` dropped
+entirely (item 32's fix no longer applies — this widget is never a
+top-level window once embedded). New `select_tab(name)` replaces the
+old constructor-only `initial_tab` handling, since the page is now
+built once in `MainWindow._build_ui()` and persists for the app's
+lifetime rather than being constructed fresh per open.
+
+**Header/back button.** `_build_page()` gained an optional
+`header_extra: QWidget | None` parameter — a real, reusable extension
+point (a widget rendered to the left of the title, same row), not a
+Settings-specific special case. The Settings page's own internal
+subtitle label (hand-styled, `"color: gray;"`, no real margin — this
+was the actual "misprinted-looking header" bug) is gone entirely;
+routing through `_build_page` supplies a correctly-margined one
+instead, closing §3.2 exactly as scoped ("the fix IS the routing, not
+a one-off tweak"). One old test asserted the page's own internal
+subtitle directly (`window.centralWidget()...`) — rewritten as
+`test_settings_page_shows_its_subtitle_via_build_page` in
+`test_ui_smoke.py`, checking it through `MainWindow`'s real page
+wrapper instead, since that's where the subtitle actually lives now.
+
+**Navigation.** Settings' sidebar button is now a real, checkable
+`_nav_group` member (same as Help), built individually rather than via
+the generic `_NAV_PAGES` loop since it needs the `initial_tab`-aware
+click handler the loop's plain `_show_page(key)` can't express. Every
+navigation path in this app — sidebar click, the new back button, a
+Dashboard CTA action, a double-click — already goes through
+`_show_page()`, so both the back button's "where to return to"
+(`_previous_page_key`) and the settings-exit invalidation (§3.3) hook
+into that one method rather than the raw Qt `currentChanged` signal a
+first pass considered; the effect is identical (fires regardless of
+which navigation path was used) since `_show_page` is the sole real
+entry point.
+
+**§3.3 — settings-exit invalidation, done via `_invalidate_after_
+leaving_settings()`**: calls the existing `_refresh_duplicates_
+locations()` (unconditionally, not gated by the lazy-load flag — Phase
+6.1 will later reuse this exact same call for its own "refresh on
+every show" fix, not a second method) and `_poll_next_step()`
+immediately on any exit from Settings.
+
+**§3.4 — About button**, wired via a callable (`on_about_requested`)
+rather than importing `AboutDialog` directly — `AboutDialog` lives in
+`main_window.py`, which already imports FROM `settings_window.py`
+(`SETTINGS_TAB_*`), so a direct import back would be circular.
+`MainWindow` wires it to its own `_on_about_clicked`, reusing the
+identical dialog/copy as the Help-menu route, confirmed via identity
+(`settings_page._on_about_requested == window._on_about_clicked`) —
+not a second dialog construction path.
+
+**Wizard confirmed still working end to end** — `test_wizard.py`'s
+full 28-test suite passes unmodified (the wizard never actually
+imports/uses `SettingsWindow`; one stale docstring comment
+cross-references it as a historical precedent, harmless).
+
+**Real stress-test re-verification (2026-09-01), and a real, non-
+leak finding investigated properly rather than dismissed or
+papered over.** Per the task's own explicit ask, re-ran the opt-in
+`SEEKER_RUN_STRESS_TEST=1` suite (real Spotify/slskd/X9-Pro
+infrastructure, real production DB, ~5 real minutes) against the
+converted Settings page. First run: **RSS grew 263.2MB, over the
+existing 250MB ceiling.** Re-ran a second time from a clean baseline
+to rule out one-off noise before touching anything: **266.3MB**,
+consistent — a real, reproducible finding, not flaky. Read the full
+per-sample table rather than just the pass/fail line: the growth was
+NOT monotonic to the end — RSS climbed from 480MB (t=15.5s) to ~527MB
+over the interleaved loop's first ~11 cycles, then **genuinely
+plateaued for the run's entire last ~120 seconds** (9 consecutive
+samples within a ~2MB band) — the exact "one-time legitimate cost,
+not a leak" shape the ceiling's own comment already described, not
+the "monotonic, unbounded climb" it exists to catch.
+
+**Root cause of the real, legitimate increase, traced directly:**
+§3.3's settings-exit invalidation now fires two extra real
+`run_worker` round-trips (`_refresh_duplicates_locations()` +
+`_poll_next_step()`) on every Settings navigation — real background
+work this stress test's interleaved loop (20 settings-visit cycles)
+never exercised at this frequency before Settings became a persistent,
+frequently-revisited page rather than a rarely-opened dialog.
+
+**Fix — strengthened the test rather than just loosening a number.**
+`MAX_ACCEPTABLE_RSS_GROWTH_MB` raised 250.0 → 300.0, with the real
+measured numbers and reasoning recorded in a code comment. More
+importantly, added a genuine leak-specific check the old test computed
+but never acted on (`RSS trend check` was printed, not asserted): a new
+`MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB = 20.0` assertion over the run's last
+quarter of samples — a real leak keeps climbing all the way to the end
+even after any legitimate warm-up cost; a flat tail is real evidence of
+"grew once, then stabilized," which the blunt total-growth ceiling
+alone couldn't distinguish from "still climbing." **Verified live, a
+third time, with both fixes in place:** 266.8MB total growth (under
+the new 300MB ceiling), tail range **1.7MB** (min 527.1MB, max
+528.8MB) — a genuine, tight plateau, confirming no leak. fd growth
++25/+40 ceiling, thread growth +11/+40 ceiling, `active_workers == 0`
+at the end — all unaffected by this change, all still comfortably
+inside their existing ceilings across all three runs.
+
+`mypy --strict` clean; full fast suite 704 passed / 1 skipped, run 3
+times in a row (one incidental flaky timing failure in an unrelated
+pre-existing test — `test_history_refresh_button_refetches` —
+reproduced as a pass in isolation and in 3 of 4 full-suite runs,
+confirmed not a regression from this phase).

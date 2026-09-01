@@ -97,6 +97,7 @@ class FakeLibraryService:
         self._needs_review_matches = needs_review_matches or []
         self.confirm_match_calls: list[str] = []
         self.reject_match_calls: list[str] = []
+        self.list_locations_calls = 0
 
     def scan_all(self) -> None:
         self.scan_all_calls += 1
@@ -120,6 +121,7 @@ class FakeLibraryService:
         self.reject_match_calls.append(track_id)
 
     def list_locations(self) -> list:
+        self.list_locations_calls += 1
         return self._locations
 
     def has_scanned_library(self) -> bool:
@@ -397,25 +399,24 @@ def test_show_page_switches_stack_and_updates_checked_nav_button(qtbot):
     assert not window._nav_buttons["dashboard"].isChecked()
 
 
-def test_nav_buttons_are_mutually_exclusive_and_settings_is_not_one_of_them(qtbot):
+def test_nav_buttons_are_mutually_exclusive_including_settings(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
 
     # Every real page (Dashboard/Downloads/Review/Duplicates/History)
-    # plus Help share one exclusive QButtonGroup.
+    # plus Help and Settings share one exclusive QButtonGroup — roadmap
+    # item 56 Phase 3 reversed item 48's "Settings stays a separate
+    # dialog" decision, so it's now a real, checkable nav-group member
+    # like every other page.
     assert set(window._nav_buttons) == {
-        "dashboard", "downloads", "review", "duplicates", "history", "help",
+        "dashboard", "downloads", "review", "duplicates", "history",
+        "help", "settings",
     }
     assert window._nav_group.exclusive()
     for key in window._nav_buttons:
         assert window._nav_buttons[key] in window._nav_group.buttons()
-
-    # Settings opens the existing dialog directly — it was never one of
-    # the "tab bodies" this shell turns into pages, so it's a plain,
-    # non-checkable button, not a member of the exclusive nav group.
-    assert not window.settings_button.isCheckable()
-    assert window.settings_button not in window._nav_group.buttons()
+    assert window.settings_button.isCheckable()
 
 
 def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
@@ -743,11 +744,112 @@ def test_next_step_action_button_opens_settings_on_the_connection_tab(
     # locate/click the dynamically-built button widget itself.
     window._on_next_step_action("settings_connection")
 
-    assert hasattr(window, "settings_window")
+    # Roadmap item 56 Phase 3 — Settings is now a persistent page, not a
+    # per-open window, so the assertion is against the real navigation
+    # (current page) and the same long-lived settings_page instance.
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["settings"]
+    )
     from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION
-    assert window.settings_window.tabs.tabText(
-        window.settings_window.tabs.currentIndex()
+    assert window.settings_page.tabs.tabText(
+        window.settings_page.tabs.currentIndex()
     ) == SETTINGS_TAB_CONNECTION
+
+
+# --- Roadmap item 56 Phase 3: Settings as an in-window page -----------------
+
+def test_settings_page_shows_its_subtitle_via_build_page(qtbot):
+    # SettingsPage itself no longer renders its own subtitle (§3.2) —
+    # it comes from the shared _build_page() wrapper, same as every
+    # other page's header.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    settings_wrapper = window.stacked_widget.widget(
+        window._page_indices["settings"]
+    )
+    labels = [
+        widget.text() for widget in settings_wrapper.findChildren(QLabel)
+    ]
+    assert help_text.SETTINGS_WINDOW_SUBTITLE in labels
+
+
+def test_settings_back_button_returns_to_the_previous_page(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("duplicates")
+    window._show_page("settings")
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["settings"]
+    )
+
+    window.settings_back_button.click()
+
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["duplicates"]
+    )
+
+
+def test_settings_back_button_falls_back_to_dashboard_from_a_fresh_window(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("settings")
+    window.settings_back_button.click()
+
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["dashboard"]
+    )
+
+
+def test_leaving_settings_refreshes_duplicates_locations_and_next_step(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("settings")
+    # Reset the lazy-load flag as if Duplicates had never been visited —
+    # isolates this test from whichever page construction happened to
+    # touch it, so a call count of exactly 1 unambiguously proves the
+    # settings-exit path itself triggered the refresh.
+    window._duplicates_locations_loaded = False
+
+    window._show_page("dashboard")
+
+    qtbot.waitUntil(
+        lambda: application.library_service.list_locations_calls >= 1,
+        timeout=2000,
+    )
+
+
+def test_settings_about_button_is_wired_to_mainwindows_about_dialog(qtbot):
+    # Reuses the exact same AboutDialog/copy as the Help-menu route
+    # (§3.4) — checked via the wiring itself (settings_page's callback
+    # is literally MainWindow's own _on_about_clicked), not a second
+    # dialog construction path.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.settings_page._on_about_requested == window._on_about_clicked
+
+    triggered = []
+    window.settings_page._on_about_requested = lambda: triggered.append(True)
+    window.settings_page.about_button.click()
+
+    assert triggered == [True]
 
 
 def test_next_step_notice_shows_download_count_and_triggers_download_flow(

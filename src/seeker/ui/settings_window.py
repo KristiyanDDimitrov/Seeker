@@ -1,7 +1,8 @@
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,7 +14,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMainWindow,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -60,43 +60,42 @@ SETTINGS_TAB_CONNECTION = "Connection"
 SETTINGS_TAB_THRESHOLDS = "Thresholds"
 
 
-class SettingsWindow(QMainWindow):
+class SettingsPage(QWidget):
+    """An in-window Settings page (roadmap item 56 Phase 3) — was a
+    separate top-level `SettingsWindow(QMainWindow)` (item 48's
+    deliberate choice at the time). Reversed here: in fullscreen, a
+    second window reads as a dead end with no way back to the shell.
+    Hosted in MainWindow's own QStackedWidget like every other page, via
+    `_build_page()` — its own subtitle label (below) is gone in favor of
+    that helper's, which fixed a real misprinted-looking header (item
+    56 Phase 3 §3.2: the fix IS routing through `_build_page`'s standard
+    margins, not a one-off tweak). No `WA_DeleteOnClose` handling
+    needed any more — this widget is never a top-level window, so the
+    leak that attribute existed to fix (item 32) doesn't apply here.
+    """
+
     def __init__(
             self,
             application: Application,
             initial_tab: str | None = None,
+            on_about_requested: Callable[[], None] | None = None,
     ):
         super().__init__()
-        # Real, confirmed-live leak fix (broad end-to-end stress test,
-        # see CLAUDE.md): a top-level QMainWindow with no parent isn't
-        # actually destroyed by close() by default — close() only
-        # hides it. Repeatedly opening and closing Settings (a
-        # completely ordinary real usage pattern) leaked ~2MB of real
-        # RSS per open/close cycle, confirmed via a real, isolated
-        # repro (20 cycles, explicit gc.collect() between each,
-        # objects tracked by gc.get_objects() still climbing —
-        # genuinely unreachable-but-uncollected garbage, not just GC
-        # timing). WA_DeleteOnClose makes close() actually schedule
-        # real deletion (deleteLater()) of this window and everything
-        # it owns — confirmed to cut the leak by ~8x in the same repro.
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.thread_pool = QThreadPool()
         self._locations_by_name: dict[str, LibraryLocation] = {}
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
+        # A callable rather than importing AboutDialog directly —
+        # AboutDialog lives in main_window.py, which already imports
+        # FROM this module (SETTINGS_TAB_*), so importing it back here
+        # would be circular. MainWindow wires this to its own
+        # _on_about_clicked (roadmap item 56 Phase 3 §3.4) — reusing the
+        # exact same dialog/copy, not a second one.
+        self._on_about_requested = on_about_requested
 
-        self.setWindowTitle("Seeker Settings")
-        self.resize(700, 500)
-
-        central = QWidget()
-        central_layout = QVBoxLayout(central)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-
-        subtitle = QLabel(help_text.SETTINGS_WINDOW_SUBTITLE)
-        subtitle.setStyleSheet("color: gray;")
-        subtitle.setWordWrap(True)
-        central_layout.addWidget(subtitle)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_locations_tab(), SETTINGS_TAB_LOCATIONS)
@@ -105,19 +104,40 @@ class SettingsWindow(QMainWindow):
         )
         self.tabs.addTab(self._build_connection_tab(), SETTINGS_TAB_CONNECTION)
         self.tabs.addTab(self._build_thresholds_tab(), SETTINGS_TAB_THRESHOLDS)
-        central_layout.addWidget(self.tabs)
+        layout.addWidget(self.tabs)
+
+        about_row = QHBoxLayout()
+        self.about_button = QPushButton("About Seeker")
+        self.about_button.setToolTip(help_text.TOOLTIP_SETTINGS_ABOUT)
+        self.about_button.clicked.connect(self._on_about_clicked)
+        about_row.addWidget(self.about_button)
+        about_row.addStretch()
+        layout.addLayout(about_row)
 
         if initial_tab is not None:
-            for index in range(self.tabs.count()):
-                if self.tabs.tabText(index) == initial_tab:
-                    self.tabs.setCurrentIndex(index)
-                    break
-
-        self.setCentralWidget(central)
+            self.select_tab(initial_tab)
 
         self._refresh_locations()
         self._refresh_destinations()
         self._refresh_connection_display()
+
+    def _on_about_clicked(self) -> None:
+        if self._on_about_requested is not None:
+            self._on_about_requested()
+
+    def select_tab(self, tab_name: str) -> None:
+        """Switches to the named tab — used both at construction time
+        (initial_tab above) and after construction, since this page is
+        now built once and persists for the app's lifetime rather than
+        being recreated on every open (item 56 Phase 3: the wizard's
+        "Connect Spotify"/"Add library location" shortcuts and the
+        Dashboard CTA's settings_connection/settings_locations actions
+        all need to land on a specific tab of the SAME long-lived page).
+        """
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == tab_name:
+                self.tabs.setCurrentIndex(index)
+                return
 
     # --- Library locations (§1) --------------------------------------
 
