@@ -7,12 +7,18 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
+from seeker.database.repositories.track_repository import TrackRepository
+from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryUnavailableError
 from seeker.library.service import (
     LibraryLocationPathAlreadyRegisteredError,
     LibraryService,
 )
 from seeker.models.local_file import LocalFile
+from seeker.models.track import Track
 
 
 def make_service(tmp_path) -> LibraryService:
@@ -23,6 +29,25 @@ def make_service(tmp_path) -> LibraryService:
         database,
         LibraryLocationRepository(database),
         LocalFileRepository(database),
+    )
+
+
+def make_service_with_matcher(tmp_path) -> LibraryService:
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    track_matcher = TrackMatcher(
+        database,
+        TrackRepository(database),
+        LocalFileRepository(database),
+        TrackMatchRepository(database),
+    )
+
+    return LibraryService(
+        database,
+        LibraryLocationRepository(database),
+        LocalFileRepository(database),
+        track_matcher=track_matcher,
     )
 
 
@@ -189,3 +214,78 @@ def test_scan_all_skips_unreachable_location_without_touching_its_rows(
 
     assert len(remaining) == 1
     assert remaining[0].relative_path == "song.mp3"
+
+
+def test_scan_all_returns_aggregated_totals_across_locations(tmp_path):
+    root_a = tmp_path / "music-a"
+    root_b = tmp_path / "music-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    (root_a / "one.mp3").write_bytes(b"not real audio")
+    (root_b / "two.mp3").write_bytes(b"not real audio")
+    (root_b / "three.mp3").write_bytes(b"not real audio")
+
+    service = make_service(tmp_path)
+    service.add_location("a", str(root_a))
+    service.add_location("b", str(root_b))
+
+    totals = service.scan_all()
+
+    assert totals == {"added": 3, "updated": 0, "removed": 0, "unchanged": 0}
+
+    # A second scan with nothing changed on disk reports everything as
+    # unchanged, still aggregated across both locations.
+    totals_again = service.scan_all()
+    assert totals_again == {
+        "added": 0, "updated": 0, "removed": 0, "unchanged": 3,
+    }
+
+
+def test_scan_and_match_requires_a_track_matcher(tmp_path):
+    service = make_service(tmp_path)
+
+    with pytest.raises(RuntimeError, match="track_matcher"):
+        service.scan_and_match()
+
+
+def test_scan_and_match_chains_scan_then_match_in_one_call(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    (library_root / "3AMDISCO - Get Back.wav").write_bytes(b"not real audio")
+
+    service = make_service_with_matcher(tmp_path)
+    service.add_location("main", str(library_root))
+
+    with service.database.transaction() as connection:
+        service.track_matcher.tracks.save(
+            Track(
+                id="track1",
+                title="Get Back",
+                artist="3amdisco",
+                album="Get Back EP",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+
+    # Before scan_and_match, nothing has been scanned or matched at all.
+    assert service.has_scanned_library() is False
+
+    result = service.scan_and_match()
+
+    # scan_all()'s keys and match_all()'s keys, combined in one dict —
+    # this is the real regression this chaining fixes: a plain scan_all()
+    # alone would leave "auto"/"needs_review"/"unmatched" entirely absent
+    # (and the track unmatched) until a separate match_all() call.
+    assert result["added"] == 1
+    assert result["auto"] == 1
+    assert result["needs_review"] == 0
+    assert result["unmatched"] == 0
+
+    with service.database.transaction() as connection:
+        stored = service.track_matcher.track_matches.get_by_track_id(
+            "track1", connection
+        )
+
+    assert stored is not None
+    assert stored.match_method == "auto"

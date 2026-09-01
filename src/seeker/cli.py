@@ -230,9 +230,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     remove_parser.add_argument("name")
 
-    library_subparsers.add_parser(
+    scan_parser = library_subparsers.add_parser(
         "scan",
         help="Scan all registered library locations.",
+    )
+    scan_parser.add_argument(
+        "--match",
+        action="store_true",
+        help=(
+            "Also run a match pass immediately after scanning, in one "
+            "call (roadmap item 56) — 'scan' alone stays available for "
+            "scripted/cron use where a separate 'library match' call is "
+            "preferred."
+        ),
     )
 
     library_subparsers.add_parser(
@@ -424,7 +434,10 @@ def handle_library(
         )
 
     elif parsed.library_command == "scan":
-        application.library_service.scan_all()
+        if parsed.match:
+            application.library_service.scan_and_match()
+        else:
+            application.library_service.scan_all()
 
     elif parsed.library_command == "match":
         application.track_matcher.match_all()

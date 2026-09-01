@@ -89,9 +89,17 @@ class FakeLibraryService:
         self._locations = locations or []
         self._has_scanned_library = has_scanned_library
         self.scan_all_calls = 0
+        self.scan_and_match_calls = 0
 
     def scan_all(self) -> None:
         self.scan_all_calls += 1
+
+    def scan_and_match(self) -> dict:
+        self.scan_and_match_calls += 1
+        return {
+            "added": 0, "updated": 0, "removed": 0, "unchanged": 0,
+            "auto": 0, "needs_review": 0, "unmatched": 0,
+        }
 
     def list_locations(self) -> list:
         return self._locations
@@ -665,7 +673,7 @@ def test_global_action_buttons_have_the_renamed_labels(qtbot):
     qtbot.addWidget(window)
 
     assert window.sync_button.text() == "Refresh playlists"
-    assert window.scan_button.text() == "Rescan library folders"
+    assert window.scan_button.text() == "Rescan & match library"
     assert window.match_button.text() == "Re-match library"
     assert window.download_button.text() == "Download selected playlist"
 
@@ -854,6 +862,27 @@ def test_all_action_buttons_enabled_once_everything_is_set_up(qtbot):
     )
     _select_first_playlist(window, qtbot)
     assert window.download_button.isEnabled()
+
+
+def test_scan_button_click_calls_scan_and_match_not_scan_all(qtbot):
+    # Roadmap item 56 — the guided scan action must chain into a match
+    # pass in one call, not leave newly-scanned files unmatched until a
+    # separate "Re-match library" click.
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(locations=[(location, True)])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(lambda: window.scan_button.isEnabled(), timeout=2000)
+    window.scan_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.library_service.scan_and_match_calls == 1,
+        timeout=2000,
+    )
+    assert application.library_service.scan_all_calls == 0
 
 
 # --- Track-table empty states (roadmap item 7) ------------------------------

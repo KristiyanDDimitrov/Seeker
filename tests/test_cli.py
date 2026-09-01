@@ -44,6 +44,7 @@ class FakeApplication:
             sync_service=None,
             duplicate_service=None,
             history_service=None,
+            library_service=None,
     ):
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
@@ -51,6 +52,24 @@ class FakeApplication:
         self.sync_service = sync_service
         self.duplicate_service = duplicate_service
         self.history_service = history_service
+        self.library_service = library_service
+
+
+class FakeLibraryServiceForCli:
+    def __init__(self):
+        self.scan_all_calls = 0
+        self.scan_and_match_calls = 0
+
+    def scan_all(self) -> dict:
+        self.scan_all_calls += 1
+        return {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}
+
+    def scan_and_match(self) -> dict:
+        self.scan_and_match_calls += 1
+        return {
+            "added": 1, "updated": 0, "removed": 0, "unchanged": 0,
+            "auto": 1, "needs_review": 0, "unmatched": 0,
+        }
 
 
 def make_matcher(tmp_path) -> TrackMatcher:
@@ -565,3 +584,31 @@ def test_history_empty_prints_a_clear_message(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert "No downloaded or tagged tracks yet." in output
+
+
+# --- Roadmap item 56: `library scan --match` ----------------------------
+
+def test_library_scan_without_match_flag_calls_scan_all_only(tmp_path):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli()
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["library", "scan"],
+    )
+
+    assert library_service.scan_all_calls == 1
+    assert library_service.scan_and_match_calls == 0
+
+
+def test_library_scan_with_match_flag_calls_scan_and_match(tmp_path):
+    matcher = make_matcher(tmp_path)
+    library_service = FakeLibraryServiceForCli()
+
+    cli.run(
+        FakeApplication(matcher, library_service=library_service),
+        ["library", "scan", "--match"],
+    )
+
+    assert library_service.scan_and_match_calls == 1
+    assert library_service.scan_all_calls == 0

@@ -8,6 +8,7 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
 
@@ -34,11 +35,17 @@ class LibraryService:
         database: Database,
         location_repo: LibraryLocationRepository,
         local_file_repo: LocalFileRepository,
+        track_matcher: TrackMatcher | None = None,
     ):
         self.database = database
         self.locations = location_repo
         self.local_files = local_file_repo
         self.scanner = LibraryScanner(local_file_repo, database)
+        # Optional — only scan_and_match() needs it (roadmap item 56).
+        # Every existing caller that constructs a LibraryService without
+        # one (tests included) is unaffected; scan_all()/scan a location
+        # alone still work with no matcher at all.
+        self.track_matcher = track_matcher
 
     def add_location(self, name: str, path: str) -> LibraryLocation:
         resolved_path = Path(path)
@@ -170,13 +177,15 @@ class LibraryService:
 
         print(f"Removed library location '{name}'.")
 
-    def scan_all(self) -> None:
+    def scan_all(self) -> dict[str, int]:
+        totals = {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}
+
         with self.database.transaction() as connection:
             locations = self.locations.get_all(connection)
 
         if not locations:
             print("No library locations registered.")
-            return
+            return totals
 
         for location in locations:
             if not Path(location.path).is_dir():
@@ -187,4 +196,30 @@ class LibraryService:
                 )
                 continue
 
-            self.scanner.scan(location)
+            summary = self.scanner.scan(location)
+
+            for key in totals:
+                totals[key] += summary[key]
+
+        return totals
+
+    def scan_and_match(self) -> dict[str, int]:
+        """Chains a full scan into a match pass in one call — the
+        guided Dashboard "Scan library" CTA used to call scan_all()
+        alone, leaving newly-scanned files with no track_matches row
+        at all until a separate, non-obvious "Re-match library" click
+        (roadmap item 56). Combines both dicts into one result; a key
+        collision isn't possible since scan_all()'s keys
+        (added/updated/removed/unchanged) and match_all()'s
+        (auto/needs_review/unmatched) are disjoint by construction.
+        """
+        if self.track_matcher is None:
+            raise RuntimeError(
+                "scan_and_match() requires a track_matcher — this "
+                "LibraryService was constructed without one."
+            )
+
+        scan_totals = self.scan_all()
+        match_counts = self.track_matcher.match_all()
+
+        return {**scan_totals, **match_counts}

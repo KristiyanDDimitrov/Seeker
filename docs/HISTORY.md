@@ -8259,3 +8259,158 @@ staged-approval sequence in full.
 `mypy --strict` clean throughout; full suite 659 passed / 1 skipped
 after the update-check portion, unchanged after the Help/About/LICENSE
 portion (no new failures introduced by either).
+
+### 56
+
+Phase 0 recon (five real investigations against the live, non-empty DB
+and library) plus Phase 1 (matching correctness) of a large multi-phase
+work block. Two of the five recon items refuted their own stated primary
+hypothesis; both are recorded here in full since that's exactly the
+"hypothesis ruled out" case CLAUDE.md's own split calls for.
+
+**0.2 — the three real unmatched/needs-review BMTH files: primary
+hypothesis (the artist gate rejecting them) refuted by real data.** The
+brief hypothesized `artist_matches` was hard-rejecting these before any
+title score ran (per the "matcher and quality drifted apart" precedent).
+Real `local_files` rows (`Bring Me The Horizon` tracks under
+`Music/Albums/2024 - POST HUMAN NeX GEn/`) all had a real, populated,
+correctly-spelled `tag_artist`. Ran the real `matching.artist_matches`
+against each: **`True` for all three.** The gate was never the problem.
+Two of the brief's own secondary hypotheses were also checked and
+refuted for these specific files: the track-number prefix was already
+being stripped by `normalize_filename_text` (cost: 0, not "depresses the
+ratio"), and the real `relative_path` layout is
+`Albums/<year> - <album>/<track>`, not `Artist/Album/<track>` — the
+artist isn't in the path at all here, so the brief's path-component
+fallback (however useful generally) would not have fixed these three
+files.
+
+Full resolution required real Spotify data the DB didn't have — this
+playlist's tracks had never been synced. `sync-tracks` 401'd; the stored
+token's own `_is_expired` check said it was still valid (a separate,
+real, unfiled gap — the refresh path never triggered even though
+Spotify itself was rejecting the token) so `SpotifyAuthManager
+._authorize()` was called directly to force a fresh interactive OAuth
+login, then `sync-tracks "POST HUMAN: NeX GEn"` pulled the real 16
+tracks. The real root cause, confirmed against real Spotify titles:
+- `"a bulleT w/ my namE On (feat. Underoath)"` (Spotify) vs. the local
+  tag `"a bulleT w- my namE On"` — missing the entire `(feat.
+  Underoath)` clause, **not** just the `/` vs `-` substitution. Real
+  score: **67.74** (needs_review by default thresholds; genuinely below
+  even the user's own already-lowered 70 auto threshold — exactly
+  explaining the reported "never matched even with the threshold
+  lowered to 70").
+- `"R.i.p. (duskCOre RemIx)"` (Spotify) vs. local `"Rip (duskCOre
+  RemIx)"` — Spotify's own letter-spacing dot stylization, dropped
+  entirely by the local tag. Real score: **74.42** (needs_review).
+- `"[ost] p.u.s.s.-e"` (Spotify) vs. local `"[ost] puss-e"` — same dot
+  stylization. Real score: **85.71** (needs_review).
+
+None of these are fixed by the brief's originally-scoped Phase 1.2(a)
+(mapping `/ \ : * ? " < > | - _` to space) alone — periods aren't in
+that substitution set, and a missing `(feat. ...)` clause isn't a
+character-substitution problem at all. Verified directly, isolating each
+cause: stripping periods from `normalize_filename_text` alone brings
+both dot-stylization cases to a clean **100.00**; trying a
+feat-clause-stripped title as an additional scoring variant (never
+replacing the full-title variant) brings the first case to **100.00**
+too. All three fixes combined were verified together before writing any
+production code.
+
+**0.4 — cover art "didn't update": primary hypothesis (append, not
+replace) refuted by reading the current code and the real files.**
+`seeker/metadata.py`'s `embed_album_art` already calls `clear_pictures()`
+before `add_picture()` for FLAC, `setall("APIC", [...])` (replace-all,
+not append) for ID3, and a plain dict-replace (`tags["covr"] = [...]`)
+for MP4 — none of the three formats append. Confirmed on 5 real,
+already-tagged files on the real drive (read-only, never opened for
+writing): exactly 1 picture/APIC frame each, no duplicates. The real,
+still-live gap is the brief's own secondary hypothesis: `_tag_one_track`
+wraps the art download+embed in a bare `try/except` that only
+`print()`s a warning — the track still counts as `tagged` and nothing in
+`details` records the failure, so a CDN hiccup on one track is
+structurally invisible to both CLI and UI. Phase 4 is re-scoped
+accordingly: 4.1 (replace-not-append) becomes minor FLAC `Picture`
+field polish only (`desc`/`width`/`height`/`depth`, currently unset);
+4.2 (honest partial-failure reporting) is where the real fix belongs.
+
+**0.1, 0.3, 0.5 — all three hypotheses confirmed as scoped.** 0.1: the
+guided/CTA "Scan library" action and the "Rescan library folders"
+button both route to `library_service.scan_all()` only;
+`match_button`/"Re-match library" is the only thing that ever calls
+`track_matcher.match_all()` — confirmed by tracing `_on_next_step_action`
+and both click handlers directly. `rglob("*")`'s lack of a depth limit
+was independently proven (not just read) with a disposable 5-level-deep
+`tempfile.mkdtemp()` tree scanned through the real `LibraryScanner`.
+0.3: `get_review_candidates()` only ever reads `soulseek_review_
+candidates`; `track_matches` has no `confirmed_at` column at all, so
+`match_all()` genuinely has no provenance concept (item 45's finding
+still holds) — this is roadmap item 7's outstanding gap, not a Review
+tab bug. 0.5: the exact reported track (Logic's "Driving Ms Daisy")
+wasn't reproducible (its playlist was never synced), but a real, better
+analog was found live in the DB: track `Kamäleon – Quadrat` has 3 real
+`role='settled'`/`status='completed'` download_requests across ~13
+hours on 2026-08-28, two identical-candidate duplicates and a third from
+a different peer/format — both a 6MB mp3 and a 65MB "Master" wav
+genuinely sitting on disk right now, only one matched. Confirmed the
+exact mechanism: `DownloadRequestRepository.get_active_for_track`
+filters `status NOT IN ('completed', 'failed', 'superseded')` — a
+`completed` row was never "active," so nothing stops a later
+`download_playlist` run from re-requesting an already-fully-downloaded
+track. Real timestamps were hours apart, not the brief's guessed
+"seconds to a couple minutes" — consistent with the user re-triggering
+the action on separate occasions with no feedback that anything had
+started (Phase 5.1), not rapid double-clicking.
+
+**Phase 1 implementation, built on the above.** `LibraryService
+.scan_and_match()` chains `scan_all()` (now returns aggregated
+added/updated/removed/unchanged totals across locations, previously
+`None`) into `match_all()` in one call; `TrackMatcher` is now an
+optional constructor dependency, wired from `Application.library_service`
+via the existing `Application.track_matcher` property. `seeker library
+scan --match` (chosen over always chaining, so scripted/cron use of a
+scan-only pass stays available); the UI's `_on_scan_clicked` now calls
+`scan_and_match` and reports the real combined counts — no genuine
+live two-stage progress text was built (`ui/workers.py`'s single shared
+dispatcher has no safe cross-thread progress-update path, and adding
+one would reintroduce exactly the class of hazard items 39/41 fought to
+eliminate), so the button shows an immediate placeholder set
+synchronously at click time, replaced by the real result once the whole
+call finishes — disclosed here as a deliberate scope decision.
+
+`matching.py`: `normalize_filename_text`/`artist_matches`/`score_title`
+all gained an `aggressive: bool = False` parameter — default preserves
+today's exact behavior (verified: `soulseek/quality.py`'s existing 27
+tests pass unmodified, since it never passes `aggressive=True`).
+Aggressive mode adds the filesystem-substitution mapping, period-
+stripping, and an additional feat-clause-stripped title variant (never
+replacing the full-title variant). New `evaluate_match()` — the single
+entry point `library/matcher.py` uses instead of calling
+`artist_matches`/`score_title` directly — returns a `MatchEvaluation`
+(score, artist_confirmed): a real, populated, disagreeing tag still hard
+-rejects (`score=None`); an unconfirmable fallback source (no tag,
+nothing in the filename/path/grandparent-path names the artist) still
+gets a real score, capped at `ARTIST_UNCONFIRMED_SCORE_CAP =
+AUTO_MATCH_THRESHOLD - 1` so it can land in needs_review but never
+silently auto-match. `library/matcher.py`'s new `_resolve_artist_evidence`
+tries `tag_artist` → filename stem → parent dir name → grandparent dir
+name in order when the tag is null (item 1.2c) — a source that matches
+via any of these counts as fully confirmed, same as a real tag.
+
+**Real before/after, run against the live, non-empty production DB
+(2026-09-01), true before-state captured via `git stash` of just the two
+changed source files, not simulated:** with the user's own already-
+lowered thresholds (`auto_match_threshold=70`, `needs_review_
+threshold=60`, confirmed via the real `config.json`) — before: **Auto:
+26, Needs review: 2, Unmatched: 1** (of 29 real tracks); after: **Auto:
+27, Needs review: 1, Unmatched: 1**. All three named BMTH files reached
+a real **100.0** and landed in `auto`. The two other real needs_review/
+unmatched rows (`Zigi SC, A-Cray – Bit Perfect`, 63.6; `Prdk – ONE MORE
+NIGHT`, 38.3) are unrelated, pre-existing, out-of-scope cases — both
+present identically before and after, confirming nothing else moved.
+Also ran the real `seeker library scan --match` end-to-end against the
+live library (3213 unchanged + 18 added + 13 updated files across two
+locations), landing on the identical 27/1/1 result.
+
+`mypy --strict` clean; full suite 681 passed / 1 skipped, run 3 times in
+a row.

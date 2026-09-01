@@ -108,11 +108,14 @@ TOOLTIP_SYNC_ALL_PLAYLISTS = (
     "cache (metadata only — no tracks yet)."
 )
 TOOLTIP_SCAN_ALL_LOCATIONS = (
-    "Re-scan every registered library location on disk for audio files."
+    "Re-scan every registered library location on disk for audio files, "
+    "then automatically re-match cached Spotify tracks against what was "
+    "found."
 )
 TOOLTIP_MATCH_ALL_TRACKS = (
-    "Fuzzy-match every cached Spotify track against your scanned local "
-    "files."
+    "Fuzzy-match every cached Spotify track against your already-scanned "
+    "local files, without re-scanning the disk first — e.g. after "
+    "changing the match thresholds in Settings."
 )
 TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST = (
     "Search SoulSeek and request downloads for the selected playlist's "

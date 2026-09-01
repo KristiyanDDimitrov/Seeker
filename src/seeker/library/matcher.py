@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from seeker.config_store import SeekerConfig
@@ -15,8 +16,8 @@ from seeker.matching import (
     AUTO_MATCH_THRESHOLD,
     NEEDS_REVIEW_THRESHOLD,
     artist_matches,
+    evaluate_match,
     resolve_text_source,
-    score_title,
 )
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track
@@ -28,6 +29,54 @@ from seeker.models.track_match import TrackMatch
 DURATION_TOLERANCE_MS = 5_000
 
 
+def _resolve_artist_evidence(
+        spotify_artist: str,
+        candidate: LocalFile,
+) -> tuple[str, bool]:
+    """Returns (local_artist_source, came_from_a_real_tag).
+
+    When tag_artist is populated, it's the only source tried — a real
+    tag that doesn't name the artist is genuine negative evidence
+    (evaluate_match's hard-reject branch), not something a path/filename
+    fallback should be allowed to override.
+
+    When tag_artist is null, tries filename stem -> parent directory
+    name -> grandparent directory name in order (roadmap item 56): a
+    real Artist/Album/Track.ext library layout puts the artist name in
+    the path, not just the filename, and this used to be ignored
+    entirely. The first source that actually contains the artist name
+    wins; evaluate_match() re-confirms it and treats it as confirmed
+    (a folder name is real, human-curated evidence, same as a tag).
+    If nothing matches, the filename stem is still returned as the
+    nominal source (for evaluate_match's "not confirmed, not a tag"
+    capped-score branch), not as any evidence in itself.
+    """
+    if candidate.tag_artist:
+        return candidate.tag_artist, True
+
+    # filename.stem, not relative_path's own stem — relative_path is
+    # only consulted below for its PARENT components (real, extra
+    # information filename alone can't give); its basename is the same
+    # file this candidate's own .filename already names, and the two can
+    # legitimately differ in a test fixture or an inconsistent caller.
+    fallback_sources = [Path(candidate.filename).stem]
+
+    path = Path(candidate.relative_path)
+    parent_name = path.parent.name
+    if parent_name:
+        fallback_sources.append(parent_name)
+
+    grandparent_name = path.parent.parent.name
+    if grandparent_name and grandparent_name != parent_name:
+        fallback_sources.append(grandparent_name)
+
+    for source in fallback_sources:
+        if artist_matches(spotify_artist, source, aggressive=True):
+            return source, False
+
+    return fallback_sources[0], False
+
+
 def find_best_match(
         track: Track,
         candidates: list[LocalFile],
@@ -35,21 +84,27 @@ def find_best_match(
     best: tuple[LocalFile, float] | None = None
 
     for candidate in candidates:
-        local_artist_source = resolve_text_source(
-            candidate.tag_artist, candidate.filename
+        local_artist_source, from_tag = _resolve_artist_evidence(
+            track.artist, candidate
         )
-
-        if not artist_matches(track.artist, local_artist_source):
-            continue
 
         local_title_source = resolve_text_source(
             candidate.tag_title, candidate.filename
         )
 
-        score = score_title(track.artist, track.title, local_title_source)
+        evaluation = evaluate_match(
+            track.artist,
+            track.title,
+            local_artist_source,
+            from_tag,
+            local_title_source,
+        )
 
-        if best is None or score > best[1]:
-            best = (candidate, score)
+        if evaluation.score is None:
+            continue
+
+        if best is None or evaluation.score > best[1]:
+            best = (candidate, evaluation.score)
 
     return best
 

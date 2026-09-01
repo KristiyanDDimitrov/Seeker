@@ -850,6 +850,28 @@ compress it here before moving on to the next item.
     **`LICENSE`** (MIT, Copyright (c) 2026 Kristiyan Dimitrov) +
     `pyproject.toml`'s `license`/`license-files` fields.
     [HISTORY §55](docs/HISTORY.md#55)
+56. **Matching correctness (Phase 1 of a larger work block) — done, two
+    real hypotheses refuted by live data first.** The artist gate was
+    NOT what rejected three real needs-review/unmatched BMTH tracks
+    (`artist_matches` was already `True` for all three, real tag data)
+    — the real cause was missing `(feat. X)` clauses and Spotify's own
+    letter-spacing dot stylization (`"R.i.p."`) that a local rip's tag
+    drops. Cover art was NOT being appended (`clear_pictures()`/
+    `setall`/dict-replace already replace correctly in all 3 formats) —
+    Phase 4 is re-scoped accordingly. `matching.py`'s
+    `normalize_filename_text`/`artist_matches`/`score_title` gained an
+    `aggressive: bool = False` param (default preserves `quality.py`'s
+    exact behavior, verified via its unmodified test suite); new
+    `evaluate_match()` softens the old hard artist gate — an
+    unconfirmable (not contradicted) source still scores, capped at
+    `ARTIST_UNCONFIRMED_SCORE_CAP`. `library/matcher.py` tries
+    `tag_artist` → filename → parent dir → grandparent dir in order.
+    `LibraryService.scan_and_match()` chains scan+match in one call
+    (`seeker library scan --match`; UI's "Scan library" CTA now does
+    both) — the guided scan action used to leave files unmatched until
+    a separate, non-obvious "Re-match library" click. Real before/after
+    against the live DB: Auto 26→27, Needs review 2→1, all three named
+    files reaching a real 100.0. [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

@@ -13,6 +13,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher, find_best_match
+from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -385,3 +386,188 @@ def test_generate_match_report_scopes_to_one_playlist_with_real_data(
     global_report = matcher.generate_match_report()
     assert global_report["auto_count"] == 7
     assert len(global_report["unmatched"]) == 6
+
+
+# --- Roadmap item 56: softened artist gate + real BMTH regression cases ----
+#
+# All three cases below are real local_files rows from the real, live
+# library (POST HUMAN: NeX GEn, synced 2026-09-01) and the real, synced
+# Spotify track data for the same playlist — not fabricated. Confirmed
+# live before this fix: artist_matches() already returned True for all
+# three (a real, populated tag_artist == "Bring Me The Horizon" in every
+# case) — the artist gate was never what rejected them, refuting the
+# original working hypothesis. The real cause was title-normalization
+# drift the old normalize_filename_text() didn't handle: filesystem-
+# substituted "/" -> "-", Spotify's own letter-spacing dot stylization
+# ("R.i.p.", "p.u.s.s.-e") dropped by the rip's own tag, and a
+# "(feat. X)" clause entirely absent from the local tag.
+
+def test_real_bmth_case_missing_feat_clause_lands_in_auto_not_unmatched():
+    # Real scores before this fix: 67.74 (UNMATCHED, below even a
+    # lowered-to-70 threshold — exactly the reported "never matched
+    # even with the threshold lowered to 70" symptom).
+    track = make_track(
+        artist="Bring Me The Horizon, Underoath",
+        title="a bulleT w/ my namE On (feat. Underoath)",
+        duration_ms=260_625,
+    )
+    candidate = make_local_file(
+        relative_path=(
+            "Music/Albums/2024 - POST HUMAN NeX GEn/"
+            "07. a bulleT w- my namE On.flac"
+        ),
+        filename="07. a bulleT w- my namE On.flac",
+        format="flac",
+        tag_artist="Bring Me The Horizon",
+        tag_title="a bulleT w- my namE On",
+        duration_ms=260_625,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert score >= AUTO_MATCH_THRESHOLD
+
+
+def test_real_bmth_case_dot_stylization_lands_in_auto_not_needs_review():
+    # Real score before this fix: 74.42 (NEEDS_REVIEW) — Spotify's own
+    # "R.i.p." dot-per-letter stylization vs. the locally-tagged "Rip".
+    track = make_track(
+        artist="Bring Me The Horizon",
+        title="R.i.p. (duskCOre RemIx)",
+        duration_ms=203_773,
+    )
+    candidate = make_local_file(
+        relative_path=(
+            "Music/Albums/2024 - POST HUMAN NeX GEn/"
+            "12. Rip (duskCOre RemIx).flac"
+        ),
+        filename="12. Rip (duskCOre RemIx).flac",
+        format="flac",
+        tag_artist="Bring Me The Horizon",
+        tag_title="Rip (duskCOre RemIx)",
+        duration_ms=203_773,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert score >= AUTO_MATCH_THRESHOLD
+
+
+def test_real_bmth_case_dot_stylization_second_track_lands_in_auto():
+    # Real score before this fix: 85.71 (NEEDS_REVIEW) — same dot-
+    # stylization pattern, a different real track on the same album.
+    track = make_track(
+        artist="Bring Me The Horizon",
+        title="[ost] p.u.s.s.-e",
+        duration_ms=169_104,
+    )
+    candidate = make_local_file(
+        relative_path=(
+            "Music/Albums/2024 - POST HUMAN NeX GEn/14. [ost] puss-e.flac"
+        ),
+        filename="14. [ost] puss-e.flac",
+        format="flac",
+        tag_artist="Bring Me The Horizon",
+        tag_title="[ost] puss-e",
+        duration_ms=169_104,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert score >= AUTO_MATCH_THRESHOLD
+
+
+def test_a_real_populated_disagreeing_tag_still_hard_rejects():
+    # evaluate_match()'s "contradicted" branch — a genuine negative
+    # signal, unaffected by the softened gate. Same case as
+    # test_wrong_artist_is_excluded_from_candidacy_despite_title_match
+    # above, re-asserted explicitly against the new evaluate_match() path
+    # rather than the old bare artist_matches() one.
+    track = make_track(artist="The Weeknd", title="Blinding Lights")
+    candidate = make_local_file(
+        tag_artist="Some Other Artist",
+        tag_title="Blinding Lights",
+    )
+
+    assert find_best_match(track, [candidate]) is None
+
+
+def test_untagged_file_artist_in_parent_directory_name_auto_matches():
+    # Roadmap item 56 §1.2c: no tag at all, and the filename alone
+    # carries only the title — no artist text in it whatsoever. A real
+    # Artist/Album/Track.ext library layout puts the artist in the path
+    # instead (here, the grandparent directory relative to the location
+    # root); this must now be tried and treated as confirmed
+    # (auto-eligible), not merely capped into needs_review.
+    track = make_track(
+        artist="3amdisco", title="Get Back", duration_ms=301_500,
+    )
+    candidate = make_local_file(
+        relative_path="Music/3amdisco/Get Back EP/Get Back.wav",
+        filename="Get Back.wav",
+        format="wav",
+        tag_artist=None,
+        tag_title=None,
+        duration_ms=301_500,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert score >= AUTO_MATCH_THRESHOLD
+
+
+def test_untagged_file_with_no_artist_anywhere_is_capped_not_unmatched():
+    # Nothing names the artist at all — no tag, filename is just the
+    # title with no artist text in it, and the path has no matching
+    # component either. This must land in needs_review (a real, capped
+    # title score), never silently vanish and never silently auto-match
+    # on title alone.
+    track = make_track(
+        artist="3amdisco", title="Get Back", duration_ms=301_500,
+    )
+    candidate = make_local_file(
+        relative_path="Music/Unsorted/Get Back.wav",
+        filename="Get Back.wav",
+        format="wav",
+        tag_artist=None,
+        tag_title=None,
+        duration_ms=301_500,
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    matched_candidate, score = match
+    assert matched_candidate is candidate
+    assert NEEDS_REVIEW_THRESHOLD <= score < AUTO_MATCH_THRESHOLD
+
+
+def test_close_match_scores_100_title_only_unaffected_by_new_normalization():
+    # Standing regression guard (this exact case has bitten this codebase
+    # twice before — see CLAUDE.md's "matcher and quality drifted apart"
+    # entry): a cleanly-tagged file with no artist text in the title must
+    # still score a clean 100 title-only, not get dragged down by the
+    # new aggressive normalization (fs-substitution/dot-stripping) or the
+    # feat-clause variant.
+    track = make_track(artist="The Weeknd", title="Blinding Lights")
+    candidate = make_local_file(
+        tag_artist="The Weeknd", tag_title="Blinding Lights",
+    )
+
+    match = find_best_match(track, [candidate])
+
+    assert match is not None
+    _, score = match
+    assert score == 100.0

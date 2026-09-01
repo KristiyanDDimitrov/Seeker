@@ -321,6 +321,7 @@ class Application:
                 self.database,
                 LibraryLocationRepository(self.database),
                 LocalFileRepository(self.database),
+                track_matcher=self.track_matcher,
             )
 
         return self._library_service

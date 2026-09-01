@@ -749,7 +749,7 @@ class MainWindow(QMainWindow):
         self.sync_button.clicked.connect(self._on_sync_clicked)
         row.addWidget(self.sync_button)
 
-        self.scan_button = QPushButton("Rescan library folders")
+        self.scan_button = QPushButton("Rescan & match library")
         self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
         self.scan_button.clicked.connect(self._on_scan_clicked)
         row.addWidget(self.scan_button)
@@ -2326,12 +2326,34 @@ class MainWindow(QMainWindow):
         )
 
     def _on_scan_clicked(self) -> None:
+        # scan_and_match() chains scan_all() + match_all() into one
+        # background call (roadmap item 56) — a plain scan used to leave
+        # newly-found files with no track_matches row at all until a
+        # separate, non-obvious "Re-match library" click. run_worker()'s
+        # single dispatcher gives no safe way to push a genuine live
+        # "now matching..." update partway through one background call
+        # (see ui/workers.py's own docstring on why a per-task signal was
+        # deliberately removed) — this sets an immediate placeholder
+        # instead, replaced by the real combined result once the whole
+        # call finishes.
         run_worker(
             self.thread_pool,
-            self.application.library_service.scan_all,
+            self.application.library_service.scan_and_match,
             button=self.scan_button,
             status_label=self.status_label,
+            on_finished=self._on_scan_and_match_finished,
         )
+        self.status_label.setText("Scanning library, then matching tracks…")
+
+    def _on_scan_and_match_finished(self, result: dict[str, int]) -> None:
+        self.status_label.setText(
+            f"Scanned: {result['added']} added, {result['updated']} "
+            f"updated, {result['removed']} removed. "
+            f"Matched: {result['auto']} auto, "
+            f"{result['needs_review']} needs review, "
+            f"{result['unmatched']} unmatched."
+        )
+        self._poll_selected_playlist()
 
     def _on_match_clicked(self) -> None:
         run_worker(
