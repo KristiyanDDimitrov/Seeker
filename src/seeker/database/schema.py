@@ -214,4 +214,24 @@ CREATE TABLE IF NOT EXISTS soulseek_review_candidates (
     size INTEGER,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
+
+-- Roadmap item 56 Phase 6.4 — a purpose-built table rather than a
+-- generic key/value store: it gives both the running total (SUM across
+-- every row) and a per-event history the History page can surface
+-- later, whereas a KV blob would only ever hold the running total and
+-- rot. One row per real duplicate-group resolution (a real Delete
+-- click, confirmed and completed), not per individual file.
+CREATE TABLE IF NOT EXISTS duplicate_cleanups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at TEXT NOT NULL,
+    files_deleted INTEGER NOT NULL,
+    bytes_freed INTEGER NOT NULL,
+    -- Nullable: the location a cleanup happened in is worth recording
+    -- when known, but not worth failing/blocking a cleanup over if it
+    -- somehow isn't (mirrors this project's existing "an optional
+    -- provenance field is stored best-effort" pattern rather than a
+    -- NOT NULL constraint that could reject a real, valid cleanup).
+    location_id INTEGER,
+    FOREIGN KEY (location_id) REFERENCES library_locations(id) ON DELETE SET NULL
+);
 """

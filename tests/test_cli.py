@@ -353,12 +353,13 @@ def test_check_playlist_scoped_passes_playlist_id_to_review_candidates(
 
 
 class FakeDuplicateService:
-    def __init__(self, fingerprint_result=None, groups=None):
+    def __init__(self, fingerprint_result=None, groups=None, cleanup_totals=(0, 0)):
         self._fingerprint_result = fingerprint_result or {
             "computed": 0, "skipped_already_computed": 0, "failed": 0,
             "details": [],
         }
         self._groups = groups or []
+        self._cleanup_totals = cleanup_totals
         self.compute_fingerprints_calls = []
         self.find_duplicate_groups_calls = []
 
@@ -369,6 +370,9 @@ class FakeDuplicateService:
     def find_duplicate_groups(self, location_name):
         self.find_duplicate_groups_calls.append(location_name)
         return self._groups
+
+    def get_cleanup_totals(self):
+        return self._cleanup_totals
 
 
 def test_library_fingerprint_calls_compute_fingerprints_and_reports_counts(
@@ -441,6 +445,37 @@ def test_library_duplicates_reports_no_duplicates(tmp_path, capsys):
     assert duplicate_service.find_duplicate_groups_calls == ["Main"]
     output = capsys.readouterr().out
     assert "No duplicates found" in output
+
+
+def test_library_duplicates_shows_reclaimed_space_milestone(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService(
+        groups=[], cleanup_totals=(312, 15_254_112_614),
+    )
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "duplicates", "Main"],
+    )
+
+    output = capsys.readouterr().out
+    assert "reclaimed" in output
+    assert "312 files" in output
+
+
+def test_library_duplicates_hides_milestone_when_nothing_reclaimed_yet(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    duplicate_service = FakeDuplicateService(groups=[], cleanup_totals=(0, 0))
+
+    cli.run(
+        FakeApplication(matcher, duplicate_service=duplicate_service),
+        ["library", "duplicates", "Main"],
+    )
+
+    output = capsys.readouterr().out
+    assert "reclaimed" not in output
 
 
 def test_library_duplicates_reports_real_group_shape(tmp_path, capsys):

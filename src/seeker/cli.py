@@ -29,7 +29,7 @@ from seeker.spotify.sync_service import (
 # Pure-function formatter, no Qt/PySide6 dependency (see its own
 # docstring) — CLI and UI share the exact same local-time conversion
 # rather than the CLI growing a second copy.
-from seeker.ui.formatting import format_timestamp
+from seeker.ui.formatting import format_file_size, format_timestamp
 
 
 def resolve_playlist_or_offer_sync(
@@ -534,6 +534,19 @@ def handle_library(
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "duplicates":
+        # Roadmap item 56 Phase 6.4 — CLI parity with the Duplicates
+        # page's own milestone; hidden entirely at zero, same "an empty
+        # milestone is worse than no milestone" rule.
+        files_deleted, bytes_freed = (
+            application.duplicate_service.get_cleanup_totals()
+        )
+        if files_deleted > 0 or bytes_freed > 0:
+            print(
+                f"You've reclaimed {format_file_size(bytes_freed)} "
+                f"across {files_deleted} "
+                f"file{'s' if files_deleted != 1 else ''}.\n"
+            )
+
         groups = application.duplicate_service.find_duplicate_groups(
             parsed.location_name,
         )

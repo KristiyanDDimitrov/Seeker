@@ -8767,3 +8767,92 @@ already handled by the existing per-item try/except, not a regression).
 
 `mypy --strict` clean; full suite 730 passed / 1 skipped, run 3 times
 in a row, no flakiness.
+
+### 56, Phase 6 — Duplicates tab
+
+Four distinct problems, one genuinely NOT reproducible.
+
+**6.1 — the location combo never refreshed.** Root cause confirmed as
+described: `_duplicates_locations_loaded` gated the fetch to fire at
+most once ever (item 39's own deadlock fix, triggered by a
+CONSTRUCTION-time eager fetch). Removed the gate entirely — a page
+SHOW is a different, human-paced trigger, the same distinction item
+39's own addendum already drew between "every MainWindow construction"
+and "a real tab click." `_render_duplicates_locations` now also
+preserves the current selection across a refresh. Both the settings-
+exit path (§3.3) and every Duplicates page show now land on the same
+`_refresh_duplicates_locations()` call. Re-ran the full
+`test_ui_smoke.py` suite as instructed, specifically to catch any
+regression toward the original deadlock: 145 passed in 4.3-6.5s across
+three separate runs — no hang, healthy timing throughout.
+
+**6.2 — the reported "Actions column is empty" bug could NOT be
+reproduced, investigated thoroughly rather than assumed fixed.**
+Checked all three suspected causes directly: the theme's own
+`QTableWidget::item` padding regression (item 47's exact hazard) is
+confirmed absent from the current `theme.py`, with its warning comment
+still in place. Reproduced the scenario the brief specified — a real,
+offscreen `MainWindow`, a REAL `DuplicateService` (real Database, real
+repositories), two real generated duplicate `.wav` files in a
+disposable temp directory, real `compute_fingerprints`/
+`find_duplicate_groups` via real libchromaprint — tested via a direct
+render call, a full re-render (the stale-`setSpan` hypothesis), and
+the real asynchronous `run_worker` click path (a queued cross-thread
+signal behaves differently than a direct call, per this project's own
+established `run_worker` hazard history). The Actions column rendered
+correctly, visible, with a real `QPushButton` and `QCheckBox`, in
+every one of these. Kept as a permanent regression test against this
+exact real pipeline rather than silently dropping the investigation —
+an honest "unverified, not reproducible" result, not a fabricated fix
+for a bug that isn't there in the current code.
+
+**6.3 — "Keep all," full paths, and groups larger than two.** Groups
+of 3/4 already worked by construction (confirmed directly, then two
+new explicit tests assert exactly N-1 ids reach `delete_local_files`
+and the kept file survives — no code change was needed there, only
+the missing coverage). New `KEEP_ALL_DUPLICATES_ID` sentinel added to
+each group's existing `QButtonGroup`, disabling that group's Delete
+button when selected. **A real, live-caught Qt gotcha found while
+wiring this up:** the first attempt used `KEEP_ALL_DUPLICATES_ID = -1`
+— `QButtonGroup.addButton(button, id=-1)` does NOT set the id to
+literal `-1`; Qt reserves `-1` as its own "auto-assign an id" sentinel
+and silently substitutes a different, Qt-generated negative id
+(confirmed live via a direct repro: `checkedId()` returned `-2`, not
+`-1`), which meant "Keep all" never actually disabled Delete — caught
+by a new test failing under the full suite, not assumed correct from
+the code alone. Fixed by using `0` instead (real `local_file` ids are
+AUTOINCREMENT, always `>= 1`, so `0` can never collide with one).
+Location + full relative path added as real table columns (`Location`/
+`Path`), resolved once per search rather than plumbed through the
+service layer — a `DuplicateFile`/`LocalFile` carries only
+`location_id`, not a real path, and `find_duplicate_groups()` is
+already scoped to one location per call. The delete-confirmation
+dialog now lists the exact full paths about to be deleted, built from
+that same resolved location path. Known limitation, disclosed rather
+than pre-empted: keeping *some but not all* of a group (2 of 4) isn't
+expressible in this keep-one/keep-all model — flagged in a code
+comment, not built.
+
+**6.4 — reclaimed-space milestone.** New `duplicate_cleanups` table
+(guarded `CREATE TABLE IF NOT EXISTS` in the shared `SCHEMA` string,
+matching every other table there — not a separate `_migrate` ALTER,
+since this is a brand-new table, not a new column on an existing
+one), verified against the real, non-empty production DB: the table
+was created cleanly, `track_matches`' real 29-row count was
+unaffected. `delete_local_files` now measures `bytes_freed` via a real
+`Path.stat().st_size` call BEFORE either the DB row or the file itself
+is deleted (item 40's own DB-row-first-then-file ordering rule still
+applies below that), falling back to the stored `size_bytes` column if
+the stat call itself fails — verified directly with a real 15-byte and
+a real 5+10-byte deletion, and with a dedicated unit test isolating
+the fallback branch via a monkeypatched `stat()` failure. A batch that
+deletes nothing real records no cleanup row at all ("an empty
+milestone is worse than no milestone"). UI: `duplicates_milestone_
+label`, hidden entirely at zero, refreshed on every Duplicates page
+show and immediately after a real delete completes. CLI: the same
+total in `seeker library duplicates`'s own header, same hide-at-zero
+rule. Verified end to end against the real production `Application()`:
+`get_cleanup_totals()` returns `(0, 0)` cleanly, no error.
+
+`mypy --strict` clean; full suite 744 passed / 1 skipped, run 3 times
+in a row, no flakiness.

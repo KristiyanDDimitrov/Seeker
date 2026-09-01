@@ -955,6 +955,30 @@ compress it here before moving on to the next item.
     detail — no destination path is captured on `DownloadRequest`
     anywhere; the page subtitle explains the 60s-then-History behavior
     instead. [HISTORY §56](docs/HISTORY.md#56)
+61. **Duplicates tab (Phase 6) — done, three real fixes and one
+    "could not reproduce."** 6.1: the location combo's "load once
+    ever" gate (item 39's real deadlock fix, construction-time
+    specific) removed — a page SHOW is human-paced and doesn't
+    reintroduce that hazard, so it now refreshes on every visit,
+    preserving the current selection. 6.2: the reported "Actions
+    column is empty" bug could NOT be reproduced via the real
+    `DuplicateService`/real fingerprinting/real async click path
+    specified — kept as a permanent regression test rather than a
+    fabricated fix; theme.py's item-47 QSS hazard confirmed still
+    absent. 6.3: "Keep all" (new `KEEP_ALL_DUPLICATES_ID` sentinel in
+    each group's `QButtonGroup`) plus Location/Path columns and an
+    exact-full-paths delete-confirmation dialog. **Real Qt gotcha
+    found live: `QButtonGroup.addButton(button, id=-1)` doesn't set
+    the id to `-1` at all — Qt reserves that value as its own "auto-
+    assign" sentinel and silently substitutes a different id
+    (`checkedId()` returned `-2`, confirmed via direct repro) — fixed
+    by using `0` instead.** Groups of 3/4 already worked by
+    construction, now with explicit tests. 6.4: new `duplicate_
+    cleanups` table (verified against the real, non-empty production
+    DB); `delete_local_files` measures real `bytes_freed` via
+    `Path.stat()` before either delete step, falling back to the
+    stored `size_bytes` column on a stat failure. UI/CLI milestone,
+    hidden at zero. [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

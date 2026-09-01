@@ -62,7 +62,7 @@ from seeker.ui.download_eta import (
     DownloadEtaTracker,
     format_aggregate_header,
 )
-from seeker.ui.formatting import format_timestamp
+from seeker.ui.formatting import format_file_size, format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import (
     SETTINGS_TAB_CONNECTION,
@@ -122,6 +122,19 @@ _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
 # ready_for_review row eventually looks exactly like a genuinely stuck
 # in-progress download (STALL_SAMPLE_COUNT identical samples) to it.
 _DOWNLOAD_TERMINAL_STATUSES = {"completed", "failed", "ready_for_review"}
+
+# Roadmap item 56 Phase 6.3 — a sentinel QButtonGroup id for the "Keep
+# all" option, sharing the same group as the per-file keep radios so
+# selecting one deselects the others (the exact behavior the user
+# asked to keep). Real local_file ids are always positive
+# (AUTOINCREMENT starts at 1), so 0 can never collide with one — and,
+# confirmed live, -1 specifically CANNOT be used here: QButtonGroup.
+# addButton(button, id=-1) doesn't set the id to -1 at all — Qt treats
+# -1 as its own "auto-assign an id" sentinel and silently substitutes a
+# different, Qt-generated negative id (checkedId() returned -2 in a
+# real, direct repro), breaking any comparison against a real -1
+# constant.
+KEEP_ALL_DUPLICATES_ID = 0
 
 _HISTORY_EVENT_LABELS = {
     DOWNLOADED: "Downloaded",
@@ -709,18 +722,19 @@ class MainWindow(QMainWindow):
         ))
         self._settings_page_index = self._page_indices["settings"]
 
-        # Locations load lazily, the first time this page is actually
-        # shown, rather than eagerly in _build_ui() — every MainWindow
-        # construction runs _build_ui() once, and an eager worker here
-        # was confirmed live to compound into a real, reproducible
-        # deadlock (Qt's internal connection-list mutex vs. the GIL)
-        # under the rapid, repeated MainWindow construction this
-        # project's own test suite does — see CLAUDE.md/docs/HISTORY.md.
-        # A real user only reaches this page by clicking it, which is
-        # comparatively rare and human-paced, so this never fires in a
-        # tight loop the way construction does.
+        # Locations load lazily, on every real show of this page rather
+        # than eagerly in _build_ui() — every MainWindow construction
+        # runs _build_ui() once, and an eager worker here was confirmed
+        # live to compound into a real, reproducible deadlock (Qt's
+        # internal connection-list mutex vs. the GIL) under the rapid,
+        # repeated MainWindow construction this project's own test
+        # suite does — see CLAUDE.md/docs/HISTORY.md item 39. A real
+        # page SHOW (unlike construction) is comparatively rare and
+        # human-paced, so refreshing on every one (roadmap item 56
+        # Phase 6.1 — a location added since the last visit must
+        # actually appear) doesn't reintroduce that hazard; only the
+        # original "fetch at construction time" trigger did.
         self._duplicates_page_index = self._page_indices["duplicates"]
-        self._duplicates_locations_loaded = False
         # Same lazy-load-on-first-real-visit reasoning as Duplicates
         # above — a plain, cheap local-DB read, but there's no reason
         # to pay it on every MainWindow construction when a real user
@@ -1625,6 +1639,15 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Roadmap item 56 Phase 6.4 — persistent, cumulative, and
+        # celebratory. Hidden entirely at zero — "an empty milestone is
+        # worse than no milestone" (the brief's own framing, matching
+        # this app's existing "blank, not a misleading control"
+        # precedent for a genuinely-nothing-to-show state).
+        self.duplicates_milestone_label = QLabel("")
+        self.duplicates_milestone_label.hide()
+        layout.addWidget(self.duplicates_milestone_label)
+
         controls = QHBoxLayout()
 
         self.duplicates_location_combo = QComboBox()
@@ -1656,11 +1679,11 @@ class MainWindow(QMainWindow):
         self.duplicates_status_label = QLabel("")
         layout.addWidget(self.duplicates_status_label)
 
-        self.duplicates_table = QTableWidget(0, 7)
+        self.duplicates_table = QTableWidget(0, 8)
         self.duplicates_table.setHorizontalHeaderLabels(
             [
-                "Group", "File", "Format", "Bitrate", "Similarity",
-                "Keep", "Actions",
+                "Group", "Location", "Path", "Format", "Bitrate",
+                "Similarity", "Keep", "Actions",
             ]
         )
         self.duplicates_table.horizontalHeader().setStretchLastSection(True)
@@ -1676,16 +1699,25 @@ class MainWindow(QMainWindow):
         # hazard, not just a style preference. Reset on every render.
         self._duplicate_button_groups: list[QButtonGroup] = []
         self._current_duplicate_groups: list[DuplicateGroup] = []
+        self._current_duplicates_location_name: str | None = None
+        self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
 
         return tab
 
     def _on_page_changed(self, index: int) -> None:
-        if (
-                index == self._duplicates_page_index
-                and not self._duplicates_locations_loaded
-        ):
-            self._duplicates_locations_loaded = True
+        # Roadmap item 56 Phase 6.1 — was gated by
+        # _duplicates_locations_loaded to fire at most once ever (the
+        # original fix for a real, confirmed Qt/GIL deadlock — item 39
+        # — triggered by fetching at MainWindow *construction* time).
+        # A page SHOW is a different, human-paced trigger — the same
+        # distinction item 39's own addendum already draws — so
+        # refreshing on every show (a location added since the last
+        # visit must actually appear) doesn't reintroduce that
+        # construction-time hazard. Settings' own exit (§3.3) already
+        # calls this same method directly; both paths now land on it.
+        if index == self._duplicates_page_index:
             self._refresh_duplicates_locations()
+            self._refresh_duplicates_milestone()
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True
@@ -1698,16 +1730,60 @@ class MainWindow(QMainWindow):
             on_finished=self._render_duplicates_locations,
         )
 
+    def _refresh_duplicates_milestone(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.duplicate_service.get_cleanup_totals,
+            on_finished=self._render_duplicates_milestone,
+        )
+
+    def _render_duplicates_milestone(self, totals: tuple[int, int]) -> None:
+        files_deleted, bytes_freed = totals
+
+        if bytes_freed == 0 and files_deleted == 0:
+            self.duplicates_milestone_label.hide()
+            return
+
+        self.duplicates_milestone_label.setText(
+            f"You've reclaimed {format_file_size(bytes_freed)} across "
+            f"{files_deleted} file{'s' if files_deleted != 1 else ''}."
+        )
+        self.duplicates_milestone_label.show()
+
     def _render_duplicates_locations(
             self,
             locations: list[tuple[Any, bool]],
     ) -> None:
+        # Preserve the current selection across a refresh (Phase 6.1)
+        # when that location still exists — losing it on every page
+        # revisit would be a real regression of its own.
+        previously_selected = self._selected_duplicates_location()
+
         self.duplicates_location_combo.clear()
+        # Roadmap item 56 Phase 6.3/6.4 — the real LibraryLocation
+        # (path for the delete-confirmation dialog's exact full paths
+        # and the table's own Location column; id for the reclaimed-
+        # space milestone's cleanup record). Neither is carried on
+        # LocalFile/DuplicateFile at all (only location_id, and not
+        # even that on the milestone side), and find_duplicate_groups()
+        # is already scoped to one location per call, so this is
+        # resolved once here rather than plumbed through the service
+        # layer.
+        self._duplicates_locations_by_name = {
+            location.name: location for location, _ in locations
+        }
 
         for location, _ in locations:
             self.duplicates_location_combo.addItem(
                 location.name, location.name
             )
+
+        if previously_selected is not None:
+            index = self.duplicates_location_combo.findData(
+                previously_selected
+            )
+            if index >= 0:
+                self.duplicates_location_combo.setCurrentIndex(index)
 
     def _selected_duplicates_location(self) -> str | None:
         name = self.duplicates_location_combo.currentData()
@@ -1752,6 +1828,14 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Roadmap item 56 Phase 6.3 — the Location column and the
+        # delete-confirmation dialog's full paths both need this;
+        # captured here rather than re-read from the combo later, so a
+        # combo selection change while this search is still running
+        # can't attach the wrong location name to the results it
+        # eventually renders.
+        self._current_duplicates_location_name = location_name
+
         run_worker(
             self.thread_pool,
             lambda: self.application.duplicate_service.find_duplicate_groups(
@@ -1785,6 +1869,8 @@ class MainWindow(QMainWindow):
             f"Found {len(groups)} duplicate group(s)."
         )
 
+        location_name = self._current_duplicates_location_name or "—"
+
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
 
@@ -1808,11 +1894,18 @@ class MainWindow(QMainWindow):
                 self.duplicates_table.setItem(
                     row, 0, QTableWidgetItem(str(group_index)),
                 )
+                # Location + full relative path (roadmap item 56 Phase
+                # 6.3) — "the same file in two folders" is a judgement
+                # the user needs the real path to make, not just a
+                # bare filename.
                 self.duplicates_table.setItem(
-                    row, 1, QTableWidgetItem(local_file.relative_path),
+                    row, 1, QTableWidgetItem(location_name),
                 )
                 self.duplicates_table.setItem(
-                    row, 2, QTableWidgetItem(local_file.format),
+                    row, 2, QTableWidgetItem(local_file.relative_path),
+                )
+                self.duplicates_table.setItem(
+                    row, 3, QTableWidgetItem(local_file.format),
                 )
                 bitrate_text = (
                     f"{quality.bitrate_kbps} kbps"
@@ -1820,10 +1913,10 @@ class MainWindow(QMainWindow):
                     else "—"
                 )
                 self.duplicates_table.setItem(
-                    row, 3, QTableWidgetItem(bitrate_text),
+                    row, 4, QTableWidgetItem(bitrate_text),
                 )
                 self.duplicates_table.setItem(
-                    row, 4, QTableWidgetItem(f"{group.similarity:.1%}"),
+                    row, 5, QTableWidgetItem(f"{group.similarity:.1%}"),
                 )
 
                 keep_radio = QRadioButton()
@@ -1833,13 +1926,13 @@ class MainWindow(QMainWindow):
                 # below reads it back directly, no separate id-to-file
                 # mapping needed.
                 button_group.addButton(keep_radio, id=local_file.id)
-                self.duplicates_table.setCellWidget(row, 5, keep_radio)
+                self.duplicates_table.setCellWidget(row, 6, keep_radio)
 
                 row += 1
 
             self.duplicates_table.setCellWidget(
                 group_first_row,
-                6,
+                7,
                 self._build_duplicate_group_actions(group, button_group),
             )
 
@@ -1848,10 +1941,10 @@ class MainWindow(QMainWindow):
                 # action lives once per group, not once per row"
                 # precedent as item 27's per-track Tag button only
                 # rendering for IN_LIBRARY rows.
-                self.duplicates_table.setCellWidget(other_row, 6, QWidget())
+                self.duplicates_table.setCellWidget(other_row, 7, QWidget())
 
             self.duplicates_table.setSpan(
-                group_first_row, 6, len(group.files), 1,
+                group_first_row, 7, len(group.files), 1,
             )
 
     def _build_duplicate_group_actions(
@@ -1862,6 +1955,16 @@ class MainWindow(QMainWindow):
         container = QWidget()
         actions_layout = QHBoxLayout(container)
         actions_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Roadmap item 56 Phase 6.3 — "the same file living in several
+        # folders is sometimes deliberate." An additional button in the
+        # group's EXISTING QButtonGroup (a sentinel id, not a separate
+        # control/group) so the "selecting one deselects the others"
+        # behavior is preserved and simply extended, not reimplemented.
+        keep_all_radio = QRadioButton("Keep all")
+        keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
+        button_group.addButton(keep_all_radio, id=KEEP_ALL_DUPLICATES_ID)
+        actions_layout.addWidget(keep_all_radio)
 
         confirm_checkbox = QCheckBox("Confirm delete")
         confirm_checkbox.setToolTip(
@@ -1877,6 +1980,17 @@ class MainWindow(QMainWindow):
             )
         )
         actions_layout.addWidget(delete_button)
+
+        def _update_delete_enabled() -> None:
+            # "Keep all" selected means there is nothing to delete.
+            delete_button.setEnabled(
+                button_group.checkedId() != KEEP_ALL_DUPLICATES_ID
+            )
+
+        button_group.buttonToggled.connect(
+            lambda _button, _checked: _update_delete_enabled()
+        )
+        _update_delete_enabled()
 
         return container
 
@@ -1901,6 +2015,13 @@ class MainWindow(QMainWindow):
             return
 
         keep_id = button_group.checkedId()
+
+        if keep_id == KEEP_ALL_DUPLICATES_ID:
+            # Defense in depth — the Delete button is already disabled
+            # in this state, but nothing structurally prevents this
+            # method being reached some other way.
+            return
+
         delete_ids = [
             duplicate_file.local_file.id
             for duplicate_file in group.files
@@ -1908,10 +2029,34 @@ class MainWindow(QMainWindow):
             and duplicate_file.local_file.id != keep_id
         ]
 
+        current_location = self._duplicates_locations_by_name.get(
+            self._current_duplicates_location_name or "",
+        )
+        location_path = current_location.path if current_location else ""
+        location_id = current_location.id if current_location else None
+
+        # Roadmap item 56 Phase 6.3 — deleting real user files warrants
+        # naming them: the exact full paths about to be deleted, not
+        # just a bare count, in a second, explicit confirmation.
+        paths_to_delete = [
+            str(Path(location_path) / duplicate_file.local_file.relative_path)
+            for duplicate_file in group.files
+            if duplicate_file.local_file.id in delete_ids
+        ]
+
+        confirmed = QMessageBox.question(
+            self,
+            help_text.DELETE_DUPLICATES_CONFIRM_TITLE,
+            help_text.format_delete_duplicates_confirm_body(paths_to_delete),
+        )
+
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
         run_worker(
             self.thread_pool,
             lambda: self.application.duplicate_service.delete_local_files(
-                delete_ids, keep_id,
+                delete_ids, keep_id, location_id,
             ),
             button=button,
             status_label=self.duplicates_status_label,
@@ -1958,6 +2103,10 @@ class MainWindow(QMainWindow):
         self.duplicates_status_label.setText(
             f"{message} {self.duplicates_status_label.text()}"
         )
+        # A real deletion just happened (delete_local_files already
+        # recorded it) — refresh the milestone total immediately rather
+        # than waiting for the next page revisit.
+        self._refresh_duplicates_milestone()
 
     def _load_playlists(self) -> None:
         run_worker(

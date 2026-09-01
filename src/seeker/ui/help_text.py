@@ -225,6 +225,10 @@ TOOLTIP_KEEP_FILE_RADIO = (
     "Which copy in this group to keep. Pre-selected to the highest-"
     "quality copy, but you can pick a different one."
 )
+TOOLTIP_KEEP_ALL_DUPLICATES_RADIO = (
+    "Keep every file in this group — sometimes the same recording in "
+    "several folders is deliberate. Disables Delete for this group."
+)
 TOOLTIP_DELETE_DUPLICATES_CHECKBOX = (
     "Confirm you want to permanently delete every other file in this "
     "group from disk. Required before Delete does anything."
@@ -233,6 +237,22 @@ TOOLTIP_DELETE_DUPLICATES_BUTTON = (
     "Delete every file in this group except the one selected to keep. "
     "Only takes effect once the checkbox above is checked."
 )
+DELETE_DUPLICATES_CONFIRM_TITLE = "Delete duplicate files?"
+
+
+def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
+    """The exact full paths about to be permanently deleted — roadmap
+    item 56 Phase 6.3: deleting real user files warrants naming them,
+    not just a bare count."""
+    listed = "\n".join(f"  {path}" for path in paths)
+    count = len(paths)
+    plural = "s" if count != 1 else ""
+
+    return (
+        f"This will permanently delete {count} file{plural} from disk:\n\n"
+        f"{listed}\n\n"
+        f"This cannot be undone."
+    )
 
 # --- History page -----------------------------------------------------------
 

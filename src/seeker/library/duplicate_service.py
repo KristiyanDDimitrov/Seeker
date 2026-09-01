@@ -13,6 +13,9 @@ from seeker.audio_fingerprint import (
     similarity_from_decoded,
 )
 from seeker.database.connection import Database
+from seeker.database.repositories.duplicate_cleanup_repository import (
+    DuplicateCleanupRepository,
+)
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
@@ -23,6 +26,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.file_deletion import delete_file
+from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.track_match import TrackMatch
@@ -88,11 +92,19 @@ class DuplicateService:
         location_repository: LibraryLocationRepository,
         local_file_repository: LocalFileRepository,
         track_match_repository: TrackMatchRepository,
+        duplicate_cleanup_repository: DuplicateCleanupRepository | None = None,
     ):
         self.database = database
         self.locations = location_repository
         self.local_files = local_file_repository
         self.track_matches = track_match_repository
+        # Optional, defaulted rather than required — every existing
+        # caller/test that constructs a DuplicateService without one
+        # (Phase 6.4 is additive) is unaffected; only record_cleanup()/
+        # get_cleanup_totals() need it.
+        self.duplicate_cleanups = (
+            duplicate_cleanup_repository or DuplicateCleanupRepository(database)
+        )
 
     def _get_location_or_raise(
             self, location_name: str, connection: Any,
@@ -258,6 +270,7 @@ class DuplicateService:
             self,
             local_file_ids: list[int],
             keep_local_file_id: int | None = None,
+            location_id: int | None = None,
     ) -> dict[str, Any]:
         """Deletes each given local file — both its `local_files` DB row
         and the real file on disk — used to resolve a duplicate group by
@@ -290,13 +303,25 @@ class DuplicateService:
         the window before that same next scan repairs it — a state a
         matcher or tagger run in that window could act on and fail
         against, which is worse than a merely-orphaned file.
+
+        `location_id` (roadmap item 56 Phase 6.4), when given, is
+        recorded on the resulting `duplicate_cleanups` row — purely
+        informational provenance for the reclaimed-space milestone, not
+        used to scope or validate the deletion itself. A real,
+        non-zero `bytes_freed` is recorded whenever at least one file
+        was actually deleted; a batch that deleted nothing (all
+        failed) records nothing at all, matching "an empty milestone
+        is worse than no milestone."
         """
         counts = {"deleted": 0, "failed": 0}
         details: list[dict[str, str]] = []
+        bytes_freed = 0
 
         for local_file_id in local_file_ids:
             try:
-                self._delete_one_local_file(local_file_id, keep_local_file_id)
+                bytes_freed += self._delete_one_local_file(
+                    local_file_id, keep_local_file_id,
+                )
             except Exception as error:
                 counts["failed"] += 1
                 details.append(
@@ -309,37 +334,81 @@ class DuplicateService:
             else:
                 counts["deleted"] += 1
 
-        return {**counts, "details": details}
+        if counts["deleted"] > 0:
+            self.record_cleanup(counts["deleted"], bytes_freed, location_id)
+
+        return {**counts, "details": details, "bytes_freed": bytes_freed}
+
+    def record_cleanup(
+            self,
+            files_deleted: int,
+            bytes_freed: int,
+            location_id: int | None = None,
+    ) -> None:
+        with self.database.transaction() as connection:
+            self.duplicate_cleanups.add(
+                DuplicateCleanup(
+                    occurred_at=datetime.now(timezone.utc).isoformat(),
+                    files_deleted=files_deleted,
+                    bytes_freed=bytes_freed,
+                    location_id=location_id,
+                ),
+                connection,
+            )
+
+    def get_cleanup_totals(self) -> tuple[int, int]:
+        """(total_files_deleted, total_bytes_freed) across every real
+        recorded cleanup, ever — (0, 0) when none have happened yet."""
+        with self.database.transaction() as connection:
+            return self.duplicate_cleanups.get_totals(connection)
 
     def _delete_one_local_file(
             self,
             local_file_id: int,
             keep_local_file_id: int | None,
-    ) -> None:
+    ) -> int:
         with self.database.transaction() as connection:
             local_file = self.local_files.get_by_id(local_file_id, connection)
 
             if local_file is None:
                 # Already gone -- the desired end state (no such row,
-                # no such file tracked) is already true.
-                return
+                # no such file tracked) is already true. Nothing was
+                # freed by THIS call.
+                return 0
 
             location = self.locations.get_by_id(
                 local_file.location_id, connection,
             )
+            file_path = (
+                Path(location.path) / local_file.relative_path
+                if location is not None else None
+            )
+
+            # Roadmap item 56 Phase 6.4 — measured from the real file
+            # via stat() BEFORE either the DB row or the file itself is
+            # deleted (item 40's own standing ordering rule still
+            # applies below: DB row first, then file). Falls back to
+            # the stored size_bytes column if the real file is already
+            # gone from disk — still a real, previously-recorded size,
+            # not a guess.
+            bytes_freed = local_file.size_bytes
+            if file_path is not None:
+                try:
+                    bytes_freed = file_path.stat().st_size
+                except OSError:
+                    pass
 
             self._repoint_or_clear_match(
                 local_file_id, keep_local_file_id, connection,
             )
             self.local_files.delete_by_id(local_file_id, connection)
 
-        if location is None:
+        if location is None or file_path is None:
             # A local_files row with no matching library_locations row
             # isn't a state this schema's own foreign keys allow --
             # nothing further to delete on disk.
-            return
+            return bytes_freed
 
-        file_path = Path(location.path) / local_file.relative_path
         error = delete_file(file_path)
 
         if error is not None:
@@ -352,6 +421,8 @@ class DuplicateService:
                 f"removed from the library but could not delete "
                 f"{file_path}: {error}"
             )
+
+        return bytes_freed
 
     def _repoint_or_clear_match(
             self,

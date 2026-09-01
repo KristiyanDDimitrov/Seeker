@@ -305,7 +305,12 @@ def test_delete_local_files_removes_db_row_and_real_file(tmp_path):
     service = make_service(database)
     result = service.delete_local_files([local_file.id])
 
-    assert result == {"deleted": 1, "failed": 0, "details": []}
+    assert result == {
+        "deleted": 1, "failed": 0, "details": [],
+        # Roadmap item 56 Phase 6.4 — the real, stat()-measured size of
+        # the real file just deleted (b"fake audio data" is 15 bytes).
+        "bytes_freed": 15,
+    }
     assert not file_path.exists()
 
     with database.transaction() as connection:
@@ -424,7 +429,11 @@ def test_delete_local_files_already_missing_id_counts_as_deleted(tmp_path):
 
     result = service.delete_local_files([999])
 
-    assert result == {"deleted": 1, "failed": 0, "details": []}
+    # Nothing was ever really there — 0 real bytes freed, not a
+    # missing/error value.
+    assert result == {
+        "deleted": 1, "failed": 0, "details": [], "bytes_freed": 0,
+    }
 
 
 def test_delete_local_files_reports_failure_when_file_already_gone_from_disk(
@@ -475,3 +484,97 @@ def test_delete_local_files_one_failure_does_not_abort_the_batch(tmp_path):
     assert result["deleted"] == 1
     assert result["failed"] == 1
     assert not good_path.exists()
+
+
+# --- Roadmap item 56 Phase 6.4: reclaimed-space milestone -----------------
+
+def test_delete_local_files_records_a_real_cleanup(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    (music_dir / "a.wav").write_bytes(b"12345")
+    (music_dir / "b.wav").write_bytes(b"1234567890")
+    file_a = add_local_file(database, location, "a.wav", "wav", 3000)
+    file_b = add_local_file(database, location, "b.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.delete_local_files(
+        [file_a.id, file_b.id], location_id=location.id,
+    )
+
+    assert result["bytes_freed"] == 15  # 5 + 10 real bytes
+    assert service.get_cleanup_totals() == (2, 15)
+
+    with database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT files_deleted, bytes_freed, location_id "
+            "FROM duplicate_cleanups"
+        ).fetchall()
+
+    assert len(rows) == 1
+    assert rows[0]["files_deleted"] == 2
+    assert rows[0]["bytes_freed"] == 15
+    assert rows[0]["location_id"] == location.id
+
+
+def test_delete_local_files_records_nothing_when_everything_fails(tmp_path):
+    # "An empty milestone is worse than no milestone" — a batch that
+    # deleted nothing real must not create a zero-value cleanup row.
+    database = make_database(tmp_path)
+    location = register_location(database, tmp_path / "music")
+    missing_file = add_local_file(
+        database, location, "missing.wav", "wav", 3000,
+    )
+
+    service = make_service(database)
+    result = service.delete_local_files([missing_file.id])
+
+    assert result["deleted"] == 0
+    assert result["failed"] == 1
+    assert service.get_cleanup_totals() == (0, 0)
+
+
+def test_get_cleanup_totals_sums_across_multiple_real_cleanups(tmp_path):
+    database = make_database(tmp_path)
+    service = make_service(database)
+
+    assert service.get_cleanup_totals() == (0, 0)
+
+    service.record_cleanup(3, 1_000)
+    service.record_cleanup(2, 500)
+
+    assert service.get_cleanup_totals() == (5, 1_500)
+
+
+def test_delete_one_local_file_falls_back_to_stored_size_when_stat_fails(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item 56 Phase 6.4 — the documented fallback path,
+    # isolated directly: a real stat() failure on the file about to be
+    # measured (not necessarily "the file is fully gone" — any OSError)
+    # must still record the real, previously-known size_bytes rather
+    # than silently reporting 0 bytes freed for a real deletion.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    real_path = music_dir / "a.wav"
+    real_path.write_bytes(b"real bytes on disk")
+    local_file = add_local_file(database, location, "a.wav", "wav", 3000)
+
+    from pathlib import Path as PathlibPath
+    original_stat = PathlibPath.stat
+
+    def failing_stat(self, *args, **kwargs):
+        if self.name == "a.wav":
+            raise OSError("simulated stat failure")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(PathlibPath, "stat", failing_stat)
+
+    service = make_service(database)
+    bytes_freed = service._delete_one_local_file(local_file.id, None)
+
+    # local_file's own stored size_bytes, set by add_local_file above.
+    assert bytes_freed == 1000
