@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 from mutagen import File as MutagenFile
 
+from seeker.album_art_cache import AlbumArtCache
 from seeker.audio_analysis import analyze_audio as run_audio_analysis
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -40,6 +41,7 @@ class MetadataService:
         local_file_repository: LocalFileRepository,
         library_location_repository: LibraryLocationRepository,
         playlist_repository: PlaylistRepository,
+        album_art_cache: AlbumArtCache | None = None,
     ):
         self.database = database
         self.tracks = track_repository
@@ -47,6 +49,12 @@ class MetadataService:
         self.local_files = local_file_repository
         self.locations = library_location_repository
         self.playlists = playlist_repository
+        # Roadmap item 56 Phase 4.3 — MetadataService is a cached
+        # singleton for the app's whole lifetime (Application.
+        # metadata_service, same pattern as track_matcher/dashboard_
+        # service — item 33), so the default instance here persists
+        # across tagging runs too, not just within one.
+        self.album_art_cache = album_art_cache or AlbumArtCache()
 
     def tag_playlist(
             self,
@@ -88,6 +96,12 @@ class MetadataService:
     ) -> dict[str, Any]:
         counts: dict[str, int] = {
             "tagged": 0,
+            # Roadmap item 56 Phase 4.2 — a subset of "tagged" (text
+            # tags DID get written), broken out because art is
+            # currently a silent best-effort best-case: without this,
+            # a CDN hiccup or a never-synced album_art_url makes the
+            # UI report unqualified success with no way to tell.
+            "tagged_without_art": 0,
             "skipped_no_match": 0,
             "skipped_format_unsupported": 0,
             "skipped_already_tagged": 0,
@@ -265,6 +279,9 @@ class MetadataService:
             )
             return
 
+        art_outcome = "written"
+        art_message: str | None = None
+
         if not skip_tag_write:
             try:
                 write_text_tags(
@@ -283,20 +300,48 @@ class MetadataService:
                 )
                 return
 
-            if track.album_art_url:
+            # Art is best-effort — a download/embed failure shouldn't
+            # sink an otherwise-successful text-tag write — but a
+            # silent one is exactly what made this whole thing
+            # invisible to the UI before (roadmap item 56 Phase 0.4/
+            # 4.2): the track still counted as plain "tagged" with no
+            # record anywhere of what actually happened to the art.
+            if not track.album_art_url:
+                art_outcome = "no_url"
+                art_message = (
+                    "no album art URL stored for this track — re-run "
+                    "'seeker sync-tracks' for this playlist to "
+                    "populate it"
+                )
+            else:
                 try:
                     image_bytes, mime_type = self._download_album_art(
                         track.album_art_url
                     )
-                    embed_album_art(mutagen_file, image_bytes, mime_type)
                 except Exception as error:
-                    # Art is best-effort — a download/embed failure
-                    # shouldn't sink an otherwise-successful text-tag
-                    # write.
-                    print(
-                        f"  Warning: could not embed album art for "
-                        f"{track.artist} - {track.title}: {error}"
-                    )
+                    art_outcome = "download_failed"
+                    art_message = str(error)
+                else:
+                    try:
+                        embedded = embed_album_art(
+                            mutagen_file, image_bytes, mime_type
+                        )
+                    except Exception as error:
+                        art_outcome = "embed_failed"
+                        art_message = str(error)
+                    else:
+                        if not embedded:
+                            art_outcome = "format_unsupported"
+                            art_message = (
+                                "album art isn't supported for this "
+                                "file format"
+                            )
+
+            if art_outcome != "written":
+                print(
+                    f"  Warning: could not embed album art for "
+                    f"{track.artist} - {track.title}: {art_message}"
+                )
 
         if needs_analysis:
             # Fully independent of the text/art tagging above — an
@@ -352,12 +397,35 @@ class MetadataService:
             )
 
         counts["tagged"] += 1
-        print(f"  Tagged: {track.artist} - {track.title}")
+
+        if art_outcome != "written":
+            counts["tagged_without_art"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": f"tagged_without_art_{art_outcome}",
+                    "message": (
+                        f"{track.artist} - {track.title}: {art_message}"
+                    ),
+                }
+            )
+            print(
+                f"  Tagged (no cover art): {track.artist} - {track.title}"
+            )
+        else:
+            print(f"  Tagged: {track.artist} - {track.title}")
 
     def _download_album_art(self, url: str) -> tuple[bytes, str]:
+        cached = self.album_art_cache.get(url)
+
+        if cached is not None:
+            return cached
+
         response = httpx.get(url, timeout=15.0)
         response.raise_for_status()
 
         mime_type = response.headers.get("content-type", "image/jpeg")
+
+        self.album_art_cache.put(url, response.content, mime_type)
 
         return response.content, mime_type

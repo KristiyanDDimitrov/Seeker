@@ -8604,3 +8604,85 @@ times in a row (one incidental flaky timing failure in an unrelated
 pre-existing test — `test_history_refresh_button_refetches` —
 reproduced as a pass in isolation and in 3 of 4 full-suite runs,
 confirmed not a regression from this phase).
+
+### 56, Phase 4 — tagging: cover art, honest reporting, caching
+
+Scope reset by Phase 0.4's own findings: the append-not-replace
+hypothesis (the brief's original framing for 4.1) was already refuted
+before this phase started — `embed_album_art` already calls
+`clear_pictures()`/`setall`/dict-assignment correctly for FLAC/ID3/MP4.
+So 4.1 became real, scoped polish (FLAC `Picture` field completeness)
+rather than a "fix," and 4.2 (honest partial-failure reporting) — the
+real gap 0.4 actually found — got the emphasis instead, exactly as
+directed.
+
+**4.1 — FLAC Picture fields.** New `metadata.py::_read_image_dimensions`
+— a minimal, dependency-free JPEG/PNG header reader (no image library
+is a project dependency; Pillow would be a heavy addition for three
+metadata fields most players don't even require). Verified against a
+**real** Spotify CDN cover art JPEG, fetched live: parsed `(640, 640)`,
+matching Spotify's known standard image size exactly. `embed_album_art`
+now also sets `picture.desc = "Cover"` (ID3 already did) and
+`width`/`height` when derivable; `depth` is set to a documented,
+honest assumption (`24`, real-world JPEG/PNG cover art is
+overwhelmingly 24-bit RGB) rather than independently computed — no
+color-type-aware bit-depth parse was written for this. New regression
+test proves the replace-not-append finding directly: embedding twice
+on a copy of a real FLAC leaves exactly one picture, the second one's
+dimensions, not two.
+
+**4.2 — honest partial-failure reporting, the real fix.**
+`_tag_one_track`'s art step now tracks an explicit outcome —
+`written`/`no_url`/`download_failed`/`embed_failed`/
+`format_unsupported` — instead of a bare `try/except` that only
+`print()`ed a warning with the track still silently counting as a
+plain `tagged` success. New `tagged_without_art` count (CLI and UI both
+surface it) plus a `tagged_without_art_<outcome>` entry in `details`
+for every affected track, with a real, actionable message — the
+`no_url` case specifically tells the user to re-run `seeker
+sync-tracks` for that playlist, the one code path that populates
+`album_art_url` (item 9). UI: `_show_tag_result_notice` routes through
+`InlineNotice` (item 47), not `status_label` — the exact bug class item
+47 fixed elsewhere in this app (a message wiped by the next unrelated
+2s poll tick) never applied to the tagging panel to begin with (its
+`tagging_results` is an independent, persistent `QPlainTextEdit`, never
+wired into `status_label`'s plumbing), but the brief's own ask was for
+a real, prominent headline notice beyond that always-present detail
+panel, and this is it: "Tagged 34 tracks — 12 without cover art" as a
+warning-kind notice, a plain success notice when everything worked, an
+error-kind notice naming a failure count when anything failed outright.
+
+**4.3 — caching, verified live against Spotify's real CDN.** New
+top-level `seeker/album_art_cache.py::AlbumArtCache` — an in-memory
+dict (covers one tagging run with zero disk I/O) backed by an on-disk
+cache under `platformdirs.user_cache_dir("Seeker", ...)` — deliberately
+the CACHE directory, not the DATA directory `application.py` already
+uses for the DB/config/token (this is disposable, safe to clear
+anytime), keyed by a SHA-256 hash of the URL. `MetadataService` is
+already a cached `Application` singleton (item 33's pattern), so the
+default instance persists across tagging runs too, not just within
+one. **Live-verified, not just unit-tested**: a real fetch of a real
+Spotify CDN URL took 0.395s (94,118 real bytes); the identical URL
+fetched again through the same cache returned the same bytes in
+0.000s, with real `.bin`/`.json` files written under a real temp cache
+dir. **Confirmed, since the user asked directly:** this consumes zero
+Spotify Web API quota either way — the URL comes from
+`tracks.album_art_url`, already captured at sync time, and the fetch
+itself goes to Spotify's CDN, not the Web API; the cache is a
+bandwidth/latency win only.
+
+**A real test-isolation bug found and fixed while wiring this up, not
+filed for later.** `test_metadata_service.py::make_service()`
+originally constructed `MetadataService` with no explicit
+`album_art_cache`, which defaults to the REAL, persistent platformdirs
+cache path — a fake test URL (`https://i.scdn.co/image/fake`) written
+by one test's disk cache silently satisfied a LATER test's "was this
+genuinely re-downloaded" assertion (`test_tag_tracks_force_bypasses_
+both_skip_checks_independently`, caught failing with `art_calls == 0`
+instead of `1`). Fixed by giving every test an isolated
+`AlbumArtCache(tmp_path / "art_cache")` — the same "tests must not
+share real, persistent state" discipline this project already applies
+to the real production DB elsewhere.
+
+`mypy --strict` clean; full suite 718 passed / 1 skipped, run 3 times
+in a row, no flakiness this time.

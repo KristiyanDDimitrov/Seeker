@@ -1310,7 +1310,8 @@ class MainWindow(QMainWindow):
         self.status_label.setText("")
 
         lines = [
-            f"Tagged: {result['tagged']}, "
+            f"Tagged: {result['tagged']} "
+            f"({result['tagged_without_art']} without cover art), "
             f"Skipped (no match): {result['skipped_no_match']}, "
             f"Skipped (unsupported format): "
             f"{result['skipped_format_unsupported']}, "
@@ -1325,6 +1326,38 @@ class MainWindow(QMainWindow):
             lines.append(f"  [{detail['reason']}] {detail['message']}")
 
         self.tagging_results.setPlainText("\n".join(lines))
+
+        # Roadmap item 56 Phase 4.2 — the UI must never show a bare
+        # "success" when any part of it wasn't: routed through
+        # InlineNotice (item 47), not status_label, so it survives the
+        # next 2s poll tick; per-track detail is already reachable in
+        # the persistent tagging_results panel above, itself unaffected
+        # by that same clearing bug (a real QPlainTextEdit, never wired
+        # into status_label's plumbing at all).
+        self._show_tag_result_notice(result)
+
+    def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
+        if result["tagged"] == 0 and not result["details"]:
+            return
+
+        tagged = result["tagged"]
+        without_art = result["tagged_without_art"]
+        failed = result["failed"]
+
+        message = f"Tagged {tagged} track{'s' if tagged != 1 else ''}"
+
+        if without_art:
+            message += f" — {without_art} without cover art"
+
+        if failed:
+            message += f", {failed} failed"
+            message += " — see the results panel below for details."
+            self.dashboard_notice.show_message(message, kind="error")
+        elif without_art:
+            message += " — see the results panel below for details."
+            self.dashboard_notice.show_message(message, kind="warning")
+        elif tagged:
+            self.dashboard_notice.show_message(message + ".", kind="success")
 
     def _selected_track_ids(self) -> list[str]:
         rows = sorted(

@@ -6,6 +6,7 @@ import httpx
 import pytest
 from mutagen import File as MutagenFile
 
+from seeker.album_art_cache import AlbumArtCache
 from seeker.audio_analysis import CAMELOT_MAP
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -63,6 +64,12 @@ def make_service(tmp_path) -> MetadataService:
         LocalFileRepository(database),
         LibraryLocationRepository(database),
         PlaylistRepository(database),
+        # An isolated, per-test cache dir — the default MetadataService()
+        # constructor otherwise points at the REAL, persistent
+        # platformdirs cache path, which would let one test's cached
+        # art silently satisfy another test's "was this genuinely
+        # re-downloaded" assertion.
+        album_art_cache=AlbumArtCache(tmp_path / "art_cache"),
     )
 
 
@@ -284,10 +291,48 @@ def test_tag_tracks_album_art_failure_does_not_block_text_tags(
 
     assert counts["tagged"] == 1
     assert counts["failed"] == 0
+    # Roadmap item 56 Phase 4.2 — the real fix: this used to be
+    # completely invisible (the track just silently counted as plain
+    # "tagged", identical to a genuine full success).
+    assert counts["tagged_without_art"] == 1
+    art_details = [
+        d for d in counts["details"]
+        if d["reason"] == "tagged_without_art_download_failed"
+    ]
+    assert len(art_details) == 1
+    assert "simulated network failure" in art_details[0]["message"]
 
     reopened = MutagenFile(dest)
     assert str(reopened.tags["TIT2"]) == "Test Title"
     assert reopened.tags.get("APIC:Cover") is None
+
+
+def test_tag_tracks_no_album_art_url_reports_actionable_reason(tmp_path):
+    # Roadmap item 56 Phase 4.2 — a track whose album_art_url was never
+    # populated (e.g. synced before item 10, or by a code path that
+    # doesn't set it) must not just silently skip art with no
+    # explanation; the message must point at the real fix (re-sync).
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav", album_art_url=None,
+    )
+
+    counts = service.tag_tracks(["t1"])
+
+    assert counts["tagged"] == 1
+    assert counts["tagged_without_art"] == 1
+    art_details = [
+        d for d in counts["details"]
+        if d["reason"] == "tagged_without_art_no_url"
+    ]
+    assert len(art_details) == 1
+    assert "sync-tracks" in art_details[0]["message"]
 
 
 def test_tag_tracks_analyze_audio_failure_does_not_block_text_tags(
@@ -423,6 +468,7 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
     counts = service.tag_tracks(["t1"])
 
     assert counts["tagged"] == 1
+    assert counts["tagged_without_art"] == 0
     assert counts["skipped_no_match"] == 0
     assert counts["skipped_format_unsupported"] == 0
     assert counts["failed"] == 0

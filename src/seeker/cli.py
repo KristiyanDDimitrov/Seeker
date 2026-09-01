@@ -497,7 +497,8 @@ def handle_library(
         )
 
         print(
-            f"Tagged: {result['tagged']}, "
+            f"Tagged: {result['tagged']} "
+            f"({result['tagged_without_art']} without cover art), "
             f"Skipped (no match): {result['skipped_no_match']}, "
             f"Skipped (unsupported format): "
             f"{result['skipped_format_unsupported']}, "
@@ -509,7 +510,7 @@ def handle_library(
         )
 
         if result["details"]:
-            print("\nSkipped/failed:")
+            print("\nDetails (skipped, failed, or tagged without art):")
 
             for detail in result["details"]:
                 print(f"  [{detail['reason']}] {detail['message']}")

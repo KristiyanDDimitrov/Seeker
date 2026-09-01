@@ -1,3 +1,4 @@
+import struct
 from typing import Any
 
 from mutagen.flac import FLAC, Picture
@@ -56,6 +57,64 @@ def write_text_tags(
     )
 
 
+def _read_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
+    """A minimal, dependency-free JPEG/PNG width/height reader — item
+    56 Phase 4.1's "width/height where derivable" for FLAC Picture
+    fields. No image library is a project dependency (Pillow would be a
+    heavy addition for three metadata fields most players don't even
+    require), and both formats' header layouts are small and stable
+    enough to read directly. Returns None for anything else (or a
+    malformed/truncated header) — best-effort, never raised.
+    """
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        # IHDR is always the first chunk: 4-byte length, 4-byte type
+        # "IHDR", then width/height as 4-byte big-endian ints.
+        if len(image_bytes) >= 24 and image_bytes[12:16] == b"IHDR":
+            width, height = struct.unpack(">II", image_bytes[16:24])
+            return width, height
+        return None
+
+    if image_bytes[:2] == b"\xff\xd8":
+        # JPEG: walk the marker stream for a real Start-Of-Frame marker
+        # (0xC0-0xCF, excluding 0xC4/0xC8/0xCC which aren't SOF at all)
+        # — its payload holds height then width as 2-byte big-endian
+        # ints, right after a 1-byte sample precision.
+        offset = 2
+        length = len(image_bytes)
+
+        while offset + 4 <= length:
+            if image_bytes[offset] != 0xFF:
+                offset += 1
+                continue
+
+            marker = image_bytes[offset + 1]
+
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                          0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                if offset + 9 > length:
+                    return None
+                height, width = struct.unpack(
+                    ">HH", image_bytes[offset + 5:offset + 9]
+                )
+                return width, height
+
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                offset += 2
+                continue
+
+            if offset + 4 > length:
+                return None
+
+            segment_length = struct.unpack(
+                ">H", image_bytes[offset + 2:offset + 4]
+            )[0]
+            offset += 2 + segment_length
+
+        return None
+
+    return None
+
+
 def embed_album_art(
         mutagen_file: Any,
         image_bytes: bytes,
@@ -86,7 +145,19 @@ def embed_album_art(
         picture = Picture()
         picture.type = 3
         picture.mime = mime_type
+        picture.desc = "Cover"
         picture.data = image_bytes
+
+        dimensions = _read_image_dimensions(image_bytes)
+        if dimensions is not None:
+            picture.width, picture.height = dimensions
+            # Not independently derived — real-world cover art from
+            # Spotify's CDN (and PNG/JPEG covers generally) is
+            # overwhelmingly 24-bit RGB; a genuinely different depth
+            # would need a real per-format color-type parse this
+            # lightweight reader doesn't do. An honest, documented
+            # assumption, not a computed fact.
+            picture.depth = 24
 
         mutagen_file.clear_pictures()
         mutagen_file.add_picture(picture)

@@ -254,6 +254,7 @@ class FakeDownloadService:
 
 _EMPTY_TAG_RESULT = {
     "tagged": 0,
+    "tagged_without_art": 0,
     "skipped_no_match": 0,
     "skipped_format_unsupported": 0,
     "skipped_already_tagged": 0,
@@ -2878,6 +2879,7 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
 
     result = {
         "tagged": 2,
+        "tagged_without_art": 0,
         "skipped_no_match": 1,
         "skipped_format_unsupported": 1,
         "skipped_already_tagged": 0,
@@ -2904,6 +2906,55 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
     assert "Failed: 1" in text
     assert "[skipped_no_match] Artist A - Title A: no matched local file" in text
     assert "[failed] Artist B - Title B: disk read error" in text
+
+
+def test_tag_result_notice_reports_tracks_without_art(qtbot):
+    # Roadmap item 56 Phase 4.2 — the real fix: the UI must never show
+    # a bare success when some tracks were tagged without cover art.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_tag_result({
+        "tagged": 3,
+        "tagged_without_art": 2,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 0,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [
+            {
+                "track_id": "t1",
+                "reason": "tagged_without_art_no_url",
+                "message": "Artist A - Title A: no album art URL stored",
+            },
+        ],
+    })
+
+    assert not window.dashboard_notice.isHidden()
+    assert "2 without cover art" in window.dashboard_notice.text()
+
+
+def test_tag_result_notice_shows_success_when_everything_worked(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_tag_result({
+        "tagged": 5,
+        "tagged_without_art": 0,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 0,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [],
+    })
+
+    assert not window.dashboard_notice.isHidden()
+    assert "Tagged 5 tracks" in window.dashboard_notice.text()
+    assert "without cover art" not in window.dashboard_notice.text()
 
 
 # --- Duplicates tab (roadmap item 5) ---------------------------------------

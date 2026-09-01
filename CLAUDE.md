@@ -901,6 +901,31 @@ compress it here before moving on to the next item.
     tail-plateau assertion (`MAX_ACCEPTABLE_TAIL_RSS_RANGE_MB`) now
     actually checks the leak signature the old test only printed.**
     [HISTORY §56](docs/HISTORY.md#56)
+59. **Tagging: cover art, honest reporting, caching (Phase 4) — done,
+    re-scoped by Phase 0.4's own findings.** The append-not-replace
+    hypothesis (4.1's original framing) was already refuted before this
+    phase started — `embed_album_art` already replaces correctly for
+    all 3 formats. 4.1 became real FLAC `Picture` field polish instead
+    (`desc`/`width`/`height` via a new dependency-free
+    `_read_image_dimensions` JPEG/PNG reader, live-verified against a
+    real Spotify CDN image: 640x640; `depth=24` is a documented
+    assumption, not computed). **4.2 — the real fix**: `_tag_one_track`
+    now tracks an explicit art outcome
+    (`written`/`no_url`/`download_failed`/`embed_failed`/
+    `format_unsupported`) instead of a silent `print()`-only warning; a
+    new `tagged_without_art` count (CLI + UI) and a `details` entry per
+    affected track (the `no_url` case tells the user to re-run
+    `sync-tracks`). UI routes the headline through `InlineNotice` (item
+    47) — "Tagged 34 tracks — 12 without cover art." **4.3**: new
+    top-level `seeker/album_art_cache.py::AlbumArtCache` — in-memory +
+    on-disk (platformdirs user CACHE dir, not data), keyed by a SHA-256
+    hash of the URL. Live-verified against Spotify's real CDN: first
+    fetch 0.395s (94,118 real bytes), cached refetch 0.000s, identical
+    bytes. Consumes zero Spotify Web API quota either way (CDN fetch,
+    not the Web API) — bandwidth/latency win only. Real test-isolation
+    bug found and fixed in-pass: `test_metadata_service.py` tests were
+    silently sharing the REAL persistent cache path before being given
+    isolated per-test cache dirs. [HISTORY §56](docs/HISTORY.md#56)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
