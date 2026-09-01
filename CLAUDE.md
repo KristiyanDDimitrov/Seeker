@@ -122,6 +122,8 @@ src/seeker/
 ├── file_deletion.py           # shared safe-file-delete primitive —
 │                              #   DownloadService (upgrade replace) and
 │                              #   DuplicateService (item 40) both use it
+├── filename_sanitize.py       # sanitize_path_component() — used by
+│                              #   default-destination resolution (item 50)
 ├── update_check.py            # check_for_update() — one unauthenticated
 │                              #   GitHub-releases GET, user-triggered only
 │                              #   (Help menu), never raises (item 55)
@@ -691,43 +693,28 @@ compress it here before moving on to the next item.
     (`datetime.now(timezone.utc).isoformat()`), so `format_timestamp`
     uses `.astimezone()`, not a manual naive-UTC offset attach.
     [HISTORY §46](docs/HISTORY.md#46)
-47. **Design system (dark theme + InlineNotice) — done, live-rendered
-    and checked.** New `ui/theme.py` (`apply_theme(app)` — Fusion style
-    + QPalette + one global QSS stylesheet) and `ui/notice.py`
+47. **Design system (dark theme + InlineNotice) — done.** New
+    `ui/theme.py` (`apply_theme(app)`) and `ui/notice.py`
     (`InlineNotice`, a persistent dismissible banner). **Root cause of
     "an error disappears before you've had time to read it":**
-    `run_worker()` clears its target `status_label` to `""`
-    unconditionally at the start of every call — the Dashboard's 2s poll
-    tick and every backend-poll completion both use the same shared
-    label, wiping any validation error within ~2s regardless of what the
-    user was just shown. Fixed by routing Dashboard's actionable
-    messages through `InlineNotice` instead, which lives outside
-    `run_worker`'s `status_label` plumbing entirely; `status_label`
-    stays for genuinely disposable progress text. **Not yet swept
-    everywhere** — the Review tab's `status_label` has the identical bug
-    class, left alone in this pass. **Three live-found Qt/QSS bugs, each
-    bisected via a minimal repro:** (1) `QTableWidget::item { padding }`
-    corrupts any `QPushButton` living inside a cell widget
-    (`setCellWidget`) into garbled text — dropped from `QTableWidget`
-    (kept safe on `QListWidget`). (2) A plain `QWidget` subclass (like
-    `InlineNotice`) doesn't paint its own stylesheet background/border
-    without `Qt.WidgetAttribute.WA_StyledBackground`. (3)
-    **`QProgressBar::chunk` matching a bar AT ALL — regardless of what
-    it sets — switches that sub-control from Qt's native painter
-    (including Fusion's animated indeterminate stripe) to the QSS
-    box-model painter for every state of the bar, including
-    indeterminate, which has no busy-animation concept and just paints a
-    static rect.** There is no `:indeterminate` QSS pseudo-state to
-    scope around this. Fixed by removing `QProgressBar::chunk` from the
-    global stylesheet entirely and adding
-    `theme.style_determinate_progress_bar(bar)` — a per-instance
-    `setStyleSheet()` applied ONLY once a bar is confirmed determinate,
-    never to an indeterminate one; a queued/no-bytes-yet row keeps Qt's
-    real native animation. Covered by
-    `test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet`
-    (asserts `bar.styleSheet() == ""`) and the determinate counterpart
-    (asserts `"chunk" in bar.styleSheet()`) — a regression reintroducing
-    the bug now fails a fast test, not just a human re-render.
+    `run_worker()` clears its target `status_label` unconditionally on
+    every call — Dashboard's 2s poll tick and every backend-poll
+    completion share that one label, wiping a validation error within
+    ~2s regardless of what the user was just shown. Fixed by routing
+    Dashboard's actionable messages through `InlineNotice` instead
+    (lives outside `status_label`'s plumbing); the Review tab's
+    identical bug class is NOT yet swept. **Three Qt/QSS gotchas,
+    standing facts for any future styling work:** (1)
+    `QTableWidget::item { padding }` corrupts a `QPushButton` living
+    inside a cell widget — never add it (safe on `QListWidget`). (2) a
+    plain `QWidget` subclass needs `WA_StyledBackground` to paint its
+    own stylesheet background/border at all. (3) matching ANY rule
+    against `QProgressBar::chunk` switches the WHOLE bar to Qt's QSS
+    box-model painter, including its indeterminate state (killing
+    Fusion's native animated busy stripe, with no `:indeterminate`
+    pseudo-state to scope around it) — so the accent fill is applied
+    per-instance only, via `theme.style_determinate_progress_bar(bar)`,
+    never through a global `::chunk` rule.
     [HISTORY §47](docs/HISTORY.md#47)
 48. **Shell restructure: sidebar instead of tabs — done, all six pages
     rendered and inspected.** `MainWindow`'s `QTabWidget` replaced with
@@ -830,64 +817,39 @@ compress it here before moving on to the next item.
     failure-reason column is persisted, so that event could never show
     an honest detail (see the Downloads page instead). `ui/formatting
     .format_timestamp` is reused as-is by both the History page and
-    `seeker history [--limit N]` — confirmed live against real DB rows
-    that `completed_at`/`tagged_at` are genuinely timezone-aware UTC
-    (matching its docstring), so no fix was needed there. UI: When/What/
-    Track/Detail table + a client-side filter combo (no re-query),
-    lazy-loaded on first visit like Duplicates, manual Refresh (no poll
-    timer — a look-back view, not a live one). **Standing limit, stated
-    in both the page subtitle and CLI help:** this is a derived view,
-    not an append-only log — an event disappears the moment the row it
-    came from does (e.g. a Duplicates-tab delete removes a downloaded
-    file's event too).
+    `seeker history [--limit N]`. UI: When/What/Track/Detail table + a
+    client-side filter combo, lazy-loaded like Duplicates, manual
+    Refresh (no poll timer). **Standing limit:** a derived view, not an
+    append-only log — an event disappears the moment the row it came
+    from does. [HISTORY §54](docs/HISTORY.md#54)
 55. **Update check + Help page + expanded About + LICENSE — done.**
-    `seeker/update_check.py::check_for_update()` — one unauthenticated
-    GET against `api.github.com/repos/.../releases/latest`, comparing
-    `packaging.version.Version` against the installed
-    `importlib.metadata.version("seeker")`. **Never raises** — every
-    anticipated failure (timeout, non-2xx, malformed JSON, unparseable
-    tag) gets a specific `UNAVAILABLE(reason)`, plus an outer catch-all
-    for anything unanticipated, since this fires from a manual Help-menu
-    click and must never take the app down with it. **Real, confirmed
-    facts:** this repo currently has zero published releases —
-    `GET .../releases/latest` returns a real `404`
-    (`{"message": "Not Found", ...}`), reported as `UNAVAILABLE("No
-    releases have been published yet.")`; GitHub's unauthenticated rate
-    limit is real and shared per source IP (60/hour, confirmed via
-    response headers) — never call this from a timer or poll loop, only
-    the one explicit user action. Wired to fire ONLY from Help ->
-    "Check for updates…" via `run_worker()` — confirmed by grep that
-    nothing calls it at construction or from any timer.
+    `update_check.py::check_for_update()` — one unauthenticated GET
+    against `api.github.com/repos/.../releases/latest`, comparing
+    `packaging.version.Version` against the installed version. **Never
+    raises** — every anticipated failure gets a specific
+    `UNAVAILABLE(reason)`, plus an outer catch-all for anything
+    unanticipated (fires from a manual Help-menu click, must never take
+    the app down). **Standing fact:** this repo currently has zero
+    published releases (`GET .../releases/latest` → real `404`) and
+    GitHub's unauthenticated rate limit is real and shared per source IP
+    (60/hour) — stays strictly user-triggered, never a timer.
 
-    **Help page** — real content (walkthrough/troubleshooting/"where
-    your data lives"), not the old placeholder. New
-    `Application.data_locations` (→ `models/data_locations.py`) is the
-    one place that assembles every real resolved path (DB, config,
-    Spotify token, slskd data dir, their shared `base_dir`) — reused by
-    both the page and its "Open Data Folder" button
-    (`_open_in_file_manager()`, `sys.platform`-dispatched: `open` on
-    macOS, `explorer` on Windows, `xdg-open` elsewhere; creates the
-    target dir first so a never-set-up slskd-data folder still opens to
-    something real). Built synchronously at page-construction time, no
-    lazy-load — every value is a cheap local path join, not a DB read.
+    **Help page** — real content (walkthrough/troubleshooting/data
+    locations), not a placeholder. New `Application.data_locations` is
+    the one place every real resolved path (DB/config/token/slskd dir)
+    is assembled, reused by the page and its cross-platform "Open Data
+    Folder" button (`_open_in_file_manager()`).
 
-    **Expanded About dialog** — author/contact (`mailto:`)/GitHub link,
-    an MIT license line, and a third-party-notices paragraph whose
-    license identifiers were checked against each installed package's
-    own metadata (`importlib.metadata`), not assumed from memory.
-    `help_text.is_real_support_link()` filters `SUPPORT_LINKS` before
-    rendering a button — both Revolut and PayPal are real links as of
-    2026-09-01, so both render today; a future new entry should still
-    start as an obvious `"TODO: ..."` string rather than a fabricated
-    look-real link, so a dead button for it never actually renders
-    before the real destination lands. Tests keep the filter itself
-    exercised via a synthetic placeholder, independent of whether
-    production data currently has a real one to filter.
+    **Expanded About dialog** — author/contact/GitHub link, MIT license
+    line, third-party notices (license identifiers pulled from each
+    installed package's own metadata, not assumed).
+    `help_text.is_real_support_link()` filters `SUPPORT_LINKS` — any
+    future placeholder entry should stay an obvious `"TODO: ..."` string
+    so a dead button never renders before the real link lands.
 
     **`LICENSE`** (MIT, Copyright (c) 2026 Kristiyan Dimitrov) +
-    `pyproject.toml`'s `license`/`license-files` fields — confirmed
-    `uv sync` builds cleanly and the resulting dist-info actually
-    carries the license metadata.
+    `pyproject.toml`'s `license`/`license-files` fields.
+    [HISTORY §55](docs/HISTORY.md#55)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

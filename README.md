@@ -63,17 +63,31 @@ preference.
 
 **`seeker-ui`** is the easier way to get started: an onboarding wizard
 walks through connecting Spotify (PKCE authorization — no manual token
-handling), registering a library location, and — optionally, skippable —
-standing up `slskd` via Docker, collecting your SoulSeek credentials and
-generating an API key for you rather than requiring you to hand-edit
-`.env` or click through slskd's own web UI. Once onboarding is done (or
-skipped for SoulSeek), a dashboard shows each playlist's tracks with
-live status, a Downloads tab shows every in-flight transfer, a Review
-tab handles confirming SoulSeek needs-review candidates and quality
-upgrades, and a Settings screen (library locations, playlist
-destinations, SoulSeek/Spotify connection management, and the
-auto-match/needs-review classification thresholds) covers everything
-you'd otherwise need `.env`/the CLI for.
+handling), registering a library location (including whether new
+downloads should get a default destination folder and a per-playlist
+subfolder), and — optionally, skippable — standing up `slskd` via
+Docker, collecting your SoulSeek credentials and generating an API key
+for you rather than requiring you to hand-edit `.env` or click through
+slskd's own web UI.
+
+Once onboarding is done (or skipped for SoulSeek), a fixed sidebar
+switches between **Dashboard** (each playlist's tracks with live status,
+a "what to do next" banner, and tagging), **Downloads** (every in-flight
+SoulSeek transfer, plus a combined remaining-time estimate),
+**Review** (confirming SoulSeek needs-review candidates and quality
+upgrades), **Duplicates** (fingerprint-based duplicate detection,
+scoped to one library location at a time), and **History** (a
+read-only, derived log of recently downloaded and tagged tracks — see
+`seeker history` below). **Settings** (library locations, playlist
+destinations — including the app-wide default destination the wizard
+sets up — SoulSeek/Spotify connection management, and the
+auto-match/needs-review classification thresholds) opens as its own
+window from the sidebar. A **Help** page covers a short walkthrough,
+troubleshooting, and exactly where your database/config/Spotify
+token/SoulSeek data live on disk (with a button to open that folder);
+the Help menu's **About** dialog has author/license/third-party-notices
+info and a "Check for updates…" action against GitHub Releases (one
+user-triggered, unauthenticated API call — never automatic).
 
 ```
 uv run seeker-ui
@@ -138,25 +152,35 @@ src/seeker/
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
 │                             #   + group-resolution delete action
 ├── ui/                        # the seeker-ui GUI (PySide6)
-│   ├── main_window.py         # dashboard + Downloads/Review/Duplicates/tagging tabs
+│   ├── main_window.py         # sidebar (Dashboard/Downloads/Review/
+│   │                          #   Duplicates/History/Help) + pages
 │   ├── wizard.py               # onboarding: Spotify, library, SoulSeek
 │   ├── settings_window.py      # locations, destinations, connection, thresholds
 │   ├── library_location_picker.py  # shared folder-picker (wizard + Settings)
-│   ├── download_eta.py         # per-download speed/ETA tracker
+│   ├── download_eta.py         # per-download speed/ETA tracker + aggregate header
+│   ├── formatting.py           # shared timestamp/file-size/speed/duration formatting
+│   ├── theme.py                # dark theme tokens + apply_theme()
+│   ├── notice.py               # InlineNotice — persistent dismissible banner
 │   ├── help_text.py            # centralized tooltips/subtitles/About/support-link copy
 │   └── workers.py              # QThreadPool worker wrapper every screen uses
 ├── models/{playlist,track,track_match,local_file,library_location,
 │           soulseek_file,download_request,soulseek_review_candidate,
-│           active_download,track_status,upgrade_review}.py
+│           active_download,track_status,upgrade_review,history_event,
+│           data_locations}.py
 ├── audio_formats.py          # AUDIO_EXTENSIONS, shared by scanner + quality
+├── matching.py                # shared fuzzy artist/title matching, used by
+│                              #   BOTH library/matcher.py and soulseek/quality.py
 ├── metadata.py                # mutagen tag read/write, per audio format
 ├── audio_analysis.py          # BPM + Camelot key detection (librosa)
 ├── audio_fingerprint.py       # libchromaprint ctypes binding, used by duplicate_service.py
 ├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
+├── history_service.py         # derived-only view over download_requests/local_files — no new table
+├── update_check.py            # one unauthenticated GitHub-releases GET, user-triggered only
 ├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
 ├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)
 ├── download_dedup.py          # shared "same real candidate" dedup rule (download service + dashboard)
 ├── file_deletion.py            # shared safe-file-delete primitive (download service + duplicate service)
+├── filename_sanitize.py       # sanitize_path_component() — used by download destination resolution
 ├── config.py                  # .env-sourced fallback values (legacy/CLI-only path)
 ├── application.py
 ├── cli.py
@@ -264,16 +288,18 @@ moves it into the destination configured for that playlist (see
 ## Commands
 
 The table below is the CLI reference. Most of it has a direct `seeker-ui`
-equivalent: the Dashboard tab covers `sync`/`sync-tracks`/`scan`/`match`/
-`download`/tagging for whichever playlist is selected; the Downloads tab
-covers `downloads status`; the Review tab covers `downloads review` plus
+equivalent: the Dashboard page covers `sync`/`sync-tracks`/`scan`/`match`/
+`download`/tagging for whichever playlist is selected; the Downloads page
+covers `downloads status`; the Review page covers `downloads review` plus
 confirming/rejecting SoulSeek needs-review candidates (`check`'s
 "Needs review" section, with an action the CLI never had); the
-Duplicates tab covers `library fingerprint`/`library duplicates`,
-scoped to one library location at a time; and the Settings screen
-covers `library add`/`list`/`remove`, `playlists set-destination`,
-SoulSeek/Spotify connection management, and the auto-match/needs-review
-thresholds (editable there; hardcoded constants for the CLI).
+Duplicates page covers `library fingerprint`/`library duplicates`,
+scoped to one library location at a time; the History page covers
+`history`; and the Settings window covers `library add`/`list`/`remove`,
+`playlists set-destination` (plus the app-wide default destination,
+GUI-only — see the wizard/Settings description above), SoulSeek/Spotify
+connection management, and the auto-match/needs-review thresholds
+(editable there; hardcoded constants for the CLI).
 
 ```
 uv run seeker <command>
@@ -290,17 +316,25 @@ uv run seeker <command>
 | `library remove <name>` | Unregister a location. |
 | `library scan` | Scan all registered locations for audio files. |
 | `library match` | Fuzzy-match cached Spotify tracks against scanned local files. |
-| `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key. |
+| `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX] [--force]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key; `--force` redoes both even for tracks already tagged/analyzed. |
 | `library fingerprint <location> [--force]` | Compute an audio fingerprint for every file in one library location, for later duplicate detection. |
 | `library duplicates <location>` | Report duplicate/near-duplicate files within one library location, by audio content (run `fingerprint` on it first). Read-only — nothing here moves or deletes a file. |
 | `check [--verbose]` | Report the auto-matched / needs-review / unmatched split for cached tracks. |
-| `download <playlist>` | Search SoulSeek and request downloads for a playlist's still-unmatched tracks. |
+| `download <playlist>` | Search SoulSeek and request downloads for a playlist's still-unmatched tracks (falls back to the configured default destination if the playlist has no destination of its own set). |
 | `downloads status` | Poll in-flight SoulSeek transfers and move completed ones into place. Non-interactive — safe to run from a scheduler. |
 | `downloads review` | Interactively confirm or decline pending quality-upgrade replacements. |
+| `history [--limit N]` | List recently downloaded and tagged tracks (default limit 50). Derived from current data, not a permanent log — see the note below. |
 
 Any command that takes a playlist name will offer to sync from Spotify if
 the name isn't found locally and doesn't look like a typo of one you
 already have (see `resolve_playlist_or_offer_sync` in `cli.py`).
+
+`history` is derived entirely from existing `download_requests`/
+`local_files` rows — there's no separate log table, so an entry
+disappears if the row it came from is later removed (e.g. deleting a
+duplicate file), and download failures aren't listed (no failure reason
+is persisted to describe them honestly; check the Downloads page/
+`downloads status` for those instead).
 
 ## Design principles
 
@@ -588,3 +622,8 @@ Gatekeeper warning — SmartScreen — will likely flag an unsigned
 `Setup.exe`; a real Windows code-signing certificate is a similar
 paid-prerequisite gap to Apple notarization, and is out of scope here
 for the same reason).
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Third-party dependency licenses are
+summarized in the app's own About dialog (Help → About Seeker).

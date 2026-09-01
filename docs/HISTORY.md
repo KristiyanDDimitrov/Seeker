@@ -12,7 +12,7 @@ it does, or want the full evidence behind a "verified live" claim, this
 is the file to read — `CLAUDE.md` deliberately does not repeat it.
 
 Numbered entries match `CLAUDE.md`'s roadmap items exactly (currently
-1-53, with a few lettered sub-addenda for follow-on fixes to an
+1-55, with a few lettered sub-addenda for follow-on fixes to an
 existing item). The "Known issues / backlog" section below mirrors
 `CLAUDE.md`'s own section of the same name, one slugged heading per
 bullet, for the handful of early fixes that predate the numbered
@@ -8121,3 +8121,141 @@ new `downloads_eta_label` above the Downloads table, rendered from
 collapses to an empty string when there are zero active downloads.
 
 `mypy --strict` clean; full suite 614 passed / 1 skipped.
+
+### 54
+
+Task: build a History page (Dashboard's own sidebar neighbor) showing
+recently downloaded and tagged tracks, derived entirely from existing
+`download_requests`/`local_files` rows — no schema change, no new
+append-only log table.
+
+Before writing any service code, the two real columns this depends on
+(`download_requests.completed_at`, `local_files.tagged_at`) needed
+checking, not assuming: both write sites
+(`download_request_repository.py::mark_status`/
+`update_transfer_id_and_status`, `metadata_service.py`) already use
+`datetime.now(timezone.utc).isoformat()`, and pulling two real rows
+from the production DB confirmed genuinely timezone-aware UTC values
+(`2026-08-28T23:36:42.578430+00:00`, `2026-08-28T23:38:20.891923+00:00`)
+— matching `ui/formatting.format_timestamp`'s own docstring claim
+exactly. No fix was needed there; both the History page and the new
+`seeker history [--limit N]` CLI command reuse that one formatter as-is
+rather than growing a second copy.
+
+`HistoryService.get_recent_events(limit)` derives two event kinds:
+completed `download_requests` rows (deduped via the same
+`most_recent_per_candidate` rule items 24/25 already established for
+the identical "same real candidate, stale duplicate row" problem) and
+`local_files.tagged_at`, joined back to a track via
+`TrackMatchRepository.get_by_local_file_id` (added in item 40).
+Deliberately excludes failed downloads — `download_requests` has no
+persisted failure-reason column (the real slskd exception text is only
+ever seen live, at poll time, never written to the DB), so a failed
+event could never carry an honest detail.
+
+Live-verified against the real production DB, both via the CLI
+(`seeker history`, 13 real events, correctly ordered/deduped) and via
+an offscreen render of the real History page (real `Application`, no
+fakes) showing identical data. 22 new tests (11 `HistoryService`
+covering dedup/no-track/no-match/failed-download edge cases explicitly,
+6 UI, 3 CLI). `mypy --strict` clean; full suite 634 passed / 1 skipped.
+
+The feature work itself (When/What/Track/Detail table, the client-side
+filter combo, lazy page load, manual Refresh, the CLI command) is
+covered in CLAUDE.md's own item 54 entry — this HISTORY entry exists
+specifically to preserve the timestamp-format verification and the
+real live-run numbers.
+
+### 55
+
+Task: a GitHub-releases-based "Check for updates" action (Help menu),
+then — once that was confirmed live and working — the rest of the
+brief: a real Help page, an expanded About dialog, and a real `LICENSE`
+file, gated behind an explicit approval step before committing each
+half, matching the same live-verification discipline items 52/53
+(Phase 8/9) already established for a live external dependency.
+
+**The real, live recon call, made before writing any code — the
+brief's own explicit instruction, not skipped:**
+
+```
+GET https://api.github.com/repos/KristiyanDDimitrov/Seeker/releases/latest
+```
+```
+HTTP/2 404
+date: Tue, 01 Sep 2026 07:40:53 GMT
+content-type: application/json; charset=utf-8
+x-ratelimit-limit: 60
+x-ratelimit-remaining: 57
+x-ratelimit-used: 3
+content-length: 144
+x-github-request-id: F658:380DAC:54E801C:52A1E79:6A968185
+
+{
+  "message": "Not Found",
+  "documentation_url": "https://docs.github.com/rest/releases/releases#get-the-latest-release",
+  "status": "404"
+}
+```
+
+Confirmed directly, not assumed: this repository has zero published
+releases as of this check — a real, reachable `UNAVAILABLE` state, not
+a hypothetical one — and GitHub's unauthenticated rate limit (60/hour)
+is real, shared per source IP, and was already 3/60 used from this one
+recon call alone, which is exactly why `check_for_update()` stays
+strictly user-triggered (Help menu only) and was never considered for
+a timer or startup call.
+
+**Each required `UNAVAILABLE` path was actually triggered, not just
+handled in code believed correct**, per the brief's explicit ask:
+the real 404 above (seeded verbatim into a test); a simulated 403
+(GitHub's real rate-limit response shape); a simulated
+`httpx.TimeoutException`; and a simulated unparseable tag
+(`"not-a-version"`, via `packaging.version.InvalidVersion`). A first
+draft only caught `httpx`-specific exceptions around the network call;
+a test deliberately raising a plain `RuntimeError` from the mocked
+`httpx.get` proved a non-httpx exception would still escape — tightened
+to an unconditional outer `try/except Exception` wrapping the whole
+function, per the brief's literal "never raises" requirement rather
+than "never raises for anticipated failures."
+
+**Third-party license identifiers, for the About dialog's notices
+section, were pulled from each installed package's own real metadata**
+(`importlib.metadata.metadata(pkg).get("License")`/`Classifier`
+entries), not written from memory — confirmed:
+`PySide6` → `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`,
+`librosa` → `ISC`, `mutagen` → `GPL-2.0-or-later`, `numpy`/`httpx`/
+`soundfile`/`python-dotenv` → `BSD-3-Clause`/`BSD License`,
+`platformdirs`/`rapidfuzz`/`pyloudnorm` → `MIT`, `packaging` →
+`Apache-2.0 OR BSD-2-Clause`. `libchromaprint`'s LGPL-2.1-or-later
+status (dynamically loaded via ctypes, never statically linked — see
+item 38) was already established and is restated, not re-derived.
+
+**Two real dialogs rendered and inspected, gated behind explicit
+approval each time, per the brief's own instruction to check in before
+proceeding:** the update-check dialog (both the real `UNAVAILABLE("No
+releases have been published yet.")` result against the live API, and
+a simulated `UPDATE_AVAILABLE` result), and — after that was approved
+— the Help page and the expanded About dialog, rendered against the
+real production `Application` (real resolved data-location paths, not
+placeholders). A later approval step added the real PayPal support
+link (`https://paypal.me/KristiyanDimitrov98`, replacing the `"TODO:
+..."` placeholder from item 35/41) — re-rendered and re-approved with
+both buttons live before committing.
+
+`uv sync` was confirmed to still build cleanly with
+`pyproject.toml`'s new `license = "MIT"`/`license-files = ["LICENSE"]`
+fields, and the resulting dist-info's `Classifier` metadata was checked
+directly (not assumed) to actually carry the license.
+
+The feature work itself (`update_check.py`, the Help page's
+"How Seeker works"/Troubleshooting/data-locations content,
+`Application.data_locations`, the expanded About dialog,
+`is_real_support_link()`, `LICENSE`) is covered in CLAUDE.md's own item
+55 entry — this HISTORY entry exists specifically to preserve the real
+recon call/response, the license-metadata verification, and the
+staged-approval sequence in full.
+
+`mypy --strict` clean throughout; full suite 659 passed / 1 skipped
+after the update-check portion, unchanged after the Help/About/LICENSE
+portion (no new failures introduced by either).
