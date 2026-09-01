@@ -3,6 +3,8 @@ name = "seeker"
 version = "0.1.0"
 description = "Personal DJ music library management assistant"
 requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "httpx>=0.28.1",
     "librosa>=1.0.0",

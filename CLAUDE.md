@@ -84,7 +84,8 @@ src/seeker/
 │                              #   long-running UI action goes through this
 ├── models/{playlist,track,track_match,local_file,library_location,
 │           soulseek_file,download_request,soulseek_review_candidate,
-│           active_download,track_status,upgrade_review,history_event}.py
+│           active_download,track_status,upgrade_review,history_event,
+│           data_locations}.py
 ├── matching.py               # shared fuzzy artist/title matching —
 │                              #   artist_matches, score_title,
 │                              #   resolve_text_source — used by BOTH
@@ -839,18 +840,17 @@ compress it here before moving on to the next item.
     not an append-only log — an event disappears the moment the row it
     came from does (e.g. a Duplicates-tab delete removes a downloaded
     file's event too).
-55. **Update check (GitHub releases) — done, update-check portion only;
-    About/Help copy wiring deferred.** `seeker/update_check.py::
-    check_for_update()` — one unauthenticated GET against
-    `api.github.com/repos/.../releases/latest`, comparing
+55. **Update check + Help page + expanded About + LICENSE — done.**
+    `seeker/update_check.py::check_for_update()` — one unauthenticated
+    GET against `api.github.com/repos/.../releases/latest`, comparing
     `packaging.version.Version` against the installed
     `importlib.metadata.version("seeker")`. **Never raises** — every
     anticipated failure (timeout, non-2xx, malformed JSON, unparseable
-    tag) gets a specific `UNAVAILABLE(reason)`, and an outer catch-all
-    covers anything unanticipated too, since this fires from a manual
-    Help-menu click and must never take the app down with it. **Real,
-    confirmed facts:** this repo currently has zero published releases
-    — `GET .../releases/latest` returns a real `404`
+    tag) gets a specific `UNAVAILABLE(reason)`, plus an outer catch-all
+    for anything unanticipated, since this fires from a manual Help-menu
+    click and must never take the app down with it. **Real, confirmed
+    facts:** this repo currently has zero published releases —
+    `GET .../releases/latest` returns a real `404`
     (`{"message": "Not Found", ...}`), reported as `UNAVAILABLE("No
     releases have been published yet.")`; GitHub's unauthenticated rate
     limit is real and shared per source IP (60/hour, confirmed via
@@ -858,6 +858,36 @@ compress it here before moving on to the next item.
     the one explicit user action. Wired to fire ONLY from Help ->
     "Check for updates…" via `run_worker()` — confirmed by grep that
     nothing calls it at construction or from any timer.
+
+    **Help page** — real content (walkthrough/troubleshooting/"where
+    your data lives"), not the old placeholder. New
+    `Application.data_locations` (→ `models/data_locations.py`) is the
+    one place that assembles every real resolved path (DB, config,
+    Spotify token, slskd data dir, their shared `base_dir`) — reused by
+    both the page and its "Open Data Folder" button
+    (`_open_in_file_manager()`, `sys.platform`-dispatched: `open` on
+    macOS, `explorer` on Windows, `xdg-open` elsewhere; creates the
+    target dir first so a never-set-up slskd-data folder still opens to
+    something real). Built synchronously at page-construction time, no
+    lazy-load — every value is a cheap local path join, not a DB read.
+
+    **Expanded About dialog** — author/contact (`mailto:`)/GitHub link,
+    an MIT license line, and a third-party-notices paragraph whose
+    license identifiers were checked against each installed package's
+    own metadata (`importlib.metadata`), not assumed from memory.
+    `help_text.is_real_support_link()` filters `SUPPORT_LINKS` before
+    rendering a button — both Revolut and PayPal are real links as of
+    2026-09-01, so both render today; a future new entry should still
+    start as an obvious `"TODO: ..."` string rather than a fabricated
+    look-real link, so a dead button for it never actually renders
+    before the real destination lands. Tests keep the filter itself
+    exercised via a synthetic placeholder, independent of whether
+    production data currently has a real one to filter.
+
+    **`LICENSE`** (MIT, Copyright (c) 2026 Kristiyan Dimitrov) +
+    `pyproject.toml`'s `license`/`license-files` fields — confirmed
+    `uv sync` builds cleanly and the resulting dist-info actually
+    carries the license metadata.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

@@ -47,9 +47,58 @@ HISTORY_PAGE_SUBTITLE = (
 HELP_PAGE_SUBTITLE = (
     "How Seeker works, troubleshooting, and where your data lives."
 )
-HELP_PAGE_PLACEHOLDER = (
-    "The full Help page is coming in a future update — for now, see "
-    "Help → About Seeker in the menu bar."
+
+HELP_WALKTHROUGH_BODY = (
+    "<h3>How Seeker works</h3>"
+    "<p><b>1. Sync</b> — Spotify playlists and their tracks are pulled "
+    "via the Web API and cached locally, so day-to-day use doesn't "
+    "keep re-hitting Spotify's rate-limited API.</p>"
+    "<p><b>2. Scan</b> — registered library locations (folders on disk, "
+    "Settings → Locations) are scanned for audio files.</p>"
+    "<p><b>3. Match</b> — each cached track is fuzzy-matched against "
+    "scanned files and classified in library or missing, shown per-"
+    "playlist on the Dashboard.</p>"
+    "<p><b>4. Search + download</b> — missing tracks are searched on "
+    "SoulSeek and the best candidate is downloaded via slskd; progress "
+    "shows on the Downloads page.</p>"
+    "<p><b>5. Review + tag</b> — uncertain SoulSeek matches and quality "
+    "upgrades wait on the Review page for a decision; matched tracks "
+    "can be tagged with Spotify's canonical metadata from the "
+    "Dashboard.</p>"
+)
+
+HELP_TROUBLESHOOTING_BODY = (
+    "<h3>Troubleshooting</h3>"
+    "<p><b>Spotify won't connect</b> — check the Client ID in Settings "
+    "→ Connection, and that your browser didn't block the "
+    "authorization popup.</p>"
+    "<p><b>SoulSeek/Docker won't start</b> — confirm Docker Desktop is "
+    "actually running, and that the SoulSeek username/password in "
+    "Settings are correct (a wrong password and a duplicate-login "
+    "\"kicked\" state look different in the wizard's own error text).</p>"
+    "<p><b>Tracks stuck as missing</b> — has this playlist's tracks "
+    "been loaded (Refresh playlists), and has your library actually "
+    "been scanned and re-matched? The Dashboard's own \"next step\" "
+    "banner usually names the exact missing step.</p>"
+    "<p><b>A download looks stuck</b> — check the Downloads page; a "
+    "queued transfer waiting on a peer looks different from one "
+    "actively transferring, and SoulSeek queue wait times aren't "
+    "predictable.</p>"
+)
+
+HELP_DATA_LOCATIONS_HEADING = "<h3>Where your data lives</h3>"
+HELP_DATA_LOCATIONS_INTRO = (
+    "Seeker keeps everything — its database, config, cached Spotify "
+    "token, and SoulSeek data — in one folder on this machine. Nothing "
+    "is uploaded anywhere else."
+)
+DATA_LOCATION_DATABASE_LABEL = "Database:"
+DATA_LOCATION_CONFIG_LABEL = "Config:"
+DATA_LOCATION_SPOTIFY_TOKEN_LABEL = "Spotify token:"
+DATA_LOCATION_SLSKD_LABEL = "SoulSeek data:"
+OPEN_DATA_FOLDER_BUTTON_TEXT = "Open Data Folder"
+TOOLTIP_OPEN_DATA_FOLDER = (
+    "Open the folder above in Finder/Explorer/your file manager."
 )
 
 # --- MainWindow toolbar ---------------------------------------------------
@@ -324,6 +373,36 @@ ABOUT_DIALOG_BODY = (
     "library, and searches SoulSeek for whatever's missing.</p>"
 )
 
+ABOUT_DIALOG_AUTHOR_LINE = (
+    "<p>Made by Kristiyan Dimitrov — "
+    "<a href=\"mailto:kristiyanddimitrov@gmail.com\">"
+    "kristiyanddimitrov@gmail.com</a> · "
+    "<a href=\"https://github.com/KristiyanDDimitrov/Seeker\">"
+    "GitHub</a></p>"
+)
+
+ABOUT_DIALOG_LICENSE_LINE = (
+    "<p>MIT License. Copyright (c) 2026 Kristiyan Dimitrov. See the "
+    "LICENSE file for the full text.</p>"
+)
+
+# Real license identifiers, confirmed directly against each installed
+# package's own metadata (not assumed) — not an exhaustive legal NOTICE
+# file, just an honest, correctly-sourced summary for a portfolio
+# project. libchromaprint is dynamically loaded via ctypes at runtime
+# (see audio_fingerprint.py/CLAUDE.md item 38-39), never statically
+# linked or bundled — the correct, low-risk way to use an LGPL library
+# from a closed-source app.
+ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
+    "<p><b>Third-party notices</b><br>"
+    "Built with PySide6/Qt (LGPL-3.0), librosa (ISC), mutagen "
+    "(GPL-2.0-or-later), libchromaprint (LGPL-2.1-or-later, loaded "
+    "dynamically at runtime), NumPy/SciPy/httpx/soundfile/"
+    "python-dotenv (BSD-3-Clause), and platformdirs/rapidfuzz/"
+    "pyloudnorm/packaging (MIT/Apache-2.0). Each project's own license "
+    "governs its use.</p>"
+)
+
 # --- Update check (Phase 11) -------------------------------------------
 # GitHub-releases-based — see update_check.py's own docstring for the
 # real external-dependency caution (rate limits, "never raises").
@@ -333,13 +412,20 @@ CHECK_FOR_UPDATES_MENU_TEXT = "Check for updates…"
 UPDATE_CHECK_DIALOG_TITLE = "Check for Updates"
 
 # --- Task 3: support-the-creator links -------------------------------------
-# The PayPal URL isn't ready yet — deliberately marked as an obvious
-# placeholder, not a fabricated look-real link. Replace it with the real
-# destination before this is shipped to anyone.
+# Both real now (PayPal's went live 2026-09-01). A future new entry
+# should still start as an obvious "TODO: ..." placeholder rather than
+# a fabricated look-real link, so it's easy to grep for and replace —
+# AboutDialog filters any TODO-prefixed value out via
+# is_real_support_link() before rendering a button for it, so a real
+# user never sees a button that would open a dead, non-URL string.
 SUPPORT_LINKS: dict[str, str] = {
     "Revolut": "https://revolut.me/kddimitrov",
-    "PayPal": "TODO: paste real PayPal link",
+    "PayPal": "https://paypal.me/KristiyanDimitrov98",
 }
+
+
+def is_real_support_link(url: str) -> bool:
+    return not url.startswith("TODO")
 
 TOOLTIP_SUPPORT_LINK = "Opens in your browser."
 

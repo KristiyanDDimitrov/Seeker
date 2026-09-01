@@ -842,3 +842,34 @@ def test_track_matcher_is_a_cached_singleton_across_app_lifetime(
     second = app.track_matcher
 
     assert first is second
+
+
+def test_data_locations_resolves_real_paths_in_one_shared_directory(
+        tmp_path, monkeypatch,
+):
+    # database_path/config_path/spotify_token_path all resolve into the
+    # identical per-user app-data directory (base_dir) — slskd_data_dir
+    # is the one real subfolder of it. Every module that independently
+    # computes platformdirs.user_data_dir("Seeker", ...) is patched here
+    # so this test is fully isolated from the real machine's actual
+    # app-data directory, not just the database's own.
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.chdir(tmp_path)
+    for module in (
+            "seeker.application.platformdirs",
+            "seeker.config_store.platformdirs",
+            "seeker.docker_setup.platformdirs",
+    ):
+        monkeypatch.setattr(
+            f"{module}.user_data_dir", _fake_user_data_dir(data_dir),
+        )
+
+    app = Application()
+
+    locations = app.data_locations
+
+    assert locations.database_path == data_dir / "seeker.db"
+    assert locations.config_path == data_dir / "config.json"
+    assert locations.spotify_token_path == data_dir / "spotify_token.json"
+    assert locations.slskd_data_dir == data_dir / "slskd-data"
+    assert locations.base_dir == data_dir

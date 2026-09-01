@@ -33,12 +33,13 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.dashboard_service import DashboardService
-from seeker.docker_setup import ensure_full_path_environment
+from seeker.docker_setup import ensure_full_path_environment, slskd_data_dir
 from seeker.history_service import HistoryService
 from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
+from seeker.models.data_locations import DataLocations
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
 from seeker.spotify.auth_manager import SpotifyAuthManager
@@ -466,6 +467,22 @@ class Application:
             )
 
         return self._history_service
+
+    @property
+    def data_locations(self) -> DataLocations:
+        # Cheap, synchronous, purely local path resolution (no DB/
+        # network I/O) — every value here was already computed once in
+        # __init__ (self.database.path/self._spotify_token_path) or is
+        # a plain platformdirs join (resolve_config_path()/
+        # slskd_data_dir()), so this needs no lazy-load/run_worker
+        # treatment the way a real DB read would.
+        return DataLocations(
+            database_path=self.database.path,
+            config_path=resolve_config_path(),
+            spotify_token_path=self._spotify_token_path,
+            slskd_data_dir=slskd_data_dir(),
+            base_dir=self.database.path.parent,
+        )
 
     @property
     def onboarding_complete(self) -> bool:

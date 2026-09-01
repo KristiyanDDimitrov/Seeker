@@ -1,6 +1,7 @@
 import threading
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import (
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 from seeker.config_store import SeekerConfig
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.data_locations import DataLocations
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -284,6 +286,13 @@ class FakeApplication:
     ):
         self.sync_service = FakeSyncService(playlists)
         self.history_service = FakeHistoryService(history_events)
+        self.data_locations = DataLocations(
+            database_path=Path("/fake/seeker.db"),
+            config_path=Path("/fake/config.json"),
+            spotify_token_path=Path("/fake/spotify_token.json"),
+            slskd_data_dir=Path("/fake/slskd-data"),
+            base_dir=Path("/fake"),
+        )
         self.dashboard_service = FakeDashboardService(
             statuses, active_downloads,
         )
@@ -417,6 +426,85 @@ def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
     help_page = window.stacked_widget.widget(window._page_indices["help"])
     help_labels = [w.text() for w in help_page.findChildren(QLabel)]
     assert help_text.HELP_PAGE_SUBTITLE in help_labels
+
+
+# --- Help page (roadmap Phase 11 §Help) -------------------------------------
+
+def test_help_page_shows_walkthrough_and_troubleshooting(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    help_page = window.stacked_widget.widget(window._page_indices["help"])
+    labels_html = "\n".join(w.text() for w in help_page.findChildren(QLabel))
+
+    assert "How Seeker works" in labels_html
+    assert "Troubleshooting" in labels_html
+    assert "Sync" in labels_html and "Match" in labels_html
+
+
+def test_help_page_shows_the_real_resolved_data_paths(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    help_page = window.stacked_widget.widget(window._page_indices["help"])
+    labels_text = [w.text() for w in help_page.findChildren(QLabel)]
+
+    locations = application.data_locations
+    assert str(locations.database_path) in labels_text
+    assert str(locations.config_path) in labels_text
+    assert str(locations.spotify_token_path) in labels_text
+    assert str(locations.slskd_data_dir) in labels_text
+
+
+def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
+    from seeker.ui.main_window import _open_in_file_manager
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.subprocess.run",
+        lambda args: calls.append(args),
+    )
+    target = tmp_path / "does" / "not" / "exist" / "yet"
+
+    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "darwin")
+    _open_in_file_manager(target)
+    assert calls[-1] == ["open", str(target)]
+    assert target.is_dir()  # created on demand, per the docstring
+
+    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "win32")
+    _open_in_file_manager(target)
+    assert calls[-1] == ["explorer", str(target)]
+
+    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "linux")
+    _open_in_file_manager(target)
+    assert calls[-1] == ["xdg-open", str(target)]
+
+
+def test_open_data_folder_button_calls_the_file_manager_opener(
+        qtbot, monkeypatch,
+):
+    from seeker.ui import main_window as main_window_module
+
+    opened: list = []
+    monkeypatch.setattr(
+        main_window_module, "_open_in_file_manager",
+        lambda path: opened.append(path),
+    )
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    help_page = window.stacked_widget.widget(window._page_indices["help"])
+    button = next(
+        widget for widget in help_page.findChildren(QPushButton)
+        if widget.text() == help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
+    )
+    button.click()
+
+    assert opened == [application.data_locations.base_dir]
 
 
 # --- History page (roadmap Phase 10) ----------------------------------------
@@ -1198,13 +1286,43 @@ def test_about_dialog_opens_without_crashing(qtbot):
     assert dialog.windowTitle() == help_text.ABOUT_DIALOG_TITLE
 
 
-def test_about_dialog_support_buttons_open_placeholder_links(qtbot, monkeypatch):
+def test_about_dialog_shows_author_license_and_notices(qtbot):
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    labels_html = [
+        widget.text() for widget in dialog.findChildren(QLabel)
+    ]
+    combined = "\n".join(labels_html)
+
+    assert "Kristiyan Dimitrov" in combined
+    assert "mailto:kristiyanddimitrov@gmail.com" in combined
+    assert "github.com/KristiyanDDimitrov/Seeker" in combined
+    assert "MIT License" in combined
+    assert "Third-party notices" in combined
+    assert "PySide6" in combined
+
+
+def test_about_dialog_renders_a_button_for_every_real_support_link(
+        qtbot, monkeypatch,
+):
+    # Both Revolut and PayPal are real links as of 2026-09-01 — every
+    # entry in the real SUPPORT_LINKS dict should render a working
+    # button (the "at least one still-placeholder" filtering behavior
+    # itself is covered separately below, via a synthetic placeholder,
+    # so this guard stays exercised even though production data no
+    # longer has a real one to filter).
     from seeker.ui import main_window as main_window_module
 
     opened: list[str] = []
     monkeypatch.setattr(
         main_window_module.webbrowser, "open", lambda url: opened.append(url)
     )
+
+    assert all(
+        help_text.is_real_support_link(url)
+        for url in help_text.SUPPORT_LINKS.values()
+    ), "expected every current SUPPORT_LINKS entry to be a real link"
 
     dialog = AboutDialog()
     qtbot.addWidget(dialog)
@@ -1215,11 +1333,43 @@ def test_about_dialog_support_buttons_open_placeholder_links(qtbot, monkeypatch)
         if widget.text().startswith("Support on")
     ]
     assert len(buttons) == len(help_text.SUPPORT_LINKS)
+    assert {button.text() for button in buttons} == {
+        f"Support on {name}" for name in help_text.SUPPORT_LINKS
+    }
 
     for button in buttons:
         button.click()
 
     assert set(opened) == set(help_text.SUPPORT_LINKS.values())
+
+
+def test_about_dialog_filters_out_a_placeholder_support_link(
+        qtbot, monkeypatch,
+):
+    # Regression guard for is_real_support_link() itself: since the real
+    # SUPPORT_LINKS no longer has a TODO entry to filter (PayPal went
+    # live), inject a synthetic one here so a dead, non-URL button is
+    # still proven to never render, rather than this guard silently
+    # stopping being exercised.
+    from seeker.ui import main_window as main_window_module
+
+    monkeypatch.setattr(
+        main_window_module.help_text, "SUPPORT_LINKS",
+        {
+            "Revolut": "https://revolut.me/kddimitrov",
+            "Ko-fi": "TODO: paste real Ko-fi link",
+        },
+    )
+
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    buttons = [
+        widget
+        for widget in dialog.findChildren(QPushButton)
+        if widget.text().startswith("Support on")
+    ]
+    assert [button.text() for button in buttons] == ["Support on Revolut"]
 
 
 def test_dashboard_downloads_review_pages_have_persistent_subtitles(qtbot):

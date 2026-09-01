@@ -1,7 +1,10 @@
+import subprocess
+import sys
 import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
@@ -25,6 +28,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -164,6 +168,24 @@ def _build_page(title: str, subtitle: str, content: QWidget) -> QWidget:
     layout.addWidget(content, 1)
 
     return page
+
+
+def _open_in_file_manager(path: Path) -> None:
+    # Cross-platform "reveal in Finder/Explorer" — same
+    # subprocess/best-effort spirit as docker_setup.py's own OS calls,
+    # just for the desktop file manager instead of Docker. `path.mkdir`
+    # first since a brand-new install's slskd-data subfolder in
+    # particular may not exist yet (SoulSeek skipped in the wizard) —
+    # opening a folder that doesn't exist would otherwise silently do
+    # nothing on every platform.
+    path.mkdir(parents=True, exist_ok=True)
+
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)])
+    elif sys.platform == "win32":
+        subprocess.run(["explorer", str(path)])
+    else:
+        subprocess.run(["xdg-open", str(path)])
 
 
 def _build_nav_button(label: str) -> QPushButton:
@@ -365,11 +387,38 @@ class AboutDialog(QDialog):
         text_label.setWordWrap(True)
         layout.addWidget(text_label)
 
-        # Real URLs aren't ready yet — see help_text.SUPPORT_LINKS's own
-        # placeholder-URL warning. Same webbrowser.open() mechanism the
-        # Spotify OAuth flow already uses; no SDK, no embedded payment UI.
+        # setOpenExternalLinks(True) — Qt opens mailto:/https: links via
+        # the OS default handler itself (QDesktopServices), no separate
+        # webbrowser.open() wiring needed for a plain clickable label
+        # (unlike the support buttons below, which need an explicit
+        # click handler since they're QPushButtons, not link text).
+        author_label = QLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
+        author_label.setTextFormat(Qt.TextFormat.RichText)
+        author_label.setWordWrap(True)
+        author_label.setOpenExternalLinks(True)
+        layout.addWidget(author_label)
+
+        license_label = QLabel(help_text.ABOUT_DIALOG_LICENSE_LINE)
+        license_label.setTextFormat(Qt.TextFormat.RichText)
+        license_label.setWordWrap(True)
+        layout.addWidget(license_label)
+
+        notices_label = QLabel(help_text.ABOUT_DIALOG_THIRD_PARTY_NOTICES)
+        notices_label.setTextFormat(Qt.TextFormat.RichText)
+        notices_label.setWordWrap(True)
+        notices_label.setStyleSheet(f"color: {theme.TEXT_FAINT};")
+        layout.addWidget(notices_label)
+
+        # Real URLs aren't ready for every link yet — is_real_support_link()
+        # filters out any still-TODO placeholder so a dead, non-URL button
+        # never actually renders (see help_text.SUPPORT_LINKS's own note).
+        # Same webbrowser.open() mechanism the Spotify OAuth flow already
+        # uses; no SDK, no embedded payment UI.
         support_row = QHBoxLayout()
         for name, url in help_text.SUPPORT_LINKS.items():
+            if not help_text.is_real_support_link(url):
+                continue
+
             support_button = QPushButton(f"Support on {name}")
             support_button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
             support_button.clicked.connect(
@@ -923,19 +972,82 @@ class MainWindow(QMainWindow):
             )
 
     def _build_help_page(self) -> QWidget:
-        # Placeholder — the real Help page (walkthrough,
-        # troubleshooting, "where your data lives") is a future phase.
-        # The existing Help menu -> About Seeker action is unaffected.
+        # Real content (walkthrough/troubleshooting/data locations),
+        # not a placeholder. Every data-location value below is a real,
+        # already-resolved path (Application.data_locations) — cheap,
+        # synchronous, purely local string formatting, so this builds
+        # directly at page-construction time like AboutDialog's own
+        # version() lookup, no lazy-load/run_worker needed (contrast
+        # with Duplicates/History, which do a real DB read).
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(theme.SPACING_LG)
+
+        walkthrough_label = QLabel(help_text.HELP_WALKTHROUGH_BODY)
+        walkthrough_label.setTextFormat(Qt.TextFormat.RichText)
+        walkthrough_label.setWordWrap(True)
+        inner_layout.addWidget(walkthrough_label)
+
+        troubleshooting_label = QLabel(help_text.HELP_TROUBLESHOOTING_BODY)
+        troubleshooting_label.setTextFormat(Qt.TextFormat.RichText)
+        troubleshooting_label.setWordWrap(True)
+        inner_layout.addWidget(troubleshooting_label)
+
+        locations = self.application.data_locations
+
+        data_heading = QLabel(help_text.HELP_DATA_LOCATIONS_HEADING)
+        data_heading.setTextFormat(Qt.TextFormat.RichText)
+        inner_layout.addWidget(data_heading)
+
+        intro_label = QLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
+        intro_label.setWordWrap(True)
+        inner_layout.addWidget(intro_label)
+
+        locations_form = QFormLayout()
+        for label_text, path in (
+                (help_text.DATA_LOCATION_DATABASE_LABEL, locations.database_path),
+                (help_text.DATA_LOCATION_CONFIG_LABEL, locations.config_path),
+                (
+                    help_text.DATA_LOCATION_SPOTIFY_TOKEN_LABEL,
+                    locations.spotify_token_path,
+                ),
+                (help_text.DATA_LOCATION_SLSKD_LABEL, locations.slskd_data_dir),
+        ):
+            path_label = QLabel(str(path))
+            path_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            path_label.setWordWrap(True)
+            locations_form.addRow(label_text, path_label)
+        inner_layout.addLayout(locations_form)
+
+        open_folder_button = QPushButton(help_text.OPEN_DATA_FOLDER_BUTTON_TEXT)
+        open_folder_button.setToolTip(help_text.TOOLTIP_OPEN_DATA_FOLDER)
+        open_folder_button.clicked.connect(self._on_open_data_folder_clicked)
+        inner_layout.addWidget(
+            open_folder_button, alignment=Qt.AlignmentFlag.AlignLeft,
+        )
+
+        inner_layout.addStretch()
+
+        # Scrollable — the walkthrough + troubleshooting + data-location
+        # sections together are genuinely longer than this app's
+        # 960x640 minimum window (item 48), unlike every other page.
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll_area.setWidget(inner)
+
         content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        placeholder = QLabel(help_text.HELP_PAGE_PLACEHOLDER)
-        placeholder.setStyleSheet(f"color: {theme.TEXT_FAINT};")
-        placeholder.setWordWrap(True)
-        layout.addWidget(placeholder)
-        layout.addStretch()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(scroll_area)
 
         return _build_page("Help", help_text.HELP_PAGE_SUBTITLE, content)
+
+    def _on_open_data_folder_clicked(self) -> None:
+        _open_in_file_manager(self.application.data_locations.base_dir)
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()
