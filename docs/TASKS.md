@@ -25,7 +25,7 @@ Re-read this file at every phase boundary before starting the next phase.
 - [x] 1.2 SUPPORT_LINKS already had both Revolut and PayPal live (PayPal went live 2026-09-01, per existing comment) — no reconciliation needed. Extracted `_build_support_links_row()` shared by AboutDialog and the new Support page so the loop lives once, not twice.
 - [x] 1.3 Help menu/About dialog/wizard done page confirmed unchanged (28/28 wizard tests, About dialog tests all pass). Added 4 new Support-page smoke tests + updated the nav-buttons-enumeration test for the new "support" key. Extended `test_stress_e2e.py`'s interleaved loop with a Support page visit.
 
-**Commit boundary.**
+**Commit boundary — commit 234ac4b.**
 
 ## Phase 2 — Make long-running actions visibly running
 
