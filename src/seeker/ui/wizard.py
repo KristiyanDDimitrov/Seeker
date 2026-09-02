@@ -290,7 +290,7 @@ class OnboardingWizard(QMainWindow):
         run_worker(
             self.thread_pool,
             lambda: self.application.persist_default_destination(
-                location.id, subfolder_per_playlist,  # type: ignore[arg-type]
+                location.id, subfolder_per_playlist,
             ),
             on_finished=lambda _: self._continue_past_library_step(),
         )

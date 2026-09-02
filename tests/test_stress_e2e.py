@@ -407,6 +407,32 @@ def test_broad_end_to_end_stress(qapp):
 
         log.sample(f"{len(download_targets) + 1} concurrent download operations fired")
 
+        # Roadmap item 65 (Phase 2.4) — a real progress-heavy worker,
+        # emitting through the throttle for several seconds, overlapping
+        # with every other real worker traffic this run already fires.
+        # This is the change most capable of reintroducing item 39's
+        # deadlock (a naive per-item cross-thread emit is exactly the
+        # pattern that class of bug needs) — genuinely exercised here,
+        # not just unit-tested against a synchronous fake pool.
+        progress_events: list[tuple[str, int, int]] = []
+
+        def progress_heavy_work(
+                report: Callable[[str, int, int], None],
+        ) -> str:
+            total = 3_000
+            for i in range(1, total + 1):
+                report("stress", i, total)
+                if i % 500 == 0:
+                    time.sleep(0.05)
+            return "done"
+
+        run_worker(
+            main_window.thread_pool,
+            progress_heavy_work,
+            on_progress=lambda stage, current, total:
+                progress_events.append((stage, current, total)),
+        )
+
         # --- Interleave real interaction with real background work
         # still in flight, sustained for the real target duration:
         # switch the selected playlist, open/close Settings repeatedly
@@ -680,6 +706,18 @@ def test_broad_end_to_end_stress(qapp):
         f"[stress] RSS tail plateau check: last {tail_size} samples "
         f"range={tail_range:.1f}MB (min={min(tail_values):.1f}MB, "
         f"max={max(tail_values):.1f}MB)"
+    )
+
+    # Roadmap item 65 (Phase 2.4) — confirms the progress-heavy worker
+    # fired above genuinely delivered throttled progress under real,
+    # overlapping conditions (not just completed silently): the first
+    # report (always emitted, see Worker.__init__), real throttled
+    # midpoints, and the final one at the real total.
+    print(f"[stress] progress-heavy worker: {len(progress_events)} progress events delivered")
+    assert progress_events, "expected at least one delivered progress event"
+    assert progress_events[0][1] == 1, "first progress report should always emit"
+    assert progress_events[-1] == ("stress", 3_000, 3_000), (
+        "expected the final progress report to reach the real total"
     )
 
     # Every worker must have drained by the time the run is over — a

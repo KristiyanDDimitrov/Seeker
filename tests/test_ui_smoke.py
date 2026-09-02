@@ -664,6 +664,150 @@ def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
     assert window.stacked_widget.currentIndex() == window._page_indices["sharing"]
 
 
+# --- Busy-action registry / activity strip (roadmap item 65, Phase 2) -----
+
+def test_render_next_step_does_not_reenable_a_button_whose_action_is_running(
+        qtbot,
+):
+    # Regression test for Phase 0's own 0.1 finding, live-proven via an
+    # instrumented offscreen MainWindow: _render_next_step runs on every
+    # 2s poll tick and used to unconditionally re-enable the scan button
+    # from static facts alone, with no idea a real scan_and_match() might
+    # still be running. Exercises the exact same method directly, with a
+    # real busy_actions.begin() standing in for "still running".
+    from seeker.ui.main_window import _NextStepFacts
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.busy_actions.begin("scan", window.scan_button, "Scanning…")
+    assert window.scan_button.isEnabled() is False
+
+    facts = _NextStepFacts(
+        spotify_configured=True,
+        has_library_location=True,
+        has_cached_playlists=True,
+        selected_playlist_name=None,
+        track_statuses=None,
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+    window._render_next_step(facts)
+
+    # Pre-fix, this would have been re-enabled here since
+    # facts.has_library_location is True.
+    assert window.scan_button.isEnabled() is False
+    assert window.scan_button.text() == "Scanning…"
+
+    window.busy_actions.end("scan")
+    window._render_next_step(facts)
+    assert window.scan_button.isEnabled() is True
+    assert window.scan_button.text() == "Rescan & match library"
+
+
+def test_render_next_step_does_not_hide_or_reenable_download_button_mid_download(
+        qtbot,
+):
+    # Regression test for the real, reported bug found alongside 0.1:
+    # download_button.setVisible(step.action != "download") could hide
+    # the download button entirely mid-download, the instant the CTA's
+    # own action was still "download" (which it usually still is, since
+    # the missing-track count hasn't changed yet).
+    from seeker.ui.main_window import _NextStepFacts
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.busy_actions.begin(
+        "download", window.download_button, "Starting download…",
+    )
+    assert window.download_button.isEnabled() is False
+
+    # CTA's own current action is "download" -- pre-fix, setVisible(step
+    # .action != "download") would hide the button here.
+    facts = _NextStepFacts(
+        spotify_configured=True,
+        has_library_location=True,
+        has_cached_playlists=True,
+        selected_playlist_name="Test Playlist",
+        track_statuses=[_make_track_status(state=NOT_FOUND)],
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+    window._render_next_step(facts)
+
+    assert not window.download_button.isHidden()
+    assert window.download_button.isEnabled() is False
+    assert window.download_button.text() == "Starting download…"
+
+    window.busy_actions.end("download")
+    window._render_next_step(facts)
+    assert window.download_button.isHidden()  # CTA now owns it
+    assert window.download_button.text() == "Download selected playlist"
+
+
+def test_activity_strip_hidden_when_nothing_running(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_activity_strip()
+    assert window.activity_strip.isHidden()
+
+
+def test_activity_strip_shows_label_for_a_single_running_action(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.busy_actions.begin("scan", window.scan_button, "Scanning…")
+    window._render_activity_strip()
+
+    assert not window.activity_strip.isHidden()
+    assert (
+        window.activity_strip_label.text()
+        == "Scanning library and matching tracks…"
+    )
+    assert window.activity_strip_bar.minimum() == 0
+    assert window.activity_strip_bar.maximum() == 0  # indeterminate
+
+    window.busy_actions.end("scan")
+    window._render_activity_strip()
+    assert window.activity_strip.isHidden()
+
+
+def test_activity_strip_shows_a_count_for_multiple_running_actions(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.busy_actions.begin("scan", window.scan_button)
+    window.busy_actions.begin("sync", window.sync_button)
+    window._render_activity_strip()
+
+    assert not window.activity_strip.isHidden()
+    assert window.activity_strip_label.text() == "2 actions running"
+
+
+def test_activity_strip_renders_real_progress_when_reported(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.busy_actions.begin(
+        "compute_fingerprints", window.compute_fingerprints_button,
+    )
+    window._on_activity_progress("compute_fingerprints", "Decoding", 40, 100)
+
+    assert not window.activity_strip.isHidden()
+    assert "40/100" in window.activity_strip_label.text()
+    assert window.activity_strip_bar.minimum() == 0
+    assert window.activity_strip_bar.maximum() == 100
+    assert window.activity_strip_bar.value() == 40
+
+
 def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
     from seeker.ui.main_window import _open_in_file_manager
 
@@ -2045,6 +2189,126 @@ def test_run_worker_on_finished_exception_still_releases_worker_registry(qtbot):
     run_worker(SynchronousPool(), lambda: "ok", on_finished=render_that_raises)
 
     assert len(workers_module._callbacks) == baseline
+
+
+# --- Progress channel (roadmap item 65, Phase 2.3) --------------------
+
+def test_run_worker_without_on_progress_calls_fn_with_zero_arguments(qtbot):
+    # Backward-compat guarantee: every pre-existing call site's fn stays
+    # exactly zero-argument when on_progress isn't passed.
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    calls = []
+    run_worker(SynchronousPool(), lambda: calls.append("called") or "ok")
+
+    assert calls == ["called"]
+
+
+def test_run_worker_with_on_progress_passes_fn_a_reporter(qtbot):
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    reported = []
+
+    def do_work(report):
+        report("stage one", 1, 10)
+        return "ok"
+
+    def on_progress(stage, current, total):
+        reported.append((stage, current, total))
+
+    run_worker(SynchronousPool(), do_work, on_progress=on_progress)
+
+    assert reported == [("stage one", 1, 10)]
+
+
+def test_progress_reports_are_throttled_by_count(qtbot):
+    # PROGRESS_EMIT_EVERY_N = 25 — 100 calls should emit at multiples of
+    # 25 (the count-based branch fires regardless of elapsed time, since
+    # these calls all happen well under PROGRESS_EMIT_MIN_INTERVAL_S),
+    # PLUS the very first call (i=1), which always emits regardless of
+    # count/elapsed — see Worker.__init__'s own comment on why.
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    reported = []
+
+    def do_work(report):
+        for i in range(1, 101):
+            report("stage", i, 100)
+        return "ok"
+
+    run_worker(
+        SynchronousPool(), do_work,
+        on_progress=lambda stage, current, total: reported.append(current),
+    )
+
+    assert reported == [1, 25, 50, 75, 100]
+
+
+def test_progress_reports_are_throttled_by_time(qtbot, monkeypatch):
+    from seeker.ui import workers as workers_mod
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    fake_time = [0.0]
+    monkeypatch.setattr(workers_mod.time, "monotonic", lambda: fake_time[0])
+
+    reported = []
+
+    def do_work(report):
+        report("a", 1, 10)   # always emits (first report)
+        fake_time[0] += 0.1  # under PROGRESS_EMIT_MIN_INTERVAL_S -> dropped
+        report("b", 2, 10)
+        fake_time[0] += 0.3  # over the interval -> emits
+        report("c", 3, 10)
+        return "ok"
+
+    run_worker(
+        SynchronousPool(), do_work,
+        on_progress=lambda stage, current, total: reported.append(stage),
+    )
+
+    assert reported == ["a", "c"]
+
+
+def test_progress_callback_is_cleared_on_finish(qtbot):
+    from seeker.ui import workers as workers_mod
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    worker = run_worker(
+        SynchronousPool(), lambda report: "ok",
+        on_progress=lambda stage, current, total: None,
+    )
+
+    assert worker.task_id not in workers_mod._progress_callbacks
+
+
+def test_progress_callback_is_cleared_on_error(qtbot):
+    from seeker.ui import workers as workers_mod
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def boom(report):
+        raise RuntimeError("simulated failure")
+
+    worker = run_worker(
+        SynchronousPool(), boom,
+        on_progress=lambda stage, current, total: None,
+    )
+
+    assert worker.task_id not in workers_mod._progress_callbacks
 
 
 def _make_active_download(

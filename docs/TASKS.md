@@ -29,10 +29,10 @@ Re-read this file at every phase boundary before starting the next phase.
 
 ## Phase 2 — Make long-running actions visibly running
 
-- [ ] 2.1 Busy-action registry the poll cannot fight
-- [ ] 2.2 Global activity strip in window shell
-- [ ] 2.3 Progress channel on shared worker dispatcher (throttled, primitives-only)
-- [ ] 2.4 Verify: instrumented repro, stress test with progress-heavy worker, 3x smoke run
+- [x] 2.1 `ui/busy_actions.py::BusyActionRegistry` (module in `ui/`, kept OUT of `ui/workers.py` deliberately — no cross-thread/signal machinery needed, and that file already has 3 documented crash/deadlock histories). Wired into sync/scan/match/download/sync_tracks/tag_selected/tag_playlist/compute_fingerprints/find_duplicates/sharing_refresh/history_refresh via a new `_run_busy_worker` helper. Per-row/per-item dynamic actions (per-track Tag, per-group Delete, Review confirm/reject, per-location Add-to-share) deliberately scoped OUT — not fought by any poll (verified), and a global strip label for "which of N rows" adds no value. `_render_next_step` now guards every button touch with `is_running()`. Also fixed the user-flagged `download_button.setVisible()` mid-download hiding bug in the same guard.
+- [x] 2.2 Global activity strip: new column between sidebar and `stacked_widget`, hidden at zero, label + progress bar (indeterminate by default, determinate once Phase 7 wires real progress). Shows a count, not a merged number, when >1 action running.
+- [x] 2.3 `task_progress` signal added to the existing, already-permanently-connected `_dispatcher` (3rd signal, same "primitives only, connect once" pattern as the other two). `run_worker(..., on_progress=...)` optional; when omitted, `fn` called with zero args exactly as before (verified: every pre-existing call site untouched). Throttled at the SOURCE (inside `Worker._report_progress`, on the worker thread) — `PROGRESS_EMIT_MIN_INTERVAL_S=0.25` OR `PROGRESS_EMIT_EVERY_N=25`, whichever first; first report always emits (`_progress_last_emit` init to `-inf`, a real fix found by my own test using a monkeypatched clock at 0.0).
+- [x] 2.4 Verified: live async repro re-run — scan button stayed busy across 5+ real 2s poll ticks (t=0 through t=5s), restored exactly once at real completion (t=6s). Deadlock regression suite 3x clean. Full fast suite 3x: 789-790/790, one pre-existing flaky test (documented, not a regression — reproduces 1/5 in isolation too). `test_ui_smoke.py` timing: ~5.0-5.4s across runs, no hang/slowdown. Progress-heavy worker (3,000 throttled reports over several seconds) added to the opt-in stress test's interleaved loop with real assertions on delivered event count/first/last — actual RUN deferred to closing-out (real ~5+ min against real infra; will cover every phase's cumulative changes in one pass, per the brief's own closing-out step).
 
 **Commit boundary.**
 

@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version
@@ -62,6 +63,7 @@ from seeker.sharing_service import (
     UploadStatus,
 )
 from seeker.ui import help_text, theme
+from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
@@ -166,6 +168,24 @@ _NAV_PAGES = (
     ("sharing", "Sharing"),
     ("history", "History"),
 )
+
+# Roadmap item 65 (Phase 2.2) — human-readable label for each
+# busy_actions key, shown on the global activity strip. Any key with no
+# entry here falls back to a generic "Working…" rather than a raw key
+# string leaking into the UI.
+_BUSY_ACTION_LABELS: dict[str, str] = {
+    "sync": "Refreshing playlists…",
+    "scan": "Scanning library and matching tracks…",
+    "match": "Re-matching library…",
+    "download": "Requesting downloads…",
+    "sync_tracks": "Loading tracks…",
+    "tag_selected": "Tagging selected tracks…",
+    "tag_playlist": "Tagging playlist…",
+    "compute_fingerprints": "Computing fingerprints…",
+    "find_duplicates": "Searching for duplicates…",
+    "sharing_refresh": "Checking sharing status…",
+    "history_refresh": "Loading history…",
+}
 
 
 def _build_subtitle_label(text: str) -> QLabel:
@@ -653,6 +673,19 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.thread_pool = QThreadPool()
+        # Roadmap item 65 (Phase 2.1) — the single source of truth for
+        # "is this named action currently running," consulted by every
+        # poll-driven render method so it can skip a button whose own
+        # action is still in flight instead of fighting run_worker's own
+        # busy-disable (the proven mechanism behind Phase 0's 0.1 bug).
+        self.busy_actions = BusyActionRegistry()
+        # Roadmap item 65 (Phase 2.2/2.3) — keyed the same as
+        # busy_actions; populated by a run_worker(on_progress=...)
+        # callback (via _on_activity_progress), consulted by
+        # _render_activity_strip. Empty for every action wired in Phase
+        # 2 itself — Phase 7's fingerprinting/duplicate-search progress
+        # is the first real producer.
+        self._activity_progress: dict[str, tuple[str, int, int]] = {}
         self.selected_playlist: Playlist | None = None
         self._backend_poll_in_progress = False
         # Task 2 — speed/ETA estimation for the Downloads tab. Purely
@@ -693,6 +726,12 @@ class MainWindow(QMainWindow):
         self.poll_timer.timeout.connect(self._poll_active_downloads)
         self.poll_timer.timeout.connect(self._poll_review_items)
         self.poll_timer.timeout.connect(self._poll_next_step)
+        # Roadmap item 65 (Phase 2.2) — a periodic safety-net refresh on
+        # top of the explicit begin()/end()-adjacent calls already made
+        # at every busy-action call site; catches nothing new today (all
+        # of those already call _render_activity_strip() synchronously)
+        # but keeps the strip correct even if a future action forgets to.
+        self.poll_timer.timeout.connect(self._render_activity_strip)
         self.poll_timer.start()
 
         # Separate, slower timer: the only thing in this app that causes
@@ -717,8 +756,25 @@ class MainWindow(QMainWindow):
 
         shell_layout.addWidget(self._build_sidebar())
 
+        # Roadmap item 65 (Phase 2.2) — a persistent activity strip
+        # lives between the sidebar/header and the page content itself,
+        # visible regardless of which page the user has navigated to
+        # (button state alone is invisible once you've left the page a
+        # long-running action was started from). A separate column
+        # rather than widening shell_layout further, so the strip spans
+        # only the content area, not the sidebar.
+        content_column = QWidget()
+        content_column_layout = QVBoxLayout(content_column)
+        content_column_layout.setContentsMargins(0, 0, 0, 0)
+        content_column_layout.setSpacing(0)
+
+        self.activity_strip = self._build_activity_strip()
+        content_column_layout.addWidget(self.activity_strip)
+
         self.stacked_widget = QStackedWidget()
-        shell_layout.addWidget(self.stacked_widget, 1)
+        content_column_layout.addWidget(self.stacked_widget, 1)
+
+        shell_layout.addWidget(content_column, 1)
 
         self._page_indices: dict[str, int] = {}
         self._register_page("dashboard", self._build_dashboard_page())
@@ -843,6 +899,92 @@ class MainWindow(QMainWindow):
         # call, not a second one.
         self._refresh_duplicates_locations()
         self._poll_next_step()
+
+    def _build_activity_strip(self) -> QWidget:
+        # Roadmap item 65 (Phase 2.2) — hidden whenever nothing is
+        # running (the common case); see _render_activity_strip for what
+        # populates it.
+        strip = QWidget()
+        strip.setObjectName("activityStrip")
+        # A plain QWidget subclass doesn't paint its own stylesheet
+        # background by default in Qt (item 47's identical
+        # WA_StyledBackground finding, same fix here).
+        strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        strip.setStyleSheet(
+            f"#activityStrip {{ background-color: {theme.BG_SURFACE_2}; "
+            f"border-bottom: 1px solid {theme.BORDER}; }}"
+        )
+
+        layout = QHBoxLayout(strip)
+        layout.setContentsMargins(
+            theme.SPACING_MD, theme.SPACING_XS,
+            theme.SPACING_MD, theme.SPACING_XS,
+        )
+        layout.setSpacing(theme.SPACING_SM)
+
+        self.activity_strip_label = QLabel("")
+        layout.addWidget(self.activity_strip_label)
+
+        # Untuned fixed width — wide enough to read a real percentage
+        # without dominating the strip.
+        self.activity_strip_bar = QProgressBar()
+        self.activity_strip_bar.setFixedWidth(160)
+        self.activity_strip_bar.setTextVisible(False)
+        layout.addWidget(self.activity_strip_bar)
+
+        layout.addStretch()
+
+        strip.hide()
+        return strip
+
+    def _render_activity_strip(self) -> None:
+        running = sorted(self.busy_actions.running_keys())
+
+        if not running:
+            self.activity_strip.hide()
+            return
+
+        self.activity_strip.show()
+
+        if len(running) > 1:
+            # Multiple actions running at once — a real count, not an
+            # invented merged progress number (roadmap item 65's own
+            # explicit instruction: don't fold unrelated work into one
+            # fake percentage).
+            self.activity_strip_label.setText(
+                f"{len(running)} actions running"
+            )
+            self.activity_strip_bar.setRange(0, 0)
+            return
+
+        key = running[0]
+        label = _BUSY_ACTION_LABELS.get(key, "Working…")
+        progress = self._activity_progress.get(key)
+
+        if progress is not None:
+            stage, current, total = progress
+            self.activity_strip_label.setText(
+                f"{label} {stage} ({current}/{total})" if stage else
+                f"{label} ({current}/{total})"
+            )
+            self.activity_strip_bar.setRange(0, total)
+            self.activity_strip_bar.setValue(current)
+            theme.style_determinate_progress_bar(self.activity_strip_bar)
+        else:
+            self.activity_strip_label.setText(label)
+            self.activity_strip_bar.setRange(0, 0)  # indeterminate
+
+    def _on_activity_progress(
+            self, key: str, stage: str, current: int, total: int,
+    ) -> None:
+        # Roadmap item 65 (Phase 2.3's real consumer) — populated by any
+        # run_worker(..., on_progress=...) caller that also passes a
+        # matching key through here (none yet in this phase; Phase 7's
+        # fingerprinting/duplicate-search progress is the first real
+        # producer). Cleared the moment the action itself ends, via
+        # _run_busy_worker's own wrapped_finished/wrapped_error.
+        self._activity_progress[key] = (stage, current, total)
+        self._render_activity_strip()
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QWidget()
@@ -1134,10 +1276,9 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_history(self) -> None:
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "history_refresh", self.history_refresh_button,
             self.application.history_service.get_recent_events,
-            button=self.history_refresh_button,
             status_label=self.history_status_label,
             on_finished=self._on_history_fetched,
         )
@@ -1256,10 +1397,9 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_sharing(self) -> None:
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "sharing_refresh", self.sharing_refresh_button,
             self._gather_sharing_snapshot,
-            button=self.sharing_refresh_button,
             status_label=self.sharing_status_label,
             on_finished=self._render_sharing,
         )
@@ -1909,15 +2049,14 @@ class MainWindow(QMainWindow):
             self.dashboard_notice.show_message(str(error), kind="error")
             return
 
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "tag_selected", self.tag_selected_button,
             lambda: self.application.metadata_service.tag_tracks(
                 track_ids,
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=force,
             ),
-            button=self.tag_selected_button,
             status_label=self.status_label,
             on_finished=self._render_tag_result,
         )
@@ -1941,15 +2080,14 @@ class MainWindow(QMainWindow):
 
         playlist_name = self.selected_playlist.name
 
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "tag_playlist", self.tag_playlist_button,
             lambda: self.application.metadata_service.tag_playlist(
                 playlist_name,
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=force,
             ),
-            button=self.tag_playlist_button,
             status_label=self.status_label,
             on_finished=self._render_tag_result,
         )
@@ -2175,12 +2313,11 @@ class MainWindow(QMainWindow):
             )
             return
 
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "compute_fingerprints", self.compute_fingerprints_button,
             lambda: self.application.duplicate_service.compute_fingerprints(
                 location_name
             ),
-            button=self.compute_fingerprints_button,
             status_label=self.duplicates_status_label,
             on_finished=self._render_fingerprint_result,
         )
@@ -2213,12 +2350,11 @@ class MainWindow(QMainWindow):
         # eventually renders.
         self._current_duplicates_location_name = location_name
 
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "find_duplicates", self.find_duplicates_button,
             lambda: self.application.duplicate_service.find_duplicate_groups(
                 location_name
             ),
-            button=self.find_duplicates_button,
             status_label=self.duplicates_status_label,
             on_finished=self._render_duplicate_groups,
         )
@@ -2724,22 +2860,41 @@ class MainWindow(QMainWindow):
         # different scope. Re-shown once anything else is the current
         # CTA (or once the CTA has nothing to show at all), so it
         # stays available as an ordinary manual action.
-        self.download_button.setVisible(
-            step is None or step.action != "download"
-        )
+        #
+        # Roadmap item 65 (Phase 2.1/2.2 fix) — every setVisible/
+        # setEnabled call below now first checks busy_actions.is_running
+        # for that same button's own key, and skips touching it entirely
+        # if so. This poll tick has no idea a background action might
+        # still be mid-flight; without this guard, Phase 0's own 0.1
+        # investigation proved this exact method re-enables a button
+        # within 2s of a click regardless of whether its real work was
+        # still running — and, for Download specifically, a real
+        # reported bug: this setVisible call could hide the button out
+        # from under an in-progress download the instant the CTA's own
+        # action was still "download" (which it usually still is, since
+        # the missing-track count hasn't changed yet).
+        if not self.busy_actions.is_running("download"):
+            self.download_button.setVisible(
+                step is None or step.action != "download"
+            )
+            # Disabled, not hidden, for every other action-row button —
+            # matches the CTA strip's own point (don't present an action
+            # that genuinely can't do anything yet) without the row's
+            # width jumping around on every fact change.
+            self.download_button.setEnabled(
+                facts.selected_playlist_name is not None
+            )
 
-        # Disabled, not hidden, for every other action-row button —
-        # matches the CTA strip's own point (don't present an action
-        # that genuinely can't do anything yet) without the row's
-        # width jumping around on every fact change.
-        self.download_button.setEnabled(
-            facts.selected_playlist_name is not None
-        )
-        self.sync_button.setEnabled(facts.spotify_configured)
-        self.scan_button.setEnabled(facts.has_library_location)
-        self.match_button.setEnabled(
-            facts.has_cached_playlists and facts.has_library_location
-        )
+        if not self.busy_actions.is_running("sync"):
+            self.sync_button.setEnabled(facts.spotify_configured)
+
+        if not self.busy_actions.is_running("scan"):
+            self.scan_button.setEnabled(facts.has_library_location)
+
+        if not self.busy_actions.is_running("match"):
+            self.match_button.setEnabled(
+                facts.has_cached_playlists and facts.has_library_location
+            )
 
     def _on_next_step_action(self, action: str) -> None:
         if action == "settings_connection":
@@ -3218,11 +3373,57 @@ class MainWindow(QMainWindow):
             if request.id is not None and request.bytes_transferred is not None:
                 self._eta_tracker.record(request.id, request.bytes_transferred, now)
 
-    def _on_sync_clicked(self) -> None:
+    def _run_busy_worker(
+            self,
+            key: str,
+            button: QPushButton,
+            fn: Callable[[], Any] | Callable[[Callable[[str, int, int], None]], Any],
+            *,
+            busy_text: str | None = None,
+            status_label: QLabel | None = None,
+            on_finished: Callable[[Any], None] | None = None,
+            on_error: Callable[[str], None] | None = None,
+            reports_progress: bool = False,
+    ) -> None:
+        # Roadmap item 65 (Phase 2.1) — the shared shape for a long-
+        # running action that should register in busy_actions/the
+        # activity strip: begin() before submitting, end() on every real
+        # completion path (success or error) so it's never left marked
+        # running past its own task. Replaces passing button= directly to
+        # run_worker() for every call site converted to use this — the
+        # registry, not run_worker itself, now owns that button's
+        # enable/disable + text for the duration.
+        self.busy_actions.begin(key, button, busy_text)
+        self._render_activity_strip()
+
+        def wrapped_finished(result: Any) -> None:
+            self.busy_actions.end(key)
+            self._activity_progress.pop(key, None)
+            self._render_activity_strip()
+            if on_finished is not None:
+                on_finished(result)
+
+        def wrapped_error(message: str) -> None:
+            self.busy_actions.end(key)
+            self._activity_progress.pop(key, None)
+            self._render_activity_strip()
+            if on_error is not None:
+                on_error(message)
+
         run_worker(
-            self.thread_pool,
+            self.thread_pool, fn, status_label=status_label,
+            on_finished=wrapped_finished, on_error=wrapped_error,
+            on_progress=(
+                (lambda stage, current, total:
+                 self._on_activity_progress(key, stage, current, total))
+                if reports_progress else None
+            ),
+        )
+
+    def _on_sync_clicked(self) -> None:
+        self._run_busy_worker(
+            "sync", self.sync_button,
             self.application.sync_service.sync_playlists,
-            button=self.sync_button,
             status_label=self.status_label,
             on_finished=lambda _: self._load_playlists(),
         )
@@ -3238,10 +3439,10 @@ class MainWindow(QMainWindow):
         # deliberately removed) — this sets an immediate placeholder
         # instead, replaced by the real combined result once the whole
         # call finishes.
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "scan", self.scan_button,
             self.application.library_service.scan_and_match,
-            button=self.scan_button,
+            busy_text="Scanning…",
             status_label=self.status_label,
             on_finished=self._on_scan_and_match_finished,
         )
@@ -3258,21 +3459,25 @@ class MainWindow(QMainWindow):
         self._poll_selected_playlist()
 
     def _on_match_clicked(self) -> None:
-        run_worker(
-            self.thread_pool,
+        self._run_busy_worker(
+            "match", self.match_button,
             self.application.track_matcher.match_all,
-            button=self.match_button,
             status_label=self.status_label,
             on_finished=lambda _: self._poll_selected_playlist(),
         )
 
     def _set_download_button_busy(self) -> None:
-        self.download_button.setEnabled(False)
-        self.download_button.setText("Starting download…")
+        # Idempotent (BusyActionRegistry.begin() no-ops if already
+        # running) — safe to call again at every hop of the download
+        # chain below, matching this method's own pre-registry behavior.
+        self.busy_actions.begin(
+            "download", self.download_button, "Starting download…",
+        )
+        self._render_activity_strip()
 
     def _reset_download_button(self) -> None:
-        self.download_button.setEnabled(True)
-        self.download_button.setText("Download selected playlist")
+        self.busy_actions.end("download")
+        self._render_activity_strip()
 
     def _on_download_clicked(self) -> None:
         if self.selected_playlist is None:
@@ -3449,10 +3654,8 @@ class MainWindow(QMainWindow):
         def do_sync() -> Any:
             self.application.sync_service.sync_playlist_tracks(playlist)
 
-        run_worker(
-            self.thread_pool,
-            do_sync,
-            button=self.sync_tracks_button,
+        self._run_busy_worker(
+            "sync_tracks", self.sync_tracks_button, do_sync,
             status_label=self.status_label,
             on_finished=lambda _: self._poll_selected_playlist(),
         )

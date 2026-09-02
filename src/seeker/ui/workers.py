@@ -1,4 +1,5 @@
 import itertools
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -10,6 +11,16 @@ from PySide6.QtWidgets import QAbstractButton, QLabel
 # signal carries this, never the Worker/QRunnable instance itself — see
 # Worker's own docstring for the two things this avoids.
 _next_task_id = itertools.count()
+
+# Roadmap item 65 (Phase 2.3) — progress-reporting throttle, applied
+# INSIDE the worker thread, before anything ever reaches the dispatcher.
+# This is a safety requirement, not polish: item 39's own deadlock was
+# triggered by rapid, repeated cross-thread Qt activity, and a naive
+# per-item progress emit across thousands of items (e.g. one per file
+# during fingerprinting) is exactly that pattern. Both untuned — pick
+# whichever threshold is hit first.
+PROGRESS_EMIT_MIN_INTERVAL_S = 0.25
+PROGRESS_EMIT_EVERY_N = 25
 
 
 def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
@@ -116,16 +127,60 @@ class Worker(QRunnable):
        own docstring for why this is the actual, verified-safe boundary.
     """
 
-    def __init__(self, fn: Callable[[], Any]):
+    def __init__(
+            self,
+            fn: Callable[[], Any] | Callable[[Callable[[str, int, int], None]], Any],
+            wants_progress: bool = False,
+    ):
         super().__init__()
         self.fn = fn
         self.task_id = next(_next_task_id)
         self.setAutoDelete(False)
+        # roadmap item 65 (Phase 2.3) — set only when run_worker() was
+        # given an on_progress callback; changes nothing about fn's own
+        # calling convention otherwise (every pre-existing call site's
+        # zero-argument fn is completely unaffected).
+        self._wants_progress = wants_progress
+        # -inf, not 0.0: guarantees the FIRST _report_progress call always
+        # emits regardless of what time.monotonic()'s own reference point
+        # happens to be (0.0 "looks recent enough to throttle" only by
+        # accident of real monotonic time always being a large positive
+        # number — a real gap this task's own test caught: a monkeypatched
+        # clock starting at 0.0 would otherwise throttle the very first
+        # report). Immediate first-report feedback is the desired
+        # behavior, not an accident — a caller starting a long operation
+        # should see something before waiting out a full throttle window.
+        self._progress_last_emit = float("-inf")
+        self._progress_count = 0
+
+    def _report_progress(self, stage: str, current: int, total: int) -> None:
+        # Throttled at the source (roadmap item 65 Phase 2.3) — runs on
+        # THIS worker thread, before _emit_or_drop is ever reached, so an
+        # unthrottled caller looping over thousands of items can never
+        # produce thousands of cross-thread emits regardless of how often
+        # it calls this.
+        self._progress_count += 1
+        now = time.monotonic()
+        elapsed = now - self._progress_last_emit
+
+        if (
+                elapsed < PROGRESS_EMIT_MIN_INTERVAL_S
+                and self._progress_count % PROGRESS_EMIT_EVERY_N != 0
+        ):
+            return
+
+        self._progress_last_emit = now
+        _emit_or_drop(
+            _dispatcher.task_progress, self.task_id, stage, current, total,
+        )
 
     @Slot()
     def run(self) -> None:
         try:
-            result = self.fn()
+            result = (
+                self.fn(self._report_progress)  # type: ignore[call-arg]
+                if self._wants_progress else self.fn()  # type: ignore[call-arg]
+            )
         except Exception as error:
             # A straggling worker — fn() was still genuinely running when
             # the app started tearing down (window close, interpreter
@@ -204,6 +259,13 @@ class _Dispatcher(QObject):
 
     task_finished = Signal(int, object)
     task_error = Signal(int, str)
+    # Roadmap item 65 (Phase 2.3) — a THIRD signal on this same, already-
+    # permanently-connected object, following the identical "primitives
+    # only, connected once, emit-or-drop" pattern task_finished/task_error
+    # already use. No new QObject, no new connect()/disconnect() —
+    # exactly the property that made this dispatcher design safe in the
+    # first place (see this class's own docstring above).
+    task_progress = Signal(int, str, int, int)
 
 
 _dispatcher = _Dispatcher()
@@ -226,6 +288,15 @@ _CallbackEntry = tuple[
     Callable[[str], None] | None,
 ]
 _callbacks: dict[int, _CallbackEntry] = {}
+
+# Roadmap item 65 (Phase 2.3) — a separate dict, not folded into
+# _CallbackEntry above: a progress callback is optional and orthogonal
+# to finished/error handling, and this one is deliberately NOT popped
+# by _handle_task_progress itself (a task can report progress many
+# times) — only ever removed by the SAME finished/error paths that
+# already clean up _callbacks, so a late/dropped progress emit after
+# completion can never look up a stale callback.
+_progress_callbacks: dict[int, Callable[[str, int, int], None]] = {}
 
 
 def _delete_native_worker(worker: Worker) -> None:
@@ -283,8 +354,25 @@ def _schedule_native_delete(worker: Worker) -> None:
     QTimer.singleShot(0, lambda: _delete_native_worker(worker))
 
 
+def _handle_task_progress(task_id: int, stage: str, current: int, total: int) -> None:
+    # Deliberately does NOT pop _progress_callbacks — a task can report
+    # progress many times before it finishes; only _handle_task_finished/
+    # _handle_task_error (below) ever remove the entry, once, when the
+    # task is actually done.
+    callback = _progress_callbacks.get(task_id)
+
+    if callback is None:
+        return
+
+    try:
+        callback(stage, current, total)
+    except Exception as error:
+        print(f"Error handling worker progress: {error}")
+
+
 def _handle_task_finished(task_id: int, result: Any) -> None:
     entry = _callbacks.pop(task_id, None)
+    _progress_callbacks.pop(task_id, None)
 
     if entry is None:
         return
@@ -313,6 +401,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
 
 def _handle_task_error(task_id: int, message: str) -> None:
     entry = _callbacks.pop(task_id, None)
+    _progress_callbacks.pop(task_id, None)
 
     if entry is None:
         return
@@ -334,20 +423,22 @@ def _handle_task_error(task_id: int, message: str) -> None:
     _schedule_native_delete(worker)
 
 
-# The one and only connect() for these two signals, for the life of
+# The one and only connect() for these three signals, for the life of
 # the process — see _Dispatcher's own docstring for why this is the
 # real fix rather than a per-task connect/disconnect cycle.
 _dispatcher.task_finished.connect(_handle_task_finished)
 _dispatcher.task_error.connect(_handle_task_error)
+_dispatcher.task_progress.connect(_handle_task_progress)
 
 
 def run_worker(
         pool: QThreadPool,
-        fn: Callable[[], Any],
+        fn: Callable[[], Any] | Callable[[Callable[[str, int, int], None]], Any],
         button: QAbstractButton | None = None,
         status_label: QLabel | None = None,
         on_finished: Callable[[Any], None] | None = None,
         on_error: Callable[[str], None] | None = None,
+        on_progress: Callable[[str, int, int], None] | None = None,
 ) -> Worker:
     """Submit fn to run in the background. The triggering button (if
     any) disables for the duration and re-enables on completion either
@@ -355,6 +446,16 @@ def run_worker(
     `on_error` is for callers that need to react to a failure beyond the
     status line (e.g. clearing an in-progress flag) — optional, and
     additive to the status-label behavior, not a replacement for it.
+
+    `on_progress` (roadmap item 65, Phase 2.3) is optional and defaults
+    to today's behavior for every existing call site — when omitted, `fn`
+    is called exactly as before, with zero arguments. When given, `fn`
+    is instead called with ONE argument: a `report(stage, current,
+    total)` callable it can call as often as it likes — throttling
+    happens inside `Worker._report_progress` itself (see
+    PROGRESS_EMIT_MIN_INTERVAL_S/PROGRESS_EMIT_EVERY_N above), so `fn`
+    never needs to rate-limit its own calls. `on_progress` itself is
+    invoked on the MAIN thread, same as `on_finished`/`on_error`.
 
     The returned `Worker` (and the one stored in `_callbacks`) is the
     same reference kept alive by this dict entry until its own
@@ -369,8 +470,11 @@ def run_worker(
     if status_label is not None:
         status_label.setText("")
 
-    worker = Worker(fn)
+    worker = Worker(fn, wants_progress=on_progress is not None)
     _callbacks[worker.task_id] = (worker, button, status_label, on_finished, on_error)
+
+    if on_progress is not None:
+        _progress_callbacks[worker.task_id] = on_progress
 
     pool.start(worker)
 
