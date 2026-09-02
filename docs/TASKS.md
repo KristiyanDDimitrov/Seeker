@@ -66,11 +66,11 @@ Re-read this file at every phase boundary before starting the next phase.
 
 ## Phase 6 — Filenames that match the metadata
 
-- [ ] 6.1 `seeker/filename_format.py::build_track_filename` — pure function + tests
-- [ ] 6.2 Case-insensitive-volume two-step rename gotcha, tested on real volume
-- [ ] 6.3 MetadataService.plan_renames / apply_renames (dry-run by default, DB-row ordering documented)
-- [ ] 6.4 UI preview dialog + CLI `seeker library rename <playlist> [--apply]`
-- [ ] 6.5 Verify: round-trip on copies; ask before touching real files; real dry-run shown to user
+- [x] 6.1 `seeker/filename_format.py::build_track_filename` — pure function, `Artist1, Artist2 - Title.ext`, feat-dedupe heuristic, 255-UTF8-byte cap (title truncated, never extension, never mid-character). Refactored `filename_sanitize.py` to expose `clean_path_component` (char-cleaning only, no length cap) so the two modules' genuinely different length rules (200 chars vs 255 bytes) don't fight — confirmed behavior-preserving (13 existing tests unchanged). 17 new tests, all pass.
+- [x] 6.2 Two-step temp-name rename (`_rename_via_temp`) for case-only changes on a case-insensitive volume — tested on the REAL filesystem (tmp_path, same default case-insensitive APFS as the rest of this machine), not simulated.
+- [x] 6.3 `MetadataService.plan_renames`/`apply_renames` + `RenamePlan`/`RenameResult`. DB-row-AFTER-file ordering (opposite of item 40's delete rule, documented why). Re-verifies still-auto-matched at apply time (refuses, not silent skip). DB-write failure rolls the file back. **Real design gap found by my own tests**: my first draft only auto-resolved collisions at PLAN time and then refused them at APPLY time — the brief actually wants apply_renames to resolve them for real (numbered suffix), with "collision" only informational in the preview; fixed.
+- [x] 6.4 `RenamePreviewDialog` (grouped by action, confirm gated, item 27's non-gate precedent explicitly does NOT extend here) + CLI `seeker library rename <playlist> [--apply]` (y/N confirm). CLI has no dedicated unit tests, matching this project's own established precedent (`tag`/`fix-art` don't either — service layer already covers the logic).
+- [x] 6.5 14 service-layer tests + 6 UI tests, all real filesystem operations in `tmp_path` (not mocked) — multi-artist + feat-dedupe + accented + byte-cap in one combined round-trip, plus separate case-only and real-collision round-trips. DB row followed the file and `track_matches` still resolved in every case. **Asking user before the real dry-run against a real playlist next** (see phase report).
 
 **Commit boundary.**
 

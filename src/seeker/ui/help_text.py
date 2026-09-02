@@ -251,6 +251,47 @@ TOOLTIP_FILL_MISSING_ART_URLS = (
     "were captured."
 )
 
+# --- Rename preview dialog (roadmap item 67, Phase 6.4) --------------------
+
+TOOLTIP_RENAME_FILES = (
+    "Preview renaming this playlist's auto-matched files to match their "
+    "Spotify metadata ('Artist1, Artist2 - Title.ext'). Nothing is "
+    "renamed until you review the plan and confirm."
+)
+RENAME_PREVIEW_DIALOG_TITLE = "Rename Files to Match Metadata"
+RENAME_PREVIEW_DIALOG_INTRO = (
+    "Renames auto-matched files on disk to match their Spotify "
+    "metadata. Nothing happens until you click Rename below."
+)
+RENAME_PREVIEW_NO_CHANGES = "Nothing to rename — every file already matches."
+RENAME_PREVIEW_SECTION_RENAME = "Will rename:"
+RENAME_PREVIEW_SECTION_COLLISION = "Will rename (needs a numbered suffix):"
+RENAME_PREVIEW_SECTION_ALREADY_CORRECT = "Already correct:"
+RENAME_PREVIEW_SECTION_NOT_AUTO_MATCHED = "Not auto-matched (skipped):"
+RENAME_PREVIEW_SECTION_REFUSED = "Refused (no local file / error):"
+
+
+def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
+    """Roadmap item 67 (Phase 6.4) — mirrors format_fix_art_result_
+    message's own shape. `counts` mirrors RenameResult's own fields."""
+    renamed = counts["renamed"]
+    collisions = counts["collisions"]
+    failed = counts["failed"]
+
+    message = f"Renamed {renamed} file{'s' if renamed != 1 else ''}"
+
+    if collisions:
+        message += f" ({collisions} with a numbered suffix)"
+
+    if failed:
+        message += f", {failed} failed — see the results panel below."
+        return message, "error"
+
+    if renamed:
+        return message + ".", "success"
+
+    return "Nothing was renamed.", "info"
+
 
 def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
     """Roadmap item 66 (Phase 5.2) — mirrors format_tag_result_notice's

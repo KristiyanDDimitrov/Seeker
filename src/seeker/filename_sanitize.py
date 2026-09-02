@@ -28,10 +28,16 @@ MAX_LENGTH = 200
 _FALLBACK_NAME = "Untitled"
 
 
-def sanitize_path_component(name: str) -> str:
-    """Replace anything unsafe with '-', strip Windows-illegal trailing
-    dots/spaces, and fall back to a real, non-empty name if nothing
-    usable survives (e.g. a name that was entirely invalid characters).
+def clean_path_component(name: str) -> str:
+    """The part of sanitization that has nothing to do with length:
+    illegal-character replacement plus the Windows trailing-dot/space
+    strip. Factored out (roadmap item 67, Phase 6.1) so
+    filename_format.py::build_track_filename can reuse this exact
+    cleaning logic under its own, different length rule (255 UTF-8
+    BYTES, not this module's MAX_LENGTH characters) without a second
+    copy of the illegal-character regex — the same "shared thing lives
+    in exactly one place" discipline this module's own docstring
+    already follows.
     """
     sanitized = _INVALID_CHARS_PATTERN.sub("-", name)
 
@@ -40,8 +46,15 @@ def sanitize_path_component(name: str) -> str:
     # cosmetic) if left in: the folder that actually gets created
     # doesn't match the name this app thinks it just used, and a later
     # lookup by the original (unstripped) name would miss it.
-    sanitized = sanitized.rstrip(" .")
+    return sanitized.rstrip(" .")
 
+
+def sanitize_path_component(name: str) -> str:
+    """Replace anything unsafe with '-', strip Windows-illegal trailing
+    dots/spaces, and fall back to a real, non-empty name if nothing
+    usable survives (e.g. a name that was entirely invalid characters).
+    """
+    sanitized = clean_path_component(name)
     sanitized = sanitized[:MAX_LENGTH].rstrip(" .")
 
     return sanitized or _FALLBACK_NAME

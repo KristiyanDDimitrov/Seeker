@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,16 +22,132 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.filename_format import build_track_filename
 from seeker.metadata import (
     embed_album_art,
     read_embedded_art,
     write_analysis_tags,
     write_text_tags,
 )
+from seeker.models.track import Track
 
 
 class PlaylistNotFoundError(RuntimeError):
     pass
+
+
+@dataclass
+class RenamePlan:
+    """Roadmap item 67 (Phase 6.3) — one track's rename decision, pure
+    planning, zero writes. `current_path`/`proposed_path` are None only
+    when `action` is 'not_auto_matched' (nothing to resolve a path for
+    at all) or 'no_local_file'/'error' before a path could be computed.
+    """
+    track_id: str
+    local_file_id: int | None
+    current_path: Path | None
+    proposed_path: Path | None
+    # 'rename' / 'already_correct' / 'collision' / 'not_auto_matched' /
+    # 'no_local_file' / 'error'
+    action: str
+    message: str | None = None
+
+
+@dataclass
+class RenameResult:
+    renamed: int = 0
+    already_correct: int = 0
+    skipped_not_auto_matched: int = 0
+    skipped_no_local_file: int = 0
+    # A SUBSET of `renamed` (like tagged_without_art is a subset of
+    # tagged, item 56 Phase 4.2) — how many of the real renames needed
+    # a numbered " (2)" suffix because the target name was already
+    # taken by a genuinely different file.
+    collisions: int = 0
+    failed: int = 0
+    details: list[dict[str, str]] = field(default_factory=list)
+
+
+def _same_file(path_a: Path, path_b: Path) -> bool:
+    # Roadmap item 67 (Phase 6.2/6.3) — the real, load-bearing check
+    # behind both "is this already correct" and "is this a genuine
+    # collision or just a case-only rename of itself." A plain string/
+    # Path equality check would say two differently-cased paths are
+    # different even when the filesystem (macOS's default APFS volume,
+    # case-insensitive) considers them the identical file.
+    if not path_b.exists():
+        return False
+    try:
+        return path_a.samefile(path_b)
+    except OSError:
+        return False
+
+
+def _resolve_collision(current_path: Path, proposed_path: Path) -> Path:
+    # Real filesystem state at WRITE time, not the plan's own possibly-
+    # stale snapshot. A case-only rename of the same file is never a
+    # real collision (handled by the caller via _same_file); a
+    # genuinely different file at the target gets " (2)", " (3)", ...
+    if not proposed_path.exists() or _same_file(current_path, proposed_path):
+        return proposed_path
+
+    stem = proposed_path.stem
+    suffix = proposed_path.suffix
+    counter = 2
+
+    while True:
+        candidate = proposed_path.with_name(f"{stem} ({counter}){suffix}")
+
+        if not candidate.exists() or _same_file(current_path, candidate):
+            return candidate
+
+        counter += 1
+
+
+def _rename_via_temp(source: Path, destination: Path) -> None:
+    # Roadmap item 67 (Phase 6.2) — macOS's default APFS volume is
+    # case-insensitive: a naive Path.rename() between two names
+    # differing only by case either no-ops or raises depending on the
+    # exact names, because the filesystem already treats them as the
+    # same entry. A two-step rename through a unique temporary name in
+    # the SAME directory (so it's still on the same filesystem/volume —
+    # required for a plain rename rather than a real copy) sidesteps
+    # this reliably.
+    temp_path = source.with_name(f".{source.name}.seeker-rename-tmp")
+    counter = 0
+
+    while temp_path.exists():
+        counter += 1
+        temp_path = source.with_name(
+            f".{source.name}.seeker-rename-tmp{counter}"
+        )
+
+    source.rename(temp_path)
+    temp_path.rename(destination)
+
+
+def _rename_sidecar_if_present(current_path: Path, final_path: Path) -> None:
+    # Roadmap item 67 (Phase 6.3) — item 2's own AppleDouble filter
+    # (`._<name>`, same directory) means the scanner never indexes
+    # these, but a real one sitting next to a renamed file would
+    # silently become orphaned (pointing nowhere useful) if left
+    # behind. Best-effort: a failure here must never fail the real
+    # rename it's riding along with. Deliberately NOT handled: .cue,
+    # .lrc, or folder art — out of scope, noted rather than half-done.
+    sidecar = current_path.parent / f"._{current_path.name}"
+
+    if not sidecar.exists():
+        return
+
+    new_sidecar = final_path.parent / f"._{final_path.name}"
+
+    try:
+        if _same_file(sidecar, new_sidecar):
+            _rename_via_temp(sidecar, new_sidecar)
+        else:
+            sidecar.rename(new_sidecar)
+    except OSError as error:
+        print(f"  Warning: could not rename AppleDouble sidecar: {error}")
 
 
 class MetadataService:
@@ -635,6 +752,290 @@ class MetadataService:
         mutagen_file.save()
         counts["fixed"] += 1
         print(f"  Fixed art: {track.artist} - {track.title}")
+
+    def plan_renames(
+            self,
+            playlist_name: str | None = None,
+            track_ids: list[str] | None = None,
+    ) -> list[RenamePlan]:
+        """Roadmap item 67 (Phase 6.3) — pure planning, zero writes.
+        Exactly one of playlist_name/track_ids must be given. Unlike
+        tag_playlist/fix_missing_art_for_playlist, this deliberately
+        does NOT pre-filter to auto-matched tracks — a needs_review or
+        unmatched track still gets a real plan row (action=
+        'not_auto_matched'), so the preview the UI/CLI shows accounts
+        for every track it was asked about, not just the ones it will
+        act on.
+        """
+        if (playlist_name is None) == (track_ids is None):
+            raise ValueError(
+                "plan_renames requires exactly one of playlist_name or "
+                "track_ids"
+            )
+
+        with self.database.transaction() as connection:
+            if playlist_name is not None:
+                playlist = self.playlists.get_by_name(
+                    playlist_name, connection
+                )
+
+                if playlist is None:
+                    raise PlaylistNotFoundError(
+                        f"No playlist named '{playlist_name}' has been "
+                        f"synced."
+                    )
+
+                tracks = self.tracks.get_all_for_playlist(
+                    playlist.id, connection
+                )
+            else:
+                assert track_ids is not None
+                tracks = [
+                    track for track in (
+                        self.tracks.get_by_id(track_id, connection)
+                        for track_id in track_ids
+                    )
+                    if track is not None
+                ]
+
+        return [self._plan_one_rename(track) for track in tracks]
+
+    def _plan_one_rename(self, track: Track) -> RenamePlan:
+        with self.database.transaction() as connection:
+            match = self.track_matches.get_by_track_id(track.id, connection)
+
+            if match is None or match.match_method != "auto":
+                return RenamePlan(
+                    track.id, None, None, None, "not_auto_matched",
+                    f"{track.artist} - {track.title}: not an auto-matched "
+                    f"track",
+                )
+
+            if match.local_file_id is None:
+                return RenamePlan(
+                    track.id, None, None, None, "no_local_file",
+                    f"{track.artist} - {track.title}: no matched local "
+                    f"file",
+                )
+
+            local_file = self.local_files.get_by_id(
+                match.local_file_id, connection
+            )
+
+            if local_file is None:
+                return RenamePlan(
+                    track.id, match.local_file_id, None, None,
+                    "no_local_file",
+                    f"{track.artist} - {track.title}: matched "
+                    f"local_file_id {match.local_file_id} not found",
+                )
+
+            location = self.locations.get_by_id(
+                local_file.location_id, connection
+            )
+
+            if location is None:
+                return RenamePlan(
+                    track.id, local_file.id, None, None, "error",
+                    f"{track.artist} - {track.title}: library location "
+                    f"{local_file.location_id} not found",
+                )
+
+        current_path = Path(location.path) / local_file.relative_path
+        extension = current_path.suffix.lstrip(".")
+
+        proposed_filename = build_track_filename(
+            track.artist, track.title, extension,
+        )
+
+        if proposed_filename is None:
+            return RenamePlan(
+                track.id, local_file.id, current_path, None, "error",
+                f"{track.artist} - {track.title}: no usable artist/title "
+                f"to build a filename from",
+            )
+
+        proposed_path = current_path.parent / proposed_filename
+
+        if proposed_path == current_path:
+            return RenamePlan(
+                track.id, local_file.id, current_path, proposed_path,
+                "already_correct",
+            )
+
+        if proposed_path.exists() and not _same_file(
+                current_path, proposed_path,
+        ):
+            return RenamePlan(
+                track.id, local_file.id, current_path, proposed_path,
+                "collision",
+                f"target '{proposed_path.name}' already exists as a "
+                f"different file",
+            )
+
+        return RenamePlan(
+            track.id, local_file.id, current_path, proposed_path, "rename",
+        )
+
+    def apply_renames(self, plans: list[RenamePlan]) -> RenameResult:
+        """Roadmap item 67 (Phase 6.3) — 'rename' AND 'collision' plans
+        both do real work; every other action is just counted (the plan
+        already described it correctly, nothing to act on). 'collision'
+        is informational at PLAN time (so a preview can show "this will
+        need a suffix" before the user confirms) but is NOT refused at
+        apply time — _apply_one_rename resolves it for real, via a
+        fresh _resolve_collision() call against the real filesystem
+        state (which may have changed since planning), appending
+        " (2)", " (3)", ... Real user files — never called without the
+        caller's own explicit confirmation gate (item 27's "no gate for
+        tag-writing" precedent does NOT extend here: renaming moves/
+        replaces a file, tag-writing never does).
+        """
+        result = RenameResult()
+
+        for plan in plans:
+            if plan.action == "already_correct":
+                result.already_correct += 1
+            elif plan.action == "not_auto_matched":
+                result.skipped_not_auto_matched += 1
+            elif plan.action in ("no_local_file", "error"):
+                result.skipped_no_local_file += 1
+            elif plan.action in ("rename", "collision"):
+                if plan.action == "collision":
+                    result.collisions += 1
+                try:
+                    self._apply_one_rename(plan, result)
+                except Exception as error:
+                    result.failed += 1
+                    result.details.append(
+                        {
+                            "track_id": plan.track_id,
+                            "reason": "failed",
+                            "message": str(error),
+                        }
+                    )
+                    print(
+                        f"  Failed to rename track {plan.track_id}: {error}"
+                    )
+
+        return result
+
+    def _apply_one_rename(
+            self, plan: RenamePlan, result: RenameResult,
+    ) -> None:
+        assert plan.local_file_id is not None
+        assert plan.current_path is not None
+        assert plan.proposed_path is not None
+
+        # Re-verified at apply time, not trusted from the (possibly
+        # stale — plan and apply can be separated by a real user
+        # decision pause) plan alone: only ever touches a track that's
+        # STILL an auto-matched local file living inside a registered
+        # library location. Anything else is refused, counted as a
+        # real failure, not silently skipped.
+        with self.database.transaction() as connection:
+            match = self.track_matches.get_by_track_id(
+                plan.track_id, connection,
+            )
+            local_file = self.local_files.get_by_id(
+                plan.local_file_id, connection,
+            )
+            location = (
+                self.locations.get_by_id(local_file.location_id, connection)
+                if local_file is not None else None
+            )
+
+        if (
+                match is None
+                or match.match_method != "auto"
+                or local_file is None
+                or location is None
+        ):
+            result.failed += 1
+            result.details.append(
+                {
+                    "track_id": plan.track_id,
+                    "reason": "failed",
+                    "message": (
+                        "no longer an auto-matched local file in a "
+                        "registered location as of apply time — refused"
+                    ),
+                }
+            )
+            return
+
+        current_path = plan.current_path
+        if not current_path.exists():
+            result.failed += 1
+            result.details.append(
+                {
+                    "track_id": plan.track_id,
+                    "reason": "failed",
+                    "message": f"'{current_path}' no longer exists",
+                }
+            )
+            return
+
+        # Collision resolved fresh at write time — real filesystem state
+        # may have changed since planning.
+        final_path = _resolve_collision(current_path, plan.proposed_path)
+
+        if _same_file(current_path, final_path):
+            # Roadmap item 67 (Phase 6.2) — a case-only rename of the
+            # SAME real file (macOS's default APFS volume is case-
+            # insensitive) needs the two-step temp-name path; a plain
+            # Path.rename() either no-ops or raises depending on the
+            # exact names involved.
+            _rename_via_temp(current_path, final_path)
+        else:
+            current_path.rename(final_path)
+
+        _rename_sidecar_if_present(current_path, final_path)
+
+        # Loaded from the DB via get_by_id above, so .id is set.
+        assert local_file.id is not None
+
+        new_relative_path = str(
+            final_path.relative_to(Path(location.path))
+        )
+
+        # Roadmap item 67 (Phase 6.3) — deliberately the OPPOSITE
+        # ordering from item 40's delete rule (file first there, DB
+        # first here would be wrong for the identical reason item 40's
+        # own comment already gives, just inverted): a failed rename
+        # (caught above, before this point) leaves the DB untouched and
+        # consistent; renaming the file FIRST and updating the DB
+        # SECOND means the only failure window left is a DB-write
+        # failure after a successful rename — handled by renaming back
+        # and reporting an error, rather than leaving a local_files row
+        # pointing at a path that never existed (which item 40's own
+        # ordering exists to avoid on the delete side).
+        try:
+            with self.database.transaction() as connection:
+                self.local_files.update_relative_path(
+                    local_file.id, new_relative_path, final_path.name,
+                    connection,
+                )
+        except Exception as db_error:
+            try:
+                final_path.rename(current_path)
+            except OSError:
+                pass
+            result.failed += 1
+            result.details.append(
+                {
+                    "track_id": plan.track_id,
+                    "reason": "failed",
+                    "message": (
+                        f"renamed on disk but the database update "
+                        f"failed ({db_error}) — renamed back"
+                    ),
+                }
+            )
+            return
+
+        result.renamed += 1
+        print(f"  Renamed: {current_path.name} -> {final_path.name}")
 
     def _download_album_art(self, url: str) -> tuple[bytes, str]:
         cached = self.album_art_cache.get(url)

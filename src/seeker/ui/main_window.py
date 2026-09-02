@@ -41,6 +41,7 @@ from seeker.application import Application
 from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.library.duplicate_service import DuplicateGroup
+from seeker.library.metadata_service import RenamePlan
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
@@ -758,6 +759,109 @@ class DestinationDialog(QDialog):
 
     def remember_for_playlist(self) -> bool:
         return self.remember_checkbox.isChecked()
+
+
+class RenamePreviewDialog(QDialog):
+    """Roadmap item 67 (Phase 6.4) — every planned change, grouped by
+    action, unchanged and refused tracks visible too. Nothing is
+    written until the user explicitly clicks Rename — item 27's "no
+    gate for tag-writing" precedent does NOT extend to this action,
+    since renaming moves/replaces a file on disk and tag-writing never
+    does.
+    """
+
+    def __init__(
+            self,
+            parent: QWidget,
+            playlist_name: str,
+            plans: list[RenamePlan],
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.RENAME_PREVIEW_DIALOG_TITLE)
+        self.resize(640, 480)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_LG, theme.SPACING_LG,
+            theme.SPACING_LG, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
+
+        intro = QLabel(
+            f"'{playlist_name}': "
+            + help_text.RENAME_PREVIEW_DIALOG_INTRO
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self.renames = [p for p in plans if p.action == "rename"]
+        self.collisions = [p for p in plans if p.action == "collision"]
+        already_correct = [p for p in plans if p.action == "already_correct"]
+        not_auto_matched = [
+            p for p in plans if p.action == "not_auto_matched"
+        ]
+        refused = [
+            p for p in plans if p.action in ("no_local_file", "error")
+        ]
+
+        list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(False)
+
+        def add_section(heading: str, rows: list[RenamePlan]) -> None:
+            if not rows:
+                return
+
+            header_item = QListWidgetItem(f"{heading} ({len(rows)})")
+            font = header_item.font()
+            font.setBold(True)
+            header_item.setFont(font)
+            header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            list_widget.addItem(header_item)
+
+            for plan in rows:
+                if plan.current_path is not None and plan.proposed_path is not None:
+                    text = f"  {plan.current_path.name}  →  {plan.proposed_path.name}"
+                else:
+                    text = f"  {plan.message or plan.track_id}"
+                item = QListWidgetItem(text)
+                item.setFlags(Qt.ItemFlag.NoItemFlags)
+                list_widget.addItem(item)
+
+        add_section(
+            help_text.RENAME_PREVIEW_SECTION_RENAME, self.renames,
+        )
+        add_section(
+            help_text.RENAME_PREVIEW_SECTION_COLLISION, self.collisions,
+        )
+        add_section(
+            help_text.RENAME_PREVIEW_SECTION_ALREADY_CORRECT,
+            already_correct,
+        )
+        add_section(
+            help_text.RENAME_PREVIEW_SECTION_NOT_AUTO_MATCHED,
+            not_auto_matched,
+        )
+        add_section(
+            help_text.RENAME_PREVIEW_SECTION_REFUSED, refused,
+        )
+
+        if list_widget.count() == 0:
+            list_widget.addItem(help_text.RENAME_PREVIEW_NO_CHANGES)
+
+        layout.addWidget(list_widget, 1)
+
+        button_row = QHBoxLayout()
+        total_to_rename = len(self.renames) + len(self.collisions)
+        self.confirm_button = QPushButton(f"Rename {total_to_rename} file(s)")
+        self.confirm_button.setProperty("variant", "primary")
+        self.confirm_button.setEnabled(total_to_rename > 0)
+        self.confirm_button.clicked.connect(self.accept)
+        button_row.addWidget(self.confirm_button)
+        button_row.addStretch()
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
 
 
 class MainWindow(QMainWindow):
@@ -1974,6 +2078,16 @@ class MainWindow(QMainWindow):
         )
         controls.addWidget(self.fill_missing_art_urls_button)
 
+        # Roadmap item 67 (Phase 6.4) — always a preview first (item
+        # 27's "no gate for tag-writing" precedent does NOT extend
+        # here: this moves/replaces a real file).
+        self.rename_files_button = QPushButton("Rename files to match metadata")
+        self.rename_files_button.setToolTip(help_text.TOOLTIP_RENAME_FILES)
+        self.rename_files_button.clicked.connect(
+            self._on_rename_files_clicked
+        )
+        controls.addWidget(self.rename_files_button)
+
         return controls
 
     def _on_analyze_audio_toggled(self, checked: bool) -> None:
@@ -2290,6 +2404,76 @@ class MainWindow(QMainWindow):
             self.dashboard_notice.show_message(
                 "No missing album art URLs found.", kind="info",
             )
+
+    def _on_rename_files_clicked(self) -> None:
+        if self.selected_playlist is None:
+            self.dashboard_notice.show_message(
+                "Select a playlist first.", kind="warning",
+            )
+            return
+
+        playlist_name = self.selected_playlist.name
+
+        self._run_busy_worker(
+            "rename_files", self.rename_files_button,
+            lambda: self.application.metadata_service.plan_renames(
+                playlist_name=playlist_name,
+            ),
+            status_label=self.status_label,
+            on_finished=lambda plans: self._open_rename_preview_dialog(
+                playlist_name, plans,
+            ),
+        )
+
+    def _open_rename_preview_dialog(
+            self, playlist_name: str, plans: list[RenamePlan],
+    ) -> None:
+        dialog = RenamePreviewDialog(self, playlist_name, plans)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.busy_actions.begin(
+            "rename_files", self.rename_files_button, "Renaming…",
+        )
+        self._render_activity_strip()
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.metadata_service.apply_renames(plans),
+            status_label=self.status_label,
+            on_finished=self._on_rename_files_finished,
+            on_error=lambda _message: self._reset_rename_files_button(),
+        )
+
+    def _reset_rename_files_button(self) -> None:
+        self.busy_actions.end("rename_files")
+        self._render_activity_strip()
+
+    def _on_rename_files_finished(self, result: Any) -> None:
+        self._reset_rename_files_button()
+        self._poll_selected_playlist()
+
+        counts = {
+            "renamed": result.renamed,
+            "collisions": result.collisions,
+            "failed": result.failed,
+        }
+        lines = [
+            f"Renamed: {result.renamed} ({result.collisions} with a "
+            f"numbered suffix), Already correct: {result.already_correct}, "
+            f"Not auto-matched: {result.skipped_not_auto_matched}, "
+            f"No local file: {result.skipped_no_local_file}, "
+            f"Failed: {result.failed}."
+        ]
+
+        for detail in result.details:
+            lines.append(f"  [{detail['reason']}] {detail['message']}")
+
+        self.tagging_results.setPlainText("\n".join(lines))
+
+        message, kind = help_text.format_rename_result_message(counts)
+        self.dashboard_notice.show_message(message, kind=kind)
 
     def _build_review_content(self) -> QWidget:
         # Two independent sections, per item 26: SoulSeek needs-review

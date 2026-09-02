@@ -356,6 +356,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     duplicates_parser.add_argument("location_name")
 
+    rename_parser = library_subparsers.add_parser(
+        "rename",
+        help=(
+            "Rename auto-matched local files to match their Spotify "
+            "metadata ('Artist1, Artist2 - Title.ext'). Prints the plan "
+            "and changes nothing unless --apply is given."
+        ),
+    )
+    rename_parser.add_argument("playlist_name")
+    rename_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually perform the renames, after a y/N confirmation.",
+    )
+
     sharing_parser = subparsers.add_parser(
         "sharing",
         help="SoulSeek sharing status — what you're giving back.",
@@ -583,6 +598,80 @@ def handle_library(
             print("\nDetails:")
 
             for detail in result["details"]:
+                print(f"  [{detail['reason']}] {detail['message']}")
+
+    elif parsed.library_command == "rename":
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
+
+        plans = application.metadata_service.plan_renames(
+            playlist_name=playlist.name
+        )
+
+        renames = [plan for plan in plans if plan.action == "rename"]
+        collisions = [plan for plan in plans if plan.action == "collision"]
+        already_correct = sum(
+            1 for plan in plans if plan.action == "already_correct"
+        )
+        not_auto_matched = sum(
+            1 for plan in plans if plan.action == "not_auto_matched"
+        )
+        no_local_file = sum(
+            1 for plan in plans if plan.action in ("no_local_file", "error")
+        )
+
+        print(f"Rename plan for '{playlist.name}':\n")
+
+        for plan in [*renames, *collisions]:
+            # Loaded by plan_renames — only 'not_auto_matched'/
+            # 'no_local_file'/'error' plans ever have a None path, and
+            # renames/collisions are filtered to exclude those.
+            assert plan.current_path is not None
+            assert plan.proposed_path is not None
+            note = " (needs a numbered suffix)" if plan.action == "collision" else ""
+            print(f"  {plan.current_path.name} -> {plan.proposed_path.name}{note}")
+
+        print(
+            f"\n{len(renames) + len(collisions)} to rename "
+            f"({len(collisions)} with a collision), "
+            f"{already_correct} already correct, "
+            f"{not_auto_matched} not auto-matched, "
+            f"{no_local_file} no local file."
+        )
+
+        if not parsed.apply:
+            print("\nDry run only — pass --apply to actually rename.")
+            return
+
+        if not renames and not collisions:
+            print("\nNothing to rename.")
+            return
+
+        answer = input(
+            f"\nRename {len(renames) + len(collisions)} file(s) on disk? "
+            f"[y/N] "
+        ).strip().lower()
+
+        if answer != "y":
+            print("Cancelled — nothing renamed.")
+            return
+
+        rename_result = application.metadata_service.apply_renames(plans)
+
+        print(
+            f"\nRenamed: {rename_result.renamed} "
+            f"({rename_result.collisions} with a collision), "
+            f"Already correct: {rename_result.already_correct}, "
+            f"Not auto-matched: {rename_result.skipped_not_auto_matched}, "
+            f"No local file: {rename_result.skipped_no_local_file}, "
+            f"Failed: {rename_result.failed}."
+        )
+
+        if rename_result.details:
+            print("\nDetails:")
+
+            for detail in rename_result.details:
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "fingerprint":

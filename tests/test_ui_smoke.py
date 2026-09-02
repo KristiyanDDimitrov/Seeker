@@ -37,7 +37,13 @@ from seeker.models.track_status import (
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text
-from seeker.ui.main_window import AboutDialog, DestinationDialog, MainWindow
+from seeker.library.metadata_service import RenamePlan, RenameResult
+from seeker.ui.main_window import (
+    AboutDialog,
+    DestinationDialog,
+    MainWindow,
+    RenamePreviewDialog,
+)
 from seeker.update_check import UpdateCheckResult, UpdateStatus
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
@@ -370,12 +376,18 @@ class FakeMetadataService:
             self,
             tag_result: dict | None = None,
             fix_art_result: dict | None = None,
+            rename_plans: list | None = None,
+            rename_result=None,
     ):
         self._tag_result = tag_result or dict(_EMPTY_TAG_RESULT)
         self._fix_art_result = fix_art_result or dict(_EMPTY_FIX_ART_RESULT)
+        self._rename_plans = rename_plans or []
+        self._rename_result = rename_result
         self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None, bool]] = []
         self.tag_playlist_calls: list[tuple[str, bool, tuple | None, bool]] = []
         self.fix_missing_art_for_playlist_calls: list[str] = []
+        self.plan_renames_calls: list[str] = []
+        self.apply_renames_calls: list[list] = []
 
     def tag_tracks(
             self,
@@ -405,6 +417,14 @@ class FakeMetadataService:
         self.fix_missing_art_for_playlist_calls.append(playlist_name)
         return self._fix_art_result
 
+    def plan_renames(self, playlist_name: str | None = None, track_ids=None):
+        self.plan_renames_calls.append(playlist_name)
+        return self._rename_plans
+
+    def apply_renames(self, plans: list):
+        self.apply_renames_calls.append(plans)
+        return self._rename_result
+
 
 class FakeApplication:
     def __init__(
@@ -428,6 +448,8 @@ class FakeApplication:
             sharing_service=None,
             art_urls_filled: int = 0,
             fix_art_result: dict | None = None,
+            rename_plans: list | None = None,
+            rename_result=None,
     ):
         self.sync_service = FakeSyncService(playlists, art_urls_filled)
         self.history_service = FakeHistoryService(history_events)
@@ -450,7 +472,9 @@ class FakeApplication:
             review_candidates, pending_upgrades, resolved_destination,
             download_playlist_result,
         )
-        self.metadata_service = FakeMetadataService(tag_result, fix_art_result)
+        self.metadata_service = FakeMetadataService(
+            tag_result, fix_art_result, rename_plans, rename_result,
+        )
         self.duplicate_service = FakeDuplicateService(
             fingerprint_result, duplicate_groups,
         )
@@ -3931,6 +3955,125 @@ def test_fill_missing_art_urls_button_reports_zero_found(qtbot):
     qtbot.waitUntil(
         lambda: not window.dashboard_notice.isHidden()
         and "No missing" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+
+
+# --- Rename preview dialog (roadmap item 67, Phase 6.4) --------------------
+
+def _make_rename_plan(
+        track_id="t1", action="rename",
+        current="/music/old.mp3", proposed="/music/new.mp3",
+        message=None,
+) -> RenamePlan:
+    return RenamePlan(
+        track_id=track_id,
+        local_file_id=1,
+        current_path=Path(current) if current else None,
+        proposed_path=Path(proposed) if proposed else None,
+        action=action,
+        message=message,
+    )
+
+
+def test_rename_preview_dialog_groups_plans_by_action(qtbot):
+    plans = [
+        _make_rename_plan("t1", "rename"),
+        _make_rename_plan(
+            "t2", "collision", "/music/a.mp3", "/music/b.mp3",
+            "target already exists",
+        ),
+        _make_rename_plan(
+            "t3", "already_correct", "/music/c.mp3", "/music/c.mp3",
+        ),
+        _make_rename_plan(
+            "t4", "not_auto_matched", None, None, "not auto-matched",
+        ),
+    ]
+    dialog = RenamePreviewDialog(None, "Test Playlist", plans)
+    qtbot.addWidget(dialog)
+
+    assert dialog.confirm_button.text() == "Rename 2 file(s)"
+    assert dialog.confirm_button.isEnabled()
+
+
+def test_rename_preview_dialog_disables_confirm_when_nothing_to_rename(qtbot):
+    plans = [
+        _make_rename_plan(
+            "t1", "already_correct", "/music/c.mp3", "/music/c.mp3",
+        ),
+    ]
+    dialog = RenamePreviewDialog(None, "Test Playlist", plans)
+    qtbot.addWidget(dialog)
+
+    assert dialog.confirm_button.text() == "Rename 0 file(s)"
+    assert not dialog.confirm_button.isEnabled()
+
+
+def test_rename_files_button_requires_a_selected_playlist(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.rename_files_button.click()
+
+    assert not window.dashboard_notice.isHidden()
+    assert "playlist" in window.dashboard_notice.text().lower()
+    assert application.metadata_service.plan_renames_calls == []
+
+
+def test_rename_files_button_plans_then_opens_dialog_and_cancels(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    plans = [_make_rename_plan()]
+    application = FakeApplication(playlists=playlists, rename_plans=plans)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    monkeypatch.setattr(
+        RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    window.rename_files_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.plan_renames_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.plan_renames_calls == ["Test"]
+    # Cancelled -- apply_renames must never be called.
+    assert application.metadata_service.apply_renames_calls == []
+
+
+def test_rename_files_button_confirmed_calls_apply_and_shows_result(
+        qtbot, monkeypatch,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    plans = [_make_rename_plan()]
+    application = FakeApplication(
+        playlists=playlists, rename_plans=plans,
+        rename_result=RenameResult(renamed=1),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    monkeypatch.setattr(
+        RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Accepted,
+    )
+
+    window.rename_files_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.apply_renames_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.apply_renames_calls == [plans]
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "Renamed 1" in window.dashboard_notice.text(),
         timeout=2000,
     )
 

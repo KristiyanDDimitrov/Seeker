@@ -100,6 +100,28 @@ class LocalFileRepository:
             ),
         )
 
+    def update_relative_path(
+            self,
+            local_file_id: int,
+            relative_path: str,
+            filename: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # Roadmap item 67 (Phase 6.3) — the DB-row side of a rename,
+        # called AFTER the real file move already succeeded on disk
+        # (deliberately the opposite ordering from item 40's delete
+        # rule — see MetadataService.apply_renames' own comment for
+        # why). Keeps the same id, so every track_matches row pointing
+        # at it survives untouched — never delete-and-reinsert.
+        connection.execute(
+            """
+            UPDATE local_files
+            SET relative_path = ?, filename = ?
+            WHERE id = ?
+            """,
+            (relative_path, filename, local_file_id),
+        )
+
     def mark_tagged(
             self,
             local_file_id: int,
