@@ -539,6 +539,42 @@ SUPPORT_LINKS: dict[str, str] = {
 def is_real_support_link(url: str) -> bool:
     return not url.startswith("TODO")
 
+
+# --- Support page (roadmap item 64) ----------------------------------------
+# A real sidebar page, distinct from AboutDialog's brief support-links row —
+# framed the same honest, non-persuasive way SHARING_FRAMING_BODY is: a
+# statement of fact, not marketing copy. Reuses SUPPORT_LINKS/
+# is_real_support_link/ABOUT_DIALOG_AUTHOR_LINE/TOOLTIP_SUPPORT_LINK above
+# rather than duplicating any of them.
+
+SUPPORT_TAB_SUBTITLE = (
+    "Seeker is free, with no telemetry and no paid tier. Nothing here is "
+    "required."
+)
+
+SUPPORT_PAGE_FRAMING_BODY = (
+    "<h3>Support Seeker</h3>"
+    "<p>Seeker is free to use, has no telemetry, and has no paid tier — "
+    "nothing in the app is gated behind a donation. If it's been useful "
+    "to you, a donation is a thank-you, not a purchase.</p>"
+)
+
+SUPPORT_PAGE_NON_FINANCIAL_HEADING = "<h3>Other ways to help</h3>"
+
+SUPPORT_PAGE_REPORT_BUG_BODY = (
+    "<p><b>Report a bug</b> — open an issue on "
+    "<a href=\"https://github.com/KristiyanDDimitrov/Seeker/issues\">"
+    "GitHub</a> if something's broken or confusing.</p>"
+)
+
+SUPPORT_PAGE_SHARE_LIBRARY_BODY = (
+    "<p><b>Share your library back on SoulSeek</b> — Seeker only works "
+    "because other people share files; sharing yours back costs nothing "
+    "and helps the network Seeker relies on.</p>"
+)
+
+SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT = "Go to Sharing"
+
 TOOLTIP_SUPPORT_LINK = "Opens in your browser."
 
 DONE_PAGE_TITLE_HTML = "<h2>You're all set</h2>"

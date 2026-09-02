@@ -492,13 +492,13 @@ def test_nav_buttons_are_mutually_exclusive_including_settings(qtbot):
     qtbot.addWidget(window)
 
     # Every real page (Dashboard/Downloads/Review/Duplicates/History)
-    # plus Help and Settings share one exclusive QButtonGroup — roadmap
-    # item 56 Phase 3 reversed item 48's "Settings stays a separate
-    # dialog" decision, so it's now a real, checkable nav-group member
-    # like every other page.
+    # plus Help, Support, and Settings share one exclusive QButtonGroup —
+    # roadmap item 56 Phase 3 reversed item 48's "Settings stays a
+    # separate dialog" decision, so it's now a real, checkable nav-group
+    # member like every other page; item 64 added Support the same way.
     assert set(window._nav_buttons) == {
         "dashboard", "downloads", "review", "duplicates", "sharing",
-        "history", "help", "settings",
+        "history", "help", "support", "settings",
     }
     assert window._nav_group.exclusive()
     for key in window._nav_buttons:
@@ -571,6 +571,97 @@ def test_help_page_shows_the_real_resolved_data_paths(qtbot):
     assert str(locations.config_path) in labels_text
     assert str(locations.spotify_token_path) in labels_text
     assert str(locations.slskd_data_dir) in labels_text
+
+
+# --- Support page (roadmap item 64) -----------------------------------
+
+def test_support_page_exists_directly_below_help_in_the_sidebar(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert "support" in window._page_indices
+    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    labels = [w.text() for w in support_page.findChildren(QLabel)]
+    assert help_text.SUPPORT_TAB_SUBTITLE in labels
+
+    # Directly below Help — both individually-built (not part of the
+    # generic _NAV_PAGES loop), so this checks real sidebar layout order
+    # rather than just dict/insertion order.
+    sidebar = window._nav_buttons["help"].parentWidget()
+    assert sidebar is window._nav_buttons["support"].parentWidget()
+    layout = sidebar.layout()
+    assert layout is not None
+    indices = [
+        layout.indexOf(window._nav_buttons[key]) for key in ("help", "support")
+    ]
+    assert indices[1] == indices[0] + 1
+
+
+def test_support_page_shows_honest_framing_and_non_financial_help(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    labels_html = "\n".join(w.text() for w in support_page.findChildren(QLabel))
+
+    assert "no telemetry" in labels_html
+    assert "no paid tier" in labels_html
+    assert "thank-you, not a purchase" in labels_html
+    assert "Report a bug" in labels_html
+    assert "github.com/KristiyanDDimitrov/Seeker/issues" in labels_html
+    assert "Share your library back on SoulSeek" in labels_html
+    assert "Kristiyan Dimitrov" in labels_html  # ABOUT_DIALOG_AUTHOR_LINE, reused
+
+
+def test_support_page_renders_a_button_for_every_real_support_link(
+        qtbot, monkeypatch,
+):
+    from seeker.ui import main_window as main_window_module
+
+    opened: list[str] = []
+    monkeypatch.setattr(
+        main_window_module.webbrowser, "open", lambda url: opened.append(url)
+    )
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    buttons = [
+        widget
+        for widget in support_page.findChildren(QPushButton)
+        if widget.text().startswith("Support on")
+    ]
+    assert len(buttons) == len(help_text.SUPPORT_LINKS)
+    assert {button.text() for button in buttons} == {
+        f"Support on {name}" for name in help_text.SUPPORT_LINKS
+    }
+
+    for button in buttons:
+        button.click()
+
+    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
+
+
+def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("support")
+    assert window.stacked_widget.currentIndex() == window._page_indices["support"]
+
+    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    go_button = next(
+        widget for widget in support_page.findChildren(QPushButton)
+        if widget.text() == help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
+    )
+    go_button.click()
+
+    assert window.stacked_widget.currentIndex() == window._page_indices["sharing"]
 
 
 def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):

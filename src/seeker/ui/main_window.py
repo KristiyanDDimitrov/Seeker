@@ -241,6 +241,24 @@ def _open_in_file_manager(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)])
 
 
+def _build_support_links_row() -> QHBoxLayout:
+    # Shared between AboutDialog and the Support page (roadmap item 64) —
+    # both render the same real, filtered SUPPORT_LINKS set the same way,
+    # so this lives once rather than as two copies of the identical loop.
+    row = QHBoxLayout()
+    for name, url in help_text.SUPPORT_LINKS.items():
+        if not help_text.is_real_support_link(url):
+            continue
+
+        button = QPushButton(f"Support on {name}")
+        button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
+        button.clicked.connect(
+            lambda _=False, url=url: webbrowser.open(url)
+        )
+        row.addWidget(button)
+    return row
+
+
 def _build_nav_button(label: str) -> QPushButton:
     # A checkable, flat QPushButton rather than a bespoke widget —
     # QPushButton is already painted through Qt's style system (unlike
@@ -514,19 +532,9 @@ class AboutDialog(QDialog):
         # filters out any still-TODO placeholder so a dead, non-URL button
         # never actually renders (see help_text.SUPPORT_LINKS's own note).
         # Same webbrowser.open() mechanism the Spotify OAuth flow already
-        # uses; no SDK, no embedded payment UI.
-        support_row = QHBoxLayout()
-        for name, url in help_text.SUPPORT_LINKS.items():
-            if not help_text.is_real_support_link(url):
-                continue
-
-            support_button = QPushButton(f"Support on {name}")
-            support_button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
-            support_button.clicked.connect(
-                lambda _=False, url=url: webbrowser.open(url)
-            )
-            support_row.addWidget(support_button)
-        layout.addLayout(support_row)
+        # uses; no SDK, no embedded payment UI. Shared with the Support
+        # page (roadmap item 64) via _build_support_links_row().
+        layout.addLayout(_build_support_links_row())
 
         close_row = QHBoxLayout()
         close_button = QPushButton("Close")
@@ -726,6 +734,7 @@ class MainWindow(QMainWindow):
         self._register_page("sharing", self._build_sharing_page())
         self._register_page("history", self._build_history_page())
         self._register_page("help", self._build_help_page())
+        self._register_page("support", self._build_support_page())
 
         # Roadmap item 56 Phase 3 — Settings reversed from item 48's
         # separate-dialog decision into a real page, hosted the same
@@ -884,6 +893,15 @@ class MainWindow(QMainWindow):
         self._nav_buttons["help"] = help_button
         help_button.clicked.connect(lambda: self._show_page("help"))
         layout.addWidget(help_button)
+
+        # Roadmap item 64 — directly below Help, same individually-built
+        # pattern (a simple _show_page(key) lambda, no initial-tab-aware
+        # handler needed).
+        support_button = _build_nav_button("Support")
+        self._nav_group.addButton(support_button)
+        self._nav_buttons["support"] = support_button
+        support_button.clicked.connect(lambda: self._show_page("support"))
+        layout.addWidget(support_button)
 
         # Roadmap item 56 Phase 3 — reversed from item 48's "Settings
         # deliberately stays a separate dialog" decision: in fullscreen,
@@ -1505,6 +1523,65 @@ class MainWindow(QMainWindow):
 
     def _on_open_data_folder_clicked(self) -> None:
         _open_in_file_manager(self.application.data_locations.base_dir)
+
+    def _build_support_page(self) -> QWidget:
+        # Roadmap item 64 — a real sidebar page, directly below Help.
+        # Every string here is entirely static copy (no service/DB call
+        # at all, unlike Duplicates/History) — built directly at
+        # construction time, the same "nothing to lazily load" reasoning
+        # _build_help_page's own docstring already gives for its
+        # Application.data_locations lookup, just with even less to
+        # fetch here.
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACING_LG)
+
+        framing_label = QLabel(help_text.SUPPORT_PAGE_FRAMING_BODY)
+        framing_label.setTextFormat(Qt.TextFormat.RichText)
+        framing_label.setWordWrap(True)
+        layout.addWidget(framing_label)
+
+        layout.addLayout(_build_support_links_row())
+
+        non_financial_heading = QLabel(
+            help_text.SUPPORT_PAGE_NON_FINANCIAL_HEADING
+        )
+        non_financial_heading.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(non_financial_heading)
+
+        report_bug_label = QLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY)
+        report_bug_label.setTextFormat(Qt.TextFormat.RichText)
+        report_bug_label.setWordWrap(True)
+        report_bug_label.setOpenExternalLinks(True)
+        layout.addWidget(report_bug_label)
+
+        share_library_label = QLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)
+        share_library_label.setTextFormat(Qt.TextFormat.RichText)
+        share_library_label.setWordWrap(True)
+        layout.addWidget(share_library_label)
+
+        go_to_sharing_button = QPushButton(
+            help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
+        )
+        go_to_sharing_button.clicked.connect(
+            lambda: self._show_page("sharing")
+        )
+        layout.addWidget(
+            go_to_sharing_button, alignment=Qt.AlignmentFlag.AlignLeft,
+        )
+
+        author_label = QLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
+        author_label.setTextFormat(Qt.TextFormat.RichText)
+        author_label.setWordWrap(True)
+        author_label.setOpenExternalLinks(True)
+        layout.addWidget(author_label)
+
+        layout.addStretch()
+
+        return _build_page(
+            "Support", help_text.SUPPORT_TAB_SUBTITLE, content,
+        )
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()

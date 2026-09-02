@@ -472,6 +472,16 @@ def test_broad_end_to_end_stress(qapp):
             main_window._show_page("dashboard")
             qapp.processEvents()
 
+            # Support page (roadmap item 64) — purely static copy, no
+            # service/DB call at all, so no _pump() wait is needed; still
+            # worth a real visit here since every other page gets one and
+            # this app's own history (item 39) is specifically about bugs
+            # that only show up under repeated real page-navigation churn.
+            main_window._show_page("support")
+            qapp.processEvents()
+            main_window._show_page("dashboard")
+            qapp.processEvents()
+
             # Duplicates delete lifecycle (item 40) — the deferred-
             # delete action this stress test never exercised before.
             # Waits (across cycles, up to SAMPLE_INTERVAL_SECONDS each)
