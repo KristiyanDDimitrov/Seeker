@@ -34,13 +34,13 @@ Re-read this file at every phase boundary before starting the next phase.
 - [x] 2.3 `task_progress` signal added to the existing, already-permanently-connected `_dispatcher` (3rd signal, same "primitives only, connect once" pattern as the other two). `run_worker(..., on_progress=...)` optional; when omitted, `fn` called with zero args exactly as before (verified: every pre-existing call site untouched). Throttled at the SOURCE (inside `Worker._report_progress`, on the worker thread) — `PROGRESS_EMIT_MIN_INTERVAL_S=0.25` OR `PROGRESS_EMIT_EVERY_N=25`, whichever first; first report always emits (`_progress_last_emit` init to `-inf`, a real fix found by my own test using a monkeypatched clock at 0.0).
 - [x] 2.4 Verified: live async repro re-run — scan button stayed busy across 5+ real 2s poll ticks (t=0 through t=5s), restored exactly once at real completion (t=6s). Deadlock regression suite 3x clean. Full fast suite 3x: 789-790/790, one pre-existing flaky test (documented, not a regression — reproduces 1/5 in isolation too). `test_ui_smoke.py` timing: ~5.0-5.4s across runs, no hang/slowdown. Progress-heavy worker (3,000 throttled reports over several seconds) added to the opt-in stress test's interleaved loop with real assertions on delivered event count/first/last — actual RUN deferred to closing-out (real ~5+ min against real infra; will cover every phase's cumulative changes in one pass, per the brief's own closing-out step).
 
-**Commit boundary.**
+**Commit boundary — commit 81dfb5a.**
 
 ## Phase 3 — Ask where downloads should go
 
-- [ ] 3.1 Explain the "found my folder" coincidence (report only)
-- [ ] 3.2 Prompt on first download per playlist (extend DestinationDialog)
-- [ ] 3.3 Verify: prompts once, persists, CLI untouched
+- [x] 3.1 Confirmed against real code: no folder-name detection exists. `_resolve_destination` picked the configured default location + subfolder-per-playlist (playlist name sanitized); the user's existing "Psytrance" folder matched "PsyTrance" purely because macOS's default filesystem is case-insensitive. Coincidental, not a feature.
+- [x] 3.2 `_on_download_clicked` now checks `playlist.download_location_id is not None` (already loaded on the Playlist itself — no extra query) to decide skip-vs-prompt, replacing the old "anything resolvable skips it" rule. `DestinationDialog` extended (not duplicated) with `initial_subfolder` (pre-fills the REAL current fallback via `get_resolved_destination`, not just the raw playlist name) and a live `location_path_preview` label (`help_text.format_destination_preview`) showing the exact absolute path, whether it exists, and a real audio-file count via `AUDIO_EXTENSIONS`.
+- [x] 3.3 Verified: CLI's `handle_download`/`download_playlist`/`_resolve_destination` completely untouched (confirmed by reading — zero changes outside `ui/main_window.py`/`ui/help_text.py`), 73 CLI/download-service tests pass unmodified. A playlist with its own destination never prompts (regression test), one without always prompts once pre-filled with the real fallback (new test), and the dialog's live preview updates correctly across 3 new tests (new-folder case, real audio-file count, live field-change updates).
 
 **Commit boundary.**
 

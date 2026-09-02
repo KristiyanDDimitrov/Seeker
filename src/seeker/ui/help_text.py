@@ -142,6 +142,26 @@ TOOLTIP_REMEMBER_DESTINATION_CHECKBOX = (
 NO_LOCATIONS_FOR_DESTINATION_DIALOG = (
     "Add a library location in Settings before downloading."
 )
+
+
+def format_destination_preview(
+        path: str, exists: bool, audio_file_count: int | None,
+) -> str:
+    """Roadmap item 65 (Phase 3.2) — the live "where will this actually
+    go" preview inside DestinationDialog. `audio_file_count` is None
+    when the folder exists but couldn't be read (permissions, ...) —
+    shown without a count rather than a misleading zero."""
+    if not exists:
+        return f"Will download to: {path}  (new folder)"
+
+    if audio_file_count is None:
+        return f"Will download to: {path}"
+
+    plural = "s" if audio_file_count != 1 else ""
+    return (
+        f"Will download to: {path}  (already exists, "
+        f"{audio_file_count} audio file{plural} there now)"
+    )
 TOOLTIP_OPEN_SETTINGS = (
     "Library locations, playlist destinations, connections, and "
     "match thresholds."

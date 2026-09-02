@@ -1179,7 +1179,15 @@ def test_next_step_notice_shows_download_count_and_triggers_download_flow(
         TrackStatus(track=_make_track("t2"), state=NOT_FOUND),
     ]
     application = FakeApplication(
-        playlists=[Playlist(id="p1", name="Test", track_count=2)],
+        # download_location_id=1 -- this playlist already has its own
+        # destination, so Download proceeds directly with no dialog
+        # (roadmap item 65 Phase 3.2: only a playlist with none of its
+        # own gets prompted).
+        playlists=[
+            Playlist(
+                id="p1", name="Test", track_count=2, download_location_id=1,
+            ),
+        ],
         locations=[(location, True)],
         statuses=statuses,
         soulseek_configured=True,
@@ -1395,8 +1403,18 @@ def test_download_with_no_selection_shows_a_warning_notice(qtbot):
     assert not window.dashboard_notice.isHidden()
 
 
-def test_download_with_a_resolvable_destination_skips_the_dialog(qtbot):
-    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+def test_download_with_its_own_destination_skips_the_dialog(qtbot):
+    # Roadmap item 65 (Phase 3.2) — the ONLY case that skips the dialog:
+    # the playlist already has its own destination
+    # (download_location_id set on the Playlist itself, loaded from the
+    # DB). A resolvable configured DEFAULT alone is no longer enough to
+    # skip it — see test_download_with_a_resolvable_default_still_
+    # prompts_once below.
+    playlists = [
+        Playlist(
+            id="p1", name="Test", track_count=1, download_location_id=1,
+        ),
+    ]
     location = LibraryLocation(
         id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
     )
@@ -1414,9 +1432,46 @@ def test_download_with_a_resolvable_destination_skips_the_dialog(qtbot):
         timeout=2000,
     )
     assert application.download_service.download_playlist_calls == ["Test"]
-    # No destination needed setting — it was already resolvable.
+    # No destination needed setting — it was already the playlist's own.
     assert application.download_service.set_destination_calls == []
     assert application.persist_default_destination_calls == []
+
+
+def test_download_with_a_resolvable_default_still_prompts_once(
+        qtbot, monkeypatch,
+):
+    # Roadmap item 65 (Phase 3.2) — the real, decided behavior: a
+    # playlist with NO destination of its own always prompts first, even
+    # when the configured default would already resolve — never a
+    # silent fallback. Pre-filled with the exact real fallback (location
+    # + sanitized subfolder), not just the raw playlist name.
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        locations=[(location, True)],
+        resolved_destination=(location, "Test"),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    opened_dialogs = []
+    monkeypatch.setattr(
+        DestinationDialog, "exec",
+        lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
+    )
+
+    window.download_button.click()
+
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    dialog = opened_dialogs[0]
+    assert dialog.selected_location_id() == 1
+    assert dialog.subfolder_field.text() == "Test"
+    # Rejected -- never silently downloaded without the user seeing it.
+    assert application.download_service.download_playlist_calls == []
 
 
 # --- Roadmap item 56 Phase 5.1: download button feedback -------------------
@@ -1424,7 +1479,11 @@ def test_download_with_a_resolvable_destination_skips_the_dialog(qtbot):
 def test_download_button_shows_starting_immediately_on_click(qtbot):
     # Roadmap item 56 Phase 5.1 — the real bug: the button previously
     # gave no feedback that anything had started.
-    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    playlists = [
+        Playlist(
+            id="p1", name="Test", track_count=1, download_location_id=1,
+        ),
+    ]
     location = LibraryLocation(
         id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
     )
@@ -1485,7 +1544,11 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     # Roadmap item 56 Phase 5.1 — how many downloads were requested,
     # and how many tracks were skipped because they were already in
     # flight (Phase 5.2's own real dedup guard reports through here).
-    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    playlists = [
+        Playlist(
+            id="p1", name="Test", track_count=1, download_location_id=1,
+        ),
+    ]
     location = LibraryLocation(
         id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
     )
@@ -1648,6 +1711,73 @@ def test_download_dialog_confirmed_without_remember_persists_the_default(
     assert application.download_service.set_destination_calls == []
     assert application.persist_default_destination_calls == [(1, True)]
     assert application.download_service.download_playlist_calls == ["Test"]
+
+
+def test_destination_dialog_preview_shows_new_folder_when_it_does_not_exist(
+        qtbot, tmp_path,
+):
+    location = LibraryLocation(
+        id=1, name="Main", path=str(tmp_path),
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = DestinationDialog(
+        None, "Test", [location], default_location_id=1,
+        initial_subfolder="Does Not Exist Yet",
+    )
+    qtbot.addWidget(dialog)
+
+    text = dialog.location_path_preview.text()
+    assert str(tmp_path / "Does Not Exist Yet") in text
+    assert "new folder" in text
+
+
+def test_destination_dialog_preview_counts_real_audio_files(qtbot, tmp_path):
+    subfolder = tmp_path / "Test"
+    subfolder.mkdir()
+    (subfolder / "a.mp3").write_bytes(b"\x00")
+    (subfolder / "b.flac").write_bytes(b"\x00")
+    (subfolder / "notes.txt").write_bytes(b"\x00")  # not audio -- excluded
+
+    location = LibraryLocation(
+        id=1, name="Main", path=str(tmp_path),
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = DestinationDialog(
+        None, "Test", [location], default_location_id=1,
+        initial_subfolder="Test",
+    )
+    qtbot.addWidget(dialog)
+
+    text = dialog.location_path_preview.text()
+    assert str(subfolder) in text
+    assert "already exists" in text
+    assert "2 audio files" in text
+
+
+def test_destination_dialog_preview_updates_live_as_fields_change(
+        qtbot, tmp_path,
+):
+    location_a = LibraryLocation(
+        id=1, name="A", path=str(tmp_path / "a"),
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    location_b = LibraryLocation(
+        id=2, name="B", path=str(tmp_path / "b"),
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = DestinationDialog(
+        None, "Test", [location_a, location_b], default_location_id=1,
+        initial_subfolder="Sub",
+    )
+    qtbot.addWidget(dialog)
+
+    assert str(Path(location_a.path) / "Sub") in dialog.location_path_preview.text()
+
+    dialog.location_combo.setCurrentIndex(1)
+    assert str(Path(location_b.path) / "Sub") in dialog.location_path_preview.text()
+
+    dialog.subfolder_field.setText("Other")
+    assert str(Path(location_b.path) / "Other") in dialog.location_path_preview.text()
 
 
 def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(

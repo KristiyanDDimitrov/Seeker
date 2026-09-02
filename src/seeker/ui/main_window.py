@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
+from seeker.audio_formats import AUDIO_EXTENSIONS
+from seeker.filename_sanitize import sanitize_path_component
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
@@ -574,6 +576,17 @@ class DestinationDialog(QDialog):
     actually completes, so nothing durable would be left for it to
     find otherwise) and then the caller continues straight into the
     real download.
+
+    Roadmap item 65 (Phase 3.2) — reused (not a second dialog) for a
+    SECOND, more common trigger: a playlist with no destination of its
+    own AND a configured default that WOULD resolve. `initial_subfolder`
+    lets the caller pre-fill with the real current fallback (rather than
+    always the raw playlist name) so the default stays one click away,
+    and `location_path_preview`/`_update_preview` shows the exact
+    absolute path that choice resolves to, live, as the user changes
+    either field — including whether it already exists and how many
+    audio files are already there, since that's what turns "it
+    downloaded into a folder I didn't choose" into an informed choice.
     """
 
     def __init__(
@@ -582,6 +595,7 @@ class DestinationDialog(QDialog):
             playlist_name: str,
             locations: list[LibraryLocation],
             default_location_id: int | None,
+            initial_subfolder: str | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(help_text.DESTINATION_DIALOG_TITLE)
@@ -618,10 +632,29 @@ class DestinationDialog(QDialog):
             if index >= 0:
                 self.location_combo.setCurrentIndex(index)
 
-        self.subfolder_field = QLineEdit(playlist_name)
+        self.subfolder_field = QLineEdit(
+            initial_subfolder if initial_subfolder is not None
+            else playlist_name
+        )
         form.addRow("Subfolder:", self.subfolder_field)
 
         layout.addLayout(form)
+
+        # Roadmap item 65 (Phase 3.2) — a real, live-updating preview of
+        # exactly where confirming would download to, and what's already
+        # there. Recomputed on every relevant field change, not just once
+        # at open, so it never goes stale while the user is still
+        # deciding.
+        self.location_path_preview = QLabel()
+        self.location_path_preview.setWordWrap(True)
+        self.location_path_preview.setStyleSheet(
+            f"color: {theme.TEXT_MUTED};"
+        )
+        layout.addWidget(self.location_path_preview)
+
+        self.location_combo.currentIndexChanged.connect(self._update_preview)
+        self.subfolder_field.textChanged.connect(self._update_preview)
+        self._update_preview()
 
         self.remember_checkbox = QCheckBox("Remember this for this playlist")
         self.remember_checkbox.setChecked(True)
@@ -642,6 +675,46 @@ class DestinationDialog(QDialog):
         cancel_button.clicked.connect(self.reject)
         button_row.addWidget(cancel_button)
         layout.addLayout(button_row)
+
+    def _resolved_path(self) -> Path | None:
+        location_id = self.selected_location_id()
+        location = next(
+            (loc for loc in self._locations if loc.id == location_id), None,
+        )
+        if location is None:
+            return None
+
+        subfolder = self.selected_subfolder()
+        path = Path(location.path)
+        return path / sanitize_path_component(subfolder) if subfolder else path
+
+    def _update_preview(self) -> None:
+        path = self._resolved_path()
+
+        if path is None:
+            self.location_path_preview.setText("")
+            return
+
+        exists = path.exists()
+        audio_file_count: int | None = None
+
+        if exists:
+            try:
+                audio_file_count = sum(
+                    1 for entry in path.iterdir()
+                    if entry.is_file()
+                    and entry.suffix.lower() in AUDIO_EXTENSIONS
+                )
+            except OSError:
+                # An unreadable folder shouldn't block the dialog — just
+                # show the path itself without a file count (None).
+                pass
+
+        self.location_path_preview.setText(
+            help_text.format_destination_preview(
+                str(path), exists, audio_file_count,
+            )
+        )
 
     def selected_location_id(self) -> int | None:
         data = self.location_combo.currentData()
@@ -3486,7 +3559,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        playlist_name = self.selected_playlist.name
+        playlist = self.selected_playlist
+        playlist_name = playlist.name
 
         # Roadmap item 56 Phase 5.1 — the button previously gave no
         # feedback at all that anything had started, across this
@@ -3501,38 +3575,33 @@ class MainWindow(QMainWindow):
         # or a genuine error via on_error).
         self._set_download_button_busy()
 
-        # Roadmap item 6 §3 — check resolvability first rather than
-        # letting download_playlist() raise and dead-end the user at
-        # an error. Shares DownloadService._resolve_destination with
-        # the real move step (via get_resolved_destination), so this
-        # can never drift into a second, different notion of
-        # "resolvable."
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service
-            .get_resolved_destination(playlist_name),
-            on_finished=lambda resolved: self._on_destination_checked(
-                playlist_name, resolved,
-            ),
-            on_error=lambda _message: self._reset_download_button(),
-        )
-
-    def _on_destination_checked(
-            self,
-            playlist_name: str,
-            resolved: tuple[LibraryLocation, str | None] | None,
-    ) -> None:
-        if resolved is not None:
+        # Roadmap item 65 (Phase 3.2) — a playlist with its OWN
+        # destination already set (`playlist.download_location_id`,
+        # already loaded on the Playlist itself — no extra query needed)
+        # always skips straight to the real download; the prompt below
+        # is only for a playlist that would otherwise silently fall
+        # through to the configured default (roadmap item 6 §3's own
+        # earlier fallback), so the user gets to see and confirm — or
+        # change — where it's actually going, once per playlist.
+        if playlist.download_location_id is not None:
             self._start_download(playlist_name)
             return
 
-        self._set_download_button_busy()
-
+        # Fetches both the real current fallback (to pre-fill the
+        # dialog with the exact path it would already use — shares
+        # DownloadService._resolve_destination with the real move step
+        # via get_resolved_destination, so this can never drift into a
+        # second, different notion of "resolvable") and every registered
+        # location (for the picker), in one round trip.
         run_worker(
             self.thread_pool,
-            self.application.library_service.list_locations,
-            on_finished=lambda locations: self._open_destination_dialog(
-                playlist_name, locations,
+            lambda: (
+                self.application.download_service
+                .get_resolved_destination(playlist_name),
+                self.application.library_service.list_locations(),
+            ),
+            on_finished=lambda result: self._open_destination_dialog(
+                playlist_name, result[1], result[0],
             ),
             on_error=lambda _message: self._reset_download_button(),
         )
@@ -3541,6 +3610,7 @@ class MainWindow(QMainWindow):
             self,
             playlist_name: str,
             locations: list[tuple[LibraryLocation, bool]],
+            resolved: tuple[LibraryLocation, str | None] | None = None,
     ) -> None:
         if not locations:
             self._reset_download_button()
@@ -3551,12 +3621,25 @@ class MainWindow(QMainWindow):
             return
 
         location_objects = [location for location, _ in locations]
-        default_location_id = (
-            self.application._config_store.default_download_location_id
-        )
+
+        # Roadmap item 65 (Phase 3.2) — when the real fallback already
+        # resolves (`resolved` given), pre-fill with exactly what it
+        # would use: that location, and its real subfolder (already
+        # sanitized by _resolve_destination — never re-sanitized here).
+        # Falls back to the app-wide configured default (item 6 §3's
+        # original behavior) only when nothing resolved at all.
+        if resolved is not None:
+            prefill_location, prefill_subfolder = resolved
+            default_location_id: int | None = prefill_location.id
+        else:
+            prefill_subfolder = None
+            default_location_id = (
+                self.application._config_store.default_download_location_id
+            )
 
         dialog = DestinationDialog(
             self, playlist_name, location_objects, default_location_id,
+            initial_subfolder=prefill_subfolder,
         )
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
