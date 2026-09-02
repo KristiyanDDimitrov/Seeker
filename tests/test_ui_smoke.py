@@ -51,10 +51,15 @@ from seeker.ui.workers import Worker, run_worker
 
 
 class FakeSyncService:
-    def __init__(self, playlists: list[Playlist] | None = None):
+    def __init__(
+            self,
+            playlists: list[Playlist] | None = None,
+            art_urls_filled: int = 0,
+    ):
         self._playlists = playlists or []
         self.sync_playlists_calls = 0
         self.sync_playlist_tracks_calls: list[Playlist] = []
+        self._art_urls_filled = art_urls_filled
 
     def list_playlists(self) -> list[Playlist]:
         return self._playlists
@@ -62,8 +67,9 @@ class FakeSyncService:
     def sync_playlists(self) -> None:
         self.sync_playlists_calls += 1
 
-    def sync_playlist_tracks(self, playlist: Playlist) -> None:
+    def sync_playlist_tracks(self, playlist: Playlist) -> int:
         self.sync_playlist_tracks_calls.append(playlist)
+        return self._art_urls_filled
 
 
 class FakeDashboardService:
@@ -346,11 +352,30 @@ _EMPTY_TAG_RESULT = {
 }
 
 
+_EMPTY_FIX_ART_RESULT = {
+    "fixed": 0,
+    "already_correct": 0,
+    "no_url": 0,
+    "download_failed": 0,
+    "embed_failed": 0,
+    "format_unsupported": 0,
+    "skipped_no_match": 0,
+    "failed": 0,
+    "details": [],
+}
+
+
 class FakeMetadataService:
-    def __init__(self, tag_result: dict | None = None):
+    def __init__(
+            self,
+            tag_result: dict | None = None,
+            fix_art_result: dict | None = None,
+    ):
         self._tag_result = tag_result or dict(_EMPTY_TAG_RESULT)
+        self._fix_art_result = fix_art_result or dict(_EMPTY_FIX_ART_RESULT)
         self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None, bool]] = []
         self.tag_playlist_calls: list[tuple[str, bool, tuple | None, bool]] = []
+        self.fix_missing_art_for_playlist_calls: list[str] = []
 
     def tag_tracks(
             self,
@@ -376,6 +401,10 @@ class FakeMetadataService:
         )
         return self._tag_result
 
+    def fix_missing_art_for_playlist(self, playlist_name: str) -> dict:
+        self.fix_missing_art_for_playlist_calls.append(playlist_name)
+        return self._fix_art_result
+
 
 class FakeApplication:
     def __init__(
@@ -397,8 +426,10 @@ class FakeApplication:
             needs_review_matches: list | None = None,
             download_playlist_result: dict | None = None,
             sharing_service=None,
+            art_urls_filled: int = 0,
+            fix_art_result: dict | None = None,
     ):
-        self.sync_service = FakeSyncService(playlists)
+        self.sync_service = FakeSyncService(playlists, art_urls_filled)
         self.history_service = FakeHistoryService(history_events)
         self.data_locations = DataLocations(
             database_path=Path("/fake/seeker.db"),
@@ -419,7 +450,7 @@ class FakeApplication:
             review_candidates, pending_upgrades, resolved_destination,
             download_playlist_result,
         )
-        self.metadata_service = FakeMetadataService(tag_result)
+        self.metadata_service = FakeMetadataService(tag_result, fix_art_result)
         self.duplicate_service = FakeDuplicateService(
             fingerprint_result, duplicate_groups,
         )
@@ -3768,6 +3799,140 @@ def test_tag_result_notice_shows_success_when_everything_worked(qtbot):
     assert not window.dashboard_notice.isHidden()
     assert "Tagged 5 tracks" in window.dashboard_notice.text()
     assert "without cover art" not in window.dashboard_notice.text()
+
+
+def test_tag_result_notice_reports_already_tagged_with_nothing_else_done(
+        qtbot,
+):
+    # Roadmap item 66 (Phase 5.1) — the real gap found in Phase 0.4's
+    # investigation: a fully-already-tagged re-run (tagged=0, nothing
+    # failed, nothing missing art) previously produced NO notice at
+    # all — only the easy-to-miss results panel said anything.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_tag_result({
+        "tagged": 0,
+        "tagged_without_art": 0,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 4,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [
+            {
+                "track_id": "t1",
+                "reason": "skipped_already_tagged",
+                "message": "Artist A - Title A: already tagged",
+            },
+        ],
+    })
+
+    assert not window.dashboard_notice.isHidden()
+    text = window.dashboard_notice.text()
+    assert "4 track" in text
+    assert "already tagged" in text
+    assert "Re-tag" in text
+
+
+# --- Fix missing cover art / fill missing art URLs (roadmap item 66,
+# Phase 5.2/5.3) --------------------------------------------------------
+
+def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(
+        playlists=playlists,
+        fix_art_result={
+            "fixed": 3,
+            "already_correct": 2,
+            "no_url": 1,
+            "download_failed": 0,
+            "embed_failed": 0,
+            "format_unsupported": 0,
+            "skipped_no_match": 0,
+            "failed": 0,
+            "details": [
+                {
+                    "track_id": "t1",
+                    "reason": "no_url",
+                    "message": "Artist A - Title A: no album art URL stored",
+                },
+            ],
+        },
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.fix_missing_art_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service
+        .fix_missing_art_for_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.fix_missing_art_for_playlist_calls == [
+        "Test",
+    ]
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "Fixed art for 3" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+    text = window.dashboard_notice.text()
+    assert "2 already correct" in text
+    assert "1 missing an art URL" in text
+    assert "already correct" in text.lower()
+
+
+def test_fix_missing_art_button_requires_a_selected_playlist(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.fix_missing_art_button.click()
+
+    assert not window.dashboard_notice.isHidden()
+    assert "playlist" in window.dashboard_notice.text().lower()
+    assert application.metadata_service.fix_missing_art_for_playlist_calls == []
+
+
+def test_fill_missing_art_urls_button_reports_the_real_count(qtbot):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(playlists=playlists, art_urls_filled=7)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.fill_missing_art_urls_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.sync_service.sync_playlist_tracks_calls != [],
+        timeout=2000,
+    )
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "7" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+    assert "Filled in 7 missing album art URLs" in window.dashboard_notice.text()
+
+
+def test_fill_missing_art_urls_button_reports_zero_found(qtbot):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(playlists=playlists, art_urls_filled=0)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.fill_missing_art_urls_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "No missing" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
 
 
 # --- Duplicates tab (roadmap item 5) ---------------------------------------

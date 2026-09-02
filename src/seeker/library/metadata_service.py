@@ -23,6 +23,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.metadata import (
     embed_album_art,
+    read_embedded_art,
     write_analysis_tags,
     write_text_tags,
 )
@@ -414,6 +415,226 @@ class MetadataService:
             )
         else:
             print(f"  Tagged: {track.artist} - {track.title}")
+
+    def fix_missing_art_for_playlist(self, playlist_name: str) -> dict[str, Any]:
+        """Roadmap item 66 (Phase 5.2) — a narrower, safer repair action
+        than a forced full re-tag: re-embeds art ONLY, never touches
+        text tags, for auto-matched tracks whose embedded art is
+        missing or doesn't match the real current album_art_url. Built
+        for exactly the scenario Phase 0.4's investigation found: a
+        track already tagged (tagged_at set) before Phase 4's own art
+        fixes landed, whose text tags are already correct and don't
+        need rewriting, but whose art was never fixed retroactively.
+        """
+        with self.database.transaction() as connection:
+            playlist = self.playlists.get_by_name(playlist_name, connection)
+
+            if playlist is None:
+                raise PlaylistNotFoundError(
+                    f"No playlist named '{playlist_name}' has been "
+                    f"synced."
+                )
+
+            tracks = self.tracks.get_auto_matched_for_playlist(
+                playlist.id, connection
+            )
+
+        counts: dict[str, int] = {
+            "fixed": 0,
+            "already_correct": 0,
+            "no_url": 0,
+            "download_failed": 0,
+            "embed_failed": 0,
+            "format_unsupported": 0,
+            "skipped_no_match": 0,
+            "failed": 0,
+        }
+        details: list[dict[str, str]] = []
+
+        for track in tracks:
+            try:
+                self._fix_one_track_art(track.id, counts, details)
+            except Exception as error:
+                counts["failed"] += 1
+                details.append(
+                    {
+                        "track_id": track.id,
+                        "reason": "failed",
+                        "message": str(error),
+                    }
+                )
+                print(f"  Failed to fix art for track {track.id}: {error}")
+
+        return {**counts, "details": details}
+
+    def _fix_one_track_art(
+            self,
+            track_id: str,
+            counts: dict[str, int],
+            details: list[dict[str, str]],
+    ) -> None:
+        with self.database.transaction() as connection:
+            track = self.tracks.get_by_id(track_id, connection)
+
+            if track is None:
+                counts["failed"] += 1
+                details.append(
+                    {
+                        "track_id": track_id,
+                        "reason": "failed",
+                        "message": f"track {track_id} not found",
+                    }
+                )
+                return
+
+            match = self.track_matches.get_by_track_id(track_id, connection)
+
+            if match is None or match.local_file_id is None:
+                counts["skipped_no_match"] += 1
+                details.append(
+                    {
+                        "track_id": track_id,
+                        "reason": "skipped_no_match",
+                        "message": (
+                            f"{track.artist} - {track.title}: no "
+                            f"matched local file"
+                        ),
+                    }
+                )
+                return
+
+            local_file = self.local_files.get_by_id(
+                match.local_file_id, connection
+            )
+
+            if local_file is None:
+                counts["failed"] += 1
+                details.append(
+                    {
+                        "track_id": track_id,
+                        "reason": "failed",
+                        "message": (
+                            f"{track.artist} - {track.title}: matched "
+                            f"local_file_id {match.local_file_id} not "
+                            f"found"
+                        ),
+                    }
+                )
+                return
+
+            location = self.locations.get_by_id(
+                local_file.location_id, connection
+            )
+
+            if location is None:
+                counts["failed"] += 1
+                details.append(
+                    {
+                        "track_id": track_id,
+                        "reason": "failed",
+                        "message": (
+                            f"{track.artist} - {track.title}: library "
+                            f"location {local_file.location_id} not "
+                            f"found"
+                        ),
+                    }
+                )
+                return
+
+        if not track.album_art_url:
+            counts["no_url"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "no_url",
+                    "message": (
+                        f"{track.artist} - {track.title}: no album art "
+                        f"URL stored — re-run 'seeker sync-tracks' for "
+                        f"this playlist to populate it"
+                    ),
+                }
+            )
+            return
+
+        file_path = Path(location.path) / local_file.relative_path
+        mutagen_file = MutagenFile(file_path)
+
+        if mutagen_file is None:
+            counts["format_unsupported"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "format_unsupported",
+                    "message": (
+                        f"{track.artist} - {track.title}: mutagen could "
+                        f"not open '{local_file.filename}'"
+                    ),
+                }
+            )
+            return
+
+        # Matches write_text_tags' own guard — a fresh WAV/etc. mutagen
+        # object has tags=None until this is called once; without it,
+        # the isinstance(mutagen_file.tags, ID3) checks inside
+        # read_embedded_art/embed_album_art never match at all.
+        if mutagen_file.tags is None:
+            mutagen_file.add_tags()
+
+        try:
+            image_bytes, mime_type = self._download_album_art(
+                track.album_art_url
+            )
+        except Exception as error:
+            counts["download_failed"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "download_failed",
+                    "message": f"{track.artist} - {track.title}: {error}",
+                }
+            )
+            return
+
+        # The actual point of this action: skip the write entirely (no
+        # file touched at all) if the currently-embedded art already
+        # byte-matches the real current CDN bytes — the same
+        # authoritative comparison Phase 0.4's own investigation used.
+        existing_art = read_embedded_art(mutagen_file)
+
+        if existing_art is not None and existing_art == image_bytes:
+            counts["already_correct"] += 1
+            return
+
+        try:
+            embedded = embed_album_art(mutagen_file, image_bytes, mime_type)
+        except Exception as error:
+            counts["embed_failed"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "embed_failed",
+                    "message": f"{track.artist} - {track.title}: {error}",
+                }
+            )
+            return
+
+        if not embedded:
+            counts["format_unsupported"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "format_unsupported",
+                    "message": (
+                        f"{track.artist} - {track.title}: album art "
+                        f"isn't supported for this file format"
+                    ),
+                }
+            )
+            return
+
+        mutagen_file.save()
+        counts["fixed"] += 1
+        print(f"  Fixed art: {track.artist} - {track.title}")
 
     def _download_album_art(self, url: str) -> tuple[bytes, str]:
         cached = self.album_art_cache.get(url)

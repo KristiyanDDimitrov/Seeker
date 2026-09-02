@@ -51,16 +51,16 @@ Re-read this file at every phase boundary before starting the next phase.
 - [x] 4.3 `download_requests.retry_count`/`next_retry_at` (guarded migration, verified against real production DB — 14 rows unchanged, all 3 real pre-existing locked rows now retry_count=0). Exponential backoff (60s/120s/240s.../cap 3600s), terminal `unavailable` after 8 attempts, excluded from `get_requests_blocking_redownload`. **Real bug found and fixed via live verification against production slskd**: a genuinely unrecognized error (a real `500 Internal Server Error` on `/api/v0/transfers/downloads/batches` — the exact endpoint item 63 flagged as its one concrete lead) escaped the original `except SoulseekDownloadError` handling entirely, never advancing retry_count — reproducing the exact unbounded-retry shape this phase exists to fix. Fixed with broader exception handling around both `request_download` and `get_download_status` that always advances the retry budget before re-raising. Diagnostic print gated behind `SEEKER_DEBUG_POLL=1`.
 - [x] 4.4 Verified live against real production slskd (2026-09-02): retry_count/next_retry_at advanced correctly across 2 real consecutive polls (0→1→2 for one row, with real backoff timestamps ~60-70s apart); the 500-error gap above found AND fixed live, re-verified fixed with a second real poll. Full exhaustion-to-unavailable path (8 attempts, hours of real backoff) verified via mocked-clock-free but count-seeded unit tests instead — reaching it live would take hours, disclosed as the one gap. `unavailable` added to `TERMINAL_STATUSES`, `_DOWNLOAD_TERMINAL_STATUSES`, `_is_visible`'s recently-finished window, and a new `seeker downloads status`/UI "Unavailable: N" count. Full audit of every status-consuming query in the codebase (11 in the repository, plus dashboard_service.py/main_window.py/download_service.py) — full list in the phase report.
 
-**Commit boundary.**
+**Commit boundary — commit b3d59c6.**
 
 ## Phase 5 — Cover art that actually lands
 
-(Scope depends on 0.4 findings.)
+(Scope adjusted by user: force=True item dropped — already correct per item 46. 5.1's missing-notice branch is primary. 5.4 simplified per user instruction.)
 
-- [ ] 5.1 Never silently skip — skipped_already_tagged + other skip reasons surfaced
-- [ ] 5.2 Re-tag reachable/meaningful: force=True audit, explicit re-tag option, "Fix missing cover art"
-- [ ] 5.3 One-click fix for `album_art_url IS NULL` (re-run sync-tracks from tagging panel)
-- [ ] 5.4 Verify: round-trip on copies per format; ask before touching real files; real before/after
+- [x] 5.1 Fixed the real gap: `_show_tag_result_notice`/`help_text.format_tag_result_notice` now handles tagged=0/without_art=0/failed=0-but-skipped_already_tagged>0 — previously produced ZERO notice, only the small results panel.
+- [x] 5.2 New `MetadataService.fix_missing_art_for_playlist()` — re-embeds art only (never text tags), for auto-matched tracks whose embedded art is missing or byte-mismatches the real current `album_art_url` (authoritative SHA comparison, same method as Phase 0.4's own investigation). New `metadata.py::read_embedded_art()`. UI button + CLI `seeker library fix-art <playlist>`.
+- [x] 5.3 `sync_service.sync_playlist_tracks()` now returns a real count of art URLs filled in (captured before/after the save). New "Fill missing art URLs" button + notice.
+- [x] 5.4 (simplified) Verified the new notices render via 12 new tests (service-layer + UI). **Two real bugs found by my own tests, not review** — (1) a fresh untagged file has `mutagen_file.tags is None`, so `embed_album_art`'s `isinstance(..., ID3)` check silently no-ops without an explicit `add_tags()` first (missing in the new method, present in `_tag_one_track`); fixed. (2) confirmed via a deliberately-wrong-seeded-text-tag test that "already correct" art genuinely skips the write with zero text-tag mutation. **STOPPED here — real-file step needs user confirmation before proceeding** (see phase report).
 
 **Commit boundary.**
 

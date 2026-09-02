@@ -1949,6 +1949,31 @@ class MainWindow(QMainWindow):
         )
         controls.addWidget(self.tag_playlist_button)
 
+        # Roadmap item 66 (Phase 5.2) — a narrower, safer repair than
+        # forcing a full re-tag: re-embeds art only, never text tags.
+        self.fix_missing_art_button = QPushButton("Fix missing cover art")
+        self.fix_missing_art_button.setToolTip(
+            help_text.TOOLTIP_FIX_MISSING_ART
+        )
+        self.fix_missing_art_button.clicked.connect(
+            self._on_fix_missing_art_clicked
+        )
+        controls.addWidget(self.fix_missing_art_button)
+
+        # Roadmap item 66 (Phase 5.3) — the one-click fix for the
+        # "no_url" case: a real sync-tracks call, honest about being a
+        # real Spotify API call.
+        self.fill_missing_art_urls_button = QPushButton(
+            "Fill missing art URLs"
+        )
+        self.fill_missing_art_urls_button.setToolTip(
+            help_text.TOOLTIP_FILL_MISSING_ART_URLS
+        )
+        self.fill_missing_art_urls_button.clicked.connect(
+            self._on_fill_missing_art_urls_clicked
+        )
+        controls.addWidget(self.fill_missing_art_urls_button)
+
         return controls
 
     def _on_analyze_audio_toggled(self, checked: bool) -> None:
@@ -2014,27 +2039,17 @@ class MainWindow(QMainWindow):
         self._show_tag_result_notice(result)
 
     def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
+        # Roadmap item 66 (Phase 5.1) — the real gap found in Phase 0.4:
+        # this early return is still correct (nothing was even in
+        # scope), but every real outcome AFTER it — including "every
+        # selected track was already tagged" — now gets a message via
+        # help_text.format_tag_result_notice, not just tagged/without_
+        # art/failed.
         if result["tagged"] == 0 and not result["details"]:
             return
 
-        tagged = result["tagged"]
-        without_art = result["tagged_without_art"]
-        failed = result["failed"]
-
-        message = f"Tagged {tagged} track{'s' if tagged != 1 else ''}"
-
-        if without_art:
-            message += f" — {without_art} without cover art"
-
-        if failed:
-            message += f", {failed} failed"
-            message += " — see the results panel below for details."
-            self.dashboard_notice.show_message(message, kind="error")
-        elif without_art:
-            message += " — see the results panel below for details."
-            self.dashboard_notice.show_message(message, kind="warning")
-        elif tagged:
-            self.dashboard_notice.show_message(message + ".", kind="success")
+        message, kind = help_text.format_tag_result_notice(result)
+        self.dashboard_notice.show_message(message, kind=kind)
 
     def _selected_track_ids(self) -> list[str]:
         rows = sorted(
@@ -2197,6 +2212,84 @@ class MainWindow(QMainWindow):
             on_finished=self._render_tag_result,
         )
         self.status_label.setText(f"Tagging playlist '{playlist_name}'...")
+
+    def _on_fix_missing_art_clicked(self) -> None:
+        if self.selected_playlist is None:
+            self.dashboard_notice.show_message(
+                "Select a playlist first.", kind="warning",
+            )
+            return
+
+        playlist_name = self.selected_playlist.name
+
+        self._run_busy_worker(
+            "fix_missing_art", self.fix_missing_art_button,
+            lambda: self.application.metadata_service
+            .fix_missing_art_for_playlist(playlist_name),
+            status_label=self.status_label,
+            on_finished=self._render_fix_art_result,
+        )
+        self.status_label.setText(
+            f"Fixing cover art for '{playlist_name}'..."
+        )
+
+    def _render_fix_art_result(self, result: dict[str, Any]) -> None:
+        self.status_label.setText("")
+
+        lines = [
+            f"Fixed: {result['fixed']}, "
+            f"Already correct: {result['already_correct']}, "
+            f"No art URL: {result['no_url']}, "
+            f"Download failed: {result['download_failed']}, "
+            f"Embed failed: {result['embed_failed']}, "
+            f"Unsupported format: {result['format_unsupported']}, "
+            f"Skipped (no match): {result['skipped_no_match']}, "
+            f"Failed: {result['failed']}."
+        ]
+
+        for detail in result["details"]:
+            lines.append(f"  [{detail['reason']}] {detail['message']}")
+
+        self.tagging_results.setPlainText("\n".join(lines))
+
+        message, kind = help_text.format_fix_art_result_message(result)
+        self.dashboard_notice.show_message(message, kind=kind)
+
+    def _on_fill_missing_art_urls_clicked(self) -> None:
+        if self.selected_playlist is None:
+            self.dashboard_notice.show_message(
+                "Select a playlist first.", kind="warning",
+            )
+            return
+
+        playlist = self.selected_playlist
+
+        self._run_busy_worker(
+            "fill_missing_art_urls", self.fill_missing_art_urls_button,
+            lambda: self.application.sync_service.sync_playlist_tracks(
+                playlist
+            ),
+            status_label=self.status_label,
+            on_finished=self._on_fill_missing_art_urls_finished,
+        )
+        self.status_label.setText(
+            f"Refreshing '{playlist.name}' from Spotify..."
+        )
+
+    def _on_fill_missing_art_urls_finished(self, art_urls_filled: int) -> None:
+        self._poll_selected_playlist()
+
+        if art_urls_filled:
+            plural = "s" if art_urls_filled != 1 else ""
+            self.dashboard_notice.show_message(
+                f"Filled in {art_urls_filled} missing album art "
+                f"URL{plural}.",
+                kind="success",
+            )
+        else:
+            self.dashboard_notice.show_message(
+                "No missing album art URLs found.", kind="info",
+            )
 
     def _build_review_content(self) -> QWidget:
         # Two independent sections, per item 26: SoulSeek needs-review

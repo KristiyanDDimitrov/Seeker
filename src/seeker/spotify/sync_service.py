@@ -135,7 +135,7 @@ class SpotifySyncService:
     def sync_playlist_tracks(
             self,
             playlist: Playlist,
-    ) -> None:
+    ) -> int:
         print(
             f"Synchronizing tracks: {playlist.name}"
         )
@@ -145,6 +145,20 @@ class SpotifySyncService:
         )
 
         with self.database.transaction() as connection:
+            # Roadmap item 66 (Phase 5.3) — captured BEFORE the save
+            # below overwrites it, so "how many missing album art URLs
+            # did this sync just fill in" (item 9's own capture point —
+            # album_art_url comes from the same playlist-items response,
+            # no separate call) can be reported honestly rather than
+            # guessed at afterward.
+            previously_missing_art = {
+                track.id
+                for track in self.tracks.get_all_for_playlist(
+                    playlist.id, connection,
+                )
+                if track.album_art_url is None
+            }
+
             self.playlists.save(playlist, connection)
 
             for track in tracks:
@@ -156,6 +170,16 @@ class SpotifySyncService:
                 connection,
             )
 
+        art_urls_filled = sum(
+            1 for track in tracks
+            if track.id in previously_missing_art
+            and track.album_art_url is not None
+        )
+
         print(
             f"  Saved {len(tracks)} tracks."
         )
+        if art_urls_filled:
+            print(f"  Filled in {art_urls_filled} missing album art URL(s).")
+
+        return art_urls_filled

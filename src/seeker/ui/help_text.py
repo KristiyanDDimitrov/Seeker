@@ -238,6 +238,102 @@ TOOLTIP_FORCE_RETAG_CHECKBOX = (
     "Redo the text/art tag write and analysis even for files already "
     "tagged — e.g. after Spotify's metadata changed."
 )
+TOOLTIP_FIX_MISSING_ART = (
+    "Re-embed cover art only (never text tags) for this playlist's "
+    "auto-matched tracks whose art is missing or doesn't match the "
+    "real current Spotify art — a narrower, safer repair than "
+    "re-tagging everything."
+)
+TOOLTIP_FILL_MISSING_ART_URLS = (
+    "Re-fetch this playlist's tracks from Spotify (a real API call) to "
+    "populate any missing album art URLs — needed before \"Fix missing "
+    "cover art\" can do anything for a track synced before art URLs "
+    "were captured."
+)
+
+
+def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
+    """Roadmap item 66 (Phase 5.2) — mirrors format_tag_result_notice's
+    own shape for the narrower "Fix missing cover art" action."""
+    fixed = result["fixed"]
+    already_correct = result["already_correct"]
+    no_url = result["no_url"]
+    failed = (
+        result["download_failed"] + result["embed_failed"]
+        + result["format_unsupported"] + result["failed"]
+    )
+
+    message = f"Fixed art for {fixed} track{'s' if fixed != 1 else ''}"
+
+    parts = []
+    if already_correct:
+        parts.append(f"{already_correct} already correct")
+    if no_url:
+        parts.append(f"{no_url} missing an art URL")
+    if failed:
+        parts.append(f"{failed} failed")
+
+    if parts:
+        message += " — " + ", ".join(parts)
+
+    message += "."
+
+    if failed:
+        return message + " See the results panel below for details.", "error"
+    if no_url:
+        return (
+            message + " Re-run \"sync-tracks\" to populate missing art URLs.",
+            "warning",
+        )
+    if fixed:
+        return message, "success"
+
+    return message, "info"
+
+
+def format_tag_result_notice(result: dict[str, Any]) -> tuple[str, str]:
+    """Roadmap item 66 (Phase 5.1) — the real fix for a fully-already-
+    tagged re-run producing NO prominent notice at all (only the small,
+    easy-to-miss results panel): every real outcome now gets a message,
+    not just tagged/without_art/failed. Returns (message, notice_kind).
+    """
+    tagged = result["tagged"]
+    without_art = result["tagged_without_art"]
+    failed = result["failed"]
+
+    message = f"Tagged {tagged} track{'s' if tagged != 1 else ''}"
+
+    if without_art:
+        message += f" — {without_art} without cover art"
+
+    if failed:
+        message += f", {failed} failed"
+        message += " — see the results panel below for details."
+        return message, "error"
+
+    if without_art:
+        message += " — see the results panel below for details."
+        return message, "warning"
+
+    if tagged:
+        return message + ".", "success"
+
+    already_tagged = result.get("skipped_already_tagged", 0)
+
+    if already_tagged:
+        plural = "s" if already_tagged != 1 else ""
+        return (
+            f"{already_tagged} track{plural} already tagged — nothing "
+            f"to do. Right-click a row for \"Re-tag,\" or check "
+            f"\"Re-tag already tagged files\" to overwrite.",
+            "info",
+        )
+
+    return (
+        "Nothing was tagged — see the results panel below for details.",
+        "info",
+    )
+
 
 # --- Review tab ------------------------------------------------------------
 

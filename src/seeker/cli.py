@@ -322,6 +322,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    fix_art_parser = library_subparsers.add_parser(
+        "fix-art",
+        help=(
+            "Re-embed cover art only (never text tags) for auto-matched "
+            "tracks whose art is missing or doesn't match the real "
+            "current album_art_url — a narrower, safer repair than "
+            "'tag --force'."
+        ),
+    )
+    fix_art_parser.add_argument("playlist_name")
+
     fingerprint_parser = library_subparsers.add_parser(
         "fingerprint",
         help=(
@@ -544,6 +555,32 @@ def handle_library(
 
         if result["details"]:
             print("\nDetails (skipped, failed, or tagged without art):")
+
+            for detail in result["details"]:
+                print(f"  [{detail['reason']}] {detail['message']}")
+
+    elif parsed.library_command == "fix-art":
+        playlist = resolve_playlist_or_offer_sync(
+            parsed.playlist_name, application
+        )
+
+        result = application.metadata_service.fix_missing_art_for_playlist(
+            playlist.name
+        )
+
+        print(
+            f"Fixed: {result['fixed']}, "
+            f"Already correct: {result['already_correct']}, "
+            f"No art URL: {result['no_url']}, "
+            f"Download failed: {result['download_failed']}, "
+            f"Embed failed: {result['embed_failed']}, "
+            f"Unsupported format: {result['format_unsupported']}, "
+            f"Skipped (no match): {result['skipped_no_match']}, "
+            f"Failed: {result['failed']}."
+        )
+
+        if result["details"]:
+            print("\nDetails:")
 
             for detail in result["details"]:
                 print(f"  [{detail['reason']}] {detail['message']}")

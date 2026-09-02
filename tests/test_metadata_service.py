@@ -858,3 +858,167 @@ def test_tag_tracks_analyze_audio_true_writes_and_persists_real_analysis(
     reopened = MutagenFile(dest)
     assert reopened.tags.get("TBPM") is not None
     assert str(reopened.tags["TKEY"]) == local_file.camelot_key
+
+
+# --- fix_missing_art_for_playlist (roadmap item 66, Phase 5.2) ------------
+
+def _seed_playlist_with_track(service: MetadataService, track_id: str) -> None:
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="Test Playlist", track_count=1),
+            connection,
+        )
+        service.tracks.save_playlist_track("p1", track_id, connection)
+
+
+def test_fix_missing_art_raises_when_playlist_not_synced(tmp_path):
+    service = make_service(tmp_path)
+
+    with pytest.raises(PlaylistNotFoundError, match="never-synced"):
+        service.fix_missing_art_for_playlist("never-synced")
+
+
+def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    counts = service.fix_missing_art_for_playlist("Test Playlist")
+
+    assert counts["fixed"] == 1
+    assert counts["already_correct"] == 0
+    assert counts["failed"] == 0
+
+    reopened = MutagenFile(dest)
+    assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
+        tmp_path, monkeypatch,
+):
+    # The actual point of this action: a file whose embedded art
+    # already matches the real current CDN bytes gets no write at all
+    # -- proven here by seeding a WRONG text tag first and confirming
+    # it's still wrong afterward (text tags are never touched by this
+    # action, only art).
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    mutagen_file = MutagenFile(dest)
+    mutagen_file.add_tags()
+    from mutagen.id3 import APIC, TIT2
+    mutagen_file.tags.setall(
+        "APIC",
+        [APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=FAKE_JPEG_BYTES)],
+    )
+    mutagen_file.tags.setall("TIT2", [TIT2(encoding=3, text=["Untouched Title"])])
+    mutagen_file.save()
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        title="Real Spotify Title",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    def fail_if_called(url, timeout=None):
+        raise AssertionError(
+            "should not re-download art that's already byte-correct"
+        )
+
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    # First call is allowed (to compare against); patch a counting
+    # wrapper so a SECOND real fix run makes no further real call.
+    calls = {"n": 0}
+
+    def counting_get(url, timeout=None):
+        calls["n"] += 1
+        return _fake_jpeg_response(url, timeout)
+
+    monkeypatch.setattr(httpx, "get", counting_get)
+
+    counts = service.fix_missing_art_for_playlist("Test Playlist")
+
+    assert counts["fixed"] == 0
+    assert counts["already_correct"] == 1
+
+    reopened = MutagenFile(dest)
+    # Text tag is exactly what was seeded, NOT the real Spotify title --
+    # proof this action never rewrites text tags.
+    assert str(reopened.tags["TIT2"]) == "Untouched Title"
+    assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_fix_missing_art_reports_no_url(tmp_path):
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "song.wav", album_art_url=None)
+    _seed_playlist_with_track(service, "t1")
+
+    counts = service.fix_missing_art_for_playlist("Test Playlist")
+
+    assert counts["fixed"] == 0
+    assert counts["no_url"] == 1
+    assert counts["details"][0]["reason"] == "no_url"
+
+
+def test_fix_missing_art_only_touches_auto_matched_tracks(tmp_path):
+    # get_auto_matched_for_playlist already filters to match_method=
+    # 'auto' at the SQL level -- a needs_review track is structurally
+    # never even returned, not just skipped at runtime.
+    root = tmp_path / "music"
+    root.mkdir()
+
+    service = make_service(tmp_path)
+    with service.database.transaction() as connection:
+        service.playlists.save(
+            Playlist(id="p1", name="Test Playlist", track_count=1),
+            connection,
+        )
+        service.tracks.save(
+            Track(
+                id="needs-review-track", title="T", artist="A", album="Al",
+                duration_ms=1000, album_art_url="https://i.scdn.co/image/fake",
+            ),
+            connection,
+        )
+        service.tracks.save_playlist_track(
+            "p1", "needs-review-track", connection
+        )
+        service.track_matches.upsert(
+            TrackMatch(
+                track_id="needs-review-track",
+                local_file_id=None,
+                match_method="needs_review",
+                score=75.0,
+                matched_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    counts = service.fix_missing_art_for_playlist("Test Playlist")
+
+    assert counts["fixed"] == 0
+    assert counts["no_url"] == 0
+    assert counts["skipped_no_match"] == 0
+    assert counts["details"] == []

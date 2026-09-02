@@ -181,6 +181,29 @@ def embed_album_art(
     return False
 
 
+def read_embedded_art(mutagen_file: Any) -> bytes | None:
+    """Roadmap item 66 (Phase 5.2) — the read-side counterpart to
+    embed_album_art, same dispatch/type checks, for "Fix missing cover
+    art": deciding whether a file's already-embedded picture (if any)
+    matches the real current album_art_url bytes requires reading it
+    back first. Returns the first/only front-cover picture's raw bytes,
+    or None if the format has no picture at all — never raises.
+    """
+    if isinstance(mutagen_file.tags, ID3):
+        apics = mutagen_file.tags.getall("APIC")
+        return bytes(apics[0].data) if apics else None
+
+    if isinstance(mutagen_file, FLAC):
+        pictures = mutagen_file.pictures
+        return bytes(pictures[0].data) if pictures else None
+
+    if isinstance(mutagen_file, MP4):
+        covers = mutagen_file.tags.get("covr") if mutagen_file.tags else None
+        return bytes(covers[0]) if covers else None
+
+    return None
+
+
 def write_analysis_tags(
         mutagen_file: Any,
         bpm: float,
