@@ -931,9 +931,15 @@ compress it here before moving on to the next item.
     window; a from-scratch `MainWindow` in a fresh throwaway env
     triggers a REAL Spotify OAuth browser popup (`sync_service`'s
     eager, unguarded `self.spotify` property access) unless a fake
-    cached token is seeded first. Temporary diagnostic
-    (`[poll_downloads] ... called` / `pending=N locked=N`) still in
-    `poll_downloads()` — remove once root-caused.
+    cached token is seeded first. **Updated, item 66:** the diagnostic
+    print is no longer unconditional — converted to `_debug_poll()`,
+    gated behind `SEEKER_DEBUG_POLL=1` (kept, not deleted, since the
+    real root cause is still unknown and this stays available for a
+    future recurrence) — and Phase 4.3's exponential backoff/terminal
+    `unavailable` state now structurally BOUNDS any future storm's
+    retry rate regardless of cause (a real production storm was 300+
+    retries of one row in ~18 minutes; that specific shape can no
+    longer happen, even though why it happened at all remains open).
     [HISTORY §63](docs/HISTORY.md#63)
 64. **Support page — done.** Real sidebar page below Help (static copy,
     built eagerly — nothing to lazy-load), donation links + non-financial
