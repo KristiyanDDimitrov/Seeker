@@ -1040,6 +1040,21 @@ compress it here before moving on to the next item.
     says it's the cause, but nothing rules it out either, and it's the
     newest code touching the exact step where this reproduces.
     [HISTORY §70](docs/HISTORY.md#70)
+71. **Fix: "You're all set" (and any next-step CTA) reappeared ~2s after
+    being dismissed — done.** `InlineNotice` gained a real
+    `dismissed = Signal()`, emitted from `dismiss()`.
+    `MainWindow._render_next_step` (poll-driven, every 2s) now tracks a
+    dismissed-step key (playlist name + step message + action) and
+    skips re-showing an identical step, clearing the stored key the
+    moment the computed key changes — so a genuinely different step, or
+    the same step recurring later, still surfaces. Confirmed via Phase 0
+    that `dashboard_notice`/`locations_notice` don't share this bug —
+    both are only ever driven from action-result callbacks, never a
+    poll tick. First item closed from `docs/BRIEF-2026-09-02.md`
+    (P1-P6, six real user-reported bugs); Phase 0's live reproduction
+    also surfaced a real, already-existing DB/disk desync in the "Test"
+    library location unrelated to this fix — see item 72+ for the
+    rename item that actually explains it.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

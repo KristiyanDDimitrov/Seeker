@@ -53,6 +53,31 @@ def test_action_button_shown_and_wired_with_an_action(qtbot):
     assert calls == [1]
 
 
+def test_dismiss_emits_dismissed_signal(qtbot):
+    notice = InlineNotice()
+    qtbot.addWidget(notice)
+    calls = []
+    notice.dismissed.connect(lambda: calls.append(1))
+
+    notice.show_message("Hello", kind="info")
+    notice.dismiss()
+
+    assert calls == [1]
+
+
+def test_dismiss_button_click_emits_dismissed_signal(qtbot):
+    notice = InlineNotice()
+    qtbot.addWidget(notice)
+    calls = []
+    notice.dismissed.connect(lambda: calls.append(1))
+
+    notice.show_message("Hello", kind="info")
+    notice._dismiss_button.click()
+
+    assert calls == [1]
+    assert notice.isHidden()
+
+
 def test_second_show_message_replaces_the_action_rather_than_stacking(qtbot):
     notice = InlineNotice()
     qtbot.addWidget(notice)

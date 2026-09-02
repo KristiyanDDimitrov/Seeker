@@ -24,7 +24,7 @@ needs to still see a few seconds later belongs there anymore.
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from seeker.ui import theme
@@ -44,6 +44,14 @@ class InlineNotice(QWidget):
     its own visibility, so the caller never needs to show/hide the
     widget itself, only call `show_message`/`dismiss`.
     """
+
+    # Roadmap item 71 (P3) — emitted from dismiss() (both the X button
+    # and any programmatic call) so a poll-driven caller can remember
+    # "the user dismissed this" instead of blindly re-showing on the
+    # next tick. A signal, not a caller reaching into
+    # `_dismiss_button` directly — other pages use this widget too and
+    # would need the same thing.
+    dismissed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -128,6 +136,7 @@ class InlineNotice(QWidget):
 
     def dismiss(self) -> None:
         self.hide()
+        self.dismissed.emit()
 
     def text(self) -> str:
         return self._message_label.text()

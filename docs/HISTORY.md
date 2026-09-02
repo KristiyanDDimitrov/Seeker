@@ -9896,3 +9896,121 @@ step) but explicitly NOT reverted or blocked on this — nothing found
 here implicates it specifically, and undoing real, tested, working
 functionality on an unconfirmed suspicion would trade a known-good
 capability for no proven benefit.
+
+### 71
+
+New work block: `docs/BRIEF-2026-09-02.md`, six real user-reported bugs
+(P1-P6), four of which had been reported and closed as irreproducible
+before. Standing rule for this block: reproduce everything live at the
+app's real minimum window size (960×640) before touching code, and "not
+reproducible" is not an acceptable outcome for P2/P4/P6 a fourth time.
+
+**Phase 0 — live reproduction, real findings:**
+
+- **P4 (0.1):** measured real geometry against real production
+  duplicate groups (25 real groups, `x9-pro`, DnB vs. "Where The Chaos
+  Lies" album overlap — scoped via `find_duplicate_groups(folders=...)`
+  for speed rather than the ~10-minute whole-location run). At 960×640:
+  `header.sectionSize(ACTIONS) = 230`, but the real Actions widget's
+  `visibleRegion().boundingRect()` is `(0,0,0,0)` — completely
+  invisible, worse than the brief's "~15px sliver" estimate. At
+  1600×900 it renders fully (610px). Confirmed via `grep` that
+  `clearSpans`/`setSectionResizeMode`/`setColumnWidth`/
+  `setMinimumSectionSize`/`resizeColumnsToContents` appear nowhere in
+  `src/seeker/ui/` — nothing has ever set real column widths.
+
+- **P2 (0.2) — the real finding of this phase.** Running
+  `seeker library rename Test` against the real production DB/library
+  surfaced a state that predates this session entirely: the real "Test"
+  folder's matched files were already partially renamed. Cross-checking
+  real file mtimes against the DB (`local_files.relative_path`) showed
+  5 of the 7 tracks the rename feature had previously proposed
+  (Breach, Glassy Star, Banana Shoes, Tractor Beam, Jade Venom) were
+  **already renamed correctly on the real filesystem** (today,
+  00:04), matching `build_track_filename`'s exact canonical output —
+  but `local_files.relative_path` in the real DB **still held the
+  pre-rename name for all 5**, with no rescan having reconciled it
+  since. Re-running the dry run against this desynced state produced a
+  false `collision` ("needs a numbered suffix") for every one of the 5,
+  since the plan was comparing a stale DB name against a target that
+  was, in fact, its own already-completed rename.
+
+  Asked the user directly rather than guessing: confirmed this was
+  produced by Seeker's own Rename feature, not a manual rename outside
+  the app. That rules out the innocent "user renamed by hand" reading
+  and means the real, live behavior is: file rename succeeds, but the
+  DB write that's supposed to follow it doesn't land (or doesn't land
+  durably) for a whole batch. Read `_apply_one_rename`
+  (`metadata_service.py`) end to end looking for why: the code renames
+  the file, then updates `local_files.relative_path` inside its own
+  `database.transaction()`, and — if that update raises — renames the
+  file BACK and reports a failure. That logic reads correctly by
+  inspection. Checked for the more mundane explanation (an unclean
+  shutdown mid-transaction leaving a stale journal): `PRAGMA
+  journal_mode` is `delete` (not WAL) and there is no stray
+  `-journal`/`-wal` file sitting next to `seeker.db`. **Root cause not
+  conclusively identified** — recorded as unresolved, matching this
+  project's own established precedent for a handful of prior real,
+  confirmed-but-not-root-caused findings (items 63, 68's stale span,
+  70) rather than fabricating a mechanism that fits the evidence but
+  wasn't actually verified.
+
+  With the user's explicit go-ahead: backed up the real `seeker.db`
+  first (`seeker.db.bak-pre-rescan-20260903T011231`), then ran a normal
+  `seeker library scan` + `seeker library match` — DB-only, no real
+  file touched — to reconcile the 5 stale rows with their real current
+  names. A follow-up dry run confirmed the false collisions were gone
+  and the plan now correctly proposes only the 2 tracks (Push It To The
+  Limit, Ultraviolet) that were genuinely never renamed. Also surfaced,
+  not pursued (out of this brief's scope): the "Test" library location
+  and part of `x9-pro` contain real, literal duplicate copies of
+  several tracks living in different folders — which physical copy a
+  track's `track_matches` row resolves to can shift across rescans,
+  independent of the rename bug itself.
+
+- **P5 (0.3):** `docker inspect slskd` on the real, currently-running
+  container shows its live `/app` mount source is the **repo's own**
+  `slskd-data/` (item 13's hand-edited copy, real active `shares:`
+  block already present at line 352) — not
+  `~/Library/Application Support/Seeker/slskd-data/`, which doesn't
+  exist on this machine at all. This container was brought up via a
+  plain dev-mode `docker compose up` (its
+  `com.docker.compose.project.config_files` label is the repo's
+  `docker-compose.yml`), never through the wizard's `bring_up_slskd()`.
+  Because of this, the brief's exact reported error wouldn't reproduce
+  against this specific container (it already has an active block to
+  insert into) — but this same live state independently CONFIRMS 5.3
+  is real right now, not just a hypothetical: `SharingService.
+  is_self_managed()` would return `False` if the packaged `.app`
+  (whose `compose_file_path()` resolves inside the bundle) were pointed
+  at this exact container, since the bundle path can never match the
+  container's real recorded label.
+
+- **P6 (0.4):** re-confirmed the write path is sound — 4 real,
+  currently-reachable auto-matched Test tracks (spanning a nested
+  Test-location mp3, 2 flacs, 1 more mp3) all have byte-exact embedded
+  art matching the current Spotify CDN bytes. Both real MP3s tested
+  write **ID3v2.4**. Library-wide format counts: 2027 mp3 / 1165 flac /
+  70 wav / 12 m4a — ~2% wav, real but not "materially wav".
+
+- **P3 (0.5):** confirmed via source read (no live UI drive needed) —
+  `_render_next_step` calls `next_step_notice.show_message()`
+  unconditionally on every 2s poll tick; `InlineNotice.dismiss()` only
+  ever `hide()`s. Checked the other two `InlineNotice` instances
+  (`dashboard_notice` in `main_window.py`, `locations_notice` in
+  `settings_window.py`): both are only ever shown from action-result
+  callbacks (a worker's `on_finished`/`on_error`), never a poll-tick
+  render method, so neither shares this bug — confirmed, not assumed,
+  by grepping every `.show_message(` call site.
+
+**P3 fix (CLAUDE.md item 71):** `InlineNotice` gained
+`dismissed = Signal()`; `MainWindow` tracks a dismissed-step identity
+key (selected playlist name + step message + step action) and
+suppresses re-showing that exact step while it's still current, but
+clears the stored key the instant the computed key differs — a
+genuinely different step, or the same step recurring later after
+something else was shown in between, both still surface. 4 new tests
+(2 in `test_notice.py` for the new signal, 2 in `test_ui_smoke.py`
+driving `_render_next_step` directly for determinism — no reliance on
+the real 2s timer). `mypy --strict` clean; full suite 878 passed / 1
+skipped.

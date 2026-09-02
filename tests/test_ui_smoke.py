@@ -1180,6 +1180,97 @@ def test_next_step_action_button_opens_settings_on_the_connection_tab(
     ) == SETTINGS_TAB_CONNECTION
 
 
+# --- Roadmap item 71 (P3): dismissed next-step notice stays dismissed ------
+
+def test_dismissed_next_step_notice_stays_hidden_across_poll_ticks(qtbot):
+    # Regression test for the real reported bug: "You're all set"
+    # reappeared ~2s after being dismissed, because _render_next_step
+    # called show_message() unconditionally on every poll tick with no
+    # memory of the dismissal. Drives _render_next_step directly
+    # (not the real 2s timer) so three "ticks" are deterministic.
+    from seeker.ui.main_window import _NextStepFacts
+
+    application = FakeApplication(spotify_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    facts = _NextStepFacts(
+        spotify_configured=False,
+        has_library_location=True,
+        has_cached_playlists=True,
+        selected_playlist_name=None,
+        track_statuses=None,
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+    window._render_next_step(facts)
+    assert not window.next_step_notice.isHidden()
+
+    window.next_step_notice.dismiss()
+    assert window.next_step_notice.isHidden()
+
+    for _ in range(3):
+        window._render_next_step(facts)
+        assert window.next_step_notice.isHidden()
+
+    # A genuinely different step (facts changed) must still surface —
+    # dismissal is per-step, not a permanent silence.
+    other_facts = _NextStepFacts(
+        spotify_configured=True,
+        has_library_location=False,
+        has_cached_playlists=True,
+        selected_playlist_name=None,
+        track_statuses=None,
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+    window._render_next_step(other_facts)
+    assert not window.next_step_notice.isHidden()
+    assert "music folder" in window.next_step_notice.text().lower()
+
+
+def test_dismissed_next_step_notice_reappears_when_it_recurs_later(qtbot):
+    # The identical step recurring after something else was shown in
+    # between must NOT stay suppressed by an old dismissal.
+    from seeker.ui.main_window import _NextStepFacts
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    step_facts = _NextStepFacts(
+        spotify_configured=False,
+        has_library_location=True,
+        has_cached_playlists=True,
+        selected_playlist_name=None,
+        track_statuses=None,
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+    all_set_facts = _NextStepFacts(
+        spotify_configured=True,
+        has_library_location=True,
+        has_cached_playlists=True,
+        selected_playlist_name=None,
+        track_statuses=None,
+        has_scanned_library=True,
+        soulseek_configured=True,
+    )
+
+    window._render_next_step(step_facts)
+    assert not window.next_step_notice.isHidden()
+    window.next_step_notice.dismiss()
+
+    window._render_next_step(all_set_facts)
+    assert window.next_step_notice.isHidden()
+
+    # The same step comes back later (e.g. the user disconnected
+    # Spotify again) -- it must show, not stay silenced by the earlier
+    # dismissal of a since-superseded instance of it.
+    window._render_next_step(step_facts)
+    assert not window.next_step_notice.isHidden()
+
+
 # --- Roadmap item 56 Phase 3: Settings as an in-window page -----------------
 
 def test_settings_page_shows_its_subtitle_via_build_page(qtbot):

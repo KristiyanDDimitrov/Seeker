@@ -1,117 +1,99 @@
-# Task ledger — work block: action feedback, status truthfulness, tagging art, filenames, duplicates scope & progress, Support page
+# Task ledger — work block: docs/BRIEF-2026-09-02.md (P1-P6, six user-reported bugs)
 
 Working ledger for this block only (not a permanent doc). Every item from
 the brief, one line each, ticked only when done *and* verified, with a
 one-line result + commit sha. Items not done as briefed are marked
 `NOT DONE — <reason>`, never silently dropped.
 
-Re-read this file at every phase boundary before starting the next phase.
+Commit order per the brief: P3 → P1 → P4 → P5 → P6 → P2.
 
-## Phase 0 — Task ledger + recon (read-only, report before implementing)
+## Phase 0 — Live reproduction (read-only except 0.2, see below)
 
-- [x] 0.0 Build this ledger — done, this file.
-- [x] 0.1 CONFIRMED live (offscreen MainWindow, artificially-slowed scan_and_match): `_render_next_step` (main_window.py:2658-2665) unconditionally `.setEnabled()`s all 4 action-row buttons on every 2s poll_timer tick, fighting `run_worker(button=...)`'s busy-disable and the manual `_set_download_button_busy`/`_reset_download_button` pair. Real log: button re-enabled at t=2.0s while scan still running until t=6s.
-- [x] 0.2 CONFIRMED by code (dashboard_service.py `_compute_status`): a `soulseek_review_candidates` row with no `download_requests` row is only ever a secondary tag on NEEDS_REVIEW/NOT_FOUND, never a primary state — by construction, matching the brief exactly.
-- [x] 0.3 CONFIRMED by code + real DB: `_AWAITING_REVIEW_STATUSES={ready_for_review,locked,shortlisted}`, `_DOWNLOADING_STATUSES={queued,downloading}`. `_retry_locked_request` can transiently write 'downloading' before the async rejection manifests, then flip back to 'locked' next poll — real oscillation. No retry_count/backoff/terminal state exists anywhere — real DB has 3 locked rows stuck since 2026-08-27/28 (5+ days), confirming no bound.
-- [x] 0.4 Primary hypothesis (append-not-replace) already refuted in item 56 Phase 0.4/Phase 4. Re-confirmed live: all 8 currently-tagged real files have byte-exact CDN-matching art (0 mismatches). Real, still-open gap found: `_show_tag_result_notice` has no branch for tagged=0/without_art=0/failed=0-but-skipped_already_tagged>0 — a fully-already-tagged re-run produces zero InlineNotice, only the easy-to-miss small results panel.
-- [x] 0.5 NOT reproducible, even at real scale (15 groups / 45 rows, real default 1180x760 window). Column indices verified correct both statically and by resolving via header text at runtime (Actions=7, matches code exactly). `setStretchLastSection` makes the Actions column's right edge exactly equal the viewport width — cannot scroll off-screen. Matches item 61 Phase 6.2's own "could not reproduce."
-- [x] 0.6 Real numbers: 110 never-fingerprinted rows, 34 succeed (new files), 76 genuine failures (identical to item 39's original 76, same 2 confirmed 0-byte files still 0 bytes). librosa fallback: only 11/76 succeed (65/76 fail identically — librosa routes through the same libsndfile/soundfile backend). ffmpeg IS on PATH (`/opt/homebrew/bin/ffmpeg`) and successfully decodes a real "bad data offset" MP3 that both soundfile and librosa failed on.
+- [x] 0.1 CONFIRMED live, real numbers, worse than the brief's estimate.
+  Real `x9-pro` duplicate groups (25 groups, DnB vs. "Where The Chaos
+  Lies" album overlap) rendered into a real `MainWindow` at 960×640:
+  `sectionSize(ACTIONS)=230`, but the Actions widget's
+  `visibleRegion().boundingRect()` is `(0,0,0,0)` — fully invisible, not
+  merely clipped. At 1600×900 it's fully visible (610px wide). Confirmed
+  via grep: `clearSpans`/`setSectionResizeMode`/`setColumnWidth`/etc.
+  appear nowhere in `src/seeker/ui/`.
+- [x] 0.2 Ran the real dry-run (`seeker library rename Test`) against the
+  real production DB/library. Found a real, live, **already-existing**
+  DB/disk desync predating this session: 5 of 7 previously-proposed
+  renames were already applied to real files on disk (confirmed via the
+  user: applied through Seeker's own Rename feature), but
+  `local_files.relative_path` for all 5 still held the pre-rename name —
+  no rescan had reconciled it. Root cause of the DB write not landing
+  (or not landing durably) was **not conclusively identified** — the
+  code path (`_apply_one_rename`) reads correctly on inspection (renames
+  the file back if the DB write raises), no stale `-wal`/`-journal` file,
+  `PRAGMA journal_mode` is `delete` (no WAL). Recorded as unresolved,
+  same as this project's own precedent for a handful of prior real,
+  confirmed-but-not-root-caused findings (items 63, 68's stale-span,
+  70). **Real production DB written**: per user's explicit direction,
+  backed up `seeker.db` first
+  (`seeker.db.bak-pre-rescan-20260903T011231`), then ran a normal
+  `seeker library scan` + `seeker library match` (DB-only, no real file
+  touched) to reconcile — confirmed via a follow-up dry run that the 5
+  rows now read correctly and no false collision remains. Also
+  surfaced (not pursued — out of scope for this brief): the "Test"
+  library location and part of the `x9-pro` location contain real,
+  literal duplicate copies of several tracks in different folders,
+  independent of P2 — real matcher/rename behavior can shift which
+  physical copy a track resolves to across rescans.
+- [x] 0.3 CONFIRMED: real `slskd.yml` inside the currently-running
+  container's live `/app` mount (via `docker inspect`) is the **repo's**
+  `slskd-data/slskd.yml` (item 13's hand-edited copy, active `shares:`
+  block already present) — this container was brought up via a plain
+  dev-mode `docker compose up`, not the wizard's `bring_up_slskd()`.
+  `~/Library/Application Support/Seeker/slskd-data/` does not exist on
+  this machine at all. Live-confirms 5.3 is real right now, not just
+  hypothetical: `is_self_managed()` would return `False` against this
+  exact container if the packaged `.app` were used (its bundled
+  `compose_file_path()` can never match the container's real
+  `com.docker.compose.project.config_files` label).
+- [x] 0.4 CONFIRMED sound, matches the brief's "already ruled out"
+  section. 4 real, currently-reachable auto-matched Test tracks (1 mp3
+  nested-location, 1 flac, 1 mp3, 1 flac) all have byte-exact embedded
+  art vs. the current Spotify CDN bytes. Both real MP3s tested write
+  **ID3v2.4**. Library-wide format counts: mp3 2027, flac 1165, wav 70,
+  m4a 12 (~2% wav — real, not "materially wav").
+- [x] 0.5 CONFIRMED via source: `_render_next_step` calls
+  `next_step_notice.show_message()` unconditionally every 2s poll tick;
+  `InlineNotice.dismiss()` only `hide()`s, no memory of the dismissal.
+  Checked the other two `InlineNotice` instances
+  (`dashboard_notice`/`locations_notice`): both are only ever shown from
+  action-result callbacks (worker `on_finished`/`on_error`), never from
+  a poll-tick render method — confirmed they do NOT share this bug, no
+  second copy to fix (3.4).
 
-**Report all six before implementing anything (phase gate).**
+**Reported all five before implementing anything (phase gate) — including
+asking the user 3 clarifying questions given 0.2's real-file discovery,
+answered before proceeding.**
 
-## Phase 1 — Support page
+## P3 — "You're all set" reappears after being dismissed
 
-- [x] 1.1 Real sidebar Support page, directly below Help, `_build_page` pattern, built eagerly like Help (nothing to lazy-load — purely static copy, no DB/service call at all; noted as a deliberate deviation from "lazy-loaded like Duplicates/History" since there's no fetch to defer).
-- [x] 1.2 SUPPORT_LINKS already had both Revolut and PayPal live (PayPal went live 2026-09-01, per existing comment) — no reconciliation needed. Extracted `_build_support_links_row()` shared by AboutDialog and the new Support page so the loop lives once, not twice.
-- [x] 1.3 Help menu/About dialog/wizard done page confirmed unchanged (28/28 wizard tests, About dialog tests all pass). Added 4 new Support-page smoke tests + updated the nav-buttons-enumeration test for the new "support" key. Extended `test_stress_e2e.py`'s interleaved loop with a Support page visit.
+- [x] 3.1 `InlineNotice` gains a real `dismissed = Signal()`, emitted
+  from `dismiss()` (covers both the X button and any programmatic
+  dismiss call).
+- [x] 3.2 `MainWindow` gains `_dismissed_next_step_key`/
+  `_current_next_step_key` (tuple of playlist name + step message +
+  step action). `_render_next_step` computes the current key, checks it
+  against the dismissed key BEFORE clearing, keeps the notice hidden
+  when they match, and clears the stored dismissed key the moment the
+  computed key differs (so a genuinely different step — or the same
+  step recurring later — still surfaces).
+- [x] 3.3 4 new tests: `test_notice.py` gets 2 (dismiss emits the
+  signal, both via direct call and the real button click);
+  `test_ui_smoke.py` gets 2 (dismissed stays hidden across 3 direct
+  `_render_next_step` "ticks", then a genuinely different step still
+  shows; a dismissed step recurring after something else was shown in
+  between is NOT suppressed by the stale dismissal).
+- [x] 3.4 Done as part of Phase 0.5 above — confirmed no second copy of
+  this bug exists.
 
-**Commit boundary — commit 234ac4b.**
+`mypy --strict` clean on both touched files. Full suite after adding the
+4 new tests: 878 passed, 1 skipped (0 failures).
 
-## Phase 2 — Make long-running actions visibly running
-
-- [x] 2.1 `ui/busy_actions.py::BusyActionRegistry` (module in `ui/`, kept OUT of `ui/workers.py` deliberately — no cross-thread/signal machinery needed, and that file already has 3 documented crash/deadlock histories). Wired into sync/scan/match/download/sync_tracks/tag_selected/tag_playlist/compute_fingerprints/find_duplicates/sharing_refresh/history_refresh via a new `_run_busy_worker` helper. Per-row/per-item dynamic actions (per-track Tag, per-group Delete, Review confirm/reject, per-location Add-to-share) deliberately scoped OUT — not fought by any poll (verified), and a global strip label for "which of N rows" adds no value. `_render_next_step` now guards every button touch with `is_running()`. Also fixed the user-flagged `download_button.setVisible()` mid-download hiding bug in the same guard.
-- [x] 2.2 Global activity strip: new column between sidebar and `stacked_widget`, hidden at zero, label + progress bar (indeterminate by default, determinate once Phase 7 wires real progress). Shows a count, not a merged number, when >1 action running.
-- [x] 2.3 `task_progress` signal added to the existing, already-permanently-connected `_dispatcher` (3rd signal, same "primitives only, connect once" pattern as the other two). `run_worker(..., on_progress=...)` optional; when omitted, `fn` called with zero args exactly as before (verified: every pre-existing call site untouched). Throttled at the SOURCE (inside `Worker._report_progress`, on the worker thread) — `PROGRESS_EMIT_MIN_INTERVAL_S=0.25` OR `PROGRESS_EMIT_EVERY_N=25`, whichever first; first report always emits (`_progress_last_emit` init to `-inf`, a real fix found by my own test using a monkeypatched clock at 0.0).
-- [x] 2.4 Verified: live async repro re-run — scan button stayed busy across 5+ real 2s poll ticks (t=0 through t=5s), restored exactly once at real completion (t=6s). Deadlock regression suite 3x clean. Full fast suite 3x: 789-790/790, one pre-existing flaky test (documented, not a regression — reproduces 1/5 in isolation too). `test_ui_smoke.py` timing: ~5.0-5.4s across runs, no hang/slowdown. Progress-heavy worker (3,000 throttled reports over several seconds) added to the opt-in stress test's interleaved loop with real assertions on delivered event count/first/last — actual RUN deferred to closing-out (real ~5+ min against real infra; will cover every phase's cumulative changes in one pass, per the brief's own closing-out step).
-
-**Commit boundary — commit 81dfb5a.**
-
-## Phase 3 — Ask where downloads should go
-
-- [x] 3.1 Confirmed against real code: no folder-name detection exists. `_resolve_destination` picked the configured default location + subfolder-per-playlist (playlist name sanitized); the user's existing "Psytrance" folder matched "PsyTrance" purely because macOS's default filesystem is case-insensitive. Coincidental, not a feature.
-- [x] 3.2 `_on_download_clicked` now checks `playlist.download_location_id is not None` (already loaded on the Playlist itself — no extra query) to decide skip-vs-prompt, replacing the old "anything resolvable skips it" rule. `DestinationDialog` extended (not duplicated) with `initial_subfolder` (pre-fills the REAL current fallback via `get_resolved_destination`, not just the raw playlist name) and a live `location_path_preview` label (`help_text.format_destination_preview`) showing the exact absolute path, whether it exists, and a real audio-file count via `AUDIO_EXTENSIONS`.
-- [x] 3.3 Verified: CLI's `handle_download`/`download_playlist`/`_resolve_destination` completely untouched (confirmed by reading — zero changes outside `ui/main_window.py`/`ui/help_text.py`), 73 CLI/download-service tests pass unmodified. A playlist with its own destination never prompts (regression test), one without always prompts once pre-filled with the real fallback (new test), and the dialog's live preview updates correctly across 3 new tests (new-folder case, real audio-file count, live field-change updates).
-
-**Commit boundary — commit c1e4034.**
-
-## Phase 4 — Statuses that tell the truth, bounded retry
-
-- [x] 4.1 `TrackStatus` split 5->7 states (RETRYING, REVIEW_CANDIDATE added); precedence `IN_LIBRARY > DOWNLOADING > AWAITING_REVIEW > RETRYING > NEEDS_REVIEW > REVIEW_CANDIDATE > NOT_FOUND` (confirmed correct against real code, no case found where it's wrong). Secondary "SoulSeek candidate found" tag confirmed rendered (was live in the UI) — kept only for NEEDS_REVIEW (redundant for REVIEW_CANDIDATE, whose own label already says it). Double-click-to-review + its Review-page focus (`_focus_pending_review_row`) extended to REVIEW_CANDIDATE rows (a real, previously-missing 3rd search branch added). CLI checked and confirmed to never use `TrackStatus`/`dashboard_service` at all — nothing to reconcile there.
-- [x] 4.2 `download_playlist()` result gains `needs_review: list[str]`. New `help_text.format_download_result_message()` names requested/sent-to-review/already-in-progress/no-candidate-found separately (never via subtraction from `total`). CLI's `handle_download` updated to match, same non-subtraction principle.
-- [x] 4.3 `download_requests.retry_count`/`next_retry_at` (guarded migration, verified against real production DB — 14 rows unchanged, all 3 real pre-existing locked rows now retry_count=0). Exponential backoff (60s/120s/240s.../cap 3600s), terminal `unavailable` after 8 attempts, excluded from `get_requests_blocking_redownload`. **Real bug found and fixed via live verification against production slskd**: a genuinely unrecognized error (a real `500 Internal Server Error` on `/api/v0/transfers/downloads/batches` — the exact endpoint item 63 flagged as its one concrete lead) escaped the original `except SoulseekDownloadError` handling entirely, never advancing retry_count — reproducing the exact unbounded-retry shape this phase exists to fix. Fixed with broader exception handling around both `request_download` and `get_download_status` that always advances the retry budget before re-raising. Diagnostic print gated behind `SEEKER_DEBUG_POLL=1`.
-- [x] 4.4 Verified live against real production slskd (2026-09-02): retry_count/next_retry_at advanced correctly across 2 real consecutive polls (0→1→2 for one row, with real backoff timestamps ~60-70s apart); the 500-error gap above found AND fixed live, re-verified fixed with a second real poll. Full exhaustion-to-unavailable path (8 attempts, hours of real backoff) verified via mocked-clock-free but count-seeded unit tests instead — reaching it live would take hours, disclosed as the one gap. `unavailable` added to `TERMINAL_STATUSES`, `_DOWNLOAD_TERMINAL_STATUSES`, `_is_visible`'s recently-finished window, and a new `seeker downloads status`/UI "Unavailable: N" count. Full audit of every status-consuming query in the codebase (11 in the repository, plus dashboard_service.py/main_window.py/download_service.py) — full list in the phase report.
-
-**Commit boundary — commit b3d59c6.**
-
-## Phase 5 — Cover art that actually lands
-
-(Scope adjusted by user: force=True item dropped — already correct per item 46. 5.1's missing-notice branch is primary. 5.4 simplified per user instruction.)
-
-- [x] 5.1 Fixed the real gap: `_show_tag_result_notice`/`help_text.format_tag_result_notice` now handles tagged=0/without_art=0/failed=0-but-skipped_already_tagged>0 — previously produced ZERO notice, only the small results panel.
-- [x] 5.2 New `MetadataService.fix_missing_art_for_playlist()` — re-embeds art only (never text tags), for auto-matched tracks whose embedded art is missing or byte-mismatches the real current `album_art_url` (authoritative SHA comparison, same method as Phase 0.4's own investigation). New `metadata.py::read_embedded_art()`. UI button + CLI `seeker library fix-art <playlist>`.
-- [x] 5.3 `sync_service.sync_playlist_tracks()` now returns a real count of art URLs filled in (captured before/after the save). New "Fill missing art URLs" button + notice.
-- [x] 5.4 (simplified) Verified the new notices render via 12 new tests (service-layer + UI). **Two real bugs found by my own tests, not review** — (1) a fresh untagged file has `mutagen_file.tags is None`, so `embed_album_art`'s `isinstance(..., ID3)` check silently no-ops without an explicit `add_tags()` first (missing in the new method, present in `_tag_one_track`); fixed. (2) confirmed via a deliberately-wrong-seeded-text-tag test that "already correct" art genuinely skips the write with zero text-tag mutation. **Asked user, confirmed target: real "Test" playlist.** Real before-state (read-only): 3/9 auto-matched tracks had genuinely mismatched embedded art (Breach, Bit Perfect, Jade Venom — real SoulSeek-download art, not Spotify's), 6/9 already correct. Ran `seeker library fix-art Test` for real — `Fixed: 3, Already correct: 6, everything else: 0`. Real after-state: **9/9 byte-exact CDN match**, confirmed via direct re-read. Text tags/audio integrity spot-checked intact on all 3 fixed files (one, "Breach," had never been text-tagged at all — its tag still reads the pre-Spotify "Balron & Audio," proving text tags were genuinely never touched).
-
-**Commit boundary — commit b2509e0.**
-
-## Phase 6 — Filenames that match the metadata
-
-- [x] 6.1 `seeker/filename_format.py::build_track_filename` — pure function, `Artist1, Artist2 - Title.ext`, feat-dedupe heuristic, 255-UTF8-byte cap (title truncated, never extension, never mid-character). Refactored `filename_sanitize.py` to expose `clean_path_component` (char-cleaning only, no length cap) so the two modules' genuinely different length rules (200 chars vs 255 bytes) don't fight — confirmed behavior-preserving (13 existing tests unchanged). 17 new tests, all pass.
-- [x] 6.2 Two-step temp-name rename (`_rename_via_temp`) for case-only changes on a case-insensitive volume — tested on the REAL filesystem (tmp_path, same default case-insensitive APFS as the rest of this machine), not simulated.
-- [x] 6.3 `MetadataService.plan_renames`/`apply_renames` + `RenamePlan`/`RenameResult`. DB-row-AFTER-file ordering (opposite of item 40's delete rule, documented why). Re-verifies still-auto-matched at apply time (refuses, not silent skip). DB-write failure rolls the file back. **Real design gap found by my own tests**: my first draft only auto-resolved collisions at PLAN time and then refused them at APPLY time — the brief actually wants apply_renames to resolve them for real (numbered suffix), with "collision" only informational in the preview; fixed.
-- [x] 6.4 `RenamePreviewDialog` (grouped by action, confirm gated, item 27's non-gate precedent explicitly does NOT extend here) + CLI `seeker library rename <playlist> [--apply]` (y/N confirm). CLI has no dedicated unit tests, matching this project's own established precedent (`tag`/`fix-art` don't either — service layer already covers the logic).
-- [x] 6.5 14 service-layer tests + 6 UI tests, all real filesystem operations in `tmp_path` (not mocked) — multi-artist + feat-dedupe + accented + byte-cap in one combined round-trip, plus separate case-only and real-collision round-trips. DB row followed the file and `track_matches` still resolved in every case. **Asked user, confirmed: real dry-run against "Test" (`seeker library rename Test`, no `--apply`) — 7 real renames proposed (track-number-prefix stripping, artist-order fixes from filename-derived to Spotify-canonical, title-first->artist-first reordering, illegal-char sanitizing), 2 already correct, 1 not auto-matched, 0 collisions. Not applied — no further confirmation received to write.**
-
-**Commit boundary — commit 1d1c6c8.**
-
-## Phase 7 — Duplicates: scope, progress, empty Actions column
-
-(Per user instruction: 7.1 column-index hardening applied regardless of live
-reproducibility; no further live repro attempted beyond one cheap
-manual-column-resize check.)
-
-- [x] 7.1 New `_DuplicatesColumn(IntEnum)` + `_DUPLICATES_COLUMN_HEADERS` replace every literal `.cellWidget(row, N)` in both the render path and tests (`_duplicates_column(window, header_text)` resolves by real header text). `test_duplicates_actions_column_survives_manual_column_resize` exercises the one cheap repro asked for — passes. **Not reproducible across three independent investigations** (Phase 0's own read-only pass plus this hardening pass) — the original report stands as a permanent regression test, not a confirmed-and-fixed bug.
-- [x] 7.2 `DuplicateService`: `resolve_folder_scopes`, `find_duplicate_groups(folders=...)`, `find_duplicate_groups_across_scopes(scopes)` (pooled, deliberately allows folders from different registered locations — clustering is content-only), `count_files_for_scopes`, `compute_fingerprints(folders=...)`. CLI `library fingerprint`/`duplicates` gain repeatable `--folder`. UI: "Only these folders…" checkbox + add/remove list + `QFileDialog` picker + a real pre-run file count (`format_duplicates_scope_count`), disabling the location combo while active. Folder-mode fingerprinting spans locations by grouping resolved scopes and calling `compute_fingerprints` once per location, translating each call's own progress into a running offset against the combined total. **Real bug found and fixed in-pass** (not new to this phase, but only surfaced by wiring cross-location pooling into the UI): the duplicates table's LOCATION column and the delete-confirmation dialog's real paths both used one "current selected location" variable for every row — correct only for a single-location search. Now resolved PER FILE via `local_file.location_id` against a `_duplicates_locations_by_id` map built alongside the existing by-name one; `delete_local_files`'s informational `location_id` now comes from the kept file's own location. 9 new UI tests.
-- [x] 7.3 `reports_progress=True` wired into both duplicates actions via the Phase 2.3 channel; activity strip shows live stage/current/total. Folder-mode fingerprinting's cross-location progress offsetting (7.2) is this item's own real content, not a separate mechanism.
-- [x] 7.4 **Real run against the real production DB/library (read-only — computes/persists fingerprint columns only, never touches a real file's bytes or path):** `library fingerprint x9-pro --folder Music/CamelPhat` (6 files, 0.58s, progress reached exactly 6/6) → `library duplicates x9-pro --folder Music/CamelPhat` (0.54s, two real stages — "Decoding fingerprints" then "Comparing" — both reached exactly 6/6, 0 groups). Same pair against the whole `Test` location (8 files) — same shape, 0 groups (real, distinct tracks). Then the real whole-`x9-pro`-location run: `fingerprint` backfilled the 102 real never-fingerprinted files in 13s (progress 1→3244 throughout, not reset) — 26 computed, 76 failed (real numbers, see Phase 8 below); `duplicates` clustered all 3168 successfully-fingerprinted files in 10m11s (created 18:30:24 → finished 18:40:35) — progress reached exactly 3168/3168 on both stages, **352 real duplicate groups found** (up from item 39's ~344, real library growth). Folder-scoped vs. whole-location timing difference (sub-second vs. ~10 minutes) confirms the scope control's own reason for existing. UI-side ETA/activity-strip rendering at 25/50/75% wasn't separately re-verified in a live interactive GUI session in this pass (no display available here) — its wiring is covered by 9 new unit tests instead, and it consumes the exact same `progress(stage, current, total)` values just confirmed correct end-to-end via the CLI above.
-
-**Commit boundary — commit 98c921b (Phases 7+8 committed together — see below).**
-
-## Phase 8 — Fingerprint failures: fall back, then report
-
-(Per user instruction: soundfile → librosa → ffmpeg-if-present, real
-per-stage counts reported. **librosa hypothesis refuted live**: this
-project's pinned librosa (1.0.0) dropped its old audioread fallback —
-`librosa.load` now calls soundfile directly with no alternate decoder,
-so it fails identically to the primary path on every one of the 76 real
-failures. Confirmed before writing any code, not assumed. librosa stage
-skipped entirely per the standing "don't implement a refuted
-hypothesis" rule; went straight to soundfile → ffmpeg-if-present.)
-
-- [x] 8.1 `audio_fingerprint.py`: `compute_fingerprint()` falls back to a new `_compute_fingerprint_via_ffmpeg()` (subprocess, `-f s16le` piped decode) on any soundfile failure, only when `ffmpeg` is on PATH; re-raises the ORIGINAL soundfile error unchanged when ffmpeg is absent or itself fails. **Real bug found and fixed building this, caught by a live 11-minute hang, not by review**: stderr was originally `subprocess.PIPE`, never drained during the stdout-decode loop — a file with sustained per-frame corruption logs megabytes of ffmpeg error text, overflowing the OS's 64KB pipe buffer and deadlocking (ffmpeg blocked writing stderr, this loop blocked reading stdout). Fixed with a real `tempfile.TemporaryFile()` for stderr instead of a pipe (a file write never blocks on a reader). New regression test reproduces >2MB of stderr from a synthetic file and asserts completion via a bounded `thread.join(timeout=30)`. **Real per-stage numbers, run against all 76 real production failures found in Phase 0.6**: librosa stage skipped (see above) — 2 genuinely empty (0-byte) files, 73 rescued by ffmpeg, 1 still genuinely fails (a `.mp3`-named file that's actually a DRM-protected HLS manifest — no real audio data exists in it at all; no decoder could rescue it). **Second real, live finding, unexpected**: for the dominant "bad data offset" failure category (61/76), the failure is reproducible reading the real file from its real `/Volumes/X9 Pro` mount path, but an identical byte-for-byte local copy (`cmp` confirmed) decodes fine via plain soundfile too — implicating something about libsndfile's read/seek pattern against this specific external drive, NOT corruption in the audio data itself. Root cause not pursued further (mirrors item 63's own "fix verified working, exact trigger left open" precedent) — the ffmpeg fallback, reading the same real original path, rescues these regardless of root cause.
-- [x] 8.2 New `_classify_fingerprint_failure()` in `duplicate_service.py` — `file_missing`/`empty_file`/`decode_unsupported`/`error`, replacing one hardcoded `"failed"` in `compute_fingerprints()`'s per-file `details`. CLI already printed `details` per-line (`[{reason}] {message}`) — no CLI change needed, the reason values just became real. New `help_text.format_fingerprint_result_message()` adds a real per-reason breakdown to the UI's status label (e.g. "Failed: 3 (2 couldn't be decoded, 1 0-byte file)") instead of an opaque count. `TOOLTIP_COMPUTE_FINGERPRINTS` states plainly that non-audio files are never scanned into the library at all (scanner's own `AUDIO_EXTENSIONS` filter), so fingerprinting never needed to consider them.
-- [x] 8.3 `_compute_one()` checks `file_path.is_file()` / `.stat().st_size == 0` BEFORE attempting a decode, raising typed `_FileMissingError`/`_EmptyFileError` so these get their own reason codes. A 0-byte file can never succeed fingerprinting, so it can never enter a duplicate group — nothing in this app's delete flow can ever reach one; "never offer to delete" is satisfied structurally, not by an extra check. 3 new service-layer tests (missing/empty/undecodable) plus the 76-real-file live run above.
-
-**Commit boundary — commit 98c921b (Phases 7+8, one combined commit, matching this session's own established precedent for tightly-coupled adjacent phases — item 65 Phases 2-3, item 66 Phases 4-5).**
-
-## Closing out
-
-- [x] Full audit of this file — every Phase 0-8 line ticked, none `NOT DONE`; one closing-out sub-item (the stress test, below) IS `NOT DONE`, honestly marked as such rather than glossed over. Every phase (0-8) completed as briefed, with the user's own mid-session scope adjustments applied (Phase 2's button-hide fix, Phase 5's force=True drop + simplified 5.4, Phase 7.1's regardless-of-repro hardening, Phase 8.1's soundfile→librosa→ffmpeg order — librosa step itself skipped after being refuted live, see item 69).
-- [x] `mypy --strict src/` clean (multiple runs across the session, always 0 issues). `pytest` run 3x after all Phase 7/8 changes: 874/874, 873/874 (1 flaky), 874/874 — the one failure is the pre-existing documented `test_history_refresh_button_refetches` flake (confirmed non-regression earlier in this same session via 5x isolation).
-- [ ] NOT DONE — Opt-in stress test never completed. Attempted 3 times for real against production (user confirmed before each); it hung all 3 times, always at the same point (right after sync/scan/match settle, waiting on Compute Fingerprints), reproducing 0/2 times in isolated repro attempts (one at a realistic 1,500-real-file scale). A temporary internal diagnostic (a `threading.Timer`-based `faulthandler` stack dump, needing no root, since `py-spy` needs root and wasn't usable non-interactively) never fired across ~38 real minutes stuck on the 3rd attempt — evidence pointing at a full GIL-level freeze, not just a stuck Qt event loop. Root cause not found; not fixed. Recorded as new roadmap item 70 (deliberately separate from item 63 — a materially different symptom), diagnostic reverted cleanly (`git diff` on `tests/test_stress_e2e.py` shows zero change from the last commit). No RSS/fd/thread growth numbers to report this session.
-- [x] README.md updated: Support page, Duplicates folder-scoping (no longer single-location-only) + pooled cross-location note, new `library fix-art`/`library rename` commands, `--folder` flag on `fingerprint`/`duplicates`, the new once-per-playlist destination prompt, `audio_fingerprint.py`'s ffmpeg fallback + new `filename_format.py` in the directory tree.
-- [x] CLAUDE.md roadmap items 64-70 added — numbering resolved against real commit history (65 covers Phases 2-3 as one commit, 66 covers Phases 4-5 as one commit, matching this session's own established combined-commit precedent; 64/67/68/69 are one phase each; 70 is the new, separate, unresolved stress-test-hang finding above). HISTORY.md §64-70 added with full investigation narrative: Phase 0's two refuted hypotheses (0.4 force-flag, 0.5 index-drift) under §65/§68, the real 500-error bug under §66, the rename collision design gap under §67, the cross-location LOCATION-column bug under §68, Phase 8's librosa refutation + the drive-read mystery + the stderr-pipe deadlock under §69, and this closing-out stress-test hang under §70.
-- [x] Item 63 entry updated (fixed after user review caught a real gap: commit 7a7969e added the HISTORY.md follow-up narrative but never actually edited item 63's own CLAUDE.md bullet text — it still described the pre-Phase-4.3 state with no mention of the backoff bound or the diagnostic's SEEKER_DEBUG_POLL=1 gating. Now says both explicitly.)
-- [x] Item 22 entry updated — TrackStatus precedence now lists all 7 states, cross-referencing item 66.
-
-**Commit boundary — commit 126d4a4.**
+**Commit boundary — commit (see next `git log`, made right after this
+entry).**

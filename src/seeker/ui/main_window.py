@@ -939,6 +939,18 @@ class MainWindow(QMainWindow):
         # _focus_pending_review_row the next time the Review page's data
         # actually loads.
         self._pending_review_focus_track_id: str | None = None
+        # Roadmap item 71 (P3) — the "next step" notice is re-rendered
+        # unconditionally on every 2s poll tick (see _render_next_step),
+        # so dismissing it needs its own memory: the key of whatever
+        # step was on screen when the user clicked X. Cleared the
+        # moment the computed key changes, so a genuinely different
+        # step (or the same step recurring later) still surfaces.
+        self._dismissed_next_step_key: (
+            tuple[str | None, str | None, str | None] | None
+        ) = None
+        self._current_next_step_key: (
+            tuple[str | None, str | None, str | None] | None
+        ) = None
 
         self.setWindowTitle("Seeker")
         self.resize(1180, 760)
@@ -1357,6 +1369,7 @@ class MainWindow(QMainWindow):
         # time. Above dashboard_notice (errors/warnings), so guidance
         # and errors never overwrite each other.
         self.next_step_notice = InlineNotice()
+        self.next_step_notice.dismissed.connect(self._on_next_step_dismissed)
         content_layout.addWidget(self.next_step_notice)
 
         content_layout.addLayout(self._build_dashboard_action_row())
@@ -3515,11 +3528,33 @@ class MainWindow(QMainWindow):
             on_finished=self._render_next_step,
         )
 
+    def _on_next_step_dismissed(self) -> None:
+        self._dismissed_next_step_key = self._current_next_step_key
+
     def _render_next_step(self, facts: _NextStepFacts) -> None:
         step = _decide_next_step(facts)
 
+        # Roadmap item 71 (P3) — identity of "the step currently being
+        # offered," so a dismissal can be remembered per-step rather
+        # than globally: a real fact change (playlist switched, or the
+        # underlying next-step reason changed) always surfaces again.
+        key = (
+            facts.selected_playlist_name,
+            step.message if step is not None else None,
+            step.action if step is not None else None,
+        )
+        already_dismissed = key == self._dismissed_next_step_key
+        self._current_next_step_key = key
+
+        if not already_dismissed:
+            # Either never dismissed, or dismissed a DIFFERENT step —
+            # that dismissal no longer applies to what's showing now.
+            self._dismissed_next_step_key = None
+
         if step is None:
             self.next_step_notice.dismiss()
+        elif already_dismissed:
+            pass
         else:
             action = step.action
             self.next_step_notice.show_message(
