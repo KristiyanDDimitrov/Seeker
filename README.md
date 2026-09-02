@@ -75,16 +75,18 @@ switches between **Dashboard** (each playlist's tracks with live status,
 a "what to do next" banner, and tagging), **Downloads** (every in-flight
 SoulSeek transfer, plus a combined remaining-time estimate),
 **Review** (confirming SoulSeek needs-review candidates and quality
-upgrades), **Duplicates** (fingerprint-based duplicate detection,
-scoped to one library location at a time), **Sharing** (what your
-`slskd` is actually sharing back to the network — real per-location
-share status, who's currently downloading from you, and a gated,
-backed-up, read-only-only flow to add a library location to your share
-— see `seeker sharing status` below), and **History** (a read-only,
-derived log of recently downloaded and tagged tracks — see
-`seeker history` below). **Settings** (library locations, playlist
-destinations — including the app-wide default destination the wizard
-sets up — SoulSeek/Spotify connection management, and the
+upgrades), **Duplicates** (fingerprint-based duplicate detection — a
+whole library location at a time, or scoped to specific folders via
+"Only these folders…", which can pool folders across more than one
+registered location since the comparison itself is purely audio-content
+based), **Sharing** (what your `slskd` is actually sharing back to the
+network — real per-location share status, who's currently downloading
+from you, and a gated, backed-up, read-only-only flow to add a library
+location to your share — see `seeker sharing status` below), and
+**History** (a read-only, derived log of recently downloaded and tagged
+tracks — see `seeker history` below). **Settings** (library locations,
+playlist destinations — including the app-wide default destination the
+wizard sets up — SoulSeek/Spotify connection management, and the
 auto-match/needs-review classification thresholds) is a page in the
 same sidebar, not a separate window — a "← Back" button returns to
 wherever you were before opening it. A **Help** page covers a short
@@ -93,7 +95,14 @@ Spotify token/SoulSeek data live on disk (with a button to open that
 folder); the Help menu's **About** dialog has author/license/
 third-party-notices info and a "Check for updates…" action against
 GitHub Releases (one user-triggered, unauthenticated API call — never
-automatic).
+automatic). A **Support** page (donation links plus non-financial ways
+to help — reporting a bug, sharing your library back on SoulSeek) sits
+below Help.
+
+Clicking **Download** for a playlist with no destination of its own set
+prompts once for where its files should go (a specific library
+location + subfolder, or the app-wide default) — confirming always
+saves a real destination for that playlist, so this never dead-ends.
 
 ```
 uv run seeker-ui
@@ -180,7 +189,11 @@ src/seeker/
 │                              #   BOTH library/matcher.py and soulseek/quality.py
 ├── metadata.py                # mutagen tag read/write, per audio format
 ├── audio_analysis.py          # BPM + Camelot key detection (librosa)
-├── audio_fingerprint.py       # libchromaprint ctypes binding, used by duplicate_service.py
+├── audio_fingerprint.py       # libchromaprint ctypes binding (+ an ffmpeg
+│                              #   subprocess fallback for files soundfile
+│                              #   can't decode), used by duplicate_service.py
+├── filename_format.py         # build_track_filename() — Spotify-metadata-
+│                              #   based filenames, used by metadata_service.py
 ├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
 ├── sharing_service.py          # live slskd share status/reconciliation + gated share-add write path
 ├── history_service.py         # derived-only view over download_requests/local_files — no new table
@@ -304,7 +317,7 @@ rejecting needs-review local-file matches) and `downloads review` plus
 confirming/rejecting SoulSeek needs-review candidates (`check`'s
 "Needs review" section, with an action the CLI never had); the
 Duplicates page covers `library fingerprint`/`library duplicates`,
-scoped to one library location at a time; the Sharing page covers
+either a whole location or scoped to specific folders; the Sharing page covers
 `sharing status` (plus a gated "add this location to my share" action
 the CLI doesn't have); the History page covers `history`; and the
 Settings page (in the same sidebar, not a separate window) covers
@@ -330,8 +343,10 @@ uv run seeker <command>
 | `library scan` | Scan all registered locations for audio files. |
 | `library match` | Fuzzy-match cached Spotify tracks against scanned local files. |
 | `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX] [--force]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key; `--force` redoes both even for tracks already tagged/analyzed. |
-| `library fingerprint <location> [--force]` | Compute an audio fingerprint for every file in one library location, for later duplicate detection. |
-| `library duplicates <location>` | Report duplicate/near-duplicate files within one library location, by audio content (run `fingerprint` on it first). Read-only — nothing here moves or deletes a file. |
+| `library fingerprint <location> [--force] [--folder PATH]` | Compute an audio fingerprint for every file in scope that doesn't already have one, for later duplicate detection. `--folder` (repeatable) scopes to specific folders within the location instead of the whole thing. |
+| `library duplicates <location> [--folder PATH]` | Report duplicate/near-duplicate files in scope, by audio content (run `fingerprint` on it first). `--folder` (repeatable) scopes to specific folders, pooled together. Read-only — nothing here moves or deletes a file. |
+| `library fix-art <playlist>` | Re-embed cover art (never text tags) for auto-matched tracks whose embedded art is missing or doesn't byte-match the current Spotify `album_art_url` — a narrower, safer repair than `tag --force`. |
+| `library rename <playlist> [--apply]` | Preview (or, with `--apply` and a y/N confirmation, actually perform) renaming auto-matched local files to `Artist1, Artist2 - Title.ext`, matching their Spotify metadata. |
 | `check [--verbose]` | Report the auto-matched / needs-review / unmatched split for cached tracks. |
 | `review [playlist] [--confirm TRACK_ID \| --reject TRACK_ID]` | List (or confirm/reject) needs-review LOCAL-FILE matches — distinct from `downloads review`, which is for SoulSeek upgrade candidates. |
 | `download <playlist>` | Search SoulSeek and request downloads for a playlist's still-unmatched tracks (falls back to the configured default destination if the playlist has no destination of its own set). |

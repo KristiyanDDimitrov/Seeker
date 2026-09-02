@@ -9535,3 +9535,364 @@ original storm's exact error signature even though it didn't cascade
 this time. Cleaned up the throwaway data dir (`seeker_step4_repro_*`
 under `$TMPDIR`) by hand afterward; the script's own `finally` block
 already removed its duplicate scratch location and directory.
+
+### 64
+
+Straightforward — built as scoped, no investigation narrative beyond
+what's in CLAUDE.md's own entry.
+
+### 65
+
+**Phase 0 recon (read-only, reported and approved before any code was
+written).** Six investigations, two hypotheses refuted:
+
+- 0.1 confirmed LIVE via an offscreen `MainWindow` with an artificially
+  slowed `scan_and_match()`: `_render_next_step` unconditionally
+  `.setEnabled()`s all 4 action-row buttons on every 2s poll tick,
+  fighting `run_worker(button=...)`'s own busy-disable. Real captured
+  log: the Scan button re-enabled at t=2.0s while the scan was still
+  running until t=6s — a real, user-visible "click again while it's
+  still going" hazard, not a theoretical one.
+- 0.3 confirmed by code + the real production DB: no retry_count/
+  backoff/terminal state existed anywhere for a locked-file retry —
+  three real `locked` rows had been stuck since 2026-08-27/28 (5+ days)
+  with no bound at all.
+- **0.4's "force=True" hypothesis was REFUTED, not fixed.** The
+  original report assumed cover-art mismatches were being caused by a
+  missing force flag somewhere in the tagging path. Re-checked live
+  against the real, already-tagged library: all 8 currently-tagged real
+  files had byte-exact CDN-matching art (0 mismatches) — the mismatch
+  theory itself didn't hold up against current real data. The REAL,
+  still-open gap found instead: `_show_tag_result_notice` had no branch
+  for "tagged=0, without_art=0, failed=0, but skipped_already_tagged>0"
+  — a fully-already-tagged re-run produced literally zero `InlineNotice`,
+  only the easy-to-miss small results panel. This became item 66's
+  primary fix, not the originally-hypothesized force-flag issue.
+
+Real destination-prompt investigation (0.3.1, folded into Phase 3):
+confirmed against real code that no folder-NAME detection logic existed
+anywhere — a user's existing "Psytrance" folder had been matching the
+configured "PsyTrance" destination purely because macOS's default
+filesystem (APFS) is case-insensitive. Entirely coincidental, not a
+feature, and worth recording as a real "the behavior you're relying on
+isn't the behavior you think it is" case.
+
+Full verification for Phase 2.4: a live async repro re-run kept the
+Scan button correctly disabled across 5+ real 2s poll ticks (t=0
+through t=5s), restoring exactly once at real completion (t=6s). The
+deadlock regression suite (item 39/41's own tests) ran 3x clean. Full
+fast suite ran 3x: 789-790/790 passed, one pre-existing flaky test
+(`test_history_refresh_button_refetches`, documented — reproduces 1/5
+in isolation too, not a regression from this work).
+
+### 66
+
+**0.2 confirmed by code** (not live, since it's a pure logic question):
+a `soulseek_review_candidates` row with no `download_requests` row is
+only ever a secondary tag on `NEEDS_REVIEW`/`NOT_FOUND`, never a
+primary state, by construction — matching the original report exactly,
+nothing to fix.
+
+**The real 500-error bug (item 63's own flagged lead, closed here).**
+Building Phase 4.3's bounded retry, live verification against
+production slskd surfaced a genuine `500 Internal Server Error` on
+`POST /api/v0/transfers/downloads/batches` — the EXACT endpoint and
+error text item 63's investigation had already flagged as "one concrete
+lead" for the unexplained retry storm. Root cause of the *bug this fix
+targets*: the error was an `httpx.HTTPStatusError` that escaped the
+original `except SoulseekDownloadError:` handler entirely (`client.py`'s
+`request_download` deliberately re-raises unrecognized errors "loud"),
+meaning `retry_count` never advanced for this failure shape — a live,
+reproducible instance of the exact unbounded-retry bug this whole phase
+exists to fix. Fixed by wrapping both `request_download` and
+`get_download_status` in broader exception handling that always
+advances the retry budget before re-raising. Re-verified live twice:
+`retry_count` correctly advanced 0→1→2 with real backoff timestamps for
+the previously-unhandled row. This does NOT fully explain item 63's
+storm (a single synchronous 500 here was a one-off, not a cascade — see
+item 63's own follow-up section for the three runs that still couldn't
+reproduce the original storm), but it closes a real, separate,
+previously-silent gap in the same code path.
+
+**Phase 5.4's real-file verification**, run only after explicit user
+confirmation of the target playlist ("Test"): read-only before-state
+showed 3/9 auto-matched tracks with genuinely mismatched embedded art
+(Breach, Bit Perfect, Jade Venom — real SoulSeek-download art, not
+Spotify's own), 6/9 already byte-correct. Running `seeker library
+fix-art Test` for real produced `Fixed: 3, Already correct: 6`; a
+direct re-read afterward confirmed 9/9 byte-exact CDN matches. Text
+tags on all 3 fixed files were spot-checked to confirm they were
+untouched — one file ("Breach") had never been text-tagged at all
+before this run, and its tags still read the pre-Spotify "Balron &
+Audio" after, proving the art-only fix genuinely never touches text
+tags.
+
+### 67
+
+**Phase 6.5's real-file verification**, run only after explicit user
+confirmation of the target playlist ("Test"): `seeker library rename
+Test` (no `--apply`, read-only) proposed 7 real renames — track-number-
+prefix stripping, artist-order corrections (filename-derived order to
+Spotify-canonical order), title-first to artist-first reordering, and
+illegal-character sanitizing — with 2 files already correct, 1 not
+auto-matched (correctly excluded), and 0 real collisions in this
+playlist's own 10 files. Not applied: the user did not give further
+confirmation to write, matching this project's standing "never touch a
+real file without confirmation" rule down to "confirming a dry-run is
+not the same as confirming the write."
+
+### 68
+
+**0.5's "Actions-column index-drift" hypothesis was REFUTED, not
+fixed** — the third time this specific report has failed to reproduce
+(see item 61 §6.2's own "could not reproduce" for the first two). Tested
+live at real scale: 15 duplicate groups / 45 rows, the real default
+1180×760 window. Column indices were verified correct both statically
+(reading the render code) and dynamically (resolving the Actions column
+by its real header text at runtime, landing on index 7 exactly as the
+code itself uses). `setStretchLastSection` makes the Actions column's
+right edge always exactly equal the viewport width, which structurally
+prevents it from ever scrolling off-screen in the first place — a
+plausible mechanical explanation for why the report can't reproduce,
+not just an absence of evidence. Per user instruction, the column-index
+hardening (`_DuplicatesColumn(IntEnum)`, header-text-resolved tests) was
+still applied regardless of non-reproducibility, and one additional
+cheap check — manual column-drag-resize — was run and also did not
+reproduce it (`test_duplicates_actions_column_survives_manual_column_
+resize`).
+
+**Real bug found live wiring folder-scope pooling into the UI, not
+anticipated by the brief.** Once `find_duplicate_groups_across_scopes`
+made a cross-location duplicate group a real possibility for the first
+time, it became visible that `_render_duplicate_groups`'s LOCATION
+column and `_on_delete_duplicates_clicked`'s real-path confirmation
+dialog both read from ONE `self._current_duplicates_location_name`
+variable, applied to every row in every group — correct only when a
+search was scoped to a single location, silently wrong (showing the
+wrong location name, and building the wrong real path for the delete
+confirmation) for any multi-location result. This was a LATENT bug
+already reachable in principle before this phase (nothing previously
+prevented two `local_files` rows from different locations landing in
+the same clustered group — clustering has always been purely content-
+based), it simply had no real trigger until folder-mode pooling gave it
+one. Fixed by resolving each row's location individually via
+`local_file.location_id` against a `_duplicates_locations_by_id` map,
+and by resolving the delete-confirmation paths the same way; the
+`delete_local_files` call's own `location_id` (purely informational
+provenance for the reclaimed-space milestone) now comes from the KEPT
+file's own location rather than the stale single-location variable.
+
+**Real run against the production library, read-only** (fingerprinting
+persists DB columns only; nothing here writes/moves/renames a real
+file): a folder-scoped run (`Music/CamelPhat`, 6 files) completed
+fingerprinting in 0.58s and duplicate search in 0.54s, both reaching
+exactly 6/6 progress, 0 groups (real, distinct tracks — correctly no
+false positives). The same shape against the whole `Test` location (8
+files) also found 0 groups. The real whole-`x9-pro`-location run:
+fingerprinting the 102 real never-before-fingerprinted files took 13s
+(26 succeeded, 76 failed — see item 69 for the full breakdown);
+clustering all 3168 successfully-fingerprinted files took 10m11s
+(started 18:30:24, finished 18:40:35 — real wall-clock, not estimated),
+progress reaching exactly 3168/3168 on both its "Decoding fingerprints"
+and "Comparing" stages throughout, finding 352 real duplicate groups
+(up from item 39's original ~344 — real library growth in the interim,
+not a clustering-behavior change).
+
+### 69
+
+**0.6's initial real numbers, and a discrepancy worth recording
+honestly.** Phase 0's own live recon (before this session's context was
+compacted) reported: 110 never-fingerprinted rows, 34 newly succeeding,
+76 genuine failures (matching item 39's original 76 failure count,
+including the same 2 already-confirmed 0-byte files) — and specifically
+that a **librosa fallback rescued 11/76** of them. Building Phase 8.1
+properly, BEFORE writing any fallback code, this was checked again
+directly: `librosa.load()`'s source (`librosa/core/audio.py`, pinned
+version 1.0.0) calls exactly one internal function,
+`__soundfile_load`, with no alternate decoder — no `audioread` import
+exists anywhere in this environment's librosa, and none is even an
+installed package (`import audioread` fails with `ModuleNotFoundError`
+directly). This is a structural, source-level fact, not an empirical
+one: `librosa.load()` in this pinned version is provably identical to
+calling `soundfile` directly, so it CANNOT rescue any file soundfile
+itself fails on. A direct repro against one of the real 76 files
+(`HiveMind.mp3`) confirmed this: `librosa.load(path, sr=None)` raised
+the exact same `LibsndfileError`/"bad data offset" as bare
+`soundfile.info()`.
+
+This directly contradicts Phase 0.6's own "11/76 rescued by librosa"
+number, and the most likely explanation was also found live, by
+accident, while building the ffmpeg-fallback regression test: an
+identical, byte-for-byte copy (`cmp`-verified) of `HiveMind.mp3` onto
+the local SSD decodes FINE via plain soundfile, while the real file at
+its real `/Volumes/X9 Pro` mount path fails every time it was tried.
+This points to something read/seek-pattern-specific about libsndfile's
+interaction with this particular external drive/mount — NOT genuine
+audio corruption — for at least the dominant "bad data offset" failure
+category (61 of the 76). If soundfile's success against a given file
+can vary by something as incidental as which pass touched it first or
+how it was accessed, Phase 0.6's isolated librosa test run may simply
+have hit a "good" read on 11 files that would have succeeded via bare
+soundfile too, attributing the success to librosa when it wasn't
+librosa's doing at all. This wasn't chased down further to a definitive
+answer (mirrors item 63's own "fix verified working, exact trigger left
+open" precedent) — what matters for the actual code is that the
+source-level proof (no audioread path exists) is authoritative on its
+own and doesn't depend on resolving this discrepancy: the librosa stage
+was skipped entirely, and the real fix (ffmpeg) doesn't depend on this
+theory being right.
+
+**The stderr-pipe deadlock, found live via an 11-minute hang, not by
+review or by anticipating it.** The first working version of
+`_compute_fingerprint_via_ffmpeg` piped both stdout (PCM) and stderr
+(decode diagnostics) via `subprocess.PIPE`, draining only stdout in a
+loop and reading stderr once at the end. Running the real verification
+script against all 76 real failures hung indefinitely (killed after
+~11 minutes with no output at all — confirmed via a `tail`-buffering
+red herring initially suspected, then ruled out by re-running without
+it). Root cause, confirmed directly: a genuinely corrupted real file
+(one of the FLAC "decoder lost sync" cases) makes ffmpeg log one error
+line PER bad frame — for a real multi-minute track with sustained
+corruption, that's tens of thousands of lines, confirmed synthetically
+to exceed 2MB for a deliberately-corrupted test file. macOS's pipe
+buffer is a fixed 64KB; once ffmpeg filled it writing stderr with
+nothing draining it, ffmpeg blocked on the write while this code was
+simultaneously blocked reading stdout, which ffmpeg could never
+produce more of while stuck. A classic, real two-pipe subprocess
+deadlock. Fixed by giving stderr a real `tempfile.TemporaryFile()`
+instead of a pipe (file writes never block a stalled reader). Locked in
+with a synthetic regression test that reliably reproduces >2MB of
+ffmpeg stderr output and asserts completion via a background thread
+with a bounded `join(timeout=30)`, so a future regression fails the
+test suite instead of hanging it.
+
+**Final real numbers, the fixed fallback run against all 76 real
+production failures:** 2 genuinely empty (0-byte) files, correctly
+classified `empty_file` and excluded from any decode attempt; 73
+rescued cleanly by the ffmpeg fallback; 1 still genuinely fails —
+`Lost Mantra.mp3`, which `file` identifies as `M3U playlist text`, not
+audio at all: its real content is an HLS manifest with SAMPLE-AES DRM
+key material, saved with a `.mp3` extension. No decoder, present or
+future, could ever "fix" this one — there is no audio data in the file
+to recover, correctly classified `decode_unsupported`.
+
+### 70
+
+Open, real, unresolved investigation — found live while closing out
+items 68-69 (folder-scoped duplicates + fingerprint fallback), running
+the closing-out stress test for the first time this session against
+real production infrastructure. Reported here in full per this
+project's own standing "record an unreproducible/unresolved finding
+honestly rather than fabricate a fix" precedent (items 39, 61, 63).
+
+**What was observed, three times.** Running `SEEKER_RUN_STRESS_TEST=1
+QT_QPA_PLATFORM=offscreen uv run pytest tests/test_stress_e2e.py -q -s`
+against real production Spotify/slskd/DB:
+
+- **Run 1** (unattended — a real process-management mistake, corrected
+  after this): left running for 1h37m+ with 0.2% CPU and zero new
+  output. Killed. Left one harmless leftover — a
+  `SeekerStressTestDuplicates` scratch library location pointing at a
+  temp dir (never the real X9 Pro library) — which the test's own
+  `_create_stress_duplicate_location` already defensively cleans up on
+  its next run.
+- **Run 2** (closely watched this time, checked every 30s via an
+  automated stall detector): reproduced again, at the exact same point.
+  The stall detector attempted a `py-spy dump --pid` to get a real stack
+  trace without modifying any code — failed, `py-spy` requires root on
+  this machine and no interactive password is available in this
+  session. Killed after a 3-real-minute stall.
+- **Run 3** (with a temporary internal diagnostic added — see below):
+  reproduced a third time. Left running ~38 real minutes; the diagnostic
+  never fired. Killed.
+
+**Exactly where it gets stuck, every time.** Immediately after
+`[stress] overlapping sync/scan/match settled: True` prints (the
+overlapping sync/scan/match flurry — a real Spotify sync of 215+
+playlists, a real scan of the real X9 Pro library, a real match — all
+genuinely completing within their 90s bound), waiting on
+`main_window.compute_fingerprints_button.isEnabled()` to become True
+again — the Duplicates page's own Compute Fingerprints action, fired
+concurrently with sync/scan/match on a small, disposable 2-file scratch
+location (`_create_stress_duplicate_location`), never the real library.
+
+**The internal diagnostic and what its SILENCE proved.** `py-spy`
+being unavailable non-interactively meant no external stack-trace tool
+could attach. Instead, a temporary, scoped diagnostic was added directly
+to `test_broad_end_to_end_stress` (matching item 63's own precedent for
+a temporary, no-behavior-change instrument): a `threading.Timer`,
+armed right after `MainWindow` construction, set to call
+`faulthandler.dump_traceback(all_threads=True)` after 210 real seconds
+if never cancelled (cancelled normally right after the fingerprinting
+wait resolves). This needs no elevated OS permissions — it dumps every
+thread's real Python frame state from *inside* the same process via the
+stdlib. Run 3 used this. **It never fired, across ~38 real minutes.**
+This is a meaningfully worse signal than "the Qt event loop is stuck":
+a `threading.Timer`'s callback runs on a freshly spawned Python thread,
+independent of Qt's event loop entirely — for it to never execute even
+once means something is holding the CPython GIL for the whole process,
+not merely blocking `QApplication.processEvents()`. This points toward
+a native call that never releases the GIL (a real possibility for a
+ctypes call, depending on how it's bound) or a genuine C-level deadlock/
+infinite loop, rather than the pure-Python Qt/dispatcher mutex-pool
+collision item 39's own history already root-caused and fixed. The
+Compute Fingerprints step is the only thing running at the exact stuck
+point that makes a real ctypes call into a C library at all
+(`audio_fingerprint.py`'s libchromaprint binding) — the leading
+suspect, though not confirmed.
+
+**Two isolated repro attempts, neither reproduced it — and both already
+exercised the exact code path in question.** A new script,
+`tests/_stress_hang_repro.py` (kept, matching the `_stress_step3/4_*_
+repro.py` convention), isolates the same operation sequence in a fresh
+throwaway env (no real production DB, a fake Spotify token to avoid a
+real OAuth popup):
+
+1. A minimal version (2-file scratch location, fake token that fails
+   fast) — completed cleanly in seconds.
+2. A scaled-up version — 1,500 real files symlinked in from the real
+   X9 Pro library (read-only symlinks, not copies) as a SEPARATE scan
+   target, so scan/match would run for a realistic real duration
+   instead of finishing instantly — also completed cleanly. Scan/match
+   legitimately took over the 90s bound in this run (a real, honest
+   result on its own — `_pump` correctly returned `False` rather than
+   hanging), while Compute Fingerprints on the small scratch location
+   finished successfully throughout, fully concurrent, with real
+   sync/scan/match traffic still in flight.
+
+Critically, **both repro attempts fired Compute Fingerprints via
+`main_window.compute_fingerprints_button.click()`** — the real
+production UI handler, which (as of this session's own Phase 7.3 work)
+already routes through `_run_busy_worker(..., reports_progress=True)`
+and the `on_progress`/`Worker._report_progress` channel added in Phase
+2.3. This rules out "the progress-reporting channel itself is broken"
+as the specific thing separating a clean isolated run from a real
+production hang — both isolated runs already exercised it, including
+at a realistic 1,500-file scale, with zero issue. What's left as the
+real-scale-only differentiator is real Spotify sync duration (minutes
+of genuine network round-trips against 215+ real playlists, vs. an
+isolated run's fast-failing fake-token 401) and/or the real production
+DB's actual size/content (a mature, multi-year, multi-table SQLite
+file vs. a fresh empty throwaway one) — neither cheaply substitutable
+without touching real infrastructure again.
+
+**Conclusion: genuinely unresolved.** The temporary diagnostic was
+reverted (`tests/test_stress_e2e.py` is back to its pre-diagnostic
+state — confirmed via `git diff` showing zero changes against the last
+committed version) rather than left in permanently, since it never
+actually produced a trace and this project's own convention (item 63)
+is to keep a temporary diagnostic only while actively debugging, not
+indefinitely. Not fixed. The opt-in stress test was not completed for
+real as part of this session's closing-out pass — CLAUDE.md item 70
+records this as its own open, real finding, deliberately not folded
+into item 63 since the symptom (a full interpreter-level freeze,
+evidenced by the watchdog's own silence) is materially different from
+item 63's stuck-cadence-but-still-running storm, even though both
+involve the same broad area (Duplicates/download background worker
+traffic under real concurrent load) and could in principle share a
+root cause once one is found. Phase 7.3's fingerprint progress wiring
+is flagged as a standing caution (newest code touching the exact stuck
+step) but explicitly NOT reverted or blocked on this — nothing found
+here implicates it specifically, and undoing real, tested, working
+functionality on an unconfirmed suspicion would trade a known-good
+capability for no proven benefit.

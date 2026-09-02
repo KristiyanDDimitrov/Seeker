@@ -421,9 +421,11 @@ compress it here before moving on to the next item.
 22. **Frontend Step 3: UI scaffolding + main dashboard — done.** New
     `DashboardService.get_playlist_track_status()` — the first
     playlist-scoped live-status method (everything else reports
-    globally, item 16). One `TrackStatus` per track, first-match-wins:
-    `IN_LIBRARY` > `DOWNLOADING` > `AWAITING_REVIEW` > `NEEDS_REVIEW` >
-    `NOT_FOUND`. `Database.transaction()` opens a new connection per
+    globally, item 16). One `TrackStatus` per track, first-match-wins —
+    **updated, item 66:** `IN_LIBRARY` > `DOWNLOADING` > `AWAITING_REVIEW`
+    > `RETRYING` > `NEEDS_REVIEW` > `REVIEW_CANDIDATE` > `NOT_FOUND` (5
+    states grew to 7 — see item 66 for why). `Database.transaction()`
+    opens a new connection per
     call, safe across threads. **Standing gotcha:** `ui/workers.py`'s
     `Worker` MUST be kept alive via a strong reference
     (`_active_workers: set[Worker]`) until its own finished/error signal
@@ -933,6 +935,105 @@ compress it here before moving on to the next item.
     (`[poll_downloads] ... called` / `pending=N locked=N`) still in
     `poll_downloads()` — remove once root-caused.
     [HISTORY §63](docs/HISTORY.md#63)
+64. **Support page — done.** Real sidebar page below Help (static copy,
+    built eagerly — nothing to lazy-load), donation links + non-financial
+    ways to help. `_build_support_links_row()` extracted so `AboutDialog`
+    and this page share one `SUPPORT_LINKS` render instead of two.
+65. **Action feedback: busy buttons + a global activity strip, then a
+    real destination prompt — done (Phases 2-3).** `ui/busy_actions.py`'s
+    `BusyActionRegistry` (kept OUT of `ui/workers.py` — no cross-thread
+    signal machinery needed) + `_run_busy_worker()` fixes buttons
+    re-enabling mid-action, including a user-flagged mid-download
+    `download_button.setVisible()` hide. Global activity strip + a 3rd
+    `_dispatcher` signal, `task_progress`, throttled at the source.
+    `_on_download_clicked` now checks `playlist.download_location_id is
+    not None` rather than "anything resolvable skips the prompt" (a
+    coincidental case-insensitive-filesystem folder match was passing
+    as a real destination). [HISTORY §65](docs/HISTORY.md#65)
+66. **Honest track statuses + a bounded retry loop, then cover art that
+    actually lands — done (Phases 4-5).** `TrackStatus` 5→7 states
+    (`RETRYING`/`REVIEW_CANDIDATE` — see item 22 for precedence).
+    `download_requests` gained `retry_count`/`next_retry_at`, exponential
+    backoff, terminal `unavailable` after 8 attempts. **Real bug found
+    live against production slskd:** a real `500` on
+    `/transfers/downloads/batches` (item 63's own flagged lead) escaped
+    the original exception handling entirely, never advancing
+    `retry_count` — the exact unbounded-retry shape this phase exists to
+    fix; fixed and re-verified live. `fix_missing_art_for_playlist()`
+    (art-only, byte-exact CDN check) shipped as "Fix missing cover art" +
+    CLI `fix-art` — live-verified against "Test" (3/9 mismatched → 9/9
+    byte-exact after). [HISTORY §66](docs/HISTORY.md#66)
+67. **Rename local files to match Spotify metadata — done.**
+    `seeker/filename_format.py::build_track_filename` (pure function,
+    255-UTF8-byte cap on the title only) + `plan_renames`/`apply_renames`
+    + preview dialog + CLI `library rename <playlist> [--apply]`.
+    File-then-DB-row ordering (opposite of item 40's delete rule).
+    **Real design gap found by an own test:** collisions were resolved
+    at PLAN time but refused at APPLY time; apply now resolves them for
+    real (numbered suffix). Live-verified as an unapplied dry-run
+    against "Test" (7 real renames proposed, 0 collisions).
+    [HISTORY §67](docs/HISTORY.md#67)
+68. **Duplicates: folder scoping, real progress, and the Actions-column
+    bug class — done.** `_DuplicatesColumn(IntEnum)` + a header-text-
+    resolved test replace every literal column index — **not
+    reproducible across three independent investigations**, kept as a
+    permanent regression test. `DuplicateService` gained
+    `resolve_folder_scopes`/`find_duplicate_groups(folders=...)`/
+    `find_duplicate_groups_across_scopes` (pools folders across
+    DIFFERENT locations — clustering is content-only); CLI's
+    `fingerprint`/`duplicates` gained repeatable `--folder`. **Real bug
+    found wiring this into the UI:** the LOCATION column and the delete
+    dialog's paths both read one "current selected location" — a latent
+    bug for ANY multi-location result. Fixed to resolve per file via
+    `local_file.location_id`. Real run: whole-`x9-pro` clustering (3168
+    files) took 10m11s, 352 real groups, vs. a folder-scoped run under a
+    second. [HISTORY §68](docs/HISTORY.md#68)
+69. **Fingerprint decode fallback + honest per-file failure reasons —
+    done.** `compute_fingerprint()` falls back to an ffmpeg subprocess
+    decode on any soundfile failure (ffmpeg-on-PATH only), re-raising
+    the original error when ffmpeg is absent/also fails. **A planned
+    librosa stage was refuted before writing any code:** this project's
+    pinned librosa (1.0.0) dropped its audioread path — `load()` calls
+    soundfile directly, identical to the primary path on every failure;
+    skipped. **Real bug found via an 11-minute hang, not review:**
+    ffmpeg's stderr was piped but never drained during decode, so
+    sustained-corruption files overflow the 64KB pipe buffer and
+    deadlock both processes — fixed with a real tempfile for stderr
+    instead. New `_classify_fingerprint_failure()`
+    (`file_missing`/`empty_file`/`decode_unsupported`/`error`). **Real
+    numbers, all 76 production failures:** 2 empty files, 73 rescued by
+    ffmpeg, 1 still fails (a `.mp3`-named DRM-protected HLS manifest,
+    no real audio in it at all). **Unexplained, not pursued further:**
+    the dominant failure category reproduces reading the real mounted
+    path but a byte-identical local copy decodes fine via soundfile too
+    — implicates libsndfile's drive I/O, not file corruption.
+    [HISTORY §69](docs/HISTORY.md#69)
+70. **Open, real bug found live closing out items 68-69 (2026-09-02):
+    the real stress test hangs reliably at real production scale —
+    reproduced 3/3 times — but did NOT reproduce in 2/2 isolated
+    repros, one of them at a realistic 1,500-real-file scale. Not
+    fixed, root cause not found.** Always at the exact same point: the
+    tick immediately after sync/scan/match settle, waiting on the
+    Duplicates page's Compute Fingerprints step. **A materially worse
+    signal than item 63's own storm:** a `threading.Timer`-based
+    diagnostic watchdog (dumps every thread's stack via
+    `faulthandler`, no root needed — added and since reverted, see
+    HISTORY) never fired even once across ~38 real minutes stuck — a
+    fresh Python thread being unable to run at all points at something
+    holding the GIL for the whole process, not merely a stuck Qt event
+    loop (item 39's own documented class). Both isolated repro
+    attempts fired Compute Fingerprints via the real
+    `compute_fingerprints_button.click()` path — i.e. already through
+    Phase 7.3's `reports_progress=True`/`on_progress` wiring — so the
+    new progress channel itself is NOT the isolated-repro
+    differentiator; whatever's real-scale-only remains unidentified
+    (real Spotify sync duration and/or real production DB size/content
+    are the two remaining, not-cheaply-testable suspects). **Standing
+    caution, not a block:** treat Phase 7.3's fingerprint progress
+    wiring as higher-risk until this is root-caused — nothing here
+    says it's the cause, but nothing rules it out either, and it's the
+    newest code touching the exact step where this reproduces.
+    [HISTORY §70](docs/HISTORY.md#70)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
