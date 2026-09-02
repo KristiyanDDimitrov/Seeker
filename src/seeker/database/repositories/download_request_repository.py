@@ -5,7 +5,10 @@ from seeker.database.connection import Database
 from seeker.models.download_request import DownloadRequest
 
 
-TERMINAL_STATUSES = {"completed", "failed"}
+# Roadmap item 66 (Phase 4.3) — 'unavailable' added: a locked row that
+# exhausted its retry budget is genuinely terminal (no further
+# transitions), same as 'completed'/'failed'.
+TERMINAL_STATUSES = {"completed", "failed", "unavailable"}
 
 
 class DownloadRequestRepository:
@@ -34,7 +37,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             """
         ).fetchall()
@@ -63,7 +68,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE id = ?
             """,
@@ -135,7 +142,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE status IN ('queued', 'downloading')
             """
@@ -164,7 +173,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE status = 'ready_for_review'
             ORDER BY requested_at
@@ -194,7 +205,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE status = 'locked'
             ORDER BY requested_at
@@ -224,7 +237,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE status = 'shortlisted'
             ORDER BY track_id, rank
@@ -254,9 +269,44 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE status = 'superseded'
+            ORDER BY requested_at
+            """
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
+    def get_unavailable(
+            self,
+            connection: sqlite3.Connection,
+    ) -> list[DownloadRequest]:
+        # Roadmap item 66 (Phase 4.3) — mirrors get_superseded() exactly.
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at,
+                bytes_transferred,
+                total_bytes,
+                retry_count,
+                next_retry_at
+            FROM download_requests
+            WHERE status = 'unavailable'
             ORDER BY requested_at
             """
         ).fetchall()
@@ -293,7 +343,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE track_id = ?
             AND status NOT IN ('completed', 'failed', 'superseded')
@@ -311,9 +363,13 @@ class DownloadRequestRepository:
         """Every row that should stop download_playlist() from
         re-requesting this track: any non-terminal status (queued/
         downloading/locked/shortlisted/ready_for_review) OR a completed
-        row — deliberately excludes only failed/superseded, the two
-        states that genuinely mean "that attempt didn't work, a fresh
-        one is fine."
+        row — deliberately excludes failed/superseded/unavailable, the
+        three states that genuinely mean "that attempt didn't work, a
+        fresh one is fine." 'unavailable' (item 66 Phase 4.3) is a
+        locked candidate that exhausted its retry budget against ONE
+        specific peer — a later run should be free to search again and
+        find a different peer, not stay permanently blocked by a peer
+        that never had it available.
 
         Distinct from get_active_for_track above, which a completed row
         does NOT count as "active" for by design (roadmap item 56 Phase
@@ -351,10 +407,12 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE track_id = ?
-            AND status NOT IN ('failed', 'superseded')
+            AND status NOT IN ('failed', 'superseded', 'unavailable')
             """,
             (track_id,),
         ).fetchall()
@@ -402,7 +460,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE track_id = ?
             AND role = ?
@@ -439,7 +499,9 @@ class DownloadRequestRepository:
                 requested_at,
                 completed_at,
                 bytes_transferred,
-                total_bytes
+                total_bytes,
+                retry_count,
+                next_retry_at
             FROM download_requests
             WHERE track_id = ? AND status = 'shortlisted'
             ORDER BY rank ASC
@@ -525,6 +587,27 @@ class DownloadRequestRepository:
             (transfer_id, status, completed_at, download_request_id),
         )
 
+    def update_retry_state(
+            self,
+            download_request_id: int,
+            retry_count: int,
+            next_retry_at: str | None,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # Roadmap item 66 (Phase 4.3) — the write side of the bounded
+        # locked-retry loop. Deliberately separate from
+        # update_transfer_id_and_status (called alongside it, not
+        # merged into it): retry bookkeeping is orthogonal to what the
+        # actual attempt's outcome was.
+        connection.execute(
+            """
+            UPDATE download_requests
+            SET retry_count = ?, next_retry_at = ?
+            WHERE id = ?
+            """,
+            (retry_count, next_retry_at, download_request_id),
+        )
+
     def update_progress(
             self,
             download_request_id: int,
@@ -563,4 +646,6 @@ def _row_to_download_request(row: sqlite3.Row) -> DownloadRequest:
         completed_at=row["completed_at"],
         bytes_transferred=row["bytes_transferred"],
         total_bytes=row["total_bytes"],
+        retry_count=row["retry_count"],
+        next_retry_at=row["next_retry_at"],
     )

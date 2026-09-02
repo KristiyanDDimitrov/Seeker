@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS download_requests (
     format TEXT NOT NULL,
     quality_descriptor TEXT,
     role TEXT NOT NULL DEFAULT 'settled',
-    -- status state machine. Eight values total:
+    -- status state machine. Nine values total (item 66 Phase 4.3 added
+    -- 'unavailable' — see its own bullet below):
     --   queued          in slskd's queue, not transferring yet.
     --   downloading     slskd is actively transferring it.
     --   completed       role='settled': file moved into the library —
@@ -135,6 +136,21 @@ CREATE TABLE IF NOT EXISTS download_requests (
     --                   genuinely-dead attempt isn't confused with one
     --                   abandoned only because a better/newer candidate
     --                   already won.
+    --   unavailable     (item 66 Phase 4.3) locked, retried
+    --                   retry_count times (exponential backoff via
+    --                   next_retry_at, see those columns below) with no
+    --                   real resolution — the file exists but this peer
+    --                   won't give it up. Terminal, but distinct from
+    --                   'failed': the candidate itself was real, just
+    --                   never became reachable. Bounds items 13/14/25/63's
+    --                   previously-unbounded locked retry loop
+    --                   (roadmap item 63's real production storm: 300+
+    --                   retries of one row in ~18 minutes, still
+    --                   unexplained but now structurally capped
+    --                   regardless of root cause). Excluded from
+    --                   get_requests_blocking_redownload() — a later
+    --                   download_playlist() run should be free to look
+    --                   for the same track from a different peer.
     --
     -- Initial value: 'queued' for role='settled' and rank=1 upgrades
     -- (both requested immediately); 'shortlisted' for rank 2/3.
@@ -148,9 +164,12 @@ CREATE TABLE IF NOT EXISTS download_requests (
     --     (Phase 4 cascade: activated the instant the next-higher-ranked
     --     entry for the same track is rejected, same poll_downloads() run
     --     — role='upgrade' only; shortlisted rows are never role='settled')
-    --   locked -> queued/downloading/locked/completed
-    --     (Phase 3 retry: re-tried once per poll_downloads() run until
-    --     it moves on or a sibling entry supersedes it first; a
+    --   locked -> queued/downloading/locked/completed/unavailable
+    --     (Phase 3 retry: re-tried once per poll_downloads() run — no
+    --     more often than next_retry_at allows (item 66 Phase 4.3's
+    --     exponential backoff) — until it moves on, a sibling entry
+    --     supersedes it first, or retry_count reaches
+    --     LOCKED_RETRY_MAX_ATTEMPTS and it becomes 'unavailable'; a
     --     successful retry goes to 'completed' directly for
     --     role='settled', or 'ready_for_review' for role='upgrade')
     --   any of {queued,downloading,locked,shortlisted} -> superseded
@@ -187,6 +206,15 @@ CREATE TABLE IF NOT EXISTS download_requests (
     -- unset rather than zeroed, since a rejection isn't progress.
     bytes_transferred INTEGER,
     total_bytes INTEGER,
+    -- Roadmap item 66 (Phase 4.3) — bounds the locked-retry loop. NOT
+    -- NULL DEFAULT 0 so a fresh row (and, via the guarded ALTER in
+    -- connection.py, every pre-existing real 'locked' row) starts its
+    -- backoff schedule from attempt 0. next_retry_at NULL means "no
+    -- backoff in effect yet" (a row that's never been locked, or a
+    -- fresh transition into 'locked' this run) — _retry_locked_request
+    -- treats NULL the same as "due now."
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 

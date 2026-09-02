@@ -55,6 +55,8 @@ from seeker.models.track_status import (
     IN_LIBRARY,
     NEEDS_REVIEW,
     NOT_FOUND,
+    RETRYING,
+    REVIEW_CANDIDATE,
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
@@ -101,7 +103,16 @@ _STATE_LABELS = {
     IN_LIBRARY: "In library",
     DOWNLOADING: "Downloading",
     AWAITING_REVIEW: "Awaiting review",
+    # Roadmap item 66 (Phase 4.1) — the file is locked or queued behind
+    # a peer; Seeker is retrying in the background. Not waiting on a
+    # human, unlike AWAITING_REVIEW above (the split this label exists
+    # to make visible).
+    RETRYING: "Retrying (locked/queued)",
     NEEDS_REVIEW: "Needs review",
+    # A real SoulSeek candidate was found but wasn't auto-tier enough
+    # to request — actionable from the Review page, hence the same
+    # double-click affordance NEEDS_REVIEW/AWAITING_REVIEW get.
+    REVIEW_CANDIDATE: "Candidate to review",
     NOT_FOUND: "Not found",
 }
 
@@ -116,6 +127,10 @@ _DOWNLOAD_STATUS_LABELS = {
     "ready_for_review": "Ready for review",
     "completed": "Completed",
     "failed": "Failed",
+    # Roadmap item 66 (Phase 4.3) — exhausted its retry budget against
+    # this specific peer; distinct from "Failed" so it reads as "we gave
+    # up chasing this one," not "something errored."
+    "unavailable": "Unavailable (gave up retrying)",
 }
 
 # Statuses where a progress bar means anything at all — a locked/
@@ -132,7 +147,11 @@ _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
 # feeding it more identical-bytes samples from a completed/failed/
 # ready_for_review row eventually looks exactly like a genuinely stuck
 # in-progress download (STALL_SAMPLE_COUNT identical samples) to it.
-_DOWNLOAD_TERMINAL_STATUSES = {"completed", "failed", "ready_for_review"}
+# 'unavailable' (item 66 Phase 4.3) is the same kind of terminal state
+# as 'failed'.
+_DOWNLOAD_TERMINAL_STATUSES = {
+    "completed", "failed", "ready_for_review", "unavailable",
+}
 
 # Roadmap item 56 Phase 6.3 — a sentinel QButtonGroup id for the "Keep
 # all" option, sharing the same group as the per-file keep radios so
@@ -386,8 +405,18 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
             "info", "Scan library", "scan",
         )
 
+    # Roadmap item 66 (Phase 4.1) — counts both NOT_FOUND and
+    # REVIEW_CANDIDATE: both have no active download_requests row at
+    # all, so both are exactly what download_playlist() would actually
+    # attempt something for on the next click (a fresh request, or a
+    # needs-review candidate surfacing/staying surfaced — see Phase
+    # 4.2). RETRYING/AWAITING_REVIEW are deliberately excluded — those
+    # already have an active row, which get_requests_blocking_
+    # redownload() would just skip as already-in-progress, so counting
+    # them here would overstate what clicking Download actually does.
     missing_count = sum(
-        1 for status in facts.track_statuses if status.state == NOT_FOUND
+        1 for status in facts.track_statuses
+        if status.state in (NOT_FOUND, REVIEW_CANDIDATE)
     )
     untagged_count = sum(
         1 for status in facts.track_statuses
@@ -424,8 +453,11 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
 
 def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     # Roadmap item 56 Phase 5.4 — a fixed label, never the ETA tracker,
-    # for a row that will never report new progress again.
-    if request.status == "failed":
+    # for a row that will never report new progress again. 'unavailable'
+    # (item 66 Phase 4.3) gets the same blank treatment as 'failed' — a
+    # full bar would misleadingly read as "completed" for something that
+    # never actually succeeded.
+    if request.status in ("failed", "unavailable"):
         return QWidget()  # blank, not a misleading full/empty bar
 
     bar = QProgressBar()
@@ -2812,15 +2844,22 @@ class MainWindow(QMainWindow):
             self.track_table.setItem(row, 0, QTableWidgetItem(label))
 
             state_text = _STATE_LABELS[status.state]
-            if status.soulseek_candidate is not None:
+            # Roadmap item 66 (Phase 4.1) — only meaningful for
+            # NEEDS_REVIEW now: REVIEW_CANDIDATE's own label already
+            # says "Candidate to review," so appending this here would
+            # just repeat itself (dashboard_service.py's own
+            # _compute_status never sets soulseek_candidate on any other
+            # state — see its docstring).
+            if status.state == NEEDS_REVIEW and status.soulseek_candidate is not None:
                 state_text += " (SoulSeek candidate found)"
             status_item = QTableWidgetItem(state_text)
 
-            # Roadmap item 56 §2.4 — only these two states have anything
-            # to jump to on the Review page; every other status is a
-            # genuine no-op on double-click, so only these get the
-            # affordance rather than a misleading cue on every row.
-            if status.state in (NEEDS_REVIEW, AWAITING_REVIEW):
+            # Roadmap item 56 §2.4 (extended by item 66 Phase 4.1) —
+            # only these states have anything to jump to on the Review
+            # page; every other status is a genuine no-op on
+            # double-click, so only these get the affordance rather than
+            # a misleading cue on every row.
+            if status.state in (NEEDS_REVIEW, AWAITING_REVIEW, REVIEW_CANDIDATE):
                 status_item.setToolTip(
                     help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
                 )
@@ -2856,7 +2895,7 @@ class MainWindow(QMainWindow):
 
         status = self._current_track_statuses[row]
 
-        if status.state not in (NEEDS_REVIEW, AWAITING_REVIEW):
+        if status.state not in (NEEDS_REVIEW, AWAITING_REVIEW, REVIEW_CANDIDATE):
             # A genuine no-op — every other status has nothing to jump
             # to, so double-clicking those rows must not navigate at all.
             return
@@ -3105,7 +3144,7 @@ class MainWindow(QMainWindow):
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
         self._render_local_needs_review_matches(local_matches)
-        self._focus_pending_review_row(upgrades, local_matches)
+        self._focus_pending_review_row(candidates, upgrades, local_matches)
 
     def _render_needs_review_candidates(
             self,
@@ -3353,23 +3392,33 @@ class MainWindow(QMainWindow):
 
     def _focus_pending_review_row(
             self,
+            candidates: NeedsReviewCandidates,
             upgrades: PendingUpgrades,
             local_matches: list[NeedsReviewMatch],
     ) -> None:
-        # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW Dashboard cell
-        # (roadmap item 56 Phase 2 §2.4) sets _pending_review_focus_
-        # track_id and switches to this page; once the real data has
-        # actually loaded, this scrolls to and selects the matching row
-        # — a track that turns out to have nothing here yet (e.g. a
-        # locked/shortlisted AWAITING_REVIEW row, not yet ready_for_
-        # review) just lands on the page with nothing selected, rather
-        # than erroring.
+        # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
+        # Dashboard cell (roadmap item 56 Phase 2 §2.4, extended by item
+        # 66 Phase 4.1 to cover REVIEW_CANDIDATE too) sets
+        # _pending_review_focus_track_id and switches to this page; once
+        # the real data has actually loaded, this scrolls to and selects
+        # the matching row — a track that turns out to have nothing here
+        # yet (e.g. a locked/shortlisted RETRYING row, not yet
+        # ready_for_review) just lands on the page with nothing
+        # selected, rather than erroring.
         track_id = self._pending_review_focus_track_id
 
         if track_id is None:
             return
 
         self._pending_review_focus_track_id = None
+
+        for row, (track, _candidate) in enumerate(candidates):
+            if track.id == track_id:
+                self.review_needs_table.selectRow(row)
+                needs_item = self.review_needs_table.item(row, 0)
+                if needs_item is not None:
+                    self.review_needs_table.scrollToItem(needs_item)
+                return
 
         for row, details in enumerate(upgrades):
             if details.track.id == track_id:
@@ -3703,29 +3752,13 @@ class MainWindow(QMainWindow):
         self._reset_download_button()
         self._poll_selected_playlist()
 
-        requested = result["requested"]
-        skipped = result["skipped"]
-        already_in_progress = result.get("already_in_progress", [])
-
-        message = (
-            f"Requested {requested} download"
-            f"{'s' if requested != 1 else ''}"
-        )
-
-        if already_in_progress:
-            message += (
-                f" — {len(already_in_progress)} already "
-                f"downloading/downloaded, skipped"
-            )
-        elif skipped:
-            message += f" — {skipped} skipped (no candidate found)"
-
-        # A nudge to the Downloads page, not a forced navigation — its
-        # own nav badge already reflects the new in-flight count on the
-        # next 2s poll tick.
-        message += ". See the Downloads page for progress."
-
-        kind = "success" if requested else "info"
+        # Roadmap item 66 (Phase 4.2) — the real fix for "Requested 16,
+        # skipped 12 (no candidates found)" when several of those 12 had
+        # in fact become real Review candidates: help_text.py's own
+        # formatter names each outcome separately rather than folding
+        # them into one generic figure.
+        message = help_text.format_download_result_message(result)
+        kind = "success" if result["requested"] else "info"
         self.dashboard_notice.show_message(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:

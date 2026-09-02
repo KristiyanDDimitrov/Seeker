@@ -32,6 +32,8 @@ from seeker.models.track_status import (
     IN_LIBRARY,
     NEEDS_REVIEW,
     NOT_FOUND,
+    RETRYING,
+    REVIEW_CANDIDATE,
 )
 
 
@@ -271,8 +273,26 @@ def test_downloading_state_covers_queued_too(tmp_path):
     assert statuses[0].state == DOWNLOADING
 
 
-@pytest.mark.parametrize("status", ["ready_for_review", "locked", "shortlisted"])
-def test_awaiting_review_state(tmp_path, status):
+def test_awaiting_review_state(tmp_path):
+    # Roadmap item 66 (Phase 4.1) — narrowed to ready_for_review only;
+    # locked/shortlisted is RETRYING now (see the test right below).
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="ready_for_review", role="upgrade",
+    )
+
+    statuses = service.get_playlist_track_status("Playlist")
+
+    assert statuses[0].state == AWAITING_REVIEW
+
+
+@pytest.mark.parametrize("status", ["locked", "shortlisted"])
+def test_retrying_state(tmp_path, status):
+    # Roadmap item 66 (Phase 4.1) — the split fixing the real, reported
+    # AWAITING_REVIEW <-> DOWNLOADING flicker: a locked/shortlisted row
+    # is being retried in the background, not waiting on a human.
     service = make_service(tmp_path)
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
@@ -280,7 +300,7 @@ def test_awaiting_review_state(tmp_path, status):
 
     statuses = service.get_playlist_track_status("Playlist")
 
-    assert statuses[0].state == AWAITING_REVIEW
+    assert statuses[0].state == RETRYING
 
 
 @pytest.mark.parametrize("status", ["completed", "failed", "superseded"])
@@ -369,7 +389,13 @@ def test_secondary_tag_surfaces_alongside_needs_review(tmp_path):
     assert statuses[0].soulseek_candidate.username == "peer2"
 
 
-def test_secondary_tag_surfaces_alongside_not_found(tmp_path):
+def test_review_candidate_with_no_download_requests_row_is_its_own_state(
+        tmp_path,
+):
+    # Roadmap item 66 (Phase 4.1) — the fix for item 0.2's own finding:
+    # this used to be NOT_FOUND with the candidate as a silent secondary
+    # tag; it's REVIEW_CANDIDATE's own primary state now, and the tag
+    # still carries the real candidate for the Review page to use.
     service = make_service(tmp_path)
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
@@ -377,7 +403,7 @@ def test_secondary_tag_surfaces_alongside_not_found(tmp_path):
 
     statuses = service.get_playlist_track_status("Playlist")
 
-    assert statuses[0].state == NOT_FOUND
+    assert statuses[0].state == REVIEW_CANDIDATE
     assert statuses[0].soulseek_candidate is not None
 
 

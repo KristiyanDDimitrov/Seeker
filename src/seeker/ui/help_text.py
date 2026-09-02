@@ -12,6 +12,8 @@ copy would need to live in two call sites and could drift the way
 matching.py's two independent copies once did (see CLAUDE.md).
 """
 
+from typing import Any
+
 # --- Persistent tab/section subtitles (not hover-dependent) --------------
 # One line under each tab's own header, aimed at someone who never reads
 # the README and goes straight into the app.
@@ -126,6 +128,45 @@ TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST = (
     "Search SoulSeek and request downloads for the selected playlist's "
     "still-unmatched tracks."
 )
+
+
+def format_download_result_message(result: dict[str, Any]) -> str:
+    """Roadmap item 66 (Phase 4.2) — the real fix for "Requested 16,
+    skipped 12 (no candidates found)" when several of those 12 had in
+    fact become real Review candidates: names each outcome separately
+    rather than folding them into one generic "skipped" figure.
+    `skipped` itself stays the combined total of all three (backward-
+    compatible with anything else summing it) — never subtracted from
+    `total` here, which is exactly the shape of bug that produced the
+    original symptom.
+    """
+    requested = result["requested"]
+    skipped = result["skipped"]
+    already_in_progress = result.get("already_in_progress", [])
+    needs_review = result.get("needs_review", [])
+    no_candidate_count = skipped - len(already_in_progress) - len(needs_review)
+
+    message = f"Requested {requested} download{'s' if requested != 1 else ''}"
+
+    parts: list[str] = []
+    if needs_review:
+        parts.append(f"{len(needs_review)} sent to Review")
+    if already_in_progress:
+        parts.append(
+            f"{len(already_in_progress)} already downloading/downloaded"
+        )
+    if no_candidate_count > 0:
+        parts.append(f"{no_candidate_count} no candidate found")
+
+    if parts:
+        message += " — " + ", ".join(parts)
+
+    message += ". See the Downloads page for progress."
+
+    if needs_review:
+        message += " Check the Review page for new candidates."
+
+    return message
 
 # --- Destination dialog (roadmap item 6 §3 — "no dead end") ---------------
 

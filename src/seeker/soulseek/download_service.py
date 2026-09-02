@@ -1,7 +1,8 @@
 import glob
+import os
 import shutil
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,29 @@ from seeker.soulseek.client import (
 )
 from seeker.soulseek.quality import select_downloads
 
+
+def _debug_poll(message: str) -> None:
+    # Roadmap item 66 (Phase 4.3) — item 63's temporary, unconditional
+    # print() converted to a gated log, per that item's own explicit
+    # instruction to keep the diagnostic capability without the console
+    # noise: the root cause of the real production retry-frequency storm
+    # is still unknown, and with Phase 4.3's backoff now in place, a
+    # recurrence would show up as a violated next_retry_at — a much
+    # sharper signal than raw call timing — so this stays available for
+    # that, opt-in via SEEKER_DEBUG_POLL=1, rather than deleted outright.
+    if os.environ.get("SEEKER_DEBUG_POLL") == "1":
+        print(message)
+
+
+# Roadmap item 66 (Phase 4.3) — bounds the previously-unbounded locked
+# retry loop (items 13/14/25/63; item 63's own real production storm:
+# 300+ retries of one row in ~18 minutes, root cause still unknown but
+# now structurally capped regardless). All three untuned — real numbers
+# to revisit once real usage data exists, same convention as every other
+# threshold in this codebase.
+LOCKED_RETRY_BASE_SECONDS = 60
+LOCKED_RETRY_MAX_SECONDS = 3600
+LOCKED_RETRY_MAX_ATTEMPTS = 8
 
 # Soulseek.TransferStates is a [Flags] enum — slskd reports it as a
 # comma-joined string (e.g. "Completed, Succeeded"). Check failure markers
@@ -269,6 +293,14 @@ class DownloadService:
         # skip reasons below are otherwise indistinguishable from the
         # return value alone).
         already_in_progress: list[str] = []
+        # Roadmap item 66 (Phase 4.2) — same reasoning, for a THIRD
+        # skip reason folded into the same generic `skipped` counter:
+        # "sent to Review" (a real needs-review candidate was found and
+        # recorded) reads identically to "no candidate found at all"
+        # without this. `skipped` itself is left as their combined total
+        # (backward-compatible with any existing consumer summing it),
+        # this list is what lets a caller subtract the two apart honestly.
+        needs_review_tracks: list[str] = []
 
         for track in unmatched_tracks:
             # One bad track (search timeout, malformed response, a
@@ -364,6 +396,9 @@ class DownloadService:
                             f"{review_file.filename}"
                         )
                         skipped += 1
+                        needs_review_tracks.append(
+                            f"{track.artist} - {track.title}"
+                        )
                     else:
                         print("  No candidates found.")
                         skipped += 1
@@ -390,6 +425,7 @@ class DownloadService:
             "failed": failed,
             "total": len(unmatched_tracks),
             "already_in_progress": already_in_progress,
+            "needs_review": needs_review_tracks,
         }
 
     def _request_upgrade_shortlist(
@@ -610,20 +646,17 @@ class DownloadService:
         self._clear_review_candidate(track_id)
 
     def poll_downloads(self) -> dict[str, int]:
-        # Temporary diagnostic (roadmap item 63, not a behavior change) —
-        # a real, timestamped call-frequency log for the still-open
-        # locked-retry burst investigation. `_trigger_backend_poll`'s own
-        # overlap guard should make this print at most once per real 20s
-        # BACKEND_POLL_INTERVAL_MS tick; three isolated repros confirmed
-        # exactly that in isolation, but a real attended run showed a
-        # genuinely bursty ~1/3.5s-then-quiet-then-~1/8-9s pattern that
-        # none of those repros reproduced (see CLAUDE.md item 63 /
-        # docs/HISTORY.md item 63). Watch THIS line's own real timestamps
-        # during the next attended run rather than inferring cadence from
-        # printed retry-line counts, which undercounted the real rate by
-        # 2x last time (each retry prints two lines, not one). Remove
-        # once the real cause is found and fixed.
-        print(
+        # Diagnostic (roadmap item 63/66) — a real, timestamped call-
+        # frequency log for the still-open locked-retry burst
+        # investigation, gated behind SEEKER_DEBUG_POLL=1 (Phase 4.3
+        # converted this from an unconditional print — see _debug_poll's
+        # own docstring for why it stays rather than being deleted
+        # outright). `_trigger_backend_poll`'s own overlap guard should
+        # make this fire at most once per real 20s BACKEND_POLL_INTERVAL_MS
+        # tick; a real attended run once showed a genuinely bursty
+        # pattern no isolated repro has reproduced since (see
+        # docs/HISTORY.md item 63).
+        _debug_poll(
             f"[poll_downloads] {datetime.now(timezone.utc).isoformat()} "
             f"called"
         )
@@ -632,7 +665,7 @@ class DownloadService:
             pending = self.download_requests.get_pending(connection)
             locked = self.download_requests.get_locked(connection)
 
-        print(
+        _debug_poll(
             f"[poll_downloads] pending={len(pending)} locked={len(locked)}"
         )
 
@@ -805,6 +838,7 @@ class DownloadService:
         counts["locked"] = len(self._get_locked())
         counts["shortlisted"] = len(self._get_shortlisted())
         counts["superseded"] = len(self._get_superseded())
+        counts["unavailable"] = len(self._get_unavailable())
 
         return counts
 
@@ -986,6 +1020,32 @@ class DownloadService:
             # duplicate against the same real peer.
             return
 
+        # Roadmap item 66 (Phase 4.3) — the retry cadence is now
+        # independent of the poll cadence: a row isn't due for another
+        # real attempt until its own next_retry_at (exponential backoff)
+        # has passed, however often poll_downloads() itself runs. This
+        # is the actual fix for item 63's storm regardless of whatever
+        # its real trigger turns out to be — a violated next_retry_at
+        # would now be a visible, checkable signal if it recurs.
+        now = datetime.now(timezone.utc)
+        if current.next_retry_at is not None:
+            next_retry_at = datetime.fromisoformat(current.next_retry_at)
+            if now < next_retry_at:
+                return
+
+        if current.retry_count >= LOCKED_RETRY_MAX_ATTEMPTS:
+            # Exhausted every real attempt — the file exists but this
+            # peer won't give it up. Terminal, distinct from 'failed'
+            # (the candidate itself was real), and deliberately excluded
+            # from get_requests_blocking_redownload() so a later
+            # download_playlist() run can look for the same track from a
+            # different peer.
+            with self.database.transaction() as connection:
+                self.download_requests.mark_status(
+                    request.id, "unavailable", connection,
+                )
+            return
+
         try:
             transfer_id = self.soulseek.request_download(
                 request.username,
@@ -998,11 +1058,39 @@ class DownloadService:
             # client.py's RECOGNIZED_REJECTION_PATTERNS) — a peer that's
             # offline right now hits this branch exactly the same way a
             # file-not-shared rejection always did.
+            self._advance_locked_retry(request, current.retry_count)
             return  # Rejected again at the batch level — stays locked.
+        except Exception:
+            # Roadmap item 66 (Phase 4.3) — live-caught, not
+            # theoretical: an UNRECOGNIZED error (client.py's own
+            # request_download deliberately re-raises anything that
+            # isn't a known rejection pattern "loud," as its own comment
+            # says — confirmed live 2026-09-02 against real production
+            # slskd, a genuine `500 Internal Server Error` on
+            # /api/v0/transfers/downloads/batches, the exact endpoint/
+            # error text item 63's storm investigation already flagged
+            # as its one concrete lead) must STILL advance the retry
+            # budget — otherwise this exact failure shape retries
+            # forever with no bound, which is precisely the bug this
+            # phase exists to close, regardless of the failure's cause.
+            # Re-raised unchanged so poll_downloads()'s own outer
+            # per-request try/except still prints its diagnostic; this
+            # is additive bookkeeping, not a change to what's reported.
+            self._advance_locked_retry(request, current.retry_count)
+            raise
 
-        state = self.soulseek.get_download_status(
-            request.username, transfer_id,
-        ).state
+        try:
+            state = self.soulseek.get_download_status(
+                request.username, transfer_id,
+            ).state
+        except Exception:
+            # Same reasoning as the request_download branch above —
+            # get_download_status (client.py) has no exception wrapping
+            # of its own at all, so any real failure here (a timeout, a
+            # non-404 HTTP error) must still count against the retry
+            # budget rather than silently never advancing it.
+            self._advance_locked_retry(request, current.retry_count)
+            raise
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
             status = "locked"
@@ -1059,8 +1147,41 @@ class DownloadService:
                 request.id, transfer_id, status, connection,
             )
 
+        if status == "locked":
+            # Real attempt made, still locked — advance the backoff
+            # schedule. Left alone (not reset) when status moves on to
+            # anything else: those rows leave the retry cycle entirely,
+            # so their retry_count/next_retry_at stop being consulted.
+            self._advance_locked_retry(request, current.retry_count)
+
         if status == "ready_for_review":
             self._supersede_others_for_track(request.track_id, request.id)
+
+    def _advance_locked_retry(
+            self, request: DownloadRequest, current_retry_count: int,
+    ) -> None:
+        # Roadmap item 66 (Phase 4.3) — called once per real retry
+        # attempt that ends up staying 'locked' (whether rejected at the
+        # batch level or via the async status check), regardless of
+        # which of the two call sites made the attempt. current_retry_count
+        # is the count BEFORE this attempt — used as the exponent so the
+        # first attempt (0) backs off LOCKED_RETRY_BASE_SECONDS, matching
+        # the brief's own worked example (60s, then 120s, then 240s).
+        assert request.id is not None
+
+        new_retry_count = current_retry_count + 1
+        backoff_seconds = min(
+            LOCKED_RETRY_BASE_SECONDS * (2 ** current_retry_count),
+            LOCKED_RETRY_MAX_SECONDS,
+        )
+        next_retry_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds)
+        ).isoformat()
+
+        with self.database.transaction() as connection:
+            self.download_requests.update_retry_state(
+                request.id, new_retry_count, next_retry_at, connection,
+            )
 
     def _supersede_stale_duplicates(self, request: DownloadRequest) -> bool:
         # item 16's creation-time dedup guard (get_active_for_track,
@@ -1140,6 +1261,10 @@ class DownloadService:
     def _get_superseded(self) -> list[DownloadRequest]:
         with self.database.transaction() as connection:
             return self.download_requests.get_superseded(connection)
+
+    def _get_unavailable(self) -> list[DownloadRequest]:
+        with self.database.transaction() as connection:
+            return self.download_requests.get_unavailable(connection)
 
     def _update_status(self, request_id: int, status: str) -> None:
         with self.database.transaction() as connection:

@@ -30,6 +30,8 @@ from seeker.models.track_status import (
     IN_LIBRARY,
     NEEDS_REVIEW,
     NOT_FOUND,
+    RETRYING,
+    REVIEW_CANDIDATE,
     TrackStatus,
 )
 
@@ -40,11 +42,16 @@ class PlaylistNotFoundError(RuntimeError):
 
 # "Downloading" — an active, actually-transferring request.
 _DOWNLOADING_STATUSES = {"queued", "downloading"}
-# "Awaiting review" — something's being chased right now (locked/
-# shortlisted) or is done and waiting on a human (ready_for_review).
-# Deliberately excludes completed/failed/superseded — those aren't
-# "awaiting" anything.
-_AWAITING_REVIEW_STATUSES = {"ready_for_review", "locked", "shortlisted"}
+# Roadmap item 66 (Phase 4.1) — split from the original, single
+# _AWAITING_REVIEW_STATUSES = {"ready_for_review", "locked", "shortlisted"}.
+# AWAITING_REVIEW now means only what its name says: a real completed
+# download genuinely waiting on a human decision. A locked/shortlisted
+# row is still being retried in the background, not waiting on anyone —
+# see RETRYING below, and models/track_status.py's own docstring for why
+# folding these together produced a real, reported "Awaiting review" <->
+# "Downloading" flicker that looked like a bug in the status itself.
+_AWAITING_REVIEW_STATUSES = {"ready_for_review"}
+_RETRYING_STATUSES = {"locked", "shortlisted"}
 
 # Every download_requests status that still represents real, in-progress
 # work toward an outcome — mirrors `seeker downloads status`'s own scope
@@ -87,29 +94,42 @@ class DashboardService:
     ) -> list[TrackStatus]:
         """Every track in one playlist, each with exactly one primary
         state (mutually exclusive, first match wins) plus an optional
-        secondary tag:
+        secondary tag. Roadmap item 66 (Phase 4.1) split the original
+        five-state set (item 22) into seven — see models/track_status.py
+        for the full "why" (a real, reported AWAITING_REVIEW <->
+        DOWNLOADING flicker, and a SoulSeek candidate silently buried as
+        a secondary tag on NOT_FOUND):
 
         1. IN_LIBRARY — an 'auto' track_matches row resolving to a real
            local file. Takes precedence over any stale download_requests
            row left over from before the track was matched.
         2. DOWNLOADING — an active queued/downloading request.
-        3. AWAITING_REVIEW — a ready_for_review request, or an active
-           locked/shortlisted one (something's being chased right now).
-        4. NEEDS_REVIEW — a needs_review track_matches row, no active
+        3. AWAITING_REVIEW — a real completed download (ready_for_review)
+           genuinely waiting on a human decision. Narrower than before —
+           no longer includes locked/shortlisted (see RETRYING).
+        4. RETRYING — an active locked/shortlisted request: something's
+           being chased right now, not waiting on a human at all. Ranked
+           above NEEDS_REVIEW, preserving the old AWAITING_REVIEW's own
+           precedence over it.
+        5. NEEDS_REVIEW — a needs_review track_matches row, no active
            download activity.
-        5. NOT_FOUND — none of the above.
+        6. REVIEW_CANDIDATE — no local match and no download activity,
+           but a real soulseek_review_candidates row exists (item 17's
+           tier: something plausible was found but never auto-tier
+           enough to request). Previously invisible as a primary state —
+           only ever a secondary tag on NOT_FOUND.
+        7. NOT_FOUND — none of the above.
 
-        Secondary tag (a soulseek_review_candidates row) can only ever
-        surface on states 4/5 — by construction, not by a runtime check:
-        the candidate lookup is only ever consulted from those two
-        branches, so a track that happens to have both an auto match
-        and a stale review-candidate row (which item 17's
-        download_playlist clearing logic should never actually leave
-        behind — confirmed against real data: zero such rows exist)
-        would surface as IN_LIBRARY with the tag silently absent, not a
-        contradictory combination. If that clearing logic ever regresses,
-        this is where it would go unnoticed rather than crash — worth
-        revisiting with an explicit warning if it's ever seen for real.
+        Secondary tag (a soulseek_review_candidates row) can now surface
+        on NEEDS_REVIEW only — by construction: a track that happens to
+        have both an auto match and a stale review-candidate row (which
+        item 17's download_playlist clearing logic should never actually
+        leave behind — confirmed against real data: zero such rows
+        exist) would surface as IN_LIBRARY with the tag silently absent,
+        not a contradictory combination. If that clearing logic ever
+        regresses, this is where it would go unnoticed rather than
+        crash — worth revisiting with an explicit warning if it's ever
+        seen for real.
         """
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
@@ -237,7 +257,13 @@ def _is_visible(request: DownloadRequest, now: datetime) -> bool:
     if request.status in ACTIVE_DOWNLOAD_STATUSES:
         return True
 
-    if request.status in ("completed", "failed") and request.completed_at:
+    # 'unavailable' (item 66 Phase 4.3) gets the same "visibly lands"
+    # treatment as completed/failed — it shouldn't just vanish from the
+    # Downloads page the instant the retry budget is exhausted.
+    if (
+            request.status in ("completed", "failed", "unavailable")
+            and request.completed_at
+    ):
         completed_at = datetime.fromisoformat(request.completed_at)
         elapsed = (now - completed_at).total_seconds()
 
@@ -278,11 +304,27 @@ def _compute_status(
     if any(r.status in _AWAITING_REVIEW_STATUSES for r in requests):
         return TrackStatus(track=track, state=AWAITING_REVIEW)
 
+    # Roadmap item 66 (Phase 4.1) — ranked above NEEDS_REVIEW, preserving
+    # today's precedence: both a locked/shortlisted row and a
+    # ready_for_review one were reachable as the old, single
+    # AWAITING_REVIEW before this split, and a real, in-progress retry is
+    # a stronger signal than an unconfirmed local needs_review match.
+    if any(r.status in _RETRYING_STATUSES for r in requests):
+        return TrackStatus(track=track, state=RETRYING)
+
     if match is not None and match.match_method == "needs_review":
         return TrackStatus(
             track=track, state=NEEDS_REVIEW, soulseek_candidate=candidate,
         )
 
-    return TrackStatus(
-        track=track, state=NOT_FOUND, soulseek_candidate=candidate,
-    )
+    # Roadmap item 66 (Phase 4.1) — the fix for item 0.2's own finding:
+    # a real SoulSeek candidate with no download_requests row at all
+    # (download_playlist() found nothing auto-tier, per item 17) used to
+    # be a silent secondary tag on NOT_FOUND alone. Its own primary state
+    # now, so it can't be missed the way a tag buried in NOT_FOUND could.
+    if candidate is not None:
+        return TrackStatus(
+            track=track, state=REVIEW_CANDIDATE, soulseek_candidate=candidate,
+        )
+
+    return TrackStatus(track=track, state=NOT_FOUND)

@@ -92,6 +92,19 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "track_matches", "confirmed_at", "TEXT"
     )
+    # Roadmap item 66 (Phase 4.3) — bounds the locked-file retry loop
+    # (items 13/14/25/63). NOT NULL DEFAULT 0 so every pre-existing real
+    # 'locked' row (there are several in production, some untouched
+    # since 2026-08-27/28 — see docs/HISTORY.md item 63) starts its
+    # backoff schedule from attempt 0 on the very next poll, rather than
+    # NULL breaking the `retry_count >= LOCKED_RETRY_MAX_ATTEMPTS` check.
+    _add_column_if_missing(
+        connection, "download_requests", "retry_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _add_column_if_missing(
+        connection, "download_requests", "next_retry_at", "TEXT"
+    )
 
 
 def _add_column_if_missing(

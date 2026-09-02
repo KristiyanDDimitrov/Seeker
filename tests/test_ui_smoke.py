@@ -1576,6 +1576,50 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     assert "3 already downloading/downloaded" in window.dashboard_notice.text()
 
 
+def test_download_result_notice_reports_needs_review_separately_from_skipped(
+        qtbot,
+):
+    # Roadmap item 66 (Phase 4.2) — the real fix: "Requested 16, skipped
+    # 12 (no candidates found)" was wrong when several of those 12 had
+    # actually become real Review candidates, not "nothing found."
+    playlists = [
+        Playlist(
+            id="p1", name="Test", track_count=1, download_location_id=1,
+        ),
+    ]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        resolved_destination=(location, "Test"),
+        download_playlist_result={
+            "requested": 4, "skipped": 6, "failed": 0, "total": 10,
+            "already_in_progress": [],
+            "needs_review": [
+                "Prdk - ONE MORE NIGHT", "Zigi SC, A-Cray - Bit Perfect",
+            ],
+        },
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window.download_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "Requested 4" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+    text = window.dashboard_notice.text()
+    assert "2 sent to Review" in text
+    # 6 skipped total - 0 already-in-progress - 2 needs-review = 4 with
+    # genuinely no candidate at all.
+    assert "4 no candidate found" in text
+    assert "Review page" in text
+
+
 def test_download_with_no_destination_opens_dialog_prefilled_with_playlist_name(
         qtbot, monkeypatch,
 ):

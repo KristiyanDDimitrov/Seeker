@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -269,6 +269,25 @@ def seed_pending_request(
                 ),
             ),
             connection,
+        )
+
+
+def set_retry_state(
+        service: DownloadService,
+        filename: str,
+        retry_count: int,
+        next_retry_at: str | None,
+) -> None:
+    # Roadmap item 66 (Phase 4.3) — add() deliberately never accepts an
+    # initial retry_count/next_retry_at (a fresh row always starts at
+    # the real DB defaults, 0/NULL); this is a test-only way to seed a
+    # specific retry state for a row that's already been through one or
+    # more real retry cycles.
+    with service.database.transaction() as connection:
+        connection.execute(
+            "UPDATE download_requests SET retry_count = ?, "
+            "next_retry_at = ? WHERE filename = ?",
+            (retry_count, next_retry_at, filename),
         )
 
 
@@ -707,6 +726,10 @@ def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
     assert result["requested"] == 0
     assert result["skipped"] == 1
     assert service.soulseek.request_download_calls == []
+    # Roadmap item 66 (Phase 4.2) — named separately from the generic
+    # "skipped" count so a caller can tell "sent to Review" apart from
+    # "no candidate found at all."
+    assert result["needs_review"] == ["Prdk - ONE MORE NIGHT"]
 
     with service.database.transaction() as connection:
         rows = connection.execute(
@@ -1996,6 +2019,157 @@ def test_locked_request_rejected_again_stays_locked_not_failed(tmp_path):
     # transfer_id was updated to the new attempt even though it stayed
     # locked, so the next run polls the latest attempt, not the stale one.
     assert row["transfer_id"] == "new-1"
+
+
+# --- Bounded locked retry (roadmap item 66, Phase 4.3) ---------------------
+
+def test_locked_retry_skipped_when_next_retry_at_is_in_the_future(tmp_path):
+    service = make_service(
+        tmp_path,
+        states={"new-1": "InProgress"},
+        retry_results={"Dom Dolla - Rhyme Dust.mp3": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+    future = (
+        datetime.now(timezone.utc) + timedelta(hours=1)
+    ).isoformat()
+    set_retry_state(
+        service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
+        next_retry_at=future,
+    )
+
+    service.poll_downloads()
+
+    # Not due yet -- no real request_download call at all, and the row
+    # stays exactly as it was.
+    assert service.soulseek.request_download_calls == []
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status, retry_count, next_retry_at FROM "
+            "download_requests WHERE filename = 'Dom Dolla - Rhyme Dust.mp3'"
+        ).fetchone()
+    assert row["status"] == "locked"
+    assert row["retry_count"] == 1
+    assert row["next_retry_at"] == future
+
+
+def test_locked_retry_runs_when_next_retry_at_has_passed(tmp_path):
+    service = make_service(
+        tmp_path,
+        states={"new-1": "Completed, Rejected"},
+        retry_results={"Dom Dolla - Rhyme Dust.mp3": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+    past = (
+        datetime.now(timezone.utc) - timedelta(seconds=5)
+    ).isoformat()
+    set_retry_state(
+        service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
+        next_retry_at=past,
+    )
+
+    service.poll_downloads()
+
+    assert service.soulseek.request_download_calls == [
+        ("peer1", "Dom Dolla - Rhyme Dust.mp3", 12_345),
+    ]
+
+
+def test_locked_retry_sets_exponential_backoff_after_each_attempt(tmp_path):
+    # Roadmap item 66 (Phase 4.3) — LOCKED_RETRY_BASE_SECONDS=60,
+    # doubling: attempt 1 (retry_count 0->1) backs off ~60s, attempt 2
+    # (1->2) backs off ~120s.
+    service = make_service(
+        tmp_path,
+        states={"new-1": "Completed, Rejected"},
+        retry_results={"Dom Dolla - Rhyme Dust.mp3": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+
+    before_first = datetime.now(timezone.utc)
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT retry_count, next_retry_at FROM download_requests "
+            "WHERE filename = 'Dom Dolla - Rhyme Dust.mp3'"
+        ).fetchone()
+
+    assert row["retry_count"] == 1
+    next_retry_at = datetime.fromisoformat(row["next_retry_at"])
+    delta = (next_retry_at - before_first).total_seconds()
+    assert 55 <= delta <= 65  # ~60s, allowing real test execution slack
+
+    # Make it due again, then retry a second time.
+    set_retry_state(
+        service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
+        next_retry_at=(
+            datetime.now(timezone.utc) - timedelta(seconds=1)
+        ).isoformat(),
+    )
+    before_second = datetime.now(timezone.utc)
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT retry_count, next_retry_at FROM download_requests "
+            "WHERE filename = 'Dom Dolla - Rhyme Dust.mp3'"
+        ).fetchone()
+
+    assert row["retry_count"] == 2
+    next_retry_at = datetime.fromisoformat(row["next_retry_at"])
+    delta = (next_retry_at - before_second).total_seconds()
+    assert 115 <= delta <= 125  # ~120s
+
+
+def test_locked_retry_becomes_unavailable_after_max_attempts(tmp_path):
+    from seeker.soulseek.download_service import LOCKED_RETRY_MAX_ATTEMPTS
+
+    service = make_service(
+        tmp_path,
+        states={"new-1": "Completed, Rejected"},
+        retry_results={"Dom Dolla - Rhyme Dust.mp3": "new-1"},
+    )
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+    set_retry_state(
+        service, "Dom Dolla - Rhyme Dust.mp3",
+        retry_count=LOCKED_RETRY_MAX_ATTEMPTS, next_retry_at=None,
+    )
+
+    service.poll_downloads()
+
+    # Exhausted -- no further real network call, straight to terminal.
+    assert service.soulseek.request_download_calls == []
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status, completed_at FROM download_requests "
+            "WHERE filename = 'Dom Dolla - Rhyme Dust.mp3'"
+        ).fetchone()
+    assert row["status"] == "unavailable"
+    assert row["completed_at"] is not None
+
+
+def test_unavailable_does_not_block_a_later_redownload(tmp_path):
+    service = make_service(tmp_path, states={})
+    seed_pending_request(
+        service, "old-1", role="settled", status="unavailable",
+        track_id="track1",
+    )
+
+    with service.database.transaction() as connection:
+        blocking = service.download_requests.get_requests_blocking_redownload(
+            "track1", connection,
+        )
+
+    assert blocking == []
 
 
 def test_retry_loop_dedupes_stale_duplicate_locked_rows(tmp_path):

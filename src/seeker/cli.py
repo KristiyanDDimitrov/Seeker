@@ -403,12 +403,30 @@ def handle_download(
         playlist.name
     )
 
+    # Roadmap item 66 (Phase 4.2) — `skipped` alone folds together three
+    # genuinely different outcomes (already in progress, sent to Review,
+    # no candidate at all); named separately here so "skipped 12" never
+    # silently means "12 of those actually need your attention on the
+    # Review page." `skipped` itself stays the combined total, never
+    # subtracted from `total` — see download_service.py's own comment
+    # on why that shape of arithmetic is exactly what produced this bug.
+    needs_review = result.get("needs_review", [])
+    already_in_progress = result.get("already_in_progress", [])
+    no_candidate_count = (
+        result["skipped"] - len(already_in_progress) - len(needs_review)
+    )
+
     print(
         f"Requested {result['requested']} download(s), "
-        f"skipped {result['skipped']}, "
+        f"skipped {result['skipped']} "
+        f"({len(needs_review)} sent to review, "
+        f"{len(already_in_progress)} already in progress, "
+        f"{no_candidate_count} no candidate found), "
         f"failed {result['failed']} "
         f"(of {result['total']} unmatched tracks)."
     )
+    if needs_review:
+        print("  Run 'seeker review' to see the new candidates.")
 
 def handle_downloads(
         application: Application,
@@ -425,7 +443,8 @@ def handle_downloads(
             f"Ready for review: {counts['ready_for_review']}, "
             f"Locked (retrying): {counts['locked']}, "
             f"Shortlisted (pending): {counts['shortlisted']}, "
-            f"Superseded: {counts['superseded']}."
+            f"Superseded: {counts['superseded']}, "
+            f"Unavailable: {counts['unavailable']}."
         )
         return
 
