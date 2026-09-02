@@ -95,5 +95,34 @@ answered before proceeding.**
 `mypy --strict` clean on both touched files. Full suite after adding the
 4 new tests: 878 passed, 1 skipped (0 failures).
 
+**Commit boundary — commit 7e1b612.**
+
+## P1 — Tagging button row squeezes the playlist panel
+
+- [x] 1.1 New `src/seeker/ui/flow_layout.py::FlowLayout` (the standard
+  Qt reflowing-row pattern, ported to PySide6). `_build_tagging_controls`
+  now returns/builds a `FlowLayout` instead of a `QHBoxLayout`.
+- [x] 1.2 `playlist_list.setMinimumWidth()` sized via
+  `QFontMetrics.horizontalAdvance()` against an explicitly-flagged
+  untuned sample string ("A pretty long playlist name (2026)") + theme
+  spacing.
+- [x] 1.3 SKIPPED (judgement call, as the brief allowed) — the
+  `QSplitter` replacement. FlowLayout + the new minimum width already
+  resolve both symptoms structurally; a splitter would touch every
+  existing dashboard-layout test for no further benefit.
+- [x] 1.4 9 new tests: `test_flow_layout.py` (5, unit-level: minimum
+  size is the widest item not the sum, `hasHeightForWidth`, height
+  grows as width shrinks, `takeAt`/`itemAt` bounds) + `test_ui_smoke.py`
+  (4: `dashboard_content.minimumSizeHint().width() < 960` at the app's
+  real 960×640 minimum, `playlist_list` keeps its floor, the tagging
+  row collapses to 1 row at 1600 wide and grows to 2+ rows at 320,
+  `tagging_controls_layout.minimumSize()` is the widest item not the
+  sum). Live-confirmed via a real offscreen `MainWindow` at 960×640:
+  `dashboard_content.minimumSizeHint().width()` is 445px (was ~900-
+  1000px+ before, per the brief's own arithmetic).
+
+`mypy --strict src/` clean (82 files). Full suite: 887 passed, 1
+skipped (0 failures) — 9 new, 0 regressions.
+
 **Commit boundary — commit (see next `git log`, made right after this
 entry).**

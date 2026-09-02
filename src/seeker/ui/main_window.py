@@ -77,6 +77,7 @@ from seeker.ui.download_eta import (
     DownloadEtaTracker,
     format_aggregate_header,
 )
+from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.formatting import format_file_size, format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import (
@@ -1389,6 +1390,20 @@ class MainWindow(QMainWindow):
         self.playlist_list.currentItemChanged.connect(
             self._on_playlist_selected
         )
+        # Roadmap item 72 (P1) — a real floor, sized to fit a realistic
+        # long playlist name rather than 0px: FlowLayout above removes
+        # the tagging row's own floor, but without this the playlist
+        # panel could still be squeezed to a sliver by a wide window
+        # dominated by other content. PLAYLIST_NAME_WIDTH_SAMPLE is an
+        # untuned stand-in for "a realistically long real playlist
+        # name," not a measured real value.
+        PLAYLIST_NAME_WIDTH_SAMPLE = "A pretty long playlist name (2026)"
+        name_width = self.playlist_list.fontMetrics().horizontalAdvance(
+            PLAYLIST_NAME_WIDTH_SAMPLE
+        )
+        self.playlist_list.setMinimumWidth(
+            name_width + theme.SPACING_LG * 2
+        )
         layout.addWidget(self.playlist_list, 1)
 
         right = QVBoxLayout()
@@ -1427,7 +1442,8 @@ class MainWindow(QMainWindow):
         self.track_area_stack.addWidget(self._track_empty_panel)
         right.addWidget(self.track_area_stack)
 
-        right.addLayout(self._build_tagging_controls())
+        self.tagging_controls_layout = self._build_tagging_controls()
+        right.addLayout(self.tagging_controls_layout)
 
         self.tagging_results = QPlainTextEdit()
         self.tagging_results.setReadOnly(True)
@@ -2044,7 +2060,7 @@ class MainWindow(QMainWindow):
             f"Couldn't check for updates: {message}",
         )
 
-    def _build_tagging_controls(self) -> QHBoxLayout:
+    def _build_tagging_controls(self) -> FlowLayout:
         # Shared by all three triggers (per-track, "Tag selected",
         # "Tag playlist") — one set of options, not three independently
         # configurable copies. --bpm-range requiring --analyze-audio
@@ -2052,7 +2068,15 @@ class MainWindow(QMainWindow):
         # hiding the range fields entirely while the checkbox is
         # unchecked, rather than validating the combination after the
         # fact the way the CLI has to.
-        controls = QHBoxLayout()
+        #
+        # Roadmap item 72 (P1) — a plain QHBoxLayout's minimum width is
+        # the SUM of its children's minimum widths, which made this
+        # 9-widget row impose a ~900-1000px floor on the whole
+        # dashboard page, squeezing the playlist panel next to it down
+        # to almost nothing. FlowLayout fixes both halves at once: it
+        # reflows 1-row -> 2-row -> 3-row purely from available width,
+        # and its own minimumSize() is just the widest single item.
+        controls = FlowLayout()
 
         self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
         self.analyze_audio_checkbox.setToolTip(

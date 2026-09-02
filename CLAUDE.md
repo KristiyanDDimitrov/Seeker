@@ -78,6 +78,9 @@ src/seeker/
 │                              #   — shared by History, tagged-at, ETA
 │   ├── theme.py                # dark theme tokens + apply_theme() (item 47)
 │   ├── notice.py               # InlineNotice — persistent banner (item 47)
+│   ├── flow_layout.py           # FlowLayout — reflowing control row,
+│                              #   minimumSize() = widest item not the
+│                              #   sum (item 72)
 │   ├── help_text.py            # centralized tooltips/subtitles/About copy
 │                              #   (item 34), incl. SUPPORT_LINKS (item 35)
 │   └── workers.py              # QThreadPool Worker + run_worker() — every
@@ -1055,6 +1058,22 @@ compress it here before moving on to the next item.
     also surfaced a real, already-existing DB/disk desync in the "Test"
     library location unrelated to this fix — see item 72+ for the
     rename item that actually explains it.
+72. **Fix P1: tagging controls row squeezed the playlist panel — done.**
+    New `ui/flow_layout.py::FlowLayout` (the standard Qt reflowing-row
+    pattern) replaces the plain `QHBoxLayout` `_build_tagging_controls`
+    returned. Fixes both halves of the bug at once: a `QHBoxLayout`'s
+    minimum width is the SUM of its children's minimum widths (~900-
+    1000px for 9 controls); `FlowLayout.minimumSize()` returns the
+    WIDEST SINGLE ITEM instead, and `heightForWidth()` reflows the row
+    onto more lines as width shrinks, purely from real Qt layout math —
+    no breakpoint constants. `playlist_list` also gets a real
+    `setMinimumWidth()` floor (sized via `QFontMetrics` against an
+    untuned "realistic long playlist name" sample string, flagged as
+    such). Confirmed live: `dashboard_content.minimumSizeHint().width()`
+    dropped to 445px (well under the app's 960px minimum window width).
+    Skipped 1.3's optional `QSplitter` — the FlowLayout fix alone
+    already resolves both symptoms structurally, and a splitter would
+    touch every existing dashboard-layout test for no further gain.
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

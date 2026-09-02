@@ -1271,6 +1271,67 @@ def test_dismissed_next_step_notice_reappears_when_it_recurs_later(qtbot):
     assert not window.next_step_notice.isHidden()
 
 
+# --- Roadmap item 72 (P1): tagging row reflows, playlist panel keeps its
+# floor ------------------------------------------------------------------
+
+def test_dashboard_content_minimum_width_fits_under_the_app_minimum(qtbot):
+    # Regression test for the real reported bug: a plain QHBoxLayout's
+    # minimum width is the SUM of its children's minimum widths, so the
+    # 9-widget tagging controls row imposed a ~900-1000px floor on the
+    # whole dashboard page, squeezing the playlist panel next to it
+    # down to almost nothing at the app's own 960x640 minimum window
+    # size (main_window.py:945).
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.resize(960, 640)
+
+    dashboard_content = window.playlist_list.parentWidget()
+    assert dashboard_content.minimumSizeHint().width() < 960
+
+
+def test_playlist_list_keeps_its_floor_at_the_app_minimum_window_size(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.resize(960, 640)
+    qtbot.wait(20)
+
+    assert window.playlist_list.minimumWidth() > 0
+    assert window.playlist_list.width() >= window.playlist_list.minimumWidth()
+
+
+def test_tagging_controls_row_reflows_to_multiple_rows_when_narrow(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    layout = window.tagging_controls_layout
+    single_row_height = max(
+        layout.itemAt(i).sizeHint().height() for i in range(layout.count())
+    )
+
+    # Wide: collapses back to a single row.
+    assert layout.heightForWidth(1600) <= single_row_height + 4
+
+    # Narrow: really does grow to 2+ rows, not just clip/scroll.
+    assert layout.heightForWidth(320) >= single_row_height * 2
+
+
+def test_tagging_controls_row_minimum_size_is_the_widest_item_not_the_sum(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    layout = window.tagging_controls_layout
+    widths = [layout.itemAt(i).sizeHint().width() for i in range(layout.count())]
+
+    assert layout.minimumSize().width() < sum(widths) / 2
+    assert layout.minimumSize().width() >= max(widths)
+
+
 # --- Roadmap item 56 Phase 3: Settings as an in-window page -----------------
 
 def test_settings_page_shows_its_subtitle_via_build_page(qtbot):
