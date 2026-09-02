@@ -1091,6 +1091,28 @@ compress it here before moving on to the next item.
     way). Rewrote, not deleted, the item 56 §6.2 "could not reproduce"
     test to assert real geometry instead of just `isVisible()`.
     [HISTORY §73](docs/HISTORY.md#73)
+74. **Fix P5: "slskd.yml has no active shares section to add to" —
+    done, live-verified against a real disposable throwaway container.**
+    `_insert_slskd_share_directory` now CREATES the block (appended at
+    end of file) when none exists instead of refusing — confirmed live
+    against a real, genuinely-fresh, never-hand-edited slskd container's
+    own generated default (`tests/fixtures/slskd_generated_default.yml`,
+    captured 2026-09-02): it has NO active `shares:` block at all, only
+    the commented template, exactly the reported error's cause.
+    `add_location_to_share` now computes BOTH new file contents before
+    writing either (closes a real partial-write window — a failure used
+    to leave `docker-compose.yml` mutated with nothing on the slskd.yml
+    side to match), and rolls the compose file back from its own backup
+    if the second write still fails. `docker_setup.py::compose_file_path()`
+    now copies the bundled `docker-compose.yml` into the same stable
+    per-user `slskd_data_dir()` on first use for a frozen build (once,
+    guarded) instead of resolving inside the app bundle — real,
+    live-confirmed problem: `is_self_managed()` compares a container's
+    permanently-recorded label against this path, and a bundle path
+    regenerates on every rebuild. Live E2E-verified end to end against
+    a real disposable container (never the real production `slskd`
+    one): real block creation, real compose volume line, real backups,
+    `is_self_managed()` correctly `True`. [HISTORY §74](docs/HISTORY.md#74)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

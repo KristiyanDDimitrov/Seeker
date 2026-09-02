@@ -377,17 +377,34 @@ class SharingService:
         shutil.copy2(self._compose_path, compose_backup)
         shutil.copy2(slskd_yml_path, slskd_yml_backup)
 
+        # Roadmap item 74 (P5.2) — BOTH new file contents are computed
+        # BEFORE either file is written. The old order (write compose,
+        # THEN parse+write slskd.yml) left a real partial-write window:
+        # any failure in the slskd.yml step left docker-compose.yml
+        # already mutated, and a retry would add the same volume line a
+        # SECOND time. Computing first means a parse failure here
+        # leaves both files completely untouched.
         compose_text = self._compose_path.read_text()
         updated_compose_text = _insert_compose_volume_line(
             compose_text, plan.compose_volume_line
         )
-        self._compose_path.write_text(updated_compose_text)
 
         slskd_yml_text = slskd_yml_path.read_text()
         updated_slskd_yml_text = _insert_slskd_share_directory(
             slskd_yml_text, plan.slskd_share_directory_line
         )
-        slskd_yml_path.write_text(updated_slskd_yml_text)
+
+        self._compose_path.write_text(updated_compose_text)
+
+        try:
+            slskd_yml_path.write_text(updated_slskd_yml_text)
+        except Exception:
+            # The only failure window left: the second write itself
+            # (disk full, permissions, ...). Roll the compose file back
+            # from the backup just taken so a retry can't add the same
+            # volume line twice.
+            shutil.copy2(compose_backup, self._compose_path)
+            raise
 
         # Reuses the CURRENT live-resolved values for the pre-existing
         # env-var-driven mount (data dir + the original share path),
@@ -589,10 +606,17 @@ def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
                 break
 
     if directories_index is None:
-        raise RuntimeError(
-            "slskd.yml has no active 'shares: / directories:' section "
-            "to add to."
+        # Roadmap item 74 (P5.1) — no active block exists. This is the
+        # NORMAL state for a slskd.yml slskd itself generated fresh
+        # (its own default template ships the whole "shares:" section
+        # commented out, same shape as the commented reference block
+        # this file's own docstring already describes) — not an error
+        # condition to refuse. Create a real, active one instead,
+        # appended at the end of the file.
+        text = slskd_yml_text if slskd_yml_text.endswith("\n") else (
+            slskd_yml_text + "\n"
         )
+        return f"{text}shares:\n  directories:\n{new_line}\n"
 
     insert_at = directories_index + 1
 

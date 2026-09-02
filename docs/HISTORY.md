@@ -10115,3 +10115,105 @@ with correct 2-row spans), and the sharing-uploads stale-span
 regression (empty render, then a real upload, asserting the span and
 the real filename text both land correctly). `mypy --strict` clean;
 full suite 891 passed / 1 skipped, 0 regressions.
+
+### 74 — P5
+
+**Live capture of a real, genuinely-fresh slskd default (2026-09-02):**
+before writing any fix code, brought up a real, disposable, throwaway
+`slskd/slskd` container (`docker run`, no compose, a brand-new empty
+data directory, never the real production `slskd` container) purely to
+capture what slskd itself generates on a real first run. Confirmed:
+its `slskd.yml`'s entire `shares:` section is the commented-out default
+template — `# shares:` / `#   directories:` / `#     - ~` — with no
+active, uncommented block anywhere in the file. This is EXACTLY the
+condition `_insert_slskd_share_directory` refused instead of handling,
+and it's the real, ordinary state for any slskd instance the wizard's
+own `bring_up_slskd()` brings up fresh (a first-time user, or anyone
+whose `slskd_data_dir()` doesn't already exist) — not an edge case.
+Captured the real file as `tests/fixtures/slskd_generated_default.yml`,
+per the brief's own explicit instruction to test against a real
+captured file rather than a hand-written approximation.
+
+**Phase 0.3's own finding mattered here too:** the machine's currently-
+running production `slskd` container was brought up via a plain dev-
+mode `docker compose up` from the repo root (not through the wizard),
+so its live `/app` mount is the repo's own hand-edited `slskd-data/`
+(which DOES have an active block, from item 13). That meant the exact
+reported error couldn't reproduce against THAT specific container — the
+fresh-capture container above is what actually reproduces it.
+
+**The fix (5.1):** `_insert_slskd_share_directory`, on finding no active
+block, appends one at the end of the file (`shares:\n  directories:\n{new_line}\n`,
+adding a leading newline first if the file doesn't already end in one —
+the real fixture file has no trailing newline of its own, caught by a
+test built directly against it). The existing "insert into an existing
+block" path is untouched.
+
+**5.2 (partial-write window):** the old order was back up both files ->
+write `docker-compose.yml` -> parse+write `slskd.yml`. A failure in the
+slskd.yml step left the compose file already mutated with nothing on
+the slskd.yml side to match it — a retry would add the same volume line
+a second time. Both new file contents are now computed BEFORE either
+write; the compose write happens first (unconditionally safe — parsing
+already succeeded for both files by this point) but the slskd.yml write
+is wrapped so any failure there rolls the compose file back from the
+backup just taken. New test simulates a real `Path.write_text` failure
+scoped to just the slskd.yml path (via a monkeypatch that only
+intercepts that one path, leaving the backup's own `shutil.copy2` call
+untouched) and asserts the compose file is back to its exact original
+content, and slskd.yml was never touched at all.
+
+**5.3 (frozen-build compose path):** `compose_file_path()`'s frozen
+branch used to return `sys._MEIPASS / "docker-compose.yml"` directly —
+a path PyInstaller regenerates on every build. `SharingService.
+is_self_managed()` compares a running container's real, permanently-
+recorded `com.docker.compose.project.config_files` label against this
+path; a rebuilt or relocated `.app` could never again recognize a
+container it had itself previously created as self-managed. Fixed the
+same way item 18 stabilized the DB's location: on first use in a frozen
+build, copy the bundled resource once into `slskd_data_dir()` (the same
+stable per-user directory the DB/config already live in) and always
+return that canonical path afterward — guarded, so a later
+Sharing-added volume line already living in the canonical copy survives
+a subsequent app rebuild untouched. The existing frozen-path test
+(`test_compose_file_path_resolves_against_meipass_when_frozen`) was
+rewritten to assert the new copy-once behavior, since its old assertion
+was testing the exact thing being fixed.
+
+**5.4 (live E2E verification), real disposable container:** brought up
+a second real, disposable, throwaway container via a real
+`docker compose up` (a scratch copy of the repo's own
+`docker-compose.yml`, renamed `container_name`/host ports to avoid any
+collision with the real production `slskd` container, which stayed
+running and untouched throughout) against a fresh, empty data
+directory — reproducing the exact bug state (its own generated
+`slskd.yml`, freshly confirmed to have no active block). Ran the real
+`SharingService.add_location_to_share()` against it: `is_self_managed()`
+correctly returned `True` (the disposable container's real
+`com.docker.compose.project.config_files` label matched the scratch
+compose file); the real `slskd.yml` on disk gained a genuine
+`shares:\n  directories:\n    - /shared/NewLocation` block; the real
+`docker-compose.yml` gained the new volume line; both backup files were
+created. The subsequent readiness poll hit a real `401 Unauthorized`
+after the container's own recreate — traced to the verification
+script's own test harness gap (it didn't carry `SLSKD_API_KEY` into the
+recreate's environment the way the real app's config-store-backed flow
+always does), not a defect in `add_location_to_share` itself; the file-
+level edits (the actual scope of this bug) were independently confirmed
+correct by direct inspection regardless. Noted, not pursued further (a
+tangent from this brief's scope): whether a real production recreate
+with an empty `SLSKD_API_KEY` override can reset slskd's own API key
+under `SLSKD_REMOTE_CONFIGURATION=true` is a genuine open question worth
+checking before this code path's next real use, but is pre-existing
+behavior this session didn't introduce and isn't part of the reported
+bug. Disposable container, network, and scratch directories all torn
+down after — `docker ps`/`docker network ls` confirmed clean, the real
+production `slskd` container confirmed still running unmodified
+throughout via `docker ps` before and after.
+
+**5.5:** confirmed again, no action needed (already noted in Phase 0.3)
+— `slskd-data/` stays in `.gitignore`, never committed.
+
+`mypy --strict` clean. Full suite: 896 passed / 1 skipped (5 net new:
+2 in `test_docker_setup.py` replacing the old frozen-path assertion, 4
+in `test_sharing_service.py`), 0 regressions.

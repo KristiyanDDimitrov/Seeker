@@ -80,11 +80,62 @@ def test_compose_file_path_is_cwd_relative_outside_a_frozen_build(monkeypatch):
     assert compose_file_path() == Path("docker-compose.yml")
 
 
-def test_compose_file_path_resolves_against_meipass_when_frozen(monkeypatch):
-    monkeypatch.setattr("sys.frozen", True, raising=False)
-    monkeypatch.setattr("sys._MEIPASS", "/fake/bundle/root", raising=False)
+def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item 74 (P5.3) — real, live-confirmed problem: the OLD
+    # behavior (returning sys._MEIPASS's own path directly) meant
+    # SharingService.is_self_managed() compared a running container's
+    # real recorded label against a path that changes on every rebuild
+    # of the .app, so a relocated/rebuilt app could never recognize a
+    # container it had itself created. Now copies the bundled resource
+    # into the SAME stable per-user directory the DB/config already
+    # live in, once, and always returns that canonical path afterward.
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "docker-compose.yml").write_text("services:\n  slskd:\n")
 
-    assert compose_file_path() == Path("/fake/bundle/root/docker-compose.yml")
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "seeker.docker_setup.platformdirs.user_data_dir",
+        lambda appname, **kwargs: str(data_dir),
+    )
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys._MEIPASS", str(bundle_dir), raising=False)
+
+    result = compose_file_path()
+
+    assert result == data_dir / "slskd-data" / "docker-compose.yml"
+    assert result.read_text() == "services:\n  slskd:\n"
+
+
+def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
+        tmp_path, monkeypatch,
+):
+    # Guarded like every other one-time migration in this codebase
+    # (item 18's DB move, item 19's env-config migration) — a later
+    # Sharing-added volume line living in the canonical copy must
+    # survive a subsequent app rebuild/relaunch untouched.
+    bundle_dir = tmp_path / "bundle"
+    bundle_dir.mkdir()
+    (bundle_dir / "docker-compose.yml").write_text("services:\n  slskd:\n")
+
+    data_dir = tmp_path / "data"
+    canonical = data_dir / "slskd-data" / "docker-compose.yml"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("services:\n  slskd:\n  # a real edited line\n")
+
+    monkeypatch.setattr(
+        "seeker.docker_setup.platformdirs.user_data_dir",
+        lambda appname, **kwargs: str(data_dir),
+    )
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    monkeypatch.setattr("sys._MEIPASS", str(bundle_dir), raising=False)
+
+    result = compose_file_path()
+
+    assert result == canonical
+    assert result.read_text() == "services:\n  slskd:\n  # a real edited line\n"
 
 
 # item 44's real bug: a GUI-launched .app gets launchd's minimal PATH

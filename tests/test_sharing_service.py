@@ -1,6 +1,7 @@
 import json
 import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 import pytest
@@ -415,6 +416,146 @@ def test_add_location_to_share_backs_up_and_writes_both_files(
     assert "#     - ~" in updated_slskd_yml
 
 
+def _fake_run_for_add_location(compose_path, data_dir):
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"] and "Labels" in cmd[-1]:
+            return FakeCompletedProcess(stdout=str(compose_path) + "\n")
+
+        if cmd[:2] == ["docker", "inspect"]:
+            return FakeCompletedProcess(stdout=json.dumps([
+                {"Destination": "/shared/music", "Source": "/Volumes/Drive/Music"},
+                {"Destination": "/app", "Source": str(data_dir)},
+            ]))
+
+        assert cmd[:3] == ["docker", "compose", "-f"]
+        return FakeCompletedProcess()
+
+    return fake_run
+
+
+def test_add_location_to_share_creates_shares_block_when_none_exists(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item 74 (P5.1) — the actual end-to-end reported bug: a
+    # container whose slskd.yml has never had an active "shares:"
+    # block (e.g. slskd's own real generated default) used to make
+    # add_location_to_share raise outright.
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "./slskd-data:/app"\n'
+        "    restart: always\n"
+    )
+
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "slskd_generated_default.yml"
+    )
+    slskd_yml_path.write_text(fixture_path.read_text())
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({
+                "shares": {
+                    "ready": True, "scanning": False, "scanPending": False,
+                    "faulted": False, "directories": 1, "files": 3,
+                }
+            })
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(
+        subprocess, "run", _fake_run_for_add_location(compose_path, data_dir),
+    )
+
+    result = service.add_location_to_share(location, confirm=True)
+
+    assert result.became_ready is True
+
+    updated_slskd_yml = slskd_yml_path.read_text()
+    assert "shares:\n  directories:\n    - /shared/New Drive\n" in (
+        updated_slskd_yml
+    )
+
+
+def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item 74 (P5.2) — the OLD order wrote docker-compose.yml
+    # first, then parsed+wrote slskd.yml; a failure in the second step
+    # left the compose file already mutated, and a retry would add the
+    # same volume line a SECOND time. Both new file contents are now
+    # computed BEFORE either write, and the compose write is rolled
+    # back from its own just-taken backup if the second write fails.
+    compose_path = tmp_path / "docker-compose.yml"
+    original_compose_text = (
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "./slskd-data:/app"\n'
+        "    restart: always\n"
+    )
+    compose_path.write_text(original_compose_text)
+
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    slskd_yml_path.write_text(
+        "shares:\n"
+        "  directories:\n"
+        "    - /shared/music\n"
+    )
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({
+                "shares": {
+                    "ready": True, "scanning": False, "scanPending": False,
+                    "faulted": False, "directories": 1, "files": 3,
+                }
+            })
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(
+        subprocess, "run", _fake_run_for_add_location(compose_path, data_dir),
+    )
+
+    real_write_text = Path.write_text
+
+    def failing_write_text(self, *args, **kwargs):
+        if self == slskd_yml_path:
+            raise OSError("disk full (simulated)")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write_text)
+
+    with pytest.raises(OSError):
+        service.add_location_to_share(location, confirm=True)
+
+    # The compose file must be back to its ORIGINAL content -- not left
+    # holding the new volume line with nothing on the slskd.yml side to
+    # match it.
+    assert compose_path.read_text() == original_compose_text
+    # slskd.yml was never touched at all (the failure was on write, not
+    # a partial write).
+    assert slskd_yml_path.read_text() == (
+        "shares:\n"
+        "  directories:\n"
+        "    - /shared/music\n"
+    )
+
+
 def test_insert_compose_volume_line_appends_after_existing_entries():
     text = (
         "services:\n"
@@ -451,3 +592,60 @@ def test_insert_slskd_share_directory_targets_active_not_commented_block():
     assert lines[5] == "    - /shared/music"
     assert lines[6] == "    - /shared/new"
     assert lines[7] == "  filters:"
+
+
+# --- Roadmap item 74 (P5): create the block when none exists --------------
+
+def test_insert_slskd_share_directory_creates_block_when_none_exists():
+    # Roadmap item 74 (P5.1) — the actual reported bug: a slskd.yml
+    # whose entire "shares:" section is still the commented-out default
+    # template (no active block at all) used to be refused outright.
+    text = (
+        "# shares:\n"
+        "#   directories:\n"
+        "#     - ~\n"
+        "feature:\n"
+        "  swagger: true\n"
+    )
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated == (
+        "# shares:\n"
+        "#   directories:\n"
+        "#     - ~\n"
+        "feature:\n"
+        "  swagger: true\n"
+        "shares:\n"
+        "  directories:\n"
+        "    - /shared/new\n"
+    )
+
+
+def test_insert_slskd_share_directory_creates_block_against_real_generated_default():
+    # Roadmap item 74 (P5.1) — per the brief's own instruction, tested
+    # against a REAL captured slskd-generated slskd.yml, not a
+    # hand-written approximation. Captured live (2026-09-02) from a
+    # genuinely fresh, never-hand-edited container
+    # (`docker run ... slskd/slskd` against an empty data dir) —
+    # confirms live that a real freshly-generated file has NO active
+    # "shares:" block at all, only the commented default template (same
+    # shape docker-compose.yml's own comment already described for the
+    # repo's hand-edited copy).
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "slskd_generated_default.yml"
+    )
+    text = fixture_path.read_text()
+    assert "shares:\n  directories:" not in text, (
+        "fixture assumption violated -- expected no active block"
+    )
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    # The real fixture has no trailing newline of its own -- the
+    # function must add one before appending the new block, never glue
+    # "shares:" onto the previous line.
+    assert not text.endswith("\n")
+    assert updated == (
+        text + "\nshares:\n  directories:\n    - /shared/new\n"
+    )

@@ -171,5 +171,46 @@ Live-confirmed against real production duplicate groups (25 groups,
 skipped (0 failures) — 4 net new (3 duplicates + 1 sharing-uploads),
 0 regressions.
 
+**Commit boundary — commit 19cd0e4.**
+
+## P5 — Sharing: "slskd.yml has no active shares section to add to"
+
+- [x] 0.3-continued — captured a REAL genuinely-fresh, never-hand-edited
+  slskd default (`docker run` against an empty data dir, disposable,
+  never the real production container) as
+  `tests/fixtures/slskd_generated_default.yml`. Confirmed: NO active
+  `shares:` block at all, only the commented default template — exactly
+  the reported bug's real cause.
+- [x] 5.1 `_insert_slskd_share_directory` creates the block (appended
+  at end of file, adding a leading newline first if needed — the real
+  fixture has none of its own) when no active one exists, instead of
+  refusing. Existing "insert into existing block" path untouched. 3
+  new tests: hand-written no-block case, the real fixture, and a full
+  `add_location_to_share` end-to-end test using the fixture.
+- [x] 5.2 `add_location_to_share` computes both new file contents
+  BEFORE writing either; the slskd.yml write is wrapped to roll the
+  compose file back from its own backup on failure. 1 new test
+  simulates a real write failure scoped to just the slskd.yml path and
+  asserts the compose file is unchanged.
+- [x] 5.3 `compose_file_path()`'s frozen branch now copies the bundled
+  `docker-compose.yml` into `slskd_data_dir()` once (guarded) instead
+  of resolving inside the app bundle — stable across rebuilds, same
+  pattern item 18 used for the DB. Rewrote the existing frozen-path
+  test (it was asserting the exact behavior being fixed) + added a
+  guarded-no-overwrite test.
+- [x] 5.4 Live E2E verified against a real, disposable, throwaway
+  container (never the real production `slskd`, confirmed still
+  running unmodified throughout): real block creation, real compose
+  volume line, real backups, `is_self_managed()` correctly `True`. A
+  readiness-poll 401 after recreate was traced to the verification
+  script's own env gap (not carrying `SLSKD_API_KEY`), not a defect in
+  the fix — file-level edits independently confirmed correct. Real
+  containers/network/scratch dirs torn down after.
+- [x] 5.5 Re-confirmed, no action needed — `slskd-data/` stays
+  `.gitignore`d.
+
+`mypy --strict src/` clean (83 files). Full suite: 896 passed, 1
+skipped (0 failures) — 5 net new, 0 regressions.
+
 **Commit boundary — commit (see next `git log`, made right after this
 entry).**
