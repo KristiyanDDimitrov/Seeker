@@ -124,5 +124,52 @@ answered before proceeding.**
 `mypy --strict src/` clean (82 files). Full suite: 887 passed, 1
 skipped (0 failures) — 9 new, 0 regressions.
 
+**Commit boundary — commit a868139.**
+
+## P4 — Duplicates "Actions" column shows nothing (4th report)
+
+- [x] 4.1 `self.duplicates_table.clearSpans()` at the top of
+  `_render_duplicate_groups`, before `setRowCount()`. Audited every
+  other table in the app for the same omission (grepped every
+  `.setSpan(` call site — only one other exists,
+  `_render_sharing_uploads_table`'s no-uploads banner). **Found a real,
+  second, live instance of the SAME bug there**: that branch spans row
+  0 across all 4 columns when `uploads` is empty, but `setRowCount()`
+  doesn't clear it — confirmed live that a transition from empty to a
+  real upload left the stale span active, visually swallowing the new
+  row's filename/state/progress cells into column 0 (the underlying
+  `QTableWidgetItem` data was set correctly; only the visual merge was
+  wrong). Fixed with the same `clearSpans()` call; 1 new regression
+  test (`test_sharing_uploads_table_clears_stale_span_after_empty_
+  state`).
+- [x] 4.2 New `_size_duplicates_columns()`: ACTIONS gets
+  `ResizeMode.Fixed` + an explicit width derived from
+  `max(sizeHint().width() for widget in action_widgets)` across every
+  real widget built that render. PATH gets `Stretch`. Everything else
+  gets `ResizeToContents`.
+- [x] 4.3 `header.setMinimumSectionSize(40)` (untuned, flagged) +
+  `setStretchLastSection(False)` (the exact mechanism that caused the
+  bug — stretching whichever column happens to be last).
+- [x] 4.4 3 new tests in `test_ui_smoke.py`: real geometry at 960×640
+  (`sectionSize(ACTIONS) >= sizeHint().width()` and
+  `visibleRegion().boundingRect().width() >= sizeHint().width() - 2`),
+  ACTIONS is genuinely `Fixed` at a width equal to its `sizeHint()`,
+  and the stale-span regression (4-file group then two differently-
+  shaped 2-file groups — the shape actually has to CHANGE between
+  renders to exercise this, unlike every prior investigation's test).
+- [x] 4.5 Rewrote (not deleted) the item 56 §6.2 "could not reproduce"
+  test — its real pipeline (real `DuplicateService`, real
+  fingerprinting) was good, its assertions weren't. Now resizes to
+  960×640 and asserts real `sectionSize`/`visibleRegion` geometry, not
+  just `isVisible()`, on both a first render and a full re-render.
+
+Live-confirmed against real production duplicate groups (25 groups,
+`x9-pro`): Actions went from a real `(0,0,0,0)` visibleRegion at
+960×640 (before) to a real 285px-wide fully-visible widget (after).
+
+`mypy --strict src/` clean (82 files). Full suite: 891 passed, 1
+skipped (0 failures) — 4 net new (3 duplicates + 1 sharing-uploads),
+0 regressions.
+
 **Commit boundary — commit (see next `git log`, made right after this
 entry).**

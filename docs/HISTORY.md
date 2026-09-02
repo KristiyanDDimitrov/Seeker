@@ -10014,3 +10014,104 @@ something else was shown in between, both still surface. 4 new tests
 driving `_render_next_step` directly for determinism — no reliance on
 the real 2s timer). `mypy --strict` clean; full suite 878 passed / 1
 skipped.
+
+### 72 — P1
+
+Straightforward per the brief (root cause already CONFIRMED in source,
+no further investigation needed) — no separate narrative beyond what's
+in CLAUDE.md item 72's own entry. New `ui/flow_layout.py::FlowLayout`,
+the standard Qt C++ "Flow Layout" example ported to PySide6 (never
+published as a reusable Qt class, so this project owns its own copy).
+Live-confirmed via a real offscreen `MainWindow`:
+`dashboard_content.minimumSizeHint().width()` dropped from what would
+have been ~900-1000px+ (matching the brief's own `QHBoxLayout`
+arithmetic) to a real, measured 445px.
+
+### 73 — P4
+
+Three prior investigations (items 61 §6.2, 68 Phase 7.1, and Phase 7.1's
+own column-index hardening) had all concluded "not reproducible" by
+asking the same question: does `duplicates_table.cellWidget(row, col)`
+return a real widget. It always did — that question is blind to a
+widget that exists but is rendered at near-zero visible width, and this
+brief's own Phase 0.1 measured, for the first time, the property that
+actually matters: real column `sectionSize()` and the Actions widget's
+own `visibleRegion().boundingRect()`.
+
+**Live measurement (Phase 0.1), real production data:** against 25
+real duplicate groups (`x9-pro`, DnB vs. the "Where The Chaos Lies"
+album folder — genuine content overlap, scoped via
+`find_duplicate_groups(folders=...)` rather than the ~10-minute whole-
+location run item 39/68 both measured), at the app's real 960×640
+minimum window: `header.sectionSize(ACTIONS) = 230`, but
+`actions_widget.visibleRegion().boundingRect()` was `PySide6.QtCore.
+QRect(0, 0, 0, 0)` — completely invisible, not merely clipped to a
+sliver as the brief's own arithmetic estimated. At 1600×900 the exact
+same widget rendered fully (610px). Confirmed via `grep` across
+`src/seeker/ui/` that `clearSpans`/`setSectionResizeMode`/
+`setColumnWidth`/`setMinimumSectionSize`/`resizeColumnsToContents`
+appear nowhere — no column width has ever been set in this app, for
+any table.
+
+**Second, independent, confirmed defect:** `_render_duplicate_groups`
+calls `setSpan(...)` per group but never `clearSpans()`, and
+`setRowCount()` does not clear spans on its own. Every prior test
+re-rendered with the SAME group shapes as the previous render, so a
+stale span was always identical to the fresh one and nothing broke —
+this round wrote a test that deliberately changes shape between two
+renders (a 4-file group, then two differently-shaped 2-file groups) to
+actually exercise it.
+
+**The fix:** `_render_duplicate_groups` now calls `clearSpans()` before
+`setRowCount()`. New `_size_duplicates_columns()`, called once at the
+end of the render, using every real Actions widget built that render
+(a per-group extra button — see `_build_duplicate_group_actions` — can
+change the widget's width group to group, so the WIDEST one wins, not
+an arbitrary single sample): `ResizeToContents` for
+Group/Location/Format/Bitrate/Similarity/Keep, `Stretch` for PATH (was
+sitting at Qt's 100px column default while holding a full relative
+path — its own separate usability problem per the brief), and `Fixed`
+for ACTIONS with an explicit width taken directly from
+`max(widget.sizeHint().width() for widget in action_widgets)`.
+`setStretchLastSection(False)` (stretching whichever column happens to
+be last is the exact mechanism that let Actions collapse to a sliver
+in the first place) and `setMinimumSectionSize(40)` (an untuned floor,
+flagged as such) round it out.
+
+**Re-verified live against the same real production groups used for
+the initial measurement:** at 960×640, `sectionSize(ACTIONS) = 286`,
+`visibleRegion()` width `285` (a 1px rounding gap against `sizeHint()`,
+not a bug — the earlier `(0,0,0,0)` result is the actual before/after
+comparison that matters). At 1600×900, PATH stretches to 703px while
+ACTIONS stays locked at 286 in both cases, immune to window width
+entirely.
+
+**A real third instance, found by the audit itself:** 4.1 explicitly
+asked to audit every other table for the same missing-`clearSpans()`
+omission. Grepping every `.setSpan(` call site in the file found
+exactly one other: `_render_sharing_uploads_table`'s no-uploads-yet
+branch spans row 0 across all 4 columns. Wrote a small script exercising
+the exact transition (empty render, then a render with one real
+`UploadStatus`) before assuming anything — confirmed live: the stale
+4-column span survived the transition (`setRowCount()` doesn't clear
+spans here either), visually merging the new row's real filename/
+state/progress cells into column 0, even though their underlying
+`QTableWidgetItem` data was written correctly underneath. Fixed with
+the identical `clearSpans()` call at the top of the method.
+
+**Tests:** rewrote (per the brief's own instruction — "delete or
+rewrite," not silently keep) the item 56 §6.2
+`test_duplicates_actions_column_renders_with_a_real_service_and_real_
+fingerprinting` test — its real pipeline coverage (real
+`DuplicateService`, real fingerprinting, real generated duplicate
+`.wav` files) was always good; only its assertions were too weak
+(`isVisible()` alone). Now resizes to 960×640 and asserts real
+`sectionSize`/`visibleRegion` geometry on both the first render and a
+full re-render. 4 new tests: real-geometry-at-minimum-size, ACTIONS is
+genuinely `Fixed` at a width equal to its own `sizeHint()`, the
+stale-span regression (4-file group then two differently-shaped
+2-file groups, asserting both new groups' Actions widgets are visible
+with correct 2-row spans), and the sharing-uploads stale-span
+regression (empty render, then a real upload, asserting the span and
+the real filename text both land correctly). `mypy --strict` clean;
+full suite 891 passed / 1 skipped, 0 regressions.

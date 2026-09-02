@@ -8,6 +8,7 @@ from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QHeaderView,
     QLabel,
     QMenu,
     QMessageBox,
@@ -4780,12 +4781,16 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
     # a first render, a full re-render (stale QTableWidget.setSpan from
     # a previous render was one live hypothesis), and the real
     # asynchronous run_worker click path (a queued cross-thread signal
-    # behaves differently than a direct call) — the Actions column
-    # rendered correctly, visible, with both a real QPushButton and a
-    # real QCheckBox, in every one of these. Could NOT reproduce the
-    # reported bug; kept as a permanent regression guard against this
-    # exact real pipeline rather than silently dropping the
-    # investigation.
+    # behaves differently than a direct call).
+    #
+    # Roadmap item 73 (P4) — item 56's own conclusion here was wrong,
+    # not this test's coverage: `isVisible()` is true even for a widget
+    # clipped to near-zero real width, which is exactly what a real
+    # production run at the app's own 960x640 minimum window size did
+    # (confirmed live: a real 0px visibleRegion). Widened at the SAME
+    # real pipeline this test already exercises, rather than replacing
+    # it — now resizes to 960x640 and asserts real sectionSize/
+    # visibleRegion geometry, not just presence + isVisible().
     import numpy as np
     import soundfile as sf
 
@@ -4846,15 +4851,24 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
+    window.resize(960, 640)
     window._show_page("duplicates")
+
+    header = window.duplicates_table.horizontalHeader()
+    actions_column = _duplicates_column(window, "Actions")
 
     for _ in range(2):  # first render, then a full re-render
         window._render_duplicate_groups(groups)
-        widget = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+        qtbot.wait(20)
+        widget = window.duplicates_table.cellWidget(0, actions_column)
         assert widget is not None
         assert widget.isVisible()
         assert widget.findChild(QPushButton) is not None
         assert widget.findChild(QCheckBox) is not None
+
+        assert header.sectionSize(actions_column) >= widget.sizeHint().width()
+        visible_width = widget.visibleRegion().boundingRect().width()
+        assert visible_width >= widget.sizeHint().width() - 2
 
 
 def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
@@ -4890,6 +4904,109 @@ def test_duplicates_actions_column_survives_manual_column_resize(qtbot):
     assert widget is not None
     assert widget.findChild(QPushButton) is not None
     assert widget.findChild(QCheckBox) is not None
+
+
+# --- Roadmap item 73 (P4): Actions column visibility + stale spans --------
+
+def test_duplicates_actions_widget_is_really_visible_at_app_minimum_size(
+        qtbot,
+):
+    # Regression test for the REAL reported bug, this brief's standing
+    # rule #2: a test that only asserts cellWidget(row, col) returns a
+    # widget is not a test that a user can SEE it -- three prior
+    # investigations all asked that weaker question. This asserts real
+    # geometry at the app's own real minimum window size (960x640,
+    # main_window.py's setMinimumSize).
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.resize(960, 640)
+    window._show_page("duplicates")
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+    qtbot.wait(20)
+
+    header = window.duplicates_table.horizontalHeader()
+    actions_column = _duplicates_column(window, "Actions")
+    widget = window.duplicates_table.cellWidget(0, actions_column)
+    assert widget is not None
+
+    assert header.sectionSize(actions_column) >= widget.sizeHint().width()
+    visible_width = widget.visibleRegion().boundingRect().width()
+    # A 1-2px rounding/border gap between a widget's real width and its
+    # own sizeHint is normal Qt layout behavior, not a visibility bug —
+    # the actual regression this guards against is a widget clipped to
+    # a SLIVER (confirmed live: a real 0px visibleRegion at 960x640
+    # before this fix), not an exact-pixel match.
+    assert visible_width >= widget.sizeHint().width() - 2
+
+
+def test_duplicates_actions_column_is_fixed_width_derived_from_sizehint(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    header = window.duplicates_table.horizontalHeader()
+    actions_column = _duplicates_column(window, "Actions")
+    widget = window.duplicates_table.cellWidget(0, actions_column)
+    assert widget is not None
+
+    assert (
+        header.sectionResizeMode(actions_column)
+        == QHeaderView.ResizeMode.Fixed
+    )
+    assert header.sectionSize(actions_column) == widget.sizeHint().width()
+
+
+def test_duplicates_actions_widgets_all_visible_after_group_shape_changes(
+        qtbot,
+):
+    # Regression test for the second, independent, CONFIRMED defect:
+    # setRowCount() does not clear spans, so a big group's span from a
+    # PREVIOUS render could still "own" a row that a later, differently-
+    # shaped render's own span tries to claim as ITS OWN anchor. Every
+    # prior investigation's test re-rendered with the SAME group shape,
+    # which can never exercise this — this one deliberately doesn't.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window._show_page("duplicates")
+
+    # First render: one big 4-file group -- spans rows 0-3, anchored at
+    # row 0.
+    window._render_duplicate_groups(
+        [_make_duplicate_group_with_n_files(4)]
+    )
+
+    # Second render: two differently-shaped 2-file groups. Group B's own
+    # span anchors at row 2 -- a row the FIRST render's span still
+    # "owned" (as a non-anchor member) if clearSpans() were missing.
+    window._render_duplicate_groups(
+        [
+            _make_duplicate_group_with_n_files(2),
+            _make_duplicate_group_with_n_files(2),
+        ]
+    )
+    qtbot.wait(20)
+
+    actions_column = _duplicates_column(window, "Actions")
+    for group_first_row in (0, 2):
+        widget = window.duplicates_table.cellWidget(
+            group_first_row, actions_column,
+        )
+        assert widget is not None
+        assert widget.findChild(QPushButton) is not None
+        assert (
+            window.duplicates_table.rowSpan(group_first_row, actions_column)
+            == 2
+        )
+        assert widget.isVisible()
 
 
 def _confirm_yes(monkeypatch) -> None:
@@ -5226,6 +5343,35 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
     assert window.sharing_uploads_table.item(0, 0).text() == (
         help_text.NO_UPLOADS_LABEL
     )
+
+
+def test_sharing_uploads_table_clears_stale_span_after_empty_state(qtbot):
+    # Roadmap item 73 (P4 audit) — the SAME stale-span bug the
+    # duplicates table had, found live via that fix's own "audit every
+    # other table" instruction: the empty-state branch spans row 0
+    # across all 4 columns; setRowCount() alone does not clear that
+    # span, so a transition from empty -> a real upload used to leave
+    # the stale span active, visually swallowing the new row's
+    # filename/state/progress cells into column 0.
+    from seeker.sharing_service import UploadStatus
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_sharing_uploads_table([])
+    assert window.sharing_uploads_table.columnSpan(0, 0) == 4
+
+    window._render_sharing_uploads_table([
+        UploadStatus(
+            username="alice", filename="track.flac", state="InProgress",
+            bytes_transferred=100, size=1000,
+        ),
+    ])
+
+    assert window.sharing_uploads_table.rowSpan(0, 0) == 1
+    assert window.sharing_uploads_table.columnSpan(0, 0) == 1
+    assert window.sharing_uploads_table.item(0, 1).text() == "track.flac"
 
 
 def test_sharing_add_to_share_button_calls_service_after_confirm(

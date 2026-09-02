@@ -1074,6 +1074,23 @@ compress it here before moving on to the next item.
     Skipped 1.3's optional `QSplitter` — the FlowLayout fix alone
     already resolves both symptoms structurally, and a splitter would
     touch every existing dashboard-layout test for no further gain.
+73. **Fix P4: Duplicates "Actions" column showed nothing (4th report) —
+    root-caused for real this time, done.** Three prior investigations
+    all asked "does `cellWidget()` return a widget" — true even when
+    clipped to near-zero width, which live measurement confirmed is
+    exactly what happens at the app's real 960×640 minimum (real
+    `visibleRegion()` was `(0,0,0,0)`) since nothing in `src/seeker/ui/`
+    had ever set a column width. New `_size_duplicates_columns()` gives
+    ACTIONS a `Fixed` width DERIVED from its own real `sizeHint()`
+    (structurally immune to squeeze), PATH `Stretch`, everything else
+    `ResizeToContents`. `_render_duplicate_groups` also now calls
+    `clearSpans()` (a second, independent, confirmed defect —
+    `setRowCount()` doesn't clear spans; auditing every other table for
+    the same omission found a real THIRD live instance in
+    `_render_sharing_uploads_table`'s no-uploads span, fixed the same
+    way). Rewrote, not deleted, the item 56 §6.2 "could not reproduce"
+    test to assert real geometry instead of just `isVisible()`.
+    [HISTORY §73](docs/HISTORY.md#73)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

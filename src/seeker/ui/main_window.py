@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -1765,6 +1766,15 @@ class MainWindow(QMainWindow):
             self, uploads: list[UploadStatus],
     ) -> None:
         table = self.sharing_uploads_table
+        # Roadmap item 73 (P4 audit) — the SAME stale-span bug class as
+        # the duplicates table, found live during that fix's own
+        # "audit every other table" step: this table's empty-state
+        # branch below sets a 4-column span at row 0; setRowCount()
+        # doesn't clear it, so a transition from empty -> a real upload
+        # left that span active, visually swallowing the new row's
+        # filename/state/progress cells into column 0 even though their
+        # real QTableWidgetItem data was set correctly underneath.
+        table.clearSpans()
         table.setRowCount(len(uploads))
 
         active_keys: set[tuple[str, str]] = set()
@@ -3044,6 +3054,13 @@ class MainWindow(QMainWindow):
         # after every resolution is not an option at real scale.
         self._current_duplicate_groups = groups
 
+        # Roadmap item 73 (P4) — setRowCount() does NOT clear spans, so
+        # a stale span from a PREVIOUS render (different group shapes)
+        # could silently hide a real Actions widget under a new row that
+        # happens to land inside an old span's coverage. Confirmed via
+        # grep: this was never called anywhere in this file before.
+        self.duplicates_table.clearSpans()
+
         if not groups:
             self.duplicates_table.setRowCount(0)
             self.duplicates_status_label.setText(
@@ -3058,6 +3075,13 @@ class MainWindow(QMainWindow):
 
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
+
+        # Roadmap item 73 (P4) — every real Actions widget built this
+        # render, so its true widest sizeHint() can size the ACTIONS
+        # column for real below (a per-group extra button — see
+        # _build_duplicate_group_actions — means this isn't always the
+        # same width for every group).
+        action_widgets: list[QWidget] = []
 
         row = 0
         for group_index, group in enumerate(groups, start=1):
@@ -3132,10 +3156,13 @@ class MainWindow(QMainWindow):
 
                 row += 1
 
+            group_actions_widget = self._build_duplicate_group_actions(
+                group, button_group,
+            )
+            action_widgets.append(group_actions_widget)
             self.duplicates_table.setCellWidget(
-                group_first_row,
-                _DuplicatesColumn.ACTIONS,
-                self._build_duplicate_group_actions(group, button_group),
+                group_first_row, _DuplicatesColumn.ACTIONS,
+                group_actions_widget,
             )
 
             for other_row in range(group_first_row + 1, row):
@@ -3151,6 +3178,59 @@ class MainWindow(QMainWindow):
                 group_first_row, _DuplicatesColumn.ACTIONS,
                 len(group.files), 1,
             )
+
+        self._size_duplicates_columns(action_widgets)
+
+    def _size_duplicates_columns(
+            self, action_widgets: list[QWidget],
+    ) -> None:
+        """Roadmap item 73 (P4) — a real, live-measured floor for the
+        Actions column, closing the actual reported bug: at the app's
+        real 960x640 minimum window size, against real production
+        duplicate groups, this widget's own visibleRegion() was
+        confirmed (0,0,0,0) — fully invisible, not merely clipped —
+        because NOTHING in this app ever set a column width, so
+        Actions (column 7 of 8) got whatever tiny sliver
+        setStretchLastSection's leftover-space math happened to leave
+        it. Fixed mode + an explicit width DERIVED from the real
+        widget's own sizeHint() (never a magic number) makes this
+        column immune to that squeeze regardless of window width.
+        """
+        header = self.duplicates_table.horizontalHeader()
+        # A floor no column can be silently squeezed below (item 4.3) —
+        # untuned, a reasonable "still shows something" minimum.
+        header.setMinimumSectionSize(40)
+        # Roadmap item 73 (P4) — stretching the LAST section (whichever
+        # column that happens to be) is exactly the mechanism that let
+        # Actions collapse to a sliver in the first place; every column
+        # now gets its own explicit, derived resize mode instead.
+        header.setStretchLastSection(False)
+
+        content_fit_columns = (
+            _DuplicatesColumn.GROUP, _DuplicatesColumn.LOCATION,
+            _DuplicatesColumn.FORMAT, _DuplicatesColumn.BITRATE,
+            _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.KEEP,
+        )
+        for column in content_fit_columns:
+            header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents,
+            )
+
+        # PATH holds a full relative path (item 4.2's own "own
+        # usability problem" callout) — stretches to hold the long
+        # value rather than sitting at Qt's 100px column default.
+        header.setSectionResizeMode(
+            _DuplicatesColumn.PATH, QHeaderView.ResizeMode.Stretch,
+        )
+
+        actions_width = max(
+            (widget.sizeHint().width() for widget in action_widgets),
+            default=header.minimumSectionSize(),
+        )
+        header.setSectionResizeMode(
+            _DuplicatesColumn.ACTIONS, QHeaderView.ResizeMode.Fixed,
+        )
+        header.resizeSection(_DuplicatesColumn.ACTIONS, actions_width)
 
     def _build_duplicate_group_actions(
             self,
