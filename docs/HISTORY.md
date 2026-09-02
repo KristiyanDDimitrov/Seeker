@@ -9316,3 +9316,222 @@ prints two lines). Remove once root-caused. `mypy --strict` clean; full
 suite 766 passed (this diagnostic print doesn't touch any
 `capsys`-asserting test's exact-match expectations — all existing
 assertions are substring checks).
+
+**2026-09-02 attended re-run: storm did NOT reproduce; one prior
+assumption corrected.** Step 1 (checked first, before touching real
+slskd): confirmed `BACKEND_POLL_INTERVAL_MS = 20_000` is a hardcoded
+module constant in `main_window.py`, with no env var, monkeypatch, or
+conftest override anywhere in the tree — `test_stress_e2e.py`
+constructs a real `MainWindow` with no cadence patching at all, only
+reading `SEEKER_STRESS_DURATION_SECONDS` to size the pump loop. So the
+accelerated test loop runs the exact same 20s timer as production —
+this rules out "only reachable inside the fast test loop" as an
+explanation, whatever the outcome of the live run.
+
+Step 2, the attended live run
+(`SEEKER_RUN_STRESS_TEST=1 SEEKER_STRESS_DURATION_SECONDS=90
+QT_QPA_PLATFORM=offscreen uv run pytest tests/test_stress_e2e.py -q -s`,
+unpiped except for a live `grep` filter into a Monitor stream so Kris
+could watch real per-call timestamps as they landed, never
+reconstructed after the fact): confirmed `docker ps` showed `slskd`
+healthy before starting. First surprise: the real production DB holds
+**three** `locked` `download_requests` rows (`id=9`, `id=10`, both
+`role='upgrade'`, dated 2026-08-27, plus the already-known `id=13`
+dated 2026-08-28) — last night's "exactly one real row" check was
+apparently scoped to duplicates of the *same* track, not a count of all
+locked rows in the table; corrected here since it changes the shape of
+what a "locked-retry loop" is retrying against.
+
+Watched 29 consecutive `poll_downloads()` calls live, spanning
+2026-09-02T08:59:36 → 2026-09-02T09:08:56 (~9.7 real minutes,
+comfortably past the point in the 2026-08-28 run where the storm was
+already well underway from t≈0). Every single delta was clean:
+
+```
+20.000s, 20.000s, 20.001s, 20.001s, 19.999s, 20.000s, 19.999s,
+19.998s, 19.999s, 20.001s, 19.999s, 19.998s, 20.001s, 20.002s,
+19.997s, 19.997s, 19.996s, 20.001s, 19.999s, 19.999s, 19.998s,
+19.997s, 19.998s, 19.985s, 19.987s, 19.997s, 19.996s, 20.001s, 19.998s
+```
+
+`locked` fluctuated harmlessly between 2 and 3 across cycles (rows
+cascading in and out as retries succeed/fail — expected, not a growth
+trend), `pending` between 0 and 1. Exactly one `"Failed to retry
+locked '...Zenea - Infinite.mp3'..."` line printed per cycle, every
+cycle — never more than one, never a burst. **This means the storm's
+presence is intermittent, not reliably reproducible on demand**: the
+same three real locked rows, against the same real local slskd, over a
+comparable elapsed window to the original incident, produced zero
+storm behavior this time. Mere presence of `locked` rows — even three
+of them — is not sufficient on its own to trigger it; whatever tipped
+it into the bursty pattern on 2026-08-28 (a specific DB state, a
+specific queue depth at that moment, timing relative to some other
+concurrent operation, or something not yet identified) remains
+genuinely open.
+
+**Process-level lesson, not a finding about the bug itself:** this run
+was ended by the orchestration tooling's own 10-minute monitor timeout,
+not by the planned `SIGINT`-then-`SIGKILL` — the test process was
+killed before reaching its own cleanup code. Verified afterward that
+this caused no real damage: `slskd` healthy and un-restarted,
+`config.json` mtime unchanged from before the run, all three real
+`locked` rows unmodified and not duplicated, zero new
+`download_requests` rows created. The one real casualty was the test's
+own leftover `library_locations` row (`SeekerStressTestDuplicates`,
+id=12) plus its 2 `local_files` rows and backing temp dir under
+`$TMPDIR` — its own `finally`-style cleanup never got to run. Cleaned
+up by hand (`DELETE FROM local_files WHERE location_id=12;` first, per
+item 40's standing row-before-file order, then `DELETE FROM
+library_locations WHERE id=12;`, then `rm -rf` the temp dir) — **note
+sqlite3's CLI does not enable `PRAGMA foreign_keys=ON` by default, so
+the expected `ON DELETE CASCADE` from `library_locations` to
+`local_files` silently did NOT fire** and the child rows needed an
+explicit delete; worth remembering for any future by-hand cleanup via
+the raw `sqlite3` CLI specifically (the app's own `Database` connection
+enables foreign keys itself, so this gotcha is CLI-only). Lesson for
+next time: raise the Monitor/orchestration timeout before starting a
+longer attended window, so a real multi-cycle observation isn't cut off
+mid-run.
+
+Two things from the original untested-candidates list (item 63's
+initial writeup) remain untested: real production DB scale under a
+large `pending` list, and the full concurrent-traffic combination. This
+run's `pending` stayed at 0-1 throughout (no large real queue was
+present), so it doesn't speak to either candidate — Step 4 (if reached)
+still needs to test them.
+
+**Step 3, same day: isolating repro with real tracks and ZERO locked
+rows — also clean, plus one real unrelated bug found and fixed along
+the way.** Built `tests/_stress_step3_no_locked_repro.py` (leading
+underscore, not pytest-collected, matching the existing
+`_workers_*_repro.py` convention): a throwaway data dir (monkeypatched
+`platformdirs.user_data_dir`, never touching the real production DB),
+seeded with real track data from Kris's "Under Pressure (Deluxe)"
+playlist (15 real Logic tracks — required running a real, one-time
+`seeker sync-tracks "Under Pressure (Deluxe)"` first, since the
+playlist's metadata was synced but its track list never had been), a
+disposable destination location, then one real `download_playlist()`
+call against real local slskd and a real `MainWindow`/timer pumped for
+~260s.
+
+**Real bug hit and fixed first, unrelated to item 63 itself:**
+`MainWindow.__init__` → `_load_playlists()` evaluates
+`application.sync_service` synchronously on the main thread (not
+inside `run_worker`'s background thread) to obtain the bound
+`list_playlists` method — and `Application.sync_service`'s property
+getter unconditionally builds a real `SpotifyClient` via
+`self.spotify`, which calls `auth_manager.get_valid_token()` with no
+`spotify_configured` guard anywhere in that chain. With no cached
+token in the fresh throwaway dir, this fell through to `_authorize()`
+and opened a REAL Spotify OAuth browser tab — confirmed live, twice
+(the second call crashed with `OSError: [Errno 48] Address already in
+use` on the local OAuth callback server's port, since the first attempt
+was still holding it). Harmless (standard consent screen, no
+credentials at risk) but a real, unintended side effect of testing
+against a fresh env — worth knowing for any *future* isolated repro
+that constructs a real `MainWindow`. Fixed in the repro script itself
+(not app code — this eager-property-eval-on-the-main-thread shape is
+how `_load_playlists` has always worked and is out of scope here) by
+seeding a non-expired-looking fake `spotify_token.json` at the
+throwaway token path before constructing `Application`, so
+`get_valid_token()` short-circuits and returns it directly with no
+network call. Killed the first (broken) run by hand
+(`kill -TERM`), verified no lingering effect (port free, real
+production `spotify_token.json`/`config.json` mtimes unchanged from
+before the run), then re-ran clean.
+
+The clean retry: 14/15 real searches succeeded (1, "Intro", found no
+candidates that run — real P2P search result variance run-to-run, not
+a bug), 13 of 14 requested files completed and moved within the first
+~20s (fast local peers), one track (`pending=1`) sat unresolved
+(neither completing, failing, nor locking) for the entire remaining
+~240s of the run — itself a real, disclosed loose end (not investigated
+further here; out of scope for item 63). `poll_downloads()` cadence
+over 14 consecutive calls, `locked=0` confirmed every single call:
+
+```
+19.97s, 20.01s, 19.99s, 20.04s, 19.99s, 19.99s, 20.01s, 19.99s,
+19.98s, 20.05s, 19.99s, 19.97s, 20.00s
+```
+
+Completely clean — **the storm does not require the locked-retry loop
+to be active at all to test for; but by the same token, this run gives
+no positive evidence either way about the locked-retry path
+specifically**, since it never had a `locked` row to retry. Combined
+with Step 2 (locked rows present, still clean), the two runs bracket
+the original incident without reproducing it from either side: presence
+of `locked` rows isn't sufficient (Step 2), and this run shows the
+*pending*-loop path alone, independent of any locked-retry activity,
+also stayed clean. The original 2026-08-28 storm's trigger remains
+unidentified. Cleaned up all three throwaway temp dirs this script
+created (`seeker_step3_repro_*` under `$TMPDIR`) by hand afterward.
+
+**Step 4, same day: the last two untested candidates from the original
+writeup — real DB scale and the full concurrent-traffic combination —
+tested TOGETHER, still clean, plus two more real, useful data points
+surfaced along the way.** Built `tests/_stress_step4_scale_repro.py`
+(same leading-underscore convention, fully isolated throwaway data dir,
+fake Spotify token seeded from the start this time). DB scale was
+synthetic since today's real production `download_requests` table only
+ever holds ~14 rows total and can't demonstrate what a heavily-loaded
+DB behaves like: 50 filler rows against filler tracks, deliberately NOT
+uniform status (40% `locked`, 60% `queued`/`downloading`, mirroring the
+original incident's own locked-heavy shape rather than an all-one-
+status backlog that wouldn't exercise the retry path at all).
+Concurrent traffic was real and reused test_stress_e2e.py's own proven
+mechanism directly (`run_worker`/`main_window.thread_pool`, real
+button clicks for fingerprinting) rather than a different threading
+model: 3 synthetic playlists built by splitting the same real 15-track
+Under Pressure list three ways (5 tracks each), each downloaded via a
+real, concurrent `download_playlist()` call, plus real fingerprinting
+on the same disposable scratch-WAV location (imported directly from
+test_stress_e2e.py, not duplicated).
+
+Watched 14 consecutive `poll_downloads()` calls live
+(2026-09-02T09:59:17 → 2026-09-02T10:03:37, ~260s), each one making 50
+real HTTP calls against real local slskd for the filler backlog alone
+(on top of the real concurrent download/search/fingerprint traffic) —
+directly testing whether a heavy per-call HTTP loop itself could distort
+the timer's cadence:
+
+```
+20.008s, 20.012s, 20.004s, 19.976s, 20.030s, 20.006s, 19.962s,
+20.048s, 19.948s, 20.040s, 19.960s, 20.033s, 19.998s
+```
+
+Still completely clean. `pending` fluctuated 31-34 (real download rows
+from the 3 concurrent playlists cycling through), `locked` held flat at
+20 (the synthetic filler rows, all permanently un-resolvable by
+design) — no growth, no acceleration, no burst.
+
+**Two real, useful data points surfaced along the way, neither the
+storm itself but both concretely relevant context:** (1) firing 3
+concurrent `download_playlist()` calls causes real, repeated `429 Too
+Many Requests` from slskd's own `/api/v0/searches` AND
+`/api/v0/transfers/downloads/batches` endpoints — real evidence that
+enough concurrent real traffic genuinely saturates this local slskd
+instance's own rate limiting, a documented, expected failure mode
+(`is_recognized_rejection`-style handling), not a Seeker-side bug. (2)
+one real request (`Logic - Metropolis`) hit a genuine `500 Internal
+Server Error` on `/api/v0/transfers/downloads/batches` under this
+load — the SAME endpoint and SAME error text that characterized every
+line of the original 2026-08-28 storm. This one didn't cascade: it was
+a synchronous enqueue-time failure (item 21's shape, inside
+`download_playlist()`'s own request loop) rather than an async
+poll-time locked-rejection, so it was marked `failed` once and never
+retried — but it's the closest this investigation has come to
+reproducing the original error signature under real conditions, even
+though it didn't trigger a storm here. Worth watching for specifically
+in any future attended run.
+
+**Conclusion after all four steps: the original 2026-08-28 storm was
+NOT reproduced by any combination tested** — locked rows alone (Step
+2), zero locked rows (Step 3), nor a large mixed-status backlog under
+full real concurrent traffic (Step 4, this section). Every one of these
+runs held a clean, unwavering ~20.00s cadence. The real trigger remains
+unidentified; the one concrete lead for a future session is the real
+500-on-batches error observed here under heavy load, which matches the
+original storm's exact error signature even though it didn't cascade
+this time. Cleaned up the throwaway data dir (`seeker_step4_repro_*`
+under `$TMPDIR`) by hand afterward; the script's own `finally` block
+already removed its duplicate scratch location and directory.

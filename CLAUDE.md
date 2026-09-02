@@ -906,25 +906,32 @@ compress it here before moving on to the next item.
     all seven phases: a real attended stress-test re-run — see HISTORY for
     the diagnosis + a faster repro command. [HISTORY §56](docs/HISTORY.md#56)
 63. **Open, real bug found live during Phase 7's attended stress-test
-    re-run: `poll_downloads()`'s locked-file retry (items 13/14/25) fires
-    in a genuine, bursty, faster-than-20s pattern against real production
-    slskd — root cause still unknown, not yet fixed.** Real corrected
-    rate (each retry prints TWO lines, not one — a first read overcounted
-    2x): **~1 retry/3.5s for ~8.5min, then a ~5-6min silent gap, then
-    ~1/8-9s** — not a simple "polls too often" story. Three isolated
-    repros (fake network; heavy real `QThreadPool` saturation; real local
-    slskd against a throwaway DB) ALL show correct, clean 20.0s cadence —
-    ruling out the timer, `_backend_poll_in_progress`'s overlap guard,
-    `DownloadService`'s own retry logic, thread-pool saturation, and real
-    slskd's basic response timing as standalone causes. Two remaining,
-    untested candidates: real production DB scale (a large real `pending`
-    list, not the repros' near-empty one), and the full concurrent-
-    traffic combination (3 simultaneous `download_playlist()` calls +
-    fingerprinting + duplicates-find + the poll timer, all real, all at
-    once) — test these TOGETHER in one attended run, not separately. A
-    temporary, real timestamped diagnostic (`[poll_downloads] ... called`
-    / `pending=N locked=N`, no behavior change) is now in
-    `poll_downloads()` itself — remove once root-caused.
+    re-run (2026-08-28): `poll_downloads()`'s locked-file retry (items
+    13/14/25) once fired in a genuine, bursty, faster-than-20s pattern
+    against real production slskd — root cause still unknown, not
+    fixed, confirmed intermittent (not reliably on-demand), and NOT
+    reproduced by any of three follow-up attended runs on 2026-09-02.**
+    Those three runs bracketed the incident from every angle tested:
+    (1) all three real pre-existing `locked` rows present (29 calls,
+    ~9.7min, steady 20.00s), (2) a from-scratch repro with ZERO locked
+    rows (14 calls, steady 20.00s), (3) real DB scale (50 synthetic
+    rows, 40% locked) PLUS the full concurrent-traffic combination (3
+    simultaneous `download_playlist()` calls + real fingerprinting) at
+    once (14 calls, steady 20.00s despite 50 real HTTP calls per cycle).
+    Mere locked-row presence, zero locked rows, and heavy combined load
+    are all ruled out individually and together — the real trigger
+    remains unidentified. One concrete lead for next time: run (3) hit
+    a real `500 Internal Server Error` on `/api/v0/transfers/downloads/
+    batches` — the exact endpoint/error text of every original storm
+    line — but as a one-off synchronous enqueue failure, not a cascade.
+    **Process lessons:** the test orchestration tool's own timeout (not
+    a user SIGINT) can end a run early — raise it for a long attended
+    window; a from-scratch `MainWindow` in a fresh throwaway env
+    triggers a REAL Spotify OAuth browser popup (`sync_service`'s
+    eager, unguarded `self.spotify` property access) unless a fake
+    cached token is seeded first. Temporary diagnostic
+    (`[poll_downloads] ... called` / `pending=N locked=N`) still in
+    `poll_downloads()` — remove once root-caused.
     [HISTORY §63](docs/HISTORY.md#63)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
