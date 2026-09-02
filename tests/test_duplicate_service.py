@@ -17,9 +17,11 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.duplicate_service import (
+    DuplicateFolderScope,
     DuplicateService,
     LibraryLocationNotFoundError,
     _cluster_by_similarity,
+    _path_within_folder,
     _quality_sort_key,
 )
 from seeker.models.library_location import LibraryLocation
@@ -150,6 +152,59 @@ def test_compute_fingerprints_force_recomputes(tmp_path):
     result = service.compute_fingerprints("Main", force=True)
     assert result["computed"] == 1
     assert result["skipped_already_computed"] == 0
+
+
+def test_compute_fingerprints_classifies_a_missing_file(tmp_path):
+    # Roadmap item 68 (Phase 8.2/8.3) — a local_files row whose real
+    # file is gone (moved/deleted outside a rescan) gets its own
+    # reason, not a generic "failed".
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    add_local_file(database, location, "gone.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.compute_fingerprints("Main")
+
+    assert result["failed"] == 1
+    assert result["details"][0]["reason"] == "file_missing"
+
+
+def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
+    # Roadmap item 68 (Phase 8.3) — flagged distinctly from a real
+    # decode failure; it can never succeed a fingerprint attempt, so it
+    # can also never enter a duplicate group and be offered for delete.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    (music_dir / "empty.wav").write_bytes(b"")
+    add_local_file(database, location, "empty.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.compute_fingerprints("Main")
+
+    assert result["failed"] == 1
+    assert result["details"][0]["reason"] == "empty_file"
+
+
+def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
+    # A real, non-empty, non-missing file that just isn't real audio —
+    # both soundfile and (if present) the ffmpeg fallback genuinely
+    # can't decode it, so this is the "decode_unsupported" reason.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    (music_dir / "garbage.wav").write_bytes(b"not actually audio data")
+    add_local_file(database, location, "garbage.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.compute_fingerprints("Main")
+
+    assert result["failed"] == 1
+    assert result["details"][0]["reason"] == "decode_unsupported"
 
 
 def test_compute_fingerprints_unknown_location_raises(tmp_path):
@@ -578,3 +633,239 @@ def test_delete_one_local_file_falls_back_to_stored_size_when_stat_fails(
 
     # local_file's own stored size_bytes, set by add_local_file above.
     assert bytes_freed == 1000
+
+
+# --- Folder scoping (roadmap item 68, Phase 7.2) ----------------------
+
+def test_path_within_folder_respects_separator_boundaries():
+    # The real, explicit gotcha the brief calls out: "Trance" must never
+    # match "TranceX" via a naive str.startswith().
+    assert _path_within_folder("Trance/song.mp3", "Trance")
+    assert not _path_within_folder("TranceX/song.mp3", "Trance")
+    assert _path_within_folder("A/B/song.mp3", "A/B")
+    assert not _path_within_folder("A/BC/song.mp3", "A/B")
+
+
+def test_path_within_folder_empty_folder_means_whole_location():
+    assert _path_within_folder("anything/song.mp3", "")
+
+
+def test_resolve_folder_scopes_maps_a_real_absolute_path(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    (music_dir / "Trance").mkdir(parents=True)
+    location = register_location(database, music_dir)
+
+    service = make_service(database)
+    scopes = service.resolve_folder_scopes([str(music_dir / "Trance")])
+
+    assert len(scopes) == 1
+    assert scopes[0].location.name == location.name
+    assert scopes[0].folder_relative_path == "Trance"
+
+
+def test_resolve_folder_scopes_whole_location_path_gives_empty_relative(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    register_location(database, music_dir)
+
+    service = make_service(database)
+    scopes = service.resolve_folder_scopes([str(music_dir)])
+
+    assert scopes[0].folder_relative_path == ""
+
+
+def test_resolve_folder_scopes_rejects_a_folder_outside_every_location(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    register_location(database, music_dir)
+    outside = tmp_path / "not_registered"
+    outside.mkdir()
+
+    service = make_service(database)
+
+    with pytest.raises(LibraryLocationNotFoundError):
+        service.resolve_folder_scopes([str(outside)])
+
+
+def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    (music_dir / "InScope").mkdir(parents=True)
+    (music_dir / "OutOfScope").mkdir(parents=True)
+    location = register_location(database, music_dir)
+
+    _write_tone(music_dir / "InScope" / "a.wav", frequency=440.0)
+    _write_tone(music_dir / "OutOfScope" / "b.wav", frequency=880.0)
+    add_local_file(database, location, "InScope/a.wav", "wav", 3000)
+    add_local_file(database, location, "OutOfScope/b.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.compute_fingerprints("Main", folders=["InScope"])
+
+    assert result["computed"] == 1
+
+    with database.transaction() as connection:
+        repo = LocalFileRepository(database)
+        in_scope = repo.get_by_location_and_relative_path(
+            location.id, "InScope/a.wav", connection,
+        )
+        out_of_scope = repo.get_by_location_and_relative_path(
+            location.id, "OutOfScope/b.wav", connection,
+        )
+
+    assert in_scope.fingerprint is not None
+    assert out_of_scope.fingerprint is None
+
+
+def test_find_duplicate_groups_scoped_to_a_folder_excludes_outside_matches(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    (music_dir / "FolderA").mkdir(parents=True)
+    (music_dir / "FolderB").mkdir(parents=True)
+    location = register_location(database, music_dir)
+
+    # An identical real duplicate pair split across two folders.
+    _write_tone(music_dir / "FolderA" / "dupe.wav", frequency=440.0)
+    _write_tone(music_dir / "FolderB" / "dupe.wav", frequency=440.0)
+    add_local_file(database, location, "FolderA/dupe.wav", "wav", 3000)
+    add_local_file(database, location, "FolderB/dupe.wav", "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+
+    # Scoped to FolderA alone -- the real duplicate in FolderB is out of
+    # scope, so no group should be found (nothing to compare against).
+    groups = service.find_duplicate_groups("Main", folders=["FolderA"])
+    assert groups == []
+
+    # Both folders pooled -- the real cross-folder duplicate IS found.
+    groups_both = service.find_duplicate_groups(
+        "Main", folders=["FolderA", "FolderB"],
+    )
+    assert len(groups_both) == 1
+
+
+def test_find_duplicate_groups_across_scopes_pools_across_two_real_locations(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir_a = tmp_path / "music_a"
+    music_dir_b = tmp_path / "music_b"
+    music_dir_a.mkdir()
+    music_dir_b.mkdir()
+
+    location_a = register_location(database, music_dir_a)
+    repo = LibraryLocationRepository(database)
+    with database.transaction() as connection:
+        repo.add(
+            LibraryLocation(
+                name="Other", path=str(music_dir_b),
+                added_at=datetime.now(timezone.utc).isoformat(),
+            ),
+            connection,
+        )
+        location_b = repo.get_by_name("Other", connection)
+
+    # A real duplicate pair, one file in each of two DIFFERENT real
+    # registered locations -- deliberately allowed per the brief.
+    _write_tone(music_dir_a / "dupe.wav", frequency=440.0)
+    _write_tone(music_dir_b / "dupe.wav", frequency=440.0)
+    add_local_file(database, location_a, "dupe.wav", "wav", 3000)
+    add_local_file(database, location_b, "dupe.wav", "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+    service.compute_fingerprints("Other")
+
+    scopes = [
+        DuplicateFolderScope(location=location_a, folder_relative_path=""),
+        DuplicateFolderScope(location=location_b, folder_relative_path=""),
+    ]
+    groups = service.find_duplicate_groups_across_scopes(scopes)
+
+    assert len(groups) == 1
+    assert len(groups[0].files) == 2
+
+
+def test_compute_fingerprints_reports_real_progress(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    for i in range(3):
+        _write_tone(music_dir / f"{i}.wav", frequency=440.0 + i * 10)
+        add_local_file(database, location, f"{i}.wav", "wav", 3000)
+
+    reported = []
+    service = make_service(database)
+    service.compute_fingerprints(
+        "Main",
+        progress=lambda stage, current, total: reported.append(
+            (stage, current, total),
+        ),
+    )
+
+    assert reported[-1] == ("Fingerprinting", 3, 3)
+    assert all(stage == "Fingerprinting" for stage, _, _ in reported)
+
+
+def test_find_duplicate_groups_reports_both_real_stages(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    _write_tone(music_dir / "a.wav", frequency=440.0)
+    _write_tone(music_dir / "b.wav", frequency=440.0)
+    add_local_file(database, location, "a.wav", "wav", 3000)
+    add_local_file(database, location, "b.wav", "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+
+    reported = []
+    service.find_duplicate_groups(
+        "Main",
+        progress=lambda stage, current, total: reported.append(
+            (stage, current, total),
+        ),
+    )
+
+    stages = {stage for stage, _, _ in reported}
+    assert stages == {"Decoding fingerprints", "Comparing"}
+    decode_events = [e for e in reported if e[0] == "Decoding fingerprints"]
+    assert decode_events[-1] == ("Decoding fingerprints", 2, 2)
+
+
+def test_count_files_for_scopes_real_count_before_a_real_run(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    (music_dir / "A").mkdir(parents=True)
+    (music_dir / "B").mkdir(parents=True)
+    location = register_location(database, music_dir)
+
+    add_local_file(database, location, "A/one.mp3", "mp3", 1000)
+    add_local_file(database, location, "A/two.mp3", "mp3", 1000)
+    add_local_file(database, location, "B/three.mp3", "mp3", 1000)
+
+    service = make_service(database)
+
+    count_a = service.count_files_for_scopes(
+        [DuplicateFolderScope(location=location, folder_relative_path="A")],
+    )
+    count_whole = service.count_files_for_scopes(
+        [DuplicateFolderScope(location=location, folder_relative_path="")],
+    )
+
+    assert count_a == 2
+    assert count_whole == 3

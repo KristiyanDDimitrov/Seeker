@@ -4,6 +4,7 @@ import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import IntEnum
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -166,6 +168,33 @@ _DOWNLOAD_TERMINAL_STATUSES = {
 # real, direct repro), breaking any comparison against a real -1
 # constant.
 KEEP_ALL_DUPLICATES_ID = 0
+
+# Roadmap item 68 (Phase 7.1) — named constants for the duplicates
+# table's real column layout, replacing literal indices scattered
+# across the render path. Three independent investigations (item 61
+# Phase 6.2, and this block's own Phase 0.5 — both a real-service/
+# real-libchromaprint repro and a 15-group/45-row real-scale repro at
+# the real default window size) could NOT reproduce a genuine index-vs-
+# header mismatch; this hardening exists so that bug CLASS becomes
+# structurally impossible regardless, and so the regression test can
+# resolve "Actions" by its real header text instead of sharing the same
+# literal the render code uses (a test that shares the code's own
+# mistake proves nothing).
+class _DuplicatesColumn(IntEnum):
+    GROUP = 0
+    LOCATION = 1
+    PATH = 2
+    FORMAT = 3
+    BITRATE = 4
+    SIMILARITY = 5
+    KEEP = 6
+    ACTIONS = 7
+
+
+_DUPLICATES_COLUMN_HEADERS = [
+    "Group", "Location", "Path", "Format", "Bitrate", "Similarity",
+    "Keep", "Actions",
+]
 
 _HISTORY_EVENT_LABELS = {
     DOWNLOADED: "Downloaded",
@@ -2549,6 +2578,19 @@ class MainWindow(QMainWindow):
         )
         controls.addWidget(self.duplicates_location_combo)
 
+        # Roadmap item 68 (Phase 7.2) — folder-scope mode disables the
+        # whole-location combo above rather than removing it, so
+        # switching back off restores the prior selection with no extra
+        # bookkeeping.
+        self.duplicates_folders_checkbox = QCheckBox("Only these folders…")
+        self.duplicates_folders_checkbox.setToolTip(
+            help_text.TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX
+        )
+        self.duplicates_folders_checkbox.toggled.connect(
+            self._on_duplicates_folders_toggled
+        )
+        controls.addWidget(self.duplicates_folders_checkbox)
+
         self.compute_fingerprints_button = QPushButton("Compute fingerprints")
         self.compute_fingerprints_button.setToolTip(
             help_text.TOOLTIP_COMPUTE_FINGERPRINTS
@@ -2569,15 +2611,56 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(controls)
 
+        # Roadmap item 68 (Phase 7.2) — hidden by default; shown only
+        # when "Only these folders…" is checked. A plain QListWidget of
+        # real absolute paths, resolved against registered locations
+        # only at scope-count/run time (resolve_folder_scopes), not on
+        # every add — an unregistered folder is a run-time error, not
+        # something that blocks merely listing it.
+        self.duplicates_folders_panel = QWidget()
+        folders_panel_layout = QVBoxLayout(self.duplicates_folders_panel)
+        folders_panel_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.duplicates_folders_list = QListWidget()
+        folders_panel_layout.addWidget(self.duplicates_folders_list)
+
+        folders_buttons_row = QHBoxLayout()
+
+        self.duplicates_add_folder_button = QPushButton("Add folder…")
+        self.duplicates_add_folder_button.setToolTip(
+            help_text.TOOLTIP_DUPLICATES_ADD_FOLDER
+        )
+        self.duplicates_add_folder_button.clicked.connect(
+            self._on_add_duplicates_folder_clicked
+        )
+        folders_buttons_row.addWidget(self.duplicates_add_folder_button)
+
+        self.duplicates_remove_folder_button = QPushButton("Remove selected")
+        self.duplicates_remove_folder_button.setToolTip(
+            help_text.TOOLTIP_DUPLICATES_REMOVE_FOLDER
+        )
+        self.duplicates_remove_folder_button.clicked.connect(
+            self._on_remove_duplicates_folder_clicked
+        )
+        folders_buttons_row.addWidget(self.duplicates_remove_folder_button)
+
+        folders_panel_layout.addLayout(folders_buttons_row)
+
+        # Shown BEFORE a real, potentially ~10-minute-at-real-scale run
+        # (item 39's own real number) — see
+        # help_text.format_duplicates_scope_count's own docstring.
+        self.duplicates_scope_count_label = QLabel("")
+        folders_panel_layout.addWidget(self.duplicates_scope_count_label)
+
+        self.duplicates_folders_panel.setVisible(False)
+        layout.addWidget(self.duplicates_folders_panel)
+
         self.duplicates_status_label = QLabel("")
         layout.addWidget(self.duplicates_status_label)
 
-        self.duplicates_table = QTableWidget(0, 8)
+        self.duplicates_table = QTableWidget(0, len(_DUPLICATES_COLUMN_HEADERS))
         self.duplicates_table.setHorizontalHeaderLabels(
-            [
-                "Group", "Location", "Path", "Format", "Bitrate",
-                "Similarity", "Keep", "Actions",
-            ]
+            _DUPLICATES_COLUMN_HEADERS
         )
         self.duplicates_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.duplicates_table)
@@ -2594,6 +2677,16 @@ class MainWindow(QMainWindow):
         self._current_duplicate_groups: list[DuplicateGroup] = []
         self._current_duplicates_location_name: str | None = None
         self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
+        # Roadmap item 68 (Phase 7.2) — resolved by local_file.location_id
+        # at render time so the LOCATION column (and the delete flow's
+        # own path resolution below) reads correctly per-file even for a
+        # pooled, cross-location folder-scope result — a single "current
+        # location" no longer holds for those.
+        self._duplicates_locations_by_id: dict[int, LibraryLocation] = {}
+        # Persisted across page shows deliberately (never reset in
+        # _on_page_changed) — same "don't lose it on every revisit"
+        # precedent as the location combo's own selection.
+        self._duplicates_folder_paths: list[str] = []
 
         return tab
 
@@ -2669,6 +2762,11 @@ class MainWindow(QMainWindow):
         self._duplicates_locations_by_name = {
             location.name: location for location, _ in locations
         }
+        self._duplicates_locations_by_id = {
+            location.id: location
+            for location, _ in locations
+            if location.id is not None
+        }
 
         for location, _ in locations:
             self.duplicates_location_combo.addItem(
@@ -2686,7 +2784,77 @@ class MainWindow(QMainWindow):
         name = self.duplicates_location_combo.currentData()
         return str(name) if name is not None else None
 
+    def _selected_duplicates_folders(self) -> list[str]:
+        if not self.duplicates_folders_checkbox.isChecked():
+            return []
+        return list(self._duplicates_folder_paths)
+
+    def _on_duplicates_folders_toggled(self, checked: bool) -> None:
+        self.duplicates_folders_panel.setVisible(checked)
+        self.duplicates_location_combo.setEnabled(not checked)
+        self._refresh_duplicates_folder_scope_count()
+
+    def _on_add_duplicates_folder_clicked(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Choose a folder to add to the scope"
+        )
+
+        if not path or path in self._duplicates_folder_paths:
+            return
+
+        self._duplicates_folder_paths.append(path)
+        self.duplicates_folders_list.addItem(path)
+        self._refresh_duplicates_folder_scope_count()
+
+    def _on_remove_duplicates_folder_clicked(self) -> None:
+        for item in self.duplicates_folders_list.selectedItems():
+            path = item.text()
+            self.duplicates_folders_list.takeItem(
+                self.duplicates_folders_list.row(item)
+            )
+            if path in self._duplicates_folder_paths:
+                self._duplicates_folder_paths.remove(path)
+
+        self._refresh_duplicates_folder_scope_count()
+
+    def _refresh_duplicates_folder_scope_count(self) -> None:
+        if not self._duplicates_folder_paths:
+            self.duplicates_scope_count_label.setText("")
+            return
+
+        folders = list(self._duplicates_folder_paths)
+
+        def compute_count() -> int:
+            service = self.application.duplicate_service
+            scopes = service.resolve_folder_scopes(folders)
+            return service.count_files_for_scopes(scopes)
+
+        run_worker(
+            self.thread_pool, compute_count,
+            on_finished=lambda count: self.duplicates_scope_count_label.setText(
+                help_text.format_duplicates_scope_count(count)
+            ),
+            on_error=self.duplicates_scope_count_label.setText,
+        )
+
     def _on_compute_fingerprints_clicked(self) -> None:
+        folders = self._selected_duplicates_folders()
+
+        if folders:
+            self._run_busy_worker(
+                "compute_fingerprints", self.compute_fingerprints_button,
+                lambda progress: self._compute_fingerprints_for_folders(
+                    folders, progress,
+                ),
+                status_label=self.duplicates_status_label,
+                on_finished=self._render_fingerprint_result,
+                reports_progress=True,
+            )
+            self.duplicates_status_label.setText(
+                f"Computing fingerprints for {len(folders)} folder(s)..."
+            )
+            return
+
         location_name = self._selected_duplicates_location()
 
         if location_name is None:
@@ -2697,25 +2865,108 @@ class MainWindow(QMainWindow):
 
         self._run_busy_worker(
             "compute_fingerprints", self.compute_fingerprints_button,
-            lambda: self.application.duplicate_service.compute_fingerprints(
-                location_name
+            lambda progress: (
+                self.application.duplicate_service.compute_fingerprints(
+                    location_name, progress=progress,
+                )
             ),
             status_label=self.duplicates_status_label,
             on_finished=self._render_fingerprint_result,
+            reports_progress=True,
         )
         self.duplicates_status_label.setText(
             f"Computing fingerprints for '{location_name}'..."
         )
 
+    def _compute_fingerprints_for_folders(
+            self,
+            folders: list[str],
+            progress: Callable[[str, int, int], None],
+    ) -> dict[str, Any]:
+        # Roadmap item 68 (Phase 7.2/7.3) — compute_fingerprints() is
+        # itself scoped to one library location per call; folder mode
+        # can span more than one (find_duplicate_groups_across_scopes'
+        # own cross-location pooling), so this groups the resolved
+        # scopes by location, calls it once per location, and translates
+        # each call's own 1..N progress into a running offset against
+        # the real combined total — so the activity strip still reads
+        # 1..total once, not resetting partway through.
+        service = self.application.duplicate_service
+        scopes = service.resolve_folder_scopes(folders)
+        total = service.count_files_for_scopes(scopes)
+
+        folders_by_location: dict[str, list[str]] = {}
+        for scope in scopes:
+            folders_by_location.setdefault(
+                scope.location.name, [],
+            ).append(scope.folder_relative_path)
+
+        combined: dict[str, Any] = {
+            "computed": 0,
+            "skipped_already_computed": 0,
+            "failed": 0,
+            "details": [],
+        }
+        completed_before = 0
+
+        for location_name, relative_folders in folders_by_location.items():
+            def report(
+                    stage: str, current: int, _total: int,
+                    offset: int = completed_before,
+            ) -> None:
+                progress(stage, offset + current, total)
+
+            result = service.compute_fingerprints(
+                location_name, folders=relative_folders, progress=report,
+            )
+            combined["computed"] += result["computed"]
+            combined["skipped_already_computed"] += (
+                result["skipped_already_computed"]
+            )
+            combined["failed"] += result["failed"]
+            combined["details"].extend(result["details"])
+            completed_before += (
+                result["computed"]
+                + result["skipped_already_computed"]
+                + result["failed"]
+            )
+
+        return combined
+
     def _render_fingerprint_result(self, result: dict[str, Any]) -> None:
         self.duplicates_status_label.setText(
-            f"Fingerprinted: {result['computed']}, "
-            f"Skipped (already computed): "
-            f"{result['skipped_already_computed']}, "
-            f"Failed: {result['failed']}."
+            help_text.format_fingerprint_result_message(result)
         )
 
     def _on_find_duplicates_clicked(self) -> None:
+        folders = self._selected_duplicates_folders()
+
+        if folders:
+            # No single location applies to a pooled, possibly
+            # cross-location result — _render_duplicate_groups resolves
+            # each row's location individually via
+            # _duplicates_locations_by_id instead.
+            self._current_duplicates_location_name = None
+
+            self._run_busy_worker(
+                "find_duplicates", self.find_duplicates_button,
+                lambda progress: (
+                    self.application.duplicate_service
+                    .find_duplicate_groups_across_scopes(
+                        self.application.duplicate_service
+                        .resolve_folder_scopes(folders),
+                        progress=progress,
+                    )
+                ),
+                status_label=self.duplicates_status_label,
+                on_finished=self._render_duplicate_groups,
+                reports_progress=True,
+            )
+            self.duplicates_status_label.setText(
+                f"Searching for duplicates in {len(folders)} folder(s)..."
+            )
+            return
+
         location_name = self._selected_duplicates_location()
 
         if location_name is None:
@@ -2724,21 +2975,25 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Roadmap item 56 Phase 6.3 — the Location column and the
-        # delete-confirmation dialog's full paths both need this;
-        # captured here rather than re-read from the combo later, so a
-        # combo selection change while this search is still running
-        # can't attach the wrong location name to the results it
-        # eventually renders.
+        # Roadmap item 56 Phase 6.3 — the delete-confirmation dialog's
+        # full paths need a real location; captured here rather than
+        # re-read from the combo later, so a combo selection change
+        # while this search is still running can't attach the wrong
+        # location name to the results it eventually renders. (The
+        # LOCATION column itself resolves per-file, not from this — see
+        # item 68.)
         self._current_duplicates_location_name = location_name
 
         self._run_busy_worker(
             "find_duplicates", self.find_duplicates_button,
-            lambda: self.application.duplicate_service.find_duplicate_groups(
-                location_name
+            lambda progress: (
+                self.application.duplicate_service.find_duplicate_groups(
+                    location_name, progress=progress,
+                )
             ),
             status_label=self.duplicates_status_label,
             on_finished=self._render_duplicate_groups,
+            reports_progress=True,
         )
         self.duplicates_status_label.setText(
             f"Searching for duplicates in '{location_name}'..."
@@ -2764,8 +3019,6 @@ class MainWindow(QMainWindow):
             f"Found {len(groups)} duplicate group(s)."
         )
 
-        location_name = self._current_duplicates_location_name or "—"
-
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
 
@@ -2787,20 +3040,33 @@ class MainWindow(QMainWindow):
                 assert local_file.id is not None
 
                 self.duplicates_table.setItem(
-                    row, 0, QTableWidgetItem(str(group_index)),
+                    row, _DuplicatesColumn.GROUP,
+                    QTableWidgetItem(str(group_index)),
                 )
                 # Location + full relative path (roadmap item 56 Phase
                 # 6.3) — "the same file in two folders" is a judgement
                 # the user needs the real path to make, not just a
-                # bare filename.
-                self.duplicates_table.setItem(
-                    row, 1, QTableWidgetItem(location_name),
+                # bare filename. Resolved PER FILE (roadmap item 68,
+                # Phase 7.2) rather than from one outer variable — a
+                # pooled, cross-location folder-scope result can put
+                # files from two different real locations in the same
+                # group.
+                file_location = self._duplicates_locations_by_id.get(
+                    local_file.location_id
                 )
                 self.duplicates_table.setItem(
-                    row, 2, QTableWidgetItem(local_file.relative_path),
+                    row, _DuplicatesColumn.LOCATION,
+                    QTableWidgetItem(
+                        file_location.name if file_location else "—"
+                    ),
                 )
                 self.duplicates_table.setItem(
-                    row, 3, QTableWidgetItem(local_file.format),
+                    row, _DuplicatesColumn.PATH,
+                    QTableWidgetItem(local_file.relative_path),
+                )
+                self.duplicates_table.setItem(
+                    row, _DuplicatesColumn.FORMAT,
+                    QTableWidgetItem(local_file.format),
                 )
                 bitrate_text = (
                     f"{quality.bitrate_kbps} kbps"
@@ -2808,10 +3074,12 @@ class MainWindow(QMainWindow):
                     else "—"
                 )
                 self.duplicates_table.setItem(
-                    row, 4, QTableWidgetItem(bitrate_text),
+                    row, _DuplicatesColumn.BITRATE,
+                    QTableWidgetItem(bitrate_text),
                 )
                 self.duplicates_table.setItem(
-                    row, 5, QTableWidgetItem(f"{group.similarity:.1%}"),
+                    row, _DuplicatesColumn.SIMILARITY,
+                    QTableWidgetItem(f"{group.similarity:.1%}"),
                 )
 
                 keep_radio = QRadioButton()
@@ -2821,13 +3089,15 @@ class MainWindow(QMainWindow):
                 # below reads it back directly, no separate id-to-file
                 # mapping needed.
                 button_group.addButton(keep_radio, id=local_file.id)
-                self.duplicates_table.setCellWidget(row, 6, keep_radio)
+                self.duplicates_table.setCellWidget(
+                    row, _DuplicatesColumn.KEEP, keep_radio,
+                )
 
                 row += 1
 
             self.duplicates_table.setCellWidget(
                 group_first_row,
-                7,
+                _DuplicatesColumn.ACTIONS,
                 self._build_duplicate_group_actions(group, button_group),
             )
 
@@ -2836,10 +3106,13 @@ class MainWindow(QMainWindow):
                 # action lives once per group, not once per row"
                 # precedent as item 27's per-track Tag button only
                 # rendering for IN_LIBRARY rows.
-                self.duplicates_table.setCellWidget(other_row, 7, QWidget())
+                self.duplicates_table.setCellWidget(
+                    other_row, _DuplicatesColumn.ACTIONS, QWidget(),
+                )
 
             self.duplicates_table.setSpan(
-                group_first_row, 7, len(group.files), 1,
+                group_first_row, _DuplicatesColumn.ACTIONS,
+                len(group.files), 1,
             )
 
     def _build_duplicate_group_actions(
@@ -2924,20 +3197,43 @@ class MainWindow(QMainWindow):
             and duplicate_file.local_file.id != keep_id
         ]
 
-        current_location = self._duplicates_locations_by_name.get(
-            self._current_duplicates_location_name or "",
-        )
-        location_path = current_location.path if current_location else ""
-        location_id = current_location.id if current_location else None
-
+        # Roadmap item 68 (Phase 7.2) — resolved PER FILE via
+        # local_file.location_id rather than one "current location":
+        # a pooled, cross-location folder-scope group can hold files
+        # from more than one real registered location.
         # Roadmap item 56 Phase 6.3 — deleting real user files warrants
         # naming them: the exact full paths about to be deleted, not
         # just a bare count, in a second, explicit confirmation.
         paths_to_delete = [
-            str(Path(location_path) / duplicate_file.local_file.relative_path)
+            str(
+                Path(
+                    self._duplicates_locations_by_id[
+                        duplicate_file.local_file.location_id
+                    ].path
+                ) / duplicate_file.local_file.relative_path
+            )
             for duplicate_file in group.files
             if duplicate_file.local_file.id in delete_ids
+            and duplicate_file.local_file.location_id
+            in self._duplicates_locations_by_id
         ]
+
+        # Purely informational provenance on the resulting
+        # duplicate_cleanups row (DuplicateService.delete_local_files'
+        # own docstring) — the KEPT file's location is the most
+        # meaningful single answer to "where did this cleanup happen"
+        # for a pooled, possibly cross-location group.
+        keep_duplicate_file = next(
+            (
+                duplicate_file for duplicate_file in group.files
+                if duplicate_file.local_file.id == keep_id
+            ),
+            None,
+        )
+        location_id = (
+            keep_duplicate_file.local_file.location_id
+            if keep_duplicate_file is not None else None
+        )
 
         confirmed = QMessageBox.question(
             self,

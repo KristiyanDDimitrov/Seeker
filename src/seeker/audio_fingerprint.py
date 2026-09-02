@@ -28,7 +28,10 @@ PyInstaller build later.
 
 import ctypes
 import ctypes.util
+import shutil
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,6 +50,17 @@ _ALGORITHM_DEFAULT = 1
 # file without the overhead of feeding sample-by-sample.
 _CHUNK_SECONDS = 1
 
+# Roadmap item 68 (Phase 8.1) — the fixed format ffmpeg is asked to
+# decode every fallback file to. Chromaprint normalizes internally
+# regardless of the input rate/channel count it's told about (it's not
+# trying to preserve the source audio, just compute a comparable
+# fingerprint) — so this doesn't need to match a file's real native
+# rate to produce a fingerprint that clusters correctly against ones
+# computed via the primary soundfile path. Untuned; 44.1kHz mono is a
+# common, safe default.
+_FFMPEG_DECODE_SAMPLE_RATE = 44_100
+_FFMPEG_DECODE_CHANNELS = 1
+
 
 class FingerprintingUnavailableError(RuntimeError):
     """Raised only when fingerprinting is actually attempted and
@@ -54,7 +68,10 @@ class FingerprintingUnavailableError(RuntimeError):
 
 
 class FingerprintError(RuntimeError):
-    """Raised when a real libchromaprint call itself fails."""
+    """Raised when a real libchromaprint call itself fails, or when
+    neither the primary soundfile decode nor the ffmpeg fallback (item
+    68, Phase 8.1) could produce any usable audio from a real,
+    non-empty file."""
 
 
 @dataclass
@@ -259,12 +276,7 @@ def is_available() -> bool:
         return False
 
 
-def compute_fingerprint(path: str | Path) -> Fingerprint:
-    """Decode `path` via soundfile (not the fpcalc subprocess path)
-    and stream it through libchromaprint. Raises
-    FingerprintingUnavailableError if the library can't be found, or
-    FingerprintError/a soundfile error if the real call/decode fails.
-    """
+def _compute_fingerprint_via_soundfile(path: str | Path) -> Fingerprint:
     info = sf.info(str(path))
     fingerprinter = _StreamingFingerprinter()
     fingerprinter.start(info.samplerate, info.channels)
@@ -287,6 +299,132 @@ def compute_fingerprint(path: str | Path) -> Fingerprint:
         data=fingerprint_bytes.decode("ascii"),
         duration_seconds=duration_seconds,
     )
+
+
+def _ffmpeg_available() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
+def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
+    # Roadmap item 68 (Phase 8.1) — real, live-verified rescue path for
+    # a real, confirmed soundfile/libsndfile gap: a genuine production
+    # sample showed soundfile failing on real, non-empty, non-corrupt-
+    # looking MP3s with "bad data offset" (libsndfile's MP3 frame-table
+    # parser rejecting files ffmpeg decodes with zero errors) as well as
+    # on genuinely damaged files (a handful of real FLACs/MP3s with mid-
+    # stream frame corruption) where ffmpeg logs decode warnings but
+    # still recovers the large majority of real audio frames — enough
+    # for a usable fingerprint. `librosa` was tried first and ruled
+    # out live: this project's pinned librosa (1.0.0) dropped its old
+    # audioread fallback entirely — `librosa.load` now calls soundfile
+    # directly with no alternate decoder, so it fails identically to
+    # the primary path for every one of these files and would rescue
+    # exactly zero of them. ffmpeg is external and optional (no new
+    # hard dependency, per this item's own scope) — only attempted when
+    # already on PATH.
+    # Real bug caught live building this fallback: a genuinely corrupt
+    # file makes ffmpeg log one "Header missing"/decode-error line PER
+    # bad frame — for a file with sustained corruption, that's easily
+    # tens of thousands of lines. `stderr=subprocess.PIPE` is a
+    # fixed-size OS pipe (64KB on macOS); nothing here was reading it
+    # DURING the stdout-decode loop, so once ffmpeg filled that pipe
+    # writing stderr, it blocked trying to write more — while this
+    # loop was simultaneously blocked reading stdout, which ffmpeg
+    # could never produce more of while stuck on the stderr write.
+    # Classic two-pipe subprocess deadlock, reproduced live against a
+    # real file from the 76-failure set (hung indefinitely). Fixed by
+    # giving stderr a real file instead of a pipe — a file write never
+    # blocks on a reader keeping up.
+    with tempfile.TemporaryFile() as stderr_file:
+        process = subprocess.Popen(
+            [
+                "ffmpeg", "-v", "error", "-i", str(path),
+                "-f", "s16le",
+                "-ac", str(_FFMPEG_DECODE_CHANNELS),
+                "-ar", str(_FFMPEG_DECODE_SAMPLE_RATE),
+                "-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+        )
+        assert process.stdout is not None
+
+        fingerprinter = _StreamingFingerprinter()
+        fingerprinter.start(
+            _FFMPEG_DECODE_SAMPLE_RATE, _FFMPEG_DECODE_CHANNELS,
+        )
+
+        # 16-bit samples = 2 bytes each; mono, so this is bytes/second.
+        chunk_bytes = _FFMPEG_DECODE_SAMPLE_RATE * _CHUNK_SECONDS * 2
+        total_samples = 0
+
+        try:
+            while True:
+                block = process.stdout.read(chunk_bytes)
+                if not block:
+                    break
+                fingerprinter.feed(block)
+                total_samples += len(block) // 2
+        finally:
+            process.stdout.close()
+            process.wait()
+            stderr_file.seek(0)
+            stderr_output = stderr_file.read().decode(
+                "utf-8", errors="replace",
+            )
+
+    if total_samples == 0:
+        # A real, non-zero exit with no decoded samples at all (as
+        # opposed to the "decodes with warnings" case above, which
+        # DOES produce usable samples) — genuinely undecodable, not
+        # rescued.
+        detail = stderr_output.strip()
+        raise FingerprintError(
+            f"ffmpeg produced no audio data for {path}"
+            + (f": {detail}" if detail else "")
+        )
+
+    fingerprint_bytes = fingerprinter.finish()
+    duration_seconds = total_samples / _FFMPEG_DECODE_SAMPLE_RATE
+
+    return Fingerprint(
+        data=fingerprint_bytes.decode("ascii"),
+        duration_seconds=duration_seconds,
+    )
+
+
+def compute_fingerprint(path: str | Path) -> Fingerprint:
+    """Decode `path` and stream it through libchromaprint. Raises
+    FingerprintingUnavailableError if libchromaprint can't be found, or
+    FingerprintError if decoding genuinely fails on every path tried.
+
+    Primary decode is via soundfile (not the fpcalc subprocess path).
+    On ANY soundfile failure, falls back to ffmpeg (roadmap item 68,
+    Phase 8.1) if it's present on PATH — real production files exist
+    that soundfile's libsndfile backend can't open at all but ffmpeg
+    decodes cleanly (or with recoverable warnings; see
+    `_compute_fingerprint_via_ffmpeg`'s own docstring). ffmpeg absent,
+    or itself failing, re-raises the ORIGINAL soundfile error (not the
+    ffmpeg one) when ffmpeg was never attempted, so callers see the
+    same error shape as before this fallback existed.
+    """
+    try:
+        return _compute_fingerprint_via_soundfile(path)
+    except FingerprintingUnavailableError:
+        raise
+    except Exception as soundfile_error:
+        if not _ffmpeg_available():
+            raise
+
+        try:
+            return _compute_fingerprint_via_ffmpeg(Path(path))
+        except FingerprintingUnavailableError:
+            raise
+        except Exception as ffmpeg_error:
+            raise FingerprintError(
+                f"soundfile failed ({soundfile_error}); ffmpeg fallback "
+                f"also failed ({ffmpeg_error})"
+            ) from ffmpeg_error
 
 
 def decode_fingerprint(data: str) -> np.ndarray:

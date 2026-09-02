@@ -346,6 +346,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Recompute fingerprints even for files that already have one.",
     )
+    fingerprint_parser.add_argument(
+        "--folder",
+        action="append",
+        dest="folders",
+        metavar="RELATIVE_PATH",
+        help=(
+            "Scope to one folder within this location (relative path, "
+            "e.g. 'Trance'). Repeatable for multiple folders. Omit for "
+            "the whole location."
+        ),
+    )
 
     duplicates_parser = library_subparsers.add_parser(
         "duplicates",
@@ -355,6 +366,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     duplicates_parser.add_argument("location_name")
+    duplicates_parser.add_argument(
+        "--folder",
+        action="append",
+        dest="folders",
+        metavar="RELATIVE_PATH",
+        help=(
+            "Scope to one folder within this location (relative path). "
+            "Repeatable — multiple folders are pooled and compared "
+            "together. Omit for the whole location."
+        ),
+    )
 
     rename_parser = library_subparsers.add_parser(
         "rename",
@@ -675,9 +697,16 @@ def handle_library(
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "fingerprint":
+        def print_fingerprint_progress(
+                stage: str, current: int, total: int,
+        ) -> None:
+            print(f"  {stage}: {current}/{total}", end="\r")
+
         result = application.duplicate_service.compute_fingerprints(
             parsed.location_name, force=parsed.force,
+            folders=parsed.folders, progress=print_fingerprint_progress,
         )
+        print()
 
         print(
             f"Fingerprinted: {result['computed']}, "
@@ -706,9 +735,16 @@ def handle_library(
                 f"file{'s' if files_deleted != 1 else ''}.\n"
             )
 
+        def print_duplicates_progress(
+                stage: str, current: int, total: int,
+        ) -> None:
+            print(f"  {stage}: {current}/{total}", end="\r")
+
         groups = application.duplicate_service.find_duplicate_groups(
-            parsed.location_name,
+            parsed.location_name, folders=parsed.folders,
+            progress=print_duplicates_progress,
         )
+        print()
 
         if not groups:
             print(

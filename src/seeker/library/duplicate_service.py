@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from seeker.audio_fingerprint import (
+    FingerprintError,
     FingerprintingUnavailableError,
     compute_fingerprint,
     decode_fingerprint,
@@ -35,6 +37,39 @@ from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
 
 class LibraryLocationNotFoundError(RuntimeError):
     pass
+
+
+# Roadmap item 68 (Phase 8.2/8.3) — per-file fingerprint-failure reason
+# codes, surfaced in compute_fingerprints()'s `details` (already printed
+# per-line by both the CLI and consumable by the UI) instead of one
+# generic "failed" for everything. `_EmptyFileError` in particular
+# exists to satisfy Phase 8.3: a genuinely 0-byte file is flagged
+# distinctly from a real decode failure — it can never succeed a
+# fingerprint attempt (nothing to decode), so it can also never enter a
+# duplicate group; nothing here ever offers to delete it, matching the
+# brief's own "never offer to delete" scope.
+_REASON_FILE_MISSING = "file_missing"
+_REASON_EMPTY_FILE = "empty_file"
+_REASON_DECODE_UNSUPPORTED = "decode_unsupported"
+_REASON_ERROR = "error"
+
+
+class _FileMissingError(RuntimeError):
+    pass
+
+
+class _EmptyFileError(RuntimeError):
+    pass
+
+
+def _classify_fingerprint_failure(error: Exception) -> str:
+    if isinstance(error, _FileMissingError):
+        return _REASON_FILE_MISSING
+    if isinstance(error, _EmptyFileError):
+        return _REASON_EMPTY_FILE
+    if isinstance(error, FingerprintError):
+        return _REASON_DECODE_UNSUPPORTED
+    return _REASON_ERROR
 
 
 # Untuned threshold, flagged same as every other constant in this
@@ -72,6 +107,32 @@ class DuplicateGroup:
     # transitively merge a chain of pairwise matches into one group of
     # more than two files.
     similarity: float
+
+
+@dataclass
+class DuplicateFolderScope:
+    """Roadmap item 68 (Phase 7.2) — one real, resolved folder to
+    include in a pooled duplicate search: a registered library location
+    plus the folder's path relative to that location's root (empty
+    string means the whole location). Built by resolve_folder_scopes()
+    from real absolute paths (e.g. a folder picker) — never constructed
+    directly by a caller that hasn't gone through that resolution, so a
+    scope can never silently point outside every registered location.
+    """
+    location: LibraryLocation
+    folder_relative_path: str
+
+
+def _path_within_folder(file_relative_path: str, folder_relative_path: str) -> bool:
+    # Roadmap item 68 (Phase 7.2) — path-prefix matching that respects
+    # separator boundaries: "Trance" must never match "TranceX". A bare
+    # str.startswith() check would get this wrong; PurePath.is_relative_to
+    # (via Path here, a pure logical operation — no filesystem I/O) does
+    # not.
+    if not folder_relative_path:
+        return True  # "" means the whole location.
+
+    return Path(file_relative_path).is_relative_to(Path(folder_relative_path))
 
 
 class DuplicateService:
@@ -123,11 +184,22 @@ class DuplicateService:
             self,
             location_name: str,
             force: bool = False,
+            folders: list[str] | None = None,
+            progress: Callable[[str, int, int], None] | None = None,
     ) -> dict[str, Any]:
         """Compute and persist a fingerprint for every file at this
         location that doesn't already have one (or every file,
         regardless, if force=True) — mirrors MetadataService.tag_tracks'
         own skip-already-done/force/per-item-try-except shape.
+
+        Roadmap item 68 (Phase 7.2) — `folders`, when given, scopes this
+        to only the files whose relative_path falls under one of these
+        (location-relative) folder paths — fingerprinting one real
+        folder instead of a whole multi-thousand-file location is the
+        bigger practical win of the two scoped operations (Phase 7.2's
+        own brief). `progress` (Phase 7.3), when given, is called as
+        `progress(stage, current, total)` — a single stage here
+        ("Fingerprinting"), `total` = files actually in scope.
         """
         if not fingerprinting_is_available():
             # One clear failure, not N per-file ones, for a single root
@@ -149,14 +221,24 @@ class DuplicateService:
                 location.id, connection,
             )
 
+        if folders:
+            local_files = [
+                f for f in local_files
+                if any(
+                    _path_within_folder(f.relative_path, folder)
+                    for folder in folders
+                )
+            ]
+
         counts: dict[str, int] = {
             "computed": 0,
             "skipped_already_computed": 0,
             "failed": 0,
         }
         details: list[dict[str, str]] = []
+        total = len(local_files)
 
-        for local_file in local_files:
+        for index, local_file in enumerate(local_files, start=1):
             try:
                 self._compute_one(
                     location, local_file, force, counts, details,
@@ -166,11 +248,14 @@ class DuplicateService:
                 details.append(
                     {
                         "local_file_id": str(local_file.id),
-                        "reason": "failed",
+                        "reason": _classify_fingerprint_failure(error),
                         "message": f"{local_file.filename}: {error}",
                     }
                 )
                 print(f"  Failed to fingerprint {local_file.filename}: {error}")
+
+            if progress is not None:
+                progress("Fingerprinting", index, total)
 
         return {**counts, "details": details}
 
@@ -187,6 +272,16 @@ class DuplicateService:
             return
 
         file_path = Path(location.path) / local_file.relative_path
+
+        # Roadmap item 68 (Phase 8.2/8.3) — checked BEFORE
+        # compute_fingerprint() so these two real, distinct causes get
+        # their own reason codes instead of surfacing as whatever
+        # message soundfile/ffmpeg happen to raise for "nothing here."
+        if not file_path.is_file():
+            raise _FileMissingError(f"{file_path} does not exist")
+        if file_path.stat().st_size == 0:
+            raise _EmptyFileError(f"{file_path} is a 0-byte file")
+
         fingerprint = compute_fingerprint(file_path)
 
         with self.database.transaction() as connection:
@@ -204,9 +299,60 @@ class DuplicateService:
         counts["computed"] += 1
         print(f"  Fingerprinted: {local_file.filename}")
 
+    def resolve_folder_scopes(
+            self, folder_paths: list[str],
+    ) -> list[DuplicateFolderScope]:
+        """Roadmap item 68 (Phase 7.2) — resolves real, absolute folder
+        paths (e.g. from a folder picker) against every registered
+        library location. Each folder must resolve inside a registered
+        location; anything else is rejected with a clear message —
+        fingerprints only exist for indexed files, and an unregistered
+        folder was never scanned at all.
+        """
+        with self.database.transaction() as connection:
+            locations = self.locations.get_all(connection)
+
+        scopes = []
+
+        for folder_path in folder_paths:
+            folder = Path(folder_path).resolve()
+            matched_location: LibraryLocation | None = None
+            matched_relative = ""
+
+            for location in locations:
+                location_path = Path(location.path).resolve()
+
+                if folder == location_path:
+                    matched_location = location
+                    matched_relative = ""
+                    break
+
+                if folder.is_relative_to(location_path):
+                    matched_location = location
+                    matched_relative = str(folder.relative_to(location_path))
+                    break
+
+            if matched_location is None:
+                raise LibraryLocationNotFoundError(
+                    f"'{folder_path}' is not inside any registered "
+                    f"library location — add it as a location first, or "
+                    f"pick a folder inside one that's already registered."
+                )
+
+            scopes.append(
+                DuplicateFolderScope(
+                    location=matched_location,
+                    folder_relative_path=matched_relative,
+                )
+            )
+
+        return scopes
+
     def find_duplicate_groups(
             self,
             location_name: str,
+            folders: list[str] | None = None,
+            progress: Callable[[str, int, int], None] | None = None,
     ) -> list[DuplicateGroup]:
         """Cluster this location's already-fingerprinted files by
         Hamming distance — computed fresh from cached fingerprints on
@@ -216,6 +362,11 @@ class DuplicateService:
         (compute_fingerprints() hasn't run for them) are silently
         excluded, not treated as an error — a partial fingerprint
         coverage is a completely normal, expected state.
+
+        Roadmap item 68 (Phase 7.2) — `folders`, when given (location-
+        relative paths), scopes this to only files under one of them.
+        Unchanged single-location behavior when omitted, for the CLI
+        and every existing caller.
         """
         with self.database.transaction() as connection:
             location = self._get_location_or_raise(location_name, connection)
@@ -225,46 +376,68 @@ class DuplicateService:
                 location.id, connection,
             )
 
-        fingerprinted = [f for f in local_files if f.fingerprint is not None]
-
-        # Decoded once per file and reused across every pairwise
-        # comparison below, rather than re-decoding a file's
-        # fingerprint on every comparison it's involved in — confirmed
-        # live to matter for real: a real clustering pass over ~3,100
-        # real fingerprinted files was multiple minutes slower and used
-        # several GB more memory before this caching was added (item
-        # 5's live verification, see docs/HISTORY.md).
-        decoded_by_id: dict[int, np.ndarray] = {}
-        for local_file in fingerprinted:
-            assert local_file.id is not None and local_file.fingerprint is not None
-            decoded_by_id[local_file.id] = decode_fingerprint(
-                local_file.fingerprint
-            )
-
-        clusters = _cluster_by_similarity(fingerprinted, decoded_by_id)
-
-        groups = []
-
-        for cluster in clusters:
-            files = [
-                DuplicateFile(
-                    local_file=local_file,
-                    quality=analyze_local_file_quality(
-                        Path(location.path) / local_file.relative_path
-                    ),
+        if folders:
+            local_files = [
+                f for f in local_files
+                if any(
+                    _path_within_folder(f.relative_path, folder)
+                    for folder in folders
                 )
-                for local_file in cluster
             ]
-            files.sort(key=lambda f: _quality_sort_key(f.quality), reverse=True)
 
-            groups.append(
-                DuplicateGroup(
-                    files=files,
-                    similarity=_min_pairwise_similarity(cluster, decoded_by_id),
+        files_with_locations = [(f, location) for f in local_files]
+
+        return _cluster_duplicate_groups(files_with_locations, progress)
+
+    def _files_for_scopes(
+            self, scopes: list[DuplicateFolderScope],
+    ) -> list[tuple[LocalFile, LibraryLocation]]:
+        files_with_locations: list[tuple[LocalFile, LibraryLocation]] = []
+
+        with self.database.transaction() as connection:
+            for scope in scopes:
+                assert scope.location.id is not None
+                all_files = self.local_files.get_all_for_location(
+                    scope.location.id, connection,
                 )
-            )
+                scoped_files = [
+                    f for f in all_files
+                    if _path_within_folder(
+                        f.relative_path, scope.folder_relative_path,
+                    )
+                ]
+                files_with_locations.extend(
+                    (f, scope.location) for f in scoped_files
+                )
 
-        return groups
+        return files_with_locations
+
+    def find_duplicate_groups_across_scopes(
+            self,
+            scopes: list[DuplicateFolderScope],
+            progress: Callable[[str, int, int], None] | None = None,
+    ) -> list[DuplicateGroup]:
+        """Roadmap item 68 (Phase 7.2) — pools every given folder (each
+        already resolved via resolve_folder_scopes) into ONE set,
+        compared together — including across different real library
+        locations, deliberately allowed: the clustering itself is
+        purely content-based (Hamming distance over decoded audio
+        fingerprints) and location-agnostic, so there's no reason two
+        folders living in different registered locations couldn't hold
+        the same real recording.
+        """
+        return _cluster_duplicate_groups(
+            self._files_for_scopes(scopes), progress,
+        )
+
+    def count_files_for_scopes(
+            self, scopes: list[DuplicateFolderScope],
+    ) -> int:
+        """Roadmap item 68 (Phase 7.2) — a real file count BEFORE
+        starting a real, potentially ~10-minute-at-real-scale operation
+        (item 39's own real number), so the scope control is worth
+        having — the user sees what a scope actually covers first."""
+        return len(self._files_for_scopes(scopes))
 
     def delete_local_files(
             self,
@@ -484,6 +657,68 @@ class DuplicateService:
             )
 
 
+def _cluster_duplicate_groups(
+        files_with_locations: list[tuple[LocalFile, LibraryLocation]],
+        progress: Callable[[str, int, int], None] | None = None,
+) -> list[DuplicateGroup]:
+    """Roadmap item 68 (Phase 7.2/7.3) — the real clustering core shared
+    by find_duplicate_groups (single location) and
+    find_duplicate_groups_across_scopes (pooled, possibly cross-
+    location) — each file carries its OWN location here (not one shared
+    location) specifically so quality analysis resolves the right real
+    path for every file regardless of which location it actually lives
+    in.
+    """
+    location_by_id = {
+        local_file.id: location for local_file, location in files_with_locations
+    }
+    fingerprinted = [
+        local_file for local_file, _ in files_with_locations
+        if local_file.fingerprint is not None
+    ]
+
+    # Decoded once per file and reused across every pairwise comparison
+    # below (item 5's own live-verified optimization — see
+    # docs/HISTORY.md). Staged progress (Phase 7.3): "Decoding
+    # fingerprints" is real, honest per-file progress — n steps, not a
+    # fake single bar covering both real stages.
+    decoded_by_id: dict[int, np.ndarray] = {}
+    total = len(fingerprinted)
+    for index, local_file in enumerate(fingerprinted, start=1):
+        assert local_file.id is not None and local_file.fingerprint is not None
+        decoded_by_id[local_file.id] = decode_fingerprint(
+            local_file.fingerprint
+        )
+        if progress is not None:
+            progress("Decoding fingerprints", index, total)
+
+    clusters = _cluster_by_similarity(fingerprinted, decoded_by_id, progress)
+
+    groups = []
+
+    for cluster in clusters:
+        files = [
+            DuplicateFile(
+                local_file=local_file,
+                quality=analyze_local_file_quality(
+                    Path(location_by_id[local_file.id].path)
+                    / local_file.relative_path
+                ),
+            )
+            for local_file in cluster
+        ]
+        files.sort(key=lambda f: _quality_sort_key(f.quality), reverse=True)
+
+        groups.append(
+            DuplicateGroup(
+                files=files,
+                similarity=_min_pairwise_similarity(cluster, decoded_by_id),
+            )
+        )
+
+    return groups
+
+
 def _quality_sort_key(quality: LocalFileQuality) -> tuple[int, int]:
     # Reuses the same tier scale quality_tier_for_format() already
     # establishes (lossless > lossy > unknown); bitrate is the
@@ -497,6 +732,7 @@ def _quality_sort_key(quality: LocalFileQuality) -> tuple[int, int]:
 def _cluster_by_similarity(
         files: list[LocalFile],
         decoded_by_id: dict[int, np.ndarray],
+        progress: Callable[[str, int, int], None] | None = None,
 ) -> list[list[LocalFile]]:
     n = len(files)
     parent = list(range(n))
@@ -531,6 +767,12 @@ def _cluster_by_similarity(
         key=_duration_ms,
     )
 
+    # Roadmap item 68 (Phase 7.3) — Stage 2's own real progress: the
+    # OUTER loop here is n steps (matching the brief's own "Comparing
+    # 900/3,142" example), not the inner window (which has no fixed
+    # size to report against meaningfully).
+    comparison_total = len(with_duration)
+
     for a_pos in range(len(with_duration)):
         i = with_duration[a_pos]
         duration_i = files[i].duration_ms
@@ -546,6 +788,9 @@ def _cluster_by_similarity(
 
             if _plausible_duplicate_pair(files[i], files[j], decoded_by_id):
                 union(i, j)
+
+        if progress is not None:
+            progress("Comparing", a_pos + 1, comparison_total)
 
     # Files with no reported duration never had a pre-filter applied at
     # all (see _plausible_duplicate_pair) — still compared against

@@ -365,12 +365,14 @@ class FakeDuplicateService:
         self.compute_fingerprints_calls = []
         self.find_duplicate_groups_calls = []
 
-    def compute_fingerprints(self, location_name, force=False):
-        self.compute_fingerprints_calls.append((location_name, force))
+    def compute_fingerprints(
+            self, location_name, force=False, folders=None, progress=None,
+    ):
+        self.compute_fingerprints_calls.append((location_name, force, folders))
         return self._fingerprint_result
 
-    def find_duplicate_groups(self, location_name):
-        self.find_duplicate_groups_calls.append(location_name)
+    def find_duplicate_groups(self, location_name, folders=None, progress=None):
+        self.find_duplicate_groups_calls.append((location_name, folders))
         return self._groups
 
     def get_cleanup_totals(self):
@@ -393,7 +395,7 @@ def test_library_fingerprint_calls_compute_fingerprints_and_reports_counts(
         ["library", "fingerprint", "Main"],
     )
 
-    assert duplicate_service.compute_fingerprints_calls == [("Main", False)]
+    assert duplicate_service.compute_fingerprints_calls == [("Main", False, None)]
     output = capsys.readouterr().out
     assert "Fingerprinted: 2" in output
     assert "Skipped (already computed): 1" in output
@@ -408,7 +410,7 @@ def test_library_fingerprint_force_flag_is_passed_through(tmp_path):
         ["library", "fingerprint", "Main", "--force"],
     )
 
-    assert duplicate_service.compute_fingerprints_calls == [("Main", True)]
+    assert duplicate_service.compute_fingerprints_calls == [("Main", True, None)]
 
 
 def test_library_fingerprint_reports_failure_details(tmp_path, capsys):
@@ -444,7 +446,7 @@ def test_library_duplicates_reports_no_duplicates(tmp_path, capsys):
         ["library", "duplicates", "Main"],
     )
 
-    assert duplicate_service.find_duplicate_groups_calls == ["Main"]
+    assert duplicate_service.find_duplicate_groups_calls == [("Main", None)]
     output = capsys.readouterr().out
     assert "No duplicates found" in output
 
@@ -534,7 +536,9 @@ def test_library_fingerprint_unknown_location_exits_nonzero(tmp_path, capsys):
     matcher = make_matcher(tmp_path)
 
     class RaisingDuplicateService:
-        def compute_fingerprints(self, location_name, force=False):
+        def compute_fingerprints(
+                self, location_name, force=False, folders=None, progress=None,
+        ):
             raise LibraryLocationNotFoundError(
                 f"No library location named '{location_name}' is registered."
             )

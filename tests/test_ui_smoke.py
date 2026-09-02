@@ -148,6 +148,8 @@ class FakeDuplicateService:
             groups: list | None = None,
             delete_result: dict | None = None,
             cleanup_totals: tuple[int, int] = (0, 0),
+            scope_file_count: int = 0,
+            folder_scopes: list | None = None,
     ):
         self._fingerprint_result = fingerprint_result or {
             "computed": 0, "skipped_already_computed": 0, "failed": 0,
@@ -158,19 +160,63 @@ class FakeDuplicateService:
             "deleted": 0, "failed": 0, "details": [],
         }
         self._cleanup_totals = cleanup_totals
-        self.compute_fingerprints_calls: list[str] = []
-        self.find_duplicate_groups_calls: list[str] = []
+        self._scope_file_count = scope_file_count
+        # Roadmap item 68 (Phase 7.2) — resolve_folder_scopes' fake
+        # result; a test that wants real DuplicateFolderScope objects
+        # (e.g. to exercise the per-location grouping in
+        # _compute_fingerprints_for_folders) passes these in directly.
+        self._folder_scopes = folder_scopes or []
+        self.compute_fingerprints_calls: list[
+            tuple[str, list[str] | None]
+        ] = []
+        self.find_duplicate_groups_calls: list[
+            tuple[str, list[str] | None]
+        ] = []
+        self.find_duplicate_groups_across_scopes_calls: list[list] = []
+        self.resolve_folder_scopes_calls: list[list[str]] = []
+        self.count_files_for_scopes_calls: list[list] = []
         self.delete_local_files_calls: list[
             tuple[list[int], int | None, int | None]
         ] = []
         self.record_cleanup_calls: list[tuple[int, int, int | None]] = []
 
-    def compute_fingerprints(self, location_name: str) -> dict:
-        self.compute_fingerprints_calls.append(location_name)
+    def compute_fingerprints(
+            self,
+            location_name: str,
+            force: bool = False,
+            folders: list[str] | None = None,
+            progress=None,
+    ) -> dict:
+        self.compute_fingerprints_calls.append((location_name, folders))
+        if progress is not None:
+            progress("Fingerprinting", 1, 1)
         return self._fingerprint_result
 
-    def find_duplicate_groups(self, location_name: str) -> list:
-        self.find_duplicate_groups_calls.append(location_name)
+    def find_duplicate_groups(
+            self,
+            location_name: str,
+            folders: list[str] | None = None,
+            progress=None,
+    ) -> list:
+        self.find_duplicate_groups_calls.append((location_name, folders))
+        if progress is not None:
+            progress("Comparing", 1, 1)
+        return self._groups
+
+    def resolve_folder_scopes(self, folder_paths: list[str]) -> list:
+        self.resolve_folder_scopes_calls.append(list(folder_paths))
+        return self._folder_scopes
+
+    def count_files_for_scopes(self, scopes: list) -> int:
+        self.count_files_for_scopes_calls.append(list(scopes))
+        return self._scope_file_count
+
+    def find_duplicate_groups_across_scopes(
+            self, scopes: list, progress=None,
+    ) -> list:
+        self.find_duplicate_groups_across_scopes_calls.append(list(scopes))
+        if progress is not None:
+            progress("Comparing", 1, 1)
         return self._groups
 
     def delete_local_files(
@@ -4135,6 +4181,140 @@ def test_duplicates_tab_controls_have_tooltips(qtbot):
     assert window.duplicates_location_combo.toolTip() != ""
     assert window.compute_fingerprints_button.toolTip() != ""
     assert window.find_duplicates_button.toolTip() != ""
+    assert window.duplicates_folders_checkbox.toolTip() != ""
+    assert window.duplicates_add_folder_button.toolTip() != ""
+    assert window.duplicates_remove_folder_button.toolTip() != ""
+
+
+def test_duplicates_folders_panel_hidden_until_checkbox_checked(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window.duplicates_folders_panel.isHidden()
+
+    window.duplicates_folders_checkbox.setChecked(True)
+
+    assert not window.duplicates_folders_panel.isHidden()
+    assert not window.duplicates_location_combo.isEnabled()
+
+    window.duplicates_folders_checkbox.setChecked(False)
+
+    assert window.duplicates_folders_panel.isHidden()
+    assert window.duplicates_location_combo.isEnabled()
+
+
+def test_duplicates_remove_folder_button_removes_selected_entry(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._duplicates_folder_paths = ["/music/Trance", "/music/House"]
+    window.duplicates_folders_list.addItem("/music/Trance")
+    window.duplicates_folders_list.addItem("/music/House")
+
+    window.duplicates_folders_list.setCurrentRow(0)
+    window._on_remove_duplicates_folder_clicked()
+
+    assert window._duplicates_folder_paths == ["/music/House"]
+    assert window.duplicates_folders_list.count() == 1
+    assert window.duplicates_folders_list.item(0).text() == "/music/House"
+
+
+def test_duplicates_scope_count_updates_from_the_real_service(qtbot):
+    application = FakeApplication()
+    application.duplicate_service._scope_file_count = 42
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._duplicates_folder_paths = ["/music/Trance"]
+    window.duplicates_folders_list.addItem("/music/Trance")
+    window.duplicates_folders_checkbox.setChecked(True)
+
+    qtbot.waitUntil(
+        lambda: "42 files in scope" in window.duplicates_scope_count_label.text(),
+        timeout=2000,
+    )
+    assert (
+        application.duplicate_service.resolve_folder_scopes_calls
+        == [["/music/Trance"]]
+    )
+
+
+def test_compute_fingerprints_in_folder_mode_calls_service_per_location(
+        qtbot,
+):
+    from seeker.library.duplicate_service import DuplicateFolderScope
+
+    location_a = LibraryLocation(
+        id=1, name="A", path="/music/a", added_at="",
+    )
+    location_b = LibraryLocation(
+        id=2, name="B", path="/music/b", added_at="",
+    )
+    scopes = [
+        DuplicateFolderScope(location=location_a, folder_relative_path="Trance"),
+        DuplicateFolderScope(location=location_b, folder_relative_path=""),
+    ]
+    application = FakeApplication(
+        fingerprint_result={
+            "computed": 1, "skipped_already_computed": 0, "failed": 0,
+            "details": [],
+        },
+    )
+    application.duplicate_service._folder_scopes = scopes
+    application.duplicate_service._scope_file_count = 2
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._duplicates_folder_paths = ["/music/a/Trance", "/music/b"]
+    window.duplicates_folders_checkbox.setChecked(True)
+
+    window._on_compute_fingerprints_clicked()
+
+    qtbot.waitUntil(
+        lambda: len(
+            application.duplicate_service.compute_fingerprints_calls
+        ) == 2,
+        timeout=2000,
+    )
+    assert sorted(
+        application.duplicate_service.compute_fingerprints_calls
+    ) == [("A", ["Trance"]), ("B", [""])]
+    qtbot.waitUntil(
+        lambda: "Fingerprinted: 2" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+
+
+def test_find_duplicates_in_folder_mode_calls_across_scopes(qtbot):
+    from seeker.library.duplicate_service import DuplicateFolderScope
+
+    location = LibraryLocation(id=1, name="A", path="/music/a", added_at="")
+    scopes = [
+        DuplicateFolderScope(location=location, folder_relative_path="Trance"),
+    ]
+    application = FakeApplication()
+    application.duplicate_service._folder_scopes = scopes
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._duplicates_folder_paths = ["/music/a/Trance"]
+    window.duplicates_folders_checkbox.setChecked(True)
+
+    window._on_find_duplicates_clicked()
+
+    qtbot.waitUntil(
+        lambda: bool(
+            application.duplicate_service
+            .find_duplicate_groups_across_scopes_calls
+        ),
+        timeout=2000,
+    )
+    assert (
+        application.duplicate_service
+        .find_duplicate_groups_across_scopes_calls == [scopes]
+    )
 
 
 def test_switching_to_duplicates_tab_loads_locations_lazily(qtbot):
@@ -4255,13 +4435,44 @@ def test_compute_fingerprints_calls_service_with_selected_location(qtbot):
     window._on_compute_fingerprints_clicked()
 
     qtbot.waitUntil(
-        lambda: application.duplicate_service.compute_fingerprints_calls == ["Main"],
+        lambda: application.duplicate_service.compute_fingerprints_calls
+        == [("Main", None)],
         timeout=2000,
     )
     qtbot.waitUntil(
         lambda: "Fingerprinted: 3" in window.duplicates_status_label.text(),
         timeout=2000,
     )
+
+
+def test_compute_fingerprints_result_shows_failure_reason_breakdown(qtbot):
+    # Roadmap item 68 (Phase 8.2) — a real per-reason breakdown, not
+    # just an opaque "Failed: N".
+    application = FakeApplication(
+        fingerprint_result={
+            "computed": 1, "skipped_already_computed": 0, "failed": 3,
+            "details": [
+                {"local_file_id": "1", "reason": "decode_unsupported", "message": "a"},
+                {"local_file_id": "2", "reason": "decode_unsupported", "message": "b"},
+                {"local_file_id": "3", "reason": "empty_file", "message": "c"},
+            ],
+        },
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicates_locations(
+        [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
+    )
+
+    window._on_compute_fingerprints_clicked()
+
+    qtbot.waitUntil(
+        lambda: "Failed: 3" in window.duplicates_status_label.text(),
+        timeout=2000,
+    )
+    status_text = window.duplicates_status_label.text()
+    assert "2 couldn't be decoded" in status_text
+    assert "1 0-byte file" in status_text
 
 
 def test_find_duplicates_without_selection_shows_message(qtbot):
@@ -4329,6 +4540,21 @@ def _make_duplicate_group():
     )
 
 
+def _duplicates_column(window, header_text: str) -> int:
+    # Roadmap item 68 (Phase 7.1) — resolves a duplicates_table column
+    # by its real header text, not a literal index that could drift out
+    # of sync with the render code's own literals the way item 61 Phase
+    # 6.2's brief hypothesized (a test sharing the code's own mistake
+    # proves nothing). Used everywhere below instead of a bare column
+    # number.
+    table = window.duplicates_table
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        if header_item is not None and header_item.text() == header_text:
+            return column
+    raise AssertionError(f"no '{header_text}' column found")
+
+
 def _make_duplicate_group_with_n_files(count: int):
     # Roadmap item 56 Phase 6.3 — confirms a group larger than two
     # already works by construction (one QButtonGroup per group, one
@@ -4381,8 +4607,8 @@ def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
 
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    keep_radio_0 = window.duplicates_table.cellWidget(0, 6)
-    keep_radio_1 = window.duplicates_table.cellWidget(1, 6)
+    keep_radio_0 = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Keep"))
+    keep_radio_1 = window.duplicates_table.cellWidget(1, _duplicates_column(window, "Keep"))
     assert isinstance(keep_radio_0, QRadioButton)
     assert isinstance(keep_radio_1, QRadioButton)
     assert keep_radio_0.isChecked() is True
@@ -4472,7 +4698,7 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
 
     for _ in range(2):  # first render, then a full re-render
         window._render_duplicate_groups(groups)
-        widget = window.duplicates_table.cellWidget(0, 7)
+        widget = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
         assert widget is not None
         assert widget.isVisible()
         assert widget.findChild(QPushButton) is not None
@@ -4486,10 +4712,32 @@ def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
 
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    first_row_actions = window.duplicates_table.cellWidget(0, 7)
-    other_row_actions = window.duplicates_table.cellWidget(1, 7)
+    first_row_actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    other_row_actions = window.duplicates_table.cellWidget(1, _duplicates_column(window, "Actions"))
     assert first_row_actions.findChildren(QPushButton)
     assert not other_row_actions.findChildren(QPushButton)
+
+
+def test_duplicates_actions_column_survives_manual_column_resize(qtbot):
+    # Roadmap item 68 (Phase 7.1) — the one cheap extra check beyond the
+    # index-hardening itself: a user manually drag-resizing a column
+    # (setColumnWidth simulates this) must not disturb the Actions cell
+    # widget's own correctness — Qt's view owns repositioning it.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    actions_column = _duplicates_column(window, "Actions")
+    path_column = _duplicates_column(window, "Path")
+    window.duplicates_table.setColumnWidth(path_column, 500)
+    window.duplicates_table.setColumnWidth(actions_column, 50)
+
+    widget = window.duplicates_table.cellWidget(0, actions_column)
+    assert widget is not None
+    assert widget.findChild(QPushButton) is not None
+    assert widget.findChild(QCheckBox) is not None
 
 
 def _confirm_yes(monkeypatch) -> None:
@@ -4509,7 +4757,7 @@ def test_delete_duplicates_without_confirm_checkbox_does_not_delete(qtbot):
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     delete_button = actions.findChildren(QPushButton)[0]
     delete_button.click()
 
@@ -4531,7 +4779,7 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4541,7 +4789,12 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    assert application.duplicate_service.delete_local_files_calls == [([102], 101, None)]
+    # location_id is the KEPT file's own local_file.location_id
+    # (roadmap item 68 Phase 7.2) — resolved from the group itself, not
+    # from a "current location" the UI happens to have loaded, so this
+    # is correct even in this test's direct _render_duplicate_groups()
+    # call with no combo selection made.
+    assert application.duplicate_service.delete_local_files_calls == [([102], 101, 1)]
 
 
 def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch):
@@ -4555,9 +4808,9 @@ def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch)
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    window.duplicates_table.cellWidget(1, 6).setChecked(True)
+    window.duplicates_table.cellWidget(1, _duplicates_column(window, "Keep")).setChecked(True)
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4567,7 +4820,7 @@ def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch)
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    assert application.duplicate_service.delete_local_files_calls == [([101], 102, None)]
+    assert application.duplicate_service.delete_local_files_calls == [([101], 102, 1)]
 
 
 def test_delete_duplicates_finished_removes_group_locally_without_refetch(
@@ -4594,7 +4847,7 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
     )
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4624,7 +4877,7 @@ def test_delete_duplicates_partial_failure_keeps_group_visible(qtbot, monkeypatc
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4661,7 +4914,7 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
     window._current_duplicates_location_name = "Main"
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4680,7 +4933,7 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox = actions.findChildren(QCheckBox)[0]
     keep_all_radio = [
@@ -4713,7 +4966,7 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(qtbot, monkeypatch
     qtbot.addWidget(window)
     window._render_duplicate_groups([group])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -4736,7 +4989,7 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(qtbot, monkeypatc
     qtbot.addWidget(window)
     window._render_duplicate_groups([group])
 
-    actions = window.duplicates_table.cellWidget(0, 7)
+    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)

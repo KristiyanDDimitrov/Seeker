@@ -518,12 +518,16 @@ def test_broad_end_to_end_stress(qapp):
             # still be in flight.
             if not duplicates_delete_done and main_window._current_duplicate_groups:
                 group: DuplicateGroup = main_window._current_duplicate_groups[0]
-                # Column 7 ("Actions") — the table gained a "Keep" radio
-                # column (index 6) in roadmap item 56 Phase 6.3, pushing
-                # Actions from 6 to 7; this stress test (opt-in, so it
-                # wasn't caught by that phase's own test-suite sweep)
-                # still referenced the pre-Phase-6.3 index.
-                actions = main_window.duplicates_table.cellWidget(0, 7)
+                # Roadmap item 68 (Phase 7.1) — resolved by real header
+                # text, not a literal column index (item 56 Phase 6.3's
+                # own real "Keep column shifted Actions from 6 to 7"
+                # drift is exactly the bug class this hardening closes).
+                table = main_window.duplicates_table
+                actions_column = next(
+                    column for column in range(table.columnCount())
+                    if table.horizontalHeaderItem(column).text() == "Actions"
+                )
+                actions = table.cellWidget(0, actions_column)
                 assert actions is not None
                 checkbox = actions.findChildren(QCheckBox)[0]
                 delete_button = actions.findChildren(QPushButton)[0]

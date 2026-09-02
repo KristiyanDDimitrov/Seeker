@@ -411,18 +411,87 @@ TOOLTIP_DOUBLE_CLICK_TO_REVIEW = "Double-click to review this track."
 # --- Duplicates tab ---------------------------------------------------------
 
 TOOLTIP_DUPLICATES_LOCATION_COMBO = (
-    "Which registered library location to scan — duplicate detection "
-    "runs on one location at a time, never merged across all of them."
+    "Which registered library location to scan, when scanning a whole "
+    "location — check \"Only these folders…\" below to scope to "
+    "specific folders instead (optionally across more than one "
+    "location)."
 )
 TOOLTIP_COMPUTE_FINGERPRINTS = (
-    "Compute an audio fingerprint for every file in this location that "
-    "doesn't already have one. Needed once before Find Duplicates can "
-    "compare files — can take a while for a large location."
+    "Compute an audio fingerprint for every file in scope that doesn't "
+    "already have one. Needed once before Find Duplicates can compare "
+    "files — can take a while for a large location. Only real audio "
+    "files are ever scanned into the library in the first place, so "
+    "non-audio files are never considered here."
 )
 TOOLTIP_FIND_DUPLICATES = (
-    "Compare this location's already-fingerprinted files and group the "
+    "Compare every already-fingerprinted file in scope and group the "
     "ones that are the same recording, by audio content."
 )
+TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX = (
+    "Scope to specific folders instead of a whole location — several "
+    "folders are pooled and compared together, even across different "
+    "registered locations."
+)
+TOOLTIP_DUPLICATES_ADD_FOLDER = "Add a folder to the scope."
+TOOLTIP_DUPLICATES_REMOVE_FOLDER = "Remove the selected folder(s) from the scope."
+DUPLICATES_FOLDER_NOT_IN_A_LOCATION = (
+    "'{folder}' isn't inside any registered library location — add it "
+    "as a location first, or pick a folder inside one that's already "
+    "registered."
+)
+
+
+def format_duplicates_scope_count(file_count: int) -> str:
+    """Roadmap item 68 (Phase 7.2) — shown BEFORE a real, potentially
+    ~10-minute-at-real-scale operation (item 39's own real number), so
+    the scope control is worth having: the user sees what it actually
+    covers first."""
+    return f"{file_count} file{'s' if file_count != 1 else ''} in scope."
+
+
+_FINGERPRINT_FAILURE_REASON_LABELS = {
+    "file_missing": "file missing",
+    "empty_file": "0-byte file",
+    "decode_unsupported": "couldn't be decoded",
+    "error": "other error",
+}
+
+
+def format_fingerprint_result_message(result: dict[str, Any]) -> str:
+    """Roadmap item 68 (Phase 8.2) — the aggregate line PLUS, when
+    there's at least one failure, a real per-reason breakdown (never
+    just one lumped "Failed: N") — mirrors the CLI's own per-file
+    `[reason] message` detail lines (cli.py's fingerprint handler),
+    just summarized rather than listed one-by-one for the UI's status
+    label. Phase 8.3's own "never offer to delete" scope needs nothing
+    further here — an empty_file entry can never enter a duplicate
+    group in the first place (find_duplicate_groups only clusters
+    already-fingerprinted files), so there's no delete action anywhere
+    in this app that could ever reach one.
+    """
+    base = (
+        f"Fingerprinted: {result['computed']}, "
+        f"Skipped (already computed): "
+        f"{result['skipped_already_computed']}, "
+        f"Failed: {result['failed']}."
+    )
+
+    if result["failed"] == 0:
+        return base
+
+    counts: dict[str, int] = {}
+    for detail in result["details"]:
+        reason = detail.get("reason", "error")
+        counts[reason] = counts.get(reason, 0) + 1
+
+    breakdown = ", ".join(
+        f"{count} {_FINGERPRINT_FAILURE_REASON_LABELS.get(reason, reason)}"
+        for reason, count in sorted(counts.items(), key=lambda item: -item[1])
+    )
+
+    return f"{base} ({breakdown})"
+
+
 TOOLTIP_KEEP_FILE_RADIO = (
     "Which copy in this group to keep. Pre-selected to the highest-"
     "quality copy, but you can pick a different one."
