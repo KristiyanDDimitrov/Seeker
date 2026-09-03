@@ -590,6 +590,107 @@ def test_delete_local_files_records_nothing_when_everything_fails(tmp_path):
     assert service.get_cleanup_totals() == (0, 0)
 
 
+# --- Roadmap item R3.2: "Resolve all groups" ------------------------------
+
+def test_resolve_groups_resolves_multiple_plans(tmp_path):
+    from seeker.library.duplicate_service import GroupResolutionPlan
+
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    (music_dir / "a1.wav").write_bytes(b"12345")
+    (music_dir / "a2.wav").write_bytes(b"1234567890")
+    (music_dir / "b1.wav").write_bytes(b"123")
+    (music_dir / "b2.wav").write_bytes(b"12345678")
+    a1 = add_local_file(database, location, "a1.wav", "wav", 3000)
+    a2 = add_local_file(database, location, "a2.wav", "wav", 3000)
+    b1 = add_local_file(database, location, "b1.wav", "wav", 3000)
+    b2 = add_local_file(database, location, "b2.wav", "wav", 3000)
+
+    service = make_service(database)
+    plans = [
+        GroupResolutionPlan(
+            delete_local_file_ids=[a2.id], keep_local_file_id=a1.id,
+            location_id=location.id,
+        ),
+        GroupResolutionPlan(
+            delete_local_file_ids=[b2.id], keep_local_file_id=b1.id,
+            location_id=location.id,
+        ),
+    ]
+
+    result = service.resolve_groups(plans)
+
+    assert result.groups_resolved == 2
+    assert result.groups_failed == 0
+    assert result.files_deleted == 2
+    assert result.files_failed == 0
+    assert result.bytes_freed == 18  # 10 (a2) + 8 (b2)
+    assert result.details == []
+    assert result.plan_outcomes == [True, True]
+    assert (music_dir / "a1.wav").exists()
+    assert not (music_dir / "a2.wav").exists()
+    assert (music_dir / "b1.wav").exists()
+    assert not (music_dir / "b2.wav").exists()
+    assert service.get_cleanup_totals() == (2, 18)
+
+
+def test_resolve_groups_one_group_failing_does_not_abort_the_rest(tmp_path):
+    from seeker.library.duplicate_service import GroupResolutionPlan
+
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    (music_dir / "good1.wav").write_bytes(b"12345")
+    (music_dir / "good2.wav").write_bytes(b"1234567890")
+    good1 = add_local_file(database, location, "good1.wav", "wav", 3000)
+    good2 = add_local_file(database, location, "good2.wav", "wav", 3000)
+    # missing.wav is registered but never written to disk -- its own
+    # group's delete fails, but must not stop the good group.
+    missing = add_local_file(database, location, "missing.wav", "wav", 3000)
+
+    service = make_service(database)
+    plans = [
+        GroupResolutionPlan(
+            delete_local_file_ids=[missing.id], keep_local_file_id=good1.id,
+            location_id=location.id,
+        ),
+        GroupResolutionPlan(
+            delete_local_file_ids=[good2.id], keep_local_file_id=good1.id,
+            location_id=location.id,
+        ),
+    ]
+
+    result = service.resolve_groups(plans)
+
+    assert result.groups_resolved == 1
+    assert result.groups_failed == 1
+    assert result.files_deleted == 1
+    assert result.files_failed == 1
+    assert len(result.details) == 1
+    # Order matches the plans list -- the missing-file plan (index 0)
+    # failed, the good plan (index 1) succeeded.
+    assert result.plan_outcomes == [False, True]
+    assert not (music_dir / "good2.wav").exists()
+
+
+def test_resolve_groups_empty_plans_is_a_no_op(tmp_path):
+    database = make_database(tmp_path)
+    service = make_service(database)
+
+    result = service.resolve_groups([])
+
+    assert result.groups_resolved == 0
+    assert result.groups_failed == 0
+    assert result.files_deleted == 0
+    assert result.bytes_freed == 0
+    assert result.details == []
+
+
 def test_get_cleanup_totals_sums_across_multiple_real_cleanups(tmp_path):
     database = make_database(tmp_path)
     service = make_service(database)

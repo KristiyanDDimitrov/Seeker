@@ -2926,6 +2926,153 @@ def test_apply_upgrade_decision_decline_is_a_no_op(tmp_path):
     assert not (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
 
 
+def _seed_two_upgrade_scenario(tmp_path):
+    # Roadmap item R3.1 — same shape as _seed_upgrade_scenario, doubled
+    # up into one shared database so apply_upgrade_decisions_batch has
+    # a real multi-row batch to work through.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+    (lib_root / "old1.mp3").write_bytes(b"old audio data 1")
+    (lib_root / "old2.mp3").write_bytes(b"old audio data 2")
+
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Artist One - Title One.flac").write_bytes(b"new flac data 1")
+    (slskd_dir / "Artist Two - Title Two.flac").write_bytes(b"new flac data 2")
+
+    locations = LibraryLocationRepository(database)
+    playlists = PlaylistRepository(database)
+    tracks = TrackRepository(database)
+    track_matches = TrackMatchRepository(database)
+    local_files = LocalFileRepository(database)
+    download_requests = DownloadRequestRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01",
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+        playlists.save(Playlist(id="p1", name="DnB", track_count=2), connection)
+        playlists.set_destination("p1", location.id, None, connection)
+
+        rows = [
+            ("t1", "Title One", "Artist One", "old1.mp3",
+             "Artist One - Title One.flac", "tid1"),
+            ("t2", "Title Two", "Artist Two", "old2.mp3",
+             "Artist Two - Title Two.flac", "tid2"),
+        ]
+
+        for track_id, title, artist, old_name, new_name, transfer_id in rows:
+            tracks.save(
+                Track(
+                    id=track_id, title=title, artist=artist, album=title,
+                    duration_ms=180_000,
+                ),
+                connection,
+            )
+            tracks.save_playlist_track("p1", track_id, connection)
+
+            local_files.upsert(
+                LocalFile(
+                    location_id=location.id, relative_path=old_name,
+                    filename=old_name, format="mp3", size_bytes=14,
+                    mtime=1.0, scanned_at="2026-01-01",
+                ),
+                connection,
+            )
+            old_local_file = local_files.get_by_location_and_relative_path(
+                location.id, old_name, connection,
+            )
+
+            track_matches.upsert(
+                TrackMatch(
+                    track_id=track_id, local_file_id=old_local_file.id,
+                    match_method="auto", score=95.0, matched_at="2026-01-01",
+                ),
+                connection,
+            )
+
+            download_requests.add(
+                DownloadRequest(
+                    track_id=track_id, username="peer1", filename=new_name,
+                    format="flac", quality_descriptor="flac", role="upgrade",
+                    status="ready_for_review", transfer_id=transfer_id,
+                    requested_at="2026-01-01",
+                ),
+                connection,
+            )
+
+    service = DownloadService(
+        database, FakeSoulseekClient({}), playlists, tracks, locations,
+        download_requests, track_matches, local_files,
+        SoulseekReviewCandidateRepository(database), str(slskd_dir),
+    )
+
+    return service, lib_root
+
+
+def test_apply_upgrade_decisions_batch_replaces_all_successfully(tmp_path):
+    service, lib_root = _seed_two_upgrade_scenario(tmp_path)
+    request_ids = [
+        details.request_id for details in service.get_pending_upgrade_reviews()
+    ]
+    assert len(request_ids) == 2
+
+    result = service.apply_upgrade_decisions_batch(request_ids, delete_old=True)
+
+    assert result.replaced == 2
+    assert result.failed == 0
+    assert len(result.details) == 2
+    assert not (lib_root / "old1.mp3").exists()
+    assert not (lib_root / "old2.mp3").exists()
+    assert (lib_root / "Artist One - Title One.flac").exists()
+    assert (lib_root / "Artist Two - Title Two.flac").exists()
+    assert _ready_for_review_count(service) == 0
+
+
+def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pending(
+        tmp_path,
+):
+    # Roadmap item R3.3 — a partial failure must leave the failed row
+    # visible and pending, not silently dropped or marked done.
+    service, lib_root = _seed_two_upgrade_scenario(tmp_path)
+    real_request_ids = [
+        details.request_id for details in service.get_pending_upgrade_reviews()
+    ]
+    request_ids = real_request_ids + [999_999]
+
+    result = service.apply_upgrade_decisions_batch(request_ids, delete_old=False)
+
+    assert result.replaced == 2
+    assert result.failed == 1
+    assert len(result.details) == 3
+    assert any("request 999999" in detail for detail in result.details)
+    # The two real rows still replaced despite the bogus id in the same
+    # batch -- delete_old=False here, so the old files are left in place.
+    assert (lib_root / "old1.mp3").exists()
+    assert (lib_root / "old2.mp3").exists()
+    assert (lib_root / "Artist One - Title One.flac").exists()
+    assert _ready_for_review_count(service) == 0
+
+
+def test_apply_upgrade_decisions_batch_empty_list_is_a_no_op(tmp_path):
+    service, _ = _seed_two_upgrade_scenario(tmp_path)
+
+    result = service.apply_upgrade_decisions_batch([], delete_old=False)
+
+    assert result.replaced == 0
+    assert result.failed == 0
+    assert result.details == []
+    assert _ready_for_review_count(service) == 2
+
+
 def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
         tmp_path, capsys,
 ):

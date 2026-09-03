@@ -2,7 +2,7 @@ import glob
 import os
 import shutil
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -106,6 +106,17 @@ class ReviewCandidateNotFoundError(RuntimeError):
 
 class ReviewCandidateMissingSizeError(RuntimeError):
     pass
+
+
+@dataclass
+class BulkUpgradeReplaceResult:
+    """Roadmap item R3.1 — the real per-row outcome of a "Replace all"
+    batch, same honest-reporting shape as `format_rename_result_message`
+    (item 67/76): a count for the UI's headline, plus one detail line
+    per row so a partial failure is never just a bare number."""
+    replaced: int
+    failed: int
+    details: list[str]
 
 
 def _build_search_query(artist: str, title: str) -> str:
@@ -1844,6 +1855,71 @@ class DownloadService:
             return f"{message}\n  Deleted {old_path}"
 
         return f"{message}\n  Could not delete {old_path}: {error}"
+
+    def apply_upgrade_decisions_batch(
+            self,
+            request_ids: list[int],
+            delete_old: bool,
+    ) -> BulkUpgradeReplaceResult:
+        """Roadmap item R3.1 — "Replace all" pending upgrades. Applies
+        `apply_upgrade_decision(request_id, True, delete_old)` per row
+        through the exact same explicit-decision method the CLI and
+        the single-row UI action already use — no second mutation
+        path. Per-row try/except (CLAUDE.md's standing batch-loop
+        pattern, item 15) so one bad row can't abort the rest.
+
+        Success is checked by re-reading the request's own status
+        AFTER the call, not by parsing the returned message string —
+        `apply_upgrade_decision`'s own contract only advances a
+        request to `"completed"` on a real success; every failure path
+        (not found, file not locatable) returns early with the status
+        untouched, so a failed row is naturally still
+        `ready_for_review` afterward and will be offered again on the
+        next Review poll (the brief's own "partial failure must leave
+        failed rows visible and pending" requirement, satisfied
+        structurally rather than by extra bookkeeping here).
+        """
+        replaced = 0
+        failed = 0
+        details: list[str] = []
+
+        for request_id in request_ids:
+            review_details = self.get_upgrade_review_details(request_id)
+            label = (
+                f"{review_details.track.artist} - {review_details.track.title}"
+                if review_details is not None
+                else f"request {request_id}"
+            )
+
+            try:
+                message = self.apply_upgrade_decision(
+                    request_id, True, delete_old,
+                )
+            except Exception as error:
+                failed += 1
+                details.append(f"{label}: Failed — {error}")
+                continue
+
+            with self.database.transaction() as connection:
+                updated_request = self.download_requests.get_by_id(
+                    request_id, connection,
+                )
+
+            succeeded = (
+                updated_request is not None
+                and updated_request.status == "completed"
+            )
+
+            if succeeded:
+                replaced += 1
+            else:
+                failed += 1
+
+            details.append(f"{label}: {message or 'No change made.'}")
+
+        return BulkUpgradeReplaceResult(
+            replaced=replaced, failed=failed, details=details,
+        )
 
     def _confirm_upgrade(self, request: DownloadRequest) -> None:
         # Thin, interactive wrapper over the two explicit-decision

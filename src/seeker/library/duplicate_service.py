@@ -133,6 +133,40 @@ class ScopeSummary:
     empty_locations: list[str]
 
 
+@dataclass
+class GroupResolutionPlan:
+    """Roadmap item R3.2 — one group's already-decided resolution,
+    computed by the caller (the UI, from the user's own kept-radio
+    selection — see main_window's `_duplicates_keep_selection`) and
+    trusted here exactly the same way `delete_local_files` already
+    trusts an explicit `local_file_ids`/`keep_local_file_id` pair —
+    this dataclass doesn't re-derive or re-validate the choice against
+    `find_duplicate_groups`'s own clustering."""
+    delete_local_file_ids: list[int]
+    keep_local_file_id: int
+    location_id: int | None
+
+
+@dataclass
+class BulkDuplicateResolutionResult:
+    """Roadmap item R3.2 — the real per-group/per-file outcome of a
+    "Resolve all groups" batch, same honest-reporting shape as
+    `BulkUpgradeReplaceResult`/`format_rename_result_message`: counts
+    for the headline, plus one detail line per group that had any real
+    failure. `plan_outcomes` (same order/length as the input `plans`)
+    lets a caller that also tracks per-group UI state (e.g. dropping a
+    fully-resolved group from an in-memory list without a full
+    re-fetch) know exactly which plans actually succeeded, rather than
+    inferring it from the aggregate counts alone."""
+    groups_resolved: int
+    groups_failed: int
+    files_deleted: int
+    files_failed: int
+    bytes_freed: int
+    details: list[str]
+    plan_outcomes: list[bool]
+
+
 def _path_within_folder(file_relative_path: str, folder_relative_path: str) -> bool:
     # Roadmap item 68 (Phase 7.2) — path-prefix matching that respects
     # separator boundaries: "Trance" must never match "TranceX". A bare
@@ -599,6 +633,66 @@ class DuplicateService:
             self.record_cleanup(counts["deleted"], bytes_freed, location_id)
 
         return {**counts, "details": details, "bytes_freed": bytes_freed}
+
+    def resolve_groups(
+            self, plans: list[GroupResolutionPlan],
+    ) -> BulkDuplicateResolutionResult:
+        """Roadmap item R3.2 — "Resolve all groups". Applies
+        `delete_local_files()` per plan (one per group the caller
+        decided to resolve — a "Keep all" group is never turned into a
+        plan at all, decided by the UI before this is ever called, not
+        filtered here). Per-plan try/except (item 15's standing
+        batch-loop pattern) so one group's total failure can't abort
+        the rest — `delete_local_files` already has its own per-FILE
+        try/except underneath this, so a failure here means the whole
+        group call raised, not just one file within it.
+        """
+        groups_resolved = 0
+        groups_failed = 0
+        files_deleted = 0
+        files_failed = 0
+        bytes_freed = 0
+        details: list[str] = []
+        plan_outcomes: list[bool] = []
+
+        for plan in plans:
+            try:
+                result = self.delete_local_files(
+                    plan.delete_local_file_ids,
+                    plan.keep_local_file_id,
+                    plan.location_id,
+                )
+            except Exception as error:
+                groups_failed += 1
+                details.append(f"Group failed entirely: {error}")
+                plan_outcomes.append(False)
+                continue
+
+            files_deleted += result["deleted"]
+            files_failed += result["failed"]
+            bytes_freed += result["bytes_freed"]
+
+            if result["failed"] == 0:
+                groups_resolved += 1
+                plan_outcomes.append(True)
+            else:
+                groups_failed += 1
+                plan_outcomes.append(False)
+                details.append(
+                    f"Group partially failed: {result['failed']} of "
+                    f"{len(plan.delete_local_file_ids)} file(s) could "
+                    f"not be deleted."
+                )
+
+        return BulkDuplicateResolutionResult(
+            groups_resolved=groups_resolved,
+            groups_failed=groups_failed,
+            files_deleted=files_deleted,
+            files_failed=files_failed,
+            bytes_freed=bytes_freed,
+            details=details,
+            plan_outcomes=plan_outcomes,
+        )
 
     def record_cleanup(
             self,

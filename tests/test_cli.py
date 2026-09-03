@@ -203,6 +203,25 @@ class FakeDownloadServiceForReview:
         return self._review_candidates
 
 
+class FakeDownloadServiceForBulkReview:
+    # Roadmap item R3.1/R3.4 — CLI parity for "Replace all."
+    def __init__(self, pending_upgrades, batch_result=None):
+        self._pending_upgrades = pending_upgrades
+        self._batch_result = batch_result
+        self.apply_upgrade_decisions_batch_calls: list[
+            tuple[list[int], bool]
+        ] = []
+
+    def get_pending_upgrade_reviews(self):
+        return self._pending_upgrades
+
+    def apply_upgrade_decisions_batch(self, request_ids, delete_old):
+        self.apply_upgrade_decisions_batch_calls.append(
+            (request_ids, delete_old)
+        )
+        return self._batch_result
+
+
 class FakeDownloadServiceForSearch:
     def __init__(self, files=None, download_result=None, download_error=None):
         self._files = files or []
@@ -995,6 +1014,91 @@ def test_sharing_status_reports_self_managed_and_reconciliation(
     assert "managed by Seeker's own docker-compose.yml" in output
     assert "Music: shared as /shared/music" in output
     assert "Other: not shared" in output
+
+
+def test_downloads_review_all_replaces_every_pending_upgrade(
+        tmp_path, capsys, monkeypatch,
+):
+    from seeker.models.track import Track
+    from seeker.models.upgrade_review import UpgradeReviewDetails
+    from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+
+    track = Track(
+        id="t1", title="Title", artist="Artist", album="Album",
+        duration_ms=200_000,
+    )
+    upgrades = [
+        UpgradeReviewDetails(
+            request_id=1, track=track, quality_descriptor="flac 1000kbps",
+            current_description="mp3", old_file_path="/music/old.mp3",
+        ),
+    ]
+    download_service = FakeDownloadServiceForBulkReview(
+        upgrades,
+        batch_result=BulkUpgradeReplaceResult(
+            replaced=1, failed=0, details=["Artist - Title: Replaced with x"],
+        ),
+    )
+    matcher = make_matcher(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["downloads", "review", "--all"],
+    )
+
+    assert download_service.apply_upgrade_decisions_batch_calls == [([1], True)]
+    output = capsys.readouterr().out
+    assert "Replaced: 1, Failed: 0" in output
+
+
+def test_downloads_review_all_declined_at_first_prompt_calls_nothing(
+        tmp_path, capsys, monkeypatch,
+):
+    from seeker.models.track import Track
+    from seeker.models.upgrade_review import UpgradeReviewDetails
+
+    track = Track(
+        id="t1", title="Title", artist="Artist", album="Album",
+        duration_ms=200_000,
+    )
+    upgrades = [
+        UpgradeReviewDetails(
+            request_id=1, track=track, quality_descriptor="flac",
+            current_description="mp3", old_file_path=None,
+        ),
+    ]
+    download_service = FakeDownloadServiceForBulkReview(upgrades)
+    matcher = make_matcher(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["downloads", "review", "--all"],
+    )
+
+    assert download_service.apply_upgrade_decisions_batch_calls == []
+    assert "Cancelled" in capsys.readouterr().out
+
+
+def test_downloads_review_all_empty_prints_nothing_to_review(
+        tmp_path, capsys, monkeypatch,
+):
+    download_service = FakeDownloadServiceForBulkReview([])
+    matcher = make_matcher(tmp_path)
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt="": (_ for _ in ()).throw(
+            AssertionError("input() must not be called with nothing to review")
+        )
+    )
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["downloads", "review", "--all"],
+    )
+
+    assert download_service.apply_upgrade_decisions_batch_calls == []
+    assert "Nothing to review." in capsys.readouterr().out
 
 
 def test_sharing_status_reports_not_self_managed(tmp_path, capsys):

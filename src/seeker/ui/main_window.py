@@ -44,7 +44,11 @@ from seeker import _build_info
 from seeker.application import Application
 from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.filename_sanitize import sanitize_path_component
-from seeker.library.duplicate_service import DuplicateGroup
+from seeker.library.duplicate_service import (
+    BulkDuplicateResolutionResult,
+    DuplicateGroup,
+    GroupResolutionPlan,
+)
 from seeker.library.metadata_service import RenamePlan
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
@@ -72,7 +76,10 @@ from seeker.sharing_service import (
     SharingApplyResult,
     UploadStatus,
 )
-from seeker.soulseek.download_service import NoDestinationConfiguredError
+from seeker.soulseek.download_service import (
+    BulkUpgradeReplaceResult,
+    NoDestinationConfiguredError,
+)
 from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
@@ -917,6 +924,158 @@ class RenamePreviewDialog(QDialog):
         self.confirm_button = QPushButton(f"Rename {total_to_rename} file(s)")
         self.confirm_button.setProperty("variant", "primary")
         self.confirm_button.setEnabled(total_to_rename > 0)
+        self.confirm_button.clicked.connect(self.accept)
+        button_row.addWidget(self.confirm_button)
+        button_row.addStretch()
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
+
+
+class BulkReplaceUpgradesDialog(QDialog):
+    """Roadmap item R3.1 — "Replace all" pending upgrades. Same shape
+    as RenamePreviewDialog: every row named plainly, nothing applied
+    until the user explicitly confirms — this is one of the two most
+    destructive actions in the app (it can delete real old files), so
+    it inherits the project's standing "never modify/delete a real
+    user file without explicit confirmation" rule in full, via the
+    "Delete the old files" checkbox below (default OFF)."""
+
+    def __init__(self, parent: QWidget, upgrades: PendingUpgrades):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.BULK_REPLACE_UPGRADES_DIALOG_TITLE)
+        self.resize(560, 420)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_LG, theme.SPACING_LG,
+            theme.SPACING_LG, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
+
+        intro = QLabel(
+            help_text.format_bulk_replace_upgrades_intro(len(upgrades))
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(False)
+        for details in upgrades:
+            text = (
+                f"{details.track.artist} - {details.track.title}  —  "
+                f"{details.current_description} → "
+                f"{details.quality_descriptor or 'unknown'}"
+            )
+            item = QListWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            list_widget.addItem(item)
+        layout.addWidget(theme.make_card(list_widget), 1)
+
+        self.delete_old_checkbox = QCheckBox("Delete the old files")
+        self.delete_old_checkbox.setToolTip(
+            help_text.TOOLTIP_BULK_DELETE_OLD_FILES_CHECKBOX
+        )
+        layout.addWidget(self.delete_old_checkbox)
+
+        button_row = QHBoxLayout()
+        self.confirm_button = QPushButton(f"Replace {len(upgrades)} upgrade(s)")
+        self.confirm_button.setProperty("variant", "primary")
+        self.confirm_button.setEnabled(len(upgrades) > 0)
+        self.confirm_button.clicked.connect(self.accept)
+        button_row.addWidget(self.confirm_button)
+        button_row.addStretch()
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
+
+
+class BulkResolveDuplicatesDialog(QDialog):
+    """Roadmap item R3.2 — "Resolve all groups." Lists REAL absolute
+    paths of every file that would be deleted and every file that
+    would be kept, since this deletes real user files — a bare count
+    is not enough for this specific action, matching the brief's own
+    instruction. Groups already set to "Keep all" are never passed in
+    here at all (skipped by the caller before this dialog is even
+    built) — this dialog only ever shows groups that would actually
+    change something."""
+
+    def __init__(
+            self,
+            parent: QWidget,
+            plans_with_labels: list[tuple[GroupResolutionPlan, str, list[str]]],
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.BULK_RESOLVE_DUPLICATES_DIALOG_TITLE)
+        self.resize(640, 480)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_LG, theme.SPACING_LG,
+            theme.SPACING_LG, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
+
+        total_files_to_delete = sum(
+            len(plan.delete_local_file_ids) for plan, _, _ in plans_with_labels
+        )
+        intro = QLabel(
+            help_text.format_bulk_resolve_duplicates_intro(
+                len(plans_with_labels), total_files_to_delete,
+            )
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(False)
+
+        def add_line(text: str) -> None:
+            item = QListWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            list_widget.addItem(item)
+
+        for index, (plan, keep_path, delete_paths) in enumerate(
+                plans_with_labels, start=1,
+        ):
+            header_item = QListWidgetItem(f"Group {index}")
+            font = header_item.font()
+            font.setBold(True)
+            header_item.setFont(font)
+            header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            list_widget.addItem(header_item)
+            add_line(f"  Keep: {keep_path}")
+            for delete_path in delete_paths:
+                add_line(f"  Delete: {delete_path}")
+
+        if list_widget.count() == 0:
+            list_widget.addItem(help_text.BULK_RESOLVE_DUPLICATES_NO_GROUPS)
+
+        layout.addWidget(theme.make_card(list_widget), 1)
+
+        self.confirm_checkbox = QCheckBox(
+            f"Permanently delete {total_files_to_delete} file(s)"
+        )
+        self.confirm_checkbox.setToolTip(
+            help_text.TOOLTIP_BULK_DELETE_DUPLICATES_CHECKBOX
+        )
+        layout.addWidget(self.confirm_checkbox)
+
+        button_row = QHBoxLayout()
+        self.confirm_button = QPushButton(
+            f"Resolve {len(plans_with_labels)} group(s)"
+        )
+        self.confirm_button.setProperty("variant", "danger")
+        # Roadmap item R3.2 — same two-step gate as the single-group
+        # Delete flow: the checkbox is required before the button can
+        # do anything, not just informational text next to it.
+        self.confirm_button.setEnabled(False)
+        has_plans = len(plans_with_labels) > 0
+        self.confirm_checkbox.toggled.connect(
+            lambda checked: self.confirm_button.setEnabled(checked and has_plans)
+        )
         self.confirm_button.clicked.connect(self.accept)
         button_row.addWidget(self.confirm_button)
         button_row.addStretch()
@@ -2946,7 +3105,24 @@ class MainWindow(QMainWindow):
         theme.apply_table_defaults(self.review_needs_table)
         layout.addWidget(theme.make_card(self.review_needs_table))
 
-        layout.addWidget(QLabel("Downloaded upgrades ready for review"))
+        upgrades_header_row = QHBoxLayout()
+        upgrades_header_row.addWidget(
+            QLabel("Downloaded upgrades ready for review")
+        )
+        upgrades_header_row.addStretch()
+        # Roadmap item R3.1 — "Replace all". Real count set/refreshed
+        # in _render_pending_upgrades, so it's never stale against
+        # what's actually in the table.
+        self.replace_all_upgrades_button = QPushButton("Replace all")
+        self.replace_all_upgrades_button.setToolTip(
+            help_text.TOOLTIP_REPLACE_ALL_UPGRADES
+        )
+        self.replace_all_upgrades_button.setEnabled(False)
+        self.replace_all_upgrades_button.clicked.connect(
+            self._on_replace_all_upgrades_clicked
+        )
+        upgrades_header_row.addWidget(self.replace_all_upgrades_button)
+        layout.addLayout(upgrades_header_row)
 
         self.review_upgrades_table = QTableWidget(0, 4)
         self.review_upgrades_table.setHorizontalHeaderLabels(
@@ -2975,6 +3151,7 @@ class MainWindow(QMainWindow):
         # UpgradeReviewDetails.request_id, never row index — pruned to
         # only rows still present on every render (R2.3).
         self._upgrade_delete_checked: set[int] = set()
+        self._current_pending_upgrades: PendingUpgrades = []
 
         return tab
 
@@ -3091,8 +3268,22 @@ class MainWindow(QMainWindow):
         self.duplicates_folders_panel.setVisible(False)
         layout.addWidget(self.duplicates_folders_panel)
 
+        duplicates_status_row = QHBoxLayout()
         self.duplicates_status_label = QLabel("")
-        layout.addWidget(self.duplicates_status_label)
+        duplicates_status_row.addWidget(self.duplicates_status_label)
+        duplicates_status_row.addStretch()
+        # Roadmap item R3.2 — "Resolve all groups". Real count set in
+        # _render_duplicate_groups, never stale against the table.
+        self.resolve_all_duplicates_button = QPushButton("Resolve all groups")
+        self.resolve_all_duplicates_button.setToolTip(
+            help_text.TOOLTIP_RESOLVE_ALL_DUPLICATES
+        )
+        self.resolve_all_duplicates_button.setEnabled(False)
+        self.resolve_all_duplicates_button.clicked.connect(
+            self._on_resolve_all_duplicates_clicked
+        )
+        duplicates_status_row.addWidget(self.resolve_all_duplicates_button)
+        layout.addLayout(duplicates_status_row)
 
         self.duplicates_table = QTableWidget(0, len(_DUPLICATES_COLUMN_HEADERS))
         self.duplicates_table.setHorizontalHeaderLabels(
@@ -3514,6 +3705,12 @@ class MainWindow(QMainWindow):
             if key in live_group_keys
         }
 
+        self.resolve_all_duplicates_button.setEnabled(len(groups) > 0)
+        self.resolve_all_duplicates_button.setText(
+            f"Resolve all groups ({len(groups)})" if groups
+            else "Resolve all groups"
+        )
+
         if not groups:
             self.duplicates_table.setRowCount(0)
             self.duplicates_status_label.setText(
@@ -3898,6 +4095,160 @@ class MainWindow(QMainWindow):
         # recorded it) — refresh the milestone total immediately rather
         # than waiting for the next page revisit.
         self._refresh_duplicates_milestone()
+
+    def _build_group_resolution_plan(
+            self, group: DuplicateGroup, keep_id: int,
+    ) -> tuple[GroupResolutionPlan, str, list[str]] | None:
+        """Roadmap item R3.2 — the same per-group plan (real per-file
+        location resolution, real absolute paths) `_on_delete_
+        duplicates_clicked` builds for a single group, factored out so
+        "Resolve all groups" can build the identical plan for every
+        group without a second, drifting copy. `None` when there's
+        nothing to delete or the keep selection doesn't resolve to a
+        real file in this group (shouldn't happen for a real render,
+        but never trusted blindly for a batch that deletes real files).
+        """
+        delete_ids = [
+            duplicate_file.local_file.id
+            for duplicate_file in group.files
+            if duplicate_file.local_file.id is not None
+            and duplicate_file.local_file.id != keep_id
+        ]
+
+        if not delete_ids:
+            return None
+
+        keep_duplicate_file = next(
+            (
+                duplicate_file for duplicate_file in group.files
+                if duplicate_file.local_file.id == keep_id
+            ),
+            None,
+        )
+
+        if keep_duplicate_file is None:
+            return None
+
+        location_id = keep_duplicate_file.local_file.location_id
+        keep_location = self._duplicates_locations_by_id.get(location_id)
+        keep_path = (
+            str(
+                Path(keep_location.path)
+                / keep_duplicate_file.local_file.relative_path
+            )
+            if keep_location is not None
+            else keep_duplicate_file.local_file.relative_path
+        )
+
+        delete_paths = [
+            str(
+                Path(
+                    self._duplicates_locations_by_id[
+                        duplicate_file.local_file.location_id
+                    ].path
+                ) / duplicate_file.local_file.relative_path
+            )
+            for duplicate_file in group.files
+            if duplicate_file.local_file.id in delete_ids
+            and duplicate_file.local_file.location_id
+            in self._duplicates_locations_by_id
+        ]
+
+        plan = GroupResolutionPlan(
+            delete_local_file_ids=delete_ids,
+            keep_local_file_id=keep_id,
+            location_id=location_id,
+        )
+
+        return plan, keep_path, delete_paths
+
+    def _on_resolve_all_duplicates_clicked(self) -> None:
+        # Roadmap item R3.2/R3.3 — built fresh from what's actually on
+        # screen right now (the current groups AND the current keep
+        # selections), never a stale plan from an earlier click.
+        groups = self._current_duplicate_groups
+
+        plans_with_labels: list[tuple[GroupResolutionPlan, str, list[str]]] = []
+        resolved_groups: list[DuplicateGroup] = []
+
+        for group in groups:
+            group_key = frozenset(
+                f.local_file.id for f in group.files
+                if f.local_file.id is not None
+            )
+            default_keep_id = (
+                group.files[0].local_file.id if group.files else None
+            )
+            keep_id = self._duplicates_keep_selection.get(
+                group_key, default_keep_id,
+            )
+
+            if keep_id is None or keep_id == KEEP_ALL_DUPLICATES_ID:
+                # "Keep all" (or no resolvable keep target at all) is
+                # never turned into a plan — skipped, not overridden.
+                continue
+
+            built = self._build_group_resolution_plan(group, keep_id)
+
+            if built is None:
+                continue
+
+            plans_with_labels.append(built)
+            resolved_groups.append(group)
+
+        dialog = BulkResolveDuplicatesDialog(self, plans_with_labels)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if not plans_with_labels or not dialog.confirm_checkbox.isChecked():
+            # Defense in depth — the confirm button is already disabled
+            # in either state, but nothing structurally prevents this
+            # method being reached some other way.
+            return
+
+        plans = [plan for plan, _, _ in plans_with_labels]
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.duplicate_service.resolve_groups(plans),
+            button=self.resolve_all_duplicates_button,
+            status_label=self.duplicates_status_label,
+            on_finished=lambda result: self._on_bulk_resolve_duplicates_finished(
+                result, resolved_groups,
+            ),
+        )
+
+    def _on_bulk_resolve_duplicates_finished(
+            self,
+            result: BulkDuplicateResolutionResult,
+            attempted_groups: list[DuplicateGroup],
+    ) -> None:
+        QMessageBox.information(
+            self,
+            help_text.BULK_RESOLVE_DUPLICATES_DIALOG_TITLE,
+            help_text.format_bulk_resolve_duplicates_result(result),
+        )
+
+        # Same "drop resolved groups locally, never a full
+        # find_duplicate_groups() re-fetch" discipline as the
+        # single-group flow (_on_delete_duplicates_finished's own
+        # docstring) — a group that partially failed stays visible,
+        # per plan_outcomes, so the user can see it's still there and
+        # retry rather than assuming it's gone.
+        succeeded_groups = {
+            id(group)
+            for group, succeeded in zip(attempted_groups, result.plan_outcomes)
+            if succeeded
+        }
+        self._current_duplicate_groups = [
+            group for group in self._current_duplicate_groups
+            if id(group) not in succeeded_groups
+        ]
+        self._render_duplicate_groups(self._current_duplicate_groups)
+
+        if result.files_deleted > 0:
+            self._refresh_duplicates_milestone()
 
     def _load_playlists(self) -> None:
         run_worker(
@@ -4446,6 +4797,15 @@ class MainWindow(QMainWindow):
 
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
         self.review_upgrades_table.setRowCount(len(upgrades))
+        # Roadmap item R3.1 — the real list "Replace all" acts on,
+        # recomputed fresh every render so a click always sees exactly
+        # what's on screen right now (item 76's own "recompute at click
+        # time" lesson, R3.3).
+        self._current_pending_upgrades = upgrades
+        self.replace_all_upgrades_button.setEnabled(len(upgrades) > 0)
+        self.replace_all_upgrades_button.setText(
+            f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
+        )
 
         # Roadmap item R2.3 — prune keys for rows that no longer exist,
         # so this can't grow unbounded across a long session.
@@ -4565,6 +4925,45 @@ class MainWindow(QMainWindow):
         if message is not None:
             self.status_label.setText(message)
 
+        self._poll_review_items()
+
+    def _on_replace_all_upgrades_clicked(self) -> None:
+        # Roadmap item R3.1/R3.3 — built fresh from what's actually on
+        # screen right now, never a stale plan from an earlier click.
+        upgrades = self._current_pending_upgrades
+
+        if not upgrades:
+            return
+
+        dialog = BulkReplaceUpgradesDialog(self, upgrades)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        delete_old = dialog.delete_old_checkbox.isChecked()
+        request_ids = [details.request_id for details in upgrades]
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service
+            .apply_upgrade_decisions_batch(request_ids, delete_old),
+            button=self.replace_all_upgrades_button,
+            status_label=self.status_label,
+            on_finished=self._on_bulk_replace_upgrades_finished,
+        )
+
+    def _on_bulk_replace_upgrades_finished(
+            self, result: BulkUpgradeReplaceResult,
+    ) -> None:
+        QMessageBox.information(
+            self,
+            help_text.BULK_REPLACE_UPGRADES_DIALOG_TITLE,
+            help_text.format_bulk_replace_upgrades_result(result),
+        )
+        # A partial failure's rows stay ready_for_review (apply_upgrade_
+        # decision's own contract — see apply_upgrade_decisions_batch's
+        # docstring) and are simply offered again by this same refresh,
+        # never dropped.
         self._poll_review_items()
 
     def _render_local_needs_review_matches(

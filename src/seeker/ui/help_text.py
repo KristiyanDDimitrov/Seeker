@@ -639,6 +639,90 @@ def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
         f"This cannot be undone."
     )
 
+
+# --- Roadmap item R3: bulk actions -------------------------------------------
+# Both are among the two most destructive actions in the app (upgrade
+# replacement can delete a real old file; duplicate resolution always
+# deletes real files) — each inherits the project's standing "never
+# modify/delete a real user file without explicit confirmation" rule in
+# full, via a real listing of what will happen plus an explicit,
+# default-off confirmation control. Neither reuses a stale plan from an
+# earlier click — both are built fresh, from what's on screen right now,
+# at the moment the button is clicked (item 76's own lesson).
+
+TOOLTIP_REPLACE_ALL_UPGRADES = (
+    "Replace every downloaded upgrade currently ready for review, all "
+    "at once. Shows exactly what will change before anything happens."
+)
+BULK_REPLACE_UPGRADES_DIALOG_TITLE = "Replace All Upgrades"
+
+
+def format_bulk_replace_upgrades_intro(count: int) -> str:
+    plural = "s" if count != 1 else ""
+    return (
+        f"{count} upgrade{plural} ready to replace. Each one below will "
+        f"have its current file replaced with the higher-quality "
+        f"download shown."
+    )
+
+
+TOOLTIP_BULK_DELETE_OLD_FILES_CHECKBOX = (
+    "Also delete every replaced file from disk, not just from the "
+    "library record. Applies to the whole batch below — off by "
+    "default."
+)
+
+
+def format_bulk_replace_upgrades_result(result: Any) -> str:
+    """Roadmap item R3.1 — the same honest-reporting shape
+    format_rename_result_message uses: a real count, plus one detail
+    line per row so a partial failure is never just a bare number."""
+    lines = [f"Replaced: {result.replaced}, Failed: {result.failed}."]
+    lines.extend(f"  {detail}" for detail in result.details)
+    return "\n".join(lines)
+
+
+TOOLTIP_RESOLVE_ALL_DUPLICATES = (
+    "Resolve every duplicate group currently shown, all at once. Any "
+    "group set to \"Keep all\" is left untouched. Shows the exact real "
+    "files that would be kept and deleted before anything happens."
+)
+BULK_RESOLVE_DUPLICATES_DIALOG_TITLE = "Resolve All Duplicate Groups"
+BULK_RESOLVE_DUPLICATES_NO_GROUPS = (
+    "Nothing to resolve — every group is set to \"Keep all,\" or there "
+    "are no groups."
+)
+
+
+def format_bulk_resolve_duplicates_intro(group_count: int, file_count: int) -> str:
+    group_plural = "s" if group_count != 1 else ""
+    file_plural = "s" if file_count != 1 else ""
+    return (
+        f"{group_count} group{group_plural} will be resolved, "
+        f"permanently deleting {file_count} file{file_plural} from disk. "
+        f"Any group set to \"Keep all\" is skipped, not overridden."
+    )
+
+
+TOOLTIP_BULK_DELETE_DUPLICATES_CHECKBOX = (
+    "Confirm you want to permanently delete every listed file above. "
+    "Required before Resolve does anything."
+)
+
+
+def format_bulk_resolve_duplicates_result(result: Any) -> str:
+    lines = [
+        f"Resolved: {result.groups_resolved} group(s), "
+        f"{result.files_deleted} file(s) deleted"
+        + (
+            f" ({result.files_failed} failed)."
+            if result.files_failed else "."
+        )
+    ]
+    lines.extend(f"  {detail}" for detail in result.details)
+    return "\n".join(lines)
+
+
 # --- Sharing page (roadmap item 62, Phase 7) --------------------------------
 # SoulSeek only works because peers share files back — Seeker downloads
 # from other people's shares, so this page frames what Seeker itself is

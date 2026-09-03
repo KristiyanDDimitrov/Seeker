@@ -11118,3 +11118,76 @@ error). Full suite: same 3 pre-existing failures reproduce on the
 unmodified tree — 971 passed / 1 skipped, 0 regressions (1 net new
 test; the pixel-verification screenshots were throwaway, not
 committed).
+
+### 88 — R3: bulk actions
+
+**Design, as briefed** — both are among the two most destructive
+actions in the app, so both inherit the standing "never modify/delete
+a real user file without explicit confirmation" rule in full via a
+real listing plus a default-off confirmation control, and both are
+recomputed fresh at the moment the button is clicked rather than
+reusing a plan built at an earlier point (item 76 (P2)'s own lesson
+about a preview and the applied result being allowed to diverge).
+
+**`DownloadService.apply_upgrade_decisions_batch(request_ids,
+delete_old)`** — applies `apply_upgrade_decision(request_id, True,
+delete_old)` per row through the exact same explicit-decision method
+the CLI/single-row UI action already use, never a second mutation
+path. Success is checked by re-reading the request's own `status`
+after the call (`"completed"` or not), not by parsing the returned
+message string — `apply_upgrade_decision`'s own contract only ever
+advances a request to `"completed"` on real success, so a failed row
+is naturally still `ready_for_review` afterward and gets offered again
+on the next Review poll, satisfying "a partial failure must leave
+failed rows visible and pending" structurally rather than via extra
+bookkeeping.
+
+**`DuplicateService.resolve_groups(plans)`** — applies
+`delete_local_files()` per `GroupResolutionPlan` (one per group the UI
+already decided to resolve; a "Keep all" group is never turned into a
+plan at all — skipped by the UI before this is ever called, not
+filtered inside the service). New `BulkDuplicateResolutionResult.
+plan_outcomes: list[bool]` (same order/length as the input plans) is
+what makes the UI's local-drop-without-refetch possible: item 39
+already established that a full `find_duplicate_groups()` re-fetch
+after every resolution is a real ~10-minute cost at real scale
+(344 groups), so `_on_bulk_resolve_duplicates_finished` drops only the
+groups whose `plan_outcomes` entry is `True` from the in-memory
+`_current_duplicate_groups` list, identical in spirit to the
+single-group flow's own "drop just this group and re-render locally."
+
+**UI:** `BulkReplaceUpgradesDialog`/`BulkResolveDuplicatesDialog`
+mirror `RenamePreviewDialog`'s established shape (a `QListWidget`
+preview + Confirm/Cancel). The Duplicates dialog additionally gates
+its own Confirm button on its checkbox being checked in real time
+(`toggled` → `setEnabled`), the same two-step gate the single-group
+Delete flow already uses, rather than only checking after the fact.
+Both "Replace all"/"Resolve all groups" buttons live in each table's
+own header row, their text/enabled-state kept live from the same
+render call that populates the table (never stale against what's on
+screen).
+
+**CLI parity (R3.4):** `seeker downloads review --all` reuses
+`apply_upgrade_decisions_batch` — cheap, since the single-row
+interactive CLI flow (`review_pending_upgrades`) already existed to
+extend. **Duplicates bulk-delete gets no CLI parity at all** — checked
+first, not assumed: `grep`ing `cli.py`'s `library duplicates` handler
+confirms it has only ever been a read-only report (lists groups,
+never calls `delete_local_files`/any delete path). Adding "resolve
+all" parity would mean building the CLI's first-ever duplicate-delete
+flow from scratch (which-file-to-keep selection in text, its own
+confirmation flow, etc.) — disproportionate to this item's scope, so
+stated explicitly here rather than half-added, per the brief's own
+instruction.
+
+16 new tests: `test_download_service.py` (+4: batch all-success,
+partial-failure-leaves-pending, empty-list no-op, plus the new
+`_seed_two_upgrade_scenario` fixture), `test_duplicate_service.py`
+(+3: multi-plan resolve, one-group-failure-doesn't-abort-rest,
+empty-plans no-op), `test_ui_smoke.py` (+10: 4 for Replace-all, 6 for
+Resolve-all-groups including the Keep-all-skip case and the
+partial-failure local-drop case), `test_cli.py` (+3: all-success,
+declined-at-first-prompt, empty-nothing-to-review). `mypy --strict
+src/` clean (pre-existing, unrelated `_build_info.py` error). Full
+suite: same 3 pre-existing failures reproduce on the unmodified tree —
+990 passed / 1 skipped, 0 regressions.

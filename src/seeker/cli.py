@@ -231,11 +231,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    downloads_subparsers.add_parser(
+    review_parser = downloads_subparsers.add_parser(
         "review",
         help=(
             "Interactively confirm or decline pending upgrade "
             "replacements."
+        ),
+    )
+    review_parser.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "Roadmap item R3.1/R3.4 — replace every pending upgrade at "
+            "once instead of prompting per row (CLI parity for the "
+            "UI's \"Replace all\"). Prompts once for whether to also "
+            "delete the old files, then applies to the whole batch."
         ),
     )
 
@@ -568,10 +578,54 @@ def handle_downloads(
         return
 
     if parsed.downloads_command == "review":
+        if getattr(parsed, "all", False):
+            _handle_downloads_review_all(application)
+            return
+
         application.download_service.review_pending_upgrades()
         return
 
     print("Usage: seeker downloads {status,review}")
+
+
+def _handle_downloads_review_all(application: Application) -> None:
+    # Roadmap item R3.1/R3.4 — CLI parity for the UI's "Replace all."
+    # Same explicit-decision service method the UI uses
+    # (apply_upgrade_decisions_batch), so the two never drift onto
+    # different mutation logic.
+    upgrades = application.download_service.get_pending_upgrade_reviews()
+
+    if not upgrades:
+        print("Nothing to review.")
+        return
+
+    print(f"{len(upgrades)} upgrade(s) ready to replace:")
+    for details in upgrades:
+        print(
+            f"  {details.track.artist} - {details.track.title}: "
+            f"{details.current_description} -> "
+            f"{details.quality_descriptor or 'unknown'}"
+        )
+
+    confirmed = input(
+        f"Replace all {len(upgrades)} upgrade(s)? [y/n] "
+    ).strip().lower()
+
+    if confirmed != "y":
+        print("Cancelled.")
+        return
+
+    delete_old = input(
+        "Also delete the old files? [y/n] "
+    ).strip().lower() == "y"
+
+    result = application.download_service.apply_upgrade_decisions_batch(
+        [details.request_id for details in upgrades], delete_old,
+    )
+
+    print(f"Replaced: {result.replaced}, Failed: {result.failed}.")
+    for detail in result.details:
+        print(f"  {detail}")
 
 def handle_sync(application: Application) -> None:
     application.sync_service.sync_playlists()

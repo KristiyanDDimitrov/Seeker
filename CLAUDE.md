@@ -1368,6 +1368,17 @@ compress it here before moving on to the next item.
     screenshots at 960×640 and 1280×800 — every button renders in
     full, no black column/corner anywhere. [HISTORY §87](docs/HISTORY.md#87)
 
+88. **R3: bulk actions — "Replace all" upgrades + "Resolve all groups"
+    duplicates — done.** New `DownloadService.
+    apply_upgrade_decisions_batch()`/`DuplicateService.resolve_groups()`
+    wrap the existing single-row mutations, per-item try/except (item
+    15), success checked by re-reading real state (not the message
+    string). New `BulkReplaceUpgradesDialog`/`BulkResolveDuplicatesDialog`
+    mirror `RenamePreviewDialog`'s shape; both built fresh at click
+    time (item 76). CLI parity: `seeker downloads review --all` only —
+    Duplicates bulk-delete has none (stated explicitly, not
+    half-added; see HISTORY). [HISTORY §88](docs/HISTORY.md#88)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

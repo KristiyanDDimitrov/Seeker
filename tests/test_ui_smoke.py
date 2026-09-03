@@ -41,6 +41,8 @@ from seeker.ui import help_text, theme
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.ui.main_window import (
     AboutDialog,
+    BulkReplaceUpgradesDialog,
+    BulkResolveDuplicatesDialog,
     DestinationDialog,
     MainWindow,
     RenamePreviewDialog,
@@ -188,6 +190,15 @@ class FakeDuplicateService:
             tuple[list[int], int | None, int | None]
         ] = []
         self.record_cleanup_calls: list[tuple[int, int, int | None]] = []
+        # Roadmap item R3.2 — "Resolve all groups".
+        self.resolve_groups_calls: list[list] = []
+        from seeker.library.duplicate_service import (
+            BulkDuplicateResolutionResult,
+        )
+        self.resolve_groups_result = BulkDuplicateResolutionResult(
+            groups_resolved=0, groups_failed=0, files_deleted=0,
+            files_failed=0, bytes_freed=0, details=[], plan_outcomes=[],
+        )
 
     def compute_fingerprints(
             self,
@@ -267,6 +278,10 @@ class FakeDuplicateService:
 
     def get_cleanup_totals(self) -> tuple[int, int]:
         return self._cleanup_totals
+
+    def resolve_groups(self, plans: list):
+        self.resolve_groups_calls.append(list(plans))
+        return self.resolve_groups_result
 
 
 class FakeTrackMatcher:
@@ -366,6 +381,14 @@ class FakeDownloadService:
         self.reject_review_candidate_calls: list[str] = []
         self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
         self.apply_upgrade_decision_result: str | None = "Replaced with /new/path"
+        # Roadmap item R3.1 — "Replace all".
+        self.apply_upgrade_decisions_batch_calls: list[
+            tuple[list[int], bool]
+        ] = []
+        from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+        self.apply_upgrade_decisions_batch_result = BulkUpgradeReplaceResult(
+            replaced=0, failed=0, details=[],
+        )
         # None means "no resolvable destination" — the roadmap item 6
         # §3 dead-end case the DestinationDialog exists to close.
         self._resolved_destination = resolved_destination
@@ -428,6 +451,12 @@ class FakeDownloadService:
     ) -> str | None:
         self.apply_upgrade_decision_calls.append((request_id, replace, delete_old))
         return self.apply_upgrade_decision_result if replace else None
+
+    def apply_upgrade_decisions_batch(
+            self, request_ids: list[int], delete_old: bool,
+    ):
+        self.apply_upgrade_decisions_batch_calls.append((request_ids, delete_old))
+        return self.apply_upgrade_decisions_batch_result
 
     def search_manual(self, artist: str, title: str) -> list:
         self.search_manual_calls.append((artist, title))
@@ -3600,6 +3629,97 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     assert window.status_label.text() == ""
 
 
+# --- Roadmap item R3.1: "Replace all" upgrades -----------------------------
+
+def test_replace_all_upgrades_button_disabled_when_no_upgrades(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades([])
+
+    assert window.replace_all_upgrades_button.isEnabled() is False
+
+
+def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
+        qtbot, monkeypatch,
+):
+    details = [
+        _make_upgrade_details(request_id=1),
+        _make_upgrade_details(request_id=2),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+    assert window.replace_all_upgrades_button.isEnabled() is True
+
+    def fake_exec(self):
+        self.delete_old_checkbox.setChecked(True)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(BulkReplaceUpgradesDialog, "exec", fake_exec)
+
+    window.replace_all_upgrades_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.download_service.apply_upgrade_decisions_batch_calls
+        != [],
+        timeout=2000,
+    )
+    assert application.download_service.apply_upgrade_decisions_batch_calls == [
+        ([1, 2], True),
+    ]
+
+
+def test_replace_all_upgrades_cancelled_dialog_calls_nothing(qtbot, monkeypatch):
+    details = [_make_upgrade_details(request_id=1)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_pending_upgrades(details)
+
+    monkeypatch.setattr(
+        BulkReplaceUpgradesDialog, "exec",
+        lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    window.replace_all_upgrades_button.click()
+
+    assert application.download_service.apply_upgrade_decisions_batch_calls == []
+
+
+def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
+    from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+
+    details = [_make_upgrade_details(request_id=1)]
+    application = FakeApplication()
+    application.download_service.apply_upgrade_decisions_batch_result = (
+        BulkUpgradeReplaceResult(
+            replaced=1, failed=0, details=["Artist - Title: Replaced with x"],
+        )
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_pending_upgrades(details)
+
+    monkeypatch.setattr(
+        BulkReplaceUpgradesDialog, "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+    info_calls = []
+    monkeypatch.setattr(
+        QMessageBox, "information",
+        lambda *a, **k: info_calls.append(a),
+    )
+
+    window.replace_all_upgrades_button.click()
+
+    qtbot.waitUntil(lambda: info_calls != [], timeout=2000)
+    assert "Replaced: 1, Failed: 0" in info_calls[0][2]
+
+
 def test_review_tab_populates_both_sections_on_construction(qtbot):
     # _poll_review_items() runs once in __init__ (like the Downloads
     # tab's own initial call) so the Review tab isn't empty for the
@@ -5341,6 +5461,163 @@ def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
     assert isinstance(keep_radio_1, QRadioButton)
     assert keep_radio_0.isChecked() is True
     assert keep_radio_1.isChecked() is False
+
+
+# --- Roadmap item R3.2: "Resolve all groups" --------------------------------
+
+def test_resolve_all_duplicates_button_disabled_when_no_groups(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_duplicate_groups([])
+
+    assert window.resolve_all_duplicates_button.isEnabled() is False
+
+
+def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
+        qtbot, monkeypatch,
+):
+    group_a = _make_duplicate_group()  # ids 101 (flac), 102 (mp3)
+    group_b = _make_duplicate_group_with_n_files(2)  # ids 200, 201
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([group_a, group_b])
+
+    # Leave group_a (rows 0-1) on its default (best-quality) selection,
+    # but move group_b's (rows 2-3) selection onto its SECOND file
+    # (row 3, id 201) instead of the default (row 2, id 200).
+    keep_column = _duplicates_column(window, "Keep")
+    window.duplicates_table.cellWidget(3, keep_column).setChecked(True)
+
+    def fake_exec(self):
+        self.confirm_checkbox.setChecked(True)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+
+    window.resolve_all_duplicates_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.duplicate_service.resolve_groups_calls != [],
+        timeout=2000,
+    )
+    plans = application.duplicate_service.resolve_groups_calls[0]
+    assert len(plans) == 2
+    plans_by_keep = {plan.keep_local_file_id: plan for plan in plans}
+    assert plans_by_keep[101].delete_local_file_ids == [102]
+    assert plans_by_keep[201].delete_local_file_ids == [200]
+
+
+def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
+    group_a = _make_duplicate_group()  # ids 101, 102
+    group_b = _make_duplicate_group_with_n_files(2)  # ids 200, 201
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([group_a, group_b])
+
+    actions_column = _duplicates_column(window, "Actions")
+    group_b_actions = window.duplicates_table.cellWidget(2, actions_column)
+    keep_all_radio = [
+        w for w in group_b_actions.findChildren(QRadioButton)
+        if w.text() == "Keep all"
+    ][0]
+    keep_all_radio.setChecked(True)
+
+    def fake_exec(self):
+        self.confirm_checkbox.setChecked(True)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+
+    window.resolve_all_duplicates_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.duplicate_service.resolve_groups_calls != [],
+        timeout=2000,
+    )
+    plans = application.duplicate_service.resolve_groups_calls[0]
+    # Only group_a's plan -- group_b (Keep all) was skipped entirely,
+    # never overridden.
+    assert len(plans) == 1
+    assert plans[0].keep_local_file_id == 101
+
+
+def test_resolve_all_duplicates_cancelled_dialog_calls_nothing(qtbot, monkeypatch):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    monkeypatch.setattr(
+        BulkResolveDuplicatesDialog, "exec",
+        lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    window.resolve_all_duplicates_button.click()
+
+    assert application.duplicate_service.resolve_groups_calls == []
+
+
+def test_resolve_all_duplicates_unconfirmed_checkbox_calls_nothing(
+        qtbot, monkeypatch,
+):
+    # Defense in depth (R3.2) — even if exec() somehow returns Accepted
+    # without the checkbox actually being checked, nothing real happens.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([_make_duplicate_group()])
+
+    monkeypatch.setattr(
+        BulkResolveDuplicatesDialog, "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+
+    window.resolve_all_duplicates_button.click()
+
+    assert application.duplicate_service.resolve_groups_calls == []
+
+
+def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
+        qtbot, monkeypatch,
+):
+    from seeker.library.duplicate_service import BulkDuplicateResolutionResult
+
+    group_a = _make_duplicate_group()
+    group_b = _make_duplicate_group_with_n_files(2)
+    application = FakeApplication()
+    application.duplicate_service.resolve_groups_result = (
+        BulkDuplicateResolutionResult(
+            groups_resolved=1, groups_failed=1, files_deleted=1,
+            files_failed=1, bytes_freed=10,
+            details=["Group partially failed: 1 of 1 file(s) could not "
+                     "be deleted."],
+            plan_outcomes=[True, False],
+        )
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._render_duplicate_groups([group_a, group_b])
+
+    def fake_exec(self):
+        self.confirm_checkbox.setChecked(True)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+
+    window.resolve_all_duplicates_button.click()
+
+    qtbot.waitUntil(
+        lambda: window.duplicates_table.rowCount() == 2, timeout=2000,
+    )
+    # group_a (succeeded, plan_outcomes[0]=True) is gone; group_b
+    # (failed, plan_outcomes[1]=False) is still shown.
+    assert len(window._current_duplicate_groups) == 1
+    assert window._current_duplicate_groups[0] is group_b
 
 
 def test_duplicate_groups_keep_selection_survives_rerender(qtbot):
