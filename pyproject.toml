@@ -68,3 +68,16 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "pyloudnorm"
 ignore_missing_imports = true
+
+# Roadmap item RR1.3 — _build_info_generated.py is gitignored and only
+# ever exists on a machine that has run a real packaging build
+# (packaging/build_dmg.py writes it; see _build_info.py's own
+# docstring). A blanket `# type: ignore` on the import that reads it
+# was wrong in BOTH directions depending on which machine ran the type
+# check: missing-module errors when absent, "unused ignore" (--strict
+# enables warn_unused_ignores) when present. This override is the
+# actual fix — clean in both states, not just the one the author's own
+# machine happened to be in at the time.
+[[tool.mypy.overrides]]
+module = "seeker._build_info_generated"
+ignore_missing_imports = true

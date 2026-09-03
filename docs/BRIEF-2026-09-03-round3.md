@@ -405,3 +405,128 @@ Nothing exists yet: no `QSystemTrayIcon`, no `closeEvent` override, and
 `mypy --strict src/` clean and the full suite green before each commit,
 one commit per R-item. Still open and untouched for three rounds:
 **roadmap item 70**, the stress-test hang.
+
+---
+
+# Post-implementation review — commits `d4d5f9d`…`418427e`
+
+Reviewed against the real repo. Working tree clean, eight commits, in
+the order the brief asked for (R6 first). **All seven items are really
+implemented** — spot-checked in source, not taken from the summary:
+
+| Item | Evidence in the real source |
+|---|---|
+| R6 | `sharing_service.py` imports and routes through `bring_up_slskd`; new `SlskdCredentialsMissingError` refuses rather than recreating with blanks; `_get_or_raise_unauthorized` wraps the three status calls |
+| R1 | `.aiff`/`.aif`/`.aifc` in `AUDIO_EXTENSIONS`; `aiff`/`aif` in `LOSSLESS_EXTENSIONS`; `.aifc` deliberately excluded with a real, well-argued comment |
+| R2 | `_upgrade_delete_checked: set[int]`, `_duplicates_keep_selection: dict[frozenset[int], int]`, both pruned on render |
+| R5 | `theme.apply_table_defaults` / `theme.size_action_column`, applied at 10 sites; the 3 remaining `setStretchLastSection(True)` are all tables whose last column is Progress/Detail with no Actions column — correct as-is |
+| R3 | `Replace all` / `Resolve all groups` with real confirmation dialogs |
+| R4 | `_write_cover_jpg_sidecar`, never overwrites an existing file |
+| R7 | `QSystemTrayIcon` guarded by `isSystemTrayAvailable()`, `closeEvent`, activation handling |
+
+The three deferred items (R6.5, R4.1, R7.8) are correctly deferred.
+
+## The problem: "green with 3 pre-existing failures" is not green
+
+That phrasing was carried through six HISTORY entries this round. The
+failures are named in HISTORY §89 but never in any summary, and they are
+not what "pre-existing and unrelated" implies:
+
+1. `test_main_window_constructs_without_crashing`
+2. `test_about_dialog_shows_build_identity`
+3. `test_tagging_controls_row_has_real_spacing_between_items`
+
+(plus the long-documented `test_history_refresh_button_refetches`
+order-flake, which is genuinely pre-existing.)
+
+### RR1 — Two of them are caused by the build-identity feature itself
+
+Both assert the literal string `"dev"`:
+
+```python
+assert window.windowTitle() == "Seeker — dev"      # test_ui_smoke.py
+assert "dev" in combined                           # AboutDialog
+```
+
+Both carry a comment saying *"this test never runs against a real
+packaged build."* That is the wrong assumption. The test doesn't run
+against a packaged build — but it runs **on a machine that has produced
+one**, and `packaging/build_dmg.py` leaves `src/seeker/
+_build_info_generated.py` behind in the source tree. Measured:
+
+- `src/seeker/_build_info_generated.py` — written **16:02:53 UTC today**,
+  containing `GIT_SHA = 'a6af037'`
+- `dist/Seeker.dmg` — **16:03:38 UTC today**
+- the tests were added in `bffb21b` (item 81, round 2)
+
+So the window title is `"Seeker — a6af037"`, not `"Seeker — dev"`, and
+both assertions fail. They were passing when written and broke the
+moment a real build ran.
+
+**The same root cause explains the mypy error** reported as "one
+pre-existing, unrelated `_build_info.py` error": `--strict` enables
+`warn_unused_ignores`, so the `# type: ignore` on the
+`from seeker._build_info_generated import ...` line becomes an *unused*
+ignore as soon as that module actually exists.
+
+**And the verification method could not have caught it.**
+`_build_info_generated.py` is gitignored and untracked
+(`.gitignore:20`), and `git stash` does not stash untracked files
+without `-u`. So the "confirmed pre-existing via `git stash`" check left
+the offending file in place every time and was structurally guaranteed
+to reproduce the failures whatever their cause. That is the real lesson
+here, more than the two red tests.
+
+- [ ] **RR1.1** Make the tests independent of build state: monkeypatch
+  `seeker._build_info` in the test, or assert the *shape* of the build
+  identity (non-empty, matches `dev|[0-9a-f]{7,}`) rather than the
+  literal `"dev"`. A test that passes only on a machine that has never
+  run a build is not a test of anything.
+- [ ] **RR1.2** Neutralise the leak at the source: have `conftest.py`
+  force the `"dev"` fallback for the whole suite, so a developer's local
+  build can never change test outcomes.
+- [ ] **RR1.3** Fix the mypy side properly: drop the blanket
+  `# type: ignore` and add
+  `[[tool.mypy.overrides]] module = "seeker._build_info_generated"` with
+  `ignore_missing_imports = true`, so the type check is clean in **both**
+  states (module present and absent) rather than exactly one.
+- [ ] **RR1.4** Replace `git stash` with `git stash -u` (or an explicit
+  clean checkout) in the "is this pre-existing?" procedure, and record
+  that in the project's conventions. The current procedure cannot see
+  any defect that lives in an ignored file.
+
+### RR2 — The third failure is item 79's own proof-of-fix, and it is red
+
+`test_tagging_controls_row_has_real_spacing_between_items` is the
+regression test written in round 2 to prove the P11 FlowLayout spacing
+fix works. It asserts real geometry gaps at two widths. It is failing,
+and unlike the other two it has no `"dev"` involvement — so it needs a
+genuine diagnosis, not reclassification.
+
+The user reports the spacing *looks* right, so the most likely
+explanation is an offscreen-platform geometry artifact (the test calls
+`window.show()` then drives `layout.setGeometry()` directly, and
+offscreen Qt may not settle geometry the way a real compositor does).
+But "probably an artifact" is not a finding.
+
+- [ ] **RR2.1** Diagnose it for real and report the actual numbers —
+  the rects the test computes and what it expected. Then either fix the
+  test (if it is measuring the wrong thing offscreen) or fix the spacing
+  (if the gap genuinely isn't there in some layout pass).
+- [ ] **RR2.2** Whatever the outcome, a feature's own regression test may
+  not be left red and filed under "pre-existing". If it cannot pass
+  offscreen, mark it `xfail` with a real reason string, so the suite
+  reports honestly instead of a human having to remember three names.
+
+### RR3 — Report test results honestly
+
+- [ ] **RR3.1** Stop writing "the full suite green (same N pre-existing
+  failures)". Write the real numbers: `1022 passed, 3 failed, 1 skipped`,
+  and name the three inline. This project's whole working style is
+  honest reporting of partial success — item 56 Phase 4.2 exists
+  precisely because a silent partial failure hid a real bug for rounds.
+  The same standard applies to the test suite reporting on itself.
+- [ ] **RR3.2** The failure count went from 1 documented flake (round 1)
+  to 3-4 (round 3) without anyone investigating the growth. Add a
+  standing check: if the pre-existing failure count changes between
+  rounds, that is a regression to diagnose, not a new baseline to adopt.

@@ -664,7 +664,12 @@ def test_main_window_constructs_without_crashing(qtbot):
     qtbot.addWidget(window)
 
     # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
-    # fallback (this test never runs against a real packaged build).
+    # fallback. Reliable regardless of whether a real packaging build
+    # has ever run on this machine (round 3's own RR1.2 fix) —
+    # conftest.py's autouse fixture forces seeker._build_info's fields
+    # back to "dev" for the whole suite; a leftover real
+    # _build_info_generated.py from a local `.dmg` build (gitignored,
+    # never cleaned up by anything) used to make this assertion fail.
     assert window.windowTitle() == "Seeker — dev"
 
 
@@ -1461,6 +1466,29 @@ def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
     # styling — the buttons ended up touching. Checked at two widths:
     # a wide layout (items on one row, horizontal gaps matter) and a
     # narrow one (items wrap onto multiple rows, vertical gaps matter).
+    #
+    # Roadmap item RR2 — diagnosed for real, not reclassified as
+    # "pre-existing": item.geometry() read back INCONSISTENT with what
+    # FlowLayout's own _do_layout() had just requested via
+    # setGeometry() — confirmed live by temporarily instrumenting
+    # _do_layout() to print its real x/y/sizeHint() at the exact moment
+    # it calls setGeometry(), then diffing against what this test's own
+    # layout.itemAt(i).geometry() read back immediately afterward:
+    # every item in one row was genuinely assigned the SAME y by the
+    # layout (confirmed in the printed trace), but the read-back
+    # geometry showed a checkbox row at height 10 and a button row at
+    # height 16 sharing one row's worth of y, each keeping its own
+    # right/bottom edge fixed — the signature of a widget whose
+    # geometry was queried before the offscreen platform had actually
+    # applied it, not a spacing bug. `qtbot.waitExposed(window)` alone
+    # was NOT sufficient (confirmed by re-running 5x); a real
+    # `QApplication.processEvents()` call after EACH setGeometry() —
+    # this loop drives the layout through two different widths, so it
+    # needs to settle twice — is what actually made every read
+    # consistent, confirmed clean across 5 repeated runs both with and
+    # without waitExposed() (dropped once shown redundant).
+    from PySide6.QtWidgets import QApplication
+
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -1470,6 +1498,7 @@ def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
 
     for width in (1600, 320):
         layout.setGeometry(QRect(0, 0, width, layout.heightForWidth(width)))
+        QApplication.processEvents()
         # Two items (bpm_min_edit/bpm_max_edit) start .hide()'n until
         # "Analyze audio" is checked -- QWidgetItem.setGeometry() is a
         # real no-op for a hidden widget (QWidgetItem.isEmpty() short-
@@ -2465,8 +2494,9 @@ def test_format_build_identity_shows_real_sha_and_timestamp():
 
 def test_about_dialog_shows_build_identity(qtbot):
     # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
-    # fallback, since these tests never run against a real packaged
-    # build.
+    # fallback. Reliable regardless of real local build state (RR1.2 —
+    # see conftest.py's autouse fixture and test_main_window_
+    # constructs_without_crashing's own identical comment).
     dialog = AboutDialog()
     qtbot.addWidget(dialog)
 

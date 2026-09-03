@@ -158,6 +158,22 @@ src/seeker/
   that style unless we explicitly decide to add SQLAlchemy.
 - Tests: pytest, mock all external HTTP (Spotify, SoulSeek) — never hit
   real APIs in tests.
+- **Checking whether a test failure is "pre-existing": always `git
+  stash -u`, never a bare `git stash`.** Roadmap item RR1 — a bare
+  `git stash` does not stash untracked files, so it cannot see a
+  defect that lives in one (e.g. a real local packaging build's
+  gitignored `_build_info_generated.py` — see item 81/RR1's own
+  history). A verification that can't see the file it needs to isn't
+  a verification; it's structurally guaranteed to call the failure
+  "pre-existing" no matter what's actually causing it.
+- **The pre-existing-failure count is a tracked number, not a label.**
+  Roadmap item RR3.2 — report the actual `pytest` summary line (e.g.
+  "3 failed, 1022 passed") and name every failing test inline, every
+  time — never "green with N pre-existing failures" as a paraphrase.
+  If N changes between rounds, that is a regression to diagnose before
+  moving on, never a new baseline to quietly adopt (round 3 let it
+  drift from 1 documented flake to 3-4 unnamed ones without anyone
+  asking why).
 
 ## Commands
 
@@ -1415,6 +1431,23 @@ compress it here before moving on to the next item.
     (build-time only) — would have shipped a blank tray icon; fixed the
     same `sys._MEIPASS` way `docker-compose.yml` already is.
     [HISTORY §90](docs/HISTORY.md#90)
+
+91. **Post-round review fix (RR1-RR3) — "green with 3 pre-existing
+    failures" was never actually pre-existing or unrelated; fixed for
+    real, done.** Two failures were caused by item 81's own build-
+    identity feature (a real local `.dmg` build leaves gitignored
+    `_build_info_generated.py` behind — a bare `git stash` can't see
+    it, `-u` can); fixed with a `tests/conftest.py` autouse fixture
+    forcing `"dev"` for the whole suite, plus a real mypy override
+    instead of a blanket `# type: ignore`. The third
+    (item 79's own regression test) was a real offscreen-Qt geometry-
+    settling artifact, fixed with `QApplication.processEvents()` after
+    each `setGeometry()` call. Full suite now genuinely green: `1028
+    passed, 1 skipped`. New standing conventions: `git stash -u` (not
+    bare `git stash`) to check "pre-existing"; report the real pytest
+    summary line and name every failure; a pre-existing-failure count
+    that changes between rounds is a regression to diagnose, never a
+    new baseline. [HISTORY §91](docs/HISTORY.md#91)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

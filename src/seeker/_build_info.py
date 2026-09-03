@@ -24,11 +24,13 @@ clone that has never been built).
 __all__ = ["GIT_SHA", "GIT_DESCRIBE", "BUILT_AT"]
 
 try:
-    from seeker._build_info_generated import (  # type: ignore
-        BUILT_AT,
-        GIT_DESCRIBE,
-        GIT_SHA,
-    )
+    # Roadmap item RR1.3 — no blanket `# type: ignore` here: the
+    # pyproject.toml `[[tool.mypy.overrides]]` for this exact module
+    # name (`ignore_missing_imports = true`) is what makes this clean
+    # under --strict whether or not the generated module actually
+    # exists on disk, instead of being clean in only one of those two
+    # states.
+    from seeker._build_info_generated import BUILT_AT, GIT_DESCRIBE, GIT_SHA
 except ImportError:
     GIT_SHA = "dev"
     GIT_DESCRIBE = "dev"

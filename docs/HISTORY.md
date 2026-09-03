@@ -11408,3 +11408,78 @@ rendering) — this session's own Automation-permission and Screen-
 Recording-permission gaps (see items 84/89) block any live GUI
 verification beyond what offscreen Qt rendering and a real headless
 event-loop exit check (above) can prove.
+
+### 91 — RR1-RR3: post-round review of round 3's own test-suite reporting
+
+**The user's own review caught a real procedural blind spot, not just
+two red tests.** Round 3's every commit reported "the full suite green
+(same N pre-existing failures)," verified each time via `git stash`
+before re-running the suite on the base commit. That procedure was
+structurally incapable of ever finding the real cause: `git stash`
+(no `-u`) does not touch untracked files, `_build_info_generated.py`
+is untracked (gitignored), so the stash left it in place on every
+single check — the "confirmation" would have reproduced the same two
+failures no matter what was actually causing them.
+
+**RR1 — the two `"dev"`-literal failures.** Real, measured timeline:
+`_build_info_generated.py` was written by a real `packaging/
+build_dmg.py` run at `16:02:53 UTC` today (`GIT_SHA = 'a6af037'`),
+`dist/Seeker.dmg` followed at `16:03:38 UTC`. Both tests
+(`test_main_window_constructs_without_crashing`,
+`test_about_dialog_shows_build_identity`) assert the literal `"dev"`
+on the comment's own stated assumption "this test never runs against a
+real packaged build" — true, but irrelevant: the test doesn't need to
+run against a package, it just needs the generated file to exist on
+whatever machine runs it, and nothing ever cleans that file up.
+**Fixed structurally, not by patching the two assertions**: new
+`tests/conftest.py::_force_dev_build_identity` (autouse, function-
+scoped `monkeypatch`) sets `seeker._build_info.GIT_SHA`/
+`GIT_DESCRIBE`/`BUILT_AT` back to `"dev"` for every test in the whole
+suite — real local build state can never again change what this suite
+reports, on this machine or anyone else's. The two tests' own comments
+were corrected to describe the real mechanism instead of the false
+assumption.
+
+Same root cause, same fix shape, for the mypy side: `--strict` enables
+`warn_unused_ignores`, so `_build_info.py`'s blanket `# type: ignore`
+on the `_build_info_generated` import was an *unused* ignore on any
+machine where the file exists (exactly the state this session's own
+earlier checks ran in, every time). Replaced with a real
+`[[tool.mypy.overrides]] module = "seeker._build_info_generated"`,
+`ignore_missing_imports = true` — verified clean in BOTH states by
+physically moving the generated file out and back in and re-running
+`mypy --strict src/` each time (84 files clean present, 83 files clean
+absent).
+
+**RR2 — the FlowLayout spacing test, diagnosed for real.** Instrumented
+`FlowLayout._do_layout()` itself with a temporary print at its own
+`item.setGeometry()` call site, then compared against what the test's
+`layout.itemAt(i).geometry()` read back afterward. The layout's own
+positioning logic was correct — every item in one row was genuinely
+assigned the identical `y` — but the read-back geometry showed a
+checkbox row at height 10 sitting beside a button row at height 16,
+each keeping its own right/bottom edge fixed while its top/left crept
+inward: the exact signature of a widget whose geometry was queried
+before Qt's offscreen platform had actually finished applying it, with
+no event-loop spin between `setGeometry()` and the read. Two remedies
+were tried and measured, not assumed: `qtbot.waitExposed(window)`
+alone did not fix it (failed identically across 5 repeated runs);
+`qtbot.wait(0)` after each `setGeometry()` also did not fix it (same 5
+repeated failures). A real `QApplication.processEvents()` call after
+each of the loop's two `setGeometry()` calls did — confirmed clean
+across 8 repeated runs, and confirmed the test still genuinely FAILS
+(a real 1px gap where 8px is required) when item 79's own spacing fix
+is temporarily reverted in isolation, so the fix didn't just make the
+test stop noticing anything.
+
+**RR3 — honest reporting.** Full suite after all of the above: `1028
+passed, 1 skipped`, zero failures — genuinely green, not "green with
+N." One real, separately-diagnosed flake remains and was left alone,
+exactly as the user's own message scoped it:
+`test_history_refresh_button_refetches` reproduced a real
+`pytestqt.exceptions.TimeoutError` (the refresh button's background
+`run_worker` call occasionally doesn't complete within the test's own
+2000ms `qtbot.waitUntil` window) on 1 of 8 isolated repeated runs —
+a genuine timing flake, not a build-state or geometry-settling issue,
+and explicitly called out by the user as "genuinely pre-existing," not
+part of this fix's scope.
