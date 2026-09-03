@@ -367,3 +367,21 @@ history-service manual-label), 0 regressions.
 
 **Commit boundary — pending. Brief closed except the live E2E
 verification, left for the user.**
+
+---
+
+## Brief closed
+
+All items addressed: P7 (`ce7ac5c`), P8+P9 combined (`8ee92b1`,
+deviation from the brief's exact commit order stated explicitly at
+the time), P12+P11 combined (`5eb5ffc`), P10 (`d4ade8d`), 0.1/0.2/0.3
+(`bffb21b`), P13 (`cc602ae`). `mypy --strict src/` clean and the full
+suite green before every commit, per the brief's own instruction.
+
+**Left open, deliberately, per explicit brief instructions:**
+- P13.8's real end-to-end manual download against live slskd — the
+  brief says to ask the user to confirm the target first; not run
+  autonomously.
+- 0.1's `_build_info.py` "dev" fallback tracked-despite-gitignored
+  tradeoff is a soft convention, not a hard git guarantee — stated
+  plainly in both the file's own docstring and `.gitignore`'s comment.
