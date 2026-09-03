@@ -260,5 +260,55 @@ strengthened existing test), 0 regressions (the one intermittent
 `test_history_refresh_button_refetches` failure seen once is the
 pre-existing documented flake, confirmed via 3x isolated rerun).
 
+**Commit boundary — commit 5b39917.**
+
+## P2 — "Rename files" leaves numbered prefixes the preview said would go
+
+- [x] 2.1 Stated in Phase 0.2 above: none of hypothesized Defects A/B/C
+  — the real cause was a pre-existing DB/disk desync (root cause not
+  conclusively identified), reconciled via a normal rescan before any
+  code change.
+- [x] 2.2 New `_mark_within_batch_collisions()` — a second pass over
+  `plan_renames`'s output flagging any `'rename'` plan whose target is
+  shared by another plan in the same batch.
+- [x] 2.3 `_apply_one_rename` records an honest detail + `collisions`
+  increment whenever the real resolved name differs from the preview —
+  moved from the outer loop's plan-time guess to the real per-file
+  apply-time outcome (a genuine, more accurate redefinition, not just
+  cosmetic — found while writing the test: the first of two colliding
+  plans to be processed can still land on its own exact previewed
+  name).
+- [x] 2.4 `apply_renames` re-plans fresh from the same track ids
+  immediately before any real work and refuses (a real per-track
+  failure) any track whose fresh plan disagrees with what was
+  confirmed — the brief's own preferred, safer option over blocking
+  timers.
+- [x] 2.5 `format_rename_result_message` now says plainly how many
+  files were written with a different name than previewed, prominently
+  (downgraded to `warning` kind when it happens), not buried in the
+  capped results panel.
+- [x] 2.6 7 new regression tests: within-batch collision (plan-time +
+  apply-time), honest mismatch reporting, refuse-on-stale-plan (2
+  shapes — file landing mid-preview, match changing mid-preview), and
+  a dedicated test reproducing the EXACT real Phase 0.2 failing shape
+  (stale DB row after a completed rename reads as a false collision —
+  documented as understood drift behavior, not a code bug).
+
+**Live re-verified against the real production "Test" playlist**
+(read-only dry run): 5 real renames proposed, 0 collisions — the false
+collisions from Phase 0.2's original desync are gone.
+
+`mypy --strict src/` clean (84 files). Full suite: 908 passed, 1
+skipped (0 failures) — 7 net new, 0 regressions.
+
 **Commit boundary — commit (see next `git log`, made right after this
 entry).**
+
+---
+
+## Brief closed
+
+All six items (P1-P6) addressed. P6 deliberately left open pending the
+user's own visual DJ-software confirmation — everything else closed.
+Commit order followed exactly as specified: P3 → P1 → P4 → P5 → P6 →
+P2.

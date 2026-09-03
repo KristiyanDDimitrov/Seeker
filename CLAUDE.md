@@ -1134,6 +1134,33 @@ compress it here before moving on to the next item.
     — per the brief's own standing rule, this only closes when the user
     confirms they can actually SEE the art in their real DJ software,
     which only they can check. [HISTORY §75](docs/HISTORY.md#75)
+76. **Fix P2: "Rename files" leaves numbered prefixes the preview said
+    would go away — done, real root cause was neither of the three
+    hypothesized defects.** Phase 0.2's real live investigation found
+    the actual cause: an already-existing, pre-session real DB/disk
+    desync (5 files already renamed on disk via Seeker's own Rename
+    feature, `local_files.relative_path` never reconciled — root cause
+    of the DB write not landing not conclusively identified, see
+    HISTORY §71/§76). Reconciled via a normal rescan, then fixed every
+    "regardless" defect the brief named: (2.2) `plan_renames` now
+    detects WITHIN-BATCH target collisions (two tracks proposing the
+    same final name) at plan time, not just against the pre-existing
+    filesystem. (2.3) `_apply_one_rename` now records an honest detail
+    whenever the real resolved name differs from what the preview
+    showed, and counts it in `collisions` (redefined to mean "actually
+    differed," not "was predicted to differ" — more accurate than
+    before). (2.4) `apply_renames` re-plans FRESH from the same track
+    ids immediately before doing any real work and refuses (a real
+    per-track failure, not a silent skip) any track whose fresh plan
+    disagrees with what the user confirmed — closes the "dialog left
+    open while a real download lands" window structurally, the safer
+    of the brief's two offered options. (2.5) the result notice now
+    names the count of files written with a different name than
+    previewed, prominently, not just in the capped results panel.
+    7 new tests, including one reproducing the exact real Phase 0.2
+    failing shape (a stale DB row after a completed rename reads as a
+    false collision — documented as understood DB/disk-drift behavior,
+    not a `plan_renames` bug). [HISTORY §76](docs/HISTORY.md#76)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

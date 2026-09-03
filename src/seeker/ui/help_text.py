@@ -273,7 +273,15 @@ RENAME_PREVIEW_SECTION_REFUSED = "Refused (no local file / error):"
 
 def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
     """Roadmap item 67 (Phase 6.4) — mirrors format_fix_art_result_
-    message's own shape. `counts` mirrors RenameResult's own fields."""
+    message's own shape. `counts` mirrors RenameResult's own fields.
+
+    Roadmap item 76 (P2, 2.5) — `collisions` (as of the 2.3 fix in
+    apply_renames) now literally means "the real written name differed
+    from what the preview showed," not just "the plan predicted a
+    suffix" — so naming it prominently here, not just in the
+    easy-to-miss capped results panel, is exactly the honest reporting
+    this item asks for.
+    """
     renamed = counts["renamed"]
     collisions = counts["collisions"]
     failed = counts["failed"]
@@ -281,14 +289,21 @@ def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
     message = f"Renamed {renamed} file{'s' if renamed != 1 else ''}"
 
     if collisions:
-        message += f" ({collisions} with a numbered suffix)"
+        plural = "s" if collisions != 1 else ""
+        message += (
+            f" — {collisions} file{plural} written with a DIFFERENT "
+            f"name than the preview showed (see the results panel "
+            f"below for exactly which)"
+        )
 
     if failed:
         message += f", {failed} failed — see the results panel below."
         return message, "error"
 
     if renamed:
-        return message + ".", "success"
+        return (
+            message + ".", "warning" if collisions else "success",
+        )
 
     return "Nothing was renamed.", "info"
 

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -125,6 +125,52 @@ def _rename_via_temp(source: Path, destination: Path) -> None:
 
     source.rename(temp_path)
     temp_path.rename(destination)
+
+
+def _mark_within_batch_collisions(
+        plans: list[RenamePlan],
+) -> list[RenamePlan]:
+    """Roadmap item 76 (P2, 2.2) — a real, CONFIRMED gap:
+    _plan_one_rename plans every track independently against the
+    filesystem as it is BEFORE any rename runs, so two plans can target
+    the identical final name (a track duplicated in the playlist, two
+    remixes normalizing to the same string, or an already-correct file
+    whose name a later plan also targets) with neither individually
+    reading as a collision at plan time — the preview showed both as
+    clean renames. At apply time the first one wins the name and the
+    second silently becomes a numbered suffix. Marking this at PLAN
+    time makes the preview honest about it upfront.
+    """
+    target_counts: dict[Path, int] = {}
+
+    for plan in plans:
+        if plan.action == "rename":
+            assert plan.proposed_path is not None
+            target_counts[plan.proposed_path] = (
+                target_counts.get(plan.proposed_path, 0) + 1
+            )
+
+    marked = []
+
+    for plan in plans:
+        if plan.action == "rename":
+            assert plan.proposed_path is not None
+
+            if target_counts[plan.proposed_path] > 1:
+                marked.append(replace(
+                    plan,
+                    action="collision",
+                    message=(
+                        f"target '{plan.proposed_path.name}' is also "
+                        f"the proposed target for another track in "
+                        f"this same batch"
+                    ),
+                ))
+                continue
+
+        marked.append(plan)
+
+    return marked
 
 
 def _rename_sidecar_if_present(current_path: Path, final_path: Path) -> None:
@@ -865,7 +911,8 @@ class MetadataService:
                     if track is not None
                 ]
 
-        return [self._plan_one_rename(track) for track in tracks]
+        plans = [self._plan_one_rename(track) for track in tracks]
+        return _mark_within_batch_collisions(plans)
 
     def _plan_one_rename(self, track: Track) -> RenamePlan:
         with self.database.transaction() as connection:
@@ -957,10 +1004,49 @@ class MetadataService:
         caller's own explicit confirmation gate (item 27's "no gate for
         tag-writing" precedent does NOT extend here: renaming moves/
         replaces a file, tag-writing never does).
+
+        Roadmap item 76 (P2, 2.4) — a real, CONFIRMED gap: a modal
+        preview dialog's exec() keeps processing timer events, so the
+        2s poll timer and the 20s backend-poll timer both keep firing
+        while the user is looking at the preview — including a real
+        SoulSeek download landing and writing a NEW local_files row
+        mid-preview. Re-plans FRESH from the exact same track ids right
+        before doing any real work and refuses (as a real per-track
+        'failed' outcome, not a silent skip) any track whose fresh plan
+        disagrees with what the user actually confirmed — safer than
+        merely blocking the timers, since it also closes the "left the
+        dialog open for ten minutes" window the brief itself calls out.
         """
         result = RenameResult()
 
+        track_ids = [plan.track_id for plan in plans]
+        fresh_plans_by_track_id = {
+            plan.track_id: plan
+            for plan in self.plan_renames(track_ids=track_ids)
+        }
+
         for plan in plans:
+            fresh_plan = fresh_plans_by_track_id.get(plan.track_id)
+
+            if (
+                    fresh_plan is None
+                    or fresh_plan.action != plan.action
+                    or fresh_plan.proposed_path != plan.proposed_path
+            ):
+                result.failed += 1
+                result.details.append(
+                    {
+                        "track_id": plan.track_id,
+                        "reason": "plan_changed_since_confirmed",
+                        "message": (
+                            "real state changed since this rename was "
+                            "confirmed — refused; re-open the preview "
+                            "to see the current plan"
+                        ),
+                    }
+                )
+                continue
+
             if plan.action == "already_correct":
                 result.already_correct += 1
             elif plan.action == "not_auto_matched":
@@ -968,8 +1054,6 @@ class MetadataService:
             elif plan.action in ("no_local_file", "error"):
                 result.skipped_no_local_file += 1
             elif plan.action in ("rename", "collision"):
-                if plan.action == "collision":
-                    result.collisions += 1
                 try:
                     self._apply_one_rename(plan, result)
                 except Exception as error:
@@ -1058,6 +1142,29 @@ class MetadataService:
             current_path.rename(final_path)
 
         _rename_sidecar_if_present(current_path, final_path)
+
+        # Roadmap item 76 (P2, 2.3) — the honest-preview fix: the
+        # preview shows plan.proposed_path.name, but this real, fresh
+        # _resolve_collision() call (real filesystem state at WRITE
+        # time, which can differ from the plan's own snapshot) can
+        # legitimately return a different name. Silence here is
+        # EXACTLY what made "preview said X, disk got Y" invisible —
+        # covers both a plan already flagged 'collision' at plan time
+        # (almost always resolves to a different, suffixed name) and
+        # the more alarming case: a plan previewed as a clean 'rename'
+        # that hits a genuinely NEW collision only discovered now.
+        if final_path.name != plan.proposed_path.name:
+            result.collisions += 1
+            result.details.append(
+                {
+                    "track_id": plan.track_id,
+                    "reason": "renamed_with_different_name_than_previewed",
+                    "message": (
+                        f"renamed to '{final_path.name}', not the "
+                        f"previewed '{plan.proposed_path.name}'"
+                    ),
+                }
+            )
 
         # Loaded from the DB via get_by_id above, so .id is set.
         assert local_file.id is not None

@@ -415,3 +415,232 @@ def test_apply_renames_end_to_end_multi_artist_feat_accented_and_byte_cap(
     # The DB row follows the file, and track_matches still resolves.
     assert local_file.relative_path == proposed_name
     assert local_file.id == plans[0].local_file_id
+
+
+# --- Roadmap item 76 (P2): within-batch collisions, honest preview
+# mismatches, refusing a stale confirmed plan -----------------------------
+
+def test_plan_renames_flags_within_batch_collision_at_plan_time(tmp_path):
+    # Roadmap item 76 (P2, 2.2) — the real, CONFIRMED defect: two
+    # tracks whose canonical filenames land on the SAME target. Neither
+    # target exists on disk yet at plan time, so the OLD per-track-only
+    # collision check would show both as clean 'rename' plans -- this
+    # must catch it before either file is touched.
+    root = tmp_path / "music"
+    _write_real_file(root / "download1.mp3")
+    _write_real_file(root / "download2.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "download1.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    seed_matched_track(
+        service, location, "t2", "download2.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+    _seed_playlist_with_track(service, "t2")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert len(plans) == 2
+    assert {plan.action for plan in plans} == {"collision"}
+    assert all(
+        "another track in this same batch" in (plan.message or "")
+        for plan in plans
+    )
+
+
+def test_apply_renames_within_batch_collision_resolves_with_suffix_for_one(
+        tmp_path,
+):
+    root = tmp_path / "music"
+    _write_real_file(root / "download1.mp3", b"content-1")
+    _write_real_file(root / "download2.mp3", b"content-2")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "download1.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    seed_matched_track(
+        service, location, "t2", "download2.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+    _seed_playlist_with_track(service, "t2")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+    result = service.apply_renames(plans)
+
+    assert result.renamed == 2
+    assert result.failed == 0
+    # Exactly one plain name and one " (2)" suffixed name -- both files
+    # survive, neither overwrites the other.
+    assert (root / "Real Artist - Real Title.mp3").exists()
+    assert (root / "Real Artist - Real Title (2).mp3").exists()
+    # Roadmap item 76 (P2, 2.3) -- both plans were previewed as
+    # 'collision', but only ONE of them actually ends up with a
+    # different real name than previewed (whichever is processed
+    # second — the first to reach the target still lands on its own
+    # exact previewed name). Reporting the REAL outcome, not the
+    # plan-time guess, is the honest behavior.
+    assert result.collisions == 1
+    mismatch_details = [
+        d for d in result.details
+        if d["reason"] == "renamed_with_different_name_than_previewed"
+    ]
+    assert len(mismatch_details) == 1
+    assert "Real Artist - Real Title (2).mp3" in mismatch_details[0]["message"]
+
+
+def test_apply_renames_records_honest_detail_when_resolved_name_differs(
+        tmp_path,
+):
+    # Roadmap item 76 (P2, 2.3) — the exact "preview said X, disk got
+    # Y" symptom: a real, different, pre-existing file already at the
+    # target name (a genuine filesystem collision, known at plan time).
+    root = tmp_path / "music"
+    _write_real_file(root / "wrong_name.mp3", b"track-being-renamed")
+    _write_real_file(root / "Real Artist - Real Title.mp3", b"unrelated")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "wrong_name.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+    result = service.apply_renames(plans)
+
+    assert result.renamed == 1
+    assert result.collisions == 1
+    detail = next(
+        d for d in result.details
+        if d["reason"] == "renamed_with_different_name_than_previewed"
+    )
+    assert "Real Artist - Real Title (2).mp3" in detail["message"]
+    assert "Real Artist - Real Title.mp3" in detail["message"]
+
+
+def test_apply_renames_refuses_when_a_new_collision_appears_after_confirm(
+        tmp_path,
+):
+    # Roadmap item 76 (P2, 2.4) — the real, CONFIRMED defect: a modal
+    # preview dialog's exec() keeps processing timer events, so a real
+    # download landing (or anything else touching this track) between
+    # confirm and apply must not silently proceed against a stale plan.
+    root = tmp_path / "music"
+    _write_real_file(root / "wrong_name.mp3", b"content")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "wrong_name.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+    assert plans[0].action == "rename"
+
+    # Simulate a real download landing at the target path while the
+    # preview dialog was still open, mid-preview.
+    _write_real_file(
+        root / "Real Artist - Real Title.mp3", b"landed-mid-preview",
+    )
+
+    result = service.apply_renames(plans)
+
+    assert result.renamed == 0
+    assert result.failed == 1
+    assert "plan_changed_since_confirmed" == result.details[0]["reason"]
+    # Neither file was touched.
+    assert (root / "wrong_name.mp3").read_bytes() == b"content"
+    assert (root / "Real Artist - Real Title.mp3").read_bytes() == (
+        b"landed-mid-preview"
+    )
+
+
+def test_plan_renames_stale_db_row_after_a_completed_rename_reads_as_collision(
+        tmp_path,
+):
+    # Roadmap item 76 (P2, 2.6) — the REAL failing shape found live in
+    # Phase 0.2 against the real production "Test" playlist: a
+    # previous rename batch successfully renamed a file on disk, but
+    # local_files.relative_path was never reconciled with the new real
+    # name (root cause not conclusively identified — see docs/
+    # HISTORY.md #71). Reproduces the exact real symptom: local_files
+    # still holds the OLD name (which no longer exists on disk), while
+    # the file ALREADY sitting at the canonical new name is mistaken
+    # for a competing collision rather than recognized as this same
+    # track's own already-completed rename. This is a real, understood
+    # consequence of DB/disk drift, not a crash or silent data loss —
+    # scan_and_match (already this project's designed self-healing
+    # path, see item 40) is the real fix for the drift itself; this
+    # test documents the mechanism, not a code change to plan_renames.
+    root = tmp_path / "music"
+    old_path = root / "old_stale_name.mp3"
+    _write_real_file(old_path)
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "old_stale_name.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    # Simulate the real Phase 0.2 shape: the file was already renamed
+    # on disk (old name gone, new canonical name now sitting there
+    # instead), but local_files.relative_path was never reconciled.
+    old_path.unlink()
+    _write_real_file(root / "Real Artist - Real Title.mp3", b"already-renamed")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert plans[0].action == "collision"
+    assert plans[0].current_path == root / "old_stale_name.mp3"
+    assert plans[0].proposed_path == root / "Real Artist - Real Title.mp3"
+
+
+def test_apply_renames_refuses_when_match_changed_after_confirm(tmp_path):
+    # A different, real shape of the same 2.4 defect: the track's own
+    # match_method changed (e.g. a background match_all() demoting it)
+    # between confirm and apply -- the fresh re-plan now reads
+    # 'not_auto_matched' where the confirmed plan said 'rename'.
+    root = tmp_path / "music"
+    _write_real_file(root / "wrong_name.mp3", b"content")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "wrong_name.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+    assert plans[0].action == "rename"
+
+    with service.database.transaction() as connection:
+        service.track_matches.upsert(
+            TrackMatch(
+                track_id="t1", local_file_id=plans[0].local_file_id,
+                match_method="needs_review", score=60.0,
+                matched_at="2026-01-01",
+            ),
+            connection,
+        )
+
+    result = service.apply_renames(plans)
+
+    assert result.renamed == 0
+    assert result.failed == 1
+    assert "plan_changed_since_confirmed" == result.details[0]["reason"]
+    assert (root / "wrong_name.mp3").exists()

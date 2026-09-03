@@ -10295,3 +10295,97 @@ rounds never actually asked for. `mypy --strict` clean; full suite:
 in a full-suite run, `test_history_refresh_button_refetches`, is the
 pre-existing documented flake from items 7/8's own closing notes —
 confirmed non-regression via 3x isolated reruns, all passing).
+
+### 76 — P2
+
+The brief named this the item needing "the most live investigation,"
+and Phase 0.2 (see §71 above) already did that investigation before
+any code was touched: the real production "Test" playlist's files were
+found in a live, pre-existing, partially-applied rename state (5 files
+already renamed on disk via Seeker's own Rename feature; the DB's
+`local_files.relative_path` never reconciled for any of them — root
+cause not conclusively identified). That finding **ruled out** all
+three of the brief's own hypothesized defects (A/B/C — preview-not-
+authoritative, no-within-batch-check, a live download landing mid-
+preview) as the specific mechanism behind the four real files that kept
+their prefixes: none of A/B/C explains a successful rename whose DB
+row silently never updates. Reconciled via a normal `seeker library
+scan` + `seeker library match` (DB-only, real files untouched), with
+the user's explicit go-ahead, before any code changes — a follow-up
+dry run confirmed the false collisions were gone.
+
+**2.1:** stated above — reported, not silently absorbed into "fixed it
+anyway." The four "regardless" fixes (2.2-2.5) were still built exactly
+as briefed, since they're real, independently-confirmed defects
+regardless of which one produced this specific report.
+
+**2.2 (within-batch collisions):** new `_mark_within_batch_collisions()`
+— a second pass over `plan_renames`'s own output, before returning it,
+counting how many plans target each real proposed path and re-flagging
+any `'rename'` plan whose target is shared by another plan in the SAME
+batch as `'collision'` instead. Confirmed via a live test: two tracks
+with the same artist/title (a duplicated playlist entry, or two remixes
+normalizing to the same string) targeting different real source files,
+neither of which reads as a collision individually since neither target
+exists on disk yet — now both correctly flagged at plan time.
+
+**2.3 (honest resolved-name reporting) — a real, honest redefinition of
+`collisions`, not just an added message:** `_apply_one_rename` now
+compares its real, fresh `_resolve_collision()` result against
+`plan.proposed_path.name` and records a detail (`"renamed to X, not the
+previewed Y"`) plus a `collisions` increment whenever they differ —
+moved OUT of the outer loop's old unconditional `if plan.action ==
+"collision": result.collisions += 1`. This is a real behavior
+refinement, found while writing the test for it: two plans that both
+resolve to the SAME within-batch collision target don't necessarily
+BOTH end up with a different real name than previewed — whichever one
+`apply_renames` processes first still lands on its own exact previewed
+name (nothing else has claimed it yet); only the second one actually
+gets the numbered suffix. `collisions` now reports the real per-file
+outcome, not the plan-time prediction — a plan flagged `'collision'` at
+plan time that happens to win the name anyway is no longer miscounted
+as a mismatch.
+
+**2.4 (refuse a stale confirmed plan) — the brief's own preferred,
+safer option, implemented as re-plan-and-compare:** `apply_renames`
+now calls `self.plan_renames(track_ids=...)` on the exact same track
+ids it was given, BEFORE doing any real work, and compares each fresh
+plan's `(action, proposed_path)` against what the user actually
+confirmed. Any disagreement is a real, counted `'failed'` outcome
+(`reason: "plan_changed_since_confirmed"`), never a silent proceed.
+Two real tests: a file landing at the target path mid-preview (Defect
+C's own scenario, now closed structurally rather than by blocking
+timers), and a track's `match_method` changing between confirm and
+apply (a background `match_all()` demoting it). Both confirm the
+original file is left completely untouched.
+
+**2.5 (honest notice wording):** `format_rename_result_message`'s
+existing `collisions` mention — now, thanks to 2.3's redefinition,
+already meant "the real written name differed from the preview" rather
+than "the plan predicted a suffix" — was reworded to say so explicitly
+and prominently ("N file(s) written with a DIFFERENT name than the
+preview showed"), with the notice kind downgraded to `warning` (not
+bare `success`) whenever any real mismatch occurred, rather than
+leaving this fact only discoverable in the 120px-capped results panel.
+
+**2.6 (regression tests):** the within-batch-collision test above, plus
+a dedicated test reproducing the EXACT real Phase 0.2 failing shape:
+a `local_files` row whose `relative_path` still names a file that no
+longer exists, while a DIFFERENT file already sits at the canonical
+name (the row's own stale view of "my target" reads as a competing
+file). Confirmed this produces an honest `'collision'` classification,
+not a crash or silent data loss — documented explicitly as a real,
+understood consequence of DB/disk drift that `scan_and_match` (this
+project's existing, designed self-healing path, see item 40) is the
+actual fix for, not something `plan_renames` itself needs to special-
+case.
+
+**Live re-verified against the real production "Test" playlist**
+(read-only dry run, no `--apply`): 5 real renames proposed, 0
+collisions, 4 already correct, 1 not auto-matched — the false
+collisions from Phase 0.2's original desync are gone, and the fixed
+code doesn't introduce any new ones against real data.
+
+7 new tests across `test_metadata_service_rename.py` (5) and
+`test_ui_smoke.py` (2). `mypy --strict` clean; full suite: 908 passed /
+1 skipped, 0 regressions.

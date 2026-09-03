@@ -4359,6 +4359,38 @@ def test_rename_files_button_confirmed_calls_apply_and_shows_result(
     )
 
 
+def test_rename_result_notice_names_files_whose_written_name_differed(
+        qtbot, monkeypatch,
+):
+    # Roadmap item 76 (P2, 2.5) — the notice must name the count of
+    # files whose real written name differed from the preview, not
+    # bury it as just "N failed" or a bare success message.
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    plans = [_make_rename_plan()]
+    application = FakeApplication(
+        playlists=playlists, rename_plans=plans,
+        rename_result=RenameResult(renamed=2, collisions=1),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    monkeypatch.setattr(
+        RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Accepted,
+    )
+
+    window.rename_files_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.dashboard_notice.isHidden()
+        and "Renamed 2" in window.dashboard_notice.text(),
+        timeout=2000,
+    )
+    text = window.dashboard_notice.text()
+    assert "1 file" in text
+    assert "DIFFERENT name than the preview" in text
+
+
 # --- Duplicates tab (roadmap item 5) ---------------------------------------
 #
 # Locations load lazily, only once the page is actually shown (see
