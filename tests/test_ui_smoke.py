@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QItemSelectionModel, QRect
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -37,7 +37,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.ui import help_text
+from seeker.ui import help_text, theme
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.ui.main_window import (
     AboutDialog,
@@ -831,7 +831,7 @@ def test_render_next_step_does_not_reenable_a_button_whose_action_is_running(
     window.busy_actions.end("scan")
     window._render_next_step(facts)
     assert window.scan_button.isEnabled() is True
-    assert window.scan_button.text() == "Rescan & match library"
+    assert window.scan_button.text() == "Rescan and match library"
 
 
 def test_render_next_step_does_not_hide_or_reenable_download_button_mid_download(
@@ -1143,7 +1143,7 @@ def test_global_action_buttons_have_the_renamed_labels(qtbot):
     qtbot.addWidget(window)
 
     assert window.sync_button.text() == "Refresh playlists"
-    assert window.scan_button.text() == "Rescan & match library"
+    assert window.scan_button.text() == "Rescan and match library"
     assert window.match_button.text() == "Re-match library"
     assert window.download_button.text() == "Download selected playlist"
 
@@ -1357,6 +1357,57 @@ def test_tagging_controls_row_minimum_size_is_the_widest_item_not_the_sum(
 
     assert layout.minimumSize().width() < sum(widths) / 2
     assert layout.minimumSize().width() >= max(widths)
+
+
+def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
+    # Roadmap item 79 (P11) — bare FlowLayout() left h_spacing/
+    # v_spacing at -1, falling through to _smart_spacing()'s style
+    # query, which is approximately zero under this app's Fusion
+    # styling — the buttons ended up touching. Checked at two widths:
+    # a wide layout (items on one row, horizontal gaps matter) and a
+    # narrow one (items wrap onto multiple rows, vertical gaps matter).
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    layout = window.tagging_controls_layout
+
+    for width in (1600, 320):
+        layout.setGeometry(QRect(0, 0, width, layout.heightForWidth(width)))
+        # Two items (bpm_min_edit/bpm_max_edit) start .hide()'n until
+        # "Analyze audio" is checked -- QWidgetItem.setGeometry() is a
+        # real no-op for a hidden widget (QWidgetItem.isEmpty() short-
+        # circuits it), so a hidden item's geometry is stale/unrelated,
+        # not a gap this test should judge.
+        rects = [
+            layout.itemAt(i).geometry() for i in range(layout.count())
+            if not layout.itemAt(i).widget().isHidden()
+        ]
+        # Adjacent items on the SAME row must have a real horizontal
+        # gap; items that wrapped onto a new row must have a real
+        # vertical gap. Every consecutive pair satisfies at least one.
+        for previous, current in zip(rects, rects[1:]):
+            same_row = previous.top() == current.top()
+            if same_row:
+                assert current.left() - previous.right() >= theme.SPACING_SM
+            else:
+                assert current.top() - previous.bottom() >= theme.SPACING_SM
+
+
+def test_tagging_controls_checkboxes_get_their_full_label_width(qtbot):
+    # Roadmap item 79 (P11.2) — the checkbox labels ("Analyze audio
+    # (BPM/Key)", "Re-tag already tagged files") must render at their
+    # own real sizeHint() width, not be clipped by the layout.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    for checkbox in (
+            window.analyze_audio_checkbox, window.force_retag_checkbox,
+    ):
+        assert checkbox.width() >= checkbox.sizeHint().width()
 
 
 # --- Roadmap item 56 Phase 3: Settings as an in-window page -----------------
@@ -4462,6 +4513,28 @@ def test_duplicates_milestone_shown_with_real_totals(qtbot):
     text = window.duplicates_milestone_label.text()
     assert "reclaimed" in text
     assert "312 files" in text
+
+
+def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
+    # Roadmap item 79 (P12) — a bare "&" in a QPushButton/QLabel string
+    # literal is a real Qt keyboard-mnemonic marker (consumed, renders
+    # as an underline under the next character — "Rescan & match
+    # library" rendered as "Rescan _match library"), not a literal
+    # ampersand. "&Help" on the real menu bar is the one intentional
+    # mnemonic in this file; "&&" escapes to a literal "&" and is not
+    # flagged. A source-level scan, not a widget-by-widget assertion,
+    # so a future string added anywhere in this file is covered
+    # automatically.
+    import re
+    import seeker.ui.main_window as main_window_module
+
+    source = Path(main_window_module.__file__).read_text()
+    literals = re.findall(r'Q(?:PushButton|Label)\(\s*"([^"]*)"', source)
+    stray = [
+        text for text in literals
+        if "&" in text and "&&" not in text and text != "&Help"
+    ]
+    assert stray == []
 
 
 def test_duplicates_tab_controls_have_tooltips(qtbot):

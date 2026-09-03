@@ -1198,6 +1198,25 @@ compress it here before moving on to the next item.
     location(s) a scope resolved to and flags any with zero scanned
     files, closing the "silent unexplained 0" half of the bug.
     [HISTORY §78](docs/HISTORY.md#78)
+79. **Fix P12 (Qt mnemonic in "Rescan & match library") + P11 (tagging
+    controls had no spacing) — done.** A bare `&` in `QPushButton`/
+    `QLabel` text is a real Qt keyboard-mnemonic marker (consumed,
+    renders as an underline), not a literal ampersand — `"&Help"` on
+    the real menu bar is the one intentional exception in this file.
+    New source-level regression test (regexes every button/label
+    string literal in `main_window.py`) catches any future stray `&`
+    automatically. Separately, item 72's `FlowLayout()` was
+    constructed with default `h_spacing`/`v_spacing` (`-1`, falling
+    through to a style-derived value that's ~0 under this app's Fusion
+    styling) — fixed with explicit `theme.SPACING_SM`; **verified as a
+    real defect, not cosmetic**, by reverting in isolation and
+    reproducing a real measured -2px (actual overlap) gap between two
+    buttons. **Standing gotcha for any future FlowLayout geometry
+    test:** a `.hide()`'n item's `QWidgetItem.setGeometry()` is a real
+    Qt no-op (`isEmpty()` short-circuits it) — its `.geometry()` stays
+    stale/default, so exclude hidden items from any geometry-based
+    assertion rather than including every item by index.
+    [HISTORY §79](docs/HISTORY.md#79)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

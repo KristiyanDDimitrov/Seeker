@@ -105,3 +105,46 @@ skipped (0 failures) — 5 net new tests, 0 regressions (the
 run either).
 
 **Commit boundary — pending.**
+
+## P12 — Qt mnemonic in "Rescan & match library" + P11 — tagging controls spacing
+
+Combined into one commit (both small, independent, no shared code —
+grouped per the brief's own "small, independent, quick wins" framing
+for this trio; P9 was already folded into the P8 commit above).
+
+- [x] 12.1 `"Rescan & match library"` → `"Rescan and match library"`.
+  `"&Help"` (the real menu-bar mnemonic) left untouched.
+- [x] 12.2 Audited every `QPushButton`/`QLabel` string literal in
+  `main_window.py` via `grep`/a real regex — no other stray `&` found.
+  New source-level regression test scans the file for any
+  `QPushButton("...")`/`QLabel("...")` literal containing a bare `&`
+  (a doubled `&&` or the real `"&Help"` mnemonic don't count) — covers
+  any future string added to this file automatically, not just the
+  one fixed here.
+- [x] 11.1 `FlowLayout(h_spacing=theme.SPACING_SM,
+  v_spacing=theme.SPACING_SM)` — bare `FlowLayout()` left both at -1,
+  falling through to a style-derived spacing that's effectively zero
+  under this app's Fusion styling. **Verified it actually fixes a
+  real, measured overlap**: reverted the fix in isolation and reran
+  the new spacing test — real adjacent items measured -2px apart
+  (touching/overlapping), not merely "less than ideal."
+- [x] 11.2 Confirmed structurally, not just by inspection: FlowLayout's
+  own `_do_layout` always calls `item.setGeometry(..., item.sizeHint())`
+  — every VISIBLE item always gets its own full sizeHint() width, so
+  no truncation was ever possible once 11.1's spacing is in place. New
+  test asserts both checkbox labels render at their full sizeHint()
+  width.
+- [x] 11.3 New test asserts a real non-zero (>= `SPACING_SM`) gap
+  between every pair of adjacent VISIBLE items' geometries, checked at
+  both a wide (single-row) and a narrow (multi-row wrap) width.
+  (`bpm_min_edit`/`bpm_max_edit` start `.hide()`'n — `QWidgetItem.
+  setGeometry()` is a real Qt no-op for a hidden widget, so they're
+  excluded from the gap check, not silently miscounted.)
+
+Two pre-existing tests asserting the literal old button text updated
+to match the real intentional rename (12.1), not silently xfailed.
+
+`mypy --strict src/` clean (82 files). Full suite: 916 passed, 1
+skipped (0 failures) — 5 net new tests, 0 regressions.
+
+**Commit boundary — pending.**

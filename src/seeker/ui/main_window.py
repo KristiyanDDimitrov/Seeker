@@ -1348,7 +1348,13 @@ class MainWindow(QMainWindow):
         self.sync_button.clicked.connect(self._on_sync_clicked)
         row.addWidget(self.sync_button)
 
-        self.scan_button = QPushButton("Rescan & match library")
+        # Roadmap item 79 (P12) — a bare "&" in QPushButton text is a
+        # Qt keyboard-mnemonic marker, consumed and rendered as an
+        # underline under the following character ("Rescan _match
+        # library"), not a literal ampersand. "&Help" at this file's
+        # menu-bar construction is a real, intentional mnemonic and is
+        # the only place this should ever appear unescaped.
+        self.scan_button = QPushButton("Rescan and match library")
         self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
         self.scan_button.clicked.connect(self._on_scan_clicked)
         row.addWidget(self.scan_button)
@@ -2086,7 +2092,14 @@ class MainWindow(QMainWindow):
         # to almost nothing. FlowLayout fixes both halves at once: it
         # reflows 1-row -> 2-row -> 3-row purely from available width,
         # and its own minimumSize() is just the widest single item.
-        controls = FlowLayout()
+        # Roadmap item 79 (P11) — bare FlowLayout() leaves h_spacing/
+        # v_spacing at -1, which falls through to _smart_spacing()'s
+        # PM_LayoutHorizontalSpacing style query — approximately zero
+        # under this app's Fusion styling, so the buttons touched.
+        # These are deliberate, chosen values, not style-derived ones.
+        controls = FlowLayout(
+            h_spacing=theme.SPACING_SM, v_spacing=theme.SPACING_SM,
+        )
 
         self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
         self.analyze_audio_checkbox.setToolTip(

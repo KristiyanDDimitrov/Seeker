@@ -10529,3 +10529,59 @@ flags an unscanned one), 1 UI test flip (the combo now asserts
 ENABLED, not disabled, in folder-scope mode — the direct P9
 regression test). `mypy --strict` clean (82 files). Full suite: 913
 passed / 1 skipped, 0 regressions.
+
+### 79 — P12 + P11
+
+**P12:** `main_window.py`'s scan button was constructed as
+`QPushButton("Rescan & match library")`. Qt treats a bare `&` in
+button/label text as a keyboard-mnemonic marker — consumed and
+rendered as an underline under the following character, which is
+exactly the reported "Rescan _match library" rendering, not a typo in
+the source string at all. Changed to `"Rescan and match library"`
+(the brief's own preferred fix — simpler than escaping to `&&`, and
+doesn't rely on that escaping surviving a future edit). `"&Help"` on
+the real `QMenuBar` (item 34) is a genuine, intentional mnemonic and
+was explicitly left alone. A `grep -rn '&' src/seeker/ui/` audit found
+no other stray instance. The new regression test is source-level (a
+regex scan of every `QPushButton`/`QLabel` string literal in the
+file) rather than enumerating known widgets one by one, so any string
+added to this file in the future is covered automatically without
+needing its own new assertion.
+
+**P11:** `_build_tagging_controls` constructed its `FlowLayout()` with
+default arguments — `h_spacing`/`v_spacing` both stay `-1`, which
+`horizontalSpacing()`/`verticalSpacing()` resolve via `_smart_spacing()`
+(a `QStyle.pixelMetric(PM_LayoutHorizontalSpacing)` query), which comes
+back at effectively zero under this app's Fusion styling. Item 72's
+own fix (the reflowing layout itself) was real and unrelated to this —
+the row DOES reflow correctly now, its buttons just touch. Fixed with
+explicit `theme.SPACING_SM` for both axes. **Verified the fix actually
+matters, not just "looks more correct":** reverted the change in
+isolation and reran the new spacing-gap test alone — it failed with a
+real measured **-2px** gap between two adjacent buttons (an actual
+overlap, not merely "tight"), confirming this was a real visual defect
+and not a cosmetic nice-to-have.
+
+11.2's "are checkbox labels clipped" question resolved structurally
+rather than by more guessing: `FlowLayout._do_layout` always calls
+`item.setGeometry(QRect(pos, item.sizeHint()))` for every item it
+actually lays out, so once 11.1's spacing exists, no VISIBLE item can
+ever be given less than its own full `sizeHint()` width — there is no
+separate clipping mechanism in this layout to fix. Confirmed with a
+direct test rather than left as an assertion-free "should be fine."
+
+**Real gotcha hit writing the spacing test:** `bpm_min_edit`/
+`bpm_max_edit` start `.hide()`'n (shown only once "Analyze audio" is
+checked) — `QWidgetItem.setGeometry()` is a genuine Qt no-op for a
+hidden widget (`isEmpty()` short-circuits it before the underlying
+`QWidget.setGeometry()` call), so a hidden item's `.geometry()` stays
+whatever stale/default value it had before this layout pass ever ran
+(observed: a bare `(0, 0, 640, 480)`, Qt's own pre-layout default). The
+gap-measuring test excludes hidden items rather than naively including
+every item in the layout's index range.
+
+Two pre-existing tests asserting the literal `"Rescan & match library"`
+string updated to the real new text (not xfailed).
+
+`mypy --strict` clean (82 files). Full suite: 916 passed / 1 skipped,
+5 net new tests, 0 regressions.
