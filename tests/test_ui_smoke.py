@@ -174,8 +174,16 @@ class FakeDuplicateService:
             tuple[str, list[str] | None]
         ] = []
         self.find_duplicate_groups_across_scopes_calls: list[list] = []
-        self.resolve_folder_scopes_calls: list[list[str]] = []
+        self.resolve_folder_scopes_calls: list[
+            tuple[list[str], int | None]
+        ] = []
         self.count_files_for_scopes_calls: list[list] = []
+        self.summarize_scopes_calls: list[list] = []
+        # Roadmap item 77 (P8.3/8.4) — real ScopeSummary fields the fake
+        # returns from summarize_scopes(); defaults keep every existing
+        # test's plain "N files in scope" text unchanged.
+        self._scope_resolved_location_names: list[str] = []
+        self._scope_empty_locations: list[str] = []
         self.delete_local_files_calls: list[
             tuple[list[int], int | None, int | None]
         ] = []
@@ -204,13 +212,29 @@ class FakeDuplicateService:
             progress("Comparing", 1, 1)
         return self._groups
 
-    def resolve_folder_scopes(self, folder_paths: list[str]) -> list:
-        self.resolve_folder_scopes_calls.append(list(folder_paths))
+    def resolve_folder_scopes(
+            self,
+            folder_paths: list[str],
+            preferred_location_id: int | None = None,
+    ) -> list:
+        self.resolve_folder_scopes_calls.append(
+            (list(folder_paths), preferred_location_id)
+        )
         return self._folder_scopes
 
     def count_files_for_scopes(self, scopes: list) -> int:
         self.count_files_for_scopes_calls.append(list(scopes))
         return self._scope_file_count
+
+    def summarize_scopes(self, scopes: list):
+        from seeker.library.duplicate_service import ScopeSummary
+
+        self.summarize_scopes_calls.append(list(scopes))
+        return ScopeSummary(
+            file_count=self._scope_file_count,
+            resolved_location_names=self._scope_resolved_location_names,
+            empty_locations=self._scope_empty_locations,
+        )
 
     def find_duplicate_groups_across_scopes(
             self, scopes: list, progress=None,
@@ -4463,7 +4487,10 @@ def test_duplicates_folders_panel_hidden_until_checkbox_checked(qtbot):
     window.duplicates_folders_checkbox.setChecked(True)
 
     assert not window.duplicates_folders_panel.isHidden()
-    assert not window.duplicates_location_combo.isEnabled()
+    # Roadmap item 77 (P9) — the combo stays enabled in folder-scope
+    # mode now: it's a real tiebreak preference for resolve_folder_
+    # scopes' most-specific-wins matching (P8.2), not dead weight.
+    assert window.duplicates_location_combo.isEnabled()
 
     window.duplicates_folders_checkbox.setChecked(False)
 
@@ -4504,7 +4531,7 @@ def test_duplicates_scope_count_updates_from_the_real_service(qtbot):
     )
     assert (
         application.duplicate_service.resolve_folder_scopes_calls
-        == [["/music/Trance"]]
+        == [(["/music/Trance"], None)]
     )
 
 

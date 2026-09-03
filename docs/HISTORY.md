@@ -10450,3 +10450,82 @@ two total): the Sharing-uploads empty-state span uses `setItem`, not
 net new test, 0 regressions (the one `test_history_refresh_button_
 refetches` failure in the full run is the pre-existing documented
 flake — reconfirmed passing in isolation).
+
+### 78 — P8 + P9
+
+**8.1, settled with real data before any code changed:** this session
+has filesystem access to its own real production `seeker.db` (same
+Mac/account running `uv run seeker-ui`), so the brief's own diagnostic
+query was run for real rather than theorized about:
+
+```
+(1, 'x9-pro', '/Volumes/X9 Pro', 3264, 3161)
+(4, 'Test', '/Volumes/X9 Pro/Music/Test', 8, 4)
+(16, 'Music', '/Volumes/X9 Pro/Music', 0, 0)
+```
+
+This is 8b's exact shape, live: "Music" is a real registered location,
+nested one level ABOVE "Test" (itself nested inside "x9-pro"), with
+zero scanned files. Simulating the OLD `resolve_folder_scopes`
+(alphabetical `ORDER BY name`, first match wins) against these rows
+confirmed the bug directly: a folder path equal to "Test"'s own
+registered path matches "Music" first ("Music" < "Test" alphabetically)
+— a location with genuinely 0 files — even though "Test" itself has 4
+real fingerprinted files sitting at that exact path. The brief's "other
+account" with 0 files in scope is a different macOS user this session
+has no filesystem access to (per item 0.2's own per-account DB split,
+confirmed as a real, unavoidable limitation, not skipped work) — but 8b
+doesn't need that account to prove itself; it's reproducible right here
+against real data.
+
+**8.2 (most-specific-wins):** `resolve_folder_scopes` now collects
+EVERY candidate location a folder resolves inside (not just the first
+alphabetical match), scores each by its own resolved path's string
+length, and keeps the longest. A genuine specificity TIE turns out to
+be unreachable via two distinct real registered locations under normal
+use — `library_locations.path` is UNIQUE at the DB schema level, so
+two locations can never share a literal path string, and two different
+real ancestor directories of the same folder can never have equal
+string length (nesting strictly increases length with depth). The only
+real way to construct a tie for testing was a symlink: two different
+registered path STRINGS (`real/` and a symlink `link/` pointing at it)
+that `Path.resolve()` collapses to the identical real directory —
+legitimate (a volume reachable via two mount points is the same real
+shape), and now covered by a real test. `preferred_location_id`
+(optional, defaults to the old alphabetical order when omitted) breaks
+that tie — this is also exactly what P9's combo selection now feeds
+in.
+
+**8.3/8.4 (honest reporting):** new `DuplicateService.summarize_scopes()`
+returns a real `ScopeSummary` (file_count + which location(s) the
+folders actually resolved to + which of those have ZERO total scanned
+files, location-wide — not just within the folder). Implemented by
+caching each resolved location's full file list once per call (a
+folder-scope run already touches `LocalFileRepository.get_all_for_
+location` per scope; this reuses that instead of adding a second real
+query per location). `format_duplicates_scope_count()` now always
+names the resolved location(s) ("216 files in scope (Music).") and, if
+any resolved location has never been scanned, says so explicitly
+instead of leaving a bare, unexplained 0.
+
+**P9, combined into this same commit:** the combo's "keep it enabled
+in folder-scope mode" change has no real payoff without 8.2's fix
+landing first (a wrong-but-confident tiebreak preference is worse than
+none), and both changes touch the exact same `resolve_folder_scopes`
+signature — so, deviating from the brief's listed commit order on
+purpose (documented here rather than silently done), they shipped
+together. The combo's `currentIndexChanged` now refreshes the scope
+count live, and its selection is threaded through as `preferred_
+location_id` at every UI call site that calls `resolve_folder_scopes`
+— captured on the GUI thread before entering each `run_worker`
+background closure (reading `QComboBox.currentData()` off the GUI
+thread is a real Qt hazard, not just a style concern — see item 22's
+own standing `Worker` lifetime rule for the same class of gotcha)
+rather than re-read from inside the worker function.
+
+5 new tests: 2 for `resolve_folder_scopes` (nested-most-specific-wins,
+symlink-based real tie), 2 for `summarize_scopes` (names locations;
+flags an unscanned one), 1 UI test flip (the combo now asserts
+ENABLED, not disabled, in folder-scope mode — the direct P9
+regression test). `mypy --strict` clean (82 files). Full suite: 913
+passed / 1 skipped, 0 regressions.

@@ -1178,6 +1178,26 @@ compress it here before moving on to the next item.
     (`viewport().childAt(visualRect(...).center())`), not just
     existence/geometry — the property that gap explains why 4 rounds
     of introspection-only testing missed it. [HISTORY §77](docs/HISTORY.md#77)
+78. **Fix P8 (Duplicates "0 files in scope") + P9 (location combo
+    disabled) — done, combined into one commit on purpose.**
+    `resolve_folder_scopes` now picks the MOST SPECIFIC registered
+    location a folder resolves inside (longest resolved-path match),
+    not the first alphabetical one — confirmed as a real, live bug via
+    this session's own real production DB (a "Music" location with 0
+    scanned files sorts before its own nested "Test" child, which has
+    real fingerprinted files at that exact path). A genuine specificity
+    tie is only reachable via two different registered path STRINGS
+    resolving to the same real directory (`library_locations.path` is
+    UNIQUE at the schema level, so literal duplicates can't happen) —
+    broken by a new optional `preferred_location_id` param, which is
+    exactly what P9's now-always-enabled location combo feeds in at
+    every UI call site (captured on the GUI thread, never read from
+    inside a `run_worker` background closure — reading `QComboBox`
+    state off-thread is a real Qt hazard). New
+    `DuplicateService.summarize_scopes()` → `ScopeSummary` names which
+    location(s) a scope resolved to and flags any with zero scanned
+    files, closing the "silent unexplained 0" half of the bug.
+    [HISTORY §78](docs/HISTORY.md#78)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

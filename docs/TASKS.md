@@ -48,3 +48,60 @@ skipped (0 failures) — 1 net new test, 0 regressions (the one
 documented flake, reconfirmed passing in isolation).
 
 **Commit boundary — pending.**
+
+## P8 — Duplicates "0 files in scope" + P9 — location combo disabled
+
+Combined into one commit (deviating from the brief's listed order,
+noted explicitly): P9's "keep the combo enabled" change has no real
+value until P8's most-specific-wins fix lands to make the combo a
+genuine tiebreak, and both touch `resolve_folder_scopes`' exact same
+signature.
+
+- [x] 8.1 Ran the real query against THIS session's own real
+  production DB (same machine/account this session has filesystem
+  access to — the brief's "other account" is a different macOS user
+  this session cannot reach, noted as a limitation). Real result:
+  `x9-pro` (3264 files, 3161 fingerprinted), `Test` (8 files, 4
+  fingerprinted, nested at `/Volumes/X9 Pro/Music/Test`), `Music` (0
+  files, 0 fingerprinted, registered at `/Volumes/X9 Pro/Music` — the
+  PARENT of `Test`). This is 8b's exact scenario, live and
+  reproducible right here — simulated `resolve_folder_scopes`'s old
+  alphabetical-first logic against these real rows: a folder equal to
+  `Test`'s own path matches `Music` first (alphabetically "Music" <
+  "Test"), which has 0 scanned files — confirming 8b as a real,
+  demonstrated defect in real data, not merely a theoretical one.
+- [x] 8.2 `resolve_folder_scopes` now scores every candidate location a
+  folder resolves inside by resolved-path length and keeps the
+  LONGEST (most specific); a genuine tie (only possible via
+  Path.resolve() collapsing two different registered paths to the
+  same real directory, e.g. a symlink — `library_locations.path` is
+  UNIQUE at the DB level so two locations can never share a literal
+  path string) breaks via a new optional `preferred_location_id`
+  param, else falls back to the existing stable alphabetical order.
+  Two new tests: nested-location most-specific-wins (reproduces the
+  real 8.1 shape structurally), and a real symlink-based tie test.
+- [x] 8.3 New `DuplicateService.summarize_scopes()` → `ScopeSummary`
+  (file_count, resolved_location_names, empty_locations).
+  `format_duplicates_scope_count()` now names the resolved location(s):
+  "216 files in scope (Music)."
+- [x] 8.4 Same `ScopeSummary.empty_locations` — when non-empty, the
+  message says plainly which location has no scanned files yet and to
+  run Rescan and match library first, instead of a bare "0 files in
+  scope."
+- [x] 9.1 `duplicates_location_combo` stays enabled always; wired as
+  `resolve_folder_scopes`' `preferred_location_id` at every UI call
+  site (`_refresh_duplicates_folder_scope_count`,
+  `_compute_fingerprints_for_folders`, `_on_find_duplicates_clicked`),
+  captured on the MAIN thread before entering a background worker
+  closure (reading Qt widget state off-thread is unsafe) and passed
+  in as a plain int parameter. A `currentIndexChanged` handler
+  refreshes the scope count live when the preference changes.
+- [x] 9.2 Both tooltips reworded to describe the real tiebreak
+  behavior; the stale "disables the combo" comment removed.
+
+`mypy --strict src/` clean (82 files). Full suite: 913 passed, 1
+skipped (0 failures) — 5 net new tests, 0 regressions (the
+`test_history_refresh_button_refetches` flake did not reproduce this
+run either).
+
+**Commit boundary — pending.**

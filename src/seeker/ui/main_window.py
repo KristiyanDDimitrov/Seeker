@@ -2640,12 +2640,18 @@ class MainWindow(QMainWindow):
         self.duplicates_location_combo.setToolTip(
             help_text.TOOLTIP_DUPLICATES_LOCATION_COMBO
         )
+        self.duplicates_location_combo.currentIndexChanged.connect(
+            self._on_duplicates_location_changed
+        )
         controls.addWidget(self.duplicates_location_combo)
 
-        # Roadmap item 68 (Phase 7.2) — folder-scope mode disables the
-        # whole-location combo above rather than removing it, so
-        # switching back off restores the prior selection with no extra
-        # bookkeeping.
+        # Roadmap item 77 (P9) — the combo above used to be disabled in
+        # folder-scope mode (reversed: see item 68 Phase 7.2's original
+        # comment here, and CLAUDE.md item 77). It stays enabled now —
+        # once resolve_folder_scopes() does most-specific-wins matching
+        # (P8.2), the selected location is a genuinely useful tiebreak
+        # preference for an ambiguous (nested-location) folder, not
+        # dead weight the user had to uncheck-then-recheck around.
         self.duplicates_folders_checkbox = QCheckBox("Only these folders…")
         self.duplicates_folders_checkbox.setToolTip(
             help_text.TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX
@@ -2848,6 +2854,17 @@ class MainWindow(QMainWindow):
         name = self.duplicates_location_combo.currentData()
         return str(name) if name is not None else None
 
+    def _selected_duplicates_location_id(self) -> int | None:
+        # Roadmap item 77 (P9) — the combo stays enabled in folder-scope
+        # mode now, and its selection is passed through as
+        # resolve_folder_scopes()'s tiebreak preference (P8.2) rather
+        # than being dead weight while checked.
+        name = self._selected_duplicates_location()
+        if name is None:
+            return None
+        location = self._duplicates_locations_by_name.get(name)
+        return location.id if location else None
+
     def _selected_duplicates_folders(self) -> list[str]:
         if not self.duplicates_folders_checkbox.isChecked():
             return []
@@ -2855,7 +2872,13 @@ class MainWindow(QMainWindow):
 
     def _on_duplicates_folders_toggled(self, checked: bool) -> None:
         self.duplicates_folders_panel.setVisible(checked)
-        self.duplicates_location_combo.setEnabled(not checked)
+        self._refresh_duplicates_folder_scope_count()
+
+    def _on_duplicates_location_changed(self) -> None:
+        # Roadmap item 77 (P9) — a location-combo change can change
+        # which real location a tied folder scope resolves to (P8.2's
+        # tiebreak), so the scope count must reflect it live, not just
+        # sit stale until the next folder is added/removed.
         self._refresh_duplicates_folder_scope_count()
 
     def _on_add_duplicates_folder_clicked(self) -> None:
@@ -2882,21 +2905,27 @@ class MainWindow(QMainWindow):
         self._refresh_duplicates_folder_scope_count()
 
     def _refresh_duplicates_folder_scope_count(self) -> None:
-        if not self._duplicates_folder_paths:
+        if (
+                not self.duplicates_folders_checkbox.isChecked()
+                or not self._duplicates_folder_paths
+        ):
             self.duplicates_scope_count_label.setText("")
             return
 
         folders = list(self._duplicates_folder_paths)
+        preferred_location_id = self._selected_duplicates_location_id()
 
-        def compute_count() -> int:
+        def compute_summary() -> Any:
             service = self.application.duplicate_service
-            scopes = service.resolve_folder_scopes(folders)
-            return service.count_files_for_scopes(scopes)
+            scopes = service.resolve_folder_scopes(
+                folders, preferred_location_id=preferred_location_id,
+            )
+            return service.summarize_scopes(scopes)
 
         run_worker(
-            self.thread_pool, compute_count,
-            on_finished=lambda count: self.duplicates_scope_count_label.setText(
-                help_text.format_duplicates_scope_count(count)
+            self.thread_pool, compute_summary,
+            on_finished=lambda summary: self.duplicates_scope_count_label.setText(
+                help_text.format_duplicates_scope_count(summary)
             ),
             on_error=self.duplicates_scope_count_label.setText,
         )
@@ -2905,10 +2934,11 @@ class MainWindow(QMainWindow):
         folders = self._selected_duplicates_folders()
 
         if folders:
+            preferred_location_id = self._selected_duplicates_location_id()
             self._run_busy_worker(
                 "compute_fingerprints", self.compute_fingerprints_button,
                 lambda progress: self._compute_fingerprints_for_folders(
-                    folders, progress,
+                    folders, progress, preferred_location_id,
                 ),
                 status_label=self.duplicates_status_label,
                 on_finished=self._render_fingerprint_result,
@@ -2946,6 +2976,7 @@ class MainWindow(QMainWindow):
             self,
             folders: list[str],
             progress: Callable[[str, int, int], None],
+            preferred_location_id: int | None = None,
     ) -> dict[str, Any]:
         # Roadmap item 68 (Phase 7.2/7.3) — compute_fingerprints() is
         # itself scoped to one library location per call; folder mode
@@ -2956,7 +2987,9 @@ class MainWindow(QMainWindow):
         # the real combined total — so the activity strip still reads
         # 1..total once, not resetting partway through.
         service = self.application.duplicate_service
-        scopes = service.resolve_folder_scopes(folders)
+        scopes = service.resolve_folder_scopes(
+            folders, preferred_location_id=preferred_location_id,
+        )
         total = service.count_files_for_scopes(scopes)
 
         folders_by_location: dict[str, list[str]] = {}
@@ -3011,6 +3044,7 @@ class MainWindow(QMainWindow):
             # each row's location individually via
             # _duplicates_locations_by_id instead.
             self._current_duplicates_location_name = None
+            preferred_location_id = self._selected_duplicates_location_id()
 
             self._run_busy_worker(
                 "find_duplicates", self.find_duplicates_button,
@@ -3018,7 +3052,10 @@ class MainWindow(QMainWindow):
                     self.application.duplicate_service
                     .find_duplicate_groups_across_scopes(
                         self.application.duplicate_service
-                        .resolve_folder_scopes(folders),
+                        .resolve_folder_scopes(
+                            folders,
+                            preferred_location_id=preferred_location_id,
+                        ),
                         progress=progress,
                     )
                 ),

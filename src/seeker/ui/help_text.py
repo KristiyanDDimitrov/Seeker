@@ -464,9 +464,10 @@ TOOLTIP_DOUBLE_CLICK_TO_REVIEW = "Double-click to review this track."
 
 TOOLTIP_DUPLICATES_LOCATION_COMBO = (
     "Which registered library location to scan, when scanning a whole "
-    "location — check \"Only these folders…\" below to scope to "
-    "specific folders instead (optionally across more than one "
-    "location)."
+    "location. Also used with \"Only these folders…\" below: if a "
+    "folder sits inside more than one registered location (a nested "
+    "location registered inside another), this is the tiebreak "
+    "preference — the most specific match still always wins first."
 )
 TOOLTIP_COMPUTE_FINGERPRINTS = (
     "Compute an audio fingerprint for every file in scope that doesn't "
@@ -482,7 +483,8 @@ TOOLTIP_FIND_DUPLICATES = (
 TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX = (
     "Scope to specific folders instead of a whole location — several "
     "folders are pooled and compared together, even across different "
-    "registered locations."
+    "registered locations. The location combo above stays available "
+    "as a tiebreak preference while this is checked."
 )
 TOOLTIP_DUPLICATES_ADD_FOLDER = "Add a folder to the scope."
 TOOLTIP_DUPLICATES_REMOVE_FOLDER = "Remove the selected folder(s) from the scope."
@@ -493,12 +495,38 @@ DUPLICATES_FOLDER_NOT_IN_A_LOCATION = (
 )
 
 
-def format_duplicates_scope_count(file_count: int) -> str:
+def format_duplicates_scope_count(summary: Any) -> str:
     """Roadmap item 68 (Phase 7.2) — shown BEFORE a real, potentially
     ~10-minute-at-real-scale operation (item 39's own real number), so
     the scope control is worth having: the user sees what it actually
-    covers first."""
-    return f"{file_count} file{'s' if file_count != 1 else ''} in scope."
+    covers first.
+
+    Roadmap item 77 (P8.3/8.4) — takes a real
+    `DuplicateService.ScopeSummary` (typed `Any` here only to avoid a
+    library-layer import in this presentation-only module, matching
+    this file's existing pattern for `result: dict[str, Any]`
+    elsewhere below) rather than a bare int: a silent "0 files in
+    scope" was the actual reported bug — this now always names which
+    real location(s) the folders resolved to, and says PLAINLY when
+    one of them has never been scanned at all, instead of leaving that
+    only discoverable by reading source code.
+    """
+    locations = ", ".join(summary.resolved_location_names)
+    location_suffix = f" ({locations})" if locations else ""
+    base = (
+        f"{summary.file_count} "
+        f"file{'s' if summary.file_count != 1 else ''} in scope"
+        f"{location_suffix}."
+    )
+
+    if not summary.empty_locations:
+        return base
+
+    empty = ", ".join(summary.empty_locations)
+    return (
+        f"{base} '{empty}' has no scanned files yet — run Rescan and "
+        f"match library first."
+    )
 
 
 _FINGERPRINT_FAILURE_REASON_LABELS = {

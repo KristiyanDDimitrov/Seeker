@@ -123,6 +123,16 @@ class DuplicateFolderScope:
     folder_relative_path: str
 
 
+@dataclass
+class ScopeSummary:
+    """Roadmap item 77 (P8.3/8.4) — the honest scope-count result:
+    not just a bare number, but which real location(s) it resolved to
+    and which of those have never been scanned at all."""
+    file_count: int
+    resolved_location_names: list[str]
+    empty_locations: list[str]
+
+
 def _path_within_folder(file_relative_path: str, folder_relative_path: str) -> bool:
     # Roadmap item 68 (Phase 7.2) — path-prefix matching that respects
     # separator boundaries: "Trance" must never match "TranceX". A bare
@@ -300,7 +310,9 @@ class DuplicateService:
         print(f"  Fingerprinted: {local_file.filename}")
 
     def resolve_folder_scopes(
-            self, folder_paths: list[str],
+            self,
+            folder_paths: list[str],
+            preferred_location_id: int | None = None,
     ) -> list[DuplicateFolderScope]:
         """Roadmap item 68 (Phase 7.2) — resolves real, absolute folder
         paths (e.g. from a folder picker) against every registered
@@ -308,6 +320,25 @@ class DuplicateService:
         location; anything else is rejected with a clear message —
         fingerprints only exist for indexed files, and an unregistered
         folder was never scanned at all.
+
+        Roadmap item 77 (P8) — MOST-SPECIFIC-WINS: a folder can be
+        "inside" more than one registered location at once (a location
+        registered at a parent path, and another registered at a
+        nested child path both cover the same real folder), and the
+        previous code took the first alphabetical-by-name match
+        (get_all()'s own ORDER BY name), not the best one. Confirmed
+        live against this project's own real production DB: a folder
+        equal to the "Test" location's own path (nested under "Music",
+        which is itself nested under "x9-pro") alphabetically matched
+        "Music" first — a location with ZERO scanned files — giving a
+        false "0 files in scope" even though "Test" had real
+        fingerprinted files at that exact path. Now every candidate
+        location the folder resolves inside is scored by its own
+        resolved path length and the LONGEST (most specific) one wins.
+        `preferred_location_id`, when given (the UI's own selected
+        location combo — see P9), breaks a genuine tie only; it can
+        never override a strictly-more-specific match, so "prefer this
+        location" never silently widens a folder's real scope.
         """
         with self.database.transaction() as connection:
             locations = self.locations.get_all(connection)
@@ -316,28 +347,39 @@ class DuplicateService:
 
         for folder_path in folder_paths:
             folder = Path(folder_path).resolve()
-            matched_location: LibraryLocation | None = None
-            matched_relative = ""
+            candidates: list[tuple[LibraryLocation, str]] = []
 
             for location in locations:
                 location_path = Path(location.path).resolve()
 
                 if folder == location_path:
-                    matched_location = location
-                    matched_relative = ""
-                    break
+                    candidates.append((location, ""))
+                elif folder.is_relative_to(location_path):
+                    candidates.append(
+                        (location, str(folder.relative_to(location_path))),
+                    )
 
-                if folder.is_relative_to(location_path):
-                    matched_location = location
-                    matched_relative = str(folder.relative_to(location_path))
-                    break
-
-            if matched_location is None:
+            if not candidates:
                 raise LibraryLocationNotFoundError(
                     f"'{folder_path}' is not inside any registered "
                     f"library location — add it as a location first, or "
                     f"pick a folder inside one that's already registered."
                 )
+
+            best_specificity = max(
+                len(str(Path(location.path).resolve())) for location, _ in candidates
+            )
+            tied = [
+                (location, relative) for location, relative in candidates
+                if len(str(Path(location.path).resolve())) == best_specificity
+            ]
+
+            matched_location, matched_relative = tied[0]
+            if preferred_location_id is not None:
+                for location, relative in tied:
+                    if location.id == preferred_location_id:
+                        matched_location, matched_relative = location, relative
+                        break
 
             scopes.append(
                 DuplicateFolderScope(
@@ -438,6 +480,52 @@ class DuplicateService:
         (item 39's own real number), so the scope control is worth
         having — the user sees what a scope actually covers first."""
         return len(self._files_for_scopes(scopes))
+
+    def summarize_scopes(
+            self, scopes: list[DuplicateFolderScope],
+    ) -> "ScopeSummary":
+        """Roadmap item 77 (P8.3/8.4) — the honest version of
+        count_files_for_scopes(): a bare "0 files in scope" gives no
+        way to tell "this folder really is empty" apart from "this
+        resolved to the wrong (unscanned) location", which is exactly
+        what made the reported bug unreadable. Also reports which
+        location(s) the folders actually resolved to (P8.3) and which
+        of those have NO scanned files at all, location-wide, not just
+        within the folder (P8.4) — a location with zero total
+        local_files rows was never scanned, so "run a scan" is the
+        real fix, not something more fingerprinting could ever solve.
+        """
+        file_count = 0
+        resolved_location_names: list[str] = []
+        empty_locations: list[str] = []
+        files_by_location_id: dict[int, list[LocalFile]] = {}
+
+        with self.database.transaction() as connection:
+            for scope in scopes:
+                assert scope.location.id is not None
+
+                if scope.location.id not in files_by_location_id:
+                    all_files = self.local_files.get_all_for_location(
+                        scope.location.id, connection,
+                    )
+                    files_by_location_id[scope.location.id] = all_files
+                    resolved_location_names.append(scope.location.name)
+                    if not all_files:
+                        empty_locations.append(scope.location.name)
+
+                all_files = files_by_location_id[scope.location.id]
+                file_count += sum(
+                    1 for f in all_files
+                    if _path_within_folder(
+                        f.relative_path, scope.folder_relative_path,
+                    )
+                )
+
+        return ScopeSummary(
+            file_count=file_count,
+            resolved_location_names=resolved_location_names,
+            empty_locations=empty_locations,
+        )
 
     def delete_local_files(
             self,

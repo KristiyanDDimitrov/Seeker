@@ -37,15 +37,15 @@ def make_database(tmp_path) -> Database:
     return database
 
 
-def register_location(database: Database, path) -> LibraryLocation:
+def register_location(database: Database, path, name: str = "Main") -> LibraryLocation:
     repo = LibraryLocationRepository(database)
     location = LibraryLocation(
-        name="Main", path=str(path),
+        name=name, path=str(path),
         added_at=datetime.now(timezone.utc).isoformat(),
     )
     with database.transaction() as connection:
         repo.add(location, connection)
-        return repo.get_by_name("Main", connection)
+        return repo.get_by_name(name, connection)
 
 
 def add_local_file(
@@ -692,6 +692,107 @@ def test_resolve_folder_scopes_rejects_a_folder_outside_every_location(
 
     with pytest.raises(LibraryLocationNotFoundError):
         service.resolve_folder_scopes([str(outside)])
+
+
+def test_resolve_folder_scopes_prefers_the_most_specific_nested_location(
+        tmp_path,
+):
+    # Roadmap item 77 (P8.2) — real, live-confirmed bug: two registered
+    # locations where one is nested inside the other. A folder equal to
+    # the NESTED location's own path used to match whichever location
+    # happened to sort first alphabetically (get_all()'s ORDER BY
+    # name), not the most specific one. "Music" sorts before "Test"
+    # alphabetically but "Test" is the correct (nested, more specific)
+    # match — reproducing the exact real production shape from the
+    # brief (a "Test" location nested inside a "Music" location nested
+    # inside "x9-pro").
+    database = make_database(tmp_path)
+    outer_dir = tmp_path / "outer"
+    inner_dir = outer_dir / "Music"
+    nested_dir = inner_dir / "Test"
+    nested_dir.mkdir(parents=True)
+    register_location(database, outer_dir, name="x9-pro")
+    register_location(database, inner_dir, name="Music")
+    nested_location = register_location(database, nested_dir, name="Test")
+
+    service = make_service(database)
+    scopes = service.resolve_folder_scopes([str(nested_dir)])
+
+    assert len(scopes) == 1
+    assert scopes[0].location.name == nested_location.name
+    assert scopes[0].folder_relative_path == ""
+
+
+def test_resolve_folder_scopes_tiebreak_uses_preferred_location_id(
+        tmp_path,
+):
+    # A genuine specificity tie: `library_locations.path` is UNIQUE at
+    # the DB level, so two locations can never be registered at the
+    # exact same string path — but two DIFFERENT registered paths can
+    # still resolve() to the identical real directory (e.g. a symlink,
+    # or the same volume reachable via two mount points), which is
+    # exactly what Path.resolve() collapses here. preferred_location_id
+    # (the UI's own selected location combo, P9) breaks that real tie;
+    # omitting it falls back to get_all()'s stable alphabetical order.
+    database = make_database(tmp_path)
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link_dir = tmp_path / "link"
+    link_dir.symlink_to(real_dir)
+    register_location(database, real_dir, name="A")
+    location_b = register_location(database, link_dir, name="B")
+
+    service = make_service(database)
+
+    default_scopes = service.resolve_folder_scopes([str(real_dir)])
+    assert default_scopes[0].location.name == "A"
+
+    preferred_scopes = service.resolve_folder_scopes(
+        [str(real_dir)], preferred_location_id=location_b.id,
+    )
+    assert preferred_scopes[0].location.name == "B"
+
+    # A preference that ISN'T among the tied candidates never overrides
+    # a strictly more specific match, and is simply ignored when it
+    # doesn't apply to this folder at all.
+    unrelated_scopes = service.resolve_folder_scopes(
+        [str(real_dir)], preferred_location_id=999999,
+    )
+    assert unrelated_scopes[0].location.name == "A"
+
+
+def test_summarize_scopes_reports_resolved_location_names(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    (music_dir / "A").mkdir(parents=True)
+    location = register_location(database, music_dir)
+    add_local_file(database, location, "A/one.mp3", "mp3", 1000)
+
+    service = make_service(database)
+    scopes = service.resolve_folder_scopes([str(music_dir / "A")])
+    summary = service.summarize_scopes(scopes)
+
+    assert summary.file_count == 1
+    assert summary.resolved_location_names == [location.name]
+    assert summary.empty_locations == []
+
+
+def test_summarize_scopes_flags_a_location_with_no_scanned_files(tmp_path):
+    # Roadmap item 77 (P8.4) — a location that resolves correctly but
+    # has never been scanned reads as an honest "no scanned files yet",
+    # not a bare, unexplained "0 files in scope."
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    service = make_service(database)
+    scopes = service.resolve_folder_scopes([str(music_dir)])
+    summary = service.summarize_scopes(scopes)
+
+    assert summary.file_count == 0
+    assert summary.resolved_location_names == [location.name]
+    assert summary.empty_locations == [location.name]
 
 
 def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
