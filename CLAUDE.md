@@ -76,7 +76,10 @@ src/seeker/
 │                              #   aggregate() header (item 53)
 │   ├── formatting.py           # format_timestamp/file_size/speed/duration
 │                              #   — shared by History, tagged-at, ETA
-│   ├── theme.py                # dark theme tokens + apply_theme() (item 47)
+│   ├── theme.py                # dark theme tokens + apply_theme() (item 47);
+│                              #   make_card()/cell_widget() (item 80) — the
+│                              #   only place a rounded table card or a
+│                              #   setCellWidget container is built
 │   ├── notice.py               # InlineNotice — persistent banner (item 47)
 │   ├── flow_layout.py           # FlowLayout — reflowing control row,
 │                              #   minimumSize() = widest item not the
@@ -1217,6 +1220,34 @@ compress it here before moving on to the next item.
     stale/default, so exclude hidden items from any geometry-based
     assertion rather than including every item by index.
     [HISTORY §79](docs/HISTORY.md#79)
+80. **Fix P10 (square-edged cell widgets break the rounded card
+    corners, global) — done.** Qt's `border-radius` on a widget never
+    clips that widget's children — any `setCellWidget` widget reaching
+    a table's edge paints flat square corners straight over the
+    table's own rounded corner, and no stylesheet rule can fix a
+    paint-order/clipping problem. New `theme.make_card(inner) ->
+    QFrame` is the structural fix: the frame owns the real rounded
+    border/background (`QFrame#card` + `WA_StyledBackground` per item
+    47's own gotcha #2); `inner` gets its own border turned off and
+    sits behind a small real content margin (`SPACING_XS`) that
+    physically keeps any of its edge-reaching children away from the
+    frame's rounded arc. Routed through all 11 real
+    `QTableWidget`/`QListWidget` instances in the app — a
+    `QStackedWidget` page (`track_table`) needed a `track_table_card`
+    attribute as the actual page/`setCurrentWidget` target, since
+    `setCurrentWidget` requires its argument to be a widget the stack
+    actually owns as a page. New `theme.cell_widget(*widgets)`
+    consolidates 6 independently-drifted hand-rolled cell-widget
+    container builders into one, with real spacing and a trailing
+    `addStretch()` — the stretch is what stops a lone button from
+    being resized to fill the WHOLE cell rect (`setCellWidget`'s own
+    behavior, bypassing normal layout sizing). **Scoping call, stated
+    explicitly:** the Downloads table's progress-bar cell builders
+    were deliberately left bespoke (they need a real stretch FACTOR on
+    the bar itself, which `cell_widget()`'s generic API doesn't
+    support) — `make_card()` alone already closes their table's
+    corner risk regardless of what's inside each cell.
+    [HISTORY §80](docs/HISTORY.md#80)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

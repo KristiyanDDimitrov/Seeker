@@ -10585,3 +10585,98 @@ string updated to the real new text (not xfailed).
 
 `mypy --strict` clean (82 files). Full suite: 916 passed / 1 skipped,
 5 net new tests, 0 regressions.
+
+### 80 — P10
+
+The reported mechanism was exactly right and needed no live
+investigation to confirm: Qt's `border-radius` on a widget paints the
+widget's OWN border/background, but does not clip that widget's
+children — any `setCellWidget` widget reaching a table's edge (the
+Sharing table's full-width "Add to my SoulSeek share" button, the
+Duplicates/Review tables' Actions buttons) paints flat, square corners
+directly over the table's own rounded corner, because nothing in Qt's
+paint pipeline ever intersects a child's paint region against its
+parent's border-radius curve.
+
+**The fix (`theme.make_card`) is structural, matching the brief's own
+diagnosis that no stylesheet-only fix could work:** a new `QFrame`
+(`objectName="card"`, styled via a new `QFrame#card` global rule) owns
+the real rounded border, background, and radius. `inner` (the actual
+`QTableWidget`/`QListWidget`) sits inside it with its own
+`border: none; border-radius: 0px` set per-instance, separated from
+the frame's edge by a small, real, non-zero content margin
+(`theme.SPACING_XS`). That margin is the part that actually does the
+work: even a cell widget that reaches `inner`'s own edge can now never
+reach the FRAME's rounded corner, because the margin physically keeps
+every child of `inner` away from it. Per item 47's own standing QSS
+gotcha #2, `WA_StyledBackground` is set on the frame explicitly — a
+plain stylesheet background/border on a `QWidget`-derived class isn't
+guaranteed to paint without it.
+
+Routed through all 11 real `QTableWidget`/`QListWidget` instances in
+the app (Dashboard's playlist list and track table, Downloads,
+History, both Sharing tables, all three Review tables, both Duplicates
+widgets, and the Rename-preview dialog's plain list) plus a small
+extra step for `track_table`: it's a page inside a `QStackedWidget`,
+and `QStackedWidget.setCurrentWidget()` requires its argument to be a
+widget actually added as one of its own pages — so a new
+`self.track_table_card` attribute holds the card, is what's actually
+added via `addWidget`/switched via `setCurrentWidget`, while
+`self.track_table` itself (still what every other call site reads
+rows from) is untouched and simply reparented one level in.
+
+**`theme.cell_widget()`** consolidates 6 independently-drifted
+hand-rolled `QWidget()`+`QHBoxLayout`+`setContentsMargins(0,0,0,0)`
+container builders (`_build_track_actions`, `_build_duplicate_group_
+actions`, `_build_needs_review_actions`, `_build_upgrade_actions`,
+`_build_local_review_actions`) into one, plus the Sharing table's two
+single-widget cells (the bare "Add to my SoulSeek share" button and
+the "Shared" label) — the same class of duplication this project's
+`matching.py`/`download_dedup.py` precedent already exists to prevent.
+Real `SPACING_SM`/`SPACING_XS` margins/spacing (not zero) plus a
+trailing `addStretch()` — the stretch is what fixes P10.3 structurally:
+`setCellWidget` resizes its widget to the FULL cell rect directly
+(bypassing normal layout sizing), so a bare button placed there always
+filled the whole cell; wrapping it in a container whose trailing
+stretch absorbs the leftover width, rather than stretching the button
+itself, is what makes a button read as a button again. No per-button
+`setMaximumWidth` magic number was needed once the stretch existed.
+
+**Scoping decision, stated plainly rather than silently done:** the
+Downloads table's two progress-widget builders
+(`_build_terminal_progress_widget`/`_build_progress_widget`) were
+LEFT as bespoke hand-rolled containers, not routed through
+`cell_widget()` — they rely on `layout.addWidget(bar, 1)`'s real
+stretch factor so the progress bar fills available width, which is
+correct, desired behavior for a progress bar (unlike a button, a
+progress bar SHOULD stretch) that `cell_widget()`'s generic
+no-stretch-factor API doesn't support. The corner-cutting risk at
+their table (Downloads' Progress column IS the last, stretched
+column) is still fully closed by `make_card()` wrapping the table
+itself — that fix is independent of what's inside individual cells.
+
+**Verification, per the brief's own "the next check must be pixels"
+standing instruction from item 77:** real screenshots
+(`window.grab().save(...)`, offscreen QPA, real `FakeApplication` data)
+were taken for Sharing, Duplicates, Downloads, Review, and Dashboard.
+All five show clean rounded corners on every table card with no visible
+cell-widget bleed; the Sharing table's "Add to my SoulSeek share"
+button and the Duplicates table's Actions controls both read as
+compact, padded buttons rather than filled cells.
+
+New `tests/test_theme.py` (6): card structure/parenting, inner border
+turned off, a real nonzero margin, `cell_widget`'s real inter-widget
+gap, a lone widget NOT stretched to fill its container width, and the
+single-label case. One new `test_ui_smoke.py` test enumerates all 11
+real table/list attributes on `MainWindow` and asserts each one's
+parent is a `card`-named frame, so this routing is enforced
+structurally rather than left as "available to remember to use."
+
+Four pre-existing tests needed updating for the new cell-widget wrapper
+shape (`cellWidget(...)` now returns the container, not the bare
+button — fixed via `.findChild(QPushButton)` rather than a direct
+`isinstance`/`.click()`), and `track_area_stack`'s current-page
+assertions updated to target `track_table_card`.
+
+`mypy --strict` clean (82 files). Full suite: 923 passed / 1 skipped,
+7 net new tests, 0 regressions.

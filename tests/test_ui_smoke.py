@@ -1704,7 +1704,9 @@ def test_playlist_with_tracks_shows_the_real_table(qtbot):
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window.track_area_stack.currentWidget() is window.track_table,
+        lambda: (
+            window.track_area_stack.currentWidget() is window.track_table_card
+        ),
         timeout=2000,
     )
     assert window.track_table.rowCount() == 1
@@ -4537,6 +4539,39 @@ def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
     assert stray == []
 
 
+def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
+    # Roadmap item 80 (P10.1) — a table/list's own border-radius does
+    # NOT clip its children; any cell-widget button reaching its edge
+    # paints over the rounded corner. theme.make_card() is the
+    # structural fix, and this asserts it's actually used everywhere
+    # a QTableWidget/QListWidget is added to the real window, not just
+    # available for someone to remember to call.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    table_and_list_attrs = [
+        "playlist_list",
+        "track_table",
+        "downloads_table",
+        "history_table",
+        "sharing_locations_table",
+        "sharing_uploads_table",
+        "review_needs_table",
+        "review_upgrades_table",
+        "review_local_table",
+        "duplicates_folders_list",
+        "duplicates_table",
+    ]
+    for attr in table_and_list_attrs:
+        widget = getattr(window, attr)
+        parent = widget.parentWidget()
+        assert parent is not None, attr
+        assert parent.objectName() == "card", (
+            f"{attr}'s parent is {parent!r}, not routed through make_card()"
+        )
+
+
 def test_duplicates_tab_controls_have_tooltips(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
@@ -5599,8 +5634,9 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
     )
     assert window.sharing_locations_table.item(0, 1).text() == "Yes"
     assert window.sharing_locations_table.item(1, 1).text() == "No"
-    assert isinstance(
-        window.sharing_locations_table.cellWidget(1, 4), QPushButton,
+    assert (
+        window.sharing_locations_table.cellWidget(1, 4)
+        .findChild(QPushButton) is not None
     )
     assert window.sharing_uploads_table.item(0, 0).text() == (
         help_text.NO_UPLOADS_LABEL
@@ -5666,7 +5702,9 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
         lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
     )
 
-    button = window.sharing_locations_table.cellWidget(0, 4)
+    button = window.sharing_locations_table.cellWidget(0, 4).findChild(
+        QPushButton,
+    )
     button.click()
 
     qtbot.waitUntil(
@@ -5713,7 +5751,9 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
         lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
     )
 
-    button = window.sharing_locations_table.cellWidget(0, 4)
+    button = window.sharing_locations_table.cellWidget(0, 4).findChild(
+        QPushButton,
+    )
     button.click()
 
     assert len(info_calls) == 1

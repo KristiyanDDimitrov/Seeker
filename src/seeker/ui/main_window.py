@@ -879,7 +879,7 @@ class RenamePreviewDialog(QDialog):
         if list_widget.count() == 0:
             list_widget.addItem(help_text.RENAME_PREVIEW_NO_CHANGES)
 
-        layout.addWidget(list_widget, 1)
+        layout.addWidget(theme.make_card(list_widget), 1)
 
         button_row = QHBoxLayout()
         total_to_rename = len(self.renames) + len(self.collisions)
@@ -1411,7 +1411,7 @@ class MainWindow(QMainWindow):
         self.playlist_list.setMinimumWidth(
             name_width + theme.SPACING_LG * 2
         )
-        layout.addWidget(self.playlist_list, 1)
+        layout.addWidget(theme.make_card(self.playlist_list), 1)
 
         right = QVBoxLayout()
 
@@ -1444,7 +1444,12 @@ class MainWindow(QMainWindow):
             self._on_track_table_cell_double_clicked
         )
         self.track_area_stack = QStackedWidget()
-        self.track_area_stack.addWidget(self.track_table)
+        # Roadmap item 80 (P10.1) — the CARD, not the bare table, is
+        # the stack's real page; setCurrentWidget() calls below target
+        # this card. self.track_table itself is untouched by this and
+        # still the widget every other call site reads/writes rows on.
+        self.track_table_card = theme.make_card(self.track_table)
+        self.track_area_stack.addWidget(self.track_table_card)
         self._track_empty_panel = self._build_track_empty_panel()
         self.track_area_stack.addWidget(self._track_empty_panel)
         right.addWidget(self.track_area_stack)
@@ -1486,7 +1491,7 @@ class MainWindow(QMainWindow):
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.downloads_table)
+        layout.addWidget(theme.make_card(self.downloads_table))
 
         return _build_page(
             "Downloads", help_text.DOWNLOADS_TAB_SUBTITLE, content,
@@ -1537,7 +1542,7 @@ class MainWindow(QMainWindow):
             ["When", "What", "Track", "Detail"]
         )
         self.history_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.history_table)
+        layout.addWidget(theme.make_card(self.history_table))
 
         # Raw, unfiltered events from the last real fetch — the filter
         # combo re-renders from this in memory rather than re-querying,
@@ -1632,7 +1637,7 @@ class MainWindow(QMainWindow):
             ["Location", "Shared", "Container Path", "Files", "Action"]
         )
         self.sharing_locations_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.sharing_locations_table)
+        layout.addWidget(theme.make_card(self.sharing_locations_table))
 
         uploads_label = QLabel("Currently uploading")
         uploads_label.setStyleSheet(
@@ -1646,7 +1651,7 @@ class MainWindow(QMainWindow):
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
         self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.sharing_uploads_table)
+        layout.addWidget(theme.make_card(self.sharing_uploads_table))
 
         self._current_sharing_reconciliation: list[LocationShareState] = []
         self._current_sharing_self_managed = False
@@ -1757,7 +1762,7 @@ class MainWindow(QMainWindow):
             )
 
             if state.shared:
-                table.setCellWidget(row, 4, QLabel("Shared"))
+                table.setCellWidget(row, 4, theme.cell_widget(QLabel("Shared")))
                 continue
 
             button = QPushButton("Add to my SoulSeek share")
@@ -1766,7 +1771,13 @@ class MainWindow(QMainWindow):
                 lambda _checked=False, location=state.location:
                 self._on_add_location_to_share_clicked(location)
             )
-            table.setCellWidget(row, 4, button)
+            # Roadmap item 80 (P10.3) — the brief's own named example:
+            # a bare setCellWidget(button) gets literally resized to
+            # fill the whole cell rect (setCellWidget positions its
+            # widget directly, bypassing normal layout sizing), reading
+            # as a filled cell rather than a button. cell_widget()'s
+            # trailing stretch absorbs the leftover width instead.
+            table.setCellWidget(row, 4, theme.cell_widget(button))
 
     def _render_sharing_uploads_table(
             self, uploads: list[UploadStatus],
@@ -2283,9 +2294,6 @@ class MainWindow(QMainWindow):
         if status.state != IN_LIBRARY:
             return QWidget()
 
-        container = QWidget()
-        actions_layout = QHBoxLayout(container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
         track_id = status.track.id
 
         if status.tagged_at is None:
@@ -2294,16 +2302,12 @@ class MainWindow(QMainWindow):
             tag_button.clicked.connect(
                 lambda: self._on_tag_track_clicked(track_id, tag_button)
             )
-            actions_layout.addWidget(tag_button)
-        else:
-            tagged_label = QLabel("Tagged")
-            tagged_label.setProperty("badge", "muted")
-            tagged_label.setToolTip(
-                f"Tagged {format_timestamp(status.tagged_at)}"
-            )
-            actions_layout.addWidget(tagged_label)
+            return theme.cell_widget(tag_button)
 
-        return container
+        tagged_label = QLabel("Tagged")
+        tagged_label.setProperty("badge", "muted")
+        tagged_label.setToolTip(f"Tagged {format_timestamp(status.tagged_at)}")
+        return theme.cell_widget(tagged_label)
 
     def _on_track_table_context_menu(self, position: Any) -> None:
         row = self.track_table.rowAt(position.y())
@@ -2601,7 +2605,7 @@ class MainWindow(QMainWindow):
             ["Track", "Score", "Candidate", "Actions"]
         )
         self.review_needs_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.review_needs_table)
+        layout.addWidget(theme.make_card(self.review_needs_table))
 
         layout.addWidget(QLabel("Downloaded upgrades ready for review"))
 
@@ -2610,7 +2614,7 @@ class MainWindow(QMainWindow):
             ["Track", "Current", "New quality", "Actions"]
         )
         self.review_upgrades_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.review_upgrades_table)
+        layout.addWidget(theme.make_card(self.review_upgrades_table))
 
         # Third section — roadmap item 56 Phase 2, closing item 7's
         # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
@@ -2623,7 +2627,7 @@ class MainWindow(QMainWindow):
             ["Track", "Matched file", "Location", "Score", "Actions"]
         )
         self.review_local_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.review_local_table)
+        layout.addWidget(theme.make_card(self.review_local_table))
 
         return tab
 
@@ -2705,7 +2709,9 @@ class MainWindow(QMainWindow):
         folders_panel_layout.setContentsMargins(0, 0, 0, 0)
 
         self.duplicates_folders_list = QListWidget()
-        folders_panel_layout.addWidget(self.duplicates_folders_list)
+        folders_panel_layout.addWidget(
+            theme.make_card(self.duplicates_folders_list)
+        )
 
         folders_buttons_row = QHBoxLayout()
 
@@ -2746,7 +2752,7 @@ class MainWindow(QMainWindow):
             _DUPLICATES_COLUMN_HEADERS
         )
         self.duplicates_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.duplicates_table)
+        layout.addWidget(theme.make_card(self.duplicates_table))
 
         # QButtonGroup instances (one per duplicate group, so only one
         # radio per group can be selected) have no Qt parent-child
@@ -3309,10 +3315,6 @@ class MainWindow(QMainWindow):
             group: DuplicateGroup,
             button_group: QButtonGroup,
     ) -> QWidget:
-        container = QWidget()
-        actions_layout = QHBoxLayout(container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-
         # Roadmap item 56 Phase 6.3 — "the same file living in several
         # folders is sometimes deliberate." An additional button in the
         # group's EXISTING QButtonGroup (a sentinel id, not a separate
@@ -3321,13 +3323,11 @@ class MainWindow(QMainWindow):
         keep_all_radio = QRadioButton("Keep all")
         keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
         button_group.addButton(keep_all_radio, id=KEEP_ALL_DUPLICATES_ID)
-        actions_layout.addWidget(keep_all_radio)
 
         confirm_checkbox = QCheckBox("Confirm delete")
         confirm_checkbox.setToolTip(
             help_text.TOOLTIP_DELETE_DUPLICATES_CHECKBOX
         )
-        actions_layout.addWidget(confirm_checkbox)
 
         delete_button = QPushButton("Delete")
         delete_button.setToolTip(help_text.TOOLTIP_DELETE_DUPLICATES_BUTTON)
@@ -3336,7 +3336,6 @@ class MainWindow(QMainWindow):
                 group, button_group, confirm_checkbox, delete_button,
             )
         )
-        actions_layout.addWidget(delete_button)
 
         def _update_delete_enabled() -> None:
             # "Keep all" selected means there is nothing to delete.
@@ -3349,7 +3348,7 @@ class MainWindow(QMainWindow):
         )
         _update_delete_enabled()
 
-        return container
+        return theme.cell_widget(keep_all_radio, confirm_checkbox, delete_button)
 
     def _on_delete_duplicates_clicked(
             self,
@@ -3597,7 +3596,7 @@ class MainWindow(QMainWindow):
             self.track_area_stack.setCurrentWidget(self._track_empty_panel)
             return
 
-        self.track_area_stack.setCurrentWidget(self.track_table)
+        self.track_area_stack.setCurrentWidget(self.track_table_card)
 
         self.track_table.setRowCount(len(statuses))
 
@@ -3953,10 +3952,6 @@ class MainWindow(QMainWindow):
             )
 
     def _build_needs_review_actions(self, track_id: str) -> QWidget:
-        container = QWidget()
-        actions_layout = QHBoxLayout(container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-
         confirm_button = QPushButton("Confirm")
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_REVIEW_CANDIDATE)
         reject_button = QPushButton("Reject")
@@ -3969,10 +3964,7 @@ class MainWindow(QMainWindow):
             lambda: self._on_reject_review_candidate(track_id, reject_button)
         )
 
-        actions_layout.addWidget(confirm_button)
-        actions_layout.addWidget(reject_button)
-
-        return container
+        return theme.cell_widget(confirm_button, reject_button)
 
     def _on_confirm_review_candidate(
             self,
@@ -4024,10 +4016,6 @@ class MainWindow(QMainWindow):
             )
 
     def _build_upgrade_actions(self, details: UpgradeReviewDetails) -> QWidget:
-        container = QWidget()
-        actions_layout = QHBoxLayout(container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-
         replace_button = QPushButton("Replace")
         replace_button.setToolTip(help_text.TOOLTIP_REPLACE_UPGRADE)
         decline_button = QPushButton("Decline")
@@ -4037,13 +4025,14 @@ class MainWindow(QMainWindow):
         # a real old file to delete — mirrors the CLI's own guard around
         # its second input() prompt (get_upgrade_review_details leaves
         # old_file_path unset when there's nothing to replace).
+        widgets: list[QWidget] = []
         delete_checkbox: QCheckBox | None = None
         if details.old_file_path is not None:
             delete_checkbox = QCheckBox("Delete old file")
             delete_checkbox.setToolTip(
                 help_text.TOOLTIP_DELETE_OLD_FILE_CHECKBOX
             )
-            actions_layout.addWidget(delete_checkbox)
+            widgets.append(delete_checkbox)
 
         def on_replace() -> None:
             delete_old = delete_checkbox is not None and delete_checkbox.isChecked()
@@ -4062,10 +4051,8 @@ class MainWindow(QMainWindow):
         replace_button.clicked.connect(on_replace)
         decline_button.clicked.connect(on_decline)
 
-        actions_layout.addWidget(replace_button)
-        actions_layout.addWidget(decline_button)
-
-        return container
+        widgets.extend((replace_button, decline_button))
+        return theme.cell_widget(*widgets)
 
     def _on_apply_upgrade_decision(
             self,
@@ -4116,10 +4103,6 @@ class MainWindow(QMainWindow):
             )
 
     def _build_local_review_actions(self, track_id: str) -> QWidget:
-        container = QWidget()
-        actions_layout = QHBoxLayout(container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-
         confirm_button = QPushButton("Confirm")
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_LOCAL_MATCH)
         reject_button = QPushButton("Reject")
@@ -4132,10 +4115,7 @@ class MainWindow(QMainWindow):
             lambda: self._on_reject_local_match(track_id, reject_button)
         )
 
-        actions_layout.addWidget(confirm_button)
-        actions_layout.addWidget(reject_button)
-
-        return container
+        return theme.cell_widget(confirm_button, reject_button)
 
     def _on_confirm_local_match(
             self,

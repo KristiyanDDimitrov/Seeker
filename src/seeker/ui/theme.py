@@ -20,8 +20,11 @@ names are theme-neutral so adding a light palette later is cheap, not
 a rewrite).
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QProgressBar, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QFrame, QHBoxLayout, QProgressBar, QVBoxLayout, QWidget,
+)
 
 # --- Color tokens ----------------------------------------------------------
 
@@ -90,6 +93,67 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
         f"  border-radius: {RADIUS_CONTROL}px;"
         f"}}"
     )
+
+
+def make_card(inner: QWidget) -> QFrame:
+    """Roadmap item 80 (P10.1) — Qt's `border-radius` on a widget does
+    NOT clip that widget's own children. Any child reaching a
+    QTableWidget's/QListWidget's own edge (a full-width `setCellWidget`
+    button, most commonly — see the Sharing table's "Add to my
+    SoulSeek share" column) paints straight over that same widget's
+    own rounded corner; no stylesheet rule can fix this, since the
+    problem is paint ORDER/clipping, not color. The fix is structural:
+    this QFrame owns the real rounded border/background (`QFrame#card`
+    in STYLESHEET below); `inner` sits inside it with its OWN
+    border/radius turned off and a small uniform content margin
+    between them. That margin is the load-bearing part — it keeps any
+    of `inner`'s own edge-reaching children (or `inner`'s own now-flat
+    corners) physically away from the frame's rounded arc, so nothing
+    can ever paint over it regardless of what `inner` contains.
+    """
+    frame = QFrame()
+    frame.setObjectName("card")
+    # Item 47's own standing gotcha (2): a QSS background/border on a
+    # QWidget-derived class isn't painted by default unless this
+    # attribute is set — QFrame is no exception in practice.
+    frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    layout = QVBoxLayout(frame)
+    # Untuned, deliberately small and uniform — just enough that no
+    # child of `inner` can reach into the frame's own rounded corner
+    # arc (RADIUS_CARD's curve extends a few px inward from each
+    # corner), not a visible "gap" of its own.
+    margin = SPACING_XS
+    layout.setContentsMargins(margin, margin, margin, margin)
+    inner.setStyleSheet("border: none; border-radius: 0px;")
+    layout.addWidget(inner)
+    return frame
+
+
+def cell_widget(*widgets: QWidget) -> QWidget:
+    """Roadmap item 80 (P10.2) — the one place a `setCellWidget`
+    container is built, replacing every hand-rolled `QWidget()` +
+    `QHBoxLayout` + `setContentsMargins(0, 0, 0, 0)` at a call site
+    across the app (they had all drifted into the identical pattern
+    independently — the same kind of duplication this project's
+    `matching.py`/`download_dedup.py` precedent exists to prevent).
+    Real, visible margins/spacing instead of zero (jammed-together
+    buttons, and buttons touching the table's own gridlines, were both
+    part of the reported bug) — and a trailing stretch, so leftover
+    cell width goes to blank space, not to stretching the last widget
+    to fill the whole cell (P10.3 — a button reads as a button, not a
+    filled cell).
+    """
+    container = QWidget()
+    container.setStyleSheet("background: transparent;")
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(
+        SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS,
+    )
+    layout.setSpacing(SPACING_SM)
+    for widget in widgets:
+        layout.addWidget(widget)
+    layout.addStretch()
+    return container
 
 
 def apply_theme(app: QApplication) -> None:
@@ -270,6 +334,16 @@ QTableWidget, QListWidget {{
     selection-background-color: {ACCENT_SUBTLE};
     selection-color: {TEXT};
     alternate-background-color: {BG_SURFACE_2};
+}}
+
+/* Roadmap item 80 (P10.1) — the real rounded border for a table/list
+routed through make_card(); the inner QTableWidget/QListWidget itself
+gets border:none/border-radius:0 per-instance (see make_card's own
+docstring) so this is the ONLY rounded edge actually painted. */
+QFrame#card {{
+    background-color: {BG_SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_CARD}px;
 }}
 
 QListWidget::item {{
