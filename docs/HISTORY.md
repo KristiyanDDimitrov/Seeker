@@ -10979,3 +10979,71 @@ pre-existing failures reproduce on the unmodified tree (confirmed
 earlier this session for 3 of them via `git stash`;
 `test_history_refresh_button_refetches` is the already-documented
 test-order flake) — 964 passed / 1 skipped, 0 regressions.
+
+### 86 — R2: poll rebuild destroyed checkbox/radio state
+
+**Confirmed exactly as diagnosed** — `poll_timer` → `_poll_review_items`
+→ `_render_review_items` → `_render_pending_upgrades` calls
+`setRowCount()` and builds a brand-new `QCheckBox` per row via
+`_build_upgrade_actions` every 2s, with nothing carrying checked state
+across the rebuild. The codebase's own prior comment ("a checkbox
+toggled mid-interval can get reset by the next tick's rebuild") had
+understated it — every checkbox is destroyed every tick regardless of
+timing, not just one caught mid-click.
+
+**R2.4 audit (every `QCheckBox`/`QRadioButton`/`QComboBox` in
+`main_window.py`, grepped and checked one by one):** the only two
+interactive controls rebuilt per-row inside a `_render_*`/`_poll_*`
+path are the Review tab's "Delete old file" checkbox (poll-driven,
+every 2s) and the Duplicates "keep" radio + "Keep all" radio
+(rebuilt on the LOCAL re-render `_on_delete_duplicates_finished` does
+after a resolution, not the 2s poll — Duplicates isn't on `poll_timer`
+at all, confirmed via `grep -n "_render_duplicate_groups("`). Every
+other checkbox/combo in the app (`remember_checkbox`,
+`analyze_audio_checkbox`, `force_retag_checkbox`,
+`duplicates_location_combo`, `duplicates_folders_checkbox`,
+`history_filter_combo`) is a persistent standalone widget built once,
+never recreated by any render/poll path — not affected by this bug
+class at all.
+
+**Fix:** `_upgrade_delete_checked: set[int]`, keyed by
+`UpgradeReviewDetails.request_id` — restored via `setChecked()` on
+build, updated live via a `toggled` connection
+(`_on_upgrade_delete_checkbox_toggled`), pruned to only still-present
+request ids on every `_render_pending_upgrades()` call (including
+before the row loop runs, so an empty upgrade list still prunes
+everything).
+
+`_duplicates_keep_selection: dict[frozenset[int], int]` — a
+`DuplicateGroup` has no stable id of its own (clustering recomputes
+groups fresh, and a local re-render after a delete rebuilds the same
+Python objects from `_current_duplicate_groups`), so the group's own
+frozenset of member `local_file.id`s is used as the key instead —
+stable across both a poll-style rebuild and a local re-render, since
+neither changes which files belong to a still-open group. Value is the
+checked button's real id (a `local_file.id`, or the existing
+`KEEP_ALL_DUPLICATES_ID` sentinel for the "Keep all" radio in the same
+`QButtonGroup`). Restored via `setChecked()` on both the per-file keep
+radios and `keep_all_radio` (now takes a `previously_selected_id`
+param), recorded live via `QButtonGroup.idToggled`
+(`_on_duplicates_keep_toggled`), pruned in `_render_duplicate_groups`
+right after `clearSpans()` — before the empty-groups early return, so
+"no duplicates found" (every group resolved) prunes the whole map too;
+an earlier draft of this fix pruned AFTER that early return and left a
+real, test-caught stale entry behind forever.
+
+`poll_timer`'s own construction-site comment updated (R2.5) to say the
+rebuild-every-tick tradeoff is now accepted ONLY for display state,
+never user input — and that the state-map fix is a scoped patch on top
+of the existing pattern, not proof the pattern itself is now safe for
+some future interactive control added without the same treatment.
+
+6 new tests in `test_ui_smoke.py`: two for the upgrade checkbox
+(survives 3 re-renders; pruned when its row disappears), three for
+Duplicates (per-file selection survives re-render; "Keep all" survives
+re-render and correctly leaves both per-file radios unchecked; pruned
+when the group disappears — this last one caught the early-return
+pruning-order bug live, not just in review). `mypy --strict src/`
+clean (pre-existing, unrelated `_build_info.py` error). Full suite:
+same 3 pre-existing failures reproduce on the unmodified tree — 970
+passed / 1 skipped, 0 regressions.

@@ -1334,6 +1334,19 @@ compress it here before moving on to the next item.
     `bitrate = channels × sample_size × sample_rate` internally.
     [HISTORY §85](docs/HISTORY.md#85)
 
+86. **Fix R2: the 2-second poll destroyed every checkbox/radio in a
+    polled table — done.** Root cause was exactly as diagnosed: a
+    poll-driven rebuild (`setRowCount` + fresh `QCheckBox`/
+    `QRadioButton` per row) carried nothing across ticks. Fixed with
+    small state maps keyed by STABLE identity, never row index —
+    `_upgrade_delete_checked: set[int]` (keyed by `request_id`) and
+    `_duplicates_keep_selection: dict[frozenset[int], int]` (keyed by
+    a group's own member `local_file` ids, since a group has no id of
+    its own) — restored on render, pruned when the row/group is gone.
+    Audited every other polled table (item R2.4): no other interactive
+    per-row control exists anywhere else in the app today.
+    [HISTORY §86](docs/HISTORY.md#86)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

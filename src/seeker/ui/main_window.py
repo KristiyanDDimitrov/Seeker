@@ -1003,10 +1003,25 @@ class MainWindow(QMainWindow):
         # DB-polling pattern for live status: rebuild the visible model
         # each tick rather than diffing for minimal repaints — an
         # acceptable v1 simplification, matching this project's habit
-        # of shipping a working real version before optimizing. Applies
-        # to the Review tab too: a checkbox toggled mid-interval can get
-        # reset by the next tick's rebuild, same accepted tradeoff as
-        # everywhere else this pattern is used.
+        # of shipping a working real version before optimizing.
+        #
+        # Roadmap item R2 — this tradeoff is now ONLY accepted for pure
+        # DISPLAY state (table contents, labels, nav badges), never for
+        # user INPUT: a rebuild used to destroy every checkbox/radio in
+        # a polled table on every tick, not just "reset one mid-click"
+        # as first assumed — a real reported bug, not a theoretical
+        # edge case. The Review tab's "delete old file" checkbox and
+        # the Duplicates "keep" radio selection now survive a rebuild
+        # via a small state map keyed by stable identity (request_id /
+        # the group's own member file ids — never row index), restored
+        # on render and pruned when the underlying row is gone
+        # (`_upgrade_delete_checked`, `_duplicates_keep_selection`). The
+        # real long-term fix is diffing rows instead of rebuilding them
+        # wholesale; the state map is the honest scoped fix on top of
+        # the existing rebuild-every-tick pattern, not a claim that the
+        # underlying pattern itself is now safe for any future
+        # interactive control added to a polled table without the same
+        # treatment.
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
         self.poll_timer.timeout.connect(self._poll_selected_playlist)
@@ -2935,6 +2950,14 @@ class MainWindow(QMainWindow):
         self.review_local_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(theme.make_card(self.review_local_table))
 
+        # Roadmap item R2.1 — the 2s poll_timer rebuilds this table's
+        # checkboxes from scratch every tick (see poll_timer's own
+        # comment on why); nothing carried the checked state across
+        # that rebuild before. Keyed by the stable
+        # UpgradeReviewDetails.request_id, never row index — pruned to
+        # only rows still present on every render (R2.3).
+        self._upgrade_delete_checked: set[int] = set()
+
         return tab
 
     def _build_duplicates_content(self) -> QWidget:
@@ -3070,6 +3093,18 @@ class MainWindow(QMainWindow):
         # hazard, not just a style preference. Reset on every render.
         self._duplicate_button_groups: list[QButtonGroup] = []
         self._current_duplicate_groups: list[DuplicateGroup] = []
+        # Roadmap item R2.2 — same rebuild-destroys-state bug as R2.1,
+        # for the Duplicates "keep" radio selection: a group has no
+        # stable id of its own (it's recomputed fresh by clustering, or
+        # locally re-derived after a delete — see
+        # _on_delete_duplicates_finished), so the group's OWN set of
+        # member local_file ids is used as the key instead — stable
+        # across the poll rebuild and across a local re-render, since
+        # neither changes which files belong to a still-open group.
+        # Value is the checked button's id — either a real
+        # local_file.id or the KEEP_ALL_DUPLICATES_ID sentinel. Pruned
+        # to only still-present groups on every render (R2.3).
+        self._duplicates_keep_selection: dict[frozenset[int], int] = {}
         self._current_duplicates_location_name: str | None = None
         self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
         # Roadmap item 68 (Phase 7.2) — resolved by local_file.location_id
@@ -3425,6 +3460,12 @@ class MainWindow(QMainWindow):
             f"Searching for duplicates in '{location_name}'..."
         )
 
+    def _on_duplicates_keep_toggled(
+            self, group_key: frozenset[int], button_id: int, checked: bool,
+    ) -> None:
+        if checked:
+            self._duplicates_keep_selection[group_key] = button_id
+
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
         self._duplicate_button_groups = []
         # Kept so a single-group resolution can drop just that group and
@@ -3439,6 +3480,21 @@ class MainWindow(QMainWindow):
         # happens to land inside an old span's coverage. Confirmed via
         # grep: this was never called anywhere in this file before.
         self.duplicates_table.clearSpans()
+
+        # Roadmap item R2.3 — prune selection state for groups no
+        # longer present (resolved, or no longer clustered together).
+        # Runs even for an empty `groups` list (the early-return branch
+        # right below) — a "no duplicates found" render must not leave
+        # stale selections sitting in the map forever either.
+        live_group_keys = {
+            frozenset(f.local_file.id for f in group.files)
+            for group in groups
+        }
+        self._duplicates_keep_selection = {
+            key: value
+            for key, value in self._duplicates_keep_selection.items()
+            if key in live_group_keys
+        }
 
         if not groups:
             self.duplicates_table.setRowCount(0)
@@ -3473,6 +3529,26 @@ class MainWindow(QMainWindow):
             button_group = QButtonGroup(self.duplicates_table)
             self._duplicate_button_groups.append(button_group)
             group_first_row = row
+
+            # Roadmap item R2.2 — this group's stable key (its own
+            # member file ids) and whatever was selected for it before
+            # the last rebuild, if anything. Recorded back into the map
+            # on every real toggle, not just read once here — the user
+            # can change their mind more than once before Delete.
+            group_key = frozenset(
+                f.local_file.id for f in group.files
+                if f.local_file.id is not None
+            )
+            previously_selected_id = self._duplicates_keep_selection.get(
+                group_key
+            )
+            button_group.idToggled.connect(
+                lambda button_id, checked, group_key=group_key: (
+                    self._on_duplicates_keep_toggled(
+                        group_key, button_id, checked,
+                    )
+                )
+            )
 
             for file_index, duplicate_file in enumerate(group.files):
                 local_file = duplicate_file.local_file
@@ -3524,7 +3600,15 @@ class MainWindow(QMainWindow):
 
                 keep_radio = QRadioButton()
                 keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
-                keep_radio.setChecked(file_index == 0)
+                # Roadmap item R2.2 — restore the user's own prior
+                # selection for this group when there is one; only fall
+                # back to the "best quality first" default when nothing
+                # was ever chosen for it.
+                keep_radio.setChecked(
+                    local_file.id == previously_selected_id
+                    if previously_selected_id is not None
+                    else file_index == 0
+                )
                 # The button's own id IS the local_file_id -- checkedId()
                 # below reads it back directly, no separate id-to-file
                 # mapping needed.
@@ -3555,7 +3639,7 @@ class MainWindow(QMainWindow):
                 len(group.files), 1,
             )
             group_actions_widget = self._build_duplicate_group_actions(
-                group, button_group,
+                group, button_group, previously_selected_id,
             )
             action_widgets.append(group_actions_widget)
             self.duplicates_table.setCellWidget(
@@ -3620,6 +3704,7 @@ class MainWindow(QMainWindow):
             self,
             group: DuplicateGroup,
             button_group: QButtonGroup,
+            previously_selected_id: int | None,
     ) -> QWidget:
         # Roadmap item 56 Phase 6.3 — "the same file living in several
         # folders is sometimes deliberate." An additional button in the
@@ -3628,6 +3713,11 @@ class MainWindow(QMainWindow):
         # behavior is preserved and simply extended, not reimplemented.
         keep_all_radio = QRadioButton("Keep all")
         keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
+        # Roadmap item R2.2 — same preserved-selection treatment as the
+        # per-file keep radios above.
+        keep_all_radio.setChecked(
+            previously_selected_id == KEEP_ALL_DUPLICATES_ID
+        )
         button_group.addButton(keep_all_radio, id=KEEP_ALL_DUPLICATES_ID)
 
         confirm_checkbox = QCheckBox("Confirm delete")
@@ -4308,6 +4398,11 @@ class MainWindow(QMainWindow):
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
         self.review_upgrades_table.setRowCount(len(upgrades))
 
+        # Roadmap item R2.3 — prune keys for rows that no longer exist,
+        # so this can't grow unbounded across a long session.
+        live_request_ids = {details.request_id for details in upgrades}
+        self._upgrade_delete_checked &= live_request_ids
+
         for row, details in enumerate(upgrades):
             label = f"{details.track.artist} - {details.track.title}"
             self.review_upgrades_table.setItem(row, 0, QTableWidgetItem(label))
@@ -4320,6 +4415,14 @@ class MainWindow(QMainWindow):
             self.review_upgrades_table.setCellWidget(
                 row, 3, self._build_upgrade_actions(details),
             )
+
+    def _on_upgrade_delete_checkbox_toggled(
+            self, request_id: int, checked: bool,
+    ) -> None:
+        if checked:
+            self._upgrade_delete_checked.add(request_id)
+        else:
+            self._upgrade_delete_checked.discard(request_id)
 
     def _build_upgrade_actions(self, details: UpgradeReviewDetails) -> QWidget:
         replace_button = QPushButton("Replace")
@@ -4337,6 +4440,22 @@ class MainWindow(QMainWindow):
             delete_checkbox = QCheckBox("Delete old file")
             delete_checkbox.setToolTip(
                 help_text.TOOLTIP_DELETE_OLD_FILE_CHECKBOX
+            )
+            # Roadmap item R2.1 — restore whatever this row's checkbox
+            # was set to before the last rebuild, and keep the state
+            # map updated as the user toggles it, keyed by the stable
+            # request_id (never row index, which shifts as rows are
+            # added/removed).
+            request_id = details.request_id
+            delete_checkbox.setChecked(
+                request_id in self._upgrade_delete_checked
+            )
+            delete_checkbox.toggled.connect(
+                lambda checked, request_id=request_id: (
+                    self._on_upgrade_delete_checkbox_toggled(
+                        request_id, checked,
+                    )
+                )
             )
             widgets.append(delete_checkbox)
 

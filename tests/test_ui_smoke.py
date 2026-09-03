@@ -3530,6 +3530,52 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
     assert window.status_label.text() == "Replaced with /new/path"
 
 
+def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
+        qtbot,
+):
+    # Roadmap item R2.1/R2.6 — the 2s poll_timer rebuilds this table's
+    # checkboxes from scratch every tick; before this fix, checking the
+    # box and letting even one more tick land would silently reset it.
+    details = [_make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions.findChildren(QCheckBox)[0].setChecked(True)
+    assert window._upgrade_delete_checked == {7}
+
+    # Three more "poll ticks" — a brand-new checkbox widget each time.
+    for _ in range(3):
+        window._render_pending_upgrades(details)
+
+    actions = window.review_upgrades_table.cellWidget(0, 3)
+    checkbox = actions.findChildren(QCheckBox)[0]
+    assert checkbox.isChecked() is True
+    assert window._upgrade_delete_checked == {7}
+
+
+def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
+    details = [_make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_pending_upgrades(details)
+    window.review_upgrades_table.cellWidget(0, 3).findChildren(QCheckBox)[0].setChecked(
+        True
+    )
+    assert window._upgrade_delete_checked == {7}
+
+    # The row is gone (e.g. resolved) -- its stale key must not linger
+    # forever (R2.3), and a LATER row that happens to reuse the same
+    # request_id (can't really happen for a real autoincrement PK, but
+    # confirms the map doesn't just grow unbounded) starts unchecked.
+    window._render_pending_upgrades([])
+    assert window._upgrade_delete_checked == set()
+
+
 def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_false(
         qtbot,
 ):
@@ -5295,6 +5341,76 @@ def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
     assert isinstance(keep_radio_1, QRadioButton)
     assert keep_radio_0.isChecked() is True
     assert keep_radio_1.isChecked() is False
+
+
+def test_duplicate_groups_keep_selection_survives_rerender(qtbot):
+    # Roadmap item R2.2/R2.6 — the user moves the "keep" selection off
+    # the pre-selected best-quality file (row 0) onto row 1; a rerender
+    # (e.g. after a local delete-finished re-render) must not silently
+    # snap it back to the default.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    group = _make_duplicate_group()
+
+    window._render_duplicate_groups([group])
+    keep_column = _duplicates_column(window, "Keep")
+    window.duplicates_table.cellWidget(1, keep_column).setChecked(True)
+
+    for _ in range(3):
+        window._render_duplicate_groups([group])
+
+    keep_radio_0 = window.duplicates_table.cellWidget(0, keep_column)
+    keep_radio_1 = window.duplicates_table.cellWidget(1, keep_column)
+    assert keep_radio_0.isChecked() is False
+    assert keep_radio_1.isChecked() is True
+
+
+def test_duplicate_groups_keep_all_selection_survives_rerender(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    group = _make_duplicate_group()
+
+    window._render_duplicate_groups([group])
+    actions = window.duplicates_table.cellWidget(
+        0, _duplicates_column(window, "Actions"),
+    )
+    keep_all_radio = [
+        b for b in actions.findChildren(QRadioButton)
+        if b.text() == "Keep all"
+    ][0]
+    keep_all_radio.setChecked(True)
+
+    window._render_duplicate_groups([group])
+
+    actions = window.duplicates_table.cellWidget(
+        0, _duplicates_column(window, "Actions"),
+    )
+    keep_all_radio = [
+        b for b in actions.findChildren(QRadioButton)
+        if b.text() == "Keep all"
+    ][0]
+    assert keep_all_radio.isChecked() is True
+    keep_column = _duplicates_column(window, "Keep")
+    assert window.duplicates_table.cellWidget(0, keep_column).isChecked() is False
+    assert window.duplicates_table.cellWidget(1, keep_column).isChecked() is False
+
+
+def test_duplicate_groups_keep_selection_pruned_when_group_removed(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    group = _make_duplicate_group()
+
+    window._render_duplicate_groups([group])
+    keep_column = _duplicates_column(window, "Keep")
+    window.duplicates_table.cellWidget(1, keep_column).setChecked(True)
+    assert len(window._duplicates_keep_selection) == 1
+
+    # The group is gone (resolved) -- R2.3's pruning.
+    window._render_duplicate_groups([])
+    assert window._duplicates_keep_selection == {}
 
 
 def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerprinting(
