@@ -428,6 +428,7 @@ class Application:
                 LocalFileRepository(self.database),
                 LibraryLocationRepository(self.database),
                 PlaylistRepository(self.database),
+                get_config=lambda: self._config_store,
             )
 
         return self._metadata_service

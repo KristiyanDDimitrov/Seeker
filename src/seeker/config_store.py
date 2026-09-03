@@ -34,6 +34,15 @@ class SeekerConfig:
     # convention as every other optional field here.
     default_download_location_id: int | None = None
     default_download_subfolder_per_playlist: bool = True
+    # Roadmap item R4.2 — opt-in, off by default: macOS Finder (and
+    # several other apps — Plex, Jellyfin, foobar2000, Traktor) don't
+    # read embedded cover art from every format Seeker writes it to
+    # (FLAC/WAV never show it at all, see R4's own diagnosis) but DO
+    # read a `cover.jpg` sidecar file. Off by default since this
+    # writes a new file into the user's own library — a real,
+    # deliberate exception to "tagging never needs a confirmation
+    # gate" (item 27), made once here via an explicit opt-in instead.
+    write_cover_jpg_sidecars: bool = False
 
 
 def resolve_config_path() -> Path:
@@ -71,6 +80,7 @@ def load_config(path: Path) -> SeekerConfig:
         default_download_subfolder_per_playlist=data.get(
             "default_download_subfolder_per_playlist", True,
         ),
+        write_cover_jpg_sidecars=data.get("write_cover_jpg_sidecars", False),
     )
 
 

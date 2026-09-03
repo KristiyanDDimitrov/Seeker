@@ -11191,3 +11191,72 @@ declined-at-first-prompt, empty-nothing-to-review). `mypy --strict
 src/` clean (pre-existing, unrelated `_build_info.py` error). Full
 suite: same 3 pre-existing failures reproduce on the unmodified tree —
 990 passed / 1 skipped, 0 regressions.
+
+### 89 — R4: cover art in Finder
+
+**R4.1 — checked the MP3s specifically, as instructed.** Read a real
+MP3 from the "Test" library location directly via mutagen: a genuine
+`APIC:Cover` frame, `image/jpeg`, 81,308 bytes, tags version `(2, 3, 0)`
+— confirms item 75's ID3v2.3 fix is still in effect and this file's
+embedded art is real, not empty/corrupt. This supports (doesn't
+contradict) the brief's own format-based explanation: MP3 embedded art
+is written correctly, so if it's still invisible in Finder specifically
+for MP3 (not FLAC/WAV), that would be a genuine bug; if only FLAC/WAV
+don't show it, the explanation is confirmed.
+
+**The actual Finder visual check is blocked in this session**, not
+performed and not assumed: `osascript -e 'tell application "Finder" to
+open POSIX file "..."'` timed out with `AppleEvent timed out (-1712)` —
+this sandboxed session has no Automation permission to control Finder,
+the same class of macOS permission gate that blocked item 84's Docker
+Desktop admin-password dialog. `screencapture`-based screenshotting
+wasn't attempted further given item 42's own prior finding that Screen
+Recording permission also wasn't available in this environment. Left
+for the user: force a Finder thumbnail refresh (`qlmanage -r cache`,
+already run once here as a real, safe, reversible action) and look at
+the real folder.
+
+**R4.2 — `cover.jpg` sidecar, opt-in, shipped.** New
+`SeekerConfig.write_cover_jpg_sidecars: bool = False`.
+`MetadataService` gained a `get_config: Callable[[], SeekerConfig]`
+constructor param (same not-a-snapshot discipline as `DownloadService`/
+`TrackMatcher`/`SharingService`, item 28) — `Application.
+metadata_service` wires it to `self._config_store`. New module-level
+`_write_cover_jpg_sidecar(file_path, image_bytes) -> bool`: writes
+`cover.jpg` in the SAME directory as the track's own file (this app has
+no per-album folder concept of its own — several tracks sharing a real
+album folder all resolve to the same path, and only the first write
+creates it), never overwrites an existing `cover.jpg`, never raises
+(best-effort on top of an already-successful download, matching
+`AlbumArtCache`'s own "disk write failure isn't fatal" precedent).
+Wired into both real art-download call sites — `_tag_one_track` (right
+after a successful `_download_album_art`, before the embed attempt, so
+it happens regardless of embed outcome) and `_fix_one_track_art` (same
+point, before the byte-exact-skip check) — reusing `AlbumArtCache`
+means zero extra Spotify CDN fetches either way. Settings UI: a single
+self-saving checkbox (no separate Save step — one independent boolean,
+unlike the two-threshold form beside it) in the Thresholds tab, under a
+new "Cover Art" group, with an explanatory note.
+
+**R4.3 — per-file custom Finder icons deliberately NOT implemented,**
+per the brief's own explicit instruction, recorded here as a real
+decision: `NSWorkspace.setIcon:forFile:` (via pyobjc) would work for
+FLAC/WAV too, but (1) adds a macOS-only dependency to a
+cross-platform-intended app, (2) writes a resource fork to every real
+user file, and (3) the user's real library lives on `/Volumes/X9 Pro`
+— confirmed exFAT by the same tell item 2 already used (AppleDouble
+`._` sidecars throughout the library) — where a resource fork is
+stored as hundreds of extra `._` files that break on any non-Mac
+system reading that drive.
+
+11 new tests: `test_metadata_service.py` (+4: default-off, enabled,
+never-overwrites, `fix_missing_art_for_playlist`'s own wiring),
+`test_settings_window.py` (+3: unchecked by default, prefilled from
+config, saves immediately on toggle). `mypy --strict src/` clean
+(pre-existing, unrelated `_build_info.py` error). Full suite: same 4
+pre-existing failures reproduce on the unmodified tree (the
+`test_history_refresh_button_refetches` flake reproduced this run,
+`test_main_window_constructs_without_crashing`/
+`test_tagging_controls_row_has_real_spacing_between_items`/
+`test_about_dialog_shows_build_identity` as before) — 996 passed / 1
+skipped, 0 regressions.

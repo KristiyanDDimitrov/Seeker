@@ -702,6 +702,48 @@ def test_save_thresholds_persists_valid_values(qtbot, tmp_path, monkeypatch):
     assert "saved" in window.thresholds_status_label.text().lower()
 
 
+# --- Roadmap item R4.2: cover.jpg sidecar toggle --------------------------
+
+def test_write_cover_jpg_checkbox_unchecked_by_default(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.write_cover_jpg_checkbox.isChecked() is False
+
+
+def test_write_cover_jpg_checkbox_prefilled_from_existing_config(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store, write_cover_jpg_sidecars=True,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.write_cover_jpg_checkbox.isChecked() is True
+
+
+def test_write_cover_jpg_checkbox_saves_immediately_on_toggle(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.write_cover_jpg_checkbox.setChecked(True)
+    assert application._config_store.write_cover_jpg_sidecars is True
+
+    window.write_cover_jpg_checkbox.setChecked(False)
+    assert application._config_store.write_cover_jpg_sidecars is False
+
+
 def test_save_thresholds_rejects_inverted_pair(qtbot, tmp_path, monkeypatch):
     # A real logic bug, not just a UX nicety — must be rejected before
     # ever reaching the config store.

@@ -1379,6 +1379,24 @@ compress it here before moving on to the next item.
     Duplicates bulk-delete has none (stated explicitly, not
     half-added; see HISTORY). [HISTORY §88](docs/HISTORY.md#88)
 
+89. **R4: cover art in Finder — answer confirmed, opt-in `cover.jpg`
+    sidecar shipped, per-file custom icons deliberately not built.**
+    R4.1: byte-level re-confirmed (real MP3, ID3v2.3, real embedded
+    JPEG) — the format explanation (macOS Finder never reads embedded
+    art from FLAC/WAV, only MP3/M4A/AIFF) stands; the actual Finder
+    visual check is blocked in this sandboxed session (AppleScript
+    control of Finder times out with no Automation permission, same
+    class of OS-permission blocker as item 84's Docker dialog) and is
+    left for the user. R4.2: new opt-in `SeekerConfig.
+    write_cover_jpg_sidecars` (default off, Settings → Thresholds tab)
+    — `MetadataService` gained the same `get_config` callable pattern
+    as `DownloadService`/`TrackMatcher`; writes `cover.jpg` next to a
+    tagged track's own file (never overwrites an existing one) from
+    both `tag_tracks`/`fix_missing_art_for_playlist`'s already-
+    downloaded art bytes, no extra fetch. R4.3: per-file custom Finder
+    icons deliberately NOT implemented — see HISTORY for the specific
+    exFAT/AppleDouble reasoning. [HISTORY §89](docs/HISTORY.md#89)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

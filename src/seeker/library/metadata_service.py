@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +9,7 @@ from mutagen import File as MutagenFile
 
 from seeker.album_art_cache import AlbumArtCache
 from seeker.audio_analysis import analyze_audio as run_audio_analysis
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -35,6 +37,37 @@ from seeker.models.track import Track
 
 class PlaylistNotFoundError(RuntimeError):
     pass
+
+
+def _write_cover_jpg_sidecar(file_path: Path, image_bytes: bytes) -> bool:
+    """Roadmap item R4.2 — the one thing Seeker can usefully do about
+    embedded art not showing in every real DJ/media app for every
+    format it writes to (see R4's own diagnosis: macOS Finder never
+    reads embedded art from FLAC or WAV at all). Written next to the
+    track's own file — this app has no notion of a dedicated per-album
+    folder structure, so "one per album/track folder" means one per
+    directory a track's file lives in; several tracks sharing a real
+    album folder all resolve to the same path and only the first write
+    creates it. Never overwrites an existing cover.jpg, even a
+    stale/wrong one — the near-universal convention assumes exactly
+    one cover per folder, and this app has no way to know whether a
+    file already there was placed deliberately. Returns whether it
+    actually wrote a new file, purely for the caller's own honest
+    counts — never raises, since this is a bonus best-effort write on
+    top of an already-successful art download, not something that
+    should be able to fail a tagging run.
+    """
+    cover_path = file_path.parent / "cover.jpg"
+
+    if cover_path.exists():
+        return False
+
+    try:
+        cover_path.write_bytes(image_bytes)
+    except OSError:
+        return False
+
+    return True
 
 
 @dataclass
@@ -207,6 +240,7 @@ class MetadataService:
         library_location_repository: LibraryLocationRepository,
         playlist_repository: PlaylistRepository,
         album_art_cache: AlbumArtCache | None = None,
+        get_config: Callable[[], SeekerConfig] | None = None,
     ):
         self.database = database
         self.tracks = track_repository
@@ -220,6 +254,11 @@ class MetadataService:
         # service — item 33), so the default instance here persists
         # across tagging runs too, not just within one.
         self.album_art_cache = album_art_cache or AlbumArtCache()
+        # Roadmap item R4.2 — same callable-not-snapshot discipline as
+        # DownloadService/TrackMatcher/SharingService (item 28) — a
+        # Settings toggle change takes effect on the very next tagging
+        # run, no restart or service-reconstruction needed.
+        self._get_config = get_config or (lambda: SeekerConfig())
 
     def tag_playlist(
             self,
@@ -492,6 +531,9 @@ class MetadataService:
                     art_outcome = "download_failed"
                     art_message = str(error)
                 else:
+                    if self._get_config().write_cover_jpg_sidecars:
+                        _write_cover_jpg_sidecar(file_path, image_bytes)
+
                     try:
                         embedded = embed_album_art(
                             mutagen_file, image_bytes, mime_type
@@ -804,6 +846,9 @@ class MetadataService:
                 }
             )
             return
+
+        if self._get_config().write_cover_jpg_sidecars:
+            _write_cover_jpg_sidecar(file_path, image_bytes)
 
         # The actual point of this action: skip the write entirely (no
         # file touched at all) if the currently-embedded art already

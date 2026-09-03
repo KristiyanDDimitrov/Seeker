@@ -53,7 +53,7 @@ def make_synthetic_wav(path: Path) -> None:
         handle.writeframes(b"\x00\x00" * 44_100)
 
 
-def make_service(tmp_path) -> MetadataService:
+def make_service(tmp_path, get_config=None) -> MetadataService:
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 
@@ -70,6 +70,7 @@ def make_service(tmp_path) -> MetadataService:
         # art silently satisfy another test's "was this genuinely
         # re-downloaded" assertion.
         album_art_cache=AlbumArtCache(tmp_path / "art_cache"),
+        get_config=get_config,
     )
 
 
@@ -478,6 +479,81 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
     assert str(reopened.tags["TPE1"]) == "Test Artist"
     assert str(reopened.tags["TALB"]) == "Test Album"
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+# --- Roadmap item R4.2: opt-in cover.jpg sidecar ---------------------------
+
+def test_tag_tracks_does_not_write_cover_jpg_by_default(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(tmp_path)  # default config: off
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    service.tag_tracks(["t1"])
+
+    assert not (root / "cover.jpg").exists()
+
+
+def test_tag_tracks_writes_cover_jpg_sidecar_when_enabled(tmp_path, monkeypatch):
+    from seeker.config_store import SeekerConfig
+
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(
+        tmp_path,
+        get_config=lambda: SeekerConfig(write_cover_jpg_sidecars=True),
+    )
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    service.tag_tracks(["t1"])
+
+    cover_path = root / "cover.jpg"
+    assert cover_path.exists()
+    assert cover_path.read_bytes() == FAKE_JPEG_BYTES
+
+
+def test_tag_tracks_cover_jpg_never_overwrites_existing_file(
+        tmp_path, monkeypatch,
+):
+    from seeker.config_store import SeekerConfig
+
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+    existing_cover = root / "cover.jpg"
+    existing_cover.write_bytes(b"some other real cover art")
+
+    service = make_service(
+        tmp_path,
+        get_config=lambda: SeekerConfig(write_cover_jpg_sidecars=True),
+    )
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    service.tag_tracks(["t1"])
+
+    assert existing_cover.read_bytes() == b"some other real cover art"
 
 
 def test_tag_tracks_analyze_audio_false_is_completely_inert(
@@ -907,6 +983,36 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
 
     reopened = MutagenFile(dest)
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_fix_missing_art_writes_cover_jpg_sidecar_when_enabled(
+        tmp_path, monkeypatch,
+):
+    from seeker.config_store import SeekerConfig
+
+    root = tmp_path / "music"
+    root.mkdir()
+    dest = root / "song.wav"
+    make_synthetic_wav(dest)
+
+    service = make_service(
+        tmp_path,
+        get_config=lambda: SeekerConfig(write_cover_jpg_sidecars=True),
+    )
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+
+    service.fix_missing_art_for_playlist("Test Playlist")
+
+    cover_path = root / "cover.jpg"
+    assert cover_path.exists()
+    assert cover_path.read_bytes() == FAKE_JPEG_BYTES
 
 
 def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(

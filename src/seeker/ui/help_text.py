@@ -921,6 +921,21 @@ TOOLTIP_SAVE_THRESHOLDS = (
     "restart needed."
 )
 
+# --- Roadmap item R4.2: cover.jpg sidecar ------------------------------------
+
+TOOLTIP_WRITE_COVER_JPG_CHECKBOX = (
+    "Also write the album art as a cover.jpg file next to each tagged "
+    "track (one per folder, never overwriting an existing cover.jpg). "
+    "Saves immediately — no separate Save step."
+)
+WRITE_COVER_JPG_NOTE = (
+    "Some formats (FLAC, WAV) don't show embedded art in every app — "
+    "macOS Finder included. A cover.jpg file in the same folder is "
+    "the near-universal fallback most media apps and DJ software read "
+    "instead. Off by default since it writes a new file into your "
+    "library."
+)
+
 # --- Onboarding wizard -------------------------------------------------------
 
 TOOLTIP_OPEN_SPOTIFY_DASHBOARD = (
