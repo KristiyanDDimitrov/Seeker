@@ -10389,3 +10389,64 @@ code doesn't introduce any new ones against real data.
 7 new tests across `test_metadata_service_rename.py` (5) and
 `test_ui_smoke.py` (2). `mypy --strict` clean; full suite: 908 passed /
 1 skipped, 0 regressions.
+
+### 77 — P7 (5th report)
+
+**Item 73's diagnosis was correct about a real defect, but the wrong
+one for this report.** That fix (column sizing + `clearSpans()`) stays,
+but the user's new screenshot — an ~800px-wide Actions column, header
+centred, sibling columns rendering fine, Actions cells still completely
+empty — refuted the "clipped to near-zero width" theory outright. This
+round's brief supplied a specific, falsifiable hypothesis and a 30-
+second experiment instead of another round of source-reading, and the
+standing instruction was explicit: run it before writing any code.
+
+**The experiment (run for real, `QT_QPA_PLATFORM=offscreen`, verbatim
+from the brief):** a 4-row table, a real widget on row 0, a blank
+`QWidget()` on row 1, `setSpan(0, 1, 2, 1)`. Result: `real.geometry()
+== blank.geometry()` (`(100, 0, 99, 59)`, identical), child order
+`[REAL, BLANK]` (blank added to the viewport later → paints on top),
+and `viewport().childAt(center)` returned the **blank** widget, not the
+real one. Also measured, and this is the part that explains why three
+prior rounds of testing all passed anyway: `real.visibleRegion()` was
+the FULL, non-empty rect — the real widget is not clipped, hidden, or
+zero-size in any way Qt's own introspection reports. It is simply
+painted over by a sibling added after it. Every prior regression test
+(existence via `cellWidget()`, geometry via `sizeHint()`/
+`sectionSize()`, even item 73's own `visibleRegion()` check) asks a
+question that is `True` in exactly this broken state, because all of
+them measure the real widget, and the real widget was never the
+problem — the widget covering it was.
+
+**The fix:** in `_render_duplicate_groups`, `setSpan()` is now called
+BEFORE `setCellWidget()` for the group's first row (so the real
+widget's own geometry is computed against its final spanned rect, not
+a single-cell rect a later `setSpan()` call then silently changes
+underneath it), and the `for other_row in range(...)` loop that used to
+place a blank `QWidget()` on every covered row was deleted outright —
+a spanned region needs no widget at all on its covered cells; the span
+itself is what makes them render as blank. `removeCellWidget()` was
+considered (per the brief's 7.2 fallback) but isn't needed: nothing
+ever puts a widget on those rows in the first place now.
+
+**The new test is occlusion-aware, closing the actual gap every prior
+round missed:** `test_duplicates_actions_widget_is_not_occluded_by_a_
+covered_row_widget` calls `viewport().childAt(visualRect(...).center())`
+— what a real click would actually hit — and asserts it resolves to the
+real widget or a descendant of it, not merely that the widget exists
+with plausible geometry. Verified both directions: reverted only the
+source fix and reran this one test in isolation — fails with exactly
+the predicted `hit is not real_widget` — then restored the fix and
+confirmed it passes. One pre-existing test asserting "the covered row's
+widget has no `QPushButton` children" was updated to assert
+`cellWidget(1, ACTIONS) is None` instead, matching the corrected
+behavior (no widget there at all, not a differently-shaped blank one).
+
+Audited every `setSpan` call site in the file (`grep -n setSpan`, only
+two total): the Sharing-uploads empty-state span uses `setItem`, not
+`setCellWidget` — no occlusion risk, left unchanged.
+
+`mypy --strict` clean (82 files). Full suite: 908 passed / 1 skipped, 1
+net new test, 0 regressions (the one `test_history_refresh_button_
+refetches` failure in the full run is the pre-existing documented
+flake — reconfirmed passing in isolation).

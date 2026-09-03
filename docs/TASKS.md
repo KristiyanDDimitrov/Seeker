@@ -1,314 +1,50 @@
-# Task ledger — work block: docs/BRIEF-2026-09-02.md (P1-P6, six user-reported bugs)
+# Task ledger — work block: docs/BRIEF-2026-09-03.md (round 2)
 
 Working ledger for this block only (not a permanent doc). Every item from
 the brief, one line each, ticked only when done *and* verified, with a
 one-line result + commit sha. Items not done as briefed are marked
 `NOT DONE — <reason>`, never silently dropped.
 
-Commit order per the brief: P3 → P1 → P4 → P5 → P6 → P2.
+Commit order per the brief: P7 → P8 → P12 → P11 → P9 → P10 →
+0.1/0.2/0.3 → P13.
 
-## Phase 0 — Live reproduction (read-only except 0.2, see below)
+## P7 — Duplicates "Actions" column, 5th report
 
-- [x] 0.1 CONFIRMED live, real numbers, worse than the brief's estimate.
-  Real `x9-pro` duplicate groups (25 groups, DnB vs. "Where The Chaos
-  Lies" album overlap) rendered into a real `MainWindow` at 960×640:
-  `sectionSize(ACTIONS)=230`, but the Actions widget's
-  `visibleRegion().boundingRect()` is `(0,0,0,0)` — fully invisible, not
-  merely clipped. At 1600×900 it's fully visible (610px wide). Confirmed
-  via grep: `clearSpans`/`setSectionResizeMode`/`setColumnWidth`/etc.
-  appear nowhere in `src/seeker/ui/`.
-- [x] 0.2 Ran the real dry-run (`seeker library rename Test`) against the
-  real production DB/library. Found a real, live, **already-existing**
-  DB/disk desync predating this session: 5 of 7 previously-proposed
-  renames were already applied to real files on disk (confirmed via the
-  user: applied through Seeker's own Rename feature), but
-  `local_files.relative_path` for all 5 still held the pre-rename name —
-  no rescan had reconciled it. Root cause of the DB write not landing
-  (or not landing durably) was **not conclusively identified** — the
-  code path (`_apply_one_rename`) reads correctly on inspection (renames
-  the file back if the DB write raises), no stale `-wal`/`-journal` file,
-  `PRAGMA journal_mode` is `delete` (no WAL). Recorded as unresolved,
-  same as this project's own precedent for a handful of prior real,
-  confirmed-but-not-root-caused findings (items 63, 68's stale-span,
-  70). **Real production DB written**: per user's explicit direction,
-  backed up `seeker.db` first
-  (`seeker.db.bak-pre-rescan-20260903T011231`), then ran a normal
-  `seeker library scan` + `seeker library match` (DB-only, no real file
-  touched) to reconcile — confirmed via a follow-up dry run that the 5
-  rows now read correctly and no false collision remains. Also
-  surfaced (not pursued — out of scope for this brief): the "Test"
-  library location and part of the `x9-pro` location contain real,
-  literal duplicate copies of several tracks in different folders,
-  independent of P2 — real matcher/rename behavior can shift which
-  physical copy a track resolves to across rescans.
-- [x] 0.3 CONFIRMED: real `slskd.yml` inside the currently-running
-  container's live `/app` mount (via `docker inspect`) is the **repo's**
-  `slskd-data/slskd.yml` (item 13's hand-edited copy, active `shares:`
-  block already present) — this container was brought up via a plain
-  dev-mode `docker compose up`, not the wizard's `bring_up_slskd()`.
-  `~/Library/Application Support/Seeker/slskd-data/` does not exist on
-  this machine at all. Live-confirms 5.3 is real right now, not just
-  hypothetical: `is_self_managed()` would return `False` against this
-  exact container if the packaged `.app` were used (its bundled
-  `compose_file_path()` can never match the container's real
-  `com.docker.compose.project.config_files` label).
-- [x] 0.4 CONFIRMED sound, matches the brief's "already ruled out"
-  section. 4 real, currently-reachable auto-matched Test tracks (1 mp3
-  nested-location, 1 flac, 1 mp3, 1 flac) all have byte-exact embedded
-  art vs. the current Spotify CDN bytes. Both real MP3s tested write
-  **ID3v2.4**. Library-wide format counts: mp3 2027, flac 1165, wav 70,
-  m4a 12 (~2% wav — real, not "materially wav").
-- [x] 0.5 CONFIRMED via source: `_render_next_step` calls
-  `next_step_notice.show_message()` unconditionally every 2s poll tick;
-  `InlineNotice.dismiss()` only `hide()`s, no memory of the dismissal.
-  Checked the other two `InlineNotice` instances
-  (`dashboard_notice`/`locations_notice`): both are only ever shown from
-  action-result callbacks (worker `on_finished`/`on_error`), never from
-  a poll-tick render method — confirmed they do NOT share this bug, no
-  second copy to fix (3.4).
+- [x] 7.1 Ran the brief's exact standalone PySide6 repro
+  (`QT_QPA_PLATFORM=offscreen`). **Hypothesis CONFIRMED**: blank
+  widget's geometry == real widget's geometry (both `(100, 0, 99,
+  59)`), child order `[REAL, BLANK]` (blank added later, paints on
+  top), `childAt(center)` returned the blank widget, not the real one
+  — despite `real.visibleRegion()` being the FULL non-empty rect. This
+  is exactly why item 73's own geometry/visibleRegion test passed
+  anyway: occlusion is a paint-order property, not a geometry one.
+- [x] 7.2 Fixed in `_render_duplicate_groups`: `setSpan()` now called
+  BEFORE `setCellWidget()` for the group's first row (so the real
+  widget's geometry is computed against the final span rect), and the
+  `for other_row … setCellWidget(..., QWidget())` loop deleted
+  entirely — covered rows get no cell widget at all; the span itself
+  is what makes them read as blank.
+- [x] 7.3 Audited every `setSpan` call site (`grep -n setSpan`): only
+  one other exists, the Sharing-uploads empty-state span
+  (`main_window.py:1814`), which uses `setItem` not `setCellWidget` —
+  no widget-occlusion risk there. No other instance found.
+- [x] 7.4 N/A — 7.1 confirmed the hypothesis, no pixel-diff needed.
+- [x] 7.5 New occlusion-aware regression test,
+  `test_duplicates_actions_widget_is_not_occluded_by_a_covered_row_widget`
+  — asserts `viewport().childAt(visualRect(...).center())` resolves to
+  the real widget (or a descendant of it), not merely that the widget
+  exists or has nonzero `visibleRegion()`. **Verified it actually
+  catches the regression**: reverted the source fix only, reran this
+  one test in isolation — fails with the exact predicted
+  `hit is not real_widget` assertion; passes again with the fix
+  restored. Updated one pre-existing test
+  (`test_render_duplicate_groups_actions_only_on_group_first_row`) to
+  assert `cellWidget(1, ACTIONS) is None` instead of "a blank widget
+  with no buttons" — the corrected behavior per 7.2.
 
-**Reported all five before implementing anything (phase gate) — including
-asking the user 3 clarifying questions given 0.2's real-file discovery,
-answered before proceeding.**
+`mypy --strict src/` clean (82 files). Full suite: 908 passed, 1
+skipped (0 failures) — 1 net new test, 0 regressions (the one
+`test_history_refresh_button_refetches` failure is the pre-existing
+documented flake, reconfirmed passing in isolation).
 
-## P3 — "You're all set" reappears after being dismissed
-
-- [x] 3.1 `InlineNotice` gains a real `dismissed = Signal()`, emitted
-  from `dismiss()` (covers both the X button and any programmatic
-  dismiss call).
-- [x] 3.2 `MainWindow` gains `_dismissed_next_step_key`/
-  `_current_next_step_key` (tuple of playlist name + step message +
-  step action). `_render_next_step` computes the current key, checks it
-  against the dismissed key BEFORE clearing, keeps the notice hidden
-  when they match, and clears the stored dismissed key the moment the
-  computed key differs (so a genuinely different step — or the same
-  step recurring later — still surfaces).
-- [x] 3.3 4 new tests: `test_notice.py` gets 2 (dismiss emits the
-  signal, both via direct call and the real button click);
-  `test_ui_smoke.py` gets 2 (dismissed stays hidden across 3 direct
-  `_render_next_step` "ticks", then a genuinely different step still
-  shows; a dismissed step recurring after something else was shown in
-  between is NOT suppressed by the stale dismissal).
-- [x] 3.4 Done as part of Phase 0.5 above — confirmed no second copy of
-  this bug exists.
-
-`mypy --strict` clean on both touched files. Full suite after adding the
-4 new tests: 878 passed, 1 skipped (0 failures).
-
-**Commit boundary — commit 7e1b612.**
-
-## P1 — Tagging button row squeezes the playlist panel
-
-- [x] 1.1 New `src/seeker/ui/flow_layout.py::FlowLayout` (the standard
-  Qt reflowing-row pattern, ported to PySide6). `_build_tagging_controls`
-  now returns/builds a `FlowLayout` instead of a `QHBoxLayout`.
-- [x] 1.2 `playlist_list.setMinimumWidth()` sized via
-  `QFontMetrics.horizontalAdvance()` against an explicitly-flagged
-  untuned sample string ("A pretty long playlist name (2026)") + theme
-  spacing.
-- [x] 1.3 SKIPPED (judgement call, as the brief allowed) — the
-  `QSplitter` replacement. FlowLayout + the new minimum width already
-  resolve both symptoms structurally; a splitter would touch every
-  existing dashboard-layout test for no further benefit.
-- [x] 1.4 9 new tests: `test_flow_layout.py` (5, unit-level: minimum
-  size is the widest item not the sum, `hasHeightForWidth`, height
-  grows as width shrinks, `takeAt`/`itemAt` bounds) + `test_ui_smoke.py`
-  (4: `dashboard_content.minimumSizeHint().width() < 960` at the app's
-  real 960×640 minimum, `playlist_list` keeps its floor, the tagging
-  row collapses to 1 row at 1600 wide and grows to 2+ rows at 320,
-  `tagging_controls_layout.minimumSize()` is the widest item not the
-  sum). Live-confirmed via a real offscreen `MainWindow` at 960×640:
-  `dashboard_content.minimumSizeHint().width()` is 445px (was ~900-
-  1000px+ before, per the brief's own arithmetic).
-
-`mypy --strict src/` clean (82 files). Full suite: 887 passed, 1
-skipped (0 failures) — 9 new, 0 regressions.
-
-**Commit boundary — commit a868139.**
-
-## P4 — Duplicates "Actions" column shows nothing (4th report)
-
-- [x] 4.1 `self.duplicates_table.clearSpans()` at the top of
-  `_render_duplicate_groups`, before `setRowCount()`. Audited every
-  other table in the app for the same omission (grepped every
-  `.setSpan(` call site — only one other exists,
-  `_render_sharing_uploads_table`'s no-uploads banner). **Found a real,
-  second, live instance of the SAME bug there**: that branch spans row
-  0 across all 4 columns when `uploads` is empty, but `setRowCount()`
-  doesn't clear it — confirmed live that a transition from empty to a
-  real upload left the stale span active, visually swallowing the new
-  row's filename/state/progress cells into column 0 (the underlying
-  `QTableWidgetItem` data was set correctly; only the visual merge was
-  wrong). Fixed with the same `clearSpans()` call; 1 new regression
-  test (`test_sharing_uploads_table_clears_stale_span_after_empty_
-  state`).
-- [x] 4.2 New `_size_duplicates_columns()`: ACTIONS gets
-  `ResizeMode.Fixed` + an explicit width derived from
-  `max(sizeHint().width() for widget in action_widgets)` across every
-  real widget built that render. PATH gets `Stretch`. Everything else
-  gets `ResizeToContents`.
-- [x] 4.3 `header.setMinimumSectionSize(40)` (untuned, flagged) +
-  `setStretchLastSection(False)` (the exact mechanism that caused the
-  bug — stretching whichever column happens to be last).
-- [x] 4.4 3 new tests in `test_ui_smoke.py`: real geometry at 960×640
-  (`sectionSize(ACTIONS) >= sizeHint().width()` and
-  `visibleRegion().boundingRect().width() >= sizeHint().width() - 2`),
-  ACTIONS is genuinely `Fixed` at a width equal to its `sizeHint()`,
-  and the stale-span regression (4-file group then two differently-
-  shaped 2-file groups — the shape actually has to CHANGE between
-  renders to exercise this, unlike every prior investigation's test).
-- [x] 4.5 Rewrote (not deleted) the item 56 §6.2 "could not reproduce"
-  test — its real pipeline (real `DuplicateService`, real
-  fingerprinting) was good, its assertions weren't. Now resizes to
-  960×640 and asserts real `sectionSize`/`visibleRegion` geometry, not
-  just `isVisible()`, on both a first render and a full re-render.
-
-Live-confirmed against real production duplicate groups (25 groups,
-`x9-pro`): Actions went from a real `(0,0,0,0)` visibleRegion at
-960×640 (before) to a real 285px-wide fully-visible widget (after).
-
-`mypy --strict src/` clean (82 files). Full suite: 891 passed, 1
-skipped (0 failures) — 4 net new (3 duplicates + 1 sharing-uploads),
-0 regressions.
-
-**Commit boundary — commit 19cd0e4.**
-
-## P5 — Sharing: "slskd.yml has no active shares section to add to"
-
-- [x] 0.3-continued — captured a REAL genuinely-fresh, never-hand-edited
-  slskd default (`docker run` against an empty data dir, disposable,
-  never the real production container) as
-  `tests/fixtures/slskd_generated_default.yml`. Confirmed: NO active
-  `shares:` block at all, only the commented default template — exactly
-  the reported bug's real cause.
-- [x] 5.1 `_insert_slskd_share_directory` creates the block (appended
-  at end of file, adding a leading newline first if needed — the real
-  fixture has none of its own) when no active one exists, instead of
-  refusing. Existing "insert into existing block" path untouched. 3
-  new tests: hand-written no-block case, the real fixture, and a full
-  `add_location_to_share` end-to-end test using the fixture.
-- [x] 5.2 `add_location_to_share` computes both new file contents
-  BEFORE writing either; the slskd.yml write is wrapped to roll the
-  compose file back from its own backup on failure. 1 new test
-  simulates a real write failure scoped to just the slskd.yml path and
-  asserts the compose file is unchanged.
-- [x] 5.3 `compose_file_path()`'s frozen branch now copies the bundled
-  `docker-compose.yml` into `slskd_data_dir()` once (guarded) instead
-  of resolving inside the app bundle — stable across rebuilds, same
-  pattern item 18 used for the DB. Rewrote the existing frozen-path
-  test (it was asserting the exact behavior being fixed) + added a
-  guarded-no-overwrite test.
-- [x] 5.4 Live E2E verified against a real, disposable, throwaway
-  container (never the real production `slskd`, confirmed still
-  running unmodified throughout): real block creation, real compose
-  volume line, real backups, `is_self_managed()` correctly `True`. A
-  readiness-poll 401 after recreate was traced to the verification
-  script's own env gap (not carrying `SLSKD_API_KEY`), not a defect in
-  the fix — file-level edits independently confirmed correct. Real
-  containers/network/scratch dirs torn down after.
-- [x] 5.5 Re-confirmed, no action needed — `slskd-data/` stays
-  `.gitignore`d.
-
-`mypy --strict src/` clean (83 files). Full suite: 896 passed, 1
-skipped (0 failures) — 5 net new, 0 regressions.
-
-**Commit boundary — commit 1362728.**
-
-## P6 — Cover art "still doesn't update" (4th report)
-
-- [x] 6.1 Reported Phase 0.4's numbers first (see Phase 0 section
-  above) — 4/4 real tracks byte-exact, both MP3s at v2.4. Decided 6b
-  (ID3 version) as the primary live candidate to fix, alongside 6a's
-  reporting gap (already partially handled but with a real, live gap
-  found: the "nothing to do" message actively contradicted what
-  actually happened).
-- [x] 6.2 (6a) `format_tag_result_notice` rewritten so EVERY message
-  shape mentions a nonzero `skipped_already_tagged` and says plainly
-  its art was not checked (not just the all-skipped branch — a mixed
-  fresh+skipped run previously said nothing about the skipped ones at
-  all). `_show_tag_result_notice` offers "Fix missing cover art" as
-  the notice's own action button.
-- [x] 6.3 (6b) New `metadata.py::save_tags()` — `v2_version=3` only
-  for real ID3 carriers (MP3/WAV), plain `save()` otherwise (FLAC/MP4
-  don't accept that kwarg). **Live-verified with the user's explicit
-  go-ahead**: real production DB backed up, then `seeker library tag
-  Test --force` run for real (the only real path that actually
-  exercises the write, since `fix_missing_art_for_playlist`'s own
-  `already_correct` short-circuit skips the write entirely when art
-  already matches — true for every Test track per Phase 0.4). Real
-  result: 9/9 tagged, 0 failed. Both real MP3s confirmed
-  `ID3(path).version == (2, 3, 0)` afterward; all 9/9 still byte-exact
-  vs. the current CDN. **The DJ-software visual check itself is
-  outstanding** — only the user can do it.
-- [x] 6.4 New `tagged_art_rarely_supported_format`/
-  `fixed_wav_rarely_supported` outcomes — a WAV embed succeeding is
-  reported honestly as its own bucket, not folded into plain "written"
-  success.
-- [x] 6.5 Left open per the brief's own instruction — will not mark
-  this closed until the user confirms visually.
-
-9 new tests: `test_metadata.py` (3: MP3 v2.3 against a real x9-pro
-file, WAV v2.3 via a portable synthetic file, FLAC dispatch doesn't
-raise), `test_ui_smoke.py` (2 new + 1 existing test strengthened:
-mixed-run notice wording, action-button triggers the real fix-art
-call, and the existing already-tagged test now also asserts the "NOT
-checked" wording + action button).
-
-`mypy --strict src/` clean (84 files). Full suite: 901 passed, 1
-skipped (0 failures) — 5 net new (the 6th accounted for by the
-strengthened existing test), 0 regressions (the one intermittent
-`test_history_refresh_button_refetches` failure seen once is the
-pre-existing documented flake, confirmed via 3x isolated rerun).
-
-**Commit boundary — commit 5b39917.**
-
-## P2 — "Rename files" leaves numbered prefixes the preview said would go
-
-- [x] 2.1 Stated in Phase 0.2 above: none of hypothesized Defects A/B/C
-  — the real cause was a pre-existing DB/disk desync (root cause not
-  conclusively identified), reconciled via a normal rescan before any
-  code change.
-- [x] 2.2 New `_mark_within_batch_collisions()` — a second pass over
-  `plan_renames`'s output flagging any `'rename'` plan whose target is
-  shared by another plan in the same batch.
-- [x] 2.3 `_apply_one_rename` records an honest detail + `collisions`
-  increment whenever the real resolved name differs from the preview —
-  moved from the outer loop's plan-time guess to the real per-file
-  apply-time outcome (a genuine, more accurate redefinition, not just
-  cosmetic — found while writing the test: the first of two colliding
-  plans to be processed can still land on its own exact previewed
-  name).
-- [x] 2.4 `apply_renames` re-plans fresh from the same track ids
-  immediately before any real work and refuses (a real per-track
-  failure) any track whose fresh plan disagrees with what was
-  confirmed — the brief's own preferred, safer option over blocking
-  timers.
-- [x] 2.5 `format_rename_result_message` now says plainly how many
-  files were written with a different name than previewed, prominently
-  (downgraded to `warning` kind when it happens), not buried in the
-  capped results panel.
-- [x] 2.6 7 new regression tests: within-batch collision (plan-time +
-  apply-time), honest mismatch reporting, refuse-on-stale-plan (2
-  shapes — file landing mid-preview, match changing mid-preview), and
-  a dedicated test reproducing the EXACT real Phase 0.2 failing shape
-  (stale DB row after a completed rename reads as a false collision —
-  documented as understood drift behavior, not a code bug).
-
-**Live re-verified against the real production "Test" playlist**
-(read-only dry run): 5 real renames proposed, 0 collisions — the false
-collisions from Phase 0.2's original desync are gone.
-
-`mypy --strict src/` clean (84 files). Full suite: 908 passed, 1
-skipped (0 failures) — 7 net new, 0 regressions.
-
-**Commit boundary — commit (see next `git log`, made right after this
-entry).**
-
----
-
-## Brief closed
-
-All six items (P1-P6) addressed. P6 deliberately left open pending the
-user's own visual DJ-software confirmation — everything else closed.
-Commit order followed exactly as specified: P3 → P1 → P4 → P5 → P6 →
-P2.
+**Commit boundary — pending.**

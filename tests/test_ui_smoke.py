@@ -4993,9 +4993,14 @@ def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
     window._render_duplicate_groups([_make_duplicate_group()])
 
     first_row_actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    # Roadmap item 77 (P7, 5th report) — a covered row now gets NO cell
+    # widget at all (not even a blank placeholder): a blank widget there
+    # used to be resolved by the span to the exact same rect as the
+    # real widget and paint over it. The span itself, not a widget,
+    # is what makes the covered row read as blank.
     other_row_actions = window.duplicates_table.cellWidget(1, _duplicates_column(window, "Actions"))
     assert first_row_actions.findChildren(QPushButton)
-    assert not other_row_actions.findChildren(QPushButton)
+    assert other_row_actions is None
 
 
 def test_duplicates_actions_column_survives_manual_column_resize(qtbot):
@@ -5054,6 +5059,49 @@ def test_duplicates_actions_widget_is_really_visible_at_app_minimum_size(
     # a SLIVER (confirmed live: a real 0px visibleRegion at 960x640
     # before this fix), not an exact-pixel match.
     assert visible_width >= widget.sizeHint().width() - 2
+
+
+def test_duplicates_actions_widget_is_not_occluded_by_a_covered_row_widget(
+        qtbot,
+):
+    # Roadmap item 77 (P7, 5th report) — the real root cause: a group
+    # with more than one file used to place a blank QWidget() on every
+    # row COVERED by the Actions span. QTableView resolves a spanned
+    # region's geometry identically for every row inside the span, so
+    # that blank widget landed on the EXACT SAME rect as the real
+    # group_first_row widget and, being added later, painted over it —
+    # confirmed live via a standalone PySide6 repro before this fix
+    # (real geom == blank geom, child order REAL-then-BLANK,
+    # childAt(center) returned the blank widget). Every prior
+    # regression test (existence, geometry, visibleRegion) passed
+    # anyway, because the real widget's own visibleRegion() is
+    # non-empty even while occluded by a sibling — occlusion is a
+    # z-order/paint-order property, not a geometry property. This test
+    # is occlusion-aware: it asks what a real click would actually hit.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window._show_page("duplicates")
+
+    window._render_duplicate_groups([_make_duplicate_group_with_n_files(3)])
+    qtbot.wait(20)
+
+    actions_column = _duplicates_column(window, "Actions")
+    real_widget = window.duplicates_table.cellWidget(0, actions_column)
+    assert real_widget is not None
+
+    cell_rect = window.duplicates_table.visualRect(
+        window.duplicates_table.model().index(0, actions_column)
+    )
+    hit = window.duplicates_table.viewport().childAt(cell_rect.center())
+    assert hit is not None
+    assert hit is real_widget or real_widget.isAncestorOf(hit)
+
+    # And no widget at all should have been placed on the covered rows
+    # — the span itself is what makes them read as blank.
+    assert window.duplicates_table.cellWidget(1, actions_column) is None
+    assert window.duplicates_table.cellWidget(2, actions_column) is None
 
 
 def test_duplicates_actions_column_is_fixed_width_derived_from_sizehint(

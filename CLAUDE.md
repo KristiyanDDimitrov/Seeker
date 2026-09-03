@@ -1161,6 +1161,23 @@ compress it here before moving on to the next item.
     failing shape (a stale DB row after a completed rename reads as a
     false collision — documented as understood DB/disk-drift behavior,
     not a `plan_renames` bug). [HISTORY §76](docs/HISTORY.md#76)
+77. **Fix P7: Duplicates Actions column blank, 5th report — root cause
+    was occlusion, not width — done.** Item 73's width fix was real but
+    for a different defect. Real cause, confirmed via a live PySide6
+    experiment: a blank `QWidget()` placed on every row COVERED by the
+    Actions span gets resolved by Qt to the EXACT SAME geometry as the
+    real span-owning widget, and — added to the viewport later — paints
+    over it. The real widget's own `visibleRegion()` stays fully
+    non-empty throughout, which is why every prior geometry-based test
+    (including item 73's) passed anyway. **Standing fact for any future
+    `setSpan`+`setCellWidget` pairing:** call `setSpan()` BEFORE
+    `setCellWidget()` on the span-owning cell, and put NO widget of any
+    kind on the covered cells — the span itself renders them blank; a
+    "blank placeholder" widget is not just unnecessary but actively
+    dangerous. Regression test must be occlusion-aware
+    (`viewport().childAt(visualRect(...).center())`), not just
+    existence/geometry — the property that gap explains why 4 rounds
+    of introspection-only testing missed it. [HISTORY §77](docs/HISTORY.md#77)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

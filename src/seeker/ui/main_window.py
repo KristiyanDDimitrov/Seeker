@@ -3173,6 +3173,25 @@ class MainWindow(QMainWindow):
 
                 row += 1
 
+            # Roadmap item 77 (P7, 5th report) -- setSpan() BEFORE
+            # setCellWidget() for the group's first row, so the real
+            # widget's geometry is computed against the final spanned
+            # rect, not a single-cell rect that a later setSpan() call
+            # then silently changes underneath it. And no widget of any
+            # kind (blank or otherwise) goes on the covered rows: a
+            # blank QWidget() there used to get resolved by Qt's own
+            # span geometry to the EXACT SAME rect as the real widget
+            # (visualRect() resolves every cell inside a span to the
+            # whole span's rect) and, being added to the viewport
+            # later, painted over it -- confirmed live via
+            # childAt(center of the Actions cell) returning the blank
+            # widget, not the real one, before this fix. The span
+            # itself is what makes the covered rows read as blank; no
+            # cell widget is needed there at all.
+            self.duplicates_table.setSpan(
+                group_first_row, _DuplicatesColumn.ACTIONS,
+                len(group.files), 1,
+            )
             group_actions_widget = self._build_duplicate_group_actions(
                 group, button_group,
             )
@@ -3180,20 +3199,6 @@ class MainWindow(QMainWindow):
             self.duplicates_table.setCellWidget(
                 group_first_row, _DuplicatesColumn.ACTIONS,
                 group_actions_widget,
-            )
-
-            for other_row in range(group_first_row + 1, row):
-                # Blank cell, not a misleading control -- same "the
-                # action lives once per group, not once per row"
-                # precedent as item 27's per-track Tag button only
-                # rendering for IN_LIBRARY rows.
-                self.duplicates_table.setCellWidget(
-                    other_row, _DuplicatesColumn.ACTIONS, QWidget(),
-                )
-
-            self.duplicates_table.setSpan(
-                group_first_row, _DuplicatesColumn.ACTIONS,
-                len(group.files), 1,
             )
 
         self._size_duplicates_columns(action_widgets)
