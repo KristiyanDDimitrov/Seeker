@@ -208,3 +208,56 @@ pre-existing tests updated for the new cell-widget container shape
 current-page target updated to `track_table_card`.
 
 **Commit boundary — pending.**
+
+## 0.1 — Build identity, 0.2 — per-account data doc, 0.3 — frozen compose path
+
+- [x] 0.1 New `src/seeker/_build_info.py` (`GIT_SHA`/`GIT_DESCRIBE`/
+  `BUILT_AT`, committed with `"dev"` fallback values, force-added
+  despite being gitignored so the fallback ships — see its own and
+  `.gitignore`'s comments on why real local build modifications to
+  this tracked file should never be committed).
+  `packaging/build_dmg.py::_write_build_info()` overwrites it with the
+  real `git rev-parse --short HEAD`/`git describe --dirty --always`/
+  UTC timestamp immediately before the PyInstaller step. Surfaced in
+  the window title (`"Seeker — <sha>"`), the About dialog (next to the
+  version line), and the Help page (next to the data-locations
+  section) via new `help_text.format_build_identity()`.
+- [x] 0.2 New `HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE` on the Help page,
+  said explicitly: this folder is per macOS user account, nothing
+  shared between accounts, and a cross-account report is very often a
+  different-database report rather than a different-behavior one.
+- [x] 0.3 Checked whether item 74 already fixed the frozen-build
+  `compose_file_path()` issue this item flagged — **it did.**
+  `docker_setup.py::compose_file_path()` already copies the bundled
+  resource into the stable per-user `slskd_data_dir()` on first use in
+  a frozen build and always returns that canonical path afterward
+  (item 74, confirmed by reading the current source, not assumed from
+  the roadmap entry alone). No code change needed here.
+
+  The actually-dirty working tree this item also flagged was real,
+  live evidence that item 74's fix works as designed: `docker-
+  compose.yml`'s real diff (a `Test` location's share volume line) and
+  the identically-matching `.bak-20260903T082155Z` file (confirmed
+  byte-identical to the pre-change committed version via `diff`) are
+  exactly `add_location_to_share`'s own "compute both new file
+  contents, write, keep a backup" behavior — a REAL Sharing write that
+  landed correctly. Committed the real change (this file already
+  embeds real machine-specific paths as its committed defaults, same
+  established convention) and deleted the now-redundant backup.
+  Also cleaned up stray `.DS_Store` files (added to `.gitignore`) and
+  committed the two untracked `tests/_stress_step{3,4}_*_repro.py`
+  scripts from the previous round's item 63 investigation — matching
+  this project's own existing, already-tracked `_*_repro.py`
+  convention (4 prior examples), not something to leave dangling.
+
+New tests: `format_build_identity()` (dev vs. real sha/describe/
+timestamp), the About dialog and Help page both show the build line,
+Help page shows the per-account note. One pre-existing test
+(`test_main_window_constructs_without_crashing`) updated for the new
+window title shape.
+
+`mypy --strict src/` clean (83 files — `_build_info.py` is new). Full
+suite: 927 passed, 1 skipped (0 failures) — 4 net new tests, 0
+regressions.
+
+**Commit boundary — pending.**

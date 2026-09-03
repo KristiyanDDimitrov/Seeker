@@ -99,6 +99,19 @@ HELP_DATA_LOCATIONS_INTRO = (
     "token, and SoulSeek data — in one folder on this machine. Nothing "
     "is uploaded anywhere else."
 )
+# Roadmap item 81 (0.2) — a real prior-round report ("fix didn't work
+# on the other account") turned out to be two entirely separate
+# databases, not a regression — said here explicitly so the next one
+# doesn't cost a whole test round again.
+HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE = (
+    "This folder is per macOS user account — a different login has "
+    "its own separate database, library locations, scan state, and "
+    "SoulSeek data, with nothing shared between accounts. If something "
+    "looks different on another account, check first whether that "
+    "account has actually been set up the same way (synced, scanned, "
+    "matched) — it's very often a different-database report, not a "
+    "different-behavior one."
+)
 DATA_LOCATION_DATABASE_LABEL = "Database:"
 DATA_LOCATION_CONFIG_LABEL = "Config:"
 DATA_LOCATION_SPOTIFY_TOKEN_LABEL = "Spotify token:"
@@ -107,6 +120,20 @@ OPEN_DATA_FOLDER_BUTTON_TEXT = "Open Data Folder"
 TOOLTIP_OPEN_DATA_FOLDER = (
     "Open the folder above in Finder/Explorer/your file manager."
 )
+HELP_BUILD_IDENTITY_LABEL = "Build:"
+
+
+def format_build_identity(
+        git_sha: str, git_describe: str, built_at: str,
+) -> str:
+    """Roadmap item 81 (0.1) — makes "is this account running the
+    build I think it is?" a two-second visual check. `git_sha ==
+    "dev"` means an unmodified `seeker/_build_info.py` — i.e. this is
+    a real `uv run` dev session, not a packaged build at all.
+    """
+    if git_sha == "dev":
+        return "dev (running from source, not a packaged build)"
+    return f"{git_describe} — built {built_at}"
 
 # --- MainWindow toolbar ---------------------------------------------------
 

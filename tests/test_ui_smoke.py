@@ -578,7 +578,9 @@ def test_main_window_constructs_without_crashing(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window.windowTitle() == "Seeker"
+    # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
+    # fallback (this test never runs against a real packaged build).
+    assert window.windowTitle() == "Seeker — dev"
 
 
 # --- Sidebar shell (Phase 4) ------------------------------------------------
@@ -2351,6 +2353,52 @@ def test_about_dialog_opens_without_crashing(qtbot):
     qtbot.addWidget(dialog)
 
     assert dialog.windowTitle() == help_text.ABOUT_DIALOG_TITLE
+
+
+def test_format_build_identity_labels_dev_explicitly():
+    assert "dev" in help_text.format_build_identity("dev", "dev", "dev")
+    assert "not a packaged build" in help_text.format_build_identity(
+        "dev", "dev", "dev",
+    )
+
+
+def test_format_build_identity_shows_real_sha_and_timestamp():
+    text = help_text.format_build_identity(
+        "a1b2c3d", "v0.1.0-3-ga1b2c3d", "2026-09-03T12:00:00+00:00",
+    )
+    assert "v0.1.0-3-ga1b2c3d" in text
+    assert "2026-09-03T12:00:00+00:00" in text
+
+
+def test_about_dialog_shows_build_identity(qtbot):
+    # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
+    # fallback, since these tests never run against a real packaged
+    # build.
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    labels_html = [widget.text() for widget in dialog.findChildren(QLabel)]
+    combined = "\n".join(labels_html)
+
+    assert "Build:" in combined
+    assert "dev" in combined
+
+
+def test_help_page_shows_build_identity_and_per_account_note(qtbot):
+    # Roadmap item 81 (0.1/0.2)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    help_page = window._build_help_page()
+    qtbot.addWidget(help_page)
+
+    combined = "\n".join(
+        widget.text() for widget in help_page.findChildren(QLabel)
+    )
+
+    assert "Build:" in combined
+    assert "per macOS user account" in combined
 
 
 def test_about_dialog_shows_author_license_and_notices(qtbot):

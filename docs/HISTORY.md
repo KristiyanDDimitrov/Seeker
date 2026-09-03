@@ -10680,3 +10680,78 @@ assertions updated to target `track_table_card`.
 
 `mypy --strict` clean (82 files). Full suite: 923 passed / 1 skipped,
 7 net new tests, 0 regressions.
+
+### 81 — 0.1 + 0.2 + 0.3
+
+**0.1:** the previous brief's own diagnosis (section 0) established
+that a packaged `.dmg` tested ~2 hours after the last commit contained
+every real fix — the reported discrepancy was a testing-logistics
+artifact, not a code difference, because nothing anywhere in the app
+showed which build was actually running. `pyproject.toml` is pinned at
+a static `0.1.0` and that was the only thing ever displayed. Fixed
+with a generated `src/seeker/_build_info.py` — real git SHA/describe/
+UTC timestamp, written by a new `packaging/build_dmg.py::_write_build_
+info()` step immediately before the PyInstaller build. The committed
+version (`GIT_SHA = "dev"`) is a deliberate dev-run fallback, force-
+added to git despite living in `.gitignore` (`git add -f`) — a real
+tradeoff, stated in both the file's own docstring and the `.gitignore`
+comment: once tracked, gitignore no longer hides a tracked file's
+future local modifications from `git status`, only prevents brand-new
+untracked files from being listed. The practical effect is a soft
+convention (don't commit a real local build's regenerated content),
+not a hard git guarantee — acceptable here since a real `.dmg` build's
+`_build_info.py` is exactly as disposable as `dist/`/`build/` already
+are. Surfaced in three places per the brief: the window title
+(`"Seeker — <sha>"`), the About dialog (next to the version line,
+which already existed), and the Help page (a new line next to the
+data-locations section, since that's where "which build is this?"
+troubleshooting actually starts).
+
+**0.2:** a new sentence on the Help page, `HELP_DATA_LOCATIONS_PER_
+ACCOUNT_NOTE`, states explicitly what CLAUDE.md item 18 has always been
+true but never surfaced to an actual user: `platformdirs.user_data_
+dir("Seeker")` is per macOS account, so two accounts have entirely
+separate databases/library locations/scan state/SoulSeek data with
+nothing shared, and a cross-account "fix didn't work" report is very
+often just a different-database report.
+
+**0.3:** checked whether item 74 (P5, the previous brief) already
+fixed the frozen-build `compose_file_path()` problem this item
+flagged, by reading the CURRENT real source rather than trusting the
+roadmap summary — it had: `compose_file_path()` already copies the
+bundled resource into the stable per-user `slskd_data_dir()` on first
+use in a frozen build (guarded — only copies if the canonical copy
+doesn't exist yet) and always returns that canonical path afterward.
+No code change was needed for the frozen-path concern itself.
+
+The working tree's own dirty `docker-compose.yml` (flagged by this
+same item as needing a decision) turned out to be live, real evidence
+that item 74's fix works exactly as designed rather than an unrelated
+loose end: its diff is one new share-volume line for a "Test" location,
+and the untracked `docker-compose.yml.bak-20260903T082155Z` sitting
+next to it is confirmed BYTE-IDENTICAL (via `diff`) to the pre-change
+committed version — precisely `add_location_to_share`'s own "compute
+both new file contents before writing either, keep a backup" behavior
+(item 74's own write-both-or-neither fix), having done its job for a
+real Sharing action taken during a real `uv run` session. Committed
+the real change (this file already commits real, machine-specific
+absolute paths as its own defaults — an established convention for
+this single-user personal project, not a template repo) and deleted
+the now-redundant backup rather than leaving it stray.
+
+Also swept up, since "don't leave the tree dirty" was this item's own
+explicit instruction: `.DS_Store` files (added to `.gitignore`, three
+stray ones deleted) and the two untracked `tests/_stress_step{3,4}_
+*_repro.py` scripts left over from the previous round's item 63
+investigation — committed rather than left dangling, matching this
+project's own existing, already-tracked `_*_repro.py` convention (4
+prior examples: `_stress_hang_repro.py`, three `_workers_*_repro.py`
+files).
+
+4 new tests (`format_build_identity` dev/real cases, About dialog and
+Help page both showing the build line, Help page showing the
+per-account note); one pre-existing test's window-title assertion
+updated for the new `"Seeker — dev"` shape.
+
+`mypy --strict` clean (83 files). Full suite: 927 passed / 1 skipped,
+0 regressions.

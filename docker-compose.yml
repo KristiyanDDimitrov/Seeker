@@ -26,4 +26,5 @@ services:
     volumes:
       - ${SLSKD_DATA_DIR:-./slskd-data}:/app
       - "${SLSKD_SHARE_PATH:-/Volumes/X9 Pro/Music}:/shared/music:ro"
+      - "/Volumes/X9 Pro/Music/Test:/shared/Test:ro"
     restart: always

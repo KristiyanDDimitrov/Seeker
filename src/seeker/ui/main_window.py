@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker import _build_info
 from seeker.application import Application
 from seeker.audio_formats import AUDIO_EXTENSIONS
 from seeker.filename_sanitize import sanitize_path_component
@@ -586,6 +587,11 @@ class AboutDialog(QDialog):
         body = help_text.ABOUT_DIALOG_BODY
         if installed_version is not None:
             body += f"<p>Version {installed_version}</p>"
+        build_identity = help_text.format_build_identity(
+            _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
+            _build_info.BUILT_AT,
+        )
+        body += f"<p>{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}</p>"
 
         text_label = QLabel(body)
         text_label.setTextFormat(Qt.TextFormat.RichText)
@@ -954,7 +960,11 @@ class MainWindow(QMainWindow):
             tuple[str | None, str | None, str | None] | None
         ) = None
 
-        self.setWindowTitle("Seeker")
+        # Roadmap item 81 (0.1) — a real build identity in the window
+        # title, so "is this the build I think it is?" is a glance,
+        # not a guess. "dev" (the committed _build_info.py fallback)
+        # means an unmodified uv run, not a packaged build.
+        self.setWindowTitle(f"Seeker — {_build_info.GIT_SHA}")
         self.resize(1180, 760)
         self.setMinimumSize(960, 640)
 
@@ -1912,6 +1922,31 @@ class MainWindow(QMainWindow):
         intro_label = QLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
         intro_label.setWordWrap(True)
         inner_layout.addWidget(intro_label)
+
+        # Roadmap item 81 (0.2) — said explicitly, in the app, not just
+        # in CLAUDE.md: a "fix didn't work on the other account" report
+        # is very often a different-database report, not a
+        # different-behavior one.
+        per_account_label = QLabel(
+            help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE
+        )
+        per_account_label.setWordWrap(True)
+        inner_layout.addWidget(per_account_label)
+
+        # Roadmap item 81 (0.1) — next to the data locations, not
+        # buried in About, since this page is exactly where "which
+        # build is this?" troubleshooting starts.
+        build_identity = help_text.format_build_identity(
+            _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
+            _build_info.BUILT_AT,
+        )
+        build_label = QLabel(
+            f"{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}"
+        )
+        build_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        inner_layout.addWidget(build_label)
 
         locations_form = QFormLayout()
         for label_text, path in (
