@@ -10217,3 +10217,81 @@ throughout via `docker ps` before and after.
 `mypy --strict` clean. Full suite: 896 passed / 1 skipped (5 net new:
 2 in `test_docker_setup.py` replacing the old frozen-path assertion, 4
 in `test_sharing_service.py`), 0 regressions.
+
+### 75 — P6
+
+Phase 0.4 already re-confirmed the write path was sound (4/4 real,
+currently-reachable auto-matched Test tracks byte-exact vs. the current
+CDN art, both real MP3s tested writing ID3v2.4). This round's job was
+the brief's own 6.1-6.5, in order.
+
+**6a (`_tag_one_track`'s `tagged_at` short-circuit):** confirmed the
+mechanism is exactly as described — `skip_tag_write = local_file.
+tagged_at is not None and not force` returns before the art step is
+ever reached. Fixed the REPORTING side (6.2), not the skip itself (the
+brief explicitly offered a choice here and named the reporting fix as
+"cleaner and closer to the existing design" — `fix_missing_art_for_
+playlist()` already exists specifically for "check art without a full
+retag," so pointing at it is the real answer, not adding a second way
+to do the same thing). `format_tag_result_notice` previously only
+mentioned `skipped_already_tagged` in the ALL-skipped branch (`tagged
+== 0`) and said "nothing to do" — actively misleading, since art was
+never looked at. Rewrote every branch (mixed fresh+skipped runs
+previously said NOTHING about the skipped ones at all) to say plainly
+"N already-tagged track(s)' cover art was NOT checked this run," and
+`_show_tag_result_notice` now offers "Fix missing cover art" as the
+notice's own action button whenever `skipped_already_tagged > 0`,
+wired directly to the existing `_on_fix_missing_art_clicked` handler.
+
+**6b (ID3 version):** new `metadata.py::save_tags()` — the single
+shared save point both real call sites (`_tag_one_track`,
+`_fix_one_track_art`) now go through — dispatches `save(v2_version=3)`
+only for `isinstance(mutagen_file.tags, ID3)` (MP3 and WAV's real
+`_WaveID3` subclass), falling through to plain `save()` for FLAC/MP4
+(whose `save()` takes no such kwarg — calling it there would raise).
+Unit-tested against a real copied MP3 from the x9-pro drive (mypy-gated
+`@requires_x9_pro`, matching this file's existing convention) and a
+portable synthetic WAV (no drive dependency), confirming `ID3(path).
+version == (2, 3, 0)` after the write, plus a FLAC test confirming the
+dispatch doesn't raise.
+
+**6c (`no_url`):** already handled per the brief's own note; nothing to
+do.
+
+**6.4 (WAV honesty):** a WAV embed succeeding is not the same claim as
+an MP3/FLAC/M4A embed succeeding — essentially nothing outside mutagen
+itself reads embedded art from WAV. New outcome values
+`tagged_art_rarely_supported_format` (tag_tracks) /
+`fixed_wav_rarely_supported` (fix_missing_art_for_playlist), counted
+and detailed separately from both "written" (plain success) and
+"tagged_without_art" (genuinely nothing embedded) — the report now
+distinguishes all three, not just two.
+
+**Live verification, with the user's explicit go-ahead (real
+production files):** `fix_missing_art_for_playlist` alone wouldn't
+actually exercise the v2.3 fix against the Test playlist's already-
+correct-art files — its own `already_correct` short-circuit returns
+BEFORE `save_tags()` is ever reached when the embedded bytes already
+match the CDN, which Phase 0.4 had already confirmed was true for
+every sampled file. Used `seeker library tag Test --force` instead (a
+full re-tag, bypassing the skip checks entirely) — the real,
+user-facing equivalent of "Tag playlist" with "Re-tag already tagged
+files" checked. Backed up the real `seeker.db` first (same discipline
+as P2's rescan). Real run: **9/9 tagged, 0 failed, 0 without cover
+art.** Re-verified directly afterward: both real MP3s
+(`Bit Perfect`, `Cannibals`) now read `ID3(path).version == (2, 3,
+0)`; all 9/9 tracks (both MP3 and FLAC) remain byte-exact against the
+current Spotify CDN art.
+
+**Deliberately left open:** per the brief's own standing instruction
+("do not close this item on 'the bytes are in the file' ... it closes
+when the user says they can see a picture"), this item stays open
+until the user checks their real DJ software (Rekordbox/Serato/
+Traktor) against the real "Test" playlist's files and confirms art is
+now visible — something only they can do, and something four prior
+rounds never actually asked for. `mypy --strict` clean; full suite:
+901 passed / 1 skipped (5 net new: 3 in `test_metadata.py`, 2 in
+`test_ui_smoke.py`), 0 regressions (the one intermittent failure seen
+in a full-suite run, `test_history_refresh_button_refetches`, is the
+pre-existing documented flake from items 7/8's own closing notes —
+confirmed non-regression via 3x isolated reruns, all passing).

@@ -1113,6 +1113,27 @@ compress it here before moving on to the next item.
     a real disposable container (never the real production `slskd`
     one): real block creation, real compose volume line, real backups,
     `is_self_managed()` correctly `True`. [HISTORY §74](docs/HISTORY.md#74)
+75. **Fix P6: cover art "still doesn't update" (4th report) — code done,
+    awaiting the user's own visual DJ-software check.** Phase 0.4
+    re-confirmed the write path is sound (4/4 real tracks byte-exact
+    vs. current CDN). Both live candidates fixed: (6a)
+    `format_tag_result_notice`/`_show_tag_result_notice` now say
+    plainly, in every message shape (not just the all-skipped case),
+    that any already-tagged-and-skipped track's art was NOT checked
+    this run, and offer "Fix missing cover art" as the notice's own
+    action button. (6b) new `metadata.py::save_tags()` writes
+    **ID3v2.3** (`v2_version=3`) for MP3/WAV instead of mutagen's
+    default v2.4 — the one thing never done in four rounds. (6.4) a WAV
+    embed now reports its own honest outcome
+    (`tagged_art_rarely_supported_format`/`fixed_wav_rarely_supported`)
+    instead of joining the same "written" bucket as a real, visible
+    MP3/FLAC/M4A embed. Live-verified with the user's explicit go-ahead:
+    ran a real `--force` re-tag against the real "Test" playlist (DB
+    backed up first) — both real MP3s now write ID3v2.3, all 9/9
+    tracks stay byte-exact vs. the current CDN art. **Not closed yet**
+    — per the brief's own standing rule, this only closes when the user
+    confirms they can actually SEE the art in their real DJ software,
+    which only they can check. [HISTORY §75](docs/HISTORY.md#75)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

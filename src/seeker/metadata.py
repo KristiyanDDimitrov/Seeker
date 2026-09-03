@@ -252,3 +252,23 @@ def write_analysis_tags(
         f"Unsupported tag format for analysis tags: "
         f"{type(mutagen_file).__name__}"
     )
+
+
+def save_tags(mutagen_file: Any) -> None:
+    """Roadmap item 75 (P6, 6.3) — mutagen's own `save()` defaults to
+    writing ID3v2.4, but real-world DJ software (Rekordbox, Serato,
+    Traktor) and macOS's own metadata importer are all markedly more
+    reliable reading ID3v2.3 — item 66 wrote ID3v2.4 covers that
+    round-tripped byte-exact through mutagen's OWN reader (proving
+    mutagen can read its own write, nothing about a DJ's real
+    toolchain). `save(v2_version=3)` only exists on ID3's own save() —
+    calling it on a FLAC/MP4 object raises, so this dispatches the same
+    way every other format-aware write in this module does. Covers both
+    real ID3 carriers this codebase writes to (MP3 and WAV — `_WaveID3`
+    is a genuine `ID3` subclass, see embed_album_art's own note).
+    """
+    if isinstance(mutagen_file.tags, ID3):
+        mutagen_file.save(v2_version=3)
+        return
+
+    mutagen_file.save()

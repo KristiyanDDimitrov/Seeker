@@ -297,6 +297,9 @@ def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
     """Roadmap item 66 (Phase 5.2) — mirrors format_tag_result_notice's
     own shape for the narrower "Fix missing cover art" action."""
     fixed = result["fixed"]
+    # Roadmap item 75 (P6, 6.4) — art WAS embedded here, so this is
+    # deliberately NOT folded into `failed` below.
+    fixed_wav = result.get("fixed_wav_rarely_supported", 0)
     already_correct = result["already_correct"]
     no_url = result["no_url"]
     failed = (
@@ -307,6 +310,10 @@ def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
     message = f"Fixed art for {fixed} track{'s' if fixed != 1 else ''}"
 
     parts = []
+    if fixed_wav:
+        parts.append(
+            f"{fixed_wav} fixed but rarely visible (WAV)"
+        )
     if already_correct:
         parts.append(f"{already_correct} already correct")
     if no_url:
@@ -326,6 +333,12 @@ def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
             message + " Re-run \"sync-tracks\" to populate missing art URLs.",
             "warning",
         )
+    if fixed_wav:
+        return (
+            message + " WAV cover art is rarely read by real DJ "
+            "software — don't rely on it being visible.",
+            "warning",
+        )
     if fixed:
         return message, "success"
 
@@ -337,10 +350,33 @@ def format_tag_result_notice(result: dict[str, Any]) -> tuple[str, str]:
     tagged re-run producing NO prominent notice at all (only the small,
     easy-to-miss results panel): every real outcome now gets a message,
     not just tagged/without_art/failed. Returns (message, notice_kind).
+
+    Roadmap item 75 (P6, 6a/6.2) — a real, live-confirmed second gap:
+    `_tag_one_track` never even LOOKS at art for an already-tagged
+    track (`skip_tag_write` short-circuits before the art step is
+    reached at all) — so "already tagged" here does not mean "art is
+    fine," it means "art was never checked this run." Every branch
+    below that can co-occur with a nonzero `skipped_already_tagged`
+    now says so explicitly, in every message shape (mixed fresh+
+    already-tagged runs previously said nothing about the skipped
+    ones at all) — not just the "everything was already tagged"
+    all-skip case this function handled before.
     """
     tagged = result["tagged"]
     without_art = result["tagged_without_art"]
     failed = result["failed"]
+    already_tagged = result.get("skipped_already_tagged", 0)
+
+    art_not_checked_note = ""
+    if already_tagged:
+        possessive = (
+            "track's" if already_tagged == 1 else "tracks'"
+        )
+        art_not_checked_note = (
+            f" {already_tagged} already-tagged {possessive} cover art "
+            f"was NOT checked this run — use \"Fix missing cover art\" "
+            f"to check them."
+        )
 
     message = f"Tagged {tagged} track{'s' if tagged != 1 else ''}"
 
@@ -350,23 +386,24 @@ def format_tag_result_notice(result: dict[str, Any]) -> tuple[str, str]:
     if failed:
         message += f", {failed} failed"
         message += " — see the results panel below for details."
-        return message, "error"
+        return message + art_not_checked_note, "error"
 
     if without_art:
         message += " — see the results panel below for details."
-        return message, "warning"
+        return message + art_not_checked_note, "warning"
 
     if tagged:
-        return message + ".", "success"
-
-    already_tagged = result.get("skipped_already_tagged", 0)
+        return message + "." + art_not_checked_note, "success"
 
     if already_tagged:
         plural = "s" if already_tagged != 1 else ""
         return (
             f"{already_tagged} track{plural} already tagged — nothing "
-            f"to do. Right-click a row for \"Re-tag,\" or check "
-            f"\"Re-tag already tagged files\" to overwrite.",
+            f"to do for text tags, and their cover art was NOT checked "
+            f"this run. Right-click a row for \"Re-tag,\" check "
+            f"\"Re-tag already tagged files\" to overwrite, or use "
+            f"\"Fix missing cover art\" to check art without a full "
+            f"re-tag.",
             "info",
         )
 

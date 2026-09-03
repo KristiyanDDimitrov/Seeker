@@ -2203,7 +2203,9 @@ class MainWindow(QMainWindow):
 
         lines = [
             f"Tagged: {result['tagged']} "
-            f"({result['tagged_without_art']} without cover art), "
+            f"({result['tagged_without_art']} without cover art, "
+            f"{result['tagged_art_rarely_supported_format']} with art "
+            f"in a rarely-supported format), "
             f"Skipped (no match): {result['skipped_no_match']}, "
             f"Skipped (unsupported format): "
             f"{result['skipped_format_unsupported']}, "
@@ -2239,7 +2241,20 @@ class MainWindow(QMainWindow):
             return
 
         message, kind = help_text.format_tag_result_notice(result)
-        self.dashboard_notice.show_message(message, kind=kind)
+
+        # Roadmap item 75 (P6, 6.2) — any track this run skipped as
+        # already-tagged had its cover art never even looked at (see
+        # format_tag_result_notice's own docstring); offer the real
+        # next action right on the notice rather than leaving the user
+        # to find "Fix missing cover art" on their own.
+        if result.get("skipped_already_tagged", 0) > 0:
+            self.dashboard_notice.show_message(
+                message, kind=kind,
+                action_text="Fix missing cover art",
+                on_action=self._on_fix_missing_art_clicked,
+            )
+        else:
+            self.dashboard_notice.show_message(message, kind=kind)
 
     def _selected_track_ids(self) -> list[str]:
         rows = sorted(
@@ -2428,6 +2443,8 @@ class MainWindow(QMainWindow):
 
         lines = [
             f"Fixed: {result['fixed']}, "
+            f"Fixed (rarely-supported format): "
+            f"{result['fixed_wav_rarely_supported']}, "
             f"Already correct: {result['already_correct']}, "
             f"No art URL: {result['no_url']}, "
             f"Download failed: {result['download_failed']}, "

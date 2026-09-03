@@ -1,8 +1,10 @@
 import shutil
 import struct
+import wave
 import zlib
 from pathlib import Path
 
+import mutagen.id3
 import pytest
 from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
@@ -11,6 +13,7 @@ from mutagen.mp4 import MP4
 from seeker.metadata import (
     _read_image_dimensions,
     embed_album_art,
+    save_tags,
     write_analysis_tags,
     write_text_tags,
 )
@@ -88,6 +91,66 @@ def test_embed_album_art_mp3_round_trips(tmp_path):
     assert apic is not None
     assert apic.data == FAKE_JPEG_BYTES
     assert apic.mime == "image/jpeg"
+
+
+# --- Roadmap item 75 (P6, 6.3): save_tags writes ID3v2.3, not mutagen's
+# default v2.4 (real DJ software is markedly more reliable with v2.3) ---
+
+def _make_synthetic_wav(path: Path) -> None:
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(44_100)
+        handle.writeframes(b"\x00\x00" * 44_100)
+
+
+def test_save_tags_writes_id3v23_for_wav(tmp_path):
+    # WAV's _WaveID3 is a genuine ID3 subclass (see embed_album_art's
+    # own docstring) -- save_tags must dispatch it through the same
+    # v2_version=3 path as a real MP3, not fall through to plain
+    # save().
+    dest = tmp_path / "test.wav"
+    _make_synthetic_wav(dest)
+
+    audio = MutagenFile(dest)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+
+    # A WAV's ID3 chunk lives inside the RIFF container, not at byte 0
+    # -- mutagen.id3.ID3() (a plain ID3-at-offset-0 reader) can't parse
+    # it; re-open via the same auto-detecting File() the rest of this
+    # module uses, whose .tags is the real _WaveID3.
+    reopened = MutagenFile(dest)
+    assert reopened.tags.version == (2, 3, 0)
+
+
+@requires_x9_pro
+def test_save_tags_writes_id3v23_for_mp3(tmp_path):
+    dest = tmp_path / "test.mp3"
+    shutil.copy(REAL_MP3, dest)
+
+    audio = MutagenFile(dest)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+
+    reopened = mutagen.id3.ID3(dest)
+    assert reopened.version == (2, 3, 0)
+
+
+@requires_x9_pro
+def test_save_tags_leaves_flac_save_untouched(tmp_path):
+    # save_tags dispatches on isinstance(tags, ID3) -- a FLAC file's
+    # save() takes no v2_version kwarg at all, so this must fall
+    # through to a plain save() rather than raise.
+    dest = tmp_path / "test.flac"
+    shutil.copy(REAL_FLAC, dest)
+
+    audio = FLAC(dest)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)  # must not raise
+
+    reopened = FLAC(dest)
+    assert reopened["title"] == ["Title"]
 
 
 @requires_x9_pro

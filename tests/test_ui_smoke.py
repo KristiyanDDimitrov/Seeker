@@ -396,6 +396,7 @@ class FakeDownloadService:
 _EMPTY_TAG_RESULT = {
     "tagged": 0,
     "tagged_without_art": 0,
+    "tagged_art_rarely_supported_format": 0,
     "skipped_no_match": 0,
     "skipped_format_unsupported": 0,
     "skipped_already_tagged": 0,
@@ -407,6 +408,7 @@ _EMPTY_TAG_RESULT = {
 
 _EMPTY_FIX_ART_RESULT = {
     "fixed": 0,
+    "fixed_wav_rarely_supported": 0,
     "already_correct": 0,
     "no_url": 0,
     "download_failed": 0,
@@ -3947,6 +3949,7 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
     result = {
         "tagged": 2,
         "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
         "skipped_no_match": 1,
         "skipped_format_unsupported": 1,
         "skipped_already_tagged": 0,
@@ -3985,6 +3988,7 @@ def test_tag_result_notice_reports_tracks_without_art(qtbot):
     window._render_tag_result({
         "tagged": 3,
         "tagged_without_art": 2,
+        "tagged_art_rarely_supported_format": 0,
         "skipped_no_match": 0,
         "skipped_format_unsupported": 0,
         "skipped_already_tagged": 0,
@@ -4011,6 +4015,7 @@ def test_tag_result_notice_shows_success_when_everything_worked(qtbot):
     window._render_tag_result({
         "tagged": 5,
         "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
         "skipped_no_match": 0,
         "skipped_format_unsupported": 0,
         "skipped_already_tagged": 0,
@@ -4038,6 +4043,7 @@ def test_tag_result_notice_reports_already_tagged_with_nothing_else_done(
     window._render_tag_result({
         "tagged": 0,
         "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
         "skipped_no_match": 0,
         "skipped_format_unsupported": 0,
         "skipped_already_tagged": 4,
@@ -4057,6 +4063,81 @@ def test_tag_result_notice_reports_already_tagged_with_nothing_else_done(
     assert "4 track" in text
     assert "already tagged" in text
     assert "Re-tag" in text
+    # Roadmap item 75 (P6, 6.2) — the real gap: "already tagged" here
+    # does not mean "art is fine," it means art was never checked.
+    assert "NOT checked" in text
+    assert not window.dashboard_notice._action_button.isHidden()
+    assert (
+        window.dashboard_notice._action_button.text()
+        == "Fix missing cover art"
+    )
+
+
+def test_tag_result_notice_mentions_unchecked_art_even_on_a_mixed_run(qtbot):
+    # Roadmap item 75 (P6, 6.2) — a real gap the all-skipped case alone
+    # didn't cover: a run that freshly tags SOME tracks while skipping
+    # others as already-tagged used to say nothing at all about the
+    # skipped ones' art.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_tag_result({
+        "tagged": 2,
+        "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 3,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [],
+    })
+
+    assert not window.dashboard_notice.isHidden()
+    text = window.dashboard_notice.text()
+    assert "Tagged 2 track" in text
+    assert "3 already-tagged" in text
+    assert "NOT checked" in text
+
+
+def test_tag_result_notice_fix_art_action_triggers_fix_missing_art(
+        qtbot,
+):
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window._render_tag_result({
+        "tagged": 0,
+        "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 1,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [
+            {
+                "track_id": "t1",
+                "reason": "skipped_already_tagged",
+                "message": "Artist A - Title A: already tagged",
+            },
+        ],
+    })
+
+    window.dashboard_notice._action_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service
+        .fix_missing_art_for_playlist_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.fix_missing_art_for_playlist_calls == [
+        "Test",
+    ]
 
 
 # --- Fix missing cover art / fill missing art URLs (roadmap item 66,
@@ -4068,6 +4149,7 @@ def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
         playlists=playlists,
         fix_art_result={
             "fixed": 3,
+            "fixed_wav_rarely_supported": 0,
             "already_correct": 2,
             "no_url": 1,
             "download_failed": 0,

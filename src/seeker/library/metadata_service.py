@@ -26,6 +26,7 @@ from seeker.filename_format import build_track_filename
 from seeker.metadata import (
     embed_album_art,
     read_embedded_art,
+    save_tags,
     write_analysis_tags,
     write_text_tags,
 )
@@ -220,6 +221,11 @@ class MetadataService:
             # a CDN hiccup or a never-synced album_art_url makes the
             # UI report unqualified success with no way to tell.
             "tagged_without_art": 0,
+            # Roadmap item 75 (P6, 6.4) — art WAS embedded, but the
+            # format (WAV) means essentially no real DJ software will
+            # ever show it — a distinct, honest bucket, not folded into
+            # either "tagged" plain success or "tagged_without_art".
+            "tagged_art_rarely_supported_format": 0,
             "skipped_no_match": 0,
             "skipped_format_unsupported": 0,
             "skipped_already_tagged": 0,
@@ -454,8 +460,22 @@ class MetadataService:
                                 "album art isn't supported for this "
                                 "file format"
                             )
+                        elif local_file.format == "wav":
+                            # Roadmap item 75 (P6, 6.4) — mutagen writes
+                            # a real APIC into the RIFF container and
+                            # reads it back byte-exact (embed_album_
+                            # art's own docstring), but essentially
+                            # nothing else in a DJ's real toolchain
+                            # reads embedded art from WAV. A count of
+                            # "written" the user can never actually see
+                            # is exactly the dishonest reporting Phase
+                            # 4.2 (item 56) was built to end — this
+                            # gets its own outcome instead of silently
+                            # joining the same bucket as a real,
+                            # visible MP3/FLAC/M4A embed.
+                            art_outcome = "written_wav_rarely_supported"
 
-            if art_outcome != "written":
+            if art_outcome not in ("written", "written_wav_rarely_supported"):
                 print(
                     f"  Warning: could not embed album art for "
                     f"{track.artist} - {track.title}: {art_message}"
@@ -495,7 +515,7 @@ class MetadataService:
                     f"{track.artist} - {track.title}: {error}"
                 )
 
-        mutagen_file.save()
+        save_tags(mutagen_file)
 
         if skip_tag_write:
             print(
@@ -516,7 +536,29 @@ class MetadataService:
 
         counts["tagged"] += 1
 
-        if art_outcome != "written":
+        if art_outcome == "written_wav_rarely_supported":
+            # Roadmap item 75 (P6, 6.4) — art WAS written (not the same
+            # thing as "no art" below), but honestly, not as "tagged"
+            # plain success either — see the outcome's own comment
+            # above for why.
+            counts["tagged_art_rarely_supported_format"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "tagged_art_rarely_supported_format",
+                    "message": (
+                        f"{track.artist} - {track.title}: cover art "
+                        f"was embedded, but WAV art is rarely read by "
+                        f"real DJ software — don't rely on it being "
+                        f"visible"
+                    ),
+                }
+            )
+            print(
+                f"  Tagged (art embedded, WAV rarely supported): "
+                f"{track.artist} - {track.title}"
+            )
+        elif art_outcome != "written":
             counts["tagged_without_art"] += 1
             details.append(
                 {
@@ -558,6 +600,11 @@ class MetadataService:
 
         counts: dict[str, int] = {
             "fixed": 0,
+            # Roadmap item 75 (P6, 6.4) — same honest distinction as
+            # tag_tracks' own "tagged_art_rarely_supported_format": art
+            # WAS embedded, but essentially no real DJ software reads
+            # embedded art from WAV.
+            "fixed_wav_rarely_supported": 0,
             "already_correct": 0,
             "no_url": 0,
             "download_failed": 0,
@@ -749,9 +796,29 @@ class MetadataService:
             )
             return
 
-        mutagen_file.save()
-        counts["fixed"] += 1
-        print(f"  Fixed art: {track.artist} - {track.title}")
+        save_tags(mutagen_file)
+
+        if local_file.format == "wav":
+            counts["fixed_wav_rarely_supported"] += 1
+            details.append(
+                {
+                    "track_id": track_id,
+                    "reason": "fixed_wav_rarely_supported",
+                    "message": (
+                        f"{track.artist} - {track.title}: cover art "
+                        f"was embedded, but WAV art is rarely read by "
+                        f"real DJ software — don't rely on it being "
+                        f"visible"
+                    ),
+                }
+            )
+            print(
+                f"  Fixed art (WAV, rarely supported): "
+                f"{track.artist} - {track.title}"
+            )
+        else:
+            counts["fixed"] += 1
+            print(f"  Fixed art: {track.artist} - {track.title}")
 
     def plan_renames(
             self,

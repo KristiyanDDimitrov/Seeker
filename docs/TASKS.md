@@ -212,5 +212,53 @@ skipped (0 failures) — 4 net new (3 duplicates + 1 sharing-uploads),
 `mypy --strict src/` clean (83 files). Full suite: 896 passed, 1
 skipped (0 failures) — 5 net new, 0 regressions.
 
+**Commit boundary — commit 1362728.**
+
+## P6 — Cover art "still doesn't update" (4th report)
+
+- [x] 6.1 Reported Phase 0.4's numbers first (see Phase 0 section
+  above) — 4/4 real tracks byte-exact, both MP3s at v2.4. Decided 6b
+  (ID3 version) as the primary live candidate to fix, alongside 6a's
+  reporting gap (already partially handled but with a real, live gap
+  found: the "nothing to do" message actively contradicted what
+  actually happened).
+- [x] 6.2 (6a) `format_tag_result_notice` rewritten so EVERY message
+  shape mentions a nonzero `skipped_already_tagged` and says plainly
+  its art was not checked (not just the all-skipped branch — a mixed
+  fresh+skipped run previously said nothing about the skipped ones at
+  all). `_show_tag_result_notice` offers "Fix missing cover art" as
+  the notice's own action button.
+- [x] 6.3 (6b) New `metadata.py::save_tags()` — `v2_version=3` only
+  for real ID3 carriers (MP3/WAV), plain `save()` otherwise (FLAC/MP4
+  don't accept that kwarg). **Live-verified with the user's explicit
+  go-ahead**: real production DB backed up, then `seeker library tag
+  Test --force` run for real (the only real path that actually
+  exercises the write, since `fix_missing_art_for_playlist`'s own
+  `already_correct` short-circuit skips the write entirely when art
+  already matches — true for every Test track per Phase 0.4). Real
+  result: 9/9 tagged, 0 failed. Both real MP3s confirmed
+  `ID3(path).version == (2, 3, 0)` afterward; all 9/9 still byte-exact
+  vs. the current CDN. **The DJ-software visual check itself is
+  outstanding** — only the user can do it.
+- [x] 6.4 New `tagged_art_rarely_supported_format`/
+  `fixed_wav_rarely_supported` outcomes — a WAV embed succeeding is
+  reported honestly as its own bucket, not folded into plain "written"
+  success.
+- [x] 6.5 Left open per the brief's own instruction — will not mark
+  this closed until the user confirms visually.
+
+9 new tests: `test_metadata.py` (3: MP3 v2.3 against a real x9-pro
+file, WAV v2.3 via a portable synthetic file, FLAC dispatch doesn't
+raise), `test_ui_smoke.py` (2 new + 1 existing test strengthened:
+mixed-run notice wording, action-button triggers the real fix-art
+call, and the existing already-tagged test now also asserts the "NOT
+checked" wording + action button).
+
+`mypy --strict src/` clean (84 files). Full suite: 901 passed, 1
+skipped (0 failures) — 5 net new (the 6th accounted for by the
+strengthened existing test), 0 regressions (the one intermittent
+`test_history_refresh_button_refetches` failure seen once is the
+pre-existing documented flake, confirmed via 3x isolated rerun).
+
 **Commit boundary — commit (see next `git log`, made right after this
 entry).**

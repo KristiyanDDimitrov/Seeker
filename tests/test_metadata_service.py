@@ -896,7 +896,12 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
-    assert counts["fixed"] == 1
+    # Roadmap item 75 (P6, 6.4) — a WAV file's art gets embedded for
+    # real (confirmed below via a real re-read), but counted in its own
+    # honest bucket, not plain "fixed" — essentially no real DJ
+    # software reads embedded art from WAV.
+    assert counts["fixed"] == 0
+    assert counts["fixed_wav_rarely_supported"] == 1
     assert counts["already_correct"] == 0
     assert counts["failed"] == 0
 
