@@ -65,6 +65,13 @@ REAL_FLAC = (
     X9_PRO_ROOT / "Music/Psytrance/Giorgia Angiuli - Lux (Original Mix).flac"
 )
 REAL_M4A = X9_PRO_ROOT / "Music/DnB/ChaseR - Prolegomenon.m4a"
+# Roadmap item R1.6 -- the exact real folder the brief's own diagnosis
+# named ("beatport_tracks_2023-11 copy"), confirmed live on this machine
+# to contain real .aiff files.
+REAL_AIFF = (
+    X9_PRO_ROOT
+    / "Music/beatport_tracks_2023-11 copy/8Kays - Morning After The Rave.aiff"
+)
 
 requires_x9_pro = pytest.mark.skipif(
     not X9_PRO_ROOT.is_dir(),
@@ -122,6 +129,43 @@ def test_save_tags_writes_id3v23_for_wav(tmp_path):
     # module uses, whose .tags is the real _WaveID3.
     reopened = MutagenFile(dest)
     assert reopened.tags.version == (2, 3, 0)
+
+
+@requires_x9_pro
+def test_save_tags_writes_id3v23_for_aiff(tmp_path):
+    # Roadmap item R1.6 -- live-verified against a real file from the
+    # exact folder the brief's diagnosis named. AIFF's _IFFID3 is a
+    # genuine ID3 subclass (mutagen/aiff.py -- confirmed live, mutagen
+    # 1.48.1), same shape as WAV's _WaveID3 above.
+    dest = tmp_path / "test.aiff"
+    shutil.copy(REAL_AIFF, dest)
+
+    audio = MutagenFile(dest)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+
+    reopened = MutagenFile(dest)
+    assert reopened.tags.version == (2, 3, 0)
+    assert reopened.tags.get("TIT2").text == ["Title"]
+
+
+@requires_x9_pro
+def test_embed_album_art_aiff_round_trips(tmp_path):
+    dest = tmp_path / "test.aiff"
+    shutil.copy(REAL_AIFF, dest)
+
+    audio = MutagenFile(dest)
+    embedded = embed_album_art(audio, FAKE_JPEG_BYTES, "image/jpeg")
+    save_tags(audio)
+
+    assert embedded is True
+
+    reopened = MutagenFile(dest)
+    apic = reopened.tags.get("APIC:Cover")
+
+    assert apic is not None
+    assert apic.data == FAKE_JPEG_BYTES
+    assert apic.mime == "image/jpeg"
 
 
 @requires_x9_pro

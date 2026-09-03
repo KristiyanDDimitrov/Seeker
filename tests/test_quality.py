@@ -492,6 +492,16 @@ def test_quality_tier_for_format_matches_lossless_lossy_unknown():
     assert quality_tier_for_format("xyz") == 0
 
 
+def test_quality_tier_for_format_aiff_is_lossless_aifc_is_not():
+    # Roadmap item R1.2/R1.3 — .aiff/.aif are genuinely uncompressed
+    # PCM; .aifc is a container that CAN hold compressed audio, so it
+    # deliberately stays out of LOSSLESS_EXTENSIONS (scores unknown/0
+    # rather than falsely claiming a lossless tier).
+    assert quality_tier_for_format("aiff") == 2
+    assert quality_tier_for_format(".AIF") == 2
+    assert quality_tier_for_format("aifc") == 0
+
+
 def _write_wav(
         path,
         samples: np.ndarray,
@@ -517,6 +527,27 @@ def test_analyze_local_file_quality_reports_lossless_tier_and_real_format_info(
     # for uncompressed WAV PCM (sample_rate * bit_depth * channels =
     # 44100 * 16 * 1 = 705,600 bps = 705 kbps) — an initial draft of
     # this test wrongly assumed lossless meant "no bitrate concept."
+    assert result.bitrate_kbps == 705
+
+
+def test_analyze_local_file_quality_reports_lossless_tier_for_real_aiff(
+        tmp_path,
+):
+    # Roadmap item R1.4 — live-verified (see docs/HISTORY.md item R1):
+    # mutagen 1.48.1's AIFFInfo already computes
+    # bitrate = channels * sample_size * sample_rate internally, so no
+    # AIFF-specific derivation branch was needed in
+    # analyze_local_file_quality — this is that verification made a
+    # permanent regression test, same shape as the WAV test above.
+    path = tmp_path / "test.aiff"
+    samples = (np.sin(np.linspace(0, 100, 44_100)) * 0.1).astype(np.float32)
+    _write_wav(path, samples)
+
+    result = analyze_local_file_quality(path)
+
+    assert result.tier == 2
+    assert result.sample_rate == 44_100
+    assert result.bit_depth == 16
     assert result.bitrate_kbps == 705
 
 

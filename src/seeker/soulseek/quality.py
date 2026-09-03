@@ -17,7 +17,10 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 
 
-LOSSLESS_EXTENSIONS = {"flac", "wav"}
+# Roadmap item R1 — "aiff"/"aif" only, deliberately not "aifc"; see
+# audio_formats.py's own comment on why AIFF-C isn't automatically
+# lossless the way AIFF is.
+LOSSLESS_EXTENSIONS = {"flac", "wav", "aiff", "aif"}
 LOSSY_EXTENSIONS = {"mp3", "m4a", "aac", "ogg"}
 
 # Untuned starting guess — revisit once real download data shows how queue
@@ -315,6 +318,12 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
         info = mutagen_file.info
         sample_rate = getattr(info, "sample_rate", None)
 
+        # Roadmap item R1.4 — checked live, not assumed: mutagen 1.48.1's
+        # AIFFInfo (mutagen/aiff.py) already computes
+        # `bitrate = channels * sample_size * sample_rate` in its own
+        # __init__ and exposes it as `.bitrate`, exactly the derivation
+        # this comment used to say was needed here — so no AIFF-specific
+        # branch is needed; the existing getattr already captures it.
         raw_bitrate = getattr(info, "bitrate", None)
         if raw_bitrate:
             bitrate_kbps = int(raw_bitrate // 1000)

@@ -10919,3 +10919,63 @@ About-dialog "dev" assertion fail, plus two already-documented flakes
 (`test_main_window_constructs_without_crashing`,
 `test_tagging_controls_row_has_real_spacing_between_items`) — none
 touched by or related to this fix.
+
+### 85 — R1: AIFF files invisible to the whole app
+
+**Confirmed exactly as the brief diagnosed** — `AUDIO_EXTENSIONS`
+(`audio_formats.py`) never listed `.aiff`/`.aif`, so `library/scanner.py`
+never indexed one into `local_files` at all.
+
+**Live-verified against a real production file**, not assumed: copied
+`/Volumes/X9 Pro/Music/beatport_tracks_2023-11 copy/8Kays - Morning
+After The Rave.aiff` (the exact folder the brief named, confirmed to
+hold 63 real `.aiff` files) to a scratch copy and ran it through every
+real pipeline piece read-only first, then a tag/art round-trip on the
+copy only (original never touched):
+
+- `mutagen.File()` → `AIFF`/`AIFFInfo`; `isinstance(tags, ID3)` is
+  `True` (AIFF's `_IFFID3(IffID3)`, and `IffID3` is a genuine `ID3`
+  subclass — confirmed via `issubclass()`) — `metadata.py`'s existing
+  dispatch needed no AIFF-specific branch at all.
+- `AIFFInfo.bitrate` is **not** absent the way the brief guessed —
+  mutagen 1.48.1's real `AIFFInfo.__init__` already computes
+  `channels * sample_size * sample_rate` and exposes it as `.bitrate`.
+  `analyze_local_file_quality`'s existing `getattr(info, "bitrate",
+  None)` already captures it; R1.4 needed a verifying comment, not a
+  derivation branch.
+- `soundfile.read()` decoded the real file directly (no ffmpeg fallback
+  needed); `compute_fingerprint()` produced a real 12,614-char
+  fingerprint at 521s duration.
+- `write_text_tags` + `embed_album_art` + `save_tags` round-tripped on
+  the copy: title/artist/album read back correctly, embedded art
+  (a real cached JPEG from `AlbumArtCache`) read back **byte-exact**,
+  and `save_tags` wrote real **ID3v2.3** (matches item 75's own
+  MP3/WAV fix).
+- `.aifc`: confirmed live via `mutagen.aiff.AIFF.score()` that mutagen
+  recognizes `.aifc` by both the `FORM` IFF magic and the filename
+  suffix, loading it through the exact same `AIFF`/`AIFFInfo` class —
+  but the COMM chunk's `compressionType` field is never decoded, so a
+  genuinely-compressed AIFF-C's reported `bits_per_sample`/derived
+  bitrate can't be trusted. Added to `AUDIO_EXTENSIONS` (indexed/
+  visible) but deliberately left out of `LOSSLESS_EXTENSIONS`.
+
+**Fix:** `AUDIO_EXTENSIONS` gains `.aiff`/`.aif`/`.aifc`;
+`quality.LOSSLESS_EXTENSIONS` gains bare `"aiff"`/`"aif"` only. No
+changes needed to `metadata.py`, `library/scanner.py` (format is stored
+via `suffix.lstrip(".")`, already generic), `duplicate_service.py`, or
+the CLI — none hardcode a format list of their own.
+`TOOLTIP_SCAN_ALL_LOCATIONS` now lists supported formats and says
+existing AIFF files need one real re-scan to be picked up (R1.5).
+
+9 new tests: `tests/test_audio_formats.py` (new file, 2 tests),
+`test_quality.py` (+2: tier classification, a real synthetic-AIFF
+`analyze_local_file_quality` case mirroring the existing WAV test),
+`test_library_scanner.py` (+1, `.aiff`/`.aif` both indexed with the
+right stored `format`), `test_metadata.py` (+2, `@requires_x9_pro`
+against the real Beatport file: ID3v2.3 write, byte-exact art
+round-trip). `mypy --strict src/` clean (pre-existing, unrelated
+`_build_info.py` error confirmed via `git stash`). Full suite: same 4
+pre-existing failures reproduce on the unmodified tree (confirmed
+earlier this session for 3 of them via `git stash`;
+`test_history_refresh_button_refetches` is the already-documented
+test-order flake) — 964 passed / 1 skipped, 0 regressions.

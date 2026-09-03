@@ -74,6 +74,47 @@ def test_scan_skips_appledouble_sidecar_files(tmp_path):
     ]
 
 
+def test_scan_indexes_aiff_files(tmp_path):
+    # Roadmap item R1 — .aiff was entirely invisible to the whole app
+    # before AUDIO_EXTENSIONS gained it (this test would have asserted
+    # added == 0 on the pre-fix code).
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+
+    (library_root / "track.aiff").write_bytes(b"")
+    (library_root / "track2.aif").write_bytes(b"")
+
+    local_files = LocalFileRepository(database)
+    locations = LibraryLocationRepository(database)
+
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="main",
+                path=str(library_root),
+                added_at="2026-01-01T00:00:00+00:00",
+            ),
+            connection,
+        )
+        location = locations.get_by_name("main", connection)
+
+    scanner = LibraryScanner(local_files, database)
+    summary = scanner.scan(location)
+
+    assert summary["added"] == 2
+
+    with database.transaction() as connection:
+        scanned = local_files.get_all(connection)
+
+    assert {local_file.relative_path for local_file in scanned} == {
+        "track.aiff", "track2.aif",
+    }
+    assert {local_file.format for local_file in scanned} == {"aiff", "aif"}
+
+
 def test_index_single_file_matches_scan_loop_result(tmp_path):
     # index_single_file is the one place both the scan loop and the
     # SoulSeek upgrade-confirmation flow read tags and upsert — this

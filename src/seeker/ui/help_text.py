@@ -149,7 +149,9 @@ TOOLTIP_SYNC_ALL_PLAYLISTS = (
 TOOLTIP_SCAN_ALL_LOCATIONS = (
     "Re-scan every registered library location on disk for audio files, "
     "then automatically re-match cached Spotify tracks against what was "
-    "found."
+    "found. Supported formats: MP3, FLAC, WAV, M4A, AAC, OGG, AIFF/AIF/"
+    "AIFC — AIFF support is new (roadmap item R1); files already on "
+    "disk before this update need one real re-scan to be picked up."
 )
 TOOLTIP_MATCH_ALL_TRACKS = (
     "Fuzzy-match every cached Spotify track against your already-scanned "

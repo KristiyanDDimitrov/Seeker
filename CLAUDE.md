@@ -1324,6 +1324,16 @@ compress it here before moving on to the next item.
     `get_uploads` wrap a real 401 as new `SlskdUnauthorizedError` with
     actionable text. [HISTORY §84](docs/HISTORY.md#84)
 
+85. **Fix R1: AIFF files were invisible to the whole app — done,
+    live-verified against real production files.** `.aiff`/`.aif`/
+    `.aifc` added to `AUDIO_EXTENSIONS`; `.aiff`/`.aif` (not `.aifc` —
+    a container that can hold compressed audio) added to `quality.
+    LOSSLESS_EXTENSIONS`. Tagging/art/duration-bitrate needed ZERO code
+    changes — all confirmed live (mutagen 1.48.1): AIFF's `_IFFID3` is
+    a genuine `ID3` subclass, and `AIFFInfo` already computes
+    `bitrate = channels × sample_size × sample_rate` internally.
+    [HISTORY §85](docs/HISTORY.md#85)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
