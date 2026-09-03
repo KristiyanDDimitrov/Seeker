@@ -308,3 +308,18 @@ def test_track_not_linked_to_any_playlist_shows_unknown(tmp_path):
 
     assert len(events) == 1
     assert events[0].playlist_name == "Unknown"
+
+
+def test_manual_track_shows_manual_not_unknown(tmp_path):
+    # Roadmap item 82 (P13.7) — a manual (not-from-Spotify) search-and-
+    # download track ALSO has no playlist, same as the "Unknown" case
+    # above, but this is a real, expected state, not a data-integrity
+    # concern — the label must say so honestly.
+    service = make_service(tmp_path)
+    seed_track(service, "manual:abc123", playlist_id=None)
+    seed_download_request(service, "manual:abc123")
+
+    events = service.get_recent_events()
+
+    assert len(events) == 1
+    assert events[0].playlist_name == "Manual"

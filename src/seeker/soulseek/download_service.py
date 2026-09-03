@@ -2,9 +2,11 @@ import glob
 import os
 import shutil
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
@@ -38,7 +40,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
-from seeker.models.track import Track
+from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track, is_manual_track_id
 from seeker.models.track_match import TrackMatch
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.client import (
@@ -106,16 +108,21 @@ class ReviewCandidateMissingSizeError(RuntimeError):
     pass
 
 
-def _build_search_query(track: Track) -> str:
-    # track.artist may credit multiple artists joined with ", " (e.g.
+def _build_search_query(artist: str, title: str) -> str:
+    # artist may credit multiple artists joined with ", " (e.g.
     # "MK, Dom Dolla") — strip the comma for the actual search string
     # rather than sending it literally. Soulseek search matching isn't
     # guaranteed to ignore stray punctuation, so a literal "MK," glued to
     # the first name risks not matching filenames that don't happen to
     # have that exact comma placement.
-    artist_query = track.artist.replace(",", " ")
+    #
+    # Roadmap item 82 (P13.3) — takes plain artist/title strings now,
+    # not a Track, so a manual (not-from-Spotify) search shares this
+    # EXACT construction with download_playlist rather than a second,
+    # drifting copy.
+    artist_query = artist.replace(",", " ")
 
-    return " ".join(f"{artist_query} {track.title}".split())
+    return " ".join(f"{artist_query} {title}".split())
 
 
 def _quality_descriptor(file: SoulseekFile) -> str:
@@ -347,7 +354,9 @@ class DownloadService:
 
                 print(f"Searching: {track.artist} - {track.title}")
 
-                files = self.soulseek.search(_build_search_query(track))
+                files = self.soulseek.search(
+                    _build_search_query(track.artist, track.title)
+                )
                 settled, upgrade_shortlist, needs_review = select_downloads(
                     track, files, auto_match_threshold, needs_review_threshold,
                 )
@@ -426,6 +435,132 @@ class DownloadService:
             "total": len(unmatched_tracks),
             "already_in_progress": already_in_progress,
             "needs_review": needs_review_tracks,
+        }
+
+    def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
+        """Roadmap item 82 (P13.3) — a real SoulSeek search for a track
+        that isn't in any Spotify playlist, using the EXACT SAME query
+        construction download_playlist uses (_build_search_query) —
+        never a second, drifting copy. Read-only: no track row, no
+        download_requests row, nothing persisted. A real search takes
+        20-45s (client.py's own documented real-world timing) — the
+        caller (UI/CLI) is responsible for showing that it's busy.
+        """
+        return self.soulseek.search(_build_search_query(artist, title))
+
+    def download_manual(
+            self,
+            artist: str,
+            title: str,
+            chosen: SoulseekFile | None = None,
+            files: list[SoulseekFile] | None = None,
+    ) -> dict[str, Any]:
+        """Roadmap item 82 (P13.1/13.3) — search for and download a
+        track that isn't in any Spotify playlist, reusing the same
+        "best quality available, fall back until something actually
+        downloads" behavior as a playlist download (select_downloads),
+        no new ranking logic. Creates a real `tracks` row (id
+        `manual:<uuid4>`, album="", duration_ms=0 — see
+        _index_and_match_settled_download's own comment on why a
+        placeholder duration doesn't affect the immediate post-download
+        match) belonging to no playlist.
+
+        `chosen`, when given (an explicit per-row "Download this one"
+        pick — P13.5), bypasses select_downloads' ranking/threshold
+        entirely and requests exactly that file as role='settled': the
+        user's own explicit choice is a stronger signal than any
+        threshold, the same reasoning item 26 already applies to a
+        human-confirmed needs-review candidate.
+
+        `files`, when given, skips a second real 20-45s network search
+        — the UI's own results table (already populated via
+        search_manual()) is reused rather than searched again for the
+        headline "Download best" action. Omit it (e.g. the CLI's
+        `--download`, which never has a prior search in hand) to search
+        fresh.
+        """
+        if self._resolve_destination(None) is None:
+            # Checked BEFORE creating a track row or running a real
+            # 20-45s search — same "no destination configured" contract
+            # as download_playlist (the CLI appends its own guidance;
+            # the UI reuses this exact exception to route to Settings).
+            raise NoDestinationConfiguredError(
+                "No download destination is configured yet."
+            )
+
+        track = Track(
+            id=f"{MANUAL_TRACK_ID_PREFIX}{uuid4()}",
+            title=title,
+            artist=artist,
+            album="",
+            duration_ms=0,
+        )
+        with self.database.transaction() as connection:
+            self.tracks.save(track, connection)
+
+        if chosen is not None:
+            self._request_and_record(track, chosen, role="settled")
+            print(f"  Requested from {chosen.username}: {chosen.filename}")
+            return {
+                "track_id": track.id,
+                "requested": True,
+                "settled": True,
+                "username": chosen.username,
+                "filename": chosen.filename,
+            }
+
+        config = self._get_config()
+        auto_match_threshold = (
+            config.auto_match_threshold or AUTO_MATCH_THRESHOLD
+        )
+        needs_review_threshold = (
+            config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        )
+
+        search_results = (
+            files if files is not None
+            else self.soulseek.search(_build_search_query(artist, title))
+        )
+
+        settled, upgrade_shortlist, _needs_review = select_downloads(
+            track, search_results, auto_match_threshold, needs_review_threshold,
+        )
+
+        if settled is None and not upgrade_shortlist:
+            return {
+                "track_id": track.id,
+                "requested": False,
+                "settled": False,
+                "reason": "no_candidate_found",
+            }
+
+        if settled is not None:
+            self._request_and_record(track, settled, role="settled")
+            print(f"  Requested from {settled.username}: {settled.filename}")
+
+            if upgrade_shortlist:
+                self._request_upgrade_shortlist(track, upgrade_shortlist)
+
+            return {
+                "track_id": track.id,
+                "requested": True,
+                "settled": True,
+                "username": settled.username,
+                "filename": settled.filename,
+            }
+
+        # Nothing practical/unlocked, but select_downloads still found
+        # real above-threshold candidate(s) — every one of them locked.
+        # Requested the same way a locked-only playlist track is (see
+        # download_playlist above): lands in poll_downloads' existing
+        # locked-retry cascade instead of being silently discarded.
+        print("  No practical candidate — requesting locked/upgrade-only candidate(s).")
+        self._request_upgrade_shortlist(track, upgrade_shortlist)
+        return {
+            "track_id": track.id,
+            "requested": True,
+            "settled": False,
+            "reason": "locked_only",
         }
 
     def _request_upgrade_shortlist(
@@ -1283,7 +1418,7 @@ class DownloadService:
 
     def _resolve_destination(
             self,
-            playlist: Playlist,
+            playlist: Playlist | None,
     ) -> tuple[LibraryLocation, str | None] | None:
         """A playlist-specific download_location_id/download_subfolder
         always wins when set. Otherwise falls back to the configured
@@ -1296,9 +1431,16 @@ class DownloadService:
         only when default_download_subfolder_per_playlist is on.
         Returns None when neither resolves to a real, still-registered
         location — the caller's job to report that clearly.
+
+        Roadmap item 82 (P13.2) — `playlist=None` is a manual (not-
+        from-Spotify) search-and-download track, which has no playlist
+        at all: always resolves via the configured default (never a
+        playlist-specific override, since there's no playlist), with a
+        fixed "Manual" subfolder — never the per-playlist subfolder
+        rule, which has no meaning here.
         """
         with self.database.transaction() as connection:
-            if playlist.download_location_id is not None:
+            if playlist is not None and playlist.download_location_id is not None:
                 location = self.locations.get_by_id(
                     playlist.download_location_id, connection,
                 )
@@ -1317,6 +1459,14 @@ class DownloadService:
 
         if default_location is None:
             return None
+
+        if playlist is None:
+            # Unconditional, unlike the per-playlist case below — a
+            # manual download should never land mixed anonymously into
+            # the default location's root, and the subfolder-per-
+            # playlist TOGGLE has no meaning for something with no
+            # playlist to name a subfolder after.
+            return default_location, "Manual"
 
         subfolder = (
             sanitize_path_component(playlist.name)
@@ -1350,6 +1500,19 @@ class DownloadService:
 
             if resolved is not None:
                 break
+
+        if not playlists:
+            # Roadmap item 82 (P13.2) — a manual (not-from-Spotify)
+            # track belongs to no playlist at all, so the loop above
+            # never runs and `resolved` would otherwise stay None
+            # unconditionally, leaving every completed manual download
+            # stuck in slskd's own download dir forever. Falls back to
+            # the same default-destination resolution _resolve_
+            # destination(None) now supports. Deliberately scoped to
+            # "genuinely no playlist" only — an ordinary playlist track
+            # with no resolvable destination keeps its existing,
+            # unchanged "leave it in place" behavior.
+            resolved = self._resolve_destination(None)
 
         if resolved is None:
             print(
@@ -1454,6 +1617,33 @@ class DownloadService:
                     match = find_best_match(track, [local_file])
                     if match is not None:
                         score = match[1]
+
+                    # Roadmap item 82 (P13.1) — a manual (not-from-
+                    # Spotify) track is created with a placeholder
+                    # duration_ms=0 (there's no real Spotify duration
+                    # to record). find_best_match() above never reads
+                    # duration at all (matching.py's scoring is
+                    # artist+title only), so this doesn't affect THIS
+                    # match — but a LATER match_all() re-run applies
+                    # its own duration pre-filter (DURATION_TOLERANCE_MS,
+                    # matcher.py) against every candidate local file,
+                    # which a real duration_ms=0 would fail against
+                    # almost any real file and could demote this match
+                    # back to unmatched (item 45's own documented
+                    # demotion-risk class). Backfilled here, once, from
+                    # the real just-downloaded file's own read duration
+                    # — never touches a real Spotify track's authoritative
+                    # duration_ms.
+                    if (
+                            is_manual_track_id(track.id)
+                            and local_file.duration_ms is not None
+                    ):
+                        self.tracks.save(
+                            replace(
+                                track, duration_ms=local_file.duration_ms,
+                            ),
+                            connection,
+                        )
 
                 self.track_matches.upsert(
                     TrackMatch(

@@ -261,3 +261,109 @@ suite: 927 passed, 1 skipped (0 failures) — 4 net new tests, 0
 regressions.
 
 **Commit boundary — pending.**
+
+## P13 — New feature: manual track search and download
+
+- [x] 13.1 A manual track is a real `tracks` row (`id=manual:<uuid4>`,
+  `album=""`, `duration_ms=0`) belonging to no playlist — verified
+  `download_requests.track_id` has no FK (schema.py). **Verified, not
+  assumed:** the immediate post-download match step
+  (`_index_and_match_settled_download` → `find_best_match(track,
+  [local_file])`) never reads duration at all, so `duration_ms=0`
+  doesn't affect it. Found a REAL related risk beyond the brief's own
+  ask: a LATER `match_all()` re-run applies its own duration pre-filter
+  (`matcher.py`'s `DURATION_TOLERANCE_MS`) that a real `duration_ms=0`
+  would fail against almost any real file, risking item 45's own
+  documented demotion class. Fixed by backfilling the real duration
+  from the just-downloaded local file, once, the first time a manual
+  track is indexed — never touches a real Spotify track's authoritative
+  duration.
+- [x] 13.2 `_resolve_destination` widened to `Playlist | None`;
+  `playlist=None` always resolves via the configured default with a
+  FIXED "Manual" subfolder (unconditional — never gated behind the
+  subfolder-per-playlist toggle, which has no meaning for something
+  with no playlist to name a subfolder after). **Found and fixed a
+  second real gap querying `_move_completed_file`:** its own playlist-
+  iteration loop would never run at all for a track with zero
+  playlists, leaving `resolved` at `None` unconditionally and every
+  completed manual download stuck in slskd's own download dir forever
+  — fixed with an explicit `not playlists` fallback to
+  `_resolve_destination(None)`, scoped narrowly so an ordinary
+  playlist track's existing "no destination, leave in place" behavior
+  is unchanged.
+- [x] 13.3 `DownloadService.search_manual`/`download_manual` — both
+  call the exact same `_build_search_query`/`select_downloads` every
+  playlist download uses (refactored `_build_search_query` to take
+  plain artist/title strings instead of a `Track`, shared by both
+  paths now). `chosen` bypasses ranking/threshold entirely (the user's
+  explicit pick); an optional `files` param lets the UI reuse an
+  already-fetched result set instead of a second real 20-45s search.
+- [x] 13.4/13.5 New "Search" sidebar page between Dashboard and
+  Downloads. Artist/Title fields, busy-treated Search button (real
+  `_run_busy_worker`), a results table (Username/Filename/Format/
+  Bitrate/Size/Locked/Score/Actions) sorted via new public
+  `quality.rank_candidates()`, scored via new public
+  `quality.score_candidate()` — both real wrappers around the SAME
+  private ranking/scoring `select_downloads` uses, never a second copy.
+  "Download best" (primary, busy-treated, reuses the already-fetched
+  results) + per-row "Download this one" (managed directly via
+  `run_worker(button=...)`, the same per-row pattern
+  `_on_confirm_review_candidate` already uses — NOT the shared
+  busy_actions key "Download best" owns, since that key tracks one
+  persistent button, not N ephemeral per-row ones). Column widths set
+  from day one via the item 73/77 pattern (`_size_search_columns`) —
+  never repeats the "nothing ever sets a column width" P4 mistake.
+  Live-rendered via a real offscreen screenshot: card corners clean,
+  ranking correct (lossless outranks lossy regardless of result
+  order), Actions buttons read as real compact buttons.
+- [x] 13.6 CLI `seeker search <artist> <title> [--download]` — lists
+  by default (ranked via `rank_candidates`), `--download` requests the
+  best candidate. `NoDestinationConfiguredError` gets its own
+  `search`-specific guidance ("Set a default download location in
+  Settings") instead of the ordinary `playlists set-destination` hint,
+  since a manual search has no playlist for that to mean anything.
+- [x] 13.7 Verified, not assumed: `dashboard_service.get_playlist_
+  track_status`/`_fetch_next_step_facts` are both genuinely playlist-
+  name-scoped (read the real source), so a manual track structurally
+  can never appear in either — no code change needed there.
+  `generate_match_report`'s GLOBAL branch (`check`'s own report) DOES
+  read every `tracks` row and WOULD show a manual track sitting in
+  "unmatched" the moment a routine match run gives it a row — fixed by
+  excluding `is_manual_track_id()` tracks from that one branch only
+  (a playlist-scoped report already excludes them structurally).
+  Confirmed appearing correctly in Downloads/History
+  (`get_active_downloads`/`get_recent_events`, both genuinely global).
+  **Found and fixed one more real gap along the way:** both of those
+  used to fall through to a bare "Unknown" playlist-name label for a
+  manual track (a fallback that existed for a real Spotify track
+  unexpectedly missing its playlist link — shouldn't happen, but
+  defensive) — new shared `models/track.py::resolve_playlist_label()`
+  distinguishes "Manual" (real, expected) from "Unknown" (a genuine
+  data-integrity concern), used by all three call sites
+  (`DashboardService`, both `HistoryService` event kinds) instead of
+  three independently-drifting copies of the same fallback logic.
+- [x] 13.8 Service-layer tests: no destination configured (checked
+  BEFORE creating a track row or searching); zero results; all
+  candidates locked (falls back to the upgrade cascade correctly); an
+  explicit pick that would score below the auto threshold still
+  allowed; a prefetched `files` list skips a second real search; the
+  real manual `tracks` row shape; `search_manual`'s shared query
+  construction; `_resolve_destination(None)`'s fixed "Manual"
+  subfolder; `_move_completed_file`'s real fallback (an actual file
+  moved on disk); the real duration backfill (a real short WAV file,
+  read via mutagen, not a placeholder). Plus CLI tests (list vs.
+  `--download`, zero results, the `search`-specific destination
+  guidance) and UI tests (empty fields, ranked rendering, zero results,
+  "Download best" reusing fetched results, per-row explicit pick, the
+  Settings-guidance error path). **The real end-to-end manual download
+  against live slskd is intentionally NOT done in this session** — the
+  brief's own instruction is to ask the user to confirm the target
+  first; flagged for the user rather than run autonomously.
+
+`mypy --strict src/` clean (84 files — `_build_info.py` counted from
+item 81). Full suite: 951 passed, 1 skipped (0 failures) — 27 net new
+tests (10 download_service, 1 matcher, 6 cli, 6 ui_smoke, 2 dashboard/
+history-service manual-label), 0 regressions.
+
+**Commit boundary — pending. Brief closed except the live E2E
+verification, left for the user.**

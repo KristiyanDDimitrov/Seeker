@@ -11,9 +11,11 @@ from seeker.library.matcher import TrackMatcher
 from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
+from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
+from seeker.soulseek.download_service import NoDestinationConfiguredError
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
 )
@@ -199,6 +201,28 @@ class FakeDownloadServiceForReview:
     def get_review_candidates(self, playlist_id=None):
         self.get_review_candidates_calls.append(playlist_id)
         return self._review_candidates
+
+
+class FakeDownloadServiceForSearch:
+    def __init__(self, files=None, download_result=None, download_error=None):
+        self._files = files or []
+        self._download_result = download_result or {
+            "requested": False, "settled": False,
+            "reason": "no_candidate_found",
+        }
+        self._download_error = download_error
+        self.search_manual_calls: list[tuple[str, str]] = []
+        self.download_manual_calls: list[tuple[str, str]] = []
+
+    def search_manual(self, artist: str, title: str):
+        self.search_manual_calls.append((artist, title))
+        return self._files
+
+    def download_manual(self, artist: str, title: str):
+        self.download_manual_calls.append((artist, title))
+        if self._download_error is not None:
+            raise self._download_error
+        return self._download_result
 
 
 def test_check_omits_soulseek_review_section_when_not_configured(
@@ -765,6 +789,125 @@ def test_review_reject_calls_reject_match(tmp_path, capsys):
     assert library_service.reject_match_calls == ["track1"]
     assert library_service.confirm_match_calls == []
     assert "Rejected" in capsys.readouterr().out
+
+
+# --- Roadmap item 82 (P13.6): `seeker search` -------------------------------
+
+def test_search_without_download_flag_lists_results(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    files = [
+        SoulseekFile(
+            username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+            extension="flac", size=25_000_000, queue_length=0,
+            upload_speed=1_000_000, has_free_upload_slot=True,
+            bit_rate=None,
+        ),
+        SoulseekFile(
+            username="peer2", filename="Dom Dolla - Rhyme Dust.mp3",
+            extension="mp3", size=8_000_000, queue_length=3,
+            upload_speed=500_000, has_free_upload_slot=True,
+            bit_rate=320,
+        ),
+    ]
+    download_service = FakeDownloadServiceForSearch(files=files)
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["search", "Dom Dolla", "Rhyme Dust"],
+    )
+
+    assert download_service.search_manual_calls == [
+        ("Dom Dolla", "Rhyme Dust")
+    ]
+    assert download_service.download_manual_calls == []
+
+    output = capsys.readouterr().out
+    assert "peer1" in output
+    assert "Dom Dolla - Rhyme Dust.flac" in output
+    assert "peer2" in output
+    assert "320kbps" in output
+    # flac (lossless) ranks above mp3 (lossy) — real ranking, not list order.
+    assert output.index("peer1") < output.index("peer2")
+
+
+def test_search_without_results_prints_a_clear_message(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    download_service = FakeDownloadServiceForSearch(files=[])
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["search", "Nobody", "Nothing"],
+    )
+
+    assert "No results" in capsys.readouterr().out
+
+
+def test_search_download_flag_requests_the_best_candidate(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    download_service = FakeDownloadServiceForSearch(
+        download_result={
+            "requested": True, "settled": True,
+            "username": "peer1", "filename": "Dom Dolla - Rhyme Dust.flac",
+        },
+    )
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["search", "Dom Dolla", "Rhyme Dust", "--download"],
+    )
+
+    assert download_service.download_manual_calls == [
+        ("Dom Dolla", "Rhyme Dust")
+    ]
+    assert download_service.search_manual_calls == []
+
+    output = capsys.readouterr().out
+    assert "Requested from peer1" in output
+    assert "Dom Dolla - Rhyme Dust.flac" in output
+
+
+def test_search_download_flag_with_no_candidates_reports_it(tmp_path, capsys):
+    matcher = make_matcher(tmp_path)
+    download_service = FakeDownloadServiceForSearch(
+        download_result={
+            "requested": False, "settled": False,
+            "reason": "no_candidate_found",
+        },
+    )
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["search", "Nobody", "Nothing", "--download"],
+    )
+
+    assert "No candidates found" in capsys.readouterr().out
+
+
+def test_search_download_flag_with_no_destination_gives_settings_guidance(
+        tmp_path, capsys,
+):
+    # Roadmap item 82 — a manual search has no playlist to set a
+    # per-playlist destination for; guidance must point at Settings,
+    # not the ordinary 'seeker playlists set-destination' hint.
+    matcher = make_matcher(tmp_path)
+    download_service = FakeDownloadServiceForSearch(
+        download_error=NoDestinationConfiguredError(
+            "No download destination is configured yet."
+        ),
+    )
+
+    try:
+        cli.run(
+            FakeApplication(matcher, download_service=download_service),
+            ["search", "Dom Dolla", "Rhyme Dust", "--download"],
+        )
+        assert False, "expected SystemExit"
+    except SystemExit as exit_info:
+        assert exit_info.code == 1
+
+    output = capsys.readouterr().out
+    assert "Settings" in output
+    assert "playlists set-destination" not in output
 
 
 class FakeSharingServiceForCli:

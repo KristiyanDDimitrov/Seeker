@@ -180,6 +180,24 @@ def _sort_key(file: SoulseekFile) -> tuple[int, int, int, int]:
     )
 
 
+def score_candidate(track: Track, file: SoulseekFile) -> float | None:
+    """Roadmap item 82 (P13) — the public form of `_score_candidate`,
+    the same per-candidate score `filter_candidates`/select_downloads
+    use internally. The manual-search UI's results table shows this
+    per-row so a real number backs the ranking it displays, not just
+    an opaque sort order."""
+    return _score_candidate(track, file)
+
+
+def rank_candidates(files: list[SoulseekFile]) -> list[SoulseekFile]:
+    """Roadmap item 82 (P13) — the public form of the same ranking
+    `select_downloads` uses internally (`_sort_key`, best-first: tier,
+    bitrate, lock status, queue length). The manual-search UI's
+    results table needs to display candidates in this exact order
+    without a second, drifting copy of the tiebreak logic."""
+    return sorted(files, key=_sort_key, reverse=True)
+
+
 def select_downloads(
         track: Track,
         files: list[SoulseekFile],
@@ -203,7 +221,7 @@ def select_downloads(
     if not filtered:
         return (None, [], needs_review)
 
-    ranked = sorted(filtered, key=_sort_key, reverse=True)
+    ranked = rank_candidates(filtered)
     top = ranked[0]
 
     # Locked candidates are never eligible as "settled" — they can't be

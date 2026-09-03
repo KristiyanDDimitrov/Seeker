@@ -108,18 +108,12 @@ def test_set_destination_works_without_soulseek_configured(tmp_path):
 
 
 def test_build_search_query_strips_comma_from_multi_artist_track():
-    # track.artist may credit multiple artists joined with ", " (e.g.
+    # artist may credit multiple artists joined with ", " (e.g.
     # "MK, Dom Dolla") — the literal comma isn't a sane search string,
-    # so it must not appear in the built query.
-    track = Track(
-        id="track1",
-        title="Rhyme Dust",
-        artist="MK, Dom Dolla",
-        album="Rhyme Dust",
-        duration_ms=215_000,
-    )
-
-    query = _build_search_query(track)
+    # so it must not appear in the built query. Roadmap item 82 (P13.3)
+    # — takes plain artist/title strings now, not a Track, so a manual
+    # search shares this exact construction.
+    query = _build_search_query("MK, Dom Dolla", "Rhyme Dust")
 
     assert "," not in query
     assert query == "MK Dom Dolla Rhyme Dust"
@@ -3277,3 +3271,305 @@ def test_poll_downloads_never_calls_update_progress_for_never_transferring_reque
     # The one genuinely in-flight request still got its real update.
     assert in_progress_row["bytes_transferred"] == 500
     assert in_progress_row["total_bytes"] == 1_000
+
+
+# --- Roadmap item 82 (P13): manual track search and download --------------
+
+def test_download_manual_raises_interface_neutral_error_with_no_destination(
+        tmp_path,
+):
+    service = make_service(tmp_path, states={})
+
+    with pytest.raises(NoDestinationConfiguredError) as excinfo:
+        service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    message = str(excinfo.value)
+    assert "seeker" not in message.lower()
+    assert "run" not in message.lower()
+
+    # No search, no track row — checked BEFORE either.
+    with service.database.transaction() as connection:
+        assert service.tracks.get_all(connection) == []
+
+
+def _service_with_default_destination(tmp_path, **service_kwargs):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    lib_root = tmp_path / "music"
+    lib_root.mkdir()
+
+    locations = LibraryLocationRepository(database)
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(lib_root), added_at="2026-01-01",
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+    config = SeekerConfig(default_download_location_id=location.id)
+    search_results = service_kwargs.pop("search_results", None)
+    retry_results = service_kwargs.pop("retry_results", None)
+
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(
+            states={}, search_results=search_results,
+            retry_results=retry_results,
+        ),
+        PlaylistRepository(database), TrackRepository(database), locations,
+        DownloadRequestRepository(database), TrackMatchRepository(database),
+        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        slskd_download_dir=None,
+        get_config=lambda: config,
+    )
+    return service, location
+
+
+def test_download_manual_zero_results_reports_no_candidate(tmp_path):
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": []},
+    )
+
+    result = service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    assert result["requested"] is False
+    assert result["settled"] is False
+    assert result["reason"] == "no_candidate_found"
+
+    with service.database.transaction() as connection:
+        assert service.download_requests.get_all(connection) == []
+
+
+def test_download_manual_falls_back_when_every_candidate_is_locked(tmp_path):
+    locked_file = make_soulseek_file(
+        filename="Dom Dolla - Rhyme Dust.flac", locked=True,
+    )
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": [locked_file]},
+    )
+
+    result = service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    assert result["requested"] is True
+    assert result["settled"] is False
+    assert result["reason"] == "locked_only"
+
+    with service.database.transaction() as connection:
+        requests = service.download_requests.get_all(connection)
+
+    assert len(requests) == 1
+    assert requests[0].role == "upgrade"
+    # Real rejection classification only happens on a later
+    # poll_downloads() cycle (items 13/14) — right after requesting,
+    # this is still a freshly-queued row, same as download_playlist's
+    # own locked-only path.
+    assert requests[0].status == "queued"
+
+
+def test_download_manual_explicit_pick_bypasses_the_score_threshold(
+        tmp_path,
+):
+    # Roadmap item 82 (P13.8) — an explicit user pick that would score
+    # below the auto threshold (here, a filename that doesn't match the
+    # artist/title AT ALL) must still be allowed: the user chose it.
+    service, _location = _service_with_default_destination(tmp_path)
+    unrelated_file = make_soulseek_file(
+        filename="Totally Unrelated Track.mp3", extension="mp3",
+    )
+
+    result = service.download_manual(
+        "Dom Dolla", "Rhyme Dust", chosen=unrelated_file,
+    )
+
+    assert result["requested"] is True
+    assert result["settled"] is True
+    assert result["filename"] == "Totally Unrelated Track.mp3"
+
+    with service.database.transaction() as connection:
+        requests = service.download_requests.get_all(connection)
+
+    assert len(requests) == 1
+    assert requests[0].role == "settled"
+    assert requests[0].filename == "Totally Unrelated Track.mp3"
+    # No search was needed for an explicit pick.
+    assert service._soulseek_client.search_calls == []
+
+
+def test_download_manual_reuses_a_prefetched_results_list_without_a_new_search(
+        tmp_path,
+):
+    good_file = make_soulseek_file(filename="Dom Dolla - Rhyme Dust.flac")
+    service, _location = _service_with_default_destination(tmp_path)
+
+    result = service.download_manual(
+        "Dom Dolla", "Rhyme Dust", files=[good_file],
+    )
+
+    assert result["requested"] is True
+    assert result["settled"] is True
+    assert service._soulseek_client.search_calls == []
+
+
+def test_download_manual_creates_a_real_manual_track_row(tmp_path):
+    good_file = make_soulseek_file(filename="Dom Dolla - Rhyme Dust.flac")
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": [good_file]},
+    )
+
+    result = service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    with service.database.transaction() as connection:
+        track = service.tracks.get_by_id(result["track_id"], connection)
+
+    assert track is not None
+    assert track.id.startswith("manual:")
+    assert track.artist == "Dom Dolla"
+    assert track.title == "Rhyme Dust"
+    assert track.album == ""
+    assert track.duration_ms == 0
+
+
+def test_search_manual_uses_the_shared_query_construction(tmp_path):
+    good_file = make_soulseek_file(filename="MK Dom Dolla - Rhyme Dust.flac")
+    service = make_service(
+        tmp_path, states={},
+        search_results={"MK Dom Dolla Rhyme Dust": [good_file]},
+    )
+
+    results = service.search_manual("MK, Dom Dolla", "Rhyme Dust")
+
+    assert results == [good_file]
+    # Read-only: no track row, no download_requests row.
+    with service.database.transaction() as connection:
+        assert service.tracks.get_all(connection) == []
+        assert service.download_requests.get_all(connection) == []
+
+
+def test_resolve_destination_manual_uses_default_with_fixed_manual_subfolder(
+        tmp_path,
+):
+    service, location = _service_with_default_destination(tmp_path)
+
+    resolved = service._resolve_destination(None)
+
+    assert resolved is not None
+    resolved_location, subfolder = resolved
+    assert resolved_location.id == location.id
+    assert subfolder == "Manual"
+
+
+def test_move_completed_file_falls_back_to_default_for_a_manual_track(
+        tmp_path,
+):
+    # Roadmap item 82 (P13.2) — a manual track belongs to no playlist at
+    # all, so _move_completed_file's own playlist-iteration loop would
+    # otherwise never run and leave the file stuck in slskd's download
+    # dir forever, unlike an ordinary playlist track's (unchanged,
+    # deliberate) "no destination -> leave it in place" behavior.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    default_root = tmp_path / "default_music"
+    default_root.mkdir()
+    slskd_dir = tmp_path / "slskd_downloads"
+    slskd_dir.mkdir()
+    (slskd_dir / "Dom Dolla - Rhyme Dust.mp3").write_bytes(b"not real audio")
+
+    locations = LibraryLocationRepository(database)
+    with database.transaction() as connection:
+        locations.add(
+            LibraryLocation(
+                name="Main", path=str(default_root), added_at="2026-01-01",
+            ),
+            connection,
+        )
+        location = locations.get_by_name("Main", connection)
+
+    config = SeekerConfig(default_download_location_id=location.id)
+    service = DownloadService(
+        database,
+        FakeSoulseekClient(states={}),
+        PlaylistRepository(database), TrackRepository(database), locations,
+        DownloadRequestRepository(database), TrackMatchRepository(database),
+        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        slskd_download_dir=str(slskd_dir),
+        get_config=lambda: config,
+    )
+
+    with database.transaction() as connection:
+        service.tracks.save(
+            Track(
+                id="manual:abc", title="Rhyme Dust", artist="Dom Dolla",
+                album="", duration_ms=0,
+            ),
+            connection,
+        )
+
+    request = DownloadRequest(
+        track_id="manual:abc", username="peer1",
+        filename="Dom Dolla - Rhyme Dust.mp3", format="mp3",
+        quality_descriptor="mp3", role="settled", status="downloading",
+        transfer_id="t1", size=1000, requested_at="2026-01-01T00:00:00+00:00",
+    )
+    moved = service._move_completed_file(request)
+
+    assert moved is not None
+    moved_location, relative_path = moved
+    assert moved_location.id == location.id
+    assert relative_path == "Manual/Dom Dolla - Rhyme Dust.mp3"
+    assert (default_root / "Manual" / "Dom Dolla - Rhyme Dust.mp3").exists()
+
+
+def test_index_and_match_settled_download_backfills_manual_track_duration(
+        tmp_path,
+):
+    # Roadmap item 82 (P13.1) — a manual track's placeholder
+    # duration_ms=0 must not survive past the first real index/match,
+    # or a LATER match_all() re-run's duration pre-filter could demote
+    # a correct match back to unmatched (item 45's demotion class).
+    service, location = _service_with_default_destination(tmp_path)
+
+    with service.database.transaction() as connection:
+        service.tracks.save(
+            Track(
+                id="manual:xyz", title="Rhyme Dust", artist="Dom Dolla",
+                album="", duration_ms=0,
+            ),
+            connection,
+        )
+
+    # A real, short WAV file — index_single_file() reads the duration
+    # straight off the real file via mutagen, not from anything passed
+    # in here, so this has to be real audio, not a placeholder blob.
+    import numpy as np
+    import soundfile as sf
+
+    music_dir = Path(location.path)
+    relative_path = "Dom Dolla - Rhyme Dust.wav"
+    sample_rate = 44_100
+    duration_seconds = 3
+    samples = np.zeros(sample_rate * duration_seconds, dtype=np.float32)
+    sf.write(str(music_dir / relative_path), samples, sample_rate)
+
+    request = DownloadRequest(
+        track_id="manual:xyz", username="peer1",
+        filename=relative_path, format="wav",
+        quality_descriptor="wav", role="settled", status="downloading",
+        transfer_id="t1", size=1000, requested_at="2026-01-01T00:00:00+00:00",
+    )
+
+    counts: dict[str, int] = {}
+    service._index_and_match_settled_download(
+        request, (location, relative_path), counts,
+    )
+
+    with service.database.transaction() as connection:
+        track = service.tracks.get_by_id("manual:xyz", connection)
+
+    assert track.duration_ms is not None
+    assert abs(track.duration_ms - duration_seconds * 1000) < 100

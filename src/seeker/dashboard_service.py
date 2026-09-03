@@ -22,7 +22,7 @@ from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.local_file import LocalFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
-from seeker.models.track import Track
+from seeker.models.track import Track, resolve_playlist_label
 from seeker.models.track_match import TrackMatch
 from seeker.models.track_status import (
     AWAITING_REVIEW,
@@ -244,7 +244,9 @@ class DashboardService:
                 ActiveDownload(
                     request=request,
                     track=track,
-                    playlist_name=", ".join(playlist_names) or "Unknown",
+                    playlist_name=resolve_playlist_label(
+                        request.track_id, playlist_names,
+                    ),
                 )
             )
 

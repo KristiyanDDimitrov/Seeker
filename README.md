@@ -311,8 +311,9 @@ moves it into the destination configured for that playlist (see
 
 The table below is the CLI reference. Most of it has a direct `seeker-ui`
 equivalent: the Dashboard page covers `sync`/`sync-tracks`/`scan`/`match`/
-`download`/tagging for whichever playlist is selected; the Downloads page
-covers `downloads status`; the Review page covers `review` (confirming/
+`download`/tagging for whichever playlist is selected; the Search page
+covers `search` — finding and downloading a track that isn't in any
+Spotify playlist; the Downloads page covers `downloads status`; the Review page covers `review` (confirming/
 rejecting needs-review local-file matches) and `downloads review` plus
 confirming/rejecting SoulSeek needs-review candidates (`check`'s
 "Needs review" section, with an action the CLI never had); the
@@ -350,6 +351,7 @@ uv run seeker <command>
 | `check [--verbose]` | Report the auto-matched / needs-review / unmatched split for cached tracks. |
 | `review [playlist] [--confirm TRACK_ID \| --reject TRACK_ID]` | List (or confirm/reject) needs-review LOCAL-FILE matches — distinct from `downloads review`, which is for SoulSeek upgrade candidates. |
 | `download <playlist>` | Search SoulSeek and request downloads for a playlist's still-unmatched tracks (falls back to the configured default destination if the playlist has no destination of its own set). |
+| `search <artist> <title> [--download]` | Search SoulSeek for a track that isn't in any Spotify playlist. Lists results by default; `--download` requests the best available candidate (same quality-with-fallback logic as `download`). Always uses the configured default destination, in a fixed "Manual" subfolder. |
 | `downloads status` | Poll in-flight SoulSeek transfers and move completed ones into place. Non-interactive — safe to run from a scheduler. |
 | `downloads review` | Interactively confirm or decline pending quality-upgrade replacements. |
 | `sharing status` | Report real-time slskd share status, whether it's managed by Seeker, and each library location's share status. |

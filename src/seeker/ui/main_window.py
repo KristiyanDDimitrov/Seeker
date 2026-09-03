@@ -52,6 +52,7 @@ from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
+from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_status import (
@@ -71,6 +72,8 @@ from seeker.sharing_service import (
     SharingApplyResult,
     UploadStatus,
 )
+from seeker.soulseek.download_service import NoDestinationConfiguredError
+from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
@@ -199,6 +202,25 @@ _DUPLICATES_COLUMN_HEADERS = [
     "Keep", "Actions",
 ]
 
+
+# Roadmap item 82 (P13.5) — same "resolve by real header text, not a
+# shared literal" precedent as _DuplicatesColumn above.
+class _SearchColumn(IntEnum):
+    USERNAME = 0
+    FILENAME = 1
+    FORMAT = 2
+    BITRATE = 3
+    SIZE = 4
+    LOCKED = 5
+    SCORE = 6
+    ACTIONS = 7
+
+
+_SEARCH_COLUMN_HEADERS = [
+    "Username", "Filename", "Format", "Bitrate", "Size", "Locked",
+    "Score", "Actions",
+]
+
 _HISTORY_EVENT_LABELS = {
     DOWNLOADED: "Downloaded",
     TAGGED: "Tagged",
@@ -216,6 +238,7 @@ SIDEBAR_WIDTH = 200
 # them to (none do yet).
 _NAV_PAGES = (
     ("dashboard", "Dashboard"),
+    ("search", "Search"),
     ("downloads", "Downloads"),
     ("review", "Review"),
     ("duplicates", "Duplicates"),
@@ -239,6 +262,8 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     "find_duplicates": "Searching for duplicates…",
     "sharing_refresh": "Checking sharing status…",
     "history_refresh": "Loading history…",
+    "search_manual": "Searching SoulSeek…",
+    "download_manual": "Requesting download…",
 }
 
 
@@ -1040,6 +1065,7 @@ class MainWindow(QMainWindow):
 
         self._page_indices: dict[str, int] = {}
         self._register_page("dashboard", self._build_dashboard_page())
+        self._register_page("search", self._build_search_page())
         self._register_page("downloads", self._build_downloads_page())
         self._register_page("review", _build_page(
             "Review", help_text.REVIEW_TAB_SUBTITLE,
@@ -1483,6 +1509,251 @@ class MainWindow(QMainWindow):
         return _build_page(
             "Dashboard", help_text.DASHBOARD_TAB_SUBTITLE, content,
         )
+
+    def _build_search_page(self) -> QWidget:
+        # Roadmap item 82 (P13.4) — a dedicated page between Dashboard
+        # (already the most crowded page — item 51) and Downloads (a
+        # status view, not a search/results one). search_manual()/
+        # download_manual() reuse the EXACT SAME search + quality-
+        # ranking logic download_playlist uses; nothing new is ranked
+        # or scored here.
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(theme.SPACING_MD)
+
+        form = QFormLayout()
+
+        self.search_artist_edit = QLineEdit()
+        self.search_artist_edit.setToolTip(help_text.TOOLTIP_SEARCH_ARTIST)
+        self.search_artist_edit.setPlaceholderText("Artist")
+        form.addRow("Artist:", self.search_artist_edit)
+
+        self.search_title_edit = QLineEdit()
+        self.search_title_edit.setToolTip(help_text.TOOLTIP_SEARCH_TITLE)
+        self.search_title_edit.setPlaceholderText("Title")
+        form.addRow("Title:", self.search_title_edit)
+
+        layout.addLayout(form)
+
+        controls = QHBoxLayout()
+
+        self.search_button = QPushButton("Search")
+        self.search_button.setProperty("variant", "primary")
+        self.search_button.setToolTip(help_text.TOOLTIP_SEARCH_BUTTON)
+        self.search_button.clicked.connect(self._on_search_clicked)
+        controls.addWidget(self.search_button)
+
+        self.download_best_button = QPushButton("Download best")
+        self.download_best_button.setToolTip(help_text.TOOLTIP_DOWNLOAD_BEST)
+        self.download_best_button.setEnabled(False)
+        self.download_best_button.clicked.connect(
+            self._on_download_best_clicked
+        )
+        controls.addWidget(self.download_best_button)
+
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        self.search_status_label = QLabel("")
+        layout.addWidget(self.search_status_label)
+
+        self.search_results_table = QTableWidget(
+            0, len(_SEARCH_COLUMN_HEADERS),
+        )
+        self.search_results_table.setHorizontalHeaderLabels(
+            _SEARCH_COLUMN_HEADERS
+        )
+        layout.addWidget(theme.make_card(self.search_results_table))
+
+        self._search_artist = ""
+        self._search_title = ""
+        self._search_files: list[SoulseekFile] = []
+
+        return _build_page("Search", help_text.SEARCH_TAB_SUBTITLE, content)
+
+    def _on_search_clicked(self) -> None:
+        artist = self.search_artist_edit.text().strip()
+        title = self.search_title_edit.text().strip()
+
+        if not artist or not title:
+            self.search_status_label.setText(
+                help_text.SEARCH_EMPTY_FIELDS_MESSAGE
+            )
+            return
+
+        self.download_best_button.setEnabled(False)
+        self.search_status_label.setText(
+            f"Searching for '{artist} - {title}'…"
+        )
+
+        self._run_busy_worker(
+            "search_manual", self.search_button,
+            lambda: (
+                self.application.download_service
+                .search_manual(artist, title)
+            ),
+            status_label=self.search_status_label,
+            on_finished=lambda files: self._render_search_results(
+                artist, title, files,
+            ),
+        )
+
+    def _render_search_results(
+            self,
+            artist: str,
+            title: str,
+            files: list[SoulseekFile],
+    ) -> None:
+        self._search_artist = artist
+        self._search_title = title
+        self._search_files = files
+
+        self.download_best_button.setEnabled(bool(files))
+        self.search_status_label.setText(
+            help_text.format_search_result_count(len(files))
+            if files else help_text.SEARCH_NO_RESULTS_MESSAGE
+        )
+
+        ranked = rank_candidates(files)
+        self.search_results_table.setRowCount(len(ranked))
+
+        # Purely for the per-row score display — never persisted, never
+        # passed to select_downloads (which scores against the SAME
+        # inputs internally). See quality.score_candidate's own
+        # docstring.
+        scoring_track = Track(
+            id="", title=title, artist=artist, album="", duration_ms=0,
+        )
+        action_widgets: list[QWidget] = []
+
+        for row, file in enumerate(ranked):
+            self.search_results_table.setItem(
+                row, _SearchColumn.USERNAME, QTableWidgetItem(file.username),
+            )
+            self.search_results_table.setItem(
+                row, _SearchColumn.FILENAME, QTableWidgetItem(file.filename),
+            )
+            self.search_results_table.setItem(
+                row, _SearchColumn.FORMAT, QTableWidgetItem(file.extension),
+            )
+            bitrate_text = (
+                f"{file.bit_rate} kbps" if file.bit_rate else "—"
+            )
+            self.search_results_table.setItem(
+                row, _SearchColumn.BITRATE, QTableWidgetItem(bitrate_text),
+            )
+            self.search_results_table.setItem(
+                row, _SearchColumn.SIZE,
+                QTableWidgetItem(format_file_size(file.size)),
+            )
+            self.search_results_table.setItem(
+                row, _SearchColumn.LOCKED,
+                QTableWidgetItem("Yes" if file.locked else "No"),
+            )
+            score = score_candidate(scoring_track, file)
+            score_text = f"{score:.1f}" if score is not None else "—"
+            self.search_results_table.setItem(
+                row, _SearchColumn.SCORE, QTableWidgetItem(score_text),
+            )
+
+            action_widget = self._build_search_result_actions(file)
+            action_widgets.append(action_widget)
+            self.search_results_table.setCellWidget(
+                row, _SearchColumn.ACTIONS, action_widget,
+            )
+
+        self._size_search_columns(action_widgets)
+
+    def _size_search_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item 82 (P13.5) — the exact P4/item 73 lesson applied
+        # to a brand-new table from day one, rather than repeating the
+        # "nothing ever sets a column width" mistake.
+        header = self.search_results_table.horizontalHeader()
+        header.setMinimumSectionSize(40)
+        header.setStretchLastSection(False)
+
+        content_fit_columns = (
+            _SearchColumn.USERNAME, _SearchColumn.FORMAT,
+            _SearchColumn.BITRATE, _SearchColumn.SIZE,
+            _SearchColumn.LOCKED, _SearchColumn.SCORE,
+        )
+        for column in content_fit_columns:
+            header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents,
+            )
+
+        header.setSectionResizeMode(
+            _SearchColumn.FILENAME, QHeaderView.ResizeMode.Stretch,
+        )
+
+        actions_width = max(
+            (widget.sizeHint().width() for widget in action_widgets),
+            default=header.minimumSectionSize(),
+        )
+        header.setSectionResizeMode(
+            _SearchColumn.ACTIONS, QHeaderView.ResizeMode.Fixed,
+        )
+        header.resizeSection(_SearchColumn.ACTIONS, actions_width)
+
+    def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
+        download_button = QPushButton("Download this one")
+        download_button.setToolTip(help_text.TOOLTIP_DOWNLOAD_THIS_ONE)
+        download_button.clicked.connect(
+            lambda: self._on_download_this_one_clicked(file, download_button)
+        )
+        return theme.cell_widget(download_button)
+
+    def _on_download_best_clicked(self) -> None:
+        # Roadmap item 82 (P13.5) — the headline action, so it gets the
+        # shared busy_actions/activity-strip treatment like every other
+        # persistent-button action on this page (Search included).
+        if not self._search_files:
+            return
+
+        artist, title, files = (
+            self._search_artist, self._search_title, self._search_files,
+        )
+        self._run_busy_worker(
+            "download_manual", self.download_best_button,
+            lambda: self.application.download_service.download_manual(
+                artist, title, files=files,
+            ),
+            status_label=self.search_status_label,
+            on_finished=lambda result: self.search_status_label.setText(
+                help_text.format_search_download_result(result)
+            ),
+            on_error=self._on_manual_download_error,
+        )
+
+    def _on_download_this_one_clicked(
+            self, file: SoulseekFile, button: QPushButton,
+    ) -> None:
+        # A per-row action on an ephemeral, per-render button — managed
+        # directly via run_worker's own button= disable/re-enable, the
+        # same pattern _on_confirm_review_candidate uses, rather than
+        # the shared "download_manual" busy_actions key (which
+        # "Download best" above already owns, and which only tracks
+        # ONE persistent button per key).
+        artist, title = self._search_artist, self._search_title
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.download_service.download_manual(
+                artist, title, chosen=file,
+            ),
+            button=button,
+            status_label=self.search_status_label,
+            on_finished=lambda result: self.search_status_label.setText(
+                help_text.format_search_download_result(result)
+            ),
+            on_error=self._on_manual_download_error,
+        )
+
+    def _on_manual_download_error(self, message: str) -> None:
+        if "destination" in message.lower():
+            self.search_status_label.setText(
+                f"{message} Set a default download location in Settings."
+            )
 
     def _build_downloads_page(self) -> QWidget:
         content = QWidget()

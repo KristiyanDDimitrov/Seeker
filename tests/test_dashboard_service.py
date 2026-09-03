@@ -479,6 +479,33 @@ def test_get_active_downloads_is_global_across_playlists(tmp_path):
     assert playlist_names_by_track["b1"] == "Playlist B"
 
 
+def test_get_active_downloads_manual_track_shows_manual_not_unknown(
+        tmp_path,
+):
+    # Roadmap item 82 (P13.7) — a manual (not-from-Spotify) track
+    # genuinely belongs to no playlist, same shape as an unexpected
+    # "Unknown" case, but this one is real and expected — the label
+    # must say so honestly rather than reading like a data-integrity
+    # problem.
+    service = make_service(tmp_path)
+
+    with service.database.transaction() as connection:
+        service.tracks.save(
+            Track(
+                id="manual:abc123", title="Rhyme Dust", artist="Dom Dolla",
+                album="", duration_ms=0,
+            ),
+            connection,
+        )
+
+    seed_download_request(service, "manual:abc123", status="downloading")
+
+    downloads = service.get_active_downloads()
+
+    assert len(downloads) == 1
+    assert downloads[0].playlist_name == "Manual"
+
+
 @pytest.mark.parametrize(
     "status", ["queued", "downloading", "locked", "shortlisted", "ready_for_review"],
 )

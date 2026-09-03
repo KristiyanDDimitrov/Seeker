@@ -22,6 +22,11 @@ DASHBOARD_TAB_SUBTITLE = (
     "Pick a playlist on the left to see each track's status, then tag "
     "or download what's missing."
 )
+SEARCH_TAB_SUBTITLE = (
+    "Find and download a track that isn't in any Spotify playlist — "
+    "the same best-quality-with-fallback search SoulSeek downloads "
+    "already use."
+)
 DOWNLOADS_TAB_SUBTITLE = (
     "Every SoulSeek transfer currently in progress, across all "
     "playlists — updates automatically. A finished transfer stays "
@@ -713,6 +718,46 @@ TOOLTIP_HISTORY_FILTER_COMBO = (
 TOOLTIP_HISTORY_REFRESH_BUTTON = (
     "Re-check current data for recently downloaded and tagged tracks."
 )
+
+# --- Search tab (roadmap item 82, P13) --------------------------------------
+
+TOOLTIP_SEARCH_ARTIST = "Artist name to search for."
+TOOLTIP_SEARCH_TITLE = "Track title to search for."
+TOOLTIP_SEARCH_BUTTON = (
+    "Search SoulSeek for this artist/title. A real search against the "
+    "live network typically takes 20-45 seconds."
+)
+TOOLTIP_DOWNLOAD_BEST = (
+    "Download the best available candidate automatically — the same "
+    "quality-with-fallback logic every playlist download already uses."
+)
+TOOLTIP_DOWNLOAD_THIS_ONE = (
+    "Download this specific file instead of the automatic best pick."
+)
+SEARCH_EMPTY_FIELDS_MESSAGE = "Enter both an artist and a title first."
+SEARCH_NO_RESULTS_MESSAGE = "No results found."
+
+
+def format_search_result_count(count: int) -> str:
+    return f"Found {count} result{'s' if count != 1 else ''}."
+
+
+def format_search_download_result(result: dict[str, Any]) -> str:
+    """Roadmap item 82 (P13.5) — a real outcome message for both
+    download_manual() branches: a settled request (username/filename
+    known) and a locked-only upgrade request (nothing downloadable
+    right this moment, but something real is being chased)."""
+    if not result["requested"]:
+        return "No candidates found."
+
+    if result["settled"]:
+        return f"Requested from {result['username']}: {result['filename']}"
+
+    return (
+        "No practical candidate — requested a locked/upgrade-only "
+        "candidate. Check the Downloads page for progress."
+    )
+
 
 # --- Settings: Library Locations tab --------------------------------------
 

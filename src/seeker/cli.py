@@ -21,6 +21,7 @@ from seeker.soulseek.download_service import (
     NoDestinationConfiguredError,
     PlaylistNotFoundError,
 )
+from seeker.soulseek.quality import rank_candidates
 from seeker.spotify.client import SpotifyRateLimitedError
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
@@ -190,6 +191,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Download a playlist's unmatched tracks via SoulSeek.",
     )
     download_parser.add_argument("playlist_name")
+
+    # Roadmap item 82 (P13.6) — a track that isn't in any Spotify
+    # playlist, reusing the exact same search/ranking/download path as
+    # `download` (DownloadService.search_manual/download_manual) —
+    # never a second copy of that logic.
+    search_parser = subparsers.add_parser(
+        "search",
+        help=(
+            "Search SoulSeek for a track that isn't in any Spotify "
+            "playlist."
+        ),
+    )
+    search_parser.add_argument("artist")
+    search_parser.add_argument("title")
+    search_parser.add_argument(
+        "--download",
+        action="store_true",
+        help=(
+            "Download the best available candidate (with automatic "
+            "fallback) instead of just listing search results."
+        ),
+    )
 
     downloads_parser = subparsers.add_parser(
         "downloads",
@@ -475,6 +498,54 @@ def handle_download(
     )
     if needs_review:
         print("  Run 'seeker review' to see the new candidates.")
+
+def handle_search(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.download:
+        result = application.download_service.download_manual(
+            parsed.artist, parsed.title,
+        )
+
+        if not result["requested"]:
+            print(
+                f"No candidates found for '{parsed.artist} - "
+                f"{parsed.title}'."
+            )
+            return
+
+        if result["settled"]:
+            print(
+                f"Requested from {result['username']}: "
+                f"{result['filename']}"
+            )
+        else:
+            print(
+                "No practical candidate — requested a locked/upgrade-"
+                "only candidate; check 'seeker downloads status' for "
+                "progress."
+            )
+        return
+
+    files = application.download_service.search_manual(
+        parsed.artist, parsed.title,
+    )
+
+    if not files:
+        print(f"No results for '{parsed.artist} - {parsed.title}'.")
+        return
+
+    for file in rank_candidates(files):
+        bitrate = f"{file.bit_rate}kbps" if file.bit_rate else "—"
+        lock_note = " [locked]" if file.locked else ""
+        print(
+            f"  {file.username}: {file.filename} "
+            f"({file.extension}, {bitrate}, "
+            f"{format_file_size(file.size)}, "
+            f"queue {file.queue_length}){lock_note}"
+        )
+
 
 def handle_downloads(
         application: Application,
@@ -981,6 +1052,9 @@ def run(
         elif parsed.command == "download":
             handle_download(application, parsed)
 
+        elif parsed.command == "search":
+            handle_search(application, parsed)
+
         elif parsed.command == "downloads":
             handle_downloads(application, parsed)
 
@@ -1000,8 +1074,14 @@ def run(
         # (shared with the UI, which must never be told to run a shell
         # command — roadmap item 6 §2) — the CLI appends its own
         # command-line guidance here instead of baking it into the
-        # shared message.
-        print(f"{error} Run 'seeker playlists set-destination' first.")
+        # shared message. Roadmap item 82 (P13) — a manual search has
+        # no playlist to set a per-playlist destination for at all, so
+        # 'search' gets its own guidance pointing at the app-wide
+        # default (Settings-only — there's no CLI command for it yet).
+        if parsed.command == "search":
+            print(f"{error} Set a default download location in Settings first.")
+        else:
+            print(f"{error} Run 'seeker playlists set-destination' first.")
         sys.exit(1)
     except (
             PlaylistNotFoundError,

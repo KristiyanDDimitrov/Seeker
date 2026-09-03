@@ -428,6 +428,40 @@ def test_generate_match_report_scopes_to_one_playlist_with_real_data(
     assert len(global_report["unmatched"]) == 6
 
 
+def test_generate_match_report_global_excludes_manual_tracks(tmp_path):
+    # Roadmap item 82 (P13.7) — a manual (not-from-Spotify) search-and-
+    # download track belongs to no playlist at all, so it can never
+    # appear in a playlist-scoped report — but the GLOBAL report reads
+    # every `tracks` row, and would otherwise show a manual track
+    # sitting in "unmatched" the moment a routine match run gives it a
+    # track_matches row, muddying a report whose whole point is "how
+    # much of my Spotify library is present locally."
+    matcher = make_matcher(tmp_path)
+
+    with matcher.database.transaction() as connection:
+        matcher.tracks.save(
+            Track(
+                id="manual:abc123", title="Rhyme Dust", artist="Dom Dolla",
+                album="", duration_ms=0,
+            ),
+            connection,
+        )
+        matcher.track_matches.upsert(
+            TrackMatch(
+                track_id="manual:abc123", local_file_id=None,
+                match_method=None, score=None,
+                matched_at="2026-09-03T00:00:00+00:00",
+            ),
+            connection,
+        )
+
+    report = matcher.generate_match_report()
+
+    assert report["auto_count"] == 0
+    assert report["unmatched"] == []
+    assert report["needs_review"] == []
+
+
 # --- Roadmap item 56: softened artist gate + real BMTH regression cases ----
 #
 # All three cases below are real local_files rows from the real, live

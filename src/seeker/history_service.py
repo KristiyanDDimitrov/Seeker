@@ -15,6 +15,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import most_recent_per_candidate
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
+from seeker.models.track import resolve_playlist_label
 from seeker.models.track_match import TrackMatch
 
 # Untuned default, same convention as every other threshold in this
@@ -102,7 +103,9 @@ class HistoryService:
                     event_type=DOWNLOADED,
                     track_title=track.title,
                     track_artist=track.artist,
-                    playlist_name=", ".join(playlist_names) or "Unknown",
+                    playlist_name=resolve_playlist_label(
+                        request.track_id, playlist_names,
+                    ),
                     detail=f"{request.format.upper()} from {request.username}",
                 )
             )
@@ -127,7 +130,9 @@ class HistoryService:
                     event_type=TAGGED,
                     track_title=track.title,
                     track_artist=track.artist,
-                    playlist_name=", ".join(playlist_names) or "Unknown",
+                    playlist_name=resolve_playlist_label(
+                        track.id, playlist_names,
+                    ),
                     detail="Tagged with Spotify metadata",
                 )
             )

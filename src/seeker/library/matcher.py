@@ -20,7 +20,7 @@ from seeker.matching import (
     resolve_text_source,
 )
 from seeker.models.local_file import LocalFile
-from seeker.models.track import Track
+from seeker.models.track import Track, is_manual_track_id
 from seeker.models.track_match import TrackMatch
 
 
@@ -241,7 +241,19 @@ class TrackMatcher:
                     playlist_id, connection
                 )
             else:
-                tracks = self.tracks.get_all(connection)
+                # Roadmap item 82 (P13.7) — a manual (not-from-Spotify)
+                # search-and-download track belongs to no playlist at
+                # all, so it can never appear in a playlist-scoped
+                # report above — but the GLOBAL report reads every
+                # `tracks` row, and would otherwise show a manual
+                # track sitting in "unmatched" the moment a routine
+                # match run gives it a track_matches row, muddying a
+                # report whose whole point is "how much of my Spotify
+                # library is present locally."
+                tracks = [
+                    track for track in self.tracks.get_all(connection)
+                    if not is_manual_track_id(track.id)
+                ]
 
             tracks_by_id = {track.id: track for track in tracks}
             matches = self.track_matches.get_all(connection)

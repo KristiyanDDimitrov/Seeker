@@ -1269,6 +1269,37 @@ compress it here before moving on to the next item.
     code change:** `compose_file_path()`'s frozen-build canonicalization
     was already fixed by item 74 — confirmed by reading current
     source, not assumed. [HISTORY §81](docs/HISTORY.md#81)
+82. **New feature: manual track search and download (P13) — done,
+    live E2E download left for the user to confirm and run.** A manual
+    track is a real `tracks` row (`id=manual:<uuid4>`, `album=""`,
+    `duration_ms=0`, backfilled with the real duration on first index
+    — see below) belonging to no playlist —
+    `DownloadService.search_manual`/`download_manual` share
+    `_build_search_query`/`select_downloads` with `download_playlist`
+    verbatim, never a second copy; `chosen` bypasses ranking/threshold
+    for an explicit per-row pick; an optional `files` param skips a
+    second real 20-45s search. New "Search" sidebar page (Dashboard →
+    Search → Downloads), new `seeker search <artist> <title>
+    [--download]` CLI command. New public `quality.rank_candidates()`/
+    `score_candidate()` wrap the exact same private ranking/scoring
+    `select_downloads` already used. **Real gaps found and fixed along
+    the way, not just the brief's own named risk:** (1) `_resolve_
+    destination` widened to `Playlist | None` per the brief, but
+    `_move_completed_file`'s OWN playlist-iteration loop never ran at
+    all for a zero-playlist track — fixed with an explicit fallback,
+    scoped narrowly so an ordinary playlist track's existing behavior
+    is unchanged. (2) a LATER `match_all()` re-run's duration pre-
+    filter would fail a real `duration_ms=0` against nearly any file
+    (item 45's own demotion class, a new trigger) — fixed by
+    backfilling the real duration once, from the just-downloaded file,
+    manual tracks only. (3) `check`'s GLOBAL report reads every
+    `tracks` row and would leak a manual track into "unmatched" — fixed
+    by excluding `is_manual_track_id()` rows from that one branch.
+    (4) Downloads/History both fell through to a bare "Unknown"
+    playlist label (a fallback meant for a genuinely-unexpected data
+    gap) for EVERY manual track — new shared `models/track.py::
+    resolve_playlist_label()` says "Manual" instead, one place instead
+    of three independently-drifting copies. [HISTORY §82](docs/HISTORY.md#82)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
