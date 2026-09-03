@@ -6154,3 +6154,55 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
 
     assert len(info_calls) == 1
     assert sharing_service.add_location_to_share_calls == []
+
+
+def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width(
+        qtbot,
+):
+    # Roadmap item R5 (5b.4) — regression coverage for every table with
+    # a real Actions column, generalizing item 73's own single-table
+    # test: the column must be widened to at least the real Actions
+    # widget's own sizeHint().width() ("Confirm" clipped to "onfirm"),
+    # and every row must be at least as tall as that widget's own
+    # sizeHint().height() ("Replace"/"Decline" sliced off at the
+    # bottom) — both derived from the real widget actually built this
+    # render, never a magic number.
+    from seeker.sharing_service import LocationShareState
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._render_track_statuses(
+        [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
+    )
+    window._render_needs_review_candidates(
+        [(_make_track(), _make_review_candidate())]
+    )
+    window._render_pending_upgrades(
+        [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    )
+    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._render_sharing_locations_table([
+        LocationShareState(
+            location=_make_location(1, "Music", "/Volumes/Drive/Music"),
+            shared=False, share=None,
+        ),
+    ])
+
+    tables_and_columns = [
+        (window.track_table, 3),
+        (window.review_needs_table, 3),
+        (window.review_upgrades_table, 3),
+        (window.review_local_table, 4),
+        (window.sharing_locations_table, 4),
+    ]
+
+    for table, actions_column in tables_and_columns:
+        assert table.rowCount() >= 1, table.objectName() or repr(table)
+        widget = table.cellWidget(0, actions_column)
+        assert widget is not None
+
+        header = table.horizontalHeader()
+        assert header.sectionSize(actions_column) >= widget.sizeHint().width()
+        assert table.rowHeight(0) >= widget.sizeHint().height()

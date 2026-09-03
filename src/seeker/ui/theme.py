@@ -23,7 +23,8 @@ a rewrite).
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QProgressBar, QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QHeaderView, QProgressBar,
+    QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
 
 # --- Color tokens ----------------------------------------------------------
@@ -154,6 +155,73 @@ def cell_widget(*widgets: QWidget) -> QWidget:
         layout.addWidget(widget)
     layout.addStretch()
     return container
+
+
+def apply_table_defaults(table: QTableWidget) -> None:
+    """Roadmap item R5 (5a.1 + 5b.2) — the shared baseline every real
+    QTableWidget in this app should be constructed with.
+
+    5a.1: hides the vertical (row-number) header. No table in this app
+    has ever used it for anything (Duplicates has its own real Group
+    column) — confirmed by grep before this fix existed, nothing in
+    this file ever styled QHeaderView/QTableCornerButton, so the area
+    of the vertical header below the last row painted the default
+    palette color (a stray black column down the left edge), and the
+    unstyled top-left corner button cut a black square into the card's
+    own rounded corner (item 80 fixed the card's OWN border but not
+    this).
+
+    5b.2: floors row height at a real `cell_widget()`'s own
+    `sizeHint().height()` — Qt's default row height is shorter than
+    that container (button + item 80's own real margins), which is
+    what sliced "Replace"/"Decline" off at the bottom before this.
+    Applied via the vertical header's `setMinimumSectionSize` (a real
+    floor `resizeRowsToContents()` can't shrink below), not
+    `setDefaultSectionSize` (only affects brand-new rows, not a floor).
+    """
+    table.verticalHeader().setVisible(False)
+    table.horizontalHeader().setMinimumSectionSize(40)
+
+    representative_row_height = cell_widget(
+        QPushButton("Sample")
+    ).sizeHint().height()
+    table.verticalHeader().setMinimumSectionSize(representative_row_height)
+
+
+def size_action_column(
+        table: QTableWidget, column: int, action_widgets: list[QWidget],
+) -> None:
+    """Roadmap item R5 (5b.1) — the shared form of the fix items 73/82
+    each wrote once for themselves (`_size_duplicates_columns`/
+    `_size_search_columns`), extracted so every table with a real
+    Actions column gets it instead of a tenth hand-rolled copy. Widens
+    the column to the WIDEST real Actions widget built this render
+    (never a magic number) — the actual fix for "Confirm" reading as
+    "onfirm": nothing in the other 8 tables named in this item ever
+    set a derived width for this column before, so Qt's own
+    stretch-last-section leftover-space math could squeeze it to a
+    sliver. Caller must have already called
+    `header.setStretchLastSection(False)` — stretch-last overrides any
+    resize mode set on the last section, Fixed included, if this
+    column happens to be the last one.
+    """
+    header = table.horizontalHeader()
+    action_width = max(
+        (widget.sizeHint().width() for widget in action_widgets),
+        default=header.minimumSectionSize(),
+    )
+    header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+    header.resizeSection(column, action_width)
+
+    # Roadmap item R5 (5b.2) — apply_table_defaults()'s
+    # setMinimumSectionSize() floor already raises every row to a safe
+    # height with no explicit call needed (confirmed empirically: a
+    # bare setRowCount() after it already reports the floored height).
+    # This call is what lets a row grow TALLER than that floor for
+    # real content that needs it (e.g. a future wrapped multi-line
+    # cell), on every table that has real per-row Actions widgets to
+    # measure content against.
+    table.resizeRowsToContents()
 
 
 def apply_theme(app: QApplication) -> None:
@@ -367,6 +435,24 @@ QHeaderView::section {{
     border: none;
     border-bottom: 1px solid {BORDER};
     padding: 6px;
+}}
+
+/* Roadmap item R5 (5a.2) — belt and braces alongside
+apply_table_defaults() hiding the vertical header outright: a future
+table that genuinely wants row numbers back would otherwise repaint
+the exact same black-column/black-corner defects this item fixes,
+since QHeaderView::section above only styles the section painting, not
+the header/corner-button WIDGETS themselves (the area below the last
+row, and the top-left corner button between the two headers, have no
+section to match that rule at all). */
+QHeaderView {{
+    background-color: {BG_SURFACE};
+    border: none;
+}}
+
+QTableCornerButton::section {{
+    background-color: {BG_SURFACE};
+    border: none;
 }}
 
 QProgressBar {{

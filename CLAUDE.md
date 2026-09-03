@@ -1347,6 +1347,27 @@ compress it here before moving on to the next item.
     per-row control exists anywhere else in the app today.
     [HISTORY §86](docs/HISTORY.md#86)
 
+87. **Fix R5: global table chrome — black columns/corners + clipped
+    text in 8 more tables — done, pixel-verified.** New
+    `theme.apply_table_defaults(table)` (hides the vertical header —
+    5a — and floors row height at a real `cell_widget()`'s own
+    `sizeHint().height()` via `verticalHeader().setMinimumSectionSize`
+    — 5b.2, empirically confirmed to need no extra `resizeRowsToContents()`
+    call to take effect on new rows) applied to every real
+    `QTableWidget` in the app. New `theme.size_action_column(table,
+    column, action_widgets)` extracted from item 73's own
+    `_size_duplicates_columns`/`_size_search_columns` (both now call
+    it instead of a third copy) and applied to 5 more tables with real
+    Actions columns (`track_table`, `sharing_locations_table`,
+    `review_needs_table`, `review_upgrades_table`,
+    `review_local_table`); `downloads_table`/`history_table`/
+    `sharing_uploads_table` have no Actions column (progress bars or
+    plain text) so only got the row-height/vertical-header half.
+    Stylesheet gained `QHeaderView`/`QTableCornerButton::section`
+    rules as a belt-and-braces backstop. Verified with real offscreen
+    screenshots at 960×640 and 1280×800 — every button renders in
+    full, no black column/corner anywhere. [HISTORY §87](docs/HISTORY.md#87)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

@@ -1470,7 +1470,7 @@ class MainWindow(QMainWindow):
         self.track_table.setHorizontalHeaderLabels(
             ["Track", "Status", "Progress", "Actions"]
         )
-        self.track_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.track_table)
         # Multi-select needed for "Tag selected" (Step 7) — rows, not
         # cells, and extended (ctrl/shift-click) rather than the Qt
         # default of single-row selection.
@@ -1579,6 +1579,7 @@ class MainWindow(QMainWindow):
         self.search_results_table.setHorizontalHeaderLabels(
             _SEARCH_COLUMN_HEADERS
         )
+        theme.apply_table_defaults(self.search_results_table)
         layout.addWidget(theme.make_card(self.search_results_table))
 
         self._search_artist = ""
@@ -1702,14 +1703,9 @@ class MainWindow(QMainWindow):
             _SearchColumn.FILENAME, QHeaderView.ResizeMode.Stretch,
         )
 
-        actions_width = max(
-            (widget.sizeHint().width() for widget in action_widgets),
-            default=header.minimumSectionSize(),
+        theme.size_action_column(
+            self.search_results_table, _SearchColumn.ACTIONS, action_widgets,
         )
-        header.setSectionResizeMode(
-            _SearchColumn.ACTIONS, QHeaderView.ResizeMode.Fixed,
-        )
-        header.resizeSection(_SearchColumn.ACTIONS, actions_width)
 
     def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
         download_button = QPushButton("Download this one")
@@ -1787,6 +1783,7 @@ class MainWindow(QMainWindow):
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.downloads_table)
         layout.addWidget(theme.make_card(self.downloads_table))
 
         return _build_page(
@@ -1838,6 +1835,7 @@ class MainWindow(QMainWindow):
             ["When", "What", "Track", "Detail"]
         )
         self.history_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.history_table)
         layout.addWidget(theme.make_card(self.history_table))
 
         # Raw, unfiltered events from the last real fetch — the filter
@@ -1932,7 +1930,7 @@ class MainWindow(QMainWindow):
         self.sharing_locations_table.setHorizontalHeaderLabels(
             ["Location", "Shared", "Container Path", "Files", "Action"]
         )
-        self.sharing_locations_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.sharing_locations_table)
         layout.addWidget(theme.make_card(self.sharing_locations_table))
 
         uploads_label = QLabel("Currently uploading")
@@ -1947,6 +1945,7 @@ class MainWindow(QMainWindow):
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
         self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.sharing_uploads_table)
         layout.addWidget(theme.make_card(self.sharing_uploads_table))
 
         self._current_sharing_reconciliation: list[LocationShareState] = []
@@ -2037,6 +2036,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         table = self.sharing_locations_table
         table.setRowCount(len(reconciliation))
+        action_widgets: list[QWidget] = []
 
         for row, state in enumerate(reconciliation):
             table.setItem(row, 0, QTableWidgetItem(state.location.name))
@@ -2058,7 +2058,9 @@ class MainWindow(QMainWindow):
             )
 
             if state.shared:
-                table.setCellWidget(row, 4, theme.cell_widget(QLabel("Shared")))
+                shared_widget = theme.cell_widget(QLabel("Shared"))
+                action_widgets.append(shared_widget)
+                table.setCellWidget(row, 4, shared_widget)
                 continue
 
             button = QPushButton("Add to my SoulSeek share")
@@ -2073,7 +2075,23 @@ class MainWindow(QMainWindow):
             # widget directly, bypassing normal layout sizing), reading
             # as a filled cell rather than a button. cell_widget()'s
             # trailing stretch absorbs the leftover width instead.
-            table.setCellWidget(row, 4, theme.cell_widget(button))
+            button_widget = theme.cell_widget(button)
+            action_widgets.append(button_widget)
+            table.setCellWidget(row, 4, button_widget)
+
+        self._size_sharing_locations_columns(action_widgets)
+
+    def _size_sharing_locations_columns(
+            self, action_widgets: list[QWidget],
+    ) -> None:
+        # Roadmap item R5 (5b.1).
+        header = self.sharing_locations_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.sharing_locations_table, 4, action_widgets)
 
     def _render_sharing_uploads_table(
             self, uploads: list[UploadStatus],
@@ -2925,7 +2943,7 @@ class MainWindow(QMainWindow):
         self.review_needs_table.setHorizontalHeaderLabels(
             ["Track", "Score", "Candidate", "Actions"]
         )
-        self.review_needs_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.review_needs_table)
         layout.addWidget(theme.make_card(self.review_needs_table))
 
         layout.addWidget(QLabel("Downloaded upgrades ready for review"))
@@ -2934,7 +2952,7 @@ class MainWindow(QMainWindow):
         self.review_upgrades_table.setHorizontalHeaderLabels(
             ["Track", "Current", "New quality", "Actions"]
         )
-        self.review_upgrades_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.review_upgrades_table)
         layout.addWidget(theme.make_card(self.review_upgrades_table))
 
         # Third section — roadmap item 56 Phase 2, closing item 7's
@@ -2947,7 +2965,7 @@ class MainWindow(QMainWindow):
         self.review_local_table.setHorizontalHeaderLabels(
             ["Track", "Matched file", "Location", "Score", "Actions"]
         )
-        self.review_local_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.review_local_table)
         layout.addWidget(theme.make_card(self.review_local_table))
 
         # Roadmap item R2.1 — the 2s poll_timer rebuilds this table's
@@ -3080,7 +3098,7 @@ class MainWindow(QMainWindow):
         self.duplicates_table.setHorizontalHeaderLabels(
             _DUPLICATES_COLUMN_HEADERS
         )
-        self.duplicates_table.horizontalHeader().setStretchLastSection(True)
+        theme.apply_table_defaults(self.duplicates_table)
         layout.addWidget(theme.make_card(self.duplicates_table))
 
         # QButtonGroup instances (one per duplicate group, so only one
@@ -3691,14 +3709,12 @@ class MainWindow(QMainWindow):
             _DuplicatesColumn.PATH, QHeaderView.ResizeMode.Stretch,
         )
 
-        actions_width = max(
-            (widget.sizeHint().width() for widget in action_widgets),
-            default=header.minimumSectionSize(),
+        # Roadmap item R5 (5b.1) — extracted into the shared
+        # theme.size_action_column, now also used by Search/Track/
+        # Sharing/Review's Actions columns instead of a tenth copy.
+        theme.size_action_column(
+            self.duplicates_table, _DuplicatesColumn.ACTIONS, action_widgets,
         )
-        header.setSectionResizeMode(
-            _DuplicatesColumn.ACTIONS, QHeaderView.ResizeMode.Fixed,
-        )
-        header.resizeSection(_DuplicatesColumn.ACTIONS, actions_width)
 
     def _build_duplicate_group_actions(
             self,
@@ -3995,6 +4011,7 @@ class MainWindow(QMainWindow):
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
         self.track_table.setRowCount(len(statuses))
+        action_widgets: list[QWidget] = []
 
         for row, status in enumerate(statuses):
             label = f"{status.track.artist} - {status.track.title}"
@@ -4040,9 +4057,22 @@ class MainWindow(QMainWindow):
             else:
                 self.track_table.setCellWidget(row, 2, QWidget())
 
-            self.track_table.setCellWidget(
-                row, 3, self._build_track_actions(status),
-            )
+            track_actions = self._build_track_actions(status)
+            action_widgets.append(track_actions)
+            self.track_table.setCellWidget(row, 3, track_actions)
+
+        self._size_track_columns(action_widgets)
+
+    def _size_track_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item R5 (5b.1) — same shape as
+        # _size_duplicates_columns/_size_search_columns, via the new
+        # shared theme.size_action_column.
+        header = self.track_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.track_table, 3, action_widgets)
 
     def _on_track_table_cell_double_clicked(
             self, row: int, _column: int,
@@ -4259,6 +4289,13 @@ class MainWindow(QMainWindow):
                 row, 4, _build_progress_widget(download, eta_text),
             )
 
+        # Roadmap item R5 (5b.2) — this table's progress-bar cell
+        # widgets are real per-row content, same treatment as every
+        # table with an Actions column even though this one has none
+        # (item 80's own deliberate scoping — see _build_progress_widget/
+        # _build_terminal_progress_widget's bespoke stretch factor).
+        self.downloads_table.resizeRowsToContents()
+
     def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:
         # No reserved-but-blank strip when there's nothing active — the
         # empty string collapses the label to zero height, matching
@@ -4330,6 +4367,7 @@ class MainWindow(QMainWindow):
             candidates: NeedsReviewCandidates,
     ) -> None:
         self.review_needs_table.setRowCount(len(candidates))
+        action_widgets: list[QWidget] = []
 
         for row, (track, candidate) in enumerate(candidates):
             label = f"{track.artist} - {track.title}"
@@ -4343,9 +4381,20 @@ class MainWindow(QMainWindow):
                 row, 2, QTableWidgetItem(candidate_text),
             )
 
-            self.review_needs_table.setCellWidget(
-                row, 3, self._build_needs_review_actions(track.id),
-            )
+            needs_review_actions = self._build_needs_review_actions(track.id)
+            action_widgets.append(needs_review_actions)
+            self.review_needs_table.setCellWidget(row, 3, needs_review_actions)
+
+        self._size_review_needs_columns(action_widgets)
+
+    def _size_review_needs_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item R5 (5b.1).
+        header = self.review_needs_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_needs_table, 3, action_widgets)
 
     def _build_needs_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")
@@ -4403,6 +4452,8 @@ class MainWindow(QMainWindow):
         live_request_ids = {details.request_id for details in upgrades}
         self._upgrade_delete_checked &= live_request_ids
 
+        action_widgets: list[QWidget] = []
+
         for row, details in enumerate(upgrades):
             label = f"{details.track.artist} - {details.track.title}"
             self.review_upgrades_table.setItem(row, 0, QTableWidgetItem(label))
@@ -4412,9 +4463,20 @@ class MainWindow(QMainWindow):
             self.review_upgrades_table.setItem(
                 row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
             )
-            self.review_upgrades_table.setCellWidget(
-                row, 3, self._build_upgrade_actions(details),
-            )
+            upgrade_actions = self._build_upgrade_actions(details)
+            action_widgets.append(upgrade_actions)
+            self.review_upgrades_table.setCellWidget(row, 3, upgrade_actions)
+
+        self._size_review_upgrades_columns(action_widgets)
+
+    def _size_review_upgrades_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item R5 (5b.1).
+        header = self.review_upgrades_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_upgrades_table, 3, action_widgets)
 
     def _on_upgrade_delete_checkbox_toggled(
             self, request_id: int, checked: bool,
@@ -4510,6 +4572,7 @@ class MainWindow(QMainWindow):
             matches: list[NeedsReviewMatch],
     ) -> None:
         self.review_local_table.setRowCount(len(matches))
+        action_widgets: list[QWidget] = []
 
         for row, match in enumerate(matches):
             label = f"{match.track_artist} - {match.track_title}"
@@ -4523,9 +4586,23 @@ class MainWindow(QMainWindow):
             self.review_local_table.setItem(
                 row, 3, QTableWidgetItem(f"{match.score:.1f}"),
             )
-            self.review_local_table.setCellWidget(
-                row, 4, self._build_local_review_actions(match.track_id),
+            local_review_actions = self._build_local_review_actions(
+                match.track_id,
             )
+            action_widgets.append(local_review_actions)
+            self.review_local_table.setCellWidget(row, 4, local_review_actions)
+
+        self._size_review_local_columns(action_widgets)
+
+    def _size_review_local_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item R5 (5b.1).
+        header = self.review_local_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_local_table, 4, action_widgets)
 
     def _build_local_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")

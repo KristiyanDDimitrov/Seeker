@@ -11047,3 +11047,74 @@ pruning-order bug live, not just in review). `mypy --strict src/`
 clean (pre-existing, unrelated `_build_info.py` error). Full suite:
 same 3 pre-existing failures reproduce on the unmodified tree — 970
 passed / 1 skipped, 0 regressions.
+
+### 87 — R5: global table chrome
+
+**Confirmed exactly as diagnosed via grep** — `grep -n
+"verticalHeader" src/seeker/ui/main_window.py` returned nothing before
+this fix, and `theme.py` styled only `QHeaderView::section`, never
+`QHeaderView`/`QTableCornerButton::section` — the unstyled area below
+the last row and the top-left corner button painted the raw palette
+color. Only two tables (`_size_duplicates_columns`/
+`_size_search_columns`, items 73/82) had ever set a derived Actions
+column width; the other 8 named in the brief relied entirely on
+`setStretchLastSection(True)`.
+
+**Fix, in `theme.py`:**
+`apply_table_defaults(table)` — `verticalHeader().setVisible(False)`
+plus a row-height floor via `verticalHeader().setMinimumSectionSize()`
+seeded from a real `cell_widget(QPushButton("Sample")).sizeHint()
+.height()`. Verified empirically (a standalone repro script, not
+assumed) that `setMinimumSectionSize` alone already raises a brand-new
+row's height with no `resizeRowsToContents()` call needed — that call
+is only needed for a row to grow TALLER than the floor for real
+content, so it's placed inside the new `size_action_column()` (runs on
+every table that has real Actions widgets to measure) and separately
+after `downloads_table`'s own progress-bar cell-widget loop, since
+`downloads_table` has no Actions column and thus never calls
+`size_action_column`.
+
+`size_action_column(table, column, action_widgets)` — the exact tail
+end of `_size_duplicates_columns`/`_size_search_columns`, now shared;
+both existing methods call it instead of keeping their own copy.
+Applied (with each table's own explicit stretch/ResizeToContents
+column plan, mirroring the Duplicates/Search pattern) to
+`track_table`, `sharing_locations_table` (a new
+`_size_sharing_locations_columns`, plumbed through a
+previously-missing `action_widgets` list — the render loop's
+`continue` branch for an already-shared location needed its own
+"Shared" label widget added to the list too, not just the button
+branch), `review_needs_table`, `review_upgrades_table`,
+`review_local_table`. `downloads_table`/`history_table`/
+`sharing_uploads_table` have no button-based Actions column at all
+(confirmed by reading their render methods — progress bars or plain
+`QTableWidgetItem`s only) so only got `apply_table_defaults`.
+
+Stylesheet gained `QHeaderView { background-color: ...; border: none;
+}` and `QTableCornerButton::section { ... }` (5a.2) as a backstop for
+any future table that re-enables the vertical header.
+
+**Verification (5b.3/5b.4):** a standalone offscreen script rendered
+real data into all 7 populated tables and grabbed real
+`window.grab()` screenshots at both 960×640 (the app's real minimum)
+and 1280×800 — confirmed visually: "Confirm"/"Reject"/"Replace"/
+"Decline"/"Add to my SoulSeek share"/"Keep all"/"Confirm delete"/
+"Delete" all render in full at both sizes, no black column or corner
+on any table. (First attempt at this script produced empty tables —
+`MainWindow.__init__` calls `_poll_review_items()` once synchronously-
+dispatched-but-asynchronously-completed during construction, and its
+`FakeApplication`-driven empty result raced in via `app.processEvents()`
+and overwrote the manually-rendered test rows; fixed by flushing the
+event queue once right after construction, before rendering test data
+— a real gotcha for any future offscreen-screenshot script against a
+real `MainWindow`, not just this one.) New generic regression test
+(`test_every_actions_column_table_has_a_derived_floor_for_row_height_
+and_width`) asserts `sectionSize(actions) >= widget.sizeHint().width()`
+and `rowHeight(0) >= widget.sizeHint().height()` across all 5 tables
+with a real Actions column, in one place rather than five near-copies.
+
+`mypy --strict src/` clean (pre-existing, unrelated `_build_info.py`
+error). Full suite: same 3 pre-existing failures reproduce on the
+unmodified tree — 971 passed / 1 skipped, 0 regressions (1 net new
+test; the pixel-verification screenshots were throwaway, not
+committed).
