@@ -8,15 +8,28 @@ app (`pyproject.toml` is pinned at a static version string, and that
 was the only thing shown anywhere). "Is this account running the
 build I think it is?" needed to become a two-second visual check.
 
-`packaging/build_dmg.py` OVERWRITES this file with the real values
-just before invoking PyInstaller, so a packaged build always bundles
-its own real identity — never committed with real content (see
-.gitignore). This checked-in version is the dev-run fallback:
-`uv run seeker`/`seeker-ui` reads it unmodified, so a dev run is
-honestly labeled "dev" rather than showing a stale git SHA from
-whenever this file last happened to get regenerated locally.
+Roadmap item 81's post-implementation review (R1) — the first version
+of this module WAS the file `packaging/build_dmg.py` overwrote directly.
+Since it was tracked, that overwrite permanently dirtied the working
+tree on every real build, and a careless `git add` would commit a real
+SHA over the "dev" fallback — silently making every future dev run lie
+about its own identity. Fixed by splitting the write target out: the
+generated values now live in `_build_info_generated.py`, which is
+gitignored and never tracked. This file is never modified by a build at
+all — it just tries to import the generated module and falls back to
+"dev" when it doesn't exist (an ordinary `uv run` checkout, or a fresh
+clone that has never been built).
 """
 
-GIT_SHA = "dev"
-GIT_DESCRIBE = "dev"
-BUILT_AT = "dev"
+__all__ = ["GIT_SHA", "GIT_DESCRIBE", "BUILT_AT"]
+
+try:
+    from seeker._build_info_generated import (  # type: ignore
+        BUILT_AT,
+        GIT_DESCRIBE,
+        GIT_SHA,
+    )
+except ImportError:
+    GIT_SHA = "dev"
+    GIT_DESCRIBE = "dev"
+    BUILT_AT = "dev"

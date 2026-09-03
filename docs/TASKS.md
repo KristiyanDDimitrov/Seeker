@@ -382,6 +382,38 @@ suite green before every commit, per the brief's own instruction.
 - P13.8's real end-to-end manual download against live slskd — the
   brief says to ask the user to confirm the target first; not run
   autonomously.
-- 0.1's `_build_info.py` "dev" fallback tracked-despite-gitignored
-  tradeoff is a soft convention, not a hard git guarantee — stated
-  plainly in both the file's own docstring and `.gitignore`'s comment.
+- ~~0.1's `_build_info.py` "dev" fallback tracked-despite-gitignored
+  tradeoff is a soft convention, not a hard git guarantee~~ — this was
+  exactly the defect the post-implementation review's R1 caught; fixed
+  below, no longer just a stated tradeoff.
+
+---
+
+## Post-implementation review fix (R1)
+
+- [x] **R1** — `packaging/build_dmg.py` no longer writes to the tracked
+  `src/seeker/_build_info.py` at all. It now writes
+  `src/seeker/_build_info_generated.py` (genuinely gitignored — that
+  path was never tracked, so the ignore rule actually applies).
+  `_build_info.py` is a pure fallback shim: `try: from
+  seeker._build_info_generated import GIT_SHA, GIT_DESCRIBE, BUILT_AT
+  except ImportError: ... = "dev"`. Chose the brief's "option 2" over a
+  `try/finally` restore in `build_dmg.py` — a tracked file that a real
+  build never touches at all is a stronger guarantee than one that gets
+  written and then carefully written back. `.gitignore`'s comment
+  corrected to describe the real mechanism instead of the one that
+  didn't work. New `tests/test_build_info.py` reads the tracked file's
+  source text directly (not via import, so a local
+  `_build_info_generated.py` from a prior real build can't mask a
+  regression) and asserts the `"dev"` fallback literals are still
+  there, plus that the generated module's exact path is in
+  `.gitignore`. `mypy --strict src/` clean (`__all__` on `_build_info.py`
+  needed for the re-export to type-check under strict mode). Full
+  suite: 952 passed, 1 skipped — 2 pre-existing failures
+  (`test_history_refresh_button_refetches`,
+  `test_tagging_controls_row_has_real_spacing_between_items`) reproduce
+  identically on a clean `c728fe5` checkout with none of this session's
+  changes applied (confirmed via `git stash`) — a pre-existing
+  test-order-dependent flake and a pre-existing geometry assertion
+  failure on this machine, neither touched by or related to R1. Not
+  fixed here — out of R1's scope, flagged for a future pass.

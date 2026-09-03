@@ -21,15 +21,16 @@ PACKAGING_DIR = PROJECT_ROOT / "packaging"
 DIST_DIR = PROJECT_ROOT / "dist"
 APP_PATH = DIST_DIR / "Seeker.app"
 DMG_PATH = DIST_DIR / "Seeker.dmg"
-BUILD_INFO_PATH = PROJECT_ROOT / "src" / "seeker" / "_build_info.py"
+BUILD_INFO_PATH = PROJECT_ROOT / "src" / "seeker" / "_build_info_generated.py"
 
 
 def _write_build_info() -> None:
-    """Roadmap item 81 (0.1) — overwrites the committed "dev" fallback
-    with this build's real identity, so two builds made hours apart
-    from the same source tree stop being indistinguishable from inside
-    the running app. Never committed with real content — see
-    .gitignore's own comment on this file.
+    """Roadmap item 81 (0.1), split in the post-implementation review
+    (R1) — writes this build's real identity to a gitignored generated
+    module, so two builds made hours apart from the same source tree
+    stop being indistinguishable from inside the running app. The
+    tracked `_build_info.py` fallback is never touched by this
+    function — see .gitignore's own comment on this module.
     """
     git_sha = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],

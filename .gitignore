@@ -10,9 +10,11 @@ build/
 dist/
 .DS_Store
 
-# Roadmap item 81 (0.1) — packaging/build_dmg.py overwrites this with
-# real build-local content (git SHA/describe, UTC timestamp) just
-# before a real .dmg build. The committed version (GIT_SHA="dev") is
-# the dev-run fallback; a real build's local modification to this
-# tracked file should never itself be committed.
-src/seeker/_build_info.py
+# Roadmap item 81 (0.1), split in the post-implementation review (R1):
+# packaging/build_dmg.py writes real build-local content (git SHA/
+# describe, UTC timestamp) to this generated module just before a real
+# .dmg build. `src/seeker/_build_info.py` is tracked and imports this
+# module, falling back to "dev" when it's absent — that tracked file is
+# NEVER itself written to, so there is nothing there for a stray build
+# to dirty or a careless commit to sweep in.
+src/seeker/_build_info_generated.py
