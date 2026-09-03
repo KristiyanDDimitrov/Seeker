@@ -936,6 +936,21 @@ WRITE_COVER_JPG_NOTE = (
     "library."
 )
 
+# --- Roadmap item R7.5: menu-bar notification toggles -----------------------
+
+TOOLTIP_NOTIFY_DOWNLOADS_FINISHED_CHECKBOX = (
+    "Notify when downloads finish, batched into one notification per "
+    "playlist rather than one per track."
+)
+TOOLTIP_NOTIFY_NEEDS_DECISION_CHECKBOX = (
+    "Notify when a new SoulSeek candidate or upgrade needs your "
+    "confirm/decline decision on the Review page."
+)
+TOOLTIP_NOTIFY_ERRORS_CHECKBOX = (
+    "Notify when Seeker can't reach slskd. Rate-limited so a genuinely "
+    "unreachable slskd doesn't notify on every poll."
+)
+
 # --- Onboarding wizard -------------------------------------------------------
 
 TOOLTIP_OPEN_SPOTIFY_DASHBOARD = (

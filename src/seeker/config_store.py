@@ -43,6 +43,23 @@ class SeekerConfig:
     # deliberate exception to "tagging never needs a confirmation
     # gate" (item 27), made once here via an explicit opt-in instead.
     write_cover_jpg_sidecars: bool = False
+    # Roadmap item R7.4 — a real service-level flag, checked inside
+    # DownloadService.poll_downloads() itself (not just the UI's own
+    # timer), so pausing is authoritative regardless of caller (the
+    # menu-bar toggle, the main window's own mirrored control, or a
+    # future automated caller). Persisted so a paused session doesn't
+    # silently resume on restart.
+    downloads_paused: bool = False
+    # Roadmap item R7.1 — shown at most once, ever: the first time the
+    # window is hidden to the menu bar instead of closed, per the
+    # brief's own "a window that vanishes with no explanation is the
+    # single most common complaint about this pattern."
+    tray_hide_notice_shown: bool = False
+    # Roadmap item R7.5 — per-category notification toggles, all
+    # defaulting on per the brief's own instruction.
+    notify_downloads_finished: bool = True
+    notify_needs_decision: bool = True
+    notify_errors: bool = True
 
 
 def resolve_config_path() -> Path:
@@ -81,6 +98,11 @@ def load_config(path: Path) -> SeekerConfig:
             "default_download_subfolder_per_playlist", True,
         ),
         write_cover_jpg_sidecars=data.get("write_cover_jpg_sidecars", False),
+        downloads_paused=data.get("downloads_paused", False),
+        tray_hide_notice_shown=data.get("tray_hide_notice_shown", False),
+        notify_downloads_finished=data.get("notify_downloads_finished", True),
+        notify_needs_decision=data.get("notify_needs_decision", True),
+        notify_errors=data.get("notify_errors", True),
     )
 
 

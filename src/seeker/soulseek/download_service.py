@@ -807,6 +807,26 @@ class DownloadService:
             f"called"
         )
 
+        # Roadmap item R7.4 — checked here, not just in the UI's own
+        # timer, so pausing is authoritative regardless of caller: no
+        # real slskd network call (status poll, locked-retry, upgrade
+        # cascade) happens at all while paused. Read fresh via
+        # self._get_config() (the same not-a-snapshot discipline every
+        # other config read in this class already uses), never cached,
+        # so a resume takes effect on the very next call.
+        if self._get_config().downloads_paused:
+            # Same full key set the CLI's `seeker downloads status`
+            # print reads from a real run (queued/downloading/
+            # completed/failed plus the four counts normally appended
+            # at the end of this method) — a paused run must report
+            # honestly "nothing happened," not raise a KeyError on a
+            # key a real run would have added.
+            return {
+                "queued": 0, "downloading": 0, "completed": 0, "failed": 0,
+                "ready_for_review": 0, "locked": 0, "shortlisted": 0,
+                "superseded": 0, "unavailable": 0,
+            }
+
         with self.database.transaction() as connection:
             pending = self.download_requests.get_pending(connection)
             locked = self.download_requests.get_locked(connection)

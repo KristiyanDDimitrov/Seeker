@@ -787,3 +787,55 @@ def test_save_thresholds_rejects_non_numeric_input(qtbot, tmp_path, monkeypatch)
 
     assert application._config_store.auto_match_threshold is None
     assert "number" in window.thresholds_status_label.text().lower()
+
+
+# --- Roadmap item R7.5: menu-bar notification toggles ---------------------
+
+def test_notification_checkboxes_all_checked_by_default(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.notify_downloads_finished_checkbox.isChecked() is True
+    assert window.notify_needs_decision_checkbox.isChecked() is True
+    assert window.notify_errors_checkbox.isChecked() is True
+
+
+def test_notification_checkboxes_prefilled_from_existing_config(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        notify_downloads_finished=False,
+        notify_needs_decision=False,
+        notify_errors=False,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.notify_downloads_finished_checkbox.isChecked() is False
+    assert window.notify_needs_decision_checkbox.isChecked() is False
+    assert window.notify_errors_checkbox.isChecked() is False
+
+
+def test_notification_checkboxes_save_immediately_on_toggle(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.notify_downloads_finished_checkbox.setChecked(False)
+    assert application._config_store.notify_downloads_finished is False
+
+    window.notify_needs_decision_checkbox.setChecked(False)
+    assert application._config_store.notify_needs_decision is False
+
+    window.notify_errors_checkbox.setChecked(False)
+    assert application._config_store.notify_errors is False

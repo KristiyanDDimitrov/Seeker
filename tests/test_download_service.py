@@ -2522,6 +2522,71 @@ def test_update_progress_writes_progress_without_disturbing_other_columns(
     assert row.role == "settled"
 
 
+# --- Roadmap item R7.4: downloads_paused ------------------------------
+
+def test_poll_downloads_paused_makes_no_real_calls_and_touches_nothing(
+        tmp_path,
+):
+    from seeker.config_store import SeekerConfig
+
+    calls: list[str] = []
+
+    class TrackingFakeSoulseekClient(FakeSoulseekClient):
+        def get_download_status(self, username, transfer_id):
+            calls.append(transfer_id)
+            return super().get_download_status(username, transfer_id)
+
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    service = DownloadService(
+        database,
+        TrackingFakeSoulseekClient({"tid1": "InProgress"}),
+        PlaylistRepository(database),
+        TrackRepository(database),
+        LibraryLocationRepository(database),
+        DownloadRequestRepository(database),
+        TrackMatchRepository(database),
+        LocalFileRepository(database),
+        SoulseekReviewCandidateRepository(database),
+        slskd_download_dir=None,
+        get_config=lambda: SeekerConfig(downloads_paused=True),
+    )
+    seed_pending_request(service, "tid1", track_id="t1")
+
+    result = service.poll_downloads()
+
+    assert calls == []
+    assert result == {
+        "queued": 0, "downloading": 0, "completed": 0, "failed": 0,
+        "ready_for_review": 0, "locked": 0, "shortlisted": 0,
+        "superseded": 0, "unavailable": 0,
+    }
+
+    with database.transaction() as connection:
+        row = service.download_requests.get_pending(connection)[0]
+
+    # Genuinely untouched -- still "queued", never even looked at.
+    assert row.status == "queued"
+
+
+def test_poll_downloads_resumes_real_calls_once_unpaused(tmp_path):
+    from seeker.config_store import SeekerConfig
+
+    state = {"paused": True}
+    service = make_service(
+        tmp_path, {"tid1": "InProgress"},
+        get_config=lambda: SeekerConfig(downloads_paused=state["paused"]),
+    )
+    seed_pending_request(service, "tid1", track_id="t1")
+
+    paused_result = service.poll_downloads()
+    assert paused_result["downloading"] == 0
+
+    state["paused"] = False
+    resumed_result = service.poll_downloads()
+    assert resumed_result["downloading"] == 1
+
+
 def test_poll_downloads_updates_progress_for_in_flight_request(tmp_path):
     # State stays "downloading" (still InProgress) across this poll, but
     # bytes move every poll regardless of whether status transitions —

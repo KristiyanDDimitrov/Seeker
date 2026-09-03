@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -34,6 +36,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QStackedWidget,
+    QSystemTrayIcon,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -114,6 +117,11 @@ POLL_INTERVAL_MS = 2_000
 # local-DB-only display refresh above. 15-30s starting range per the
 # task brief; revisit once real usage data exists.
 BACKEND_POLL_INTERVAL_MS = 20_000
+
+# Roadmap item R7.5 — an unreachable slskd must not emit a tray
+# notification on every 20s backend-poll error; untuned, same
+# "reasonable starting guess" convention as every other threshold here.
+ERROR_NOTIFICATION_COOLDOWN_SECONDS = 300.0
 
 _STATE_LABELS = {
     IN_LIBRARY: "In library",
@@ -345,6 +353,25 @@ def _open_in_file_manager(path: Path) -> None:
         subprocess.run(["explorer", str(path)])
     else:
         subprocess.run(["xdg-open", str(path)])
+
+
+def _resolve_tray_icon_path() -> Path:
+    """Roadmap item R7.2 — same sys.frozen/sys._MEIPASS branch as
+    docker_setup.py's compose_file_path(): an ordinary `uv run
+    seeker-ui` dev run resolves against this file's own real location
+    in the source tree; a packaged build resolves against the
+    icons/ directory seeker.spec now bundles as a real PyInstaller
+    `datas` entry (this file previously only fed EXE()/BUNDLE()'s own
+    icon= at BUILD time — nothing made it available to the running
+    process at runtime, which would have left a real packaged build's
+    tray icon blank)."""
+    if not getattr(sys, "frozen", False):
+        return (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "packaging" / "icons" / "seeker_icon.icns"
+        )
+
+    return Path(sys._MEIPASS) / "icons" / "seeker_icon.icns"  # type: ignore[attr-defined]
 
 
 def _build_support_links_row() -> QHBoxLayout:
@@ -1144,6 +1171,32 @@ class MainWindow(QMainWindow):
             tuple[str | None, str | None, str | None] | None
         ) = None
 
+        # Roadmap item R7 — menu-bar background operation.
+        # Counts the tray menu's own status line and "Review (N)"/
+        # "Upgrades (N)" items read — built from data the existing
+        # poll methods already fetch, never a third source of truth
+        # (R7.3's own explicit instruction).
+        self._active_downloads_count = 0
+        self._needs_review_count = 0
+        self._pending_upgrades_count = 0
+        # R7.1 — set once the window is genuinely hidden-to-tray
+        # (closeEvent), not just "not the active window"; R7.6 reads
+        # this to skip re-render work while nobody can see it.
+        self._hidden_to_tray = False
+        self._tray_icon: QSystemTrayIcon | None = None
+        # R7.5 — de-duplicates "N item(s) need your decision" so it
+        # only fires on a genuine INCREASE, never every poll tick the
+        # count happens to still be positive.
+        self._last_notified_review_count = 0
+        # R7.5 — the newest HistoryEvent.occurred_at already accounted
+        # for, seeded once (silently, no notification) right after
+        # construction so pre-existing history never floods a first
+        # notification the moment the tray icon appears.
+        self._last_notified_download_at: str | None = None
+        self._last_error_notification_at: float | None = None
+
+        self._build_tray_icon()
+
         # Roadmap item 81 (0.1) — a real build identity in the window
         # title, so "is this the build I think it is?" is a glance,
         # not a guess. "dev" (the committed _build_info.py fallback)
@@ -1158,6 +1211,7 @@ class MainWindow(QMainWindow):
         self._poll_active_downloads()
         self._poll_review_items()
         self._poll_next_step()
+        self._seed_notification_cutoff()
 
         # DB-polling pattern for live status: rebuild the visible model
         # each tick rather than diffing for minimal repaints — an
@@ -1193,6 +1247,12 @@ class MainWindow(QMainWindow):
         # of those already call _render_activity_strip() synchronously)
         # but keeps the strip correct even if a future action forgets to.
         self.poll_timer.timeout.connect(self._render_activity_strip)
+        # Roadmap item R7.3 — the tray menu's live status line/counts;
+        # cheap (reads counts the other poll methods already set, no
+        # new DB/network work of its own) so it stays on the fast 2s
+        # tick like the rest of this timer's display refresh, not the
+        # slow backend one.
+        self.poll_timer.timeout.connect(self._render_tray_menu)
         self.poll_timer.start()
 
         # Separate, slower timer: the only thing in this app that causes
@@ -1400,6 +1460,11 @@ class MainWindow(QMainWindow):
         return strip
 
     def _render_activity_strip(self) -> None:
+        # Roadmap item R7.6 — a visual-only header strip; pure waste to
+        # keep updating while nobody can see it.
+        if self._hidden_to_tray:
+            return
+
         running = sorted(self.busy_actions.running_keys())
 
         if not running:
@@ -4315,6 +4380,13 @@ class MainWindow(QMainWindow):
         self._poll_next_step()
 
     def _poll_selected_playlist(self) -> None:
+        # Roadmap item R7.6 — the Dashboard's own track table has no
+        # tray-menu relevance at all; skip entirely while hidden rather
+        # than just gating the render half, since the fetch itself has
+        # no other consumer either.
+        if self._hidden_to_tray:
+            return
+
         if self.selected_playlist is None:
             self._render_no_playlist_selected()
             return
@@ -4474,6 +4546,11 @@ class MainWindow(QMainWindow):
         )
 
     def _poll_next_step(self) -> None:
+        # Roadmap item R7.6 — the Dashboard's own CTA banner has no
+        # tray-menu relevance; skip entirely while hidden.
+        if self._hidden_to_tray:
+            return
+
         run_worker(
             self.thread_pool,
             self._fetch_next_step_facts,
@@ -4597,6 +4674,23 @@ class MainWindow(QMainWindow):
         )
 
     def _render_active_downloads(self, downloads: list[ActiveDownload]) -> None:
+        # Roadmap item R7.3 — the tray menu's own status line, built
+        # from this same fetch. Counted here (not deferred behind the
+        # R7.6 hidden-window gate below) since the whole point of the
+        # tray is a live status while nothing else is visible.
+        self._active_downloads_count = sum(
+            1 for download in downloads
+            if download.request.status == "downloading"
+        )
+
+        # Roadmap item R7.6 — re-rendering the table (and the nav
+        # badge/ETA header, both visual-only) is pure waste while
+        # nobody can see the window; the real backend poll that feeds
+        # this data keeps running regardless (see _trigger_backend_poll,
+        # untouched by this check — it lives on a separate timer).
+        if self._hidden_to_tray:
+            return
+
         self._update_nav_badge("downloads", len(downloads))
         self.downloads_table.setRowCount(len(downloads))
         self._render_aggregate_eta(downloads)
@@ -4705,9 +4799,17 @@ class MainWindow(QMainWindow):
             ],
     ) -> None:
         candidates, upgrades, local_matches = data
-        self._update_nav_badge(
-            "review", len(candidates) + len(upgrades) + len(local_matches),
-        )
+        total = len(candidates) + len(upgrades) + len(local_matches)
+        self._update_nav_badge("review", total)
+        # Roadmap item R7.3 — the tray menu's own "Review (N)"/
+        # "Upgrades (N)" counts, built from this same fetch (never a
+        # third source of truth). "Review" covers everything needing a
+        # confirm/reject decision; "Upgrades" is its own real Phase 2
+        # concept (replace/decline), kept distinct in the menu the same
+        # way the two are already distinct sections on this page.
+        self._needs_review_count = len(candidates) + len(local_matches)
+        self._pending_upgrades_count = len(upgrades)
+        self._check_for_needs_decision_notification(total)
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
         self._render_local_needs_review_matches(local_matches)
@@ -4717,6 +4819,12 @@ class MainWindow(QMainWindow):
             self,
             candidates: NeedsReviewCandidates,
     ) -> None:
+        # Roadmap item R7.6 — counts/notifications are already computed
+        # by the caller (_render_review_items) before this runs; the
+        # table rebuild itself is pure waste while hidden.
+        if self._hidden_to_tray:
+            return
+
         self.review_needs_table.setRowCount(len(candidates))
         action_widgets: list[QWidget] = []
 
@@ -4796,12 +4904,21 @@ class MainWindow(QMainWindow):
         )
 
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
-        self.review_upgrades_table.setRowCount(len(upgrades))
         # Roadmap item R3.1 — the real list "Replace all" acts on,
         # recomputed fresh every render so a click always sees exactly
         # what's on screen right now (item 76's own "recompute at click
-        # time" lesson, R3.3).
+        # time" lesson, R3.3). Kept unconditional (not behind the R7.6
+        # hidden-window gate below) — the underlying poll keeps
+        # fetching fresh data while hidden, so this stays correct the
+        # instant the window is shown again.
         self._current_pending_upgrades = upgrades
+
+        # Roadmap item R7.6 — the table rebuild itself is pure waste
+        # while hidden.
+        if self._hidden_to_tray:
+            return
+
+        self.review_upgrades_table.setRowCount(len(upgrades))
         self.replace_all_upgrades_button.setEnabled(len(upgrades) > 0)
         self.replace_all_upgrades_button.setText(
             f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
@@ -4970,6 +5087,11 @@ class MainWindow(QMainWindow):
             self,
             matches: list[NeedsReviewMatch],
     ) -> None:
+        # Roadmap item R7.6 — the table rebuild itself is pure waste
+        # while hidden.
+        if self._hidden_to_tray:
+            return
+
         self.review_local_table.setRowCount(len(matches))
         action_widgets: list[QWidget] = []
 
@@ -5123,9 +5245,16 @@ class MainWindow(QMainWindow):
             # rather than waiting up to POLL_INTERVAL_MS for the next
             # 2s display tick to happen to catch it.
             self._poll_selected_playlist()
+            # Roadmap item R7.5 — checked on the same real 20s cycle
+            # that can actually produce a newly-completed download, not
+            # a new timer of its own.
+            self._check_for_download_notifications()
 
         def on_poll_error(_: str) -> None:
             self._backend_poll_in_progress = False
+            self._notify_error(
+                "Seeker couldn't reach slskd — check that it's running."
+            )
 
         run_worker(
             self.thread_pool,
@@ -5451,3 +5580,297 @@ class MainWindow(QMainWindow):
             self.settings_page.select_tab(initial_tab)
 
         self._show_page("settings")
+
+    # --- Roadmap item R7: run in the background from the macOS menu bar ----
+
+    def _build_tray_icon(self) -> None:
+        # R7.2 — guarded on real availability; a platform/session with
+        # no tray (this app's own offscreen test environment included —
+        # confirmed live, not assumed: QSystemTrayIcon.
+        # isSystemTrayAvailable() reports False under QT_QPA_PLATFORM=
+        # offscreen) falls back to today's ordinary quit-on-close
+        # behavior untouched — closeEvent below checks self._tray_icon
+        # is not None before doing anything different.
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self._tray_icon = None
+            return
+
+        icon_path = _resolve_tray_icon_path()
+        icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+        # macOS "template image" convention — a monochrome glyph whose
+        # alpha channel Qt/AppKit recolor automatically for the current
+        # menu bar appearance (light/dark), instead of showing a fixed-
+        # color icon that can read wrong against either. Reuses the
+        # existing app icon rather than a dedicated menu-bar asset (no
+        # image-editing tool available in this environment to produce a
+        # proper simplified monochrome glyph) — a real, stated scoping
+        # gap, not an oversight: flagged here for a future pass with
+        # real asset tooling.
+        icon.setIsMask(True)
+
+        self._tray_icon = QSystemTrayIcon(icon, self)
+        self._tray_icon.setToolTip("Seeker")
+
+        menu = QMenu()
+
+        self._tray_status_action = menu.addAction("Idle")
+        self._tray_status_action.setEnabled(False)
+        menu.addSeparator()
+
+        self._tray_pause_action = menu.addAction("Pause downloads")
+        self._tray_pause_action.setCheckable(True)
+        self._tray_pause_action.setChecked(self.application.downloads_paused)
+        self._tray_pause_action.toggled.connect(self._on_tray_pause_toggled)
+
+        self._tray_review_action = menu.addAction("Review")
+        self._tray_review_action.triggered.connect(
+            lambda: self._on_tray_open_page("review")
+        )
+        self._tray_upgrades_action = menu.addAction("Upgrades")
+        self._tray_upgrades_action.triggered.connect(
+            lambda: self._on_tray_open_page("review")
+        )
+        menu.addSeparator()
+
+        check_now_action = menu.addAction("Check now")
+        check_now_action.triggered.connect(self._on_tray_check_now)
+        open_action = menu.addAction("Open Seeker")
+        open_action.triggered.connect(self._on_tray_open_seeker)
+        menu.addSeparator()
+        quit_action = menu.addAction("Quit")
+        quit_action.triggered.connect(self._on_tray_quit)
+
+        self._tray_icon.setContextMenu(menu)
+        self._tray_icon.activated.connect(self._on_tray_icon_activated)
+        self._tray_icon.show()
+
+    def _on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        # macOS routes a left-click on a QSystemTrayIcon straight to its
+        # context menu already (Trigger never fires there the way it
+        # does on Windows/Linux) — this exists for those other
+        # platforms, where a left-click should behave like "Open
+        # Seeker" rather than doing nothing.
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._on_tray_open_seeker()
+
+    def _on_tray_pause_toggled(self, checked: bool) -> None:
+        self.application.set_downloads_paused(checked)
+        self._render_tray_menu()
+
+    def _on_tray_open_page(self, key: str) -> None:
+        self._on_tray_open_seeker()
+        self._show_page(key)
+
+    def _on_tray_check_now(self) -> None:
+        self._trigger_backend_poll()
+
+    def _on_tray_open_seeker(self) -> None:
+        self._hidden_to_tray = False
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        # Roadmap item R7.6 — the poll methods skip their own work
+        # while hidden; catch up immediately on reopen rather than
+        # waiting up to POLL_INTERVAL_MS for the next tick to notice
+        # the window is visible again.
+        self._poll_selected_playlist()
+        self._poll_active_downloads()
+        self._poll_review_items()
+        self._poll_next_step()
+        self._render_activity_strip()
+
+    def _on_tray_quit(self) -> None:
+        # Roadmap item R7.7 — a real quit request, same as ⌘Q/dock
+        # "Quit Seeker". Goes straight to QApplication.quit() (posts a
+        # real quit event) rather than self.close() — close() would
+        # re-enter this window's own closeEvent, which hides to the
+        # tray instead of quitting, exactly the behavior a Quit click
+        # must bypass. The actual cleanup lives in
+        # cleanup_before_quit(), connected once to QApplication.
+        # aboutToQuit in main_ui.py, so it fires for every real quit
+        # route uniformly, not just this one.
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()
+
+    def cleanup_before_quit(self) -> None:
+        # Roadmap item R7.7 — the one real cleanup path for every quit
+        # route (tray Quit, real ⌘Q/dock-quit — both reach here via
+        # QApplication.aboutToQuit, connected once in main_ui.py).
+        # Deliberately NOT an attempt at roadmap item 70's own open,
+        # unresolved stress-test hang — this stops timers/hides the
+        # tray icon so a real quit doesn't leave anything running past
+        # the window closing, but does not change poll_downloads/
+        # fingerprinting internals at all.
+        self.poll_timer.stop()
+        self.backend_poll_timer.stop()
+
+        if self._tray_icon is not None:
+            self._tray_icon.hide()
+
+    def _render_tray_menu(self) -> None:
+        if self._tray_icon is None:
+            return
+
+        parts = []
+        if self._active_downloads_count > 0:
+            plural = "s" if self._active_downloads_count != 1 else ""
+            parts.append(f"{self._active_downloads_count} downloading{plural}")
+
+        status_text = ", ".join(parts) if parts else "Idle"
+
+        if self.application.downloads_paused:
+            status_text += " (paused)"
+
+        self._tray_status_action.setText(status_text)
+        self._tray_review_action.setText(
+            f"Review ({self._needs_review_count})"
+            if self._needs_review_count else "Review"
+        )
+        self._tray_upgrades_action.setText(
+            f"Upgrades ({self._pending_upgrades_count})"
+            if self._pending_upgrades_count else "Upgrades"
+        )
+
+        # Mirrors the config store, not local UI state — a pause
+        # toggled from elsewhere (a future Settings/Dashboard control)
+        # must still show correctly here without this menu having
+        # caused it. blockSignals so re-syncing the checked state
+        # can't itself re-trigger _on_tray_pause_toggled's own save.
+        self._tray_pause_action.blockSignals(True)
+        self._tray_pause_action.setChecked(self.application.downloads_paused)
+        self._tray_pause_action.blockSignals(False)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        # Roadmap item R7.1/R7.2 — hides to the menu bar instead of
+        # quitting, but ONLY when there's a real tray icon to hide to;
+        # with none available (or not actually shown), this falls
+        # through to Qt's ordinary close behavior unchanged — the
+        # explicit fallback the brief itself asks for.
+        if self._tray_icon is None or not self._tray_icon.isVisible():
+            super().closeEvent(event)
+            return
+
+        event.ignore()
+        self.hide()
+        self._hidden_to_tray = True
+
+        if not self.application._config_store.tray_hide_notice_shown:
+            self._tray_icon.showMessage(
+                "Seeker",
+                "Seeker is still running in the menu bar. Use the menu "
+                "bar icon to reopen it, or Quit from there to exit.",
+                QSystemTrayIcon.MessageIcon.Information,
+            )
+            self.application.mark_tray_hide_notice_shown()
+
+    def _seed_notification_cutoff(self) -> None:
+        # Roadmap item R7.5 — silently records the newest existing
+        # HistoryEvent so pre-existing download history never floods a
+        # notification the instant the tray icon appears; only a
+        # DOWNLOADED event with a NEWER occurred_at than this counts as
+        # "new" from here on (get_recent_events sorts newest-first).
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.history_service.get_recent_events(limit=1),
+            on_finished=self._on_notification_cutoff_seeded,
+        )
+
+    def _on_notification_cutoff_seeded(self, events: list[HistoryEvent]) -> None:
+        if events:
+            self._last_notified_download_at = events[0].occurred_at
+
+    def _check_for_download_notifications(self) -> None:
+        # Roadmap item R7.5 — batched per playlist, built from
+        # HistoryService's own existing derived DOWNLOADED events (item
+        # 54), not a new source of truth; runs on the real 20s backend-
+        # poll cycle (the only cycle that can actually produce a newly-
+        # completed download), never its own timer.
+        if self._tray_icon is None:
+            return
+
+        if not self.application._config_store.notify_downloads_finished:
+            return
+
+        if self._last_notified_download_at is None:
+            # Seeding hasn't completed yet (or found nothing) — skip
+            # this cycle rather than risk treating all of history as
+            # "new" the moment it does land.
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.history_service.get_recent_events(limit=50),
+            on_finished=self._on_download_notification_events,
+        )
+
+    def _on_download_notification_events(self, events: list[HistoryEvent]) -> None:
+        cutoff = self._last_notified_download_at
+        assert cutoff is not None
+
+        new_events = [
+            event for event in events
+            if event.occurred_at > cutoff and event.event_type == DOWNLOADED
+        ]
+
+        if new_events and self._tray_icon is not None:
+            counts_by_playlist: dict[str, int] = {}
+            for event in new_events:
+                counts_by_playlist[event.playlist_name] = (
+                    counts_by_playlist.get(event.playlist_name, 0) + 1
+                )
+
+            message = "\n".join(
+                f"{playlist}: {count} track{'s' if count != 1 else ''} "
+                f"downloaded"
+                for playlist, count in counts_by_playlist.items()
+            )
+            self._tray_icon.showMessage(
+                "Seeker", message, QSystemTrayIcon.MessageIcon.Information,
+            )
+
+        if events:
+            self._last_notified_download_at = events[0].occurred_at
+
+    def _check_for_needs_decision_notification(self, total: int) -> None:
+        # Roadmap item R7.5 — fires only on a genuine INCREASE from the
+        # last-seen total, never on every poll tick the count happens
+        # to still be positive (that would notify every 2s for as long
+        # as anything sits unreviewed).
+        if (
+                self._tray_icon is not None
+                and self.application._config_store.notify_needs_decision
+                and total > self._last_notified_review_count
+        ):
+            plural = "s" if total != 1 else ""
+            self._tray_icon.showMessage(
+                "Seeker",
+                f"{total} item{plural} need your decision on the Review "
+                f"page.",
+                QSystemTrayIcon.MessageIcon.Information,
+            )
+
+        self._last_notified_review_count = total
+
+    def _notify_error(self, message: str) -> None:
+        # Roadmap item R7.5 — rate-limited so an unreachable slskd
+        # can't emit a notification every single 20s backend-poll tick.
+        if self._tray_icon is None:
+            return
+
+        if not self.application._config_store.notify_errors:
+            return
+
+        now = time.monotonic()
+
+        if (
+                self._last_error_notification_at is not None
+                and now - self._last_error_notification_at
+                < ERROR_NOTIFICATION_COOLDOWN_SECONDS
+        ):
+            return
+
+        self._last_error_notification_at = now
+        self._tray_icon.showMessage(
+            "Seeker", message, QSystemTrayIcon.MessageIcon.Warning,
+        )

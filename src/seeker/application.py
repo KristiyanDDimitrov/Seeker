@@ -297,6 +297,44 @@ class Application:
         self._config_store = updated
 
     @property
+    def downloads_paused(self) -> bool:
+        return self._config_store.downloads_paused
+
+    def set_downloads_paused(self, paused: bool) -> None:
+        """Roadmap item R7.4 — persisted so pause/resume survives a
+        restart, and read fresh by DownloadService.poll_downloads()
+        itself on every call (via its own get_config callable) so
+        pausing is authoritative regardless of which caller —
+        menu-bar toggle or the main window's own mirrored control —
+        set it last."""
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(current, downloads_paused=paused)
+        save_config(updated, config_path)
+        self._config_store = updated
+
+    def mark_tray_hide_notice_shown(self) -> None:
+        """Roadmap item R7.1 — the one-off "still running in the menu
+        bar" notification's own shown-once flag."""
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(current, tray_hide_notice_shown=True)
+        save_config(updated, config_path)
+        self._config_store = updated
+
+    def set_notification_preference(self, field_name: str, enabled: bool) -> None:
+        """Roadmap item R7.5 — one setter for all three per-category
+        toggles (notify_downloads_finished/notify_needs_decision/
+        notify_errors), keyed by field name the same way
+        migrate_legacy_env_config already does for its own field set,
+        rather than three near-identical methods."""
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(current, **{field_name: enabled})  # type: ignore[arg-type]
+        save_config(updated, config_path)
+        self._config_store = updated
+
+    @property
     def spotify(self) -> SpotifyClient:
         if self._spotify is None:
             token = self.auth_manager.get_valid_token()

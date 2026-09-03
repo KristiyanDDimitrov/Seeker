@@ -77,13 +77,22 @@ elif sys.platform == "darwin":
 else:
     EXE_ICON = None
 
-# The only bundled non-Python resource this app currently needs at
-# runtime — see seeker/docker_setup.py::compose_file_path(), which
-# resolves this same file via sys._MEIPASS in a frozen build. Placed
-# at the bundle root ('.') so that resolution is a flat, one-level
-# lookup on both sides.
+# Bundled non-Python resources needed at runtime, not just at build
+# time — see seeker/docker_setup.py::compose_file_path(), which
+# resolves docker-compose.yml via sys._MEIPASS in a frozen build.
+# Roadmap item R7.2 — the menu-bar tray icon needs the SAME treatment:
+# ICONS_DIR above is otherwise only ever read here, at build time, to
+# set EXE()/BUNDLE()'s own icon= (which macOS/Windows apply to the
+# app bundle/executable, not something the running process can read
+# back out) — without this entry, ui/main_window.py's own
+# sys._MEIPASS-gated resolution would find nothing in a real packaged
+# build and fall back to a blank tray icon. Bundled as a whole
+# directory (not a single file, unlike docker-compose.yml above) so
+# both .icns/.ico ship together at "icons/" and resolve with the exact
+# same relative path this repo's own dev-mode tree already has.
 datas = [
     (str(PROJECT_ROOT / "docker-compose.yml"), "."),
+    (str(ICONS_DIR), "icons"),
 ]
 
 a = Analysis(

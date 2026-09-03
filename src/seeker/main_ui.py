@@ -24,10 +24,21 @@ def main() -> None:
     window: QMainWindow
 
     if application.onboarding_complete:
+        # Roadmap item R7.1 — set only once a real MainWindow is about
+        # to exist, never while only the onboarding wizard is up: with
+        # no completed setup yet, closing the wizard quitting the whole
+        # app is the correct (and previously the only) behavior — a
+        # headless app left running with no window and no tray would be
+        # a real regression of its own if this were set unconditionally
+        # at the top of main().
+        qt_app.setQuitOnLastWindowClosed(False)
         window = MainWindow(application)
+        qt_app.aboutToQuit.connect(window.cleanup_before_quit)
     else:
         def show_dashboard() -> None:
+            qt_app.setQuitOnLastWindowClosed(False)
             dashboard = MainWindow(application)
+            qt_app.aboutToQuit.connect(dashboard.cleanup_before_quit)
             dashboard.show()
             # Keep a reference alive past this function's return —
             # otherwise nothing holds the new window and Python would

@@ -11260,3 +11260,151 @@ pre-existing failures reproduce on the unmodified tree (the
 `test_tagging_controls_row_has_real_spacing_between_items`/
 `test_about_dialog_shows_build_identity` as before) — 996 passed / 1
 skipped, 0 regressions.
+
+### 90 — R7: run in the background from the macOS menu bar
+
+**Design decisions were pre-confirmed with the user** (see the brief's
+own table) — lifecycle (hide on close, keep infrastructure running on
+quit), menu contents (status/pause/review+upgrades/check-now-open-quit),
+and notifications (all three categories) were not re-litigated.
+
+**Lifecycle (R7.1/R7.2).** `qt_app.setQuitOnLastWindowClosed(False)` is
+set in `main_ui.py` only once a real `MainWindow` is about to exist —
+NOT unconditionally at the top of `main()` — because the onboarding
+wizard alone, with no completed setup yet, closing should still quit
+the whole app (today's only behavior); setting it globally up front
+would have left a headless, windowless, tray-less process running
+forever if a user closed the wizard mid-setup, a real regression this
+fix could easily have introduced. `MainWindow.closeEvent` checks
+`self._tray_icon is not None and self._tray_icon.isVisible()` before
+doing anything different — with neither true (no real tray, confirmed
+live via `QSystemTrayIcon.isSystemTrayAvailable()`, which genuinely
+returns `False` under a bare `QApplication(sys.argv)` in this project's
+own offscreen test environment, though pytest-qt's own fixture was
+separately confirmed to report `True` — both paths are real and now
+both are tested), it falls through to `super().closeEvent(event)`,
+Qt's ordinary behavior, unchanged.
+
+**Quit path (R7.7).** `_on_tray_quit()` calls `QApplication.instance().
+quit()` directly — NOT `self.close()`, which would re-enter `closeEvent`
+and hide instead of quitting, exactly what a Quit click must bypass.
+The real cleanup (`poll_timer.stop()`/`backend_poll_timer.stop()`/hide
+the tray icon) lives in `cleanup_before_quit()`, connected once to
+`QApplication.aboutToQuit` in `main_ui.py` — this fires for EVERY real
+quit route uniformly (tray Quit, ⌘Q, Dock "Quit"), not just the one
+this session could directly trigger. Live-verified end to end, not
+assumed: a real offscreen script hid the window, fired `_on_tray_quit()`
+via a `QTimer.singleShot`, and confirmed `qt_app.exec()` itself returns
+(`exit_code=0`) with both timers stopped afterward — the event loop
+genuinely exits, not just "nothing crashed." **Per the brief's own
+explicit instruction, roadmap item 70's own open stress-test hang was
+NOT investigated or touched** — observed instead: item 70's hang is
+specifically in the Duplicates page's Compute Fingerprints step
+(native, GIL-holding code); nothing in this item's timer-stop/tray-hide
+cleanup touches fingerprinting at all, so no new interaction risk was
+introduced, but this wasn't proven, only reasoned about.
+
+**Pause (R7.4).** Checked as the very first thing inside `DownloadService.
+poll_downloads()` itself (returns a real zero-valued dict matching every
+key a live run normally adds, including the four appended at the very
+end — `ready_for_review`/`locked`/`shortlisted`/`superseded`/
+`unavailable` — a first draft that returned only 4 keys would have
+`KeyError`'d the CLI's own `downloads status` print), not just gated in
+the UI's own timer — so pausing is authoritative for any caller, not
+just the tray toggle.
+
+**Menu status/counts (R7.3), never a third source of truth.**
+`_active_downloads_count` set inside `_render_active_downloads` (from
+the same `get_active_downloads()` fetch the Downloads table already
+uses); `_needs_review_count`/`_pending_upgrades_count` set inside
+`_render_review_items` (from the same fetch the Review page tables
+already use) — "Review" and "Upgrades" are two distinct tray items
+because they're already two distinct sections/concepts on that one
+real page.
+
+**Hidden-window render skip (R7.6).** The real backend poll
+(`_trigger_backend_poll`/`_trigger_sharing_poll`, on the separate 20s
+timer) is completely untouched — it must keep running for the tray's
+own status to stay live. What's gated is the 2s display-refresh
+timer's actual WIDGET population: `_poll_selected_playlist`/
+`_poll_next_step`/`_render_activity_strip` skip entirely while hidden
+(no tray relevance at all); `_render_active_downloads`/
+`_render_needs_review_candidates`/`_render_pending_upgrades`/
+`_render_local_needs_review_matches` still update the COUNTS the tray
+needs (and, for upgrades, the real list "Replace all" reads — R3.1)
+before an early return that skips the actual `setRowCount`/populate-
+loop work. `_on_tray_open_seeker()` (reopening from the tray)
+immediately re-runs every gated poll method rather than waiting up to
+2s for the next natural tick to notice the window is visible again.
+
+**Notifications (R7.5).** Downloads-finished: piggybacks on
+`HistoryService.get_recent_events()` (item 54's existing derived view)
+rather than a new source of truth — a silent one-time seed
+(`_seed_notification_cutoff`, a real `run_worker` call at construction)
+records the newest existing event's `occurred_at` with NO notification,
+specifically so pre-existing history can't flood a notification the
+instant the tray icon appears; every later 20s backend-poll cycle diffs
+against that cutoff (events sort newest-first, confirmed by reading
+`HistoryService`'s own `.sort(reverse=True)`) and batches by
+`playlist_name` into one message. Needs-decision: fires only on a
+genuine INCREASE from the last-seen total (`_last_notified_review_count`),
+never every 2s tick the count happens to still be positive — a plain
+"count > 0" check would have re-notified constantly for as long as
+anything sat unreviewed. Errors: rate-limited via `time.monotonic()`,
+`ERROR_NOTIFICATION_COOLDOWN_SECONDS = 300` (untuned), hooked into
+`_trigger_backend_poll`'s own existing `on_poll_error` callback — no
+new polling. All three gated behind their own `SeekerConfig` toggle
+(`notify_downloads_finished`/`notify_needs_decision`/`notify_errors`),
+all defaulting on, editable in Settings (self-saving checkboxes, same
+shape as R4.2's cover.jpg toggle).
+
+**Real packaging gap found and fixed, not just polish.**
+`packaging/icons/` was previously read ONLY at PyInstaller build time
+(to set `EXE()`/`BUNDLE()`'s own `icon=`, which macOS/Windows apply to
+the bundle/executable itself — not something the running Python
+process can read back out) — confirmed live by grepping `seeker.spec`'s
+own `datas` list, which had exactly one entry (`docker-compose.yml`,
+already `sys._MEIPASS`-resolved by `docker_setup.compose_file_path()`).
+Without a fix, a real packaged build's tray icon would have silently
+resolved to a blank `QIcon()` the first time this code ever ran outside
+a dev checkout. Fixed the identical way: `seeker.spec`'s `datas` gained
+`(str(ICONS_DIR), "icons")`; new `ui/main_window.py::
+_resolve_tray_icon_path()` branches on `sys.frozen` exactly like
+`compose_file_path()` does. The menu-bar icon itself reuses the
+existing full app `.icns` via `QIcon.setIsMask(True)` (macOS's
+"template image" convention — Qt/AppKit recolor the alpha channel
+automatically for light/dark menu bars) rather than a dedicated
+simplified monochrome asset — no image-editing tool is available in
+this environment to produce one; recorded as a real, stated scoping
+gap for a future pass, not silently skipped.
+
+**Testing.** 25 new offscreen tests in `test_ui_smoke.py` (tray-
+unavailable fallback, close-hides-with-notice-shown-once, pause
+toggle persists, menu status/count text incl. the paused suffix,
+reopen un-hides and refreshes, cleanup stops both timers, needs-
+decision fires-only-on-increase, error rate-limiting, download-
+notification batching-by-playlist and cutoff-skipping, the hidden-
+window table-population skip, both `_resolve_tray_icon_path()`
+branches) plus 2 in `test_download_service.py` (paused makes zero real
+calls and touches nothing in the DB; resumes real calls once
+unpaused) plus 3 in `test_settings_window.py` (all three notification
+checkboxes default on, prefill from config, save immediately) — 30 new
+tests total. Two real pre-existing tests updated, not silently
+patched around: `test_history_page_fetches_and_renders_events_on_
+first_visit`/`test_history_refresh_button_refetches` both now expect
+one extra `get_recent_events()` call, since `_seed_notification_cutoff`
+is a real, additional call site against the same shared fake counter
+those tests already asserted against. `mypy --strict src/` clean
+(pre-existing, unrelated `_build_info.py` error, confirmed via `git
+stash` earlier this session). Full suite: same 3 pre-existing failures
+reproduce on the unmodified tree — 1025 passed / 1 skipped, 0
+regressions.
+
+**Left for the user, genuinely blocked in this sandboxed session:** a
+real manual check of hide → menu-bar → reopen → quit against the
+actual macOS menu bar UI (a real system tray icon click, a real
+Notification Center banner, the real light/dark template-icon
+rendering) — this session's own Automation-permission and Screen-
+Recording-permission gaps (see items 84/89) block any live GUI
+verification beyond what offscreen Qt rendering and a real headless
+event-loop exit check (above) can prove.

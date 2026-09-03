@@ -870,6 +870,53 @@ class SettingsPage(QWidget):
         cover_jpg_layout.addWidget(cover_jpg_note)
         layout.addWidget(cover_jpg_group)
 
+        # Roadmap item R7.5 — per-category menu-bar notification
+        # toggles, all defaulting on (config_store.py's own field
+        # defaults). Same self-saving-checkbox shape as Cover Art
+        # above — three independent booleans, no combined validation
+        # step needed.
+        notifications_group = QGroupBox("Menu Bar Notifications")
+        notifications_layout = QVBoxLayout(notifications_group)
+
+        self.notify_downloads_finished_checkbox = QCheckBox(
+            "Downloads finished"
+        )
+        self.notify_downloads_finished_checkbox.setToolTip(
+            help_text.TOOLTIP_NOTIFY_DOWNLOADS_FINISHED_CHECKBOX
+        )
+        self.notify_downloads_finished_checkbox.toggled.connect(
+            lambda checked: self.application.set_notification_preference(
+                "notify_downloads_finished", checked,
+            )
+        )
+        notifications_layout.addWidget(self.notify_downloads_finished_checkbox)
+
+        self.notify_needs_decision_checkbox = QCheckBox(
+            "Items need your decision"
+        )
+        self.notify_needs_decision_checkbox.setToolTip(
+            help_text.TOOLTIP_NOTIFY_NEEDS_DECISION_CHECKBOX
+        )
+        self.notify_needs_decision_checkbox.toggled.connect(
+            lambda checked: self.application.set_notification_preference(
+                "notify_needs_decision", checked,
+            )
+        )
+        notifications_layout.addWidget(self.notify_needs_decision_checkbox)
+
+        self.notify_errors_checkbox = QCheckBox("Errors")
+        self.notify_errors_checkbox.setToolTip(
+            help_text.TOOLTIP_NOTIFY_ERRORS_CHECKBOX
+        )
+        self.notify_errors_checkbox.toggled.connect(
+            lambda checked: self.application.set_notification_preference(
+                "notify_errors", checked,
+            )
+        )
+        notifications_layout.addWidget(self.notify_errors_checkbox)
+
+        layout.addWidget(notifications_group)
+
         layout.addStretch()
 
         self._load_threshold_fields()
@@ -902,6 +949,17 @@ class SettingsPage(QWidget):
             config.write_cover_jpg_sidecars
         )
         self.write_cover_jpg_checkbox.blockSignals(False)
+
+        for checkbox, value in (
+                (self.notify_downloads_finished_checkbox,
+                 config.notify_downloads_finished),
+                (self.notify_needs_decision_checkbox,
+                 config.notify_needs_decision),
+                (self.notify_errors_checkbox, config.notify_errors),
+        ):
+            checkbox.blockSignals(True)
+            checkbox.setChecked(value)
+            checkbox.blockSignals(False)
 
     def _on_save_thresholds_clicked(self) -> None:
         auto_text = self.auto_match_threshold_field.text().strip()

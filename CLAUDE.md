@@ -1397,6 +1397,25 @@ compress it here before moving on to the next item.
     icons deliberately NOT implemented — see HISTORY for the specific
     exFAT/AppleDouble reasoning. [HISTORY §89](docs/HISTORY.md#89)
 
+90. **R7: run in the background from the macOS menu bar — done, closes
+    the round-3 brief.** `QSystemTrayIcon`-guarded (`isSystemTrayAvailable()`
+    — real fallback to today's quit-on-close when absent), closing the
+    window hides to the tray instead (one-off first-hide notification),
+    Quit is a real `QApplication.quit()` → `aboutToQuit` →
+    `MainWindow.cleanup_before_quit()` path used by every quit route
+    uniformly. New `SeekerConfig.downloads_paused` — checked inside
+    `DownloadService.poll_downloads()` itself (not just the UI timer),
+    so pause is authoritative regardless of caller. Menu status/counts
+    built entirely from data the existing poll methods already fetch
+    (never a third source of truth); re-render (not re-fetch) skipped
+    while hidden. Batched/rate-limited notifications for downloads-
+    finished, needs-decision, and errors, all per-category toggleable
+    in Settings, all defaulting on. Packaging gap found and fixed along
+    the way: `packaging/icons/` was never bundled as a runtime resource
+    (build-time only) — would have shipped a blank tray icon; fixed the
+    same `sys._MEIPASS` way `docker-compose.yml` already is.
+    [HISTORY §90](docs/HISTORY.md#90)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
