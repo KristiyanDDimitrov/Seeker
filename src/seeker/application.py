@@ -484,6 +484,7 @@ class Application:
                 self.soulseek_client if self.soulseek_configured else None,
                 self.database,
                 LibraryLocationRepository(self.database),
+                get_config=lambda: self._config_store,
             )
 
         return self._sharing_service

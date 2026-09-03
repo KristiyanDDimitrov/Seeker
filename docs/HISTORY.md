@@ -10860,3 +10860,62 @@ Full suite: 951 passed / 1 skipped, 0 regressions.
 **Left open, per the brief's own instruction:** a real end-to-end
 manual download against live slskd, after asking the user to confirm
 the target — not run autonomously in this session.
+
+### 84 — R6: Sharing's 401 Unauthorized
+
+**Diagnosis confirmed live against this real machine's own data**
+(Docker Desktop itself could not be brought up in this sandboxed
+session — see below): `~/Library/Application Support/Seeker/config.json`
+genuinely has `slskd_username`/`slskd_password` set to `null`. This
+machine's wizard run predates item 28's SoulSeek network-credential
+fields, so `Application.persist_soulseek_config` was never called with
+real values for them — a live, concrete instance of exactly the gap the
+brief's diagnosis (reading `docker-compose.yml`/`sharing_service.py`
+statically) predicted. The on-disk `slskd-data/slskd.yml` in the repo's
+own dev checkout still carries the correct, matching API key, and a real
+`docker inspect`/`get_status()` 401 could not be reproduced directly in
+this session for that reason — the fix is aimed at the confirmed root
+cause (an incomplete env contract on recreate) rather than a live-
+reproduced symptom.
+
+**Docker Desktop blocked:** `open -a Docker` launches
+`com.docker.backend`, but its privileged-port-mapping helper immediately
+spawns an `osascript` "administrator privileges" GUI password prompt
+that this session cannot answer — `docker info`/`docker ps` never
+succeed. R6.1's live `docker inspect slskd`/`slskd.yml` check and R6.5's
+disposable-throwaway-container re-verification are both left for the
+user; everything else was fixed and unit-tested against the confirmed
+static root cause instead.
+
+**Fix:** `docker_setup.bring_up_slskd()`'s `library_location_path` param
+is now `str | None` (only sets `SLSKD_SHARE_PATH` when given, instead of
+always overriding). `SharingService.add_location_to_share` no longer
+runs its own bespoke `docker compose up` — it calls `bring_up_slskd()`
+with credentials read via a new `get_config: Callable[[], SeekerConfig]`
+constructor param (same not-a-snapshot discipline as
+`DownloadService`/`TrackMatcher`, item 28), checked for completeness
+*before* either file is backed up or written. Missing any of
+`slskd_username`/`slskd_password`/`slskd_api_key` raises new
+`SlskdCredentialsMissingError` with a message pointing at Settings. A
+failed recreate (`returncode != 0`) rolls the compose file back from its
+own just-taken backup, mirroring the existing slskd.yml-write-failure
+rollback. `get_status`/`get_uploads` now route their `httpx.get` calls
+through a new `_get_or_raise_unauthorized` helper that turns a real 401
+into `SlskdUnauthorizedError` with actionable text — no UI change
+needed, since `run_worker`'s existing error path already renders
+`str(error)` into the status label verbatim.
+
+7 new tests in `tests/test_sharing_service.py` (4 missing-credential
+variants via `pytest.mark.parametrize`, the real `bring_up_slskd` env
+values captured and asserted, a recreate-failure rollback, two 401
+cases) — `make_service()`'s new `config=CONFIGURED` default keeps every
+pre-existing test's behavior unchanged. `mypy --strict src/` clean
+(pre-existing, unrelated `_build_info.py` unused-`type: ignore` error
+confirmed via `git stash` to already exist on the base commit). Full
+suite: 3 pre-existing failures reproduce identically on the unmodified
+base commit (`git stash` confirmed) — a locally-generated
+`_build_info_generated.py` from a prior real `.dmg` build making the
+About-dialog "dev" assertion fail, plus two already-documented flakes
+(`test_main_window_constructs_without_crashing`,
+`test_tagging_controls_row_has_real_spacing_between_items`) — none
+touched by or related to this fix.

@@ -1314,6 +1314,16 @@ compress it here before moving on to the next item.
     never itself written to by anything. `tests/test_build_info.py`
     guards the tracked fallback's literal source text.
 
+84. **Fix R6: Sharing's `401 Unauthorized` on `/api/v0/application` —
+    code done; live re-verification blocked in this sandboxed session,
+    left for the user.** `add_location_to_share`'s container recreate
+    now routes through the same `docker_setup.bring_up_slskd()` the
+    wizard/Settings use (one 5-variable env contract, not two), refuses
+    outright via new `SlskdCredentialsMissingError` if the config store
+    is missing any of the three credentials, and `get_status`/
+    `get_uploads` wrap a real 401 as new `SlskdUnauthorizedError` with
+    actionable text. [HISTORY §84](docs/HISTORY.md#84)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

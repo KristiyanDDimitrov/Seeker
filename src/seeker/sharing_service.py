@@ -45,21 +45,22 @@ rather than text-parsing docker-compose.yml for paths.
 """
 
 import json
-import os
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 import httpx
 
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
-from seeker.docker_setup import compose_file_path
+from seeker.docker_setup import bring_up_slskd, compose_file_path
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SoulseekClient
@@ -85,6 +86,29 @@ class SharingWriteNotAllowedError(RuntimeError):
 
 
 class ShareAlreadyExistsError(RuntimeError):
+    pass
+
+
+class SlskdCredentialsMissingError(RuntimeError):
+    """Raised instead of recreating the slskd container with a blank
+    credential — roadmap item R6.3: a recreate that silently
+    de-authenticates the container (either from Seeker, or from the
+    real SoulSeek network) is worse than refusing to recreate. Real,
+    live-confirmed cause: a wizard run predating item 28's SoulSeek
+    network-credential fields, or any bring-up whose result was never
+    routed through Application.persist_soulseek_config, leaves these
+    fields None in the config store forever."""
+    pass
+
+
+class SlskdUnauthorizedError(RuntimeError):
+    """Raised by get_status() in place of a raw httpx 401 — roadmap
+    item R6.4. See this module's own docstring / R6's diagnosis: a
+    Sharing recreate that runs with a blank SLSKD_API_KEY (R6's own
+    root cause, now fixed by routing through bring_up_slskd with real
+    persisted credentials) de-authenticates the container, and the
+    raw httpx.HTTPStatusError text is not an actionable message for a
+    UI panel."""
     pass
 
 
@@ -158,6 +182,7 @@ class SharingService:
             library_location_repository: LibraryLocationRepository,
             compose_path: Path | None = None,
             container_name: str = SLSKD_CONTAINER_NAME,
+            get_config: Callable[[], SeekerConfig] | None = None,
     ) -> None:
         self._soulseek_client = soulseek_client
         self.database = database
@@ -170,6 +195,11 @@ class SharingService:
         # requiring touching) the real production one. Every real call
         # site in Application.sharing_service uses the default.
         self._container_name = container_name
+        # Same callable-not-snapshot discipline as DownloadService/
+        # TrackMatcher (item 28) -- a Settings credential update takes
+        # effect on the very next add_location_to_share call, no
+        # restart or service-reconstruction needed.
+        self._get_config = get_config or (lambda: SeekerConfig())
 
     @property
     def soulseek(self) -> SoulseekClient:
@@ -184,20 +214,14 @@ class SharingService:
     def get_status(self) -> ShareStatus:
         client = self.soulseek
 
-        app_response = httpx.get(
-            f"{client.base_url}/api/v0/application",
-            headers=client._headers(),
-            timeout=10.0,
+        app_response = _get_or_raise_unauthorized(
+            f"{client.base_url}/api/v0/application", client._headers(),
         )
-        app_response.raise_for_status()
         shares_block = app_response.json().get("shares") or {}
 
-        shares_response = httpx.get(
-            f"{client.base_url}/api/v0/shares",
-            headers=client._headers(),
-            timeout=10.0,
+        shares_response = _get_or_raise_unauthorized(
+            f"{client.base_url}/api/v0/shares", client._headers(),
         )
-        shares_response.raise_for_status()
         raw_shares = (shares_response.json() or {}).get("local") or []
 
         return ShareStatus(
@@ -225,12 +249,9 @@ class SharingService:
         # direct diff against this schema.
         client = self.soulseek
 
-        response = httpx.get(
-            f"{client.base_url}/api/v0/transfers/uploads",
-            headers=client._headers(),
-            timeout=10.0,
+        response = _get_or_raise_unauthorized(
+            f"{client.base_url}/api/v0/transfers/uploads", client._headers(),
         )
-        response.raise_for_status()
         data = response.json()
 
         if not isinstance(data, list):
@@ -341,6 +362,33 @@ class SharingService:
                 "share yourself, using the preview below as a guide."
             )
 
+        # Roadmap item R6 -- checked BEFORE any file is touched. A
+        # recreate must pass all five real credentials/keys every time;
+        # this app's own docker-compose.yml substitutes a MISSING
+        # variable as an empty string, not as unset, which
+        # de-authenticates Seeker's own API access (and, if the
+        # SoulSeek network credentials are the ones missing, logs the
+        # container out of SoulSeek entirely) -- the exact root cause
+        # of the real 401 this item fixes. Refusing here is strictly
+        # safer than a recreate that silently blanks a credential.
+        config = self._get_config()
+        missing = [
+            field_name for field_name, value in (
+                ("SoulSeek network username", config.slskd_username),
+                ("SoulSeek network password", config.slskd_password),
+                ("slskd API key", config.slskd_api_key),
+            )
+            if not value
+        ]
+
+        if missing:
+            raise SlskdCredentialsMissingError(
+                "Can't safely recreate the slskd container -- Seeker "
+                "doesn't have a saved " + " and ".join(missing) + ". "
+                "Re-run SoulSeek setup in Settings first, so a recreate "
+                "doesn't blank a real credential."
+            )
+
         reconciliation = self.get_reconciliation()
 
         for state in reconciliation:
@@ -406,33 +454,40 @@ class SharingService:
             shutil.copy2(compose_backup, self._compose_path)
             raise
 
-        # Reuses the CURRENT live-resolved values for the pre-existing
-        # env-var-driven mount (data dir + the original share path),
-        # not docker-compose.yml's own hardcoded fallback text -- so a
+        # Reuses the CURRENT live-resolved value for the pre-existing
+        # env-var-driven mount (the original share path), not
+        # docker-compose.yml's own hardcoded fallback text -- so a
         # recreate is idempotent regardless of how the container was
         # originally brought up (see this module's docstring). The new
         # line just added has its real host path baked in literally,
         # no env var needed.
+        #
+        # Roadmap item R6.2 -- routed through the SAME bring_up_slskd
+        # the wizard/Settings use, instead of a second, bespoke
+        # `docker compose up` that only ever knew about two of the five
+        # real variables docker-compose.yml's `environment:` block
+        # substitutes. One code path now knows the full contract; a
+        # future compose variable can't be forgotten in one of two
+        # places again.
         original_share_host_path = mounts.get(f"{SHARE_MOUNT_ROOT}/music")
-        env = {
-            "SLSKD_DATA_DIR": data_dir,
-        }
 
-        if original_share_host_path is not None:
-            env["SLSKD_SHARE_PATH"] = original_share_host_path
-
-        subprocess.run(
-            [
-                "docker", "compose", "-f", str(self._compose_path),
-                "up", "-d",
-            ],
-            env={**_inherited_env(), **env},
-            cwd=self._compose_path.parent,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=True,
+        recreate_result = bring_up_slskd(
+            compose_file=str(self._compose_path),
+            soulseek_username=config.slskd_username or "",
+            soulseek_password=config.slskd_password or "",
+            api_key=config.slskd_api_key or "",
+            slskd_data_dir=data_dir,
+            library_location_path=original_share_host_path,
         )
+
+        if recreate_result.returncode != 0:
+            # Same "roll the compose file back" safety net as the
+            # slskd.yml write failure above -- a failed recreate must
+            # not leave a retry able to add the same volume line twice.
+            shutil.copy2(compose_backup, self._compose_path)
+            raise RuntimeError(
+                f"docker compose up failed: {recreate_result.stderr.strip()}"
+            )
 
         deadline = time.monotonic() + SHARE_READY_TIMEOUT_SECONDS
         became_ready = False
@@ -468,8 +523,22 @@ class SharingService:
         )
 
 
-def _inherited_env() -> dict[str, str]:
-    return dict(os.environ)
+def _get_or_raise_unauthorized(url: str, headers: dict[str, str]) -> httpx.Response:
+    response = httpx.get(url, headers=headers, timeout=10.0)
+
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as error:
+        if response.status_code == 401:
+            raise SlskdUnauthorizedError(
+                "slskd rejected Seeker's API key — the container may "
+                "have been recreated without it. Re-run SoulSeek setup "
+                "in Settings."
+            ) from error
+
+        raise
+
+    return response
 
 
 def _get_live_container_mounts(container_name: str) -> dict[str, str]:

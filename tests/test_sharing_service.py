@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -15,22 +16,39 @@ from seeker.sharing_service import (
     ShareAlreadyExistsError,
     SharingService,
     SharingWriteNotAllowedError,
+    SlskdCredentialsMissingError,
+    SlskdUnauthorizedError,
     _insert_compose_volume_line,
     _insert_slskd_share_directory,
 )
 from seeker.soulseek.client import SoulseekClient
 
+# A fully-populated config -- the real shape a completed wizard/Settings
+# run leaves in the store. Used as make_service's default so every
+# pre-existing test below (which predates roadmap item R6's credential
+# check) keeps exercising exactly what it did before, and only the new
+# R6-specific tests need to pass a deliberately incomplete config.
+CONFIGURED = SeekerConfig(
+    slskd_username="dj", slskd_password="hunter2", slskd_api_key="realkey",
+)
+
 
 class FakeResponse:
-    def __init__(self, data):
+    def __init__(self, data, status_code: int = 200):
         self._data = data
-        self.status_code = 200
+        self.status_code = status_code
 
     def json(self):
         return self._data
 
     def raise_for_status(self):
-        pass
+        if self.status_code >= 400:
+            request = httpx.Request("GET", "http://slskd.test/api/v0/x")
+            raise httpx.HTTPStatusError(
+                f"{self.status_code} error",
+                request=request,
+                response=httpx.Response(self.status_code, request=request),
+            )
 
 
 class FakeCompletedProcess:
@@ -39,7 +57,9 @@ class FakeCompletedProcess:
         self.returncode = returncode
 
 
-def make_service(tmp_path, compose_path=None, soulseek_client=None):
+def make_service(
+        tmp_path, compose_path=None, soulseek_client=None, config=CONFIGURED,
+):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 
@@ -50,6 +70,7 @@ def make_service(tmp_path, compose_path=None, soulseek_client=None):
         database,
         LibraryLocationRepository(database),
         compose_path=compose_path or (tmp_path / "docker-compose.yml"),
+        get_config=lambda: config,
     )
 
 
@@ -113,6 +134,31 @@ def test_get_status_parses_real_confirmed_shapes(tmp_path, monkeypatch):
     assert len(status.shares) == 1
     assert status.shares[0].local_path == "/shared/music"
     assert status.shares[0].alias == "music"
+
+
+def test_get_status_raises_readable_error_on_401(tmp_path, monkeypatch):
+    # Roadmap item R6.4 -- a real 401 (e.g. the container recreated
+    # without Seeker's API key) must surface as an actionable message,
+    # not raw httpx.HTTPStatusError text in a UI panel.
+    service = make_service(tmp_path)
+
+    monkeypatch.setattr(
+        httpx, "get", lambda *a, **k: FakeResponse({}, status_code=401),
+    )
+
+    with pytest.raises(SlskdUnauthorizedError, match="Re-run SoulSeek setup"):
+        service.get_status()
+
+
+def test_get_uploads_raises_readable_error_on_401(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+
+    monkeypatch.setattr(
+        httpx, "get", lambda *a, **k: FakeResponse([], status_code=401),
+    )
+
+    with pytest.raises(SlskdUnauthorizedError):
+        service.get_uploads()
 
 
 def test_get_uploads_returns_empty_for_real_empty_array(tmp_path, monkeypatch):
@@ -329,6 +375,163 @@ def test_add_location_to_share_refuses_when_already_shared(
 
     with pytest.raises(ShareAlreadyExistsError):
         service.add_location_to_share(location, confirm=True)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        SeekerConfig(slskd_username=None, slskd_password="p", slskd_api_key="k"),
+        SeekerConfig(slskd_username="u", slskd_password=None, slskd_api_key="k"),
+        SeekerConfig(slskd_username="u", slskd_password="p", slskd_api_key=None),
+        SeekerConfig(),
+    ],
+)
+def test_add_location_to_share_refuses_with_missing_credentials(
+        tmp_path, monkeypatch, config,
+):
+    # Roadmap item R6.3 -- a recreate must never run with a blank
+    # credential; refusing outright is safer than letting docker
+    # compose substitute an empty string. Checked BEFORE any real
+    # docker/httpx call, so no subprocess/httpx patching is needed here
+    # to prove it -- an unpatched real call would fail loudly on its
+    # own if this check didn't short-circuit first.
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text("services:\n  slskd:\n")
+    service = make_service(tmp_path, compose_path=compose_path, config=config)
+    location = seed_location(service, "Music", "/Volumes/Drive/Music")
+
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: FakeCompletedProcess(stdout=str(compose_path) + "\n"),
+    )
+
+    with pytest.raises(SlskdCredentialsMissingError):
+        service.add_location_to_share(location, confirm=True)
+
+
+def test_add_location_to_share_recreates_via_bring_up_slskd_with_real_credentials(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item R6.2 -- one env contract, not two: add_location_to_share
+    # must route through the SAME bring_up_slskd the wizard/Settings use,
+    # passing the real persisted credentials, not a bespoke `docker
+    # compose up` that only ever knew about two of the five real
+    # variables.
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "./slskd-data:/app"\n'
+        '      - "/Volumes/Drive/Music:/shared/music:ro"\n'
+        "    restart: always\n"
+    )
+
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({
+                "shares": {
+                    "ready": True, "scanning": False, "scanPending": False,
+                    "faulted": False, "directories": 2, "files": 10,
+                }
+            })
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    captured_env: dict[str, str] = {}
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"] and "Labels" in cmd[-1]:
+            return FakeCompletedProcess(stdout=str(compose_path) + "\n")
+
+        if cmd[:2] == ["docker", "inspect"]:
+            return FakeCompletedProcess(stdout=json.dumps([
+                {"Destination": "/shared/music", "Source": "/Volumes/Drive/Music"},
+                {"Destination": "/app", "Source": str(data_dir)},
+            ]))
+
+        assert cmd == ["docker", "compose", "-f", str(compose_path), "up", "-d"]
+        captured_env.update(kwargs["env"])
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = service.add_location_to_share(location, confirm=True)
+
+    assert result.became_ready is True
+    assert captured_env["SLSKD_SLSK_USERNAME"] == CONFIGURED.slskd_username
+    assert captured_env["SLSKD_SLSK_PASSWORD"] == CONFIGURED.slskd_password
+    assert captured_env["SLSKD_API_KEY"] == CONFIGURED.slskd_api_key
+    assert captured_env["SLSKD_DATA_DIR"] == str(data_dir)
+    assert captured_env["SLSKD_SHARE_PATH"] == "/Volumes/Drive/Music"
+
+
+def test_add_location_to_share_rolls_back_compose_when_recreate_fails(
+        tmp_path, monkeypatch,
+):
+    # A failed `docker compose up` must not leave the compose file
+    # holding a volume line for a share the container never actually
+    # got -- same rollback discipline as the slskd.yml write failure
+    # test below.
+    compose_path = tmp_path / "docker-compose.yml"
+    original_compose_text = (
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "./slskd-data:/app"\n'
+        "    restart: always\n"
+    )
+    compose_path.write_text(original_compose_text)
+
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({"shares": {"directories": 1, "files": 3}})
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"] and "Labels" in cmd[-1]:
+            return FakeCompletedProcess(stdout=str(compose_path) + "\n")
+
+        if cmd[:2] == ["docker", "inspect"]:
+            return FakeCompletedProcess(stdout=json.dumps([
+                {"Destination": "/shared/music", "Source": "/Volumes/Drive/Music"},
+                {"Destination": "/app", "Source": str(data_dir)},
+            ]))
+
+        return FakeCompletedProcess(stdout="", returncode=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_run_with_stderr(cmd, **kwargs):
+        result = fake_run(cmd, **kwargs)
+        result.stderr = "boom"
+        return result
+
+    monkeypatch.setattr(subprocess, "run", fake_run_with_stderr)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.add_location_to_share(location, confirm=True)
+
+    assert compose_path.read_text() == original_compose_text
 
 
 def test_add_location_to_share_backs_up_and_writes_both_files(
