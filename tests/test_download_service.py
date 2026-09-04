@@ -40,6 +40,7 @@ from seeker.soulseek.download_service import (
     PlaylistNotFoundError,
     ReviewCandidateMissingSizeError,
     ReviewCandidateNotFoundError,
+    UnsupportedDownloadFormatError,
     _build_search_query,
 )
 
@@ -3609,6 +3610,32 @@ def test_download_manual_explicit_pick_bypasses_the_score_threshold(
     assert requests[0].filename == "Totally Unrelated Track.mp3"
     # No search was needed for an explicit pick.
     assert service._soulseek_client.search_calls == []
+
+
+def test_download_manual_explicit_pick_of_unsupported_format_is_refused(
+        tmp_path,
+):
+    # Roadmap item 94 (B5.3/B5.4) — chosen= bypasses select_downloads'
+    # own DOWNLOADABLE_EXTENSIONS gate entirely, so this is the final
+    # guard. A refused explicit click must raise a real, readable
+    # error, not silently do nothing.
+    service, _location = _service_with_default_destination(tmp_path)
+    ogg_file = make_soulseek_file(
+        filename="Dom Dolla - Rhyme Dust.ogg", extension="ogg",
+    )
+
+    with pytest.raises(UnsupportedDownloadFormatError) as excinfo:
+        service.download_manual("Dom Dolla", "Rhyme Dust", chosen=ogg_file)
+
+    assert ".ogg" in str(excinfo.value)
+    assert "mp3" in str(excinfo.value)
+
+    with service.database.transaction() as connection:
+        # Checked before a track row is even created (matches the
+        # no-destination check's own discipline) -- no orphan manual
+        # track left behind by a refused pick.
+        assert service.tracks.get_all(connection) == []
+        assert service.download_requests.get_all(connection) == []
 
 
 def test_download_manual_reuses_a_prefetched_results_list_without_a_new_search(

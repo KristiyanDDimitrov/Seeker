@@ -1491,6 +1491,20 @@ compress it here before moving on to the next item.
     double-index ~3,450 real files — `add_location` has no containment
     check yet. [HISTORY §93](docs/HISTORY.md#93)
 
+94. **B5 — only download real DJ formats — done.** New
+    `audio_formats.py::DOWNLOADABLE_EXTENSIONS = {".mp3", ".flac",
+    ".wav", ".aiff", ".aif", ".m4a"}` (asserted a subset of the wider,
+    still-permissive `AUDIO_EXTENSIONS`) + shared
+    `is_downloadable_extension()`, applied at all three real entry
+    points: `quality._score_candidate`, `rank_candidates()` (Search
+    page + CLI raw results — had no gate before), and
+    `download_manual(chosen=...)` (bypasses `select_downloads`
+    entirely — new `UnsupportedDownloadFormatError`, refuses loudly
+    rather than a silent no-op). `.m4a` in, bare `.mp4` out (video
+    collision risk); `.aac`/`.aifc`/`.ogg`/etc. all out — judgement
+    calls stated in the module comment. The one real `.ogg` already in
+    the library is untouched (indexing/playback unaffected).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

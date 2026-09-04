@@ -40,7 +40,13 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B5 — Only download real DJ formats
 
-- [ ] Not started.
+- [x] New `audio_formats.py::DOWNLOADABLE_EXTENSIONS` + shared
+  `is_downloadable_extension()`, applied at all three entry points
+  (`quality._score_candidate`, `rank_candidates()`, `download_manual
+  (chosen=...)` via new `UnsupportedDownloadFormatError`). Tests for
+  each site + the subset assertion. The one real `.ogg` in the library
+  left untouched, as instructed — offering the user a re-download in
+  FLAC via Search remains their call.
 
 ## B1 — Enter submits on wizard/Settings forms
 

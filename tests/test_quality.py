@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from seeker.audio_formats import AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.quality import (
@@ -9,6 +10,7 @@ from seeker.soulseek.quality import (
     filter_candidates,
     find_best_needs_review_candidate,
     quality_tier_for_format,
+    rank_candidates,
     select_downloads,
 )
 
@@ -59,6 +61,46 @@ def test_filter_candidates_excludes_non_audio_extension():
     )
 
     assert filter_candidates(track, [cover_art]) == []
+
+
+# --- Roadmap item 94 (B5): only download real DJ formats -------------------
+
+def test_downloadable_extensions_is_a_subset_of_audio_extensions():
+    assert DOWNLOADABLE_EXTENSIONS <= AUDIO_EXTENSIONS
+
+
+def test_filter_candidates_excludes_ogg_even_though_it_is_indexable_audio():
+    # .ogg is in AUDIO_EXTENSIONS (the scanner will index one you
+    # already own) but NOT in DOWNLOADABLE_EXTENSIONS (nothing in
+    # metadata.py can tag it) — a real distinction, not an oversight.
+    track = make_track()
+    ogg_candidate = make_file(
+        filename=(
+            "@@1a2b3c\\Music\\Dom Dolla\\Rhyme Dust\\"
+            "Dom Dolla - Rhyme Dust.ogg"
+        ),
+        extension="ogg",
+    )
+
+    assert filter_candidates(track, [ogg_candidate]) == []
+
+
+def test_rank_candidates_excludes_ogg_from_raw_search_results():
+    # Roadmap item 94 (B5.3) — rank_candidates feeds the Search page's
+    # results table directly from RAW, unfiltered search results; it
+    # had no extension gate at all before this.
+    flac_candidate = make_file(extension="flac")
+    ogg_candidate = make_file(
+        filename=(
+            "@@1a2b3c\\Music\\Dom Dolla\\Rhyme Dust\\"
+            "Dom Dolla - Rhyme Dust.ogg"
+        ),
+        extension="ogg",
+    )
+
+    ranked = rank_candidates([ogg_candidate, flac_candidate])
+
+    assert ranked == [flac_candidate]
 
 
 def test_filter_candidates_excludes_wrong_artist():

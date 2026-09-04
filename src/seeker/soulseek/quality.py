@@ -6,7 +6,7 @@ from typing import Any
 import mutagen
 import numpy as np
 
-from seeker.audio_formats import AUDIO_EXTENSIONS
+from seeker.audio_formats import is_downloadable_extension
 from seeker.matching import (
     AUTO_MATCH_THRESHOLD,
     NEEDS_REVIEW_THRESHOLD,
@@ -49,7 +49,12 @@ def _score_candidate(track: Track, file: SoulseekFile) -> float | None:
     # Returns None when the file isn't audio or the artist doesn't match
     # at all (not just "scored too low") — distinct from a real score of
     # 0, so callers never have to special-case "no signal at all."
-    if f".{file.extension.lower()}" not in AUDIO_EXTENSIONS:
+    # Roadmap item 94 (B5.3) — DOWNLOADABLE_EXTENSIONS, not the wider
+    # AUDIO_EXTENSIONS the library scanner uses: this gates a NEW file
+    # being fetched from SoulSeek, where "can Seeker actually finish
+    # tagging/indexing this afterward" matters, not just "is this
+    # audio."
+    if not is_downloadable_extension(file.extension):
         return None
 
     normalized_title = normalize_soulseek_title(file.filename)
@@ -197,8 +202,17 @@ def rank_candidates(files: list[SoulseekFile]) -> list[SoulseekFile]:
     `select_downloads` uses internally (`_sort_key`, best-first: tier,
     bitrate, lock status, queue length). The manual-search UI's
     results table needs to display candidates in this exact order
-    without a second, drifting copy of the tiebreak logic."""
-    return sorted(files, key=_sort_key, reverse=True)
+    without a second, drifting copy of the tiebreak logic.
+
+    Roadmap item 94 (B5.3) — also the one gate raw SEARCH results (the
+    Search page and `seeker search`) had never had at all: filtered to
+    DOWNLOADABLE_EXTENSIONS before ranking, so an unsupported format
+    (e.g. a peer's .ogg) is never even listed as pickable.
+    """
+    downloadable = [
+        file for file in files if is_downloadable_extension(file.extension)
+    ]
+    return sorted(downloadable, key=_sort_key, reverse=True)
 
 
 def select_downloads(

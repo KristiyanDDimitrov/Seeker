@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from seeker.audio_formats import is_downloadable_extension
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -94,6 +95,25 @@ class PlaylistNotFoundError(RuntimeError):
 
 class NoDestinationConfiguredError(RuntimeError):
     pass
+
+
+class UnsupportedDownloadFormatError(RuntimeError):
+    """Roadmap item 94 (B5.4) — an explicit per-row 'Download this one'
+    pick (download_manual's chosen=) bypasses select_downloads'
+    ranking/threshold entirely (item 82), which is also where the
+    DOWNLOADABLE_EXTENSIONS gate normally lives — so this is the final
+    guard at request time. A refused click must say so loudly, not do
+    nothing: same "explicit action, honest outcome" standard as item 56
+    Phase 4.2."""
+
+    def __init__(self, extension: str):
+        # Fixed, readable order (mp3/flac/wav/aiff/aif/m4a) rather than
+        # DOWNLOADABLE_EXTENSIONS' own set-iteration order.
+        downloadable = "mp3, flac, wav, aiff and m4a"
+        super().__init__(
+            f"Seeker only downloads {downloadable} — this one is "
+            f".{extension.lower().lstrip('.')}."
+        )
 
 
 class LibraryLocationNotFoundError(RuntimeError):
@@ -498,6 +518,18 @@ class DownloadService:
             raise NoDestinationConfiguredError(
                 "No download destination is configured yet."
             )
+
+        if chosen is not None and not is_downloadable_extension(
+                chosen.extension,
+        ):
+            # Roadmap item 94 (B5.3/B5.4) — chosen bypasses
+            # select_downloads (and its own DOWNLOADABLE_EXTENSIONS
+            # gate) entirely, so this is the final check at request
+            # time — checked here, before a track row is even created,
+            # matching the destination check just above. A refused
+            # explicit click gets a real, readable error, not a silent
+            # no-op — same standard as item 56 Phase 4.2.
+            raise UnsupportedDownloadFormatError(chosen.extension)
 
         track = Track(
             id=f"{MANUAL_TRACK_ID_PREFIX}{uuid4()}",
