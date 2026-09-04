@@ -15,6 +15,16 @@ from seeker.spotify.callback_server import wait_for_callback
 from seeker.spotify.token import SpotifyToken
 
 
+# Spotify rotates the refresh token on every PKCE refresh — the old one
+# stops working the moment a new one is issued (see _save_token below).
+# Two installs sharing one Spotify account and client ID (e.g. this
+# app's real account plus a test account on the same machine) can each
+# invalidate the other's stored refresh token this way — the symptom is
+# a refresh failing and falling back to a real browser re-authorization
+# for no obvious reason. That is a real, separate effect, not the B8
+# 401-after-an-hour bug (which was the cached SpotifyClient never
+# calling get_valid_token() again at all) — recorded here so it isn't
+# re-diagnosed from scratch.
 class SpotifyAuthManager:
     def __init__(
         self,
@@ -26,13 +36,13 @@ class SpotifyAuthManager:
         self.redirect_uri = redirect_uri
         self.token_path = token_path
 
-    def get_valid_token(self) -> SpotifyToken:
+    def get_valid_token(self, force_refresh: bool = False) -> SpotifyToken:
         token = self._load_token()
 
         if token is None:
             return self._authorize()
 
-        if self._is_expired(token):
+        if force_refresh or self._is_expired(token):
             print("Spotify access token expired. Refreshing...")
 
             try:

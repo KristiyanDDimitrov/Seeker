@@ -2,13 +2,22 @@ import httpx
 import time
 
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any, Callable, Union, cast
 
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
 
 BASE_URL = "https://api.spotify.com/v1"
+
+# Either a bare token string (tests, or any short-lived script use) or a
+# callable resolving to a fresh token on every call — the latter is what
+# Application.spotify passes in, bound to auth_manager.get_valid_token(),
+# so a request made after the cached SpotifyClient has outlived the
+# token's 1-hour lifetime still gets one get_valid_token() has already
+# refreshed, instead of the frozen string this class used to store
+# (roadmap item 92 / B8.2).
+TokenSource = Union[str, Callable[[], str]]
 
 # Bounds _get's 429-retry loop. Without this, a server that kept returning
 # a short Retry-After (e.g. 1s) indefinitely would retry forever — this
@@ -75,9 +84,37 @@ class SpotifyRateLimitedError(RuntimeError):
         )
 
 
+class SpotifyAuthenticationError(RuntimeError):
+    """Raised when Spotify rejects the current token and a single forced
+    refresh-and-retry (B8.3) still 401s — a real, permanently revoked/
+    invalid token, not just an expired one get_valid_token() already
+    would have refreshed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Spotify rejected Seeker's authorization. "
+            "Re-authorize in Settings."
+        )
+
+
 class SpotifyClient:
-    def __init__(self, access_token: str):
-        self.access_token = access_token
+    def __init__(
+            self,
+            token_source: TokenSource,
+            force_refresh: Callable[[], str] | None = None,
+    ):
+        self._token_source = token_source
+        # Bound to auth_manager.get_valid_token(force_refresh=True) by
+        # Application.spotify — bypasses the normal expiry check so a
+        # 401 (token rejected for a reason the clock doesn't know about)
+        # still gets a real refreshed token, not the same one retried.
+        self._force_refresh = force_refresh
+
+    def _current_token(self) -> str:
+        if callable(self._token_source):
+            return self._token_source()
+
+        return self._token_source
 
     def _get(
             self,
@@ -85,12 +122,14 @@ class SpotifyClient:
             params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         attempts = 0
+        retried_after_401 = False
+        token = self._current_token()
 
         while True:
             response = httpx.get(
                 url,
                 headers={
-                    "Authorization": f"Bearer {self.access_token}",
+                    "Authorization": f"Bearer {token}",
                 },
                 params=params,
                 timeout=10.0,
@@ -130,6 +169,14 @@ class SpotifyClient:
                 )
 
                 time.sleep(retry_after_seconds)
+                continue
+
+            if response.status_code == 401:
+                if retried_after_401 or self._force_refresh is None:
+                    raise SpotifyAuthenticationError()
+
+                retried_after_401 = True
+                token = self._force_refresh()
                 continue
 
             response.raise_for_status()

@@ -638,6 +638,33 @@ def test_connect_spotify_without_force_leaves_cached_token_untouched(
     assert app._spotify_token_path.exists()
 
 
+def test_connect_spotify_reruns_authorization_when_client_already_cached(
+        tmp_path, monkeypatch,
+):
+    # B8's own regression test: before the fix, `self.spotify` at the
+    # end of connect_spotify() short-circuited on an already-populated
+    # `_spotify` cache from an earlier call in the same session, so
+    # Settings' "Re-authorize" silently did nothing and the app kept
+    # using the dead client — the exact bug that made B8's 401
+    # unrecoverable without restarting the app.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    triggered = []
+    monkeypatch.setattr(
+        Application, "spotify", property(lambda self: triggered.append(True)),
+    )
+
+    # Simulate a prior real call having already populated the cache.
+    app._spotify = "stale-client"  # type: ignore[assignment]
+    app._sync_service = "stale-sync-service"  # type: ignore[assignment]
+
+    app.connect_spotify("real-client-id", force_reauthorize=True)
+
+    assert triggered == [True]
+    assert app._spotify is None
+    assert app._sync_service is None
+
+
 def test_persist_soulseek_config_updates_store_disk_and_resets_client(
         tmp_path, monkeypatch,
 ):

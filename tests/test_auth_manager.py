@@ -129,3 +129,35 @@ def test_get_valid_token_authorizes_when_no_token_saved(
     token = manager.get_valid_token()
 
     assert token.access_token == "first-time-access"
+
+
+def test_get_valid_token_force_refresh_refreshes_a_still_valid_token(
+        tmp_path, monkeypatch,
+):
+    # B8.3's own foundation: a token can be rejected (401) for a reason
+    # the expiry clock doesn't know about — force_refresh=True must skip
+    # the normal is_expired() check entirely, not just re-check it.
+    manager = make_manager(tmp_path)
+    TokenStore(manager.token_path).save(
+        SpotifyToken(
+            access_token="clock-says-valid",
+            refresh_token="refresh-1",
+            expires_at=time.time() + 3600,
+        )
+    )
+
+    def fake_refresh(client_id, refresh_token):
+        return SpotifyToken(
+            access_token="forced-refresh-access",
+            refresh_token="refresh-2",
+            expires_at=time.time() + 3600,
+        )
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.refresh_access_token", fake_refresh
+    )
+    monkeypatch.setattr(manager, "_authorize", _fail_if_called)
+
+    token = manager.get_valid_token(force_refresh=True)
+
+    assert token.access_token == "forced-refresh-access"

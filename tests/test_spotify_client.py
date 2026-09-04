@@ -3,6 +3,7 @@ import pytest
 
 from seeker.spotify.client import (
     MAX_RETRY_ATTEMPTS,
+    SpotifyAuthenticationError,
     SpotifyClient,
     SpotifyRateLimitedError,
 )
@@ -228,3 +229,93 @@ def test_short_429_succeeds_after_retrying_within_the_limit(monkeypatch):
 
     assert playlists == []
     assert call_count["n"] == 3
+
+
+# --- B8: token provider + 401 handling ---------------------------------
+
+
+class FakeUnauthorizedResponse:
+    def __init__(self):
+        self.status_code = 401
+        self.headers: dict[str, str] = {}
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        pass
+
+
+def test_token_source_callable_is_called_fresh_on_every_request(monkeypatch):
+    # Application.spotify binds this to auth_manager.get_valid_token —
+    # a real fix for a client built early in a long session outliving
+    # the access token's 1-hour lifetime (roadmap item 92 / B8.2).
+    tokens = iter(["first-token", "second-token"])
+    seen_headers = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        seen_headers.append(headers["Authorization"])
+        return FakeResponse({"items": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SpotifyClient(lambda: next(tokens))
+    client.get_current_user_playlists()
+    client.get_current_user_playlists()
+
+    assert seen_headers == ["Bearer first-token", "Bearer second-token"]
+
+
+def test_401_forces_refresh_and_retries_once_then_succeeds(monkeypatch):
+    calls = {"n": 0}
+    refresh_calls = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls["n"] += 1
+
+        if calls["n"] == 1:
+            assert headers["Authorization"] == "Bearer stale"
+            return FakeUnauthorizedResponse()
+
+        assert headers["Authorization"] == "Bearer fresh"
+        return FakeResponse({"items": []})
+
+    def force_refresh():
+        refresh_calls["n"] += 1
+        return "fresh"
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SpotifyClient("stale", force_refresh=force_refresh)
+    playlists = client.get_current_user_playlists()
+
+    assert playlists == []
+    assert calls["n"] == 2
+    assert refresh_calls["n"] == 1
+
+
+def test_401_after_a_forced_refresh_raises_readable_error(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return FakeUnauthorizedResponse()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SpotifyClient("stale", force_refresh=lambda: "still-stale")
+
+    with pytest.raises(SpotifyAuthenticationError, match="Re-authorize in Settings"):
+        client.get_current_user_playlists()
+
+
+def test_401_with_no_force_refresh_raises_immediately_without_retry(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls["n"] += 1
+        return FakeUnauthorizedResponse()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(SpotifyAuthenticationError):
+        SpotifyClient("token").get_current_user_playlists()
+
+    assert calls["n"] == 1

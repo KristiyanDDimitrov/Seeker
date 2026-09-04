@@ -224,6 +224,14 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
         self._auth_manager = None
+        # B8.1 — a cached SpotifyClient (or a SpotifySyncService built on
+        # top of one) from an earlier call in this same session must not
+        # survive a new client_id/re-authorize: without this, `self.spotify`
+        # below short-circuits on the already-non-None cache and never
+        # calls auth_manager.get_valid_token() at all, so Settings'
+        # "Re-authorize" was a silent no-op that kept the dead token.
+        self._spotify = None
+        self._sync_service = None
 
         if force_reauthorize:
             from seeker.spotify.token_store import TokenStore
@@ -337,10 +345,19 @@ class Application:
     @property
     def spotify(self) -> SpotifyClient:
         if self._spotify is None:
-            token = self.auth_manager.get_valid_token()
-
+            # A bound callable, not a frozen token string (roadmap item
+            # 92 / B8.2) — a SpotifyClient built early in a long-running
+            # session and used again after the access token's 1-hour
+            # lifetime now gets a token get_valid_token() has already
+            # refreshed, instead of replaying the same dead one forever.
+            # force_refresh is the B8.3 safety net for a 401 the clock
+            # didn't predict (get_valid_token(force_refresh=True) skips
+            # the expiry check entirely).
             self._spotify = SpotifyClient(
-                token.access_token
+                token_source=lambda: self.auth_manager.get_valid_token().access_token,
+                force_refresh=lambda: self.auth_manager.get_valid_token(
+                    force_refresh=True
+                ).access_token,
             )
 
         return self._spotify

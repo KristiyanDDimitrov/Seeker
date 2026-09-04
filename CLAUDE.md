@@ -1449,6 +1449,33 @@ compress it here before moving on to the next item.
     that changes between rounds is a regression to diagnose, never a
     new baseline. [HISTORY §91](docs/HISTORY.md#91)
 
+92. **Fix B8: Spotify 401 after ~1hr uptime, unrecoverable without a
+    restart — done.** `Application._spotify` was a cached client built
+    once from a frozen access-token *string*; nothing ever reset it, so
+    every call after the token's real 1-hour lifetime 401'd forever, and
+    Settings' "Re-authorize" (`connect_spotify(force_reauthorize=True)`)
+    short-circuited on that same non-None cache and never actually ran
+    the OAuth flow — the one recovery path in the UI was a silent no-op.
+    Fixed: `SpotifyClient` now takes a `TokenSource` (`str | Callable[[],
+    str]`) instead of a bare string — `Application.spotify` binds it to
+    `auth_manager.get_valid_token().access_token`, so a client built
+    early in a session still gets a token `get_valid_token()` has
+    already refreshed. New `SpotifyClient._get` 401 handling: on a 401,
+    calls an optional `force_refresh` callable (bound to
+    `get_valid_token(force_refresh=True)`, which skips the normal
+    expiry check) and retries **exactly once**; a second 401 raises
+    `SpotifyAuthenticationError` ("Re-authorize in Settings.") instead
+    of a raw `httpx.HTTPStatusError` URL string. `connect_spotify` now
+    resets `self._spotify`/`self._sync_service` alongside
+    `self._auth_manager`, closing the actual unrecoverable half of the
+    bug. Standing fact recorded in `auth_manager.py`: Spotify rotates
+    PKCE refresh tokens, so two installs sharing one account/client ID
+    can invalidate each other's stored refresh token — a real,
+    separate effect, not this bug. **Left for the user (real machine
+    only):** confirming the real token file's `expires_at` is a
+    plausible ~3600s-after-mtime value (B8.4), and a live past-expiry
+    reload with no restart (B8.7).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

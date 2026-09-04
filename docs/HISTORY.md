@@ -11483,3 +11483,70 @@ exactly as the user's own message scoped it:
 a genuine timing flake, not a build-state or geometry-settling issue,
 and explicitly called out by the user as "genuinely pre-existing," not
 part of this fix's scope.
+
+### 92 — B8: Spotify 401 unrecoverable without a restart
+
+Confirmed the brief's own diagnosis by reading the code, not re-deriving
+it: `Application._spotify` (`application.py:338`, pre-fix) built one
+`SpotifyClient` from a frozen access-token string and cached it forever
+— nothing in `grep -n "_spotify\b" application.py` ever reset it. A
+Spotify access token lives one hour, so the first playlist load after
+launch worked and every one after the token's real expiry 401'd, on
+whatever endpoint happened to be called next (`/playlists/{id}/items`
+in the user's own screenshot). The one recovery path the UI offered
+made it worse: Settings' "Re-authorize" (`connect_spotify(
+force_reauthorize=True)`) cleared the token file, reset
+`_auth_manager`, then called `self.spotify` — but `_spotify` was
+already non-None in any session that had made a real Spotify call, so
+the property short-circuited and the OAuth flow never ran. The dead
+token stayed in memory even after the file on disk was cleared.
+
+**Fix, in the shape the brief specified.** `SpotifyClient.__init__` now
+takes `token_source: TokenSource` (`str | Callable[[], str]`) instead
+of a bare string — `Application.spotify` binds it to
+`lambda: self.auth_manager.get_valid_token().access_token`, so a
+client that's lived in memory past the token's real lifetime still
+resolves a fresh, already-refreshed token on its very next request,
+without ever needing to be rebuilt. `_get` gained a second, independent
+layer: on any `401`, it calls an optional `force_refresh` callable
+(bound to `auth_manager.get_valid_token(force_refresh=True)`, a new
+parameter that skips the normal `_is_expired()` check entirely — the
+whole point, since a 401 the clock didn't predict is exactly the case
+`get_valid_token()`'s own expiry check can't catch) and retries the
+same request exactly once; a second 401 raises a new
+`SpotifyAuthenticationError("Spotify rejected Seeker's authorization.
+Re-authorize in Settings.")` instead of letting a raw
+`httpx.HTTPStatusError` (with its unreadable URL-and-status-code
+string) reach the UI. `connect_spotify` now resets `self._spotify` and
+`self._sync_service` (which holds a reference to the same client)
+alongside `self._auth_manager` — the actual fix for the unrecoverable
+half of the bug, and the one covered by a new regression test
+(`test_connect_spotify_reruns_authorization_when_client_already_cached`)
+that pre-populates `_spotify`/`_sync_service` with sentinels and
+confirms `connect_spotify(force_reauthorize=True)` both clears them and
+genuinely re-triggers `self.spotify`.
+
+**B8.5, recorded rather than re-discovered later.** Spotify rotates
+PKCE refresh tokens on every use — the previous one stops working the
+moment a new one is issued. Two installs sharing one Spotify account
+and client ID (the user's real account and their own test account, on
+the same machine) can each invalidate the other's stored refresh
+token this way. That is a real, separate effect from this bug (the
+frozen-client cache explains the reported 401 fully on its own), noted
+as a comment in `auth_manager.py` so it isn't re-diagnosed from
+scratch.
+
+**Left for the user, real machine only.** B8.4 (confirm the real
+`~/Library/Application Support/Seeker` token file's `expires_at` is a
+plausible ~3600s-after-mtime value) and B8.7 (a live load-playlist,
+wait-past-expiry, load-another-playlist round trip with no restart) —
+this diagnosing/fixing session cannot reach that path or run a real
+hour-long wait.
+
+Full suite: `1034 passed, 1 skipped, 0 failed` on a clean run;
+`test_ui_smoke.py::test_history_refresh_button_refetches` failed once
+under the full-suite run and passed in isolation immediately after —
+the same background-worker timing flake RR3 already documented
+(1/8 isolated repeats), unrelated to any file this item touched
+(`application.py`, `spotify/client.py`, `spotify/auth_manager.py`).
+`mypy --strict src/`: clean, 84 files.
