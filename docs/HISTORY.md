@@ -11726,3 +11726,75 @@ again, since it's a live number, not a fixed one.
 Full suite: `1045 passed, 1 skipped, 0 failed` — genuinely green this
 run, no recurrence of the `test_history_refresh_button_refetches`
 flake B8's report saw. `mypy --strict src/`: clean, 85 files.
+
+### 100 — B7: removed the cover.jpg sidecar feature (reverses R4.2)
+
+The user asked three real questions about R4.2's opt-in `cover.jpg`
+sidecar, each answered from the code and from real evidence before
+deciding to remove it:
+
+**How are files named in a multi-album playlist folder?** Always
+literally `cover.jpg` — `_write_cover_jpg_sidecar` wrote
+`file_path.parent / "cover.jpg"` and returned `False` without touching
+anything if it already existed. A playlist-shaped folder holding tracks
+from ten different albums (this app has no per-album folder structure)
+would get exactly one `cover.jpg`, belonging to whichever track was
+processed first — the other nine albums' art was never represented.
+Not a missing cover; a wrong one.
+
+**Why didn't Finder change?** Because `cover.jpg` was never a macOS
+Finder convention at all — it's read by Plex, Jellyfin, Kodi,
+foobar2000, and Traktor. Finder has never used a folder-level image for
+either the folder icon or the files inside it. Nothing was ever going
+to change from writing this file.
+
+**Why did VLC/Apple Music show the art?** They read the *embedded* art
+(R4/item 75's own confirmed-correct write path), not the sidecar — that
+was confirmation embedding works, not evidence the sidecar did anything.
+
+**Decision: remove it.** R4.3's rejection of per-file custom Finder
+icons (exFAT + AppleDouble sidecar concerns) still stands, so there is
+no remaining route to a real Finder thumbnail for FLAC/WAV — the
+feature cost new files written into the user's library for zero payoff
+in the one place it was meant to help.
+
+**Removed:** `_write_cover_jpg_sidecar()` and its two call sites in
+`metadata_service.py` (`_tag_one_track`'s art-embed branch,
+`_fix_one_track_art`'s own art-write step); `SeekerConfig.
+write_cover_jpg_sidecars` and its `load_config`/`save_config` handling;
+the Settings → Thresholds tab's "Cover Art" group box (checkbox + note
+label) and its `_on_write_cover_jpg_toggled` handler; `help_text.py`'s
+`TOOLTIP_WRITE_COVER_JPG_CHECKBOX`/`WRITE_COVER_JPG_NOTE`. 7 tests
+removed (3 in `test_metadata_service.py` covering `tag_tracks`, 1
+covering `fix_missing_art_for_playlist`, 3 in `test_settings_window.py`
+covering the checkbox) — no replacement tests needed since there's no
+new behavior, only removed behavior. One new test added instead:
+`test_load_config_tolerates_a_removed_field_still_present_in_the_file`
+— a real config.json still holding the old key must load cleanly, not
+raise (confirmed: `load_config` reads each field via `data.get(...)`
+individually, so an unrecognized key is simply never read, no
+migration code needed).
+
+**B7.3 — the 9 real files already written, left untouched, per the
+standing rule against removing a user's file without explicit
+confirmation.** A real, read-only `find "/Volumes/X9 Pro" -iname
+"cover.jpg"` against the user's actual library found:
+
+```
+Music/Skrillex and Diplo present Jack Ü/cover.jpg
+Music/DnB/Workforce - Set & Setting [2022]/cover.jpg
+Music/DnB/Pendulum - Immersion/cover.jpg
+Music/Albums/(2013) Sempiternal/cover.jpg
+Music/Albums/Le Mystere des voix bulgares, Volume 2/cover.jpg
+Music/Albums/The Elder Scrolls V -  Skyrim -  Original Game Soundtrack/cover.jpg
+Music/Albums/2022 - Obsidian (Deluxe Edition) [WEB]/cover.jpg
+Music/Albums/[2019] Music to listen to (EP)/cover.jpg
+Music/Albums/Under Pressure (Deluxe)/cover.jpg
+```
+
+None deleted or modified by this change. Reported to the user in the
+session summary — theirs to remove if they want to, since Seeker will
+never write a new one but also won't touch these on its own.
+
+Full suite: `1055 passed, 1 skipped, 0 failed`. `mypy --strict src/`:
+clean, 85 files.

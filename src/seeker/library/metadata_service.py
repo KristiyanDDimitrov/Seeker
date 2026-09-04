@@ -44,37 +44,6 @@ class PlaylistNotFoundError(RuntimeError):
     pass
 
 
-def _write_cover_jpg_sidecar(file_path: Path, image_bytes: bytes) -> bool:
-    """Roadmap item R4.2 — the one thing Seeker can usefully do about
-    embedded art not showing in every real DJ/media app for every
-    format it writes to (see R4's own diagnosis: macOS Finder never
-    reads embedded art from FLAC or WAV at all). Written next to the
-    track's own file — this app has no notion of a dedicated per-album
-    folder structure, so "one per album/track folder" means one per
-    directory a track's file lives in; several tracks sharing a real
-    album folder all resolve to the same path and only the first write
-    creates it. Never overwrites an existing cover.jpg, even a
-    stale/wrong one — the near-universal convention assumes exactly
-    one cover per folder, and this app has no way to know whether a
-    file already there was placed deliberately. Returns whether it
-    actually wrote a new file, purely for the caller's own honest
-    counts — never raises, since this is a bonus best-effort write on
-    top of an already-successful art download, not something that
-    should be able to fail a tagging run.
-    """
-    cover_path = file_path.parent / "cover.jpg"
-
-    if cover_path.exists():
-        return False
-
-    try:
-        cover_path.write_bytes(image_bytes)
-    except OSError:
-        return False
-
-    return True
-
-
 @dataclass
 class RenamePlan:
     """Roadmap item 67 (Phase 6.3) — one track's rename decision, pure
@@ -586,9 +555,6 @@ class MetadataService:
                     art_outcome = "download_failed"
                     art_message = str(error)
                 else:
-                    if self._get_config().write_cover_jpg_sidecars:
-                        _write_cover_jpg_sidecar(file_path, image_bytes)
-
                     try:
                         embedded = embed_album_art(
                             mutagen_file, image_bytes, mime_type
@@ -901,9 +867,6 @@ class MetadataService:
                 }
             )
             return
-
-        if self._get_config().write_cover_jpg_sidecars:
-            _write_cover_jpg_sidecar(file_path, image_bytes)
 
         # The actual point of this action: skip the write entirely (no
         # file touched at all) if the currently-embedded art already

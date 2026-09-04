@@ -34,15 +34,6 @@ class SeekerConfig:
     # convention as every other optional field here.
     default_download_location_id: int | None = None
     default_download_subfolder_per_playlist: bool = True
-    # Roadmap item R4.2 — opt-in, off by default: macOS Finder (and
-    # several other apps — Plex, Jellyfin, foobar2000, Traktor) don't
-    # read embedded cover art from every format Seeker writes it to
-    # (FLAC/WAV never show it at all, see R4's own diagnosis) but DO
-    # read a `cover.jpg` sidecar file. Off by default since this
-    # writes a new file into the user's own library — a real,
-    # deliberate exception to "tagging never needs a confirmation
-    # gate" (item 27), made once here via an explicit opt-in instead.
-    write_cover_jpg_sidecars: bool = False
     # Roadmap item R7.4 — a real service-level flag, checked inside
     # DownloadService.poll_downloads() itself (not just the UI's own
     # timer), so pausing is authoritative regardless of caller (the
@@ -83,6 +74,11 @@ def load_config(path: Path) -> SeekerConfig:
     if not isinstance(data, dict):
         return SeekerConfig()
 
+    # Roadmap item 100 (B7) — a config.json written by an earlier
+    # version of the app may still hold a "write_cover_jpg_sidecars"
+    # key (R4.2's own opt-in, reversed here). Deliberately not read: an
+    # unknown key here is simply ignored, not an error, so no
+    # migration/tolerance code is needed for it.
     return SeekerConfig(
         slskd_base_url=data.get("slskd_base_url"),
         slskd_api_key=data.get("slskd_api_key"),
@@ -97,7 +93,6 @@ def load_config(path: Path) -> SeekerConfig:
         default_download_subfolder_per_playlist=data.get(
             "default_download_subfolder_per_playlist", True,
         ),
-        write_cover_jpg_sidecars=data.get("write_cover_jpg_sidecars", False),
         downloads_paused=data.get("downloads_paused", False),
         tray_hide_notice_shown=data.get("tray_hide_notice_shown", False),
         notify_downloads_finished=data.get("notify_downloads_finished", True),

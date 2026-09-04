@@ -164,6 +164,25 @@ def test_load_config_partial_shape_missing_key_does_not_crash(tmp_path):
     assert loaded.slskd_download_dir is None
 
 
+def test_load_config_tolerates_a_removed_field_still_present_in_the_file(
+        tmp_path,
+):
+    # Roadmap item 100 (B7.2) — write_cover_jpg_sidecars was removed
+    # from SeekerConfig (R4.2 reversed). A real config.json written by
+    # an earlier version of the app may still hold that key; loading it
+    # now must simply ignore the unknown key, not raise.
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({
+        "slskd_base_url": "http://localhost:5030",
+        "write_cover_jpg_sidecars": True,
+    }))
+
+    loaded = load_config(path)
+
+    assert loaded.slskd_base_url == "http://localhost:5030"
+    assert not hasattr(loaded, "write_cover_jpg_sidecars")
+
+
 def test_load_config_corrupt_json_does_not_crash(tmp_path):
     path = tmp_path / "config.json"
     path.write_text("{not valid json at all")

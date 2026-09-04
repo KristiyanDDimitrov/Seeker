@@ -99,7 +99,12 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B7 — Remove the cover.jpg sidecar feature
 
-- [ ] Not started.
+- [x] Removed `_write_cover_jpg_sidecar` + call sites,
+  `SeekerConfig.write_cover_jpg_sidecars`, the Settings toggle, and 7
+  tests. Loader tolerates a leftover key from an old config.json
+  (tested). 9 real `cover.jpg` files already in the library found via
+  a read-only `find` and left untouched — reported to the user.
+  Roadmap item 100 / HISTORY §100.
 
 ## B11 — Observations to confirm or dismiss
 

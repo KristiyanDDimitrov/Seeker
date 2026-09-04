@@ -1587,6 +1587,22 @@ compress it here before moving on to the next item.
     instead of a filled blob, but can't exercise AppKit's own real
     template auto-recolor pipeline.
 
+100. **B7 — removed the `cover.jpg` sidecar feature — done, a
+     deliberate reversal of R4.2.** Tested in the real world and didn't
+     pay off: `cover.jpg` is a Plex/Jellyfin/Kodi/foobar2000/Traktor
+     convention, never a macOS Finder one — nothing was ever going to
+     change in Finder from it, and this app's own playlist-shaped
+     folders (vs. a per-album folder assumption) meant a folder holding
+     tracks from several albums got one wrong cover, not a missing one.
+     Removed `_write_cover_jpg_sidecar` + both call sites,
+     `SeekerConfig.write_cover_jpg_sidecars` (loader still tolerates a
+     leftover key from an older config.json — tested), the Settings
+     toggle, and 7 tests covering the feature. **9 real `cover.jpg`
+     files already exist in the user's library from R4.2's own opt-in
+     — left in place per the standing rule (no file removed without
+     explicit confirmation); reported to the user, theirs to delete if
+     they want.** [HISTORY §100](docs/HISTORY.md#100)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

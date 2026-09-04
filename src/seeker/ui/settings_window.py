@@ -899,35 +899,13 @@ class SettingsPage(QWidget):
         self.thresholds_status_label = QLabel("")
         layout.addWidget(self.thresholds_status_label)
 
-        # Roadmap item R4.2 — opt-in cover.jpg sidecar. Off by default
-        # (config_store.py's own field default); a single checkbox
-        # that saves itself immediately on toggle, matching the "no
-        # separate save step for one boolean" precedent nothing else
-        # on this tab actually sets (thresholds are two related
-        # numbers that need a combined save/validation step; this is
-        # one independent flag).
-        cover_jpg_group = QGroupBox("Cover Art")
-        cover_jpg_layout = QVBoxLayout(cover_jpg_group)
-        self.write_cover_jpg_checkbox = QCheckBox(
-            "Also write cover.jpg next to each tagged file"
-        )
-        self.write_cover_jpg_checkbox.setToolTip(
-            help_text.TOOLTIP_WRITE_COVER_JPG_CHECKBOX
-        )
-        self.write_cover_jpg_checkbox.toggled.connect(
-            self._on_write_cover_jpg_toggled
-        )
-        cover_jpg_layout.addWidget(self.write_cover_jpg_checkbox)
-        cover_jpg_note = QLabel(help_text.WRITE_COVER_JPG_NOTE)
-        cover_jpg_note.setWordWrap(True)
-        cover_jpg_layout.addWidget(cover_jpg_note)
-        layout.addWidget(cover_jpg_group)
-
         # Roadmap item R7.5 — per-category menu-bar notification
         # toggles, all defaulting on (config_store.py's own field
-        # defaults). Same self-saving-checkbox shape as Cover Art
-        # above — three independent booleans, no combined validation
-        # step needed.
+        # defaults). A single checkbox that saves itself immediately on
+        # toggle, matching the "no separate save step for one boolean"
+        # precedent nothing else on this tab actually sets (thresholds
+        # are two related numbers that need a combined save/validation
+        # step; each of these is one independent flag).
         notifications_group = QGroupBox("Menu Bar Notifications")
         notifications_layout = QVBoxLayout(notifications_group)
 
@@ -976,13 +954,6 @@ class SettingsPage(QWidget):
 
         return tab
 
-    def _on_write_cover_jpg_toggled(self, checked: bool) -> None:
-        config_path = resolve_config_path()
-        current = load_config(config_path)
-        updated = replace(current, write_cover_jpg_sidecars=checked)
-        save_config(updated, config_path)
-        self.application._config_store = updated
-
     def _load_threshold_fields(self) -> None:
         config = self.application._config_store
 
@@ -995,13 +966,6 @@ class SettingsPage(QWidget):
         self.needs_review_threshold_field.setText(
             str(needs_review_threshold)
         )
-        # blockSignals — this is initial load, not a real user toggle;
-        # must not trigger _on_write_cover_jpg_toggled's own save.
-        self.write_cover_jpg_checkbox.blockSignals(True)
-        self.write_cover_jpg_checkbox.setChecked(
-            config.write_cover_jpg_sidecars
-        )
-        self.write_cover_jpg_checkbox.blockSignals(False)
 
         for checkbox, value in (
                 (self.notify_downloads_finished_checkbox,
