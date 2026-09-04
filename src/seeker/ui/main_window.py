@@ -543,6 +543,26 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     )
 
 
+def _wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
+    """Roadmap item 96 (B4.2) — the one place a progress bar gets put
+    into a cell-ready container, used by every exit of both
+    `_build_progress_widget` and `_build_terminal_progress_widget`. A
+    bare bar returned directly from a `setCellWidget` call gets resized
+    to the full cell rect by Qt, and the global stylesheet's `QProgress
+    Bar { max-height: 14px; }` then clamps it to the TOP of that tall
+    cell instead of centering it — exactly what a fourth branch could
+    reintroduce by skipping this helper. `label_text=None` omits the
+    label entirely (the indeterminate 'queued' branch — there's nothing
+    determinate to show an ETA for)."""
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(bar, 1)
+    if label_text is not None:
+        layout.addWidget(QLabel(label_text))
+    return container
+
+
 def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     # Roadmap item 56 Phase 5.4 — a fixed label, never the ETA tracker,
     # for a row that will never report new progress again. 'unavailable'
@@ -568,13 +588,7 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
 
     label_text = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
 
-    container = QWidget()
-    layout = QHBoxLayout(container)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(bar, 1)
-    layout.addWidget(QLabel(label_text))
-
-    return container
+    return _wrap_progress_bar(bar, label_text)
 
 
 def _build_progress_widget(
@@ -595,24 +609,20 @@ def _build_progress_widget(
         # No bytes reported yet — indeterminate ("busy") rather than a
         # 0%-forever bar that looks identical to actually being stuck.
         # No ETA either (Task 2): there's nothing determinate to
-        # estimate against.
+        # estimate against. Roadmap item 96 (B4.1) — wrapped in the
+        # same container shape as the determinate branch below, not
+        # returned bare: a bare bar gets clamped to the top of the cell
+        # (see _wrap_progress_bar's own docstring for why).
         bar.setRange(0, 0)
-        return bar
+        return _wrap_progress_bar(bar, None)
 
     bar.setRange(0, request.total_bytes)
     bar.setValue(request.bytes_transferred)
     theme.style_determinate_progress_bar(bar)
 
     # ETA only ever shown once the bar is determinate, per Task 2's own
-    # scoping — the indeterminate branch above is left exactly as it
-    # was before this feature.
-    container = QWidget()
-    layout = QHBoxLayout(container)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(bar, 1)
-    layout.addWidget(QLabel(eta_text or "Calculating…"))
-
-    return container
+    # scoping.
+    return _wrap_progress_bar(bar, eta_text or "Calculating…")
 
 
 class AboutDialog(QDialog):

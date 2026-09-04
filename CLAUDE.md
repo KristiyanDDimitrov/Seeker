@@ -1519,6 +1519,20 @@ compress it here before moving on to the next item.
     was the same reasoning applied uniformly rather than scoped to
     just one form.
 
+96. **B4 — the "Queued" progress bar sat at the top of its cell — done.**
+    `_build_progress_widget`'s indeterminate branch returned a bare
+    `QProgressBar` directly from `setCellWidget` — the global
+    `QProgressBar { max-height: 14px; }` rule then clamped it to the
+    top of a tall row (Qt's default for a widget smaller than its cell
+    with no layout), while the other two exits (determinate here, and
+    `_build_terminal_progress_widget`'s own determinate branch) already
+    wrapped their bar in a centering `QHBoxLayout` container. New
+    shared `_wrap_progress_bar(bar, label_text)` used by all three exits
+    (`label_text=None` omits the ETA label for the indeterminate case) —
+    a fourth branch can no longer reintroduce this by skipping it.
+    Pixel-verified: a queued and a downloading row's bars now both sit
+    within 2px of their row's own vertical center.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

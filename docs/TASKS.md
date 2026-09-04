@@ -60,7 +60,12 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B4 — Queued progress bar sits at the top of its cell
 
-- [ ] Not started.
+- [x] New shared `_wrap_progress_bar()` used by all three real bar-
+  wrapping exits — the indeterminate branch was the one returning a
+  bare bar. Pixel-verified: queued and downloading bars both land
+  within 2px of their row's own vertical center. Updated the
+  pre-existing test that had asserted the old (buggy) bare-widget
+  shape. Roadmap item 96.
 
 ## B2 + B6 — Table/card chrome (header dividers, Settings tables)
 

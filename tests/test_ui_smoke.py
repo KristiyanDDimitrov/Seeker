@@ -3112,10 +3112,24 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
 
     window._render_active_downloads([download])
 
-    bar = window.downloads_table.cellWidget(0, 4)
-    assert isinstance(bar, QProgressBar)
+    # Roadmap item 96 (B4) — wrapped in the same QHBoxLayout container
+    # shape as every other exit of _build_progress_widget/
+    # _build_terminal_progress_widget, not returned bare: a bare bar
+    # returned directly from setCellWidget gets resized to the FULL
+    # cell rect by Qt, and the global QProgressBar max-height: 14px
+    # rule then clamps it to the TOP of a tall row instead of centering
+    # it (the real reported bug — a queued row's bar visibly sat above
+    # center while a downloading row's own bar, already wrapped, sat
+    # centered).
+    container = window.downloads_table.cellWidget(0, 4)
+    assert not isinstance(container, QProgressBar)
+    bar = container.findChild(QProgressBar)
+    assert bar is not None
     assert bar.minimum() == 0
     assert bar.maximum() == 0
+    # No ETA label for an indeterminate bar — nothing determinate to
+    # estimate against (Task 2's own scoping, unchanged by the B4 fix).
+    assert container.findChildren(QLabel) == []
     # Real, live-found bug (Phase 3): ANY QProgressBar::chunk QSS rule
     # matching a bar, even one applied only to determinate bars
     # elsewhere, replaces Qt's native animated "busy" indeterminate
@@ -3130,8 +3144,8 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
 def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
     # A determinate bar is wrapped in a container alongside the ETA
     # label (Task 2) — the bar itself is a child widget, not the cell
-    # widget directly (unlike the indeterminate/no-progress cases above,
-    # which are left unchanged).
+    # widget directly (the indeterminate/queued case above is now
+    # wrapped the identical way, roadmap item 96).
     download = _make_active_download(
         status="downloading", bytes_transferred=500, total_bytes=1_000,
     )
@@ -3150,6 +3164,52 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
     # a global QSS rule (see theme.py's own QProgressBar::chunk
     # comment) — a determinate bar must actually receive it.
     assert "chunk" in bar.styleSheet()
+
+
+def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
+        qtbot,
+):
+    # Roadmap item 96 (B4.3) — real pixel verification of the reported
+    # bug: a queued row's bar used to sit clamped to the TOP of its
+    # cell (a bare bar returned from setCellWidget gets resized to the
+    # full, tall cell rect, then the global 14px max-height rule clamps
+    # it upward) while a downloading row's own bar, already wrapped in
+    # a container, sat centered. Both must now match.
+    downloads = [
+        _make_active_download(
+            track_id="t1", status="queued",
+            bytes_transferred=None, total_bytes=None,
+        ),
+        _make_active_download(
+            track_id="t2", status="downloading",
+            bytes_transferred=500, total_bytes=1_000,
+        ),
+    ]
+    application = FakeApplication(active_downloads=downloads)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window._show_page("downloads")
+
+    window._render_active_downloads(downloads)
+    qtbot.wait(20)
+
+    viewport = window.downloads_table.viewport()
+
+    for row in (0, 1):
+        row_rect = window.downloads_table.visualRect(
+            window.downloads_table.model().index(row, 4)
+        )
+        widget = window.downloads_table.cellWidget(row, 4)
+        assert widget is not None
+        bar = widget.findChild(QProgressBar)
+        assert bar is not None
+
+        bar_center_y = bar.mapTo(
+            viewport, bar.rect().center()
+        ).y()
+
+        assert abs(bar_center_y - row_rect.center().y()) <= 2
 
 
 def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
