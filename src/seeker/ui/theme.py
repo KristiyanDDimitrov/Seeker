@@ -540,14 +540,21 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     first window — `MainWindow.on_theme_changed()` (C5.4) is the
     runtime re-apply entry point for exactly that.
 
-    Roadmap item C5.5 — the macOS gotcha: changing the stylesheet alone
-    does NOT change the native window chrome (title bar, native
+    Roadmap item C5.5 — the macOS gotcha, UNVERIFIED (per the round-6
+    brief's own standing note — this claim has never actually been
+    checked on a real Mac; flagging it rather than continuing to state
+    it as fact, since this project has already been burned twice by an
+    unverified platform/framework claim written with this same
+    confidence — see D2/D5, round 6): changing the stylesheet alone is
+    believed to NOT change the native window chrome (title bar, native
     dialogs) — a light-mode app would otherwise keep a dark title bar.
     `QGuiApplication.styleHints().setColorScheme()` (real Qt 6.8+ API,
-    this project runs PySide6 6.11) is what makes the title bar follow.
-    An explicit `"light"`/`"dark"` choice sets it directly; `"system"`
-    resets it to `Unknown` so the OS's own current appearance keeps
-    driving native chrome without this app fighting it.
+    this project runs PySide6 6.11) is believed to be what makes the
+    title bar follow. An explicit `"light"`/`"dark"` choice sets it
+    directly; `"system"` resets it to `Unknown` so the OS's own current
+    appearance keeps driving native chrome without this app fighting
+    it. Verify by screenshotting the real title bar in all three modes
+    (D2.6) before trusting this description further.
     """
     app.setStyle("Fusion")
 

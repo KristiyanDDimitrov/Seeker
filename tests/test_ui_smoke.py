@@ -7744,6 +7744,52 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     assert window.isVisible()
 
 
+def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
+    # Roadmap item D5 (round 6) — the actual reported bug: a real
+    # user's left-click on the menu bar icon on a real Mac both opened
+    # the context menu (AppKit's own native behavior) AND restored the
+    # window (this code's own `Trigger` handling) — not what a menu bar
+    # extra should do. On macOS, `Trigger` must now be a no-op.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    monkeypatch.setattr(main_window_module.sys, "platform", "darwin")
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.close()
+    assert window._hidden_to_tray is True
+
+    window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+
+    assert window._hidden_to_tray is True
+    assert not window.isVisible()
+
+
+def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
+        qtbot, monkeypatch,
+):
+    # D5.1 — the original behavior is kept for the platforms it was
+    # actually written for: Trigger is the only signal a left-click
+    # produces there at all, so it should still restore the window.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    monkeypatch.setattr(main_window_module.sys, "platform", "win32")
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.close()
+    assert window._hidden_to_tray is True
+
+    window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+
+    assert window._hidden_to_tray is False
+    assert window.isVisible()
+
+
 def test_tray_check_now_triggers_backend_poll(qtbot, monkeypatch):
     _force_tray_available(monkeypatch, True)
     application = FakeApplication(soulseek_configured=True)

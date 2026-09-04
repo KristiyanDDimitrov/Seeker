@@ -174,6 +174,18 @@ src/seeker/
   moving on, never a new baseline to quietly adopt (round 3 let it
   drift from 1 documented flake to 3-4 unnamed ones without anyone
   asking why).
+- **A comment asserting platform or framework behavior must cite a
+  real observation or be explicitly marked unverified.** Round 6's
+  D5: a comment claiming "macOS routes a left-click on a
+  QSystemTrayIcon straight to its context menu already (Trigger never
+  fires there...)" was written with total confidence and never
+  checked — a real user's report on a real Mac proved it false. Same
+  shape as round 5's C1 (`QHeaderView::section:horizontal:last-child`,
+  invalid Qt QSS that silently poisoned the whole rule). An unmarked
+  confident claim about a framework this project has already been
+  wrong about twice is a liability, not documentation — write "found
+  live"/"confirmed live" when it's real, or say "UNVERIFIED" plainly
+  when it isn't yet.
 
 ## Commands
 

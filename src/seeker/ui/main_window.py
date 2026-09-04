@@ -6210,11 +6210,23 @@ class MainWindow(QMainWindow):
         self._tray_icon.show()
 
     def _on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        # macOS routes a left-click on a QSystemTrayIcon straight to its
-        # context menu already (Trigger never fires there the way it
-        # does on Windows/Linux) — this exists for those other
-        # platforms, where a left-click should behave like "Open
-        # Seeker" rather than doing nothing.
+        # Roadmap item D5 (round 6) — this comment used to assert, with
+        # no recorded observation behind it, that macOS routes a
+        # left-click straight to the context menu and Trigger never
+        # fires there. A real user's report (confirmed live: a single
+        # left-click on the menu bar icon both opened the context menu
+        # AND restored the window) is direct evidence that's false on
+        # PySide6 6.11/macOS — the exact "confident, unverified platform
+        # claim" failure mode this project has now hit twice (see
+        # CLAUDE.md's own standing convention on comments like this).
+        # Handled explicitly instead of assumed away: Trigger is skipped
+        # outright on macOS, so a left-click does only what AppKit
+        # already does with it (open the context menu) and nothing
+        # else — matching how an ordinary macOS menu bar extra behaves.
+        # Windows/Linux keep the original behavior, where Trigger is the
+        # only signal a left-click produces at all.
+        if sys.platform == "darwin":
+            return
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self._on_tray_open_seeker()
 
