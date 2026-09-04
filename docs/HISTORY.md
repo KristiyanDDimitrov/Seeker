@@ -12510,4 +12510,11 @@ change. Real menu bar visual confirmation in both appearances is left
 for the user (no Screen Recording permission in this sandboxed
 session, same gap as items 84/89/90/99).
 
+**Follow-up check, same session:** the onboarding wizard
+(`OnboardingWizard`) was rendered and inspected in both themes after
+the main sweep — it uses no `theme.TOKEN` references directly (pure
+global-QSS styling), and both renders were correct with no code
+change needed, confirming that class of widget really does self-heal
+via `QApplication.setStyleSheet()` alone as the architecture predicts.
+
 Full suite: **1086 passed, 1 skipped**. `mypy --strict src/` clean.
