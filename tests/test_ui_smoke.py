@@ -6852,6 +6852,22 @@ def test_tray_check_now_triggers_backend_poll(qtbot, monkeypatch):
     )
 
 
+def test_tray_check_now_action_is_named_unambiguously(qtbot, monkeypatch):
+    # Roadmap item 98 (B9.5) — "Check now" was ambiguous with the Help
+    # menu's own "Check for updates…" (a completely different action).
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    menu = window._tray_icon.contextMenu()
+    actions_by_text = {action.text(): action for action in menu.actions()}
+
+    assert "Check now" not in actions_by_text
+    assert "Check downloads now" in actions_by_text
+    assert actions_by_text["Check downloads now"].toolTip() != ""
+
+
 def test_tray_quit_calls_qapplication_quit(qtbot, monkeypatch):
     from PySide6.QtWidgets import QApplication
 
@@ -7054,12 +7070,15 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
 
 
 def test_resolve_tray_icon_path_dev_mode_points_at_real_repo_file():
+    # Roadmap item 98 (B9.1) — the real template asset, not the
+    # full-colour app .icns (setIsMask(True) against the .icns produced
+    # a solid filled squircle instead of a legible glyph).
     import sys
 
     assert not getattr(sys, "frozen", False)
     path = _resolve_tray_icon_path()
 
-    assert path.name == "seeker_icon.icns"
+    assert path.name == "seeker_menubar_Template.png"
     assert path.exists()
 
 
@@ -7071,4 +7090,4 @@ def test_resolve_tray_icon_path_frozen_mode_uses_meipass(monkeypatch, tmp_path):
 
     path = _resolve_tray_icon_path()
 
-    assert path == tmp_path / "icons" / "seeker_icon.icns"
+    assert path == tmp_path / "icons" / "seeker_menubar_Template.png"

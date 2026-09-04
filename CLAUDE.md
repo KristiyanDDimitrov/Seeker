@@ -1563,6 +1563,30 @@ compress it here before moving on to the next item.
     exactly as RR1.1 fixed it (asserts the About dialog's own separate
     label text, unaffected by this).
 
+99. **B9 — the macOS menu bar icon, and "Check now"'s real name —
+    done.** `_resolve_tray_icon_path()` now points at a real template
+    asset (`packaging/icons/seeker_menubar_Template.png`/`...@2x.png`,
+    37×18/75×36, committed this round) instead of the full-colour app
+    `.icns` — `setIsMask(True)` against the `.icns` discarded its
+    color and stamped only the alpha channel, which is one opaque
+    rounded square for the whole icon, producing the reported solid
+    squircle blob. The new asset is derived, not redrawn (luminance-
+    thresholded from the real 1024px icon, background circle dropped,
+    cropped to the artwork's bounding box, brow strokes dilated to
+    survive an 18px downscale, re-emitted as black pixels with the
+    glyph in the alpha channel) — reproducible, documented inline.
+    `seeker.spec` already bundles the whole `packaging/icons/`
+    directory as a `datas` entry (item 90), so the new PNGs need no
+    separate spec change. Tray's "Check now" (ambiguous with Help →
+    "Check for updates…", a wholly different action) renamed to "Check
+    downloads now" with a tooltip. **Left for the user:** the real
+    macOS menu bar check (both appearances) — this sandboxed session
+    has no Screen Recording permission (same gap as items 84/89/90); an
+    offscreen-rendered proxy (the icon composited on light/dark
+    swatches) confirms the alpha-channel glyph shape is now legible
+    instead of a filled blob, but can't exercise AppKit's own real
+    template auto-recolor pipeline.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

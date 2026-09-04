@@ -356,22 +356,30 @@ def _open_in_file_manager(path: Path) -> None:
 
 
 def _resolve_tray_icon_path() -> Path:
-    """Roadmap item R7.2 — same sys.frozen/sys._MEIPASS branch as
-    docker_setup.py's compose_file_path(): an ordinary `uv run
+    """Roadmap item R7.2/98 (B9.1) — same sys.frozen/sys._MEIPASS branch
+    as docker_setup.py's compose_file_path(): an ordinary `uv run
     seeker-ui` dev run resolves against this file's own real location
     in the source tree; a packaged build resolves against the
-    icons/ directory seeker.spec now bundles as a real PyInstaller
-    `datas` entry (this file previously only fed EXE()/BUNDLE()'s own
-    icon= at BUILD time — nothing made it available to the running
-    process at runtime, which would have left a real packaged build's
-    tray icon blank)."""
+    icons/ directory seeker.spec bundles as a real PyInstaller `datas`
+    entry (this file previously only fed EXE()/BUNDLE()'s own icon= at
+    BUILD time — nothing made it available to the running process at
+    runtime, which would have left a real packaged build's tray icon
+    blank).
+
+    Points at the real template asset (`seeker_menubar_Template.png` —
+    Qt auto-picks up `...@2x.png` via its own high-DPI file
+    convention), not the full-colour app `.icns` — see B9's own
+    CLAUDE.md entry for why setIsMask(True) on the app icon produced a
+    solid filled squircle instead of a legible glyph. The `.icns` stays
+    the app/Dock icon (BUNDLE()'s own icon= in seeker.spec), unaffected
+    by this."""
     if not getattr(sys, "frozen", False):
         return (
             Path(__file__).resolve().parent.parent.parent.parent
-            / "packaging" / "icons" / "seeker_icon.icns"
+            / "packaging" / "icons" / "seeker_menubar_Template.png"
         )
 
-    return Path(sys._MEIPASS) / "icons" / "seeker_icon.icns"  # type: ignore[attr-defined]
+    return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]
 
 
 def _build_support_links_row() -> QHBoxLayout:
@@ -5634,12 +5642,25 @@ class MainWindow(QMainWindow):
         # macOS "template image" convention — a monochrome glyph whose
         # alpha channel Qt/AppKit recolor automatically for the current
         # menu bar appearance (light/dark), instead of showing a fixed-
-        # color icon that can read wrong against either. Reuses the
-        # existing app icon rather than a dedicated menu-bar asset (no
-        # image-editing tool available in this environment to produce a
-        # proper simplified monochrome glyph) — a real, stated scoping
-        # gap, not an oversight: flagged here for a future pass with
-        # real asset tooling.
+        # color icon that can read wrong against either.
+        #
+        # Roadmap item 98 (B9) — setIsMask(True) against the full-colour
+        # app `.icns` (the original approach here) produced a solid
+        # filled squircle: setIsMask discards colour and stamps only the
+        # ALPHA channel, and the app icon's alpha is one opaque rounded
+        # square. `seeker_menubar_Template.png`/`...@2x.png` is a real,
+        # derived-not-redrawn template asset instead — reproducible if
+        # the app icon ever changes: the 1024px `seeker_icon.icns`
+        # artwork was thresholded on luminance (a flat background at
+        # 13.6 vs. artwork consistently > 30 gave a clean split), the
+        # faint background circle dropped, the result cropped to the
+        # artwork's own bounding box, the two brow strokes dilated
+        # slightly (thin strokes otherwise don't survive an 18px
+        # downscale), and the whole thing re-emitted as solid black
+        # pixels with the glyph carried entirely in the alpha channel —
+        # exactly what a template image is. Checked at real menu-bar
+        # size composited against both a light and a dark background
+        # before adopting it.
         icon.setIsMask(True)
 
         self._tray_icon = QSystemTrayIcon(icon, self)
@@ -5666,7 +5687,16 @@ class MainWindow(QMainWindow):
         )
         menu.addSeparator()
 
-        check_now_action = menu.addAction("Check now")
+        # Roadmap item 98 (B9.5) — "Check now" was ambiguous with Help
+        # menu's "Check for updates…" (a completely different action —
+        # this one triggers an immediate slskd download/upload status
+        # poll, not an app-update check). Renamed plainly, with a
+        # tooltip, so the two "check"s can't be confused.
+        check_now_action = menu.addAction("Check downloads now")
+        check_now_action.setToolTip(
+            "Refresh download/upload status immediately, instead of "
+            "waiting for the next automatic check."
+        )
         check_now_action.triggered.connect(self._on_tray_check_now)
         open_action = menu.addAction("Open Seeker")
         open_action.triggered.connect(self._on_tray_open_seeker)

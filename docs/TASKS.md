@@ -87,7 +87,15 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B9 — Menu bar icon + "Check now" rename
 
-- [ ] Not started.
+- [x] `_resolve_tray_icon_path()` points at the real template asset
+  (`seeker_menubar_Template.png`/`@2x.png`, now committed) instead of
+  the full-colour `.icns` that produced a solid squircle blob under
+  `setIsMask(True)`. `seeker.spec` already bundles the whole icons/
+  directory (item 90) — no spec change needed. "Check now" → "Check
+  downloads now" + tooltip. **Left for the user:** the real macOS menu
+  bar visual check (no Screen Recording permission in this session);
+  an offscreen proxy render confirms the glyph is legible, not a blob.
+  Roadmap item 99.
 
 ## B7 — Remove the cover.jpg sidecar feature
 
