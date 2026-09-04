@@ -10,8 +10,19 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QIcon
+from PySide6.QtCore import QRectF, QSize, Qt, QThreadPool, QTimer
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QPainter,
+    QPaintEvent,
+    QPixmap,
+)
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -380,6 +391,139 @@ def _resolve_tray_icon_path() -> Path:
         )
 
     return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]
+
+
+def _resolve_wordmark_brows_path() -> Path:
+    """Roadmap item C4 (round 5) — same `sys.frozen`/`sys._MEIPASS`
+    branch as `_resolve_tray_icon_path` above; `packaging/icons/`
+    already ships wholesale as a PyInstaller `datas` entry (item 90),
+    so no `seeker.spec` change is needed for this new asset."""
+    if not getattr(sys, "frozen", False):
+        return (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "packaging" / "icons" / "seeker_brows.svg"
+        )
+
+    return Path(sys._MEIPASS) / "icons" / "seeker_brows.svg"  # type: ignore[attr-defined]
+
+
+class _Wordmark(QWidget):
+    """Roadmap item C4 (round 5) — the sidebar's "Seeker" label, with
+    the logo's brow strokes composited above the real "ee". Draws its
+    own text (rather than a QLabel + a separately-positioned QLabel for
+    the brows) so the brow position can be derived from the SAME
+    QFontMetrics call that lays out the text — `horizontalAdvance("S")`
+    gives the left edge of "ee" and `horizontalAdvance("See") -
+    horizontalAdvance("S")` its width, so this survives a font/size
+    change with no hardcoded offset.
+
+    `QSvgRenderer` has no `currentColor` support (C4.3) — the SVG is
+    rendered to a `QPixmap` once at construction, then tinted with
+    `QPainter` `CompositionMode_SourceIn`, the same template-image
+    treatment `_resolve_tray_icon_path`'s asset gets from AppKit
+    natively. One untinted asset then serves any palette (dark today;
+    C5's light palette needs no second asset).
+
+    Degrades to plain text with no brows (C4.5) if the SVG asset is
+    missing or fails to parse — a packaged build must never show a
+    blank label just because one resource didn't make it into the
+    bundle.
+    """
+
+    _TEXT = "Seeker"
+    _BROW_GAP = 3
+    _BOTTOM_PADDING = theme.SPACING_MD  # matches the old label's own value
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._font = QFont()
+        self._font.setBold(True)
+        self._font.setPixelSize(20)
+        self._brows_pixmap = self._load_tinted_brows()
+
+    def _load_tinted_brows(self) -> QPixmap | None:
+        path = _resolve_wordmark_brows_path()
+        if not path.exists():
+            return None
+        renderer = QSvgRenderer(str(path))
+        if not renderer.isValid():
+            return None
+
+        dpr = self.devicePixelRatioF() if self.window() else 2.0
+        size = renderer.defaultSize()
+        if size.width() <= 0 or size.height() <= 0:
+            return None
+
+        pixmap = QPixmap(
+            max(1, round(size.width() * dpr)),
+            max(1, round(size.height() * dpr)),
+        )
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_SourceIn
+        )
+        painter.fillRect(
+            0, 0, pixmap.width(), pixmap.height(), QColor(theme.ACCENT),
+        )
+        painter.end()
+        return pixmap
+
+    def sizeHint(self) -> QSize:
+        metrics = QFontMetrics(self._font)
+        top = self._brow_reserve_height(metrics) if self._brows_pixmap else 0
+        text_size = metrics.boundingRect(self._TEXT).size()
+        return QSize(
+            text_size.width(),
+            text_size.height() + top + self._BOTTOM_PADDING,
+        )
+
+    def _brow_reserve_height(self, metrics: QFontMetrics) -> int:
+        assert self._brows_pixmap is not None
+        ee_width = self._ee_span(metrics)[1]
+        aspect = self._brows_pixmap.height() / self._brows_pixmap.width()
+        brow_height = ee_width * aspect
+        # Room for the brows AND the tallest capital letter ("S"), which
+        # rises higher above baseline than the "ee"'s own x-height.
+        return round(max(
+            brow_height + self._BROW_GAP,
+            metrics.capHeight() - metrics.xHeight(),
+        ))
+
+    def _ee_span(self, metrics: QFontMetrics) -> tuple[int, int]:
+        s_width = metrics.horizontalAdvance("S")
+        ee_width = metrics.horizontalAdvance("See") - s_width
+        return s_width, ee_width
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        metrics = QFontMetrics(self._font)
+        top_reserve = (
+            self._brow_reserve_height(metrics) if self._brows_pixmap else 0
+        )
+        baseline_y = top_reserve + metrics.ascent()
+
+        painter.setFont(self._font)
+        painter.setPen(QColor(theme.TEXT))
+        painter.drawText(0, baseline_y, self._TEXT)
+
+        if self._brows_pixmap is not None:
+            ee_left, ee_width = self._ee_span(metrics)
+            aspect = self._brows_pixmap.height() / self._brows_pixmap.width()
+            brow_height = ee_width * aspect
+            top_of_ee = baseline_y - metrics.xHeight()
+            brow_bottom = top_of_ee - self._BROW_GAP
+            target = QRectF(
+                ee_left, brow_bottom - brow_height, ee_width, brow_height,
+            )
+            painter.drawPixmap(target, self._brows_pixmap, QRectF(
+                0, 0, self._brows_pixmap.width(), self._brows_pixmap.height(),
+            ))
+        painter.end()
 
 
 def _build_support_links_row() -> QHBoxLayout:
@@ -1577,11 +1721,7 @@ class MainWindow(QMainWindow):
         )
         layout.setSpacing(theme.SPACING_XS)
 
-        wordmark = QLabel("Seeker")
-        wordmark.setStyleSheet(
-            f"font-size: 16px; font-weight: 700; color: {theme.TEXT}; "
-            f"padding-bottom: {theme.SPACING_MD}px;"
-        )
+        wordmark = _Wordmark()
         layout.addWidget(wordmark)
 
         self._nav_group = QButtonGroup(self)

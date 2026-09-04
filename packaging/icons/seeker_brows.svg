@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 507 150" width="507" height="150">
+  <!-- Seeker's two brow strokes, traced from the real app icon
+       (packaging/icons/seeker_icon.icns). Geometry measured, not
+       eyeballed: both strokes are 22.5 units thick with slope
+       +/-0.738, mirrored about the centre.
+
+       Qt's QSvgRenderer does not support `currentColor`, so the stroke
+       is a concrete black and the intended use is template-style:
+       render to a QPixmap, then tint with QPainter
+       CompositionMode_SourceIn - exactly how the menu bar icon is
+       handled. That way one asset serves both light and dark themes.
+
+       The viewBox carries 12 units of padding on every side so the
+       butt caps' perpendicular corners are not clipped (verified: the
+       painted bounding box is 5,4 -> 503,146 inside a 507x150 canvas).
+
+       Stroke width note: 22.5 includes the deliberate thickening
+       applied when the menu bar asset was derived, so the brows
+       survive being scaled down to a few pixels. The untouched artwork
+       is roughly 14.5 thick - use that instead if these read too heavy
+       at large sizes. Untuned, flagged per this project's convention. -->
+  <path d="M0 1.4 L167 124.7" stroke="#000000" stroke-width="22.5" stroke-linecap="butt"/>
+  <path d="M316 124.8 L483 1.5" stroke="#000000" stroke-width="22.5" stroke-linecap="butt"/>
+</svg>

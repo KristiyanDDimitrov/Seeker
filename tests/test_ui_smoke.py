@@ -48,6 +48,8 @@ from seeker.ui.main_window import (
     MainWindow,
     RenamePreviewDialog,
     _resolve_tray_icon_path,
+    _resolve_wordmark_brows_path,
+    _Wordmark,
 )
 from seeker.update_check import UpdateCheckResult, UpdateStatus
 from seeker.ui import workers as workers_module
@@ -7020,6 +7022,52 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
                     f"got a bare {type(widget).__name__} directly"
                 )
     assert checked > 0, "no cell widgets found — test itself is broken"
+
+
+# --- Roadmap item C4: wordmark with brows over the "ee" ---------------------
+
+def test_wordmark_size_hint_accommodates_the_full_word(qtbot):
+    wordmark = _Wordmark()
+    qtbot.addWidget(wordmark)
+
+    from PySide6.QtGui import QFontMetrics
+
+    metrics = QFontMetrics(wordmark._font)
+    text_width = metrics.boundingRect(wordmark._TEXT).size().width()
+
+    hint = wordmark.sizeHint()
+    assert hint.width() >= text_width
+    # Room reserved above the text for the brows, plus the bottom
+    # padding the old QLabel's own stylesheet used to apply.
+    assert hint.height() > metrics.boundingRect(wordmark._TEXT).height()
+
+
+def test_wordmark_degrades_to_plain_text_when_asset_is_missing(qtbot, monkeypatch):
+    # C4.5 — a packaged build missing this one resource must never show
+    # a blank label; render must still succeed and still show the word.
+    monkeypatch.setattr(
+        "seeker.ui.main_window._resolve_wordmark_brows_path",
+        lambda: Path("/nonexistent/seeker_brows.svg"),
+    )
+    wordmark = _Wordmark()
+    qtbot.addWidget(wordmark)
+
+    assert wordmark._brows_pixmap is None
+    # Must still render without crashing, and sizeHint must still cover
+    # the word (with no extra top reserve, since there are no brows).
+    wordmark.resize(wordmark.sizeHint())
+    wordmark.show()
+    qtbot.wait(20)
+    assert wordmark.sizeHint().width() > 0
+
+
+def test_wordmark_brows_asset_resolves_to_a_real_committed_file():
+    # Confirms the dev-mode (non-frozen) branch of the resolver points
+    # at the real, already-committed asset — not just that SOME path
+    # string is returned.
+    path = _resolve_wordmark_brows_path()
+    assert path.name == "seeker_brows.svg"
+    assert path.exists()
 
 
 # --- Roadmap item R7: run in the background from the macOS menu bar --------

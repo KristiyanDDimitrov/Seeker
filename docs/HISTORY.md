@@ -12282,3 +12282,76 @@ between "the background thread's list-append becomes visible" and "the
 main thread has processed the queued finished-signal event," which
 used to close fast enough in practice that this never actually fired in
 this project's own CI history before this round.
+
+### 106 — C4: wordmark, brows over the real "ee"
+
+Per the brief, the eye-replacement design (swapping the two `e`s in
+"Seeker" for eyes) was already tried, mocked in four treatments, and
+rejected before this item started — an eye is roughly 3:1 where a
+lowercase `e` is 1:1, so the pair reads triple-width at x-height and
+breaks the word into "S…ker" (the eye skipping the cluster as a symbol
+rather than reading as letters). The brows-only treatment was decided
+with the user as the one that works, and the asset (`packaging/icons/
+seeker_brows.svg`, two strokes traced from the real `seeker_icon.icns`,
+geometry measured not eyeballed) was already committed, untracked, at
+the start of this item.
+
+**Implementation.** New `ui/main_window.py::_Wordmark(QWidget)`
+replaces the sidebar's plain `QLabel("Seeker")`. It draws its own text
+via `QPainter` rather than using a QLabel plus a second, separately-
+positioned label for the brows — both draws share ONE `QFontMetrics`
+call, so the brow position is derived, not measured twice and risking
+drift: `horizontalAdvance("S")` gives the "ee" span's left edge,
+`horizontalAdvance("See") - horizontalAdvance("S")` its width. Size
+raised from 16px to 20px per the brief (at 16px the brows would be
+~2px tall and read as a smudge).
+
+`QSvgRenderer` has no `currentColor` support, so the SVG is rendered to
+a `QPixmap` once at construction (at the widget's real
+`devicePixelRatioF()`, falling back to `2.0` before the widget has a
+window if queried too early) and tinted via `QPainter`
+`CompositionMode_SourceIn` filled with `theme.ACCENT` — the identical
+template-image treatment `_resolve_tray_icon_path`'s PNG gets natively
+from AppKit (item 99), just done manually here since Qt's own SVG
+renderer doesn't support the CSS `currentColor` trick. One untinted
+asset then serves any palette — C5's light theme needs no second SVG,
+just a different fill color at render time.
+
+Vertical placement: the brow height is derived from the "ee" span's own
+width times the SVG's real aspect ratio (`150/507` from the viewBox),
+never a fixed pixel value, and the reserved space above the text is
+`max(brow_height + gap, capHeight - xHeight)` — the second term matters
+because the "S" is a capital letter and rises higher above baseline
+than the lowercase "ee" the brows are keyed to; without it, a tall
+capital's own top could clip against the widget's edge even though the
+brows themselves had enough room.
+
+**Screenshot, actually inspected (not just measured).** A real
+`window.grab()` crop (scaled 4x, offscreen QPA) shows two diagonal
+strokes sitting cleanly above "ee," reading clearly as "Seeker" with a
+small decorative brow accent — confirmed at both a tight crop (just the
+wordmark) and the full sidebar in context. First-pass geometry (no
+iteration needed): `s_width=13, ee_width=22` at the real 20px bold
+font, `capHeight=14, xHeight=11, ascent=19`, brow reserve `10px`.
+
+**C4.5 — graceful degradation, tested.** `test_wordmark_degrades_to_
+plain_text_when_asset_is_missing` monkeypatches the resolver to a
+nonexistent path and confirms the widget still constructs, sizes, and
+renders — `_brows_pixmap` is `None`, and `paintEvent` simply skips the
+`drawPixmap` call. A packaged build missing this one resource shows
+plain text, never a blank label.
+
+**C4.4 — spec bundling, confirmed not assumed.** `grep`-checked
+`packaging/seeker.spec`: `ICONS_DIR = SPEC_DIR / "icons"` is already a
+`datas` entry (item 90) covering the whole `packaging/icons/`
+directory wholesale — no spec change needed for the new SVG.
+`_resolve_wordmark_brows_path()` mirrors `_resolve_tray_icon_path`'s
+own `sys.frozen`/`sys._MEIPASS` branch exactly.
+
+**Not done, per the brief's own instruction:** C5.6's theme toggle
+(meant to sit on the same wordmark row) doesn't exist yet — C4 runs
+before C5 in this round's ordering. Whether the row still fits once
+that control exists is C5's own job to confirm, not assumed here.
+
+Full suite: **1063 passed, 1 skipped, in 70.66s** (3 new tests added,
+no stall). `mypy --strict src/` clean.

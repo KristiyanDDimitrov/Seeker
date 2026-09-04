@@ -1711,6 +1711,29 @@ compress it here before moving on to the next item.
      skipped, in 69.11s (no stall) — was inflated by real stall minutes
      before this fix. [HISTORY §105](docs/HISTORY.md#105)
 
+106. **C4 — wordmark: brows over the real "ee" — done, screenshot-
+     confirmed.** The eye-replacement idea (swapping the two `e`s for
+     eyes) was tried and abandoned last round — an eye is ~3:1 where a
+     lowercase `e` is 1:1, so the pair triple-widened and broke the
+     word into "S…ker." What works instead: `packaging/icons/
+     seeker_brows.svg` (two strokes traced from the real app icon,
+     already committed) composited above the real "ee." New
+     `ui/main_window.py::_Wordmark(QWidget)` replaces the plain
+     `QLabel("Seeker")`, drawing its own text at 20px bold (up from
+     16px) then compositing the brows via a SINGLE `QFontMetrics` call
+     — `horizontalAdvance("S")` for the left edge,
+     `horizontalAdvance("See") - horizontalAdvance("S")` for the width
+     — so the brow position survives any font/size change with no
+     hardcoded offset. `QSvgRenderer` has no `currentColor`, so the SVG
+     renders to a `QPixmap` once at construction and is tinted via
+     `QPainter` `CompositionMode_SourceIn` (`ACCENT`) — the same
+     template treatment `_resolve_tray_icon_path`'s asset gets natively
+     from AppKit, so one asset serves any future palette (C5 needs no
+     second one). Degrades to plain text with no brows if the asset is
+     missing (tested). `packaging/icons/` already ships wholesale in
+     `seeker.spec` — confirmed, not assumed, no spec change needed.
+     [HISTORY §106](docs/HISTORY.md#106)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
