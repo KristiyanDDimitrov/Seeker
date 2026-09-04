@@ -1505,6 +1505,20 @@ compress it here before moving on to the next item.
     calls stated in the module comment. The one real `.ogg` already in
     the library is untouched (indexing/playback unaffected).
 
+95. **B1 — Enter submits on wizard/Settings forms — done.**
+    `OnboardingWizard` is a `QMainWindow`, not a `QDialog`, so Qt's
+    autoDefault machinery never applied — Enter had no keyboard path to
+    any button at all before this. Wired `returnPressed` on the
+    wizard's Client ID field (guarded by `connect_button.isEnabled()`,
+    mirroring the click-disabled state) and SoulSeek username/password
+    fields (`_on_bring_up_clicked`'s own validation already covers
+    empty fields). Extended to every other single-obvious-submit-
+    target field in `settings_window.py` (destination subfolder,
+    Spotify client ID, SoulSeek update-credentials, both threshold
+    fields) — all four self-validate identically to a click, so this
+    was the same reasoning applied uniformly rather than scoped to
+    just one form.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

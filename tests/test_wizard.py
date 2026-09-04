@@ -254,6 +254,154 @@ def test_connect_spotify_button_calls_connect_spotify_and_advances(
     assert wizard.spotify_status_label.text() == "Connected."
 
 
+# --- Roadmap item 95 (B1.1): Enter submits the Spotify step ------------
+
+def test_client_id_return_pressed_connects_when_field_is_non_empty(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        application, "connect_spotify", lambda client_id: calls.append(client_id),
+    )
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    wizard.client_id_field.setText("real-client-id")
+    assert wizard.connect_button.isEnabled()
+
+    wizard.client_id_field.returnPressed.emit()
+
+    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    assert calls == ["real-client-id"]
+
+
+def test_client_id_return_pressed_does_nothing_when_field_is_empty(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        application, "connect_spotify", lambda client_id: calls.append(client_id),
+    )
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    assert wizard.client_id_field.text() == ""
+    assert not wizard.connect_button.isEnabled()
+
+    wizard.client_id_field.returnPressed.emit()
+
+    assert calls == []
+    assert wizard.stack.currentIndex() == 0
+
+
+# --- Roadmap item 95 (B1.2): Enter submits the SoulSeek step -----------
+
+def test_soulseek_username_return_pressed_triggers_bring_up_validation(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.RUNNING,
+    )
+    calls = []
+    monkeypatch.setattr(
+        "seeker.ui.wizard.bring_up_slskd",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    application.library_service.add_location("Library", str(tmp_path))
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    # Empty fields — Enter must reach _on_bring_up_clicked's own
+    # validation and produce the same message a click would, not
+    # silence.
+    wizard.soulseek_username_field.returnPressed.emit()
+
+    assert calls == []
+    assert "username" in wizard.soulseek_status_label.text().lower()
+
+
+def test_soulseek_password_return_pressed_calls_bring_up_slskd(
+        qtbot, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
+    )
+    monkeypatch.setattr(
+        "seeker.application.config.SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8888/callback",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.RUNNING,
+    )
+
+    class FakeResult:
+        returncode = 0
+        stderr = ""
+
+    calls = []
+    monkeypatch.setattr(
+        "seeker.ui.wizard.bring_up_slskd",
+        lambda **kwargs: (calls.append(kwargs), FakeResult())[1],
+    )
+    monkeypatch.setattr(
+        "seeker.ui.wizard.slskd_data_dir", lambda: tmp_path / "slskd-data",
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    application.library_service.add_location("Library", str(tmp_path))
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    # See test_bring_up_soulseek_calls_bring_up_slskd_with_real_values'
+    # own comment: this resumed-at-step-3 combination isn't reachable
+    # from the app's own real flow, but the state it produces is real
+    # and worth testing directly.
+    wizard._library_location_path = str(tmp_path)
+    qtbot.waitUntil(
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+    )
+
+    wizard.soulseek_username_field.setText("real-username")
+    wizard.soulseek_password_field.setText("real-password")
+
+    wizard.soulseek_password_field.returnPressed.emit()
+
+    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    assert calls[0]["soulseek_username"] == "real-username"
+    assert calls[0]["soulseek_password"] == "real-password"
+
+
 def test_choose_library_folder_registers_location_and_advances(
         qtbot, tmp_path, monkeypatch,
 ):

@@ -160,6 +160,16 @@ class OnboardingWizard(QMainWindow):
         self.client_id_field.textChanged.connect(
             self._update_connect_button_state
         )
+        # Roadmap item 95 (B1.1) — OnboardingWizard is a QMainWindow,
+        # not a QDialog, so Qt's autoDefault/default-button machinery
+        # never applies here; Enter had no keyboard path to Connect at
+        # all before this. Guarded the same way a click already is
+        # (connect_button.isEnabled()) rather than a second, drifting
+        # emptiness check — Enter on an empty field must do nothing,
+        # same as clicking a disabled button would.
+        self.client_id_field.returnPressed.connect(
+            self._on_client_id_return_pressed
+        )
         layout.addWidget(self.client_id_field)
 
         self.connect_button = QPushButton("Connect")
@@ -183,6 +193,10 @@ class OnboardingWizard(QMainWindow):
 
     def _update_connect_button_state(self, text: str) -> None:
         self.connect_button.setEnabled(bool(text.strip()))
+
+    def _on_client_id_return_pressed(self) -> None:
+        if self.connect_button.isEnabled():
+            self._on_connect_spotify_clicked()
 
     def _on_connect_spotify_clicked(self) -> None:
         client_id = self.client_id_field.text().strip()
@@ -361,6 +375,14 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_username_field.setToolTip(
             help_text.TOOLTIP_SOULSEEK_USERNAME_FIELD
         )
+        # Roadmap item 95 (B1.2) — no extra guard needed here:
+        # _on_bring_up_clicked already validates non-empty, whitespace,
+        # Docker state, and library location, writing a real status
+        # message for each — Enter from an empty field gets that same
+        # message, not silence.
+        self.soulseek_username_field.returnPressed.connect(
+            self._on_bring_up_clicked
+        )
         layout.addWidget(self.soulseek_username_field)
 
         self.soulseek_password_field = QLineEdit()
@@ -372,6 +394,9 @@ class OnboardingWizard(QMainWindow):
         )
         self.soulseek_password_field.setToolTip(
             help_text.TOOLTIP_SOULSEEK_PASSWORD_FIELD
+        )
+        self.soulseek_password_field.returnPressed.connect(
+            self._on_bring_up_clicked
         )
         layout.addWidget(self.soulseek_password_field)
 

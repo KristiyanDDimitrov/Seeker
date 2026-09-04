@@ -330,6 +330,13 @@ class SettingsPage(QWidget):
         self.destination_subfolder_field.setToolTip(
             help_text.TOOLTIP_DESTINATION_SUBFOLDER_FIELD
         )
+        # Roadmap item 95 (B1.3) — one field, one obvious submit target
+        # (Save destination), same reasoning/muscle-memory as B1.1/B1.2;
+        # _on_save_destination_clicked already validates a playlist/
+        # location are selected and writes a real status message.
+        self.destination_subfolder_field.returnPressed.connect(
+            self._on_save_destination_clicked
+        )
         form.addRow("Subfolder:", self.destination_subfolder_field)
         right.addLayout(form)
 
@@ -552,6 +559,12 @@ class SettingsPage(QWidget):
         self.spotify_client_id_field.setToolTip(
             help_text.TOOLTIP_SPOTIFY_CLIENT_ID_FIELD
         )
+        # Roadmap item 95 (B1.3) — one field, one obvious submit target
+        # (Re-authorize); _on_reauthorize_spotify_clicked already
+        # validates non-empty and writes a real status message.
+        self.spotify_client_id_field.returnPressed.connect(
+            self._on_reauthorize_spotify_clicked
+        )
         spotify_form.addRow("Client ID:", self.spotify_client_id_field)
 
         self.reauthorize_spotify_button = QPushButton("Re-authorize")
@@ -609,6 +622,13 @@ class SettingsPage(QWidget):
         self.new_soulseek_username_field.setToolTip(
             help_text.TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD
         )
+        # Roadmap item 95 (B1.3) — the SoulSeek credentials form the
+        # brief names directly: one obvious submit target (Update
+        # credentials); _on_update_credentials_clicked already
+        # validates non-empty and writes a real status message.
+        self.new_soulseek_username_field.returnPressed.connect(
+            self._on_update_credentials_clicked
+        )
         soulseek_form.addRow(
             "New username:", self.new_soulseek_username_field
         )
@@ -622,6 +642,9 @@ class SettingsPage(QWidget):
         )
         self.new_soulseek_password_field.setToolTip(
             help_text.TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD
+        )
+        self.new_soulseek_password_field.returnPressed.connect(
+            self._on_update_credentials_clicked
         )
         soulseek_form.addRow(
             "New password:", self.new_soulseek_password_field
@@ -820,6 +843,13 @@ class SettingsPage(QWidget):
         self.auto_match_threshold_field.setToolTip(
             help_text.TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD
         )
+        # Roadmap item 95 (B1.3) — one obvious submit target (Save
+        # thresholds) shared by both fields in this form;
+        # _on_save_thresholds_clicked already validates both are real
+        # numbers in the right order and writes a real status message.
+        self.auto_match_threshold_field.returnPressed.connect(
+            self._on_save_thresholds_clicked
+        )
         form.addRow(
             "Auto-match threshold:", self.auto_match_threshold_field
         )
@@ -827,6 +857,9 @@ class SettingsPage(QWidget):
         self.needs_review_threshold_field = QLineEdit()
         self.needs_review_threshold_field.setToolTip(
             help_text.TOOLTIP_NEEDS_REVIEW_THRESHOLD_FIELD
+        )
+        self.needs_review_threshold_field.returnPressed.connect(
+            self._on_save_thresholds_clicked
         )
         form.addRow(
             "Needs-review threshold:", self.needs_review_threshold_field

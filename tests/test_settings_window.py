@@ -452,6 +452,43 @@ def test_save_destination_without_selected_playlist_shows_message(
     assert "playlist" in window.destinations_status_label.text().lower()
 
 
+def test_destination_subfolder_return_pressed_saves_destination(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Roadmap item 95 (B1.3).
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    add_playlist(
+        application, Playlist(id="p1", name="240KM/H", track_count=3),
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window.destinations_playlist_list.count() == 1,
+        timeout=2000,
+    )
+    window.destinations_playlist_list.setCurrentRow(0)
+
+    combo_index = window.destination_location_combo.findData("Main")
+    window.destination_location_combo.setCurrentIndex(combo_index)
+    window.destination_subfolder_field.setText("DnB")
+
+    window.destination_subfolder_field.returnPressed.emit()
+
+    qtbot.waitUntil(
+        lambda: window.destinations_status_label.text() != "",
+        timeout=2000,
+    )
+
+    with application.database.transaction() as connection:
+        playlist = application.sync_service.playlists.get_by_name(
+            "240KM/H", connection,
+        )
+    assert playlist.download_subfolder == "DnB"
+
+
 # --- Connection management (§3) -----------------------------------------
 
 def test_connection_tab_displays_current_config_values(
@@ -511,6 +548,30 @@ def test_reauthorize_spotify_calls_connect_spotify_with_force_flag(
 
     window.spotify_client_id_field.setText("new-client-id")
     window.reauthorize_spotify_button.click()
+
+    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    assert calls == [("new-client-id", True)]
+
+
+def test_spotify_client_id_return_pressed_calls_connect_spotify(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Roadmap item 95 (B1.3).
+    application = make_application(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        application,
+        "connect_spotify",
+        lambda client_id, force_reauthorize=False: calls.append(
+            (client_id, force_reauthorize)
+        ),
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.spotify_client_id_field.setText("new-client-id")
+    window.spotify_client_id_field.returnPressed.emit()
 
     qtbot.waitUntil(lambda: calls != [], timeout=2000)
     assert calls == [("new-client-id", True)]
@@ -616,6 +677,51 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
     assert application._config_store.slskd_api_key == "generated-key"
 
 
+def test_soulseek_password_return_pressed_calls_update_credentials(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Roadmap item 95 (B1.3) — the SoulSeek credentials form the brief
+    # names directly.
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+
+    bring_up_calls = []
+
+    class FakeResult:
+        returncode = 0
+        stderr = ""
+
+    def fake_bring_up(**kwargs):
+        bring_up_calls.append(kwargs)
+        return FakeResult()
+
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.bring_up_slskd", fake_bring_up,
+    )
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.generate_api_key",
+        lambda: "generated-key",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.slskd_data_dir", lambda: tmp_path / "slskd-data",
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window._locations_by_name != {}, timeout=2000,
+    )
+
+    window.new_soulseek_username_field.setText("realuser")
+    window.new_soulseek_password_field.setText("realpass")
+    window.new_soulseek_password_field.returnPressed.emit()
+
+    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    assert bring_up_calls[0]["soulseek_username"] == "realuser"
+    assert bring_up_calls[0]["soulseek_password"] == "realpass"
+
+
 def test_update_credentials_without_username_or_password_makes_no_call(
         qtbot, tmp_path, monkeypatch,
 ):
@@ -696,6 +802,24 @@ def test_save_thresholds_persists_valid_values(qtbot, tmp_path, monkeypatch):
     window.auto_match_threshold_field.setText("85")
     window.needs_review_threshold_field.setText("65")
     window.save_thresholds_button.click()
+
+    assert application._config_store.auto_match_threshold == 85.0
+    assert application._config_store.needs_review_threshold == 65.0
+    assert "saved" in window.thresholds_status_label.text().lower()
+
+
+def test_needs_review_threshold_return_pressed_saves_thresholds(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Roadmap item 95 (B1.3).
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.auto_match_threshold_field.setText("85")
+    window.needs_review_threshold_field.setText("65")
+    window.needs_review_threshold_field.returnPressed.emit()
 
     assert application._config_store.auto_match_threshold == 85.0
     assert application._config_store.needs_review_threshold == 65.0

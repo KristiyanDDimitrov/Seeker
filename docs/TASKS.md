@@ -50,7 +50,13 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B1 — Enter submits on wizard/Settings forms
 
-- [ ] Not started.
+- [x] `returnPressed` wired on wizard's Client ID (guarded by
+  `connect_button.isEnabled()`) and SoulSeek username/password fields
+  (`_on_bring_up_clicked`'s own validation covers empty fields).
+  Extended to every other single-obvious-submit-target field in
+  Settings (destination subfolder, Spotify client ID, SoulSeek
+  update-credentials, both threshold fields). 8 new tests.
+  Roadmap item 95.
 
 ## B4 — Queued progress bar sits at the top of its cell
 
