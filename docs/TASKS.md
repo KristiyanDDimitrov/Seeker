@@ -80,7 +80,10 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B10 — Window title shows a commit SHA
 
-- [ ] Not started.
+- [x] `setWindowTitle` → plain `"Seeker"`. About dialog (real home for
+  build identity) untouched. Updated the one test that asserted the
+  old title; left the About-dialog test as RR1.1 fixed it. Roadmap
+  item 98.
 
 ## B9 — Menu bar icon + "Check now" rename
 

@@ -664,14 +664,11 @@ def test_main_window_constructs_without_crashing(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
-    # fallback. Reliable regardless of whether a real packaging build
-    # has ever run on this machine (round 3's own RR1.2 fix) —
-    # conftest.py's autouse fixture forces seeker._build_info's fields
-    # back to "dev" for the whole suite; a leftover real
-    # _build_info_generated.py from a local `.dmg` build (gitignored,
-    # never cleaned up by anything) used to make this assertion fail.
-    assert window.windowTitle() == "Seeker — dev"
+    # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit SHA
+    # in the window title looked like a bug even when it wasn't one.
+    # Build identity's real home is Help -> About Seeker (see
+    # test_about_dialog_shows_build_identity), unaffected by this.
+    assert window.windowTitle() == "Seeker"
 
 
 # --- Sidebar shell (Phase 4) ------------------------------------------------

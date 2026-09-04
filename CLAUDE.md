@@ -1554,6 +1554,15 @@ compress it here before moving on to the next item.
     fix landed in one file and not the other" gap for good. Pixel-
     verified: Downloads, Duplicates, and Settings → Library Locations.
 
+98. **B10 — window title showed a commit SHA — done.** Reversed item 81
+    (0.1): `setWindowTitle(f"Seeker — {_build_info.GIT_SHA}")` → plain
+    `"Seeker"`. Build identity's real home, Help → About Seeker, is
+    untouched — `AboutDialog` already renders `GIT_SHA`/`GIT_DESCRIBE`/
+    `BUILT_AT`. Updated `test_main_window_constructs_without_crashing`'s
+    title assertion; left `test_about_dialog_shows_build_identity`
+    exactly as RR1.1 fixed it (asserts the About dialog's own separate
+    label text, unaffected by this).
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

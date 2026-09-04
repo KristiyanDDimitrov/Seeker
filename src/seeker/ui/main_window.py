@@ -1229,11 +1229,13 @@ class MainWindow(QMainWindow):
 
         self._build_tray_icon()
 
-        # Roadmap item 81 (0.1) — a real build identity in the window
-        # title, so "is this the build I think it is?" is a glance,
-        # not a guess. "dev" (the committed _build_info.py fallback)
-        # means an unmodified uv run, not a packaged build.
-        self.setWindowTitle(f"Seeker — {_build_info.GIT_SHA}")
+        # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit
+        # SHA in the one string a user reads most often looked like a
+        # bug even when it wasn't one. Build identity already has its
+        # correct home — Help -> About Seeker (below) already renders
+        # GIT_SHA/GIT_DESCRIBE/BUILT_AT — so the title stays the plain
+        # app name.
+        self.setWindowTitle("Seeker")
         self.resize(1180, 760)
         self.setMinimumSize(960, 640)
 
