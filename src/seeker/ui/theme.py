@@ -439,21 +439,32 @@ QHeaderView::section {{
     from this box model, so `border: none` above removed the native
     left/right section divider with no fallback underneath — "I can
     drag the column to resize it but I can't see where it is" is
-    exactly that missing edge. */
-    border-right: 1px solid {BORDER};
+    exactly that missing edge.
+
+    Roadmap item C1 (round 5) — B2.1's fix never actually rendered.
+    Root-caused with a real window.grab() bisect, not asserted:
+    `QHeaderView::section:horizontal:last-child` below (now deleted)
+    is CSS syntax, not valid Qt QSS (Qt's pseudo-state set has no
+    `last-child`) — its mere PRESENCE poisoned this entire `::section`
+    rule and dropped `border-right` everywhere, confirmed by a pixel
+    scan finding zero divider-colored pixels at any column boundary
+    with it present, and a full divider at every boundary with only
+    that one selector removed (`:last` alone, kept below, correctly
+    still suppresses just the trailing section). Once painting was
+    confirmed, this uses BORDER_STRONG rather than BORDER — measured
+    contrast against BG_SURFACE is 1.98:1 vs. 1.46:1, and the header is
+    one flat block with no alternating-row-color help for the eye,
+    unlike the body gridlines below (which stay BORDER; confirmed live
+    those were never actually missing). */
+    border-right: 1px solid {BORDER_STRONG};
     padding: 6px;
 }}
 
 /* Suppresses the divider on the trailing section — nothing to
-separate it FROM on that side. Qt's support for `:last`/`:horizontal:
-last-child` on QHeaderView::section is version-dependent; if this
-doesn't take on some platform, a divider surviving on the last column
-is a cosmetic nit, not a reason to drop the fix above. */
+separate it FROM on that side. `:last` is real, valid Qt QSS (see the
+item C1 comment above for the invalid selector this file used to carry
+alongside it). */
 QHeaderView::section:last {{
-    border-right: none;
-}}
-
-QHeaderView::section:horizontal:last-child {{
     border-right: none;
 }}
 

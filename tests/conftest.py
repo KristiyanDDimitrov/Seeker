@@ -1,6 +1,25 @@
 import pytest
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _apply_real_theme(qapp):
+    """Roadmap item C1 (round 5) — found live while bisecting the
+    header-divider bug: `theme.apply_theme()` was never called ANYWHERE
+    in this whole test suite before this fixture. Every widget built
+    by every UI test — including every prior "pixel-verified"
+    `window.grab()` check (item 102's B2.2/B4.3/B6.5) — was rendered
+    with Qt's un-styled default palette/style, not the real Fusion +
+    QSS + dark-palette stack the shipped app actually applies in
+    `main_ui.py`. Confirmed low-risk before adopting: running the full
+    suite with this fixture added changed exactly one outcome (this
+    round's own new header-divider test, which is specifically testing
+    QSS the app had never once rendered under test) — every other test
+    already passed against the real theme unchanged.
+    """
+    from seeker.ui import theme
+    theme.apply_theme(qapp)
+
+
 @pytest.fixture(autouse=True)
 def _force_dev_build_identity(monkeypatch):
     """Roadmap item RR1.2 — a real local packaging build leaves

@@ -11946,3 +11946,107 @@ that wasn't actually measuring what it claimed to.
 No code changed by this item — it verifies items 96 (B4) and 97
 (B2+B6)'s already-shipped fixes with real evidence; nothing here found
 a defect in the shipped code.
+
+### 103 — C1: header column dividers, a real bisect instead of a third guess
+
+Round 5's own brief opened with a hard rule: C1 had been "fixed" and
+reported green twice (B2/item 97, then re-verified in item 102) and the
+user still saw no divider on any header, anywhere. The brief mandated a
+cheapest-first bisect before touching the stylesheet again. Ran it for
+real, with a script driving a real offscreen `MainWindow` + `window.
+grab()` (not the app's own test suite yet — see below for why that
+mattered):
+
+**C1.1 — is it painting at all?** Sampled every pixel in a 7px-wide
+band around each column boundary, across the header's full height, on
+the UNMODIFIED stylesheet. Result: `(29, 25, 41)` (`BG_SURFACE`) at
+every single sample except the header's own bottom row, which showed
+`(58, 52, 78)` (`BORDER`, the `border-bottom` rule). Zero `border-right`
+pixels anywhere — not a contrast problem (a low-contrast divider would
+still show as an exact `BORDER`-colored pixel), a real absence.
+
+**C1.2 — the `:last` rules.** Rebuilt `STYLESHEET` in-process with only
+`QHeaderView::section:horizontal:last-child { border-right: none; }`
+deleted (keeping `QHeaderView::section:last`, real Qt QSS, untouched).
+Re-ran the C1.1 scan: dividers appeared at every column boundary except
+the trailing one, which stayed correctly suppressed. Confirmed the
+inverse too — with only the OTHER (`:last`) rule removed and the
+invalid `:horizontal:last-child` selector still present, dividers stay
+absent. Root cause isolated precisely: `:horizontal:last-child` is CSS
+syntax (`last-child`), not a member of Qt's real `QHeaderView::section`
+pseudo-state set (`:first`/`:last`/`:middle`/`:only-one`/`:selected`/
+`:next-selected`/`:previous-selected`/`:checked`/`:horizontal`/
+`:vertical`) — its mere presence in the stylesheet poisoned the entire
+`::section` rule block, dropping `border-right` (and, unverified but
+consistent, potentially anything else in that block) everywhere, with
+no warning and a stylesheet string that reads correctly on inspection.
+This is exactly why the previous two rounds' "the CSS is present and
+reads correctly" checks kept passing while the real render stayed
+broken — the text was never the problem.
+
+Fix: deleted the invalid `QHeaderView::section:horizontal:last-child`
+rule outright (kept `:last`, which alone already does the job). Per
+C1.4, also switched the header's own divider color from `BORDER` to
+`BORDER_STRONG` (1.98:1 vs. 1.46:1 contrast against `BG_SURFACE`) since
+the header is one flat block with no alternating-row-color help for the
+eye, unlike the body (confirmed unaffected — see below).
+
+**C1.5 — body gridlines, confirmed genuinely present.** Real pixel
+scans post-fix on Downloads, Duplicates, and Settings → Library
+Locations all found exact `BORDER` `(58, 52, 78)` at every body
+row-boundary sample — these were never actually missing, matching item
+102's own B2.2 finding.
+
+**C1.6 — screenshots, actually looked at.** `window.grab()` crops
+produced and inspected (via this session's own image-reading tool, not
+just measured) for Downloads (before: no visible divider anywhere
+between Track/Playlist/Role/Status/Progress; after: a clear vertical
+line between every column except the last), Duplicates (7 dividers
+across Group/Location/Path/Format/Bitrate/Similarity/Keep, none after
+the trailing Actions column), and Settings → Library Locations (3
+dividers across Name/Path/Reachable, none after Actions).
+
+**A materially larger finding, outside this item's own named scope:**
+while building the pixel-based regression test the brief asked for,
+discovered that `theme.apply_theme()` — the one function that applies
+Fusion style + the real QSS stylesheet + the dark `QPalette` — was
+never called ANYWHERE in the test suite. `main_ui.py` is the only
+caller in the whole codebase. This means every prior `window.grab()`
+"pixel-verified" claim in this project's own history, including item
+102's own B2.2/B4.3/B6.5 re-verification two rounds ago, was measured
+against a window rendered with Qt's un-styled platform default — not
+what `uv run seeker-ui` actually shows a user. It is the single biggest
+reason this round's own brief exists: three straight rounds of "fixed
+and pixel-verified" on the header divider, root-caused now to a bug
+that can ONLY be seen when the real stylesheet is actually applied.
+
+Fixed with a new session-scoped `autouse` fixture in `tests/conftest.py`
+(`_apply_real_theme`, depending on pytest-qt's own `qapp` fixture) that
+calls `theme.apply_theme(qapp)` once for the whole test session. Verified
+this was safe to adopt rather than assumed: ran the full suite before
+and after adding it — before, `col 0 is missing its real divider`
+failed as expected against the pre-fix stylesheet; every one of the
+other 1055 already-passing tests stayed passing, unchanged, both before
+and after. The real Fusion style and dark palette do not perturb any
+existing sizeHint()/geometry-based assertion in this suite.
+
+**A second, related bug this surfaced, also fixed:** two pre-existing
+`window.grab()` pixel tests (this item's new divider test while being
+written, and item 96's `test_downloads_tab_queued_and_downloading_
+bars_are_both_vertically_centered`) read LOGICAL-pixel Qt geometry
+(`mapTo`, `sectionPosition`, `visualRect`) directly into a QImage that
+`window.grab()` returns in DEVICE pixels. This machine's real Qt
+session reports `devicePixelRatio() == 2.0` — a bare ad hoc
+`QApplication` built outside the test session (used while first
+diagnosing this) reported `1.0`, which is why this went unnoticed
+during initial bisecting and only surfaced once the real pytest-qt
+session was used. The pre-existing test happened to still pass despite
+sampling the wrong image quadrant, purely because it compared two
+equally-mis-scaled quantities against a forgiving 2px tolerance — a
+real "passing for the wrong reason," the same class of gap this whole
+round exists to close. Both tests now scale every sampled coordinate by
+`image.width() / window.width()` rather than assuming any fixed ratio.
+
+Full suite after all of this: **1056 passed, 1 skipped** (this item's
+own new test is included in that count; the suite had 1055 passed, 1
+skipped before this item added it). `mypy --strict src/` clean.

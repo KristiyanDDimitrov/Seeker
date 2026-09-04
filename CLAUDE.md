@@ -1633,6 +1633,33 @@ compress it here before moving on to the next item.
      (item 45) re-scoring once a second local candidate existed, not
      this path. [HISTORY §101](docs/HISTORY.md#101)
 
+102. **C1 — header column dividers, real root cause found via a real
+     bisect (not a third guess) — done.** `QHeaderView::section:
+     horizontal:last-child` (CSS syntax, not valid Qt QSS) was
+     poisoning the ENTIRE `::section` rule, silently dropping
+     `border-right` everywhere — a `window.grab()` pixel scan found
+     zero divider-colored pixels at any boundary with it present, and
+     a full divider at every boundary with only that one selector
+     removed (`:last` alone, real Qt QSS, still correctly suppresses
+     the trailing divider). Header dividers now use `BORDER_STRONG`
+     (1.98:1 vs `BORDER`'s 1.46:1) — the header is one flat block with
+     no alternating-row-color help, unlike the body gridlines, which
+     were confirmed live to have never actually been missing. **Larger
+     finding, beyond this item's own scope:** `theme.apply_theme()` was
+     never called ANYWHERE in the test suite before this — every prior
+     `window.grab()`-based "pixel-verified" claim (item 102's own
+     B2.2/B4.3/B6.5) was rendered under Qt's default style/palette, not
+     the real Fusion+QSS+dark-palette stack the shipped app uses. Fixed
+     with a new session-scoped autouse fixture in `tests/conftest.py`;
+     confirmed low-risk by running the full suite before/after — only
+     this item's own brand-new test changed outcome, everything else
+     already passed against the real theme. Also found and fixed a
+     latent, previously-invisible bug this surfaced: two `window.grab()`
+     pixel tests read logical-pixel coordinates directly into a
+     device-pixel `QImage` with no `devicePixelRatio()` scaling (this
+     session's real Qt reports 2.0) — both happened to still pass by
+     coincidence before, for the wrong reason. [HISTORY §103](docs/HISTORY.md#103)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

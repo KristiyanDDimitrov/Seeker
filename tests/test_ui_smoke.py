@@ -3221,14 +3221,22 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
         int(theme.BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
     )
     top_left = viewport.mapTo(window, viewport.rect().topLeft())
+    # window.grab() returns a QImage in DEVICE pixels; every geometry
+    # query above (visualRect/mapTo) is in LOGICAL pixels. Discovered
+    # live adding item C1's own test: this real Qt session's
+    # devicePixelRatio is 2.0, silently sampling the wrong quadrant of
+    # the image before this fix — this test happened to still pass
+    # only because it compared two equally-mis-scaled quantities
+    # against a 2px tolerance, not because the coordinates were right.
+    dpr = image.width() / window.width()
 
     for row in (0, 1):
         row_rect = window.downloads_table.visualRect(
             window.downloads_table.model().index(row, 4)
         )
-        x = top_left.x() + row_rect.left() + 10
-        y0 = top_left.y() + row_rect.top()
-        y1 = top_left.y() + row_rect.bottom()
+        x = round((top_left.x() + row_rect.left() + 10) * dpr)
+        y0 = round((top_left.y() + row_rect.top()) * dpr)
+        y1 = round((top_left.y() + row_rect.bottom()) * dpr)
 
         painted_ys = [
             y for y in range(y0, y1 + 1)
@@ -3240,9 +3248,79 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
         ]
         assert painted_ys, f"row {row}: no painted bar pixels found"
 
-        painted_center = (painted_ys[0] + painted_ys[-1]) / 2
+        painted_center = (painted_ys[0] + painted_ys[-1]) / 2 / dpr
         row_center = top_left.y() + row_rect.center().y()
         assert abs(painted_center - row_center) <= 2
+
+
+def test_downloads_header_shows_a_real_divider_between_columns(qtbot):
+    # Roadmap item C1 (round 5) — a real window.grab() bisect found that
+    # `QHeaderView::section:horizontal:last-child` (invalid Qt QSS —
+    # `last-child` is CSS, not a real Qt pseudo-state) poisoned the
+    # WHOLE `QHeaderView::section` rule, silently dropping
+    # `border-right` everywhere despite the CSS text reading correctly
+    # — the exact "asserts a property, never looked at a pixel" failure
+    # mode the round-5 brief called out by name (this was "fixed" and
+    # reported green twice before, per B2/item 97). A test that greps
+    # the stylesheet string can't catch this class of bug at all — it
+    # must sample real painted pixels.
+    downloads = [
+        _make_active_download(
+            track_id="t1", status="downloading",
+            bytes_transferred=500, total_bytes=1_000,
+        ),
+    ]
+    application = FakeApplication(active_downloads=downloads)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window._show_page("downloads")
+    window._render_active_downloads(downloads)
+    qtbot.wait(100)
+
+    table = window.downloads_table
+    header = table.horizontalHeader()
+    image = window.grab().toImage()
+    header_top_left = header.mapTo(window, header.rect().topLeft())
+    header_h = header.height()
+    # window.grab() returns a QImage sized in DEVICE pixels, while every
+    # Qt geometry query above (mapTo/sectionPosition/etc.) is in LOGICAL
+    # pixels — on this machine's real Qt session (devicePixelRatio 2.0,
+    # discovered live; a bare ad hoc QApplication used while diagnosing
+    # this reported 1.0) sampling logical coordinates directly into the
+    # device-pixel image silently reads the wrong quadrant. Scale by the
+    # image's own real ratio rather than assuming any particular value.
+    dpr = image.width() / window.width()
+
+    border_strong_rgb = tuple(
+        int(theme.BORDER_STRONG[i:i + 2], 16) for i in (1, 3, 5)
+    )
+    ncols = table.columnCount()
+
+    for col in range(ncols):
+        section_end = header.sectionPosition(col) + header.sectionSize(col)
+        base_x = round((header_top_left.x() + section_end) * dpr)
+        y0 = round(header_top_left.y() * dpr)
+        y1 = round((header_top_left.y() + header_h - 1) * dpr)
+        dx_span = max(2, round(2 * dpr))
+        divider_present = any(
+            (
+                image.pixelColor(x, y).red(),
+                image.pixelColor(x, y).green(),
+                image.pixelColor(x, y).blue(),
+            ) == border_strong_rgb
+            for x in range(base_x - dx_span, base_x + dx_span + 1)
+            if 0 <= x < image.width()
+            # exclude the header's own bottom border row, which is
+            # unrelated to the per-column right-divider under test
+            for y in range(y0, y1)
+        )
+        if col == ncols - 1:
+            # the trailing section's divider is deliberately suppressed
+            # — nothing to separate it from on that side
+            assert not divider_present, f"col {col} (last) should have no divider"
+        else:
+            assert divider_present, f"col {col} is missing its real divider"
 
 
 def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
