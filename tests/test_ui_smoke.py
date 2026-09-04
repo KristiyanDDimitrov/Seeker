@@ -7231,6 +7231,115 @@ def test_theme_toggle_button_renders_all_three_modes_without_crashing(qtbot):
         assert button.toolTip() != ""
 
 
+# --- Roadmap item D2 (round 6): the theme toggle actually applying -------
+#
+# D2.1's real finding: `QGuiApplication.styleHints().setColorScheme()`
+# never actually changes `.colorScheme()` or emits `colorSchemeChanged`
+# under the offscreen QPA platform this whole suite runs on (confirmed
+# empirically, not assumed) — so the real re-entrancy bug (a live macOS
+# `colorSchemeChanged` firing synchronously from INSIDE
+# `theme.apply_theme()`'s own `setColorScheme()` call) cannot be forced
+# through the real signal in a headless test the way it happens on a
+# real Mac. The tests below exercise the actual fix mechanics directly
+# instead: D2.2's reordering (behavioral — the stylesheet itself, not
+# just the mode string/icon) and D2.3/D2.4's guard conditions.
+
+def test_theme_toggle_actually_changes_the_applied_stylesheet(qtbot):
+    # This is exactly the behavior D2 reports as broken: the mode
+    # string and icon updated while the real stylesheet did not. Assert
+    # the stylesheet itself, not just `window._theme_mode`.
+    from PySide6.QtWidgets import QApplication
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    app = QApplication.instance()
+    assert app is not None
+
+    window._theme_toggle.click()  # system -> light
+    assert theme.BG_SURFACE == theme.LIGHT.BG_SURFACE
+    assert theme.LIGHT.BG_SURFACE in app.styleSheet()
+
+    window._theme_toggle.click()  # light -> dark
+    assert theme.BG_SURFACE == theme.DARK.BG_SURFACE
+    assert theme.DARK.BG_SURFACE in app.styleSheet()
+
+    window._theme_toggle.click()  # dark -> system
+    resolved = theme.resolve_palette("system")
+    assert theme.BG_SURFACE == resolved.BG_SURFACE
+    assert resolved.BG_SURFACE in app.styleSheet()
+
+
+def test_apply_theme_mode_survives_a_synchronous_scheme_signal_mid_apply(
+        qtbot, monkeypatch,
+):
+    # Roadmap item D2.2/D2.3 — simulates the real defect directly: a
+    # `colorSchemeChanged` emission firing SYNCHRONOUSLY from inside
+    # `theme.apply_theme()`'s own `setColorScheme()` call, which is
+    # exactly what a real macOS run does and the offscreen QPA plugin
+    # does not (see the module comment above). Before the D2 fix, this
+    # re-entrant call would re-resolve and silently reapply the SYSTEM
+    # palette over the explicit "light" choice this call is making.
+    from PySide6.QtWidgets import QApplication
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    real_apply_theme = theme.apply_theme
+
+    def apply_theme_with_synchronous_signal(app, mode):
+        result = real_apply_theme(app, mode)
+        # A stray real-world signal arriving mid-call, regardless of
+        # what triggered it — the guard must hold regardless of cause.
+        window._on_system_color_scheme_changed(object())
+        return result
+
+    monkeypatch.setattr(theme, "apply_theme", apply_theme_with_synchronous_signal)
+
+    window._apply_theme_mode("light")
+
+    assert window._theme_mode == "light"
+    assert theme.BG_SURFACE == theme.LIGHT.BG_SURFACE
+    app = QApplication.instance()
+    assert app is not None
+    assert theme.LIGHT.BG_SURFACE in app.styleSheet()
+
+
+def test_system_scheme_handler_ignored_while_theme_is_being_applied(qtbot):
+    # Roadmap item D2.3 — the `_applying_theme` guard directly, with no
+    # dependency on whether the offscreen platform can emit the signal.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    calls: list[tuple[object, ...]] = []
+    window._apply_theme_mode = lambda *a, **k: calls.append(a)  # type: ignore[method-assign]
+    window._applying_theme = True
+
+    window._on_system_color_scheme_changed(object())
+
+    assert calls == []
+
+
+def test_system_scheme_handler_ignored_once_mode_is_no_longer_system(qtbot):
+    # Roadmap item D2.4 — the handler must not act just because it's
+    # still connected; it must check the CURRENT mode too, not rely
+    # solely on the subscription having been torn down in time.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._theme_mode = "light"
+    calls: list[tuple[object, ...]] = []
+    window._apply_theme_mode = lambda *a, **k: calls.append(a)  # type: ignore[method-assign]
+
+    window._on_system_color_scheme_changed(object())
+
+    assert calls == []
+
+
 # --- Roadmap item R7: run in the background from the macOS menu bar --------
 
 def _force_tray_available(monkeypatch, available: bool) -> None:

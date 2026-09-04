@@ -1519,6 +1519,16 @@ class MainWindow(QMainWindow):
         # theme toggle its real starting icon rather than a guess.
         self._theme_mode = application.theme_mode
         self._system_scheme_connected = False
+        # Roadmap item D2 (round 6) — re-entrancy guard: `apply_theme`'s
+        # own `setColorScheme()` call emits `colorSchemeChanged`, and
+        # while mode == "system" that signal is connected back to
+        # `_on_system_color_scheme_changed` — without this flag, that
+        # handler re-enters `_apply_theme_mode` DURING the outer call's
+        # own `theme.apply_theme()`, re-resolving and re-applying the
+        # system palette before the outer call's chosen mode ever gets
+        # to apply its own stylesheet. See `_apply_theme_mode` for the
+        # full fix (D2.2/D2.3).
+        self._applying_theme = False
 
         self._build_tray_icon()
 
@@ -1946,16 +1956,36 @@ class MainWindow(QMainWindow):
         this, never `theme.apply_theme()` directly. Keeps the toggle
         icon, Settings' own radios, and the persisted config in sync in
         every direction (C5.12).
+
+        Roadmap item D2 (round 6) — ordering is load-bearing, not
+        cosmetic. `self._theme_mode` is set and the system-scheme
+        subscription is synced BEFORE `theme.apply_theme()` runs, so an
+        explicit light/dark choice has already disconnected
+        `_on_system_color_scheme_changed` by the time
+        `apply_theme()`'s own `setColorScheme()` call emits
+        `colorSchemeChanged` — that signal used to reach the still-
+        connected handler mid-call, which re-resolved and silently
+        re-applied the SYSTEM palette over whatever this call was
+        trying to set, while the mode/icon/settings still ended up
+        showing the originally-requested mode (the exact reported
+        symptom: only the icon changed). `_applying_theme` is a second,
+        independent guard (D2.3) for the "system" -> "system" path,
+        where the subscription legitimately stays connected throughout.
         """
+        self._theme_mode = mode
+        self._sync_system_scheme_subscription()
+
         app = QApplication.instance()
         assert isinstance(app, QApplication)
-        theme.apply_theme(app, mode)
-        self._theme_mode = mode
+        self._applying_theme = True
+        try:
+            theme.apply_theme(app, mode)
+        finally:
+            self._applying_theme = False
 
         if persist:
             self.application.set_theme_mode(mode)
 
-        self._sync_system_scheme_subscription()
         self._theme_toggle.set_mode(mode)
         self.settings_page.sync_theme_mode(mode)
         self.on_theme_changed()
@@ -1980,6 +2010,17 @@ class MainWindow(QMainWindow):
         # The OS flipped appearance while mode == "system" — re-resolve
         # rather than reading `scheme` directly, so this stays correct
         # even if Qt's own Unknown-scheme fallback (DARK) is in play.
+        #
+        # Roadmap item D2.4 (round 6) — a blunt handler that re-applies
+        # unconditionally is a handler waiting to be re-broken by the
+        # next re-entrancy path someone finds. Two independent bail-outs:
+        # `_theme_mode != "system"` (the subscription should already be
+        # disconnected whenever this is true, but a handler must not
+        # depend on that alone) and `_applying_theme` (this signal firing
+        # as a direct side effect of `_apply_theme_mode`'s own in-flight
+        # `theme.apply_theme()` call, not a genuine later OS change).
+        if self._theme_mode != "system" or self._applying_theme:
+            return
         self._apply_theme_mode("system", persist=False)
 
     def on_theme_changed(self) -> None:
