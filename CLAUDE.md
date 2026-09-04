@@ -1073,6 +1073,17 @@ compress it here before moving on to the next item.
     wiring as higher-risk until this is root-caused — nothing here
     says it's the cause, but nothing rules it out either, and it's the
     newest code touching the exact step where this reproduces.
+    **Round 6 determination (requested by the round-6 brief): still a
+    separate, still-open defect from item 105 (C3)'s own "full-suite
+    stall" fix.** Different symptom (this app itself freezing mid-
+    fingerprinting a real production library — no Python thread able to
+    run at all — vs. item 105's `pytest` runner blocking on a queued,
+    unmocked `QMessageBox.information()` popped by a later test),
+    different trigger (real library scale vs. test execution order),
+    different mechanism (whatever holds the GIL for the whole process
+    vs. a modal dialog's own event loop waiting for a click that never
+    comes under offscreen QPA). Item 105 fixed a real bug, but not this
+    one — item 70 remains open with its root cause still unidentified.
     [HISTORY §70](docs/HISTORY.md#70)
 71. **Fix: "You're all set" (and any next-step CTA) reappeared ~2s after
     being dismissed — done.** `InlineNotice` gained a real
@@ -1799,6 +1810,104 @@ compress it here before moving on to the next item.
      agreed UI is a source toggle at the top-right of the Dashboard,
      Spotify green vs. SoundCloud orange. No code, no schema, no stubs
      written for this.
+
+109. **Fix D2 (round 6) — the theme toggle changed the icon but not the
+     palette — done.** `_apply_theme_mode` used to call
+     `theme.apply_theme()` (ending in `setColorScheme()`, which emits
+     `colorSchemeChanged`) BEFORE updating `self._theme_mode`/syncing
+     the system-scheme subscription — while in `"system"` mode, an
+     explicit click's own `setColorScheme()` re-entered the still-
+     connected handler mid-call, which silently reapplied the SYSTEM
+     palette over the one being set; only the mode string/icon (set
+     after) survived. Fixed by reordering (mode -> subscription ->
+     apply -> persist -> toggle/settings) plus an `_applying_theme`
+     re-entrancy guard. **Confirmed empirically: the offscreen QPA
+     platform this whole suite runs under never actually emits
+     `colorSchemeChanged` from `setColorScheme` at all** — the real
+     re-entrancy path can't be forced through the real signal in a
+     headless test; new tests exercise the fix directly (the applied
+     stylesheet itself, plus the guard via a simulated synchronous
+     signal-during-apply). [HISTORY §109](docs/HISTORY.md#109)
+110. **Fix D3 (round 6) — the C2.3 header-label floor was pinning
+     Stretch/ResizeToContents columns — done, but NOT confirmed to
+     reproduce the reported dead-space bug in this sandboxed session.**
+     `apply_table_defaults`'s floor loop ran at construction, before a
+     caller ever assigns its real resize modes, and called
+     `resizeSection()` on every column unconditionally — fighting
+     `Stretch`/`ResizeToContents` columns once assigned. Split into
+     `apply_table_defaults` (chrome only) + new
+     `apply_column_floors(table)` (floor, scoped to
+     `Interactive`/`Fixed` columns only, called AFTER resize modes are
+     set) — audited onto all 11 tables. **Honest result:** across every
+     scenario tried (normal render, pre-show render, live resize,
+     with/without the old loop), `sum(sectionSize)` already matched the
+     real viewport width in this offscreen harness both before and
+     after — the new D3.5 regression test does not discriminate old
+     vs. new code here. Kept anyway: the restructuring is correct on
+     its own terms regardless of reproduction. Real-desktop screenshots
+     of Search/Duplicates are the way to actually confirm this.
+     [HISTORY §110](docs/HISTORY.md#110)
+111. **Fix D1 (round 6) — wordmark clipped at the bottom, only the left
+     brow visible — done, two independent bugs.** `sizeHint()` measured
+     height with `boundingRect()` (ink, no descender) while
+     `paintEvent()` positions the baseline at `ascent()` with no
+     `descent()` reserved — fixed to reserve real font metrics
+     (`ascent()+descent()`) and `horizontalAdvance()` for width. The
+     brow pixmap's `drawPixmap` source rect used raw DEVICE-pixel
+     width/height instead of `deviceIndependentSize()` — at a real 2x
+     DPR this makes the source rect twice the actual image, so only the
+     left brow (top-left quadrant) ever painted; fixed and extracted
+     into a `@staticmethod _brow_source_rect()` for direct unit testing
+     with a synthetic 2x pixmap. **Standing gotcha, third occurrence
+     this project (see item 102/HISTORY §107):** this session's own
+     real devicePixelRatio is 1.0, where device and device-independent
+     pixels are numerically identical — a dpr-scaling bug like this
+     literally cannot be forced to reproduce through a real paint+grab
+     round trip here; test it with a synthetic pixmap instead. Also
+     fixed the construction-time dpr fallback (2.0 -> 1.0) and added a
+     `changeEvent` handler that re-renders on a real
+     `DevicePixelRatioChange`. [HISTORY §111](docs/HISTORY.md#111)
+112. **Fix D5 (round 6) — a menu bar left-click both opened the context
+     menu and the window on macOS — done.** `_on_tray_icon_activated`
+     connected `Trigger` unconditionally, guarded only by a comment
+     claiming "macOS routes a left-click... straight to its context
+     menu already (Trigger never fires there...)" — asserted with no
+     citation and never checked; a real user's report on a real Mac
+     (PySide6 6.11) proved it false. Fixed by skipping `Trigger`
+     outright on `sys.platform == "darwin"`; Windows/Linux unchanged.
+     **New standing convention (added to this file's Conventions
+     section): a comment asserting platform/framework behavior must
+     cite a real observation or say UNVERIFIED plainly** — this is the
+     second time an unmarked confident claim like this turned out wrong
+     (round 5's C1 was the CSS-invalid `:last-child` QSS selector).
+     Swept `ui/` for similar comments per the brief's instruction (mark,
+     don't fix): one real hit, `theme.py`'s C5.5 docstring claiming
+     `setColorScheme()` changes the native macOS title bar — never
+     actually checked on a real Mac — now marked UNVERIFIED.
+113. **Fix D4 (round 6) — closing a fullscreen window left a black
+     macOS Space behind — done, with a real Qt race found and fixed
+     along the way.** `closeEvent` used to `hide()` a still-fullscreen
+     window directly; a fullscreen window owns its own Space, which
+     stays with nothing in it until the window actually leaves
+     fullscreen — never triggered by `hide()` alone. Fixed to leave
+     fullscreen first (`showNormal()`), deferring the real hide to
+     `changeEvent`'s `WindowStateChange`. **Real race found live, not
+     guessed:** calling `hide()` SYNCHRONOUSLY from inside that same
+     `WindowStateChange` handling does not stick — reproduced 100%
+     directly, 0% after deferring via `QTimer.singleShot(0, ...)`,
+     confirmed empirically in an isolated repro before touching the
+     real class. Restores the pre-fullscreen geometry on reopen,
+     captured BEFORE requesting the exit (a second real, live-confirmed
+     bug: reading `normalGeometry()` back from inside the deferred
+     post-exit callback is itself unreliable — momentarily stale while
+     the platform window settles — even though the same call from
+     outside that callback already reports correctly). Checked all four
+     close/quit paths per the brief's own D4.3 ask: `⌘Q`/tray Quit goes
+     straight to `QApplication.quit()`, never through `closeEvent` at
+     all (confirmed via its own existing docstring) — structurally
+     immune regardless of fullscreen state, new test added; `⌘W` and
+     the red button both ultimately call `self.close()`, the same
+     `closeEvent` this item fixes. [HISTORY §113](docs/HISTORY.md#113)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
-    QEvent, QPointF, QRectF, QSize, Qt, QThreadPool, QTimer,
+    QEvent, QPointF, QRect, QRectF, QSize, Qt, QThreadPool, QTimer,
 )
 from PySide6.QtGui import (
     QAction,
@@ -1556,6 +1556,12 @@ class MainWindow(QMainWindow):
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
         self._hidden_to_tray = False
+        # Roadmap item D4 (round 6) — set while `closeEvent` is waiting
+        # for a fullscreen exit it just triggered to actually land
+        # (the transition is animated/async) before hiding to tray; see
+        # `closeEvent`/`changeEvent`.
+        self._pending_hide_after_fullscreen_exit = False
+        self._pre_fullscreen_geometry: QRect | None = None
         self._tray_icon: QSystemTrayIcon | None = None
         # R7.5 — de-duplicates "N item(s) need your decision" so it
         # only fires on a genuine INCREASE, never every poll tick the
@@ -6244,6 +6250,12 @@ class MainWindow(QMainWindow):
     def _on_tray_open_seeker(self) -> None:
         self._hidden_to_tray = False
         self.showNormal()
+        # D4.2 — give back the exact window the user had before it was
+        # hidden, rather than whatever `showNormal()` alone resolves to
+        # after a fullscreen-exit-then-hide cycle.
+        if self._pre_fullscreen_geometry is not None:
+            self.setGeometry(self._pre_fullscreen_geometry)
+            self._pre_fullscreen_geometry = None
         self.raise_()
         self.activateWindow()
         # Roadmap item R7.6 — the poll methods skip their own work
@@ -6339,6 +6351,61 @@ class MainWindow(QMainWindow):
             return
 
         event.ignore()
+
+        # Roadmap item D4 (round 6) — the actual reported bug: on
+        # macOS, a fullscreen window owns its own Space; hiding it
+        # while still fullscreen leaves that Space in place with
+        # nothing in it (the reported black Space), and the Space is
+        # only ever torn down when the window leaves fullscreen, which
+        # `hide()` alone never triggers. Leave fullscreen FIRST — the
+        # transition is animated/async, so the actual hide is deferred
+        # to `changeEvent` below, once Qt reports the state change has
+        # actually landed, rather than racing it in this same call.
+        if self.isFullScreen():
+            # D4.2 — captured HERE, before touching fullscreen state at
+            # all, not after the exit transition: confirmed live that
+            # `normalGeometry()` read back from inside the deferred
+            # post-exit callback below is unreliable — it can still
+            # report a stale/placeholder value for a tick while the
+            # platform window settles out of fullscreen, even though
+            # the same call made from outside that callback already
+            # reports correctly. Reading it here, before any state
+            # change is requested, has no such timing dependency at all.
+            self._pre_fullscreen_geometry = self.normalGeometry()
+            self._pending_hide_after_fullscreen_exit = True
+            self.showNormal()
+            return
+
+        self._hide_to_tray()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        # D4.1 — the deferred half of the fullscreen-exit-then-hide
+        # sequence `closeEvent` starts above: once Qt actually finishes
+        # leaving fullscreen (reported via `WindowStateChange`, not a
+        # guessed delay), hide to tray for real.
+        #
+        # Confirmed live, in this offscreen test session (not assumed —
+        # see CLAUDE.md's own standing convention on comments like this
+        # one): calling `hide()` SYNCHRONOUSLY from inside the very
+        # `changeEvent` call that reports the fullscreen-exit state
+        # change does not stick — the window is still mid-transition,
+        # and something in Qt's own handling re-asserts visibility once
+        # that transition finishes, silently undoing the `hide()`.
+        # Deferring the actual hide with `QTimer.singleShot(0, ...)` —
+        # letting this state-change event finish being handled first —
+        # reproducibly fixes it, 100% in repeated local runs, 0% for
+        # the direct-call version.
+        if (
+                self._pending_hide_after_fullscreen_exit
+                and event.type() == QEvent.Type.WindowStateChange
+                and not self.isFullScreen()
+        ):
+            self._pending_hide_after_fullscreen_exit = False
+            QTimer.singleShot(0, self._hide_to_tray)
+        super().changeEvent(event)
+
+    def _hide_to_tray(self) -> None:
+        assert self._tray_icon is not None
         self.hide()
         self._hidden_to_tray = True
 

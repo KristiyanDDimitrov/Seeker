@@ -12518,3 +12518,304 @@ change needed, confirming that class of widget really does self-heal
 via `QApplication.setStyleSheet()` alone as the architecture predicts.
 
 Full suite: **1086 passed, 1 skipped**. `mypy --strict src/` clean.
+
+### 109 — D2: the theme toggle changed the icon but not the palette
+
+The brief's own diagnosis, read from the source rather than reproduced
+live first: `_apply_theme_mode` called `theme.apply_theme()` — whose
+last act is `style_hints.setColorScheme(...)`, which emits
+`colorSchemeChanged` — BEFORE updating `self._theme_mode` or syncing
+the system-scheme subscription. While in `"system"` mode, an explicit
+`"light"`/`"dark"` click's own `setColorScheme()` call re-entered the
+still-connected `_on_system_color_scheme_changed` handler mid-call,
+which re-resolved (still reading the OLD `self._theme_mode`, since it
+hadn't been updated yet) and re-applied the SYSTEM palette right back
+over the one the outer call was setting. Because the mode string and
+toggle icon are set AFTER `apply_theme()` returns, they end up correct
+while the actual stylesheet silently isn't — exactly the reported
+symptom.
+
+**D2.1 confirmed the hypothesis couldn't be forced through the real
+signal in this environment, empirically, not assumed:**
+
+```python
+sh = QGuiApplication.styleHints()
+sh.setColorScheme(Qt.ColorScheme.Light)
+print(sh.colorScheme())  # ColorScheme.Unknown — unchanged, no signal
+```
+
+Under `QT_QPA_PLATFORM=offscreen`, `setColorScheme()` never actually
+changes `.colorScheme()` or emits `colorSchemeChanged` at all — this
+whole suite's tests could never have caught this bug through the real
+signal, which also explains why the existing tests (asserting
+`window._theme_mode` and the icon) stayed green through five rounds
+despite it.
+
+**Fix (D2.2/D2.3/D2.4):** `_apply_theme_mode` reordered to set
+`self._theme_mode` and sync the system-scheme subscription BEFORE
+calling `theme.apply_theme()` — so an explicit choice has already
+disconnected the handler by the time `setColorScheme()` could reach
+it. A second, independent `_applying_theme` guard covers the
+`"system"` -> `"system"` path, where the subscription legitimately
+stays connected throughout (the OS flipping appearance while already
+following it) — `setColorScheme(Unknown)` there could still emit and
+re-enter, so the guard is checked regardless of subscription state.
+The handler itself was also tightened to bail out whenever
+`self._theme_mode != "system"`, not just when it's expected to already
+be disconnected.
+
+**Testing without the real signal:** since the platform can't fire it,
+new tests exercise the mechanism directly — `theme.apply_theme` is
+monkeypatched to invoke `window._on_system_color_scheme_changed(...)`
+synchronously from INSIDE the real `apply_theme()` call (simulating
+exactly what a live macOS `colorSchemeChanged` emission mid-call would
+do), and the guard/handler conditions are each exercised by direct
+method calls with the relevant state pre-set. A separate behavioral
+test asserts the actual applied `QApplication.styleSheet()` string
+contains the target palette's `BG_SURFACE`, not just the mode string —
+the same gap that let this bug hide for five rounds.
+
+Full suite: 1090 passed, 1 skipped. `mypy --strict` clean.
+
+**Left open:** D2.6's real-desktop verification (all three modes,
+screenshots, the title bar) — needs a real Mac, not available in this
+sandboxed session.
+
+### 110 — D3: the C2.3 header-label floor fought Stretch columns — fix applied, bug not reproduced here
+
+The brief's diagnosis: `apply_table_defaults`'s C2.3 floor loop ran
+`header.resizeSection()` on EVERY column at construction time, before
+the caller ever assigns real per-column resize modes — so a column
+about to become `Stretch`/`ResizeToContents` gets an explicit width
+pinned onto it first, and (per the brief) that pinned width "sticks"
+even after the mode is changed, since changing resize mode doesn't
+itself trigger Qt to recompute a section's current size. The visible
+symptom: Search and Duplicates' `Stretch` columns (Filename/Path) sat
+at a narrow, roughly-uniform width instead of absorbing the leftover
+viewport, leaving a dead band to the right of "Actions."
+
+**D3.1's own instruction — measure before changing anything — was
+followed literally, and the numbers did not confirm the diagnosis.**
+A diagnostic harness (`MainWindow` + `FakeApplication`, real
+`_show_page`/`_render_*` calls, `qtbot.wait` between steps) measured
+`sum(sectionSize(i))` against `table.viewport().width()` across every
+combination tried:
+
+- Normal render (page shown, then populated) at both 960×640 and a
+  1180×760 default size.
+- Populated BEFORE the page was ever shown for the first time (the
+  scenario closest to "the table had no real geometry when its resize
+  modes were assigned").
+- A live window resize AFTER the table was already rendered, with no
+  re-render.
+- All of the above repeated with the OLD, unscoped floor loop
+  monkeypatched back in place (removing the D3.2/D3.3 fix entirely).
+
+In every one of these, `sum(sectionSize)` matched `viewport().width()`
+within 1px, both before and after the fix. Qt's `Stretch` resize mode,
+once assigned, correctly recomputed the column's width against the
+real available space in this offscreen-Qt environment regardless of
+whatever `resizeSection()` calls had run against it earlier. Removing
+the old floor loop entirely and rerunning the same scenarios produced
+byte-identical numbers to leaving it in place — direct evidence the
+loop was not the operative cause of any dead space reproducible here.
+
+**The fix was implemented anyway, per the brief's explicit request and
+because it is correct on independent grounds:** `apply_table_defaults`
+now only handles row/header chrome (hides the vertical header, floors
+row height); a new `theme.apply_column_floors(table)` applies the
+header-label floor only to columns still in `Interactive`/`Fixed` mode
+(skipping a `setStretchLastSection(True)` column too, even though its
+`sectionResizeMode()` still reports `Interactive`), and is called by
+each table's own `_size_*_columns` render method AFTER assigning real
+resize modes — audited onto all 11 real `QTableWidget`s in the app
+(the three with no `_size_*_columns` method of their own — Downloads,
+History, Sharing's uploads table — call it directly at construction,
+right after `apply_table_defaults`).
+
+**The new D3.5 regression test does not discriminate old vs. new code
+here, checked directly:** reverted just the source changes (kept the
+test), reran — it still passed against the OLD, unscoped floor loop.
+This is stated plainly rather than glossed over. Whether the reported
+dead-space bug needs an actual native display to reproduce (this
+project has hit that exact gap before — see D2 above, and item 102's
+own devicePixelRatio surprise) is unresolved; D3.6's real screenshots
+of Search and Duplicates are the way to actually confirm this is fixed
+on the real desktop.
+
+Full suite: 1091 passed, 1 skipped (`test_history_refresh_button_
+refetches` flaked once in the same session, confirmed via `git stash
+-u` to also fail intermittently on unmodified `main` — pre-existing,
+unrelated). `mypy --strict` clean.
+
+### 111 — D1: wordmark clipped at the bottom, only the left brow visible
+
+Two independent bugs in `_Wordmark`, both matching the brief's own
+line-numbered diagnosis exactly on inspection.
+
+**1a — clipped bottom.** `sizeHint()` measured height via
+`QFontMetrics.boundingRect("Seeker").size()` — the ink rect, roughly
+cap height since "Seeker" has no descenders — while `paintEvent()`
+positions the baseline at `top_reserve + metrics.ascent()` and never
+reserves `descent()` at all. The widget's requested height was
+therefore short by roughly `descent()`'s worth of pixels (~10px at
+this font), and Qt clipped the difference. Fixed to reserve
+`top + ascent() + descent() + BOTTOM_PADDING` — the same metrics
+`paintEvent` actually draws with. The matching width bug
+(`boundingRect().width()` omits the right side bearing
+`horizontalAdvance()` includes) was fixed the same way, maxed against
+the brow span so an overhanging brow can't be clipped either.
+
+**1b — only the left brow.** `_load_tinted_brows` builds the pixmap at
+device resolution (`QPixmap(width*dpr, height*dpr)`,
+`setDevicePixelRatio(dpr)`), but `paintEvent`'s `drawPixmap` source
+rect used the pixmap's raw `.width()`/`.height()` — DEVICE pixels.
+Once a `devicePixelRatio` is set on a `QPixmap`, `drawPixmap`'s source
+rect is interpreted in the pixmap's OWN device-INDEPENDENT coordinate
+space — so the old source rect was exactly double the real image in
+both axes, and only its top-left quadrant (the left brow; the two
+brows sit side by side spanning the full width) ever fell inside it.
+Fixed to use `pixmap.deviceIndependentSize()`.
+
+**Confirming this without real Retina hardware:** the same empirical
+check as D2/D3 above —
+
+```python
+print(QWidget().devicePixelRatioF())  # 1.0 under this offscreen session
+```
+
+At `dpr == 1.0`, device pixels and device-independent pixels are
+numerically identical, so the buggy and fixed source rects are
+byte-identical too — a real end-to-end `grab()`-based pixel test
+(built first, per D1.5's own "verify with a number, not an eye"
+instruction) passed against BOTH the old and the fixed code, exactly
+the same non-discrimination gap D3 hit. Forcing `devicePixelRatioF()`
+to return 2.0 via `monkeypatch` before constructing the widget doesn't
+fix this either — it creates a real widget/pixmap DPR mismatch (the
+pixmap thinks it's 2x, but the actual offscreen window/painter
+pipeline is still 1x), and Qt's own internal scaling for that
+mismatched combination doesn't behave like real 2x hardware would,
+so the grab-based assertions failed even against the ALREADY-FIXED
+code under that forced setup.
+
+The fix instead: extracted `_brow_source_rect(pixmap: QPixmap) ->
+QRectF` as a `@staticmethod` taking the pixmap explicitly, tested
+directly with a synthetic `QPixmap(200, 100)` +
+`setDevicePixelRatio(2.0)` — fully deterministic, no dependency on
+this session's real (1.0) ratio or on reproducing Qt's real rendering
+pipeline at all. Confirmed to fail against the pre-fix source
+(`AttributeError` — the method didn't exist) before being satisfied by
+the fix. A coarse end-to-end `grab()`-based smoke test is kept
+separately, at this session's real 1.0 dpr, asserting both halves of
+"ee" show accent-colored pixels — a basic "did the asset render at
+all" check, not proof of the dpr fix specifically.
+
+Also fixed per D1.6: the construction-time dpr fallback (`self.window()
+else 2.0` -> `else 1.0` — a guessed "probably Retina" value is exactly
+as likely to be wrong as right) and a new `changeEvent` override
+re-rendering the brow pixmap on a real `DevicePixelRatioChange`, tested
+by monkeypatching the instance's own `devicePixelRatioF` and calling
+`changeEvent` directly with a synthetic event.
+
+Full suite: 1095 passed, 1 skipped (one single unrelated flake in
+`test_close_event_falls_back_to_real_close_when_no_tray` seen once in
+a full run, not reproduced in 3 isolated `test_ui_smoke.py` reruns or
+a subsequent full-suite run). `mypy --strict` clean.
+
+**Left open:** D1.7's real-desktop screenshots (both themes, 1x and 2x
+if available) — needs a real Mac.
+
+### 113 — D4: closing a fullscreen window left a black macOS Space behind
+
+The brief's diagnosis: on macOS a fullscreen window owns its own
+Space; `closeEvent` used to `event.ignore()` + `self.hide()`
+unconditionally, and hiding a window that's currently fullscreen
+leaves that Space in place with nothing in it — the Space is only torn
+down when the window actually leaves fullscreen, which plain `hide()`
+never triggers. Confirmed by reading the code; not independently
+reproducible on a real Mac from this sandboxed session (no Screen
+Recording/Accessibility permission, same class of gap as several prior
+items).
+
+**Fix, first attempt (D4.1) — leave fullscreen, then hide once the
+state change lands via `changeEvent`'s `WindowStateChange`:**
+
+```python
+def changeEvent(self, event):
+    if self._pending_hide_after_fullscreen_exit and not self.isFullScreen():
+        self._pending_hide_after_fullscreen_exit = False
+        self._hide_to_tray()   # calls self.hide() directly
+```
+
+This did not work — a new offscreen test
+(`showFullScreen()` -> `close()` -> assert `isHidden()`) failed: the
+window was NOT hidden, despite the handler running, the pending flag
+correctly clearing, and `_hidden_to_tray` correctly becoming `True`.
+
+**Isolated the exact mechanism with a minimal reproduction outside the
+real class**, confirming a real, reproducible Qt race rather than
+guessing at a fix:
+
+```python
+class W(QMainWindow):
+    pending = False
+    def changeEvent(self, event):
+        if self.pending and event.type() == QEvent.Type.WindowStateChange and not self.isFullScreen():
+            self.pending = False
+            self.hide()   # <- direct call
+        super().changeEvent(event)
+```
+
+Calling `hide()` synchronously from inside the very `changeEvent` that
+reports the fullscreen-exit transition does not stick — `isHidden()`
+reads `False` immediately after and after further `processEvents()`
+calls, 100% reproducible across repeated runs. Deferring the same call
+with `QTimer.singleShot(0, self.hide)` instead — letting Qt finish
+processing the state-change event before touching visibility — fixed
+it, confirmed 100% across repeated runs of the same minimal
+reproduction. Applied the same fix to the real `changeEvent`:
+`QTimer.singleShot(0, self._hide_to_tray)`, not a direct call.
+
+**D4.2 (restore pre-fullscreen geometry) hit a second, related race,
+also confirmed live rather than assumed correct:** the first attempt
+captured `self.normalGeometry()` from INSIDE `_hide_to_tray()` (i.e.
+from inside the deferred timer callback) — a direct debug script
+showed this captured a stale placeholder value (`QRect(0, 0, 800,
+800)`) even though calling `normalGeometry()` again immediately
+afterward, from OUTSIDE that callback, correctly returned the real
+pre-fullscreen geometry. The platform window is apparently still
+settling for a tick after the `WindowStateChange` event fires and
+`isFullScreen()` already reads `False`. Fixed by moving the capture
+into `closeEvent`, BEFORE requesting the fullscreen exit at all —
+`self.normalGeometry()` read at that point has no transition in
+progress and no timing dependency. `_on_tray_open_seeker` applies and
+then clears the saved geometry, so a later ordinary (non-fullscreen)
+close/reopen cycle doesn't reapply a stale value.
+
+**D4.3 — checked all four close/quit paths, not just the one being
+fixed:** `_on_tray_quit()`'s own existing docstring already states it
+goes straight to `QApplication.quit()` rather than `self.close()`
+specifically so a Quit request bypasses this window's own
+`closeEvent` (which would otherwise hide to tray instead of quitting)
+— confirmed by reading the code, meaning Quit (and, by the same native
+Qt/Cocoa mechanism, `⌘Q`) cannot reach the fullscreen-exit-then-hide
+path at all, regardless of fullscreen state; a new test confirms
+`_on_tray_quit()` while fullscreen calls `QApplication.quit()` with
+none of the close/hide bookkeeping touched. `⌘W` and the title bar's
+red button both ultimately call `self.close()` on the focused window
+(Qt's default Cocoa integration for `⌘W`, the native close button for
+the other) — both reach the exact same `closeEvent` this item fixes,
+already covered by the same test that drives `.close()` directly.
+
+Both new regression tests (leaves-fullscreen-before-hiding,
+restores-prior-geometry-on-reopen) confirmed to fail against the
+pre-fix source directly (reverted just the source changes, kept the
+tests, reran) before being satisfied by the fix.
+
+Full suite: 1100 passed, 1 skipped. `mypy --strict` clean.
+
+**Left open, explicitly, per the brief's own instruction that this
+cannot be verified offscreen at all:** D4.4's real-desktop check
+(fullscreen -> red button -> confirm no black Space, confirm the app
+is genuinely in the menu bar -> reopen -> confirm geometry) — needs a
+real Mac, not available in this sandboxed session.

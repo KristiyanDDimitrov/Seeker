@@ -7615,6 +7615,59 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
     assert window._hidden_to_tray is True
 
 
+def test_close_event_from_fullscreen_leaves_fullscreen_before_hiding(
+        qtbot, monkeypatch,
+):
+    # Roadmap item D4 (round 6) — the actual reported bug: on macOS a
+    # fullscreen window owns its own Space, and hiding it while still
+    # fullscreen leaves that Space in place with nothing in it. Closing
+    # from fullscreen must leave fullscreen first (this offscreen QPA
+    # session has no window animation, so the `WindowStateChange` this
+    # depends on lands synchronously — a real Mac's animated transition
+    # is what D4.4 explicitly can't be verified for here).
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+    assert window.isFullScreen()
+
+    window.close()
+    qtbot.wait(20)
+
+    assert window.isHidden()
+    assert window._hidden_to_tray is True
+    assert not window.isFullScreen()
+    assert window._pending_hide_after_fullscreen_exit is False
+
+
+def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
+        qtbot, monkeypatch,
+):
+    # D4.2 — reopening from the menu bar must give back the window the
+    # user had, not an arbitrary default.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.setGeometry(QRect(50, 60, 1000, 700))
+    qtbot.wait(20)
+    expected_geometry = window.normalGeometry()
+
+    window.showFullScreen()
+    qtbot.wait(20)
+    window.close()
+    qtbot.wait(20)
+    assert window.isHidden()
+
+    window._on_tray_open_seeker()
+
+    assert not window.isFullScreen()
+    assert window.geometry() == expected_geometry
+
+
 def test_close_event_shows_one_off_notice_only_once(qtbot, monkeypatch):
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -7842,6 +7895,42 @@ def test_tray_quit_calls_qapplication_quit(qtbot, monkeypatch):
     window._on_tray_quit()
 
     assert quit_calls == [True]
+
+
+def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
+        qtbot, monkeypatch,
+):
+    # Roadmap item D4.3 (round 6) — the brief's own explicit ask: Quit
+    # is a real, separate path from the red-button close this item
+    # otherwise fixes, and needs checking on its own rather than
+    # assumed to share the same fix. `_on_tray_quit` goes straight to
+    # `QApplication.quit()`, never `self.close()` (see its own
+    # docstring) — it never reaches `closeEvent`/the fullscreen-exit-
+    # then-hide dance at all, so the black-Space bug is structurally
+    # unreachable from this path regardless of fullscreen state: the
+    # whole app (and its Space) is what's actually going away, not just
+    # this window being hidden.
+    from PySide6.QtWidgets import QApplication
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+    assert window.isFullScreen()
+
+    quit_calls = []
+    monkeypatch.setattr(
+        QApplication, "quit", lambda self=None: quit_calls.append(True),
+    )
+
+    window._on_tray_quit()
+
+    assert quit_calls == [True]
+    # Nothing about the close/hide-to-tray machinery fired.
+    assert window._hidden_to_tray is False
+    assert window._pending_hide_after_fullscreen_exit is False
 
 
 def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):
