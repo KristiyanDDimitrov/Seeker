@@ -29,12 +29,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from seeker.ui import theme
 
-_KIND_COLORS = {
-    "info": theme.ACCENT,
-    "success": theme.SUCCESS,
-    "warning": theme.WARNING,
-    "error": theme.DANGER,
-}
+_VALID_KINDS = {"info", "success", "warning", "error"}
 
 
 class InlineNotice(QWidget):
@@ -58,9 +53,11 @@ class InlineNotice(QWidget):
         # A plain QWidget subclass does NOT paint its own stylesheet
         # background/border by default — Qt skips that pass for custom
         # widgets for performance reasons unless told otherwise. Found
-        # live: without this, show_message()'s per-instance
-        # setStyleSheet() (the colored border/background below) was
-        # silently a no-op, rendering as a plain unstyled row.
+        # live: without this, the colored border/background (now the
+        # global stylesheet's own `InlineNotice[variant="..."]` rules,
+        # see show_message — was originally a per-instance
+        # setStyleSheet() call) was silently a no-op, rendering as a
+        # plain unstyled row.
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
@@ -111,14 +108,16 @@ class InlineNotice(QWidget):
             action_text: str | None = None,
             on_action: Callable[[], None] | None = None,
     ) -> None:
-        color = _KIND_COLORS.get(kind, theme.ACCENT)
-        self.setStyleSheet(
-            f"InlineNotice {{"
-            f"  background-color: {theme.BG_SURFACE_2};"
-            f"  border: 1px solid {color};"
-            f"  border-left: 3px solid {color};"
-            f"  border-radius: {theme.RADIUS_CONTROL}px;"
-            f"}}"
+        # Roadmap item C5.3 (round 5) — was a per-instance
+        # setStyleSheet() call computed from `kind` in Python, baking a
+        # concrete hex color into a string that a runtime theme switch
+        # could never revisit. Routed through the SAME `variant`
+        # dynamic-property mechanism QPushButton's primary/danger
+        # variants already use — real rules live in theme.py's
+        # `InlineNotice[variant="..."]` selectors, re-applied
+        # automatically whenever the global stylesheet changes.
+        theme.set_variant(
+            self, kind if kind in _VALID_KINDS else "info",
         )
         self._message_label.setText(text)
 

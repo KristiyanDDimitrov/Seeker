@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QRadioButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -80,6 +82,7 @@ class SettingsPage(QWidget):
             application: Application,
             initial_tab: str | None = None,
             on_about_requested: Callable[[], None] | None = None,
+            on_theme_mode_changed: Callable[[str], None] | None = None,
     ):
         super().__init__()
         self.application = application
@@ -87,6 +90,11 @@ class SettingsPage(QWidget):
         self._locations_by_name: dict[str, LibraryLocation] = {}
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
+        # Roadmap item C5.12 (round 5) — MainWindow's own
+        # _apply_theme_mode, so the sidebar toggle and this tab's radio
+        # group stay in sync in both directions. None only in tests
+        # that construct SettingsPage standalone.
+        self._on_theme_mode_changed = on_theme_mode_changed
         # A callable rather than importing AboutDialog directly —
         # AboutDialog lives in main_window.py, which already imports
         # FROM this module (SETTINGS_TAB_*), so importing it back here
@@ -846,11 +854,77 @@ class SettingsPage(QWidget):
             "credentials — use Test connection to confirm."
         )
 
+    # --- Appearance (C5.12) -----------------------------------------
+
+    def _build_appearance_group(self) -> QGroupBox:
+        # Roadmap item C5.12 (round 5) — the authoritative three-way
+        # control (the sidebar toggle is the quick, no-label version;
+        # this one names every option explicitly). Kept in sync with
+        # the toggle in both directions via MainWindow._apply_theme_mode
+        # / sync_theme_mode below.
+        group = QGroupBox("Appearance")
+        layout = QVBoxLayout(group)
+
+        self._theme_mode_group = QButtonGroup(group)
+        self._theme_mode_radios: dict[str, QRadioButton] = {}
+        for mode, label in (
+                ("system", "Follow system"),
+                ("light", "Light"),
+                ("dark", "Dark"),
+        ):
+            radio = QRadioButton(label)
+            self._theme_mode_group.addButton(radio)
+            self._theme_mode_radios[mode] = radio
+            radio.toggled.connect(
+                lambda checked, mode=mode: (
+                    self._on_theme_mode_radio_toggled(mode, checked)
+                )
+            )
+            layout.addWidget(radio)
+
+        # Establishes the starting selection WITHOUT firing
+        # _on_theme_mode_changed — this runs during SettingsPage's own
+        # __init__, before MainWindow has finished assigning
+        # `self.settings_page`, so an unguarded setChecked(True) here
+        # crashes on that not-yet-existing attribute (found live).
+        current = self.application.theme_mode
+        if current in self._theme_mode_radios:
+            radio = self._theme_mode_radios[current]
+            radio.blockSignals(True)
+            radio.setChecked(True)
+            radio.blockSignals(False)
+
+        return group
+
+    def _on_theme_mode_radio_toggled(self, mode: str, checked: bool) -> None:
+        if not checked:
+            return
+        if self._on_theme_mode_changed is not None:
+            self._on_theme_mode_changed(mode)
+
+    def sync_theme_mode(self, mode: str) -> None:
+        """Called by `MainWindow._apply_theme_mode` after a switch
+        triggered from ANYWHERE (the sidebar toggle, this tab's own
+        radios, or the OS's `colorSchemeChanged` while mode=="system")
+        so these radios never show a stale selection. Signals blocked
+        while syncing — without this, setChecked(True) here would fire
+        `toggled` right back into `_on_theme_mode_changed`, re-entering
+        `MainWindow._apply_theme_mode` for a mode it's already applying
+        (same discipline `_load_threshold_fields` already uses for its
+        own checkboxes)."""
+        radio = self._theme_mode_radios.get(mode)
+        if radio is not None and not radio.isChecked():
+            radio.blockSignals(True)
+            radio.setChecked(True)
+            radio.blockSignals(False)
+
     # --- Thresholds (§4) -------------------------------------------
 
     def _build_thresholds_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+
+        layout.addWidget(self._build_appearance_group())
 
         layout.addWidget(QLabel(
             "Controls when a matched track is auto-accepted vs. "

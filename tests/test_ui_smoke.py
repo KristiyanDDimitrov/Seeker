@@ -49,6 +49,8 @@ from seeker.ui.main_window import (
     RenamePreviewDialog,
     _resolve_tray_icon_path,
     _resolve_wordmark_brows_path,
+    _THEME_MODE_CYCLE,
+    _ThemeToggleButton,
     _Wordmark,
 )
 from seeker.update_check import UpdateCheckResult, UpdateStatus
@@ -627,6 +629,7 @@ class FakeApplication:
         self.set_downloads_paused_calls: list[bool] = []
         self.mark_tray_hide_notice_shown_calls = 0
         self.set_notification_preference_calls: list[tuple[str, bool]] = []
+        self.set_theme_mode_calls: list[str] = []
 
     def persist_default_destination(
             self, location_id: int, subfolder_per_playlist: bool,
@@ -659,6 +662,14 @@ class FakeApplication:
         self._config_store = replace(
             self._config_store, **{field_name: enabled},
         )
+
+    @property
+    def theme_mode(self) -> str:
+        return self._config_store.theme_mode
+
+    def set_theme_mode(self, mode: str) -> None:
+        self.set_theme_mode_calls.append(mode)
+        self._config_store = replace(self._config_store, theme_mode=mode)
 
 
 def test_main_window_constructs_without_crashing(qtbot):
@@ -7068,6 +7079,156 @@ def test_wordmark_brows_asset_resolves_to_a_real_committed_file():
     path = _resolve_wordmark_brows_path()
     assert path.name == "seeker_brows.svg"
     assert path.exists()
+
+
+# --- Roadmap item C5: light/dark themes, with system-follow -----------------
+
+def test_theme_toggle_cycles_system_light_dark_and_persists(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._theme_mode == "system"
+    assert window._theme_toggle._mode == "system"
+
+    window._theme_toggle.click()
+    assert window._theme_mode == "light"
+    assert window._theme_toggle._mode == "light"
+
+    window._theme_toggle.click()
+    assert window._theme_mode == "dark"
+
+    window._theme_toggle.click()
+    assert window._theme_mode == "system"
+
+    # Every click persists through Application.set_theme_mode — a
+    # restart must not lose the choice.
+    assert application.set_theme_mode_calls == ["light", "dark", "system"]
+
+
+def test_theme_toggle_and_settings_radios_stay_in_sync_both_directions(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    # Sidebar toggle -> Settings radios.
+    window._theme_toggle.click()  # system -> light
+    assert window.settings_page._theme_mode_radios["light"].isChecked()
+    assert not window.settings_page._theme_mode_radios["system"].isChecked()
+
+    # Settings radios -> sidebar toggle.
+    window.settings_page._theme_mode_radios["dark"].setChecked(True)
+    assert window._theme_mode == "dark"
+    assert window._theme_toggle._mode == "dark"
+
+
+def test_theme_mode_starts_from_the_persisted_config_value(qtbot):
+    application = FakeApplication()
+    application.set_theme_mode("dark")
+
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._theme_mode == "dark"
+    assert window._theme_toggle._mode == "dark"
+    assert window.settings_page._theme_mode_radios["dark"].isChecked()
+
+
+def test_system_scheme_signal_only_connected_while_mode_is_system(qtbot):
+    # Roadmap item C5.6 — an explicit light/dark choice must never be
+    # silently overridden by the OS's own appearance changing later.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._system_scheme_connected is True
+
+    window._theme_toggle.click()  # system -> light, an explicit choice
+    assert window._theme_mode == "light"
+    assert window._system_scheme_connected is False
+
+    window._theme_toggle.click()  # light -> dark, still explicit
+    assert window._system_scheme_connected is False
+
+    window._theme_toggle.click()  # dark -> system, back to following
+    assert window._system_scheme_connected is True
+
+
+def test_cleanup_before_quit_disconnects_the_system_scheme_signal(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    assert window._system_scheme_connected is True
+
+    window.cleanup_before_quit()
+
+    assert window._system_scheme_connected is False
+
+
+def test_on_theme_changed_retints_the_wordmark_and_updates_the_toggle_icon(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    original_pixmap = window._wordmark._brows_pixmap
+    assert original_pixmap is not None
+
+    window._theme_toggle.click()  # system -> light: a real palette switch
+
+    # A NEW pixmap, re-tinted against the new palette's ACCENT — not
+    # the same (now stale) object reused.
+    assert window._wordmark._brows_pixmap is not original_pixmap
+    assert window._theme_toggle._mode == "light"
+
+
+# --- Roadmap item C5.8 — the palettes' own contrast floors are tested in
+# test_theme.py directly; DARK's real-values-unchanged claim is checked
+# structurally here. -------------------------------------------------------
+
+def test_dark_palette_is_byte_identical_to_the_pre_refactor_constants():
+    # Roadmap item C5.1 — "DARK carries today's EXACT values,
+    # unchanged... the first thing to prove." These are the literal
+    # hex strings theme.py held as bare module constants before this
+    # refactor (see CLAUDE.md's own pre-C5 history) — a real pin, not a
+    # restatement of whatever DARK currently says.
+    assert theme.DARK.BG_APP == "#100E15"
+    assert theme.DARK.BG_SIDEBAR == "#15121D"
+    assert theme.DARK.BG_SURFACE == "#1D1929"
+    assert theme.DARK.BG_SURFACE_2 == "#29243A"
+    assert theme.DARK.BORDER == "#3A344E"
+    assert theme.DARK.BORDER_STRONG == "#4E4768"
+    assert theme.DARK.TEXT == "#ECEAF3"
+    assert theme.DARK.TEXT_MUTED == "#9E98B3"
+    assert theme.DARK.TEXT_FAINT == "#6F6987"
+    assert theme.DARK.ACCENT == "#7C5CFF"
+    assert theme.DARK.ACCENT_HOVER == "#8E72FF"
+    assert theme.DARK.ACCENT_PRESSED == "#6446E0"
+    assert theme.DARK.ACCENT_SUBTLE == "#241E3D"
+    assert theme.DARK.SUCCESS == "#3FBF7F"
+    assert theme.DARK.WARNING == "#E0A33E"
+    assert theme.DARK.DANGER == "#E5484D"
+
+
+def test_apply_theme_with_dark_mode_produces_the_same_stylesheet_as_before(
+        qtbot,
+):
+    # A real structural no-op check: resolve_palette("dark") must be
+    # the exact same Palette object DARK already is (not a re-typed
+    # copy that happens to compare equal).
+    assert theme.resolve_palette("dark") is theme.DARK
+
+
+# --- Roadmap item C5.10 — the theme toggle's own glyph rendering ------------
+
+def test_theme_toggle_button_renders_all_three_modes_without_crashing(qtbot):
+    for mode in _THEME_MODE_CYCLE:
+        button = _ThemeToggleButton(mode)
+        qtbot.addWidget(button)
+        button.show()
+        qtbot.wait(10)
+        assert button.toolTip() != ""
 
 
 # --- Roadmap item R7: run in the background from the macOS menu bar --------

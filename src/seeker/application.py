@@ -321,6 +321,21 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
 
+    @property
+    def theme_mode(self) -> str:
+        return self._config_store.theme_mode
+
+    def set_theme_mode(self, mode: str) -> None:
+        """Roadmap item C5 (round 5) — persisted so the choice survives
+        a restart; read fresh by `main_ui.py` at startup and updated
+        live by `MainWindow`'s own theme toggle/Settings control, same
+        shape as `set_downloads_paused`."""
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(current, theme_mode=mode)
+        save_config(updated, config_path)
+        self._config_store = updated
+
     def mark_tray_hide_notice_shown(self) -> None:
         """Roadmap item R7.1 — the one-off "still running in the menu
         bar" notification's own shown-once flag."""

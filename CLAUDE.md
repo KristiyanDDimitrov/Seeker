@@ -1734,6 +1734,40 @@ compress it here before moving on to the next item.
      `seeker.spec` — confirmed, not assumed, no spec change needed.
      [HISTORY §106](docs/HISTORY.md#106)
 
+107. **C5 — light and dark themes, with system-follow — done, real
+     screenshot-verified across every real page in both themes.**
+     `theme.py`'s module-level `STYLESHEET` f-string is now a real
+     runtime-switchable architecture: frozen `Palette` dataclass
+     (`DARK`/`LIGHT`), `build_stylesheet(palette)`/`build_qpalette
+     (palette)`, `apply_theme(app, mode)`. The ~57 existing
+     `theme.TOKEN` call sites elsewhere needed no changes — they read
+     bare module-level names, reassigned on every switch by
+     `_set_module_tokens()`. The 10 real per-widget `setStyleSheet()`
+     calls (not the 12 the brief estimated) all converted to
+     objectName/property + global-stylesheet rules (`InlineNotice` now
+     uses `theme.set_variant()`, same mechanism as button variants) —
+     none need `MainWindow.on_theme_changed()` code; only 3 genuinely
+     baked-color sites do (the wordmark's tint + text, one Dashboard
+     status color, confirmed self-healing via the 2s poll).
+     `MainWindow._apply_theme_mode()` is the one entry point every
+     switch routes through (sidebar toggle, Settings' new "Appearance"
+     radios, the OS's own `colorSchemeChanged` — subscribed only while
+     `mode == "system"`, torn down in `cleanup_before_quit`). Persisted
+     via new `SeekerConfig.theme_mode` (guarded default). Toggle is a
+     hand-drawn sun/moon/split-circle (`QPainter`, no assets) — a
+     logo-derived glyph was tried and rejected (an isolated eye reads
+     as a flat sliver, no identity). **Two real contrast bugs found via
+     an actual screenshot, not the brief's own scope:** (1) the
+     progress-bar percentage text (`TEXT_MUTED`) was measured at
+     1.26:1 against `ACCENT` in light — a real crop showed it nearly
+     invisible — fixed by switching to `TEXT` (clears 3:1 against both
+     backgrounds it sits on). (2) `QPushButton[variant="primary"]`'s
+     `color: {TEXT}` put near-black text on a purple button in light —
+     fixed with a new `ON_ACCENT` token (white in both palettes). Also
+     corrected the brief's own claimed DARK-accent-on-white contrast
+     (2.9:1 claimed, 4.35:1 real, verified against textbook WCAG
+     reference pairs). [HISTORY §107](docs/HISTORY.md#107)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

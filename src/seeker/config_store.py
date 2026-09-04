@@ -51,6 +51,12 @@ class SeekerConfig:
     notify_downloads_finished: bool = True
     notify_needs_decision: bool = True
     notify_errors: bool = True
+    # Roadmap item C5 (round 5) — "system" (default), "light", or
+    # "dark". Same guarded-default discipline as every other field
+    # here: an unrecognized value (a garbage/future-version string)
+    # falls back to "system" at LOAD time (see load_config below)
+    # rather than raising or propagating a bad value into theme.py.
+    theme_mode: str = "system"
 
 
 def resolve_config_path() -> Path:
@@ -60,6 +66,12 @@ def resolve_config_path() -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     return data_dir / "config.json"
+
+
+def _resolve_theme_mode(raw: object) -> str:
+    if isinstance(raw, str) and raw in ("system", "light", "dark"):
+        return raw
+    return "system"
 
 
 def load_config(path: Path) -> SeekerConfig:
@@ -98,6 +110,7 @@ def load_config(path: Path) -> SeekerConfig:
         notify_downloads_finished=data.get("notify_downloads_finished", True),
         notify_needs_decision=data.get("notify_needs_decision", True),
         notify_errors=data.get("notify_errors", True),
+        theme_mode=_resolve_theme_mode(data.get("theme_mode")),
     )
 
 

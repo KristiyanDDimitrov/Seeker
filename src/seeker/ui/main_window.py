@@ -1,3 +1,4 @@
+import math
 import subprocess
 import sys
 import time
@@ -10,15 +11,17 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QRectF, QSize, Qt, QThreadPool, QTimer
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThreadPool, QTimer
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
     QColor,
     QFont,
     QFontMetrics,
+    QGuiApplication,
     QIcon,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPixmap,
 )
@@ -298,7 +301,11 @@ def _build_subtitle_label(text: str) -> QLabel:
     # each tab's own header, aimed at someone who never reads the
     # README and goes straight into the app.
     label = QLabel(text)
-    label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+    # Roadmap item C5.3 — routed through the global stylesheet's
+    # QLabel[badge="muted"] rule (theme.py) rather than a per-widget
+    # setStyleSheet() call, so a runtime theme switch re-colors this
+    # automatically with no MainWindow.on_theme_changed() code needed.
+    label.setProperty("badge", "muted")
     label.setWordWrap(True)
     return label
 
@@ -335,9 +342,8 @@ def _build_page(
         title_row.addWidget(header_extra)
 
     title_label = QLabel(title)
-    title_label.setStyleSheet(
-        f"font-size: 18px; font-weight: 600; color: {theme.TEXT};"
-    )
+    # Roadmap item C5.3 — QLabel#pageTitleLabel in theme.py.
+    title_label.setObjectName("pageTitleLabel")
     title_row.addWidget(title_label)
     title_row.addStretch()
 
@@ -441,6 +447,16 @@ class _Wordmark(QWidget):
         self._font.setPixelSize(20)
         self._brows_pixmap = self._load_tinted_brows()
 
+    def retint(self) -> None:
+        """Roadmap item C5.4 — called by `MainWindow.on_theme_changed()`
+        on every theme switch: re-renders the brow pixmap against the
+        NOW-current `theme.ACCENT` and repaints. Cheap enough to just
+        redo (one small SVG render), and far simpler than trying to
+        tint-in-place a pixmap whose old tint is already baked into its
+        alpha-multiplied pixels."""
+        self._brows_pixmap = self._load_tinted_brows()
+        self.update()
+
     def _load_tinted_brows(self) -> QPixmap | None:
         path = _resolve_wordmark_brows_path()
         if not path.exists():
@@ -524,6 +540,122 @@ class _Wordmark(QWidget):
                 0, 0, self._brows_pixmap.width(), self._brows_pixmap.height(),
             ))
         painter.end()
+
+
+_THEME_MODE_LABELS = {
+    "system": "Follow system",
+    "light": "Light",
+    "dark": "Dark",
+}
+_THEME_MODE_CYCLE = ("system", "light", "dark")
+
+
+class _ThemeToggleButton(QPushButton):
+    """Roadmap item C5.10 (round 5) — a conventional sun/moon/split-
+    circle glyph set, drawn with `QPainter` rather than shipped as SVG/
+    PNG assets, so it's resolution-independent and tints with the
+    active palette for free (reads `theme.TEXT_MUTED` fresh on every
+    paint, same self-healing shape as `_Wordmark`'s own text draw).
+
+    A logo-derived glyph (one eye from the mark, solid/outlined/half-
+    filled per mode) was tried first and rejected: at real sidebar
+    size the eye shape is a flat sliver whose outline carries no eye
+    identity, and a half-fill reads as a broken shape, not a state —
+    inspected at real size on both grounds before deciding against it.
+    A three-state control with no label is otherwise a guess, so the
+    tooltip always names the mode in words; the icon alone shows
+    which of the three is CURRENT, not a boolean on/off.
+    """
+
+    def __init__(self, mode: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(28, 28)
+        self.setStyleSheet("border: none; background: transparent;")
+        self._mode = mode
+        self._update_tooltip()
+
+    def set_mode(self, mode: str) -> None:
+        self._mode = mode
+        self._update_tooltip()
+        self.update()
+
+    def _update_tooltip(self) -> None:
+        label = _THEME_MODE_LABELS.get(self._mode, self._mode)
+        self.setToolTip(f"Theme: {label} (click to change)")
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        side = min(self.width(), self.height()) - 8
+        rect = QRectF(
+            (self.width() - side) / 2, (self.height() - side) / 2,
+            side, side,
+        )
+        pen_color = QColor(theme.TEXT_MUTED)
+        pen = painter.pen()
+        pen.setColor(pen_color)
+        pen.setWidthF(max(1.5, side * 0.09))
+        painter.setPen(pen)
+
+        if self._mode == "light":
+            self._paint_sun(painter, rect)
+        elif self._mode == "dark":
+            self._paint_moon(painter, rect)
+        else:
+            self._paint_split_circle(painter, rect, pen_color)
+        painter.end()
+
+    def _paint_sun(self, painter: QPainter, rect: QRectF) -> None:
+        core = rect.adjusted(
+            rect.width() * 0.28, rect.height() * 0.28,
+            -rect.width() * 0.28, -rect.height() * 0.28,
+        )
+        painter.setBrush(painter.pen().color())
+        painter.drawEllipse(core)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        center = rect.center()
+        radius = rect.width() / 2
+        for i in range(8):
+            angle = i * math.pi / 4
+            p1 = QPointF(
+                center.x() + math.cos(angle) * radius * 0.75,
+                center.y() + math.sin(angle) * radius * 0.75,
+            )
+            p2 = QPointF(
+                center.x() + math.cos(angle) * radius,
+                center.y() + math.sin(angle) * radius,
+            )
+            painter.drawLine(p1, p2)
+
+    def _paint_moon(self, painter: QPainter, rect: QRectF) -> None:
+        full = QPainterPath()
+        full.addEllipse(rect)
+        cutout = QPainterPath()
+        offset = rect.width() * 0.32
+        cutout.addEllipse(rect.translated(offset, -offset * 0.4))
+        crescent = full.subtracted(cutout)
+        painter.setBrush(painter.pen().color())
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(crescent)
+
+    def _paint_split_circle(
+            self, painter: QPainter, rect: QRectF, pen_color: QColor,
+    ) -> None:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(rect)
+        # Right half filled (the "on" side), left half left as an
+        # outline only — reads as a real half-filled circle, the
+        # conventional "system/auto" glyph.
+        half = QPainterPath()
+        half.moveTo(rect.center())
+        half.arcTo(rect, 90, 180)
+        half.closeSubpath()
+        painter.setBrush(pen_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(half)
 
 
 def _build_support_links_row() -> QHBoxLayout:
@@ -838,7 +970,8 @@ class AboutDialog(QDialog):
         notices_label = QLabel(help_text.ABOUT_DIALOG_THIRD_PARTY_NOTICES)
         notices_label.setTextFormat(Qt.TextFormat.RichText)
         notices_label.setWordWrap(True)
-        notices_label.setStyleSheet(f"color: {theme.TEXT_FAINT};")
+        # Roadmap item C5.3 — QLabel[badge="faint"] in theme.py.
+        notices_label.setProperty("badge", "faint")
         layout.addWidget(notices_label)
 
         # Real URLs aren't ready for every link yet — is_real_support_link()
@@ -938,9 +1071,8 @@ class DestinationDialog(QDialog):
         # deciding.
         self.location_path_preview = QLabel()
         self.location_path_preview.setWordWrap(True)
-        self.location_path_preview.setStyleSheet(
-            f"color: {theme.TEXT_MUTED};"
-        )
+        # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
+        self.location_path_preview.setProperty("badge", "muted")
         layout.addWidget(self.location_path_preview)
 
         self.location_combo.currentIndexChanged.connect(self._update_preview)
@@ -1379,6 +1511,15 @@ class MainWindow(QMainWindow):
         self._last_notified_download_at: str | None = None
         self._last_error_notification_at: float | None = None
 
+        # Roadmap item C5 (round 5) — the persisted mode ("system" by
+        # default); the real resolved Palette is already active by the
+        # time MainWindow is constructed (main_ui.py's own
+        # apply_theme() call happens before any window exists). Read
+        # here, before _build_ui(), so _build_sidebar() can hand the
+        # theme toggle its real starting icon rather than a guess.
+        self._theme_mode = application.theme_mode
+        self._system_scheme_connected = False
+
         self._build_tray_icon()
 
         # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit
@@ -1392,6 +1533,13 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 640)
 
         self._build_ui()
+        # Roadmap item C5.6 — subscribes to the OS's own appearance
+        # changes when (and only when) the persisted mode is "system",
+        # so the app follows the Mac flipping at sunset with no
+        # restart. Deliberately after _build_ui(): the toggle/wordmark
+        # already exist by now, so a signal firing mid-construction
+        # (unlikely, but not impossible) can't reach a half-built UI.
+        self._sync_system_scheme_subscription()
         self._render_no_playlist_selected()
         self._load_playlists()
         self._poll_active_downloads()
@@ -1512,6 +1660,7 @@ class MainWindow(QMainWindow):
         )
         self.settings_page = SettingsPage(
             self.application, on_about_requested=self._on_about_clicked,
+            on_theme_mode_changed=self._apply_theme_mode,
         )
         self._register_page("settings", _build_page(
             "Settings", help_text.SETTINGS_WINDOW_SUBTITLE,
@@ -1618,10 +1767,10 @@ class MainWindow(QMainWindow):
         # background by default in Qt (item 47's identical
         # WA_StyledBackground finding, same fix here).
         strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        strip.setStyleSheet(
-            f"#activityStrip {{ background-color: {theme.BG_SURFACE_2}; "
-            f"border-bottom: 1px solid {theme.BORDER}; }}"
-        )
+        # Roadmap item C5.3 — the #activityStrip rule now lives in the
+        # global stylesheet (theme.py's build_stylesheet), not baked
+        # into a per-instance string here, so it re-colors on a runtime
+        # theme switch automatically.
 
         layout = QHBoxLayout(strip)
         layout.setContentsMargins(
@@ -1709,10 +1858,9 @@ class MainWindow(QMainWindow):
         # nothing.
         sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
-        sidebar.setStyleSheet(
-            f"#sidebarPanel {{ background-color: {theme.BG_SIDEBAR}; "
-            f"border-right: 1px solid {theme.BORDER}; }}"
-        )
+        # Roadmap item C5.3 — the #sidebarPanel rule now lives in the
+        # global stylesheet (theme.py's build_stylesheet); see
+        # #activityStrip's identical fix just above.
 
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(
@@ -1721,8 +1869,17 @@ class MainWindow(QMainWindow):
         )
         layout.setSpacing(theme.SPACING_XS)
 
-        wordmark = _Wordmark()
-        layout.addWidget(wordmark)
+        wordmark_row = QHBoxLayout()
+        wordmark_row.setContentsMargins(0, 0, 0, 0)
+        self._wordmark = _Wordmark()
+        wordmark_row.addWidget(self._wordmark)
+        wordmark_row.addStretch()
+        # Roadmap item C5.10/C5.11 — right-aligned on the wordmark's own
+        # row, cycling system -> light -> dark -> system.
+        self._theme_toggle = _ThemeToggleButton(self._theme_mode)
+        self._theme_toggle.clicked.connect(self._on_theme_toggle_clicked)
+        wordmark_row.addWidget(self._theme_toggle)
+        layout.addLayout(wordmark_row)
 
         self._nav_group = QButtonGroup(self)
         self._nav_group.setExclusive(True)
@@ -1774,6 +1931,82 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.settings_button)
 
         return sidebar
+
+    # --- Roadmap item C5 (round 5): theme mode --------------------------
+
+    def _on_theme_toggle_clicked(self) -> None:
+        current_index = _THEME_MODE_CYCLE.index(self._theme_mode)
+        next_mode = _THEME_MODE_CYCLE[(current_index + 1) % len(_THEME_MODE_CYCLE)]
+        self._apply_theme_mode(next_mode)
+
+    def _apply_theme_mode(self, mode: str, persist: bool = True) -> None:
+        """The one entry point every theme-mode change routes through —
+        the sidebar toggle, Settings' three-way radio control, and the
+        system `colorSchemeChanged` signal (when subscribed) all call
+        this, never `theme.apply_theme()` directly. Keeps the toggle
+        icon, Settings' own radios, and the persisted config in sync in
+        every direction (C5.12).
+        """
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        theme.apply_theme(app, mode)
+        self._theme_mode = mode
+
+        if persist:
+            self.application.set_theme_mode(mode)
+
+        self._sync_system_scheme_subscription()
+        self._theme_toggle.set_mode(mode)
+        self.settings_page.sync_theme_mode(mode)
+        self.on_theme_changed()
+
+    def _sync_system_scheme_subscription(self) -> None:
+        # Roadmap item C5.6 — subscribed ONLY while mode is "system":
+        # an explicit light/dark choice must never be silently
+        # overridden by the OS flipping its own appearance later.
+        style_hints = QGuiApplication.styleHints()
+        if self._theme_mode == "system" and not self._system_scheme_connected:
+            style_hints.colorSchemeChanged.connect(
+                self._on_system_color_scheme_changed
+            )
+            self._system_scheme_connected = True
+        elif self._theme_mode != "system" and self._system_scheme_connected:
+            style_hints.colorSchemeChanged.disconnect(
+                self._on_system_color_scheme_changed
+            )
+            self._system_scheme_connected = False
+
+    def _on_system_color_scheme_changed(self, scheme: object) -> None:
+        # The OS flipped appearance while mode == "system" — re-resolve
+        # rather than reading `scheme` directly, so this stays correct
+        # even if Qt's own Unknown-scheme fallback (DARK) is in play.
+        self._apply_theme_mode("system", persist=False)
+
+    def on_theme_changed(self) -> None:
+        """Roadmap item C5.4 — re-applies anything that bakes a color
+        into a specific widget instance rather than reading it fresh
+        through the global stylesheet (see theme.py's own module
+        docstring for the taxonomy). QSS-driven widgets need nothing
+        here — `QApplication.setStyleSheet()` (already called by
+        `_apply_theme_mode` above) re-polishes every one of them
+        automatically.
+        """
+        # The wordmark's brow pixmap is tinted once at construction
+        # time (QSvgRenderer has no currentColor) — must be re-tinted
+        # and repainted explicitly.
+        self._wordmark.retint()
+        self._theme_toggle.update()
+
+        # Roadmap item C5.3 point 3 — QColor(theme.ACCENT)/setForeground
+        # calls baked into table items ARE re-computed on every one of
+        # these render calls, which the 2s poll_timer already re-runs
+        # regularly (self-healing within ~2s) — but re-running them
+        # here too means the switch is correct IMMEDIATELY, not after
+        # up to a 2s wait.
+        self._poll_selected_playlist()
+        self._poll_active_downloads()
+        self._poll_review_items()
+        self._render_activity_strip()
 
     def _update_nav_badge(self, key: str, count: int) -> None:
         label = dict(_NAV_PAGES).get(key) or key.capitalize()
@@ -2181,7 +2414,8 @@ class MainWindow(QMainWindow):
         # (no reserved-but-blank strip) whenever there's nothing active
         # to summarize; see _render_aggregate_eta.
         self.downloads_eta_label = QLabel("")
-        self.downloads_eta_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
+        self.downloads_eta_label.setProperty("badge", "muted")
         layout.addWidget(self.downloads_eta_label)
 
         self.downloads_table = QTableWidget(0, 5)
@@ -2340,9 +2574,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(theme.make_card(self.sharing_locations_table))
 
         uploads_label = QLabel("Currently uploading")
-        uploads_label.setStyleSheet(
-            f"font-weight: 600; color: {theme.TEXT};"
-        )
+        # Roadmap item C5.3 — QLabel#sectionHeaderLabel in theme.py.
+        uploads_label.setObjectName("sectionHeaderLabel")
         layout.addWidget(uploads_label)
 
         self.sharing_uploads_table = QTableWidget(0, 4)
@@ -4531,7 +4764,8 @@ class MainWindow(QMainWindow):
         self.track_empty_label = QLabel("")
         self.track_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.track_empty_label.setWordWrap(True)
-        self.track_empty_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
+        self.track_empty_label.setProperty("badge", "muted")
         layout.addWidget(self.track_empty_label)
 
         button_row = QHBoxLayout()
@@ -5920,6 +6154,16 @@ class MainWindow(QMainWindow):
         # fingerprinting internals at all.
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
+
+        # Roadmap item C5.6 — a real Qt signal connection to a
+        # GLOBAL object (QGuiApplication.styleHints(), not this
+        # window), so it must be torn down explicitly rather than
+        # relying on this window's own destruction to drop it.
+        if self._system_scheme_connected:
+            QGuiApplication.styleHints().colorSchemeChanged.disconnect(
+                self._on_system_color_scheme_changed
+            )
+            self._system_scheme_connected = False
 
         if self._tray_icon is not None:
             self._tray_icon.hide()

@@ -192,6 +192,39 @@ def test_load_config_corrupt_json_does_not_crash(tmp_path):
     assert loaded == SeekerConfig()
 
 
+def test_load_config_missing_theme_mode_defaults_to_system(tmp_path):
+    # A config.json predating item C5 (round 5) has no theme_mode key
+    # at all — same flat-additive-JSON tolerance as every other field.
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.theme_mode == "system"
+
+
+def test_load_config_garbage_theme_mode_falls_back_to_system(tmp_path):
+    # Roadmap item C5.7 — a garbage/future-version value in this key
+    # must not raise or propagate into theme.py; same guarded-default
+    # discipline as every other field this store owns.
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"theme_mode": "not-a-real-mode"}))
+
+    loaded = load_config(path)
+
+    assert loaded.theme_mode == "system"
+
+
+@pytest.mark.parametrize("mode", ["system", "light", "dark"])
+def test_load_config_real_theme_mode_values_round_trip(tmp_path, mode):
+    path = tmp_path / "config.json"
+    save_config(SeekerConfig(theme_mode=mode), path)
+
+    loaded = load_config(path)
+
+    assert loaded.theme_mode == mode
+
+
 @skip_on_windows
 def test_save_config_sets_restrictive_permissions(tmp_path):
     path = tmp_path / "config.json"

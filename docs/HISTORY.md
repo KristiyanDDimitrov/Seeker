@@ -12355,3 +12355,159 @@ that control exists is C5's own job to confirm, not assumed here.
 
 Full suite: **1063 passed, 1 skipped, in 70.66s** (3 new tests added,
 no stall). `mypy --strict src/` clean.
+
+### 107 — C5: light and dark themes, with system-follow
+
+The large item. `theme.py` went from a module-level `STYLESHEET`
+f-string evaluated once at import time to a real runtime-switchable
+architecture.
+
+**5a — Architecture (C5.1-5.5).** New frozen `Palette` dataclass (16
+fields); `DARK` is a byte-for-byte copy of the pre-refactor constants
+(pinned in a new test,
+`test_dark_palette_is_byte_identical_to_the_pre_refactor_constants`).
+`STYLESHEET` became `build_stylesheet(palette) -> str`; the QPalette
+construction became `build_qpalette(palette) -> QPalette`; `apply_theme
+(app, mode)` resolves `mode` via `resolve_palette()` and applies both.
+The ~57 `theme.TOKEN` call sites elsewhere in `ui/` needed NO changes —
+they read bare module-level names (`theme.ACCENT` etc.), and
+`_set_module_tokens(palette)` reassigns every one of them on each
+switch (via `dataclasses.fields`, not a hand-maintained list), so an
+ordinary read at widget-construction time picks up the active palette
+automatically. That bridge does NOT fix a color already baked into a
+widget's own per-instance `setStyleSheet()` call — those needed real
+conversion (below). macOS title bar (C5.5): `QGuiApplication.
+styleHints().setColorScheme()` — `Light`/`Dark` for an explicit choice,
+`Unknown` for `"system"` (so the OS's own current appearance keeps
+driving native chrome without this app fighting it) — real Qt 6.8+ API,
+confirmed available (PySide6 6.11.2).
+
+**C5.3 — the real count, not the brief's estimate.** `grep` found 11
+matched `setStyleSheet(` lines outside `theme.py`/`notice.py`'s own
+comments; **10 real per-widget calls**, all converted:
+- 7 plain-color labels → `QLabel[badge="muted"]`/`[badge="faint"]`
+  (reusing item 47's existing `badge` property mechanism rather than
+  inventing a parallel one) or new `#pageTitleLabel`/
+  `#sectionHeaderLabel` object-name selectors, all in the global
+  stylesheet.
+- 2 (`#sidebarPanel`, `#activityStrip`) already used ID-selector QSS
+  text — simply MOVED into `build_stylesheet()`, no selector change.
+- `notice.py`'s `InlineNotice.show_message()` now calls
+  `theme.set_variant(self, kind)` — the SAME dynamic-property mechanism
+  `QPushButton`'s own primary/danger variants already use — against
+  four new `InlineNotice[variant="..."]` rules, instead of computing a
+  hex color in Python and baking it into a per-instance stylesheet.
+
+C5.3 point 3 (self-healing `QColor(theme.X)` table-item colors):
+found 3 real sites (`_Wordmark`'s brow tint, `_Wordmark.paintEvent`'s
+text color, one `setForeground(QColor(theme.ACCENT))` on a Dashboard
+status cell). Confirmed rather than assumed: the status-cell one IS
+re-computed every `poll_timer` tick (2s) so it self-heals; the other
+two are baked at construction/into a cached pixmap and needed explicit
+handling — `_Wordmark.retint()` (new) and a forced `.update()`.
+
+**C5.4 — the runtime switch.** New `MainWindow._apply_theme_mode()` is
+the one entry point every mode change routes through (sidebar toggle,
+Settings' radios, the OS's own `colorSchemeChanged`) — calls
+`theme.apply_theme()`, persists via `Application.set_theme_mode()`,
+syncs the toggle icon and Settings' radios, and calls `on_theme_
+changed()`, which re-tints the wordmark and re-runs the same poll
+methods `poll_timer` already calls (so a switch is correct
+IMMEDIATELY, not after up to a 2s wait). `SettingsPage` needed no
+separate `on_theme_changed()` — item 58 already merged it into
+MainWindow as a hosted page, not a standalone `QMainWindow`, so nothing
+there bakes a color into a per-instance stylesheet outside what
+MainWindow's own re-apply already covers.
+
+**5b — System-follow (C5.6-5.7).** Three modes, `"system"` default.
+Subscribed to `QGuiApplication.styleHints().colorSchemeChanged` ONLY
+while `mode == "system"` (`_sync_system_scheme_subscription`) —
+disconnected the instant an explicit choice is made, reconnected if the
+user picks "Follow system" again, torn down in `cleanup_before_quit()`
+(a real signal to a GLOBAL object, not this window, so it needs
+explicit teardown). `Qt.ColorScheme.Unknown` (a platform that can't
+report one) falls back to `DARK`, today's standing behavior. New
+`SeekerConfig.theme_mode: str = "system"`, guarded-default loading
+(`_resolve_theme_mode`, a real `isinstance` narrowing rather than a
+`# type: ignore`) — a garbage/future value in the config file falls
+back to `"system"`, tested directly (`test_load_config_garbage_theme_
+mode_falls_back_to_system`).
+
+**5c — The light palette (C5.8) — verified, one real correction made
+to the brief's own numbers.** `theme.contrast_ratio()`/`_relative_
+luminance()` — a real WCAG 2.x implementation, cross-checked against
+textbook reference pairs (`#767676` on white ≈ 4.54:1) before trusting
+it to grade anything. Every DARK number the brief itself claimed
+reproduced exactly (BORDER 1.46, TEXT 14.41, ACCENT 3.95, etc.) —
+except one: the brief said DARK's `ACCENT` scores "only 2.9:1" on
+white, used to justify LIGHT's darker accent. The real, verified number
+is **4.35:1** — a real correction, recorded in the LIGHT palette's own
+comment rather than silently propagated. The design choice (a darker
+accent for light mode) stands regardless — 4.35 is still short of the
+4.5:1 body-text floor — just for a smaller margin than the brief
+believed.
+
+**A second, more consequential contrast bug found live via an actual
+screenshot, not the brief's own scope.** `QProgressBar`'s percentage
+text used `TEXT_MUTED` — fine-ish in dark (a real but unremarked 1.57:1
+against `ACCENT`), genuinely illegible in light: a real crop of a
+determinate bar showed "50%" nearly invisible against the purple fill,
+measured at **1.26:1**. Root cause: the text sits on TWO different
+backgrounds at once (the `ACCENT` fill and the plain `BG_SURFACE_2`
+track) and `TEXT_MUTED` was only ever picked with the track half in
+mind. Fixed by switching to `TEXT`, which clears the 3:1 UI-component
+floor against `ACCENT` in both palettes AND stays far above it against
+`BG_SURFACE_2` (12.5-16.2:1) — the strictly better choice for text that
+must read on both. New parametrized test asserts both.
+
+**A third bug, found the same way `QPushButton[variant="primary"]`'s
+own `color: {TEXT}` used the SAME token for "text on the page
+background" and "text on the saturated ACCENT/DANGER fill" — harmless
+in dark (`TEXT` is near-white) but wrong in light (`TEXT` is
+near-BLACK: dark text on a purple button). New `ON_ACCENT` palette
+field (white in both) used for the primary-button and danger-hover
+text; verified against a 3:1 floor (the correct WCAG standard for
+short bold UI-component labels, not the stricter 4.5:1 body-text one —
+DARK's own real numbers here, 4.35:1 for ACCENT / 3.91:1 for DANGER,
+are real but short of 4.5).
+
+**5d — The toggle (C5.10-5.12).** The brief's own logo-derived attempt
+(one eye, solid/outlined/half-filled per mode) was tried and rejected
+before this item started — inspected at real size, the eye shape reads
+as a flat sliver with no eye identity once isolated. New
+`_ThemeToggleButton(QPushButton)` draws a conventional sun/moon/split-
+circle glyph with `QPainter` (no shipped assets — resolution-
+independent, tints with `theme.TEXT_MUTED` fresh on every paint).
+Right-aligned on the wordmark's own row; tooltip always names the mode
+in words. Settings' Thresholds tab gained a real "Appearance" group
+(three `QRadioButton`s) as the authoritative control, synced with the
+toggle in both directions — a real re-entrancy bug was caught and
+fixed live here: setting a radio's initial/synced state without
+`blockSignals()` fired `toggled` right back into `_apply_theme_mode`,
+crashing during `SettingsPage.__init__` itself (`self.settings_page`
+doesn't exist yet at that point) — confirmed via a real traceback, not
+inferred.
+
+**5e — Verification.** Real `window.grab()` screenshots (offscreen
+QPA) across Dashboard, Search, Downloads, Review, Duplicates, Sharing,
+History, Settings (all 4 tabs), Help, Support, the About dialog, and
+all four `InlineNotice` variants, in BOTH themes — inspected directly,
+not just rendered. Duplicates also checked at the app's real 960×640
+minimum in both themes: Actions column and corners intact. One real
+methodology bug hit and fixed while building the sweep script itself
+(the SAME class item 102 already documented): manually calling a
+`_render_*` method and then navigating through several more pages
+before screenshotting let the 2s `poll_timer` — real wall-clock time
+elapsing across a multi-page script — silently overwrite the manual
+render with `FakeApplication`'s own empty defaults; fixed by rendering
+each page's content immediately before its own screenshot rather than
+all up front.
+
+**C5.9 — confirmed, not changed.** The menu bar icon is already a
+template image (`setIsMask(True)`, item 99) — macOS recolors it per
+appearance natively, independent of this app's own theme. No code
+change. Real menu bar visual confirmation in both appearances is left
+for the user (no Screen Recording permission in this sandboxed
+session, same gap as items 84/89/90/99).
+
+Full suite: **1086 passed, 1 skipped**. `mypy --strict src/` clean.

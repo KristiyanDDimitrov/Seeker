@@ -18,8 +18,9 @@ def main() -> None:
     qt_app = QApplication(sys.argv)
     # Before any window is constructed — apply_theme() sets Fusion
     # (predictable QSS rendering on both macOS and Windows) plus the
-    # dark palette/stylesheet every window relies on.
-    apply_theme(qt_app)
+    # palette/stylesheet every window relies on, resolved from the
+    # user's persisted theme_mode (roadmap item C5; "system" default).
+    apply_theme(qt_app, application.theme_mode)
 
     window: QMainWindow
 

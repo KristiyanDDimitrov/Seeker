@@ -1,5 +1,6 @@
-"""Seeker's dark design system: color tokens, spacing/radius tokens,
-and the one global stylesheet applied to every window.
+"""Seeker's design system: color tokens (dark + light, round 5's own
+C5), spacing/radius tokens, and the one global stylesheet applied to
+every window.
 
 Layout conventions (read once, apply everywhere — nothing here is
 enforced by code, so a future page must follow this by hand):
@@ -15,42 +16,219 @@ primary button per screen, focus rings, progress fill, table
 selection, links, and the "In library" badge. Nothing else — two
 violet buttons on one screen means one of them is wrong.
 
-Dark only for now (light is a real possible future addition — token
-names are theme-neutral so adding a light palette later is cheap, not
-a rewrite).
+Roadmap item C5 (round 5) — architecture, read before touching a color:
+`Palette` is the real source of truth (`DARK`/`LIGHT` below); the bare
+module-level names (`theme.ACCENT`, `theme.TEXT`, ...) exist ONLY for
+the ~60 already-existing call sites elsewhere in `ui/` that read them
+as plain constants — `apply_theme()`/`set_palette()` REASSIGN every one
+of those names whenever the active palette changes, so an ordinary read
+(`theme.ACCENT` inside an f-string built at WIDGET-CONSTRUCTION time)
+automatically picks up the current palette with no per-call-site change
+needed. This does NOT retroactively fix a color already baked into an
+existing widget's own per-instance `setStyleSheet()` call — anything
+that bakes a token into a string on a specific widget instance (rather
+than reading it fresh through the global app-level stylesheet) must be
+rebuilt when the theme changes; `MainWindow.on_theme_changed()` is
+where that rebuilding happens. Prefer routing a new label/panel's color
+through an `objectName` + a rule in `build_stylesheet()` instead of a
+per-widget `setStyleSheet()` wherever possible — `QApplication.
+setStyleSheet()` re-polishes every widget matching a rule automatically
+on re-apply, so it needs no theme-change handler code at all.
 """
 
+from dataclasses import dataclass, fields
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QHeaderView, QProgressBar,
     QPushButton, QTableWidget, QVBoxLayout, QWidget,
 )
 
-# --- Color tokens ----------------------------------------------------------
+# --- Palettes ----------------------------------------------------------
 
-BG_APP = "#100E15"
-BG_SIDEBAR = "#15121D"
-BG_SURFACE = "#1D1929"
-BG_SURFACE_2 = "#29243A"
+ThemeMode = str  # "system" | "light" | "dark" — see resolve_palette()
 
-BORDER = "#3A344E"
-BORDER_STRONG = "#4E4768"
 
-TEXT = "#ECEAF3"
-TEXT_MUTED = "#9E98B3"
-TEXT_FAINT = "#6F6987"
+@dataclass(frozen=True)
+class Palette:
+    """Every color token this app uses. A frozen dataclass (not a
+    dict) so a typo in a future field name is a real `AttributeError`
+    at the call site, not a silent `None`."""
 
-ACCENT = "#7C5CFF"
-ACCENT_HOVER = "#8E72FF"
-ACCENT_PRESSED = "#6446E0"
-ACCENT_SUBTLE = "#241E3D"
+    BG_APP: str
+    BG_SIDEBAR: str
+    BG_SURFACE: str
+    BG_SURFACE_2: str
+    BORDER: str
+    BORDER_STRONG: str
+    TEXT: str
+    TEXT_MUTED: str
+    TEXT_FAINT: str
+    ACCENT: str
+    ACCENT_HOVER: str
+    ACCENT_PRESSED: str
+    ACCENT_SUBTLE: str
+    SUCCESS: str
+    WARNING: str
+    DANGER: str
+    ON_ACCENT: str
 
-SUCCESS = "#3FBF7F"
-WARNING = "#E0A33E"
-DANGER = "#E5484D"
 
-# --- Spacing / radius tokens -------------------------------------------------
+# Roadmap item C5.1 — DARK carries today's EXACT values, unchanged.
+# This refactor must be a visual no-op in dark mode; every value below
+# is copy-pasted from the pre-refactor module-level constants, not
+# retyped from memory.
+DARK = Palette(
+    BG_APP="#100E15",
+    BG_SIDEBAR="#15121D",
+    BG_SURFACE="#1D1929",
+    BG_SURFACE_2="#29243A",
+    BORDER="#3A344E",
+    BORDER_STRONG="#4E4768",
+    TEXT="#ECEAF3",
+    TEXT_MUTED="#9E98B3",
+    TEXT_FAINT="#6F6987",
+    ACCENT="#7C5CFF",
+    ACCENT_HOVER="#8E72FF",
+    ACCENT_PRESSED="#6446E0",
+    ACCENT_SUBTLE="#241E3D",
+    SUCCESS="#3FBF7F",
+    WARNING="#E0A33E",
+    DANGER="#E5484D",
+    # Roadmap item C5.8 — found live building the real contrast test:
+    # QPushButton[variant="primary"]'s own `color: {TEXT}` used the
+    # SAME token for "text on the page background" and "text on a
+    # saturated ACCENT/DANGER fill" — harmless in dark (TEXT is near-
+    # white, close enough to a real white-on-accent reading) but wrong
+    # in light (TEXT is near-BLACK, which would render as dark text on
+    # a purple button). A dedicated token, always white in both
+    # palettes, used only where text sits on a saturated fill.
+    ON_ACCENT="#FFFFFF",
+)
+
+# Roadmap item C5c — proposed with real measured WCAG contrast ratios
+# (see test_theme.py's own contrast checker, which asserts these
+# rather than just claiming them). Elevation is preserved, lightness is
+# not: in dark, higher elevation gets LIGHTER; here, higher elevation
+# gets WHITER, with the page ground (BG_APP) slightly tinted so a white
+# card (BG_SURFACE) reads as coming forward. The sidebar stays the
+# recessed chrome in both directions. That mapping is a deliberate
+# judgement call, not a mechanical inversion, and is UNTUNED — a real
+# designer's pass over this specific palette hasn't happened yet.
+# ACCENT is deliberately darker than DARK's own accent — the brief
+# proposing this palette claimed the dark value scores "only 2.9:1" on
+# white; a real, verified computation (this file's own contrast_ratio,
+# cross-checked against textbook reference pairs in test_theme.py)
+# found the ACTUAL number is 4.35:1, a real correction recorded here
+# rather than silently propagated. Still meaningfully short of the
+# 4.5:1 AA body-text floor, so a darker, more reliable accent for light
+# mode remains the right call — just for a smaller margin than
+# originally claimed. White text on THIS accent is a verified 5.60:1.
+LIGHT = Palette(
+    BG_APP="#F1EEF8",
+    BG_SIDEBAR="#E9E4F3",
+    BG_SURFACE="#FFFFFF",
+    BG_SURFACE_2="#F7F5FC",
+    BORDER="#DCD6EC",
+    BORDER_STRONG="#BFB5DA",
+    TEXT="#1B1726",
+    TEXT_MUTED="#5C5474",
+    TEXT_FAINT="#8A82A3",
+    ACCENT="#6A46F0",
+    ACCENT_HOVER="#5B36E4",
+    ACCENT_PRESSED="#4B2ACB",
+    ACCENT_SUBTLE="#EDE7FF",
+    SUCCESS="#18854F",
+    WARNING="#9A6410",
+    DANGER="#C2303A",
+    ON_ACCENT="#FFFFFF",
+)
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """Real WCAG 2.x relative luminance — roadmap item C5.8: "make the
+    contrast a test, not a claim." No third-party dependency; the
+    formula is short enough to own directly and verify against known
+    reference values in tests (pure black/white)."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (
+        int(hex_color[i:i + 2], 16) / 255 for i in (0, 2, 4)
+    )
+
+    def channel(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast_ratio(hex_a: str, hex_b: str) -> float:
+    """WCAG contrast ratio between two colors, always >= 1.0
+    regardless of argument order (lighter over darker)."""
+    l_a = _relative_luminance(hex_a)
+    l_b = _relative_luminance(hex_b)
+    lighter, darker = max(l_a, l_b), min(l_a, l_b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def resolve_palette(mode: ThemeMode) -> Palette:
+    """`"light"`/`"dark"` resolve directly; `"system"` (and anything
+    else unrecognized — same guarded-default discipline as
+    `config_store.load_config`) asks the real OS via
+    `QGuiApplication.styleHints().colorScheme()`.
+    `Qt.ColorScheme.Unknown` (a platform that can't report one) falls
+    back to `DARK` — today's standing behavior, preserved on purpose.
+    """
+    if mode == "light":
+        return LIGHT
+    if mode == "dark":
+        return DARK
+
+    scheme = QGuiApplication.styleHints().colorScheme()
+    if scheme == Qt.ColorScheme.Light:
+        return LIGHT
+    return DARK
+
+
+def _set_module_tokens(palette: Palette) -> None:
+    """Back-compat bridge (see the module docstring's own C5 note) —
+    reassigns every bare `theme.TOKEN` module global from the active
+    palette. Uses `dataclasses.fields` rather than a hand-maintained
+    name list, so a future field added to `Palette` is wired
+    automatically instead of silently staying stale."""
+    module_globals = globals()
+    for field in fields(Palette):
+        module_globals[field.name] = getattr(palette, field.name)
+
+
+# --- Color tokens (back-compat module-level names — see the C5 note in
+# the module docstring above; kept as plain names, not a class, so the
+# ~60 existing `theme.TOKEN` call sites across ui/*.py need no change).
+# Declared explicitly (not via the `_set_module_tokens` loop) so mypy
+# sees a real, statically-typed module attribute for each one — they
+# ARE still reassigned dynamically at runtime by `_set_module_tokens`/
+# `apply_theme`/`set_palette` on every theme switch; a plain read like
+# `theme.ACCENT` always resolves to whatever the name currently holds
+# in the module namespace, static declaration or not.
+BG_APP: str = DARK.BG_APP
+BG_SIDEBAR: str = DARK.BG_SIDEBAR
+BG_SURFACE: str = DARK.BG_SURFACE
+BG_SURFACE_2: str = DARK.BG_SURFACE_2
+BORDER: str = DARK.BORDER
+BORDER_STRONG: str = DARK.BORDER_STRONG
+TEXT: str = DARK.TEXT
+TEXT_MUTED: str = DARK.TEXT_MUTED
+TEXT_FAINT: str = DARK.TEXT_FAINT
+ACCENT: str = DARK.ACCENT
+ACCENT_HOVER: str = DARK.ACCENT_HOVER
+ACCENT_PRESSED: str = DARK.ACCENT_PRESSED
+ACCENT_SUBTLE: str = DARK.ACCENT_SUBTLE
+SUCCESS: str = DARK.SUCCESS
+WARNING: str = DARK.WARNING
+DANGER: str = DARK.DANGER
+ON_ACCENT: str = DARK.ON_ACCENT
+
+# --- Spacing / radius tokens (theme-independent) ----------------------------
 
 SPACING_XS = 4
 SPACING_SM = 8
@@ -273,58 +451,103 @@ def size_action_column(
     table.resizeRowsToContents()
 
 
-def apply_theme(app: QApplication) -> None:
-    """Call once, before any window is constructed. Sets Fusion (so the
-    stylesheet below renders identically on macOS and Windows — real
-    concern here, since Windows packaging is still unverified per
-    CLAUDE.md item 36), a matching QPalette (so anything Qt draws
-    natively — native dialogs, menus opened via the system menu bar —
-    still matches instead of falling back to the OS's own light theme),
-    and the one global stylesheet.
+def build_qpalette(palette: Palette) -> QPalette:
+    """The native `QPalette` counterpart to `build_stylesheet` — so
+    anything Qt draws natively (native dialogs, menus opened via the
+    system menu bar) still matches the active palette instead of
+    falling back to the OS's own theme."""
+    qpalette = QPalette()
+    qpalette.setColor(QPalette.ColorRole.Window, QColor(palette.BG_APP))
+    qpalette.setColor(QPalette.ColorRole.WindowText, QColor(palette.TEXT))
+    qpalette.setColor(QPalette.ColorRole.Base, QColor(palette.BG_SURFACE))
+    qpalette.setColor(
+        QPalette.ColorRole.AlternateBase, QColor(palette.BG_SURFACE_2),
+    )
+    qpalette.setColor(QPalette.ColorRole.Text, QColor(palette.TEXT))
+    qpalette.setColor(QPalette.ColorRole.Button, QColor(palette.BG_SURFACE_2))
+    qpalette.setColor(QPalette.ColorRole.ButtonText, QColor(palette.TEXT))
+    qpalette.setColor(
+        QPalette.ColorRole.ToolTipBase, QColor(palette.BG_SURFACE_2),
+    )
+    qpalette.setColor(QPalette.ColorRole.ToolTipText, QColor(palette.TEXT))
+    qpalette.setColor(QPalette.ColorRole.Highlight, QColor(palette.ACCENT))
+    qpalette.setColor(
+        QPalette.ColorRole.HighlightedText, QColor(palette.TEXT),
+    )
+    qpalette.setColor(
+        QPalette.ColorRole.PlaceholderText, QColor(palette.TEXT_FAINT),
+    )
+    qpalette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.Text,
+        QColor(palette.TEXT_FAINT),
+    )
+    qpalette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.WindowText,
+        QColor(palette.TEXT_FAINT),
+    )
+    qpalette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.ButtonText,
+        QColor(palette.TEXT_FAINT),
+    )
+    return qpalette
+
+
+def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
+    """Resolves `mode` to a real `Palette` (`resolve_palette`), sets
+    Fusion (so the stylesheet renders identically on macOS and Windows
+    — real concern here, since Windows packaging is still unverified
+    per CLAUDE.md item 36), the matching `QPalette`, and the one global
+    stylesheet. Safe to call again later, not just once before the
+    first window — `MainWindow.on_theme_changed()` (C5.4) is the
+    runtime re-apply entry point for exactly that.
+
+    Roadmap item C5.5 — the macOS gotcha: changing the stylesheet alone
+    does NOT change the native window chrome (title bar, native
+    dialogs) — a light-mode app would otherwise keep a dark title bar.
+    `QGuiApplication.styleHints().setColorScheme()` (real Qt 6.8+ API,
+    this project runs PySide6 6.11) is what makes the title bar follow.
+    An explicit `"light"`/`"dark"` choice sets it directly; `"system"`
+    resets it to `Unknown` so the OS's own current appearance keeps
+    driving native chrome without this app fighting it.
     """
     app.setStyle("Fusion")
 
-    palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor(BG_APP))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.Base, QColor(BG_SURFACE))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(BG_SURFACE_2))
-    palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.Button, QColor(BG_SURFACE_2))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(BG_SURFACE_2))
-    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(ACCENT))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(TEXT))
-    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(TEXT_FAINT))
-    palette.setColor(
-        QPalette.ColorGroup.Disabled,
-        QPalette.ColorRole.Text,
-        QColor(TEXT_FAINT),
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled,
-        QPalette.ColorRole.WindowText,
-        QColor(TEXT_FAINT),
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled,
-        QPalette.ColorRole.ButtonText,
-        QColor(TEXT_FAINT),
-    )
-    app.setPalette(palette)
+    palette = resolve_palette(mode)
+    _set_module_tokens(palette)
 
-    app.setStyleSheet(STYLESHEET)
+    app.setPalette(build_qpalette(palette))
+    app.setStyleSheet(build_stylesheet(palette))
+
+    style_hints = QGuiApplication.styleHints()
+    if mode == "light":
+        style_hints.setColorScheme(Qt.ColorScheme.Light)
+    elif mode == "dark":
+        style_hints.setColorScheme(Qt.ColorScheme.Dark)
+    else:
+        style_hints.setColorScheme(Qt.ColorScheme.Unknown)
+
+    return palette
 
 
-STYLESHEET = f"""
+def build_stylesheet(palette: Palette) -> str:
+    """The global QSS stylesheet, parameterized by palette — the
+    C5 replacement for the old module-level `STYLESHEET` f-string
+    (which baked in whatever DARK-derived module globals happened
+    to hold at IMPORT time, with no way to re-evaluate for a
+    different palette). Called by `apply_theme()`/`on_theme_
+    changed()` on every theme (re-)application.
+    """
+    return f"""
 QWidget {{
-    background-color: {BG_APP};
-    color: {TEXT};
+    background-color: {palette.BG_APP};
+    color: {palette.TEXT};
 }}
 
 QMainWindow, QDialog {{
-    background-color: {BG_APP};
+    background-color: {palette.BG_APP};
 }}
 
 QLabel {{
@@ -332,64 +555,128 @@ QLabel {{
 }}
 
 QLabel[badge="ok"] {{
-    color: {SUCCESS};
+    color: {palette.SUCCESS};
 }}
 
 QLabel[badge="warn"] {{
-    color: {WARNING};
+    color: {palette.WARNING};
 }}
 
 QLabel[badge="muted"] {{
-    color: {TEXT_MUTED};
+    color: {palette.TEXT_MUTED};
+}}
+
+/* Roadmap item C5.3 — the runtime theme switch's own conversion work:
+every one of these four selectors replaces a per-widget setStyleSheet()
+call that baked a token into a fixed string at construction time (dead
+on a runtime theme switch — see the module docstring's own C5 note).
+Routing through the global stylesheet + a real selector means these
+five widget classes need NO code in MainWindow.on_theme_changed() at
+all; QApplication.setStyleSheet() re-polishes them automatically. */
+QLabel[badge="faint"] {{
+    color: {palette.TEXT_FAINT};
+}}
+
+QLabel#pageTitleLabel {{
+    font-size: 18px;
+    font-weight: 600;
+    color: {palette.TEXT};
+}}
+
+QLabel#sectionHeaderLabel {{
+    font-weight: 600;
+    color: {palette.TEXT};
+}}
+
+#sidebarPanel {{
+    background-color: {palette.BG_SIDEBAR};
+    border-right: 1px solid {palette.BORDER};
+}}
+
+#activityStrip {{
+    background-color: {palette.BG_SURFACE_2};
+    border-bottom: 1px solid {palette.BORDER};
+}}
+
+/* Roadmap item 47 (P3)/C5.3 — InlineNotice's border color used to be
+computed in Python per `kind` and baked into a per-instance
+setStyleSheet() call in show_message() (dead on a theme switch, same
+class as the four selectors above). Same `[variant]` dynamic-property
+mechanism QPushButton's own primary/danger variants already use
+(theme.set_variant()) — InlineNotice reuses that exact helper rather
+than inventing a second one. */
+InlineNotice {{
+    background-color: {palette.BG_SURFACE_2};
+    border-radius: {RADIUS_CONTROL}px;
+}}
+
+InlineNotice[variant="info"] {{
+    border: 1px solid {palette.ACCENT};
+    border-left: 3px solid {palette.ACCENT};
+}}
+
+InlineNotice[variant="success"] {{
+    border: 1px solid {palette.SUCCESS};
+    border-left: 3px solid {palette.SUCCESS};
+}}
+
+InlineNotice[variant="warning"] {{
+    border: 1px solid {palette.WARNING};
+    border-left: 3px solid {palette.WARNING};
+}}
+
+InlineNotice[variant="error"] {{
+    border: 1px solid {palette.DANGER};
+    border-left: 3px solid {palette.DANGER};
 }}
 
 QPushButton {{
-    background-color: {BG_SURFACE_2};
-    border: 1px solid {BORDER};
+    background-color: {palette.BG_SURFACE_2};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CONTROL}px;
     padding: 6px 14px;
-    color: {TEXT};
+    color: {palette.TEXT};
 }}
 
 QPushButton:hover {{
-    border-color: {BORDER_STRONG};
+    border-color: {palette.BORDER_STRONG};
 }}
 
 QPushButton:pressed {{
-    background-color: {BG_SURFACE};
+    background-color: {palette.BG_SURFACE};
 }}
 
 QPushButton:disabled {{
-    color: {TEXT_FAINT};
-    border-color: {BORDER};
+    color: {palette.TEXT_FAINT};
+    border-color: {palette.BORDER};
 }}
 
 QPushButton[variant="primary"] {{
-    background-color: {ACCENT};
-    border: 1px solid {ACCENT};
-    color: {TEXT};
+    background-color: {palette.ACCENT};
+    border: 1px solid {palette.ACCENT};
+    color: {palette.ON_ACCENT};
     font-weight: 600;
 }}
 
 QPushButton[variant="primary"]:hover {{
-    background-color: {ACCENT_HOVER};
-    border-color: {ACCENT_HOVER};
+    background-color: {palette.ACCENT_HOVER};
+    border-color: {palette.ACCENT_HOVER};
 }}
 
 QPushButton[variant="primary"]:pressed {{
-    background-color: {ACCENT_PRESSED};
-    border-color: {ACCENT_PRESSED};
+    background-color: {palette.ACCENT_PRESSED};
+    border-color: {palette.ACCENT_PRESSED};
 }}
 
 QPushButton[variant="danger"] {{
-    background-color: {BG_SURFACE_2};
-    border: 1px solid {DANGER};
-    color: {DANGER};
+    background-color: {palette.BG_SURFACE_2};
+    border: 1px solid {palette.DANGER};
+    color: {palette.DANGER};
 }}
 
 QPushButton[variant="danger"]:hover {{
-    background-color: {DANGER};
-    color: {TEXT};
+    background-color: {palette.DANGER};
+    color: {palette.ON_ACCENT};
 }}
 
 /* Sidebar nav items — transparent by default (deliberately NOT the
@@ -404,32 +691,32 @@ QPushButton[navItem="true"] {{
     border-radius: 0px;
     text-align: left;
     padding: 8px {SPACING_MD}px;
-    color: {TEXT_MUTED};
+    color: {palette.TEXT_MUTED};
 }}
 
 QPushButton[navItem="true"]:hover {{
-    background-color: {BG_SURFACE_2};
-    color: {TEXT};
+    background-color: {palette.BG_SURFACE_2};
+    color: {palette.TEXT};
 }}
 
 QPushButton[navItem="true"]:checked {{
-    background-color: {ACCENT_SUBTLE};
-    border-left: 3px solid {ACCENT};
-    color: {TEXT};
+    background-color: {palette.ACCENT_SUBTLE};
+    border-left: 3px solid {palette.ACCENT};
+    color: {palette.TEXT};
     font-weight: 600;
 }}
 
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit {{
-    background-color: {BG_SURFACE};
-    border: 1px solid {BORDER};
+    background-color: {palette.BG_SURFACE};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CONTROL}px;
     padding: 4px 8px;
-    selection-background-color: {ACCENT_SUBTLE};
+    selection-background-color: {palette.ACCENT_SUBTLE};
 }}
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
 QPlainTextEdit:focus {{
-    border: 1px solid {ACCENT};
+    border: 1px solid {palette.ACCENT};
 }}
 
 QComboBox::drop-down {{
@@ -437,20 +724,20 @@ QComboBox::drop-down {{
 }}
 
 QComboBox QAbstractItemView {{
-    background-color: {BG_SURFACE};
-    border: 1px solid {BORDER_STRONG};
-    selection-background-color: {ACCENT_SUBTLE};
-    selection-color: {TEXT};
+    background-color: {palette.BG_SURFACE};
+    border: 1px solid {palette.BORDER_STRONG};
+    selection-background-color: {palette.ACCENT_SUBTLE};
+    selection-color: {palette.TEXT};
 }}
 
 QTableWidget, QListWidget {{
-    background-color: {BG_SURFACE};
-    border: 1px solid {BORDER};
+    background-color: {palette.BG_SURFACE};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CARD}px;
-    gridline-color: {BORDER};
-    selection-background-color: {ACCENT_SUBTLE};
-    selection-color: {TEXT};
-    alternate-background-color: {BG_SURFACE_2};
+    gridline-color: {palette.BORDER};
+    selection-background-color: {palette.ACCENT_SUBTLE};
+    selection-color: {palette.TEXT};
+    alternate-background-color: {palette.BG_SURFACE_2};
 }}
 
 /* Roadmap item 80 (P10.1) — the real rounded border for a table/list
@@ -458,8 +745,8 @@ routed through make_card(); the inner QTableWidget/QListWidget itself
 gets border:none/border-radius:0 per-instance (see make_card's own
 docstring) so this is the ONLY rounded edge actually painted. */
 QFrame#card {{
-    background-color: {BG_SURFACE};
-    border: 1px solid {BORDER};
+    background-color: {palette.BG_SURFACE};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CARD}px;
 }}
 
@@ -479,10 +766,10 @@ inside a QListWidget item. Table cell padding, if wanted later, must
 come from row height instead. */
 
 QHeaderView::section {{
-    background-color: {BG_SURFACE};
-    color: {TEXT_MUTED};
+    background-color: {palette.BG_SURFACE};
+    color: {palette.TEXT_MUTED};
     border: none;
-    border-bottom: 1px solid {BORDER};
+    border-bottom: 1px solid {palette.BORDER};
     /* Roadmap item 97 (B2.1) — a real regression from item 47: once
     ANY QHeaderView::section rule exists, Qt paints the header entirely
     from this box model, so `border: none` above removed the native
@@ -505,7 +792,7 @@ QHeaderView::section {{
     one flat block with no alternating-row-color help for the eye,
     unlike the body gridlines below (which stay BORDER; confirmed live
     those were never actually missing). */
-    border-right: 1px solid {BORDER_STRONG};
+    border-right: 1px solid {palette.BORDER_STRONG};
     padding: 6px;
 }}
 
@@ -526,21 +813,31 @@ the header/corner-button WIDGETS themselves (the area below the last
 row, and the top-left corner button between the two headers, have no
 section to match that rule at all). */
 QHeaderView {{
-    background-color: {BG_SURFACE};
+    background-color: {palette.BG_SURFACE};
     border: none;
 }}
 
 QTableCornerButton::section {{
-    background-color: {BG_SURFACE};
+    background-color: {palette.BG_SURFACE};
     border: none;
 }}
 
 QProgressBar {{
-    background-color: {BG_SURFACE_2};
-    border: 1px solid {BORDER};
+    background-color: {palette.BG_SURFACE_2};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CONTROL}px;
     text-align: center;
-    color: {TEXT_MUTED};
+    /* Roadmap item C5 (round 5) — found live via a real screenshot of
+    the light palette: the percentage text sits on TWO different
+    backgrounds at once (the ACCENT fill and the plain BG_SURFACE_2
+    track), and TEXT_MUTED was picked with only the track half in
+    mind. Measured: TEXT_MUTED-on-ACCENT is 1.26:1 in light (visually
+    confirmed near-invisible in a real crop) and only 1.57:1 in dark
+    (never separately verified before this). `TEXT` clears >=3:1
+    against ACCENT in both palettes AND stays well above 12:1 against
+    BG_SURFACE_2 — the strictly better choice for text that must read
+    on both. */
+    color: {palette.TEXT};
     max-height: 14px;
 }}
 
@@ -564,8 +861,8 @@ never globally. */
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
-    border: 1px solid {BORDER_STRONG};
-    background-color: {BG_SURFACE};
+    border: 1px solid {palette.BORDER_STRONG};
+    background-color: {palette.BG_SURFACE};
 }}
 
 QCheckBox::indicator {{
@@ -577,8 +874,8 @@ QRadioButton::indicator {{
 }}
 
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
-    background-color: {ACCENT};
-    border-color: {ACCENT};
+    background-color: {palette.ACCENT};
+    border-color: {palette.ACCENT};
 }}
 
 QScrollBar:vertical {{
@@ -588,13 +885,13 @@ QScrollBar:vertical {{
 }}
 
 QScrollBar::handle:vertical {{
-    background: {BORDER_STRONG};
+    background: {palette.BORDER_STRONG};
     border-radius: 5px;
     min-height: 24px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background: {TEXT_FAINT};
+    background: {palette.TEXT_FAINT};
 }}
 
 QScrollBar:horizontal {{
@@ -604,7 +901,7 @@ QScrollBar:horizontal {{
 }}
 
 QScrollBar::handle:horizontal {{
-    background: {BORDER_STRONG};
+    background: {palette.BORDER_STRONG};
     border-radius: 5px;
     min-width: 24px;
 }}
@@ -615,44 +912,44 @@ QScrollBar::add-line, QScrollBar::sub-line {{
 }}
 
 QToolTip {{
-    background-color: {BG_SURFACE_2};
-    color: {TEXT};
-    border: 1px solid {BORDER_STRONG};
+    background-color: {palette.BG_SURFACE_2};
+    color: {palette.TEXT};
+    border: 1px solid {palette.BORDER_STRONG};
     padding: 4px 6px;
 }}
 
 QMenuBar {{
-    background-color: {BG_SIDEBAR};
-    color: {TEXT};
+    background-color: {palette.BG_SIDEBAR};
+    color: {palette.TEXT};
 }}
 
 QMenuBar::item:selected {{
-    background-color: {ACCENT_SUBTLE};
+    background-color: {palette.ACCENT_SUBTLE};
 }}
 
 QMenu {{
-    background-color: {BG_SURFACE_2};
-    color: {TEXT};
-    border: 1px solid {BORDER_STRONG};
+    background-color: {palette.BG_SURFACE_2};
+    color: {palette.TEXT};
+    border: 1px solid {palette.BORDER_STRONG};
 }}
 
 QMenu::item:selected {{
-    background-color: {ACCENT_SUBTLE};
+    background-color: {palette.ACCENT_SUBTLE};
 }}
 
 QTabWidget::pane {{
-    border: 1px solid {BORDER};
+    border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CARD}px;
 }}
 
 QTabBar::tab {{
     background: transparent;
-    color: {TEXT_MUTED};
+    color: {palette.TEXT_MUTED};
     padding: 6px 14px;
 }}
 
 QTabBar::tab:selected {{
-    color: {TEXT};
-    border-bottom: 2px solid {ACCENT};
+    color: {palette.TEXT};
+    border-bottom: 2px solid {palette.ACCENT};
 }}
 """
