@@ -6767,6 +6767,86 @@ def test_every_table_and_list_goes_through_the_shared_chrome_helpers(qtbot):
         )
 
 
+def _assert_every_column_fits_its_own_header(window) -> None:
+    from PySide6.QtWidgets import QTableWidget
+
+    for table in window.findChildren(QTableWidget):
+        header = table.horizontalHeader()
+        for column in range(table.columnCount()):
+            item = table.horizontalHeaderItem(column)
+            if item is None or not item.text():
+                continue
+            floor = theme.header_label_floor(table, column)
+            assert header.sectionSize(column) >= floor, (
+                f"{table.objectName() or table!r} col {column} "
+                f"({item.text()!r}): section={header.sectionSize(column)} "
+                f"< floor={floor}"
+            )
+
+
+def test_no_table_column_clips_its_own_header_label_when_empty(qtbot):
+    # Roadmap item C2 (round 5) — the real reported bug: "Actions"
+    # rendered as ".ction" on Review's three EMPTY tables (a brand-new
+    # user's very first look at that page). `size_action_column`'s old
+    # fallback for zero real action widgets was a generic 40px floor
+    # with no relation to the header text at all. Every real
+    # QTableWidget in the app starts with zero rows at construction —
+    # this is exactly that state, checked structurally across the
+    # whole window rather than one page at a time.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    _assert_every_column_fits_its_own_header(window)
+
+    # And again at the app's real 960x640 minimum — construction-time
+    # column widths don't depend on window size, but this is the exact
+    # size the brief's own screenshot was taken at.
+    window.resize(960, 640)
+    qtbot.wait(20)
+    _assert_every_column_fits_its_own_header(window)
+
+
+def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
+    # C2.3/C2.4 — the same invariant must keep holding once real rows
+    # (and real, possibly-narrow Actions widgets) exist, at both the
+    # app's real 960x640 minimum and a default-sized window.
+    from seeker.sharing_service import LocationShareState
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    window._render_track_statuses(
+        [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
+    )
+    window._render_needs_review_candidates(
+        [(_make_track(), _make_review_candidate())]
+    )
+    window._render_pending_upgrades(
+        [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    )
+    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._render_sharing_locations_table([
+        LocationShareState(
+            location=_make_location(1, "Music", "/Volumes/Drive/Music"),
+            shared=False, share=None,
+        ),
+    ])
+    window._render_duplicate_groups([_make_duplicate_group()])
+    window.settings_page._render_locations(
+        [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
+    )
+    qtbot.wait(20)
+
+    for width, height in [(960, 640), (1280, 800)]:
+        window.resize(width, height)
+        qtbot.wait(20)
+        _assert_every_column_fits_its_own_header(window)
+
+
 # --- Roadmap item R7: run in the background from the macOS menu bar --------
 
 def _force_tray_available(monkeypatch, available: bool) -> None:

@@ -1660,6 +1660,28 @@ compress it here before moving on to the next item.
      session's real Qt reports 2.0) — both happened to still pass by
      coincidence before, for the wrong reason. [HISTORY §103](docs/HISTORY.md#103)
 
+103. **C2 — "Action" rendered as ".ction" on every EMPTY table — done.**
+     `theme.size_action_column`'s fallback for zero real action widgets
+     used to be `header.minimumSectionSize()` (a generic 40px floor
+     unrelated to the word "Actions"), which fired on exactly the first
+     thing a new user sees on Review/Search/Duplicates: an empty table.
+     New `theme.header_label_floor(table, column)` derives a real
+     minimum from `QFontMetrics.horizontalAdvance()` on the header's
+     own text plus the QSS's real `padding: 6px`/divider chrome —
+     `size_action_column` now always includes it in the candidate max
+     alongside the widest real widget, and `apply_table_defaults`
+     applies the same floor to EVERY column at construction (C2.3's
+     shared invariant — no column may start narrower than its own
+     header needs). Screenshot-confirmed: Review's three empty tables
+     all now show "Actions" in full. **Open finding, not this item's
+     own scope, caught live via a real `lldb` attach while re-running
+     the suite:** the full suite intermittently stalls for a few real
+     minutes (self-resolves, never a permanent hang) on a real,
+     unmocked `QMessageBox.information().exec()` — consistent with
+     item 41's own documented class (a straggling worker's completion
+     callback firing late). Not reproduced on demand; left open.
+     [HISTORY §104](docs/HISTORY.md#104)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

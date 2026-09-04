@@ -12050,3 +12050,100 @@ round exists to close. Both tests now scale every sampled coordinate by
 Full suite after all of this: **1056 passed, 1 skipped** (this item's
 own new test is included in that count; the suite had 1055 passed, 1
 skipped before this item added it). `mypy --strict src/` clean.
+
+### 104 — C2: "Action" reads as ".ction" on an empty table
+
+**CONFIRMED exactly as the brief diagnosed, with the exact line.**
+`theme.size_action_column`:
+
+```python
+action_width = max(
+    (widget.sizeHint().width() for widget in action_widgets),
+    default=header.minimumSectionSize(),      # <- 40px
+)
+```
+
+An empty table has no rows, so no action widgets, so `max()` falls
+through to `default` — `header.minimumSectionSize()`, which
+`apply_table_defaults` leaves at Qt's own 40px floor, with zero
+relation to the word "Actions." Review's three tables (needs-review
+candidates, pending upgrades, local needs-review matches) are all
+empty on a brand-new user's first visit to that page — exactly the
+screenshot the brief attached.
+
+Fix, matching the brief's own ordering:
+
+- New `theme.header_label_floor(table, column)` — measures the
+  header's own real text via `QFontMetrics.horizontalAdvance()` (the
+  header's own font, not a guessed one) and adds `6 + 6` (mirrors the
+  QSS `padding: 6px` on both sides of `QHeaderView::section`) plus `1`
+  for the C1 divider itself.
+- `size_action_column` now takes `max([widget widths] + [header_label_
+  floor])` — the header floor is ALWAYS a candidate, not just a
+  fallback for the empty case, so a table with a narrow button
+  ("Tag") but a wide header ("Actions") also can't clip (the "narrower
+  bug" the brief called out separately).
+- `apply_table_defaults` applies the same floor to every column of
+  every table at construction time — the shared invariant the brief
+  asked for (C2.3), so a future column can't reintroduce this bug by
+  skipping `size_action_column` entirely (a plain data column with a
+  long header, e.g. "New quality", would have hit the same class of
+  clip with no Actions widget involved at all).
+
+**Real numbers, from a live offscreen render of Review with all three
+tables genuinely empty (rowCount 0):**
+
+```
+review_needs_table     Actions: sectionSize=57  floor=57
+review_upgrades_table  Actions: sectionSize=57  floor=57
+review_local_table     Actions: sectionSize=57  floor=57
+```
+
+All three exactly match their own derived floor — no clipping,
+verified by rendering (not asserting) and inspecting a real
+`window.grab()` crop of the Review page at the app's 960×640 minimum:
+"Actions" renders in full on every one of the three empty tables, and
+the C1 header dividers are visible in the same screenshot.
+
+New regression tests (`test_no_table_column_clips_its_own_header_
+label_when_empty`/`..._when_populated`) walk every real `QTableWidget`
+in the app via `findChildren` (not a hand-picked list — a future table
+added anywhere is covered automatically) and assert `header.
+sectionSize(column) >= theme.header_label_floor(table, column)` for
+every column with header text, both with zero rows (construction time)
+and with real per-row content populated, at both the app's 960×640
+minimum and a default-sized window.
+
+Full suite: **1058 passed, 1 skipped**. `mypy --strict src/` clean.
+
+**Open, real finding caught live while re-running the full suite for this
+item, not further diagnosed (time-boxed, see below) — recorded rather
+than silently ignored per this project's own standing rule.** Two of
+several full-suite re-runs stalled for ~2-3 real minutes partway
+through `test_ui_smoke.py` with zero new output, before eventually
+completing successfully on their own (no assertion failure, no crash —
+the two theme.py-only runs before this item's new tests were added, and
+one run after, all completed cleanly with no stall at all). Caught one
+stall LIVE with a real `lldb -p <pid> -o "bt all"` attach — the main
+thread was genuinely blocked inside `QDialog::exec()`, called from
+`Sbk_QMessageBoxFunc_information`, through a chain of nested Python
+slot callbacks consistent with a `run_worker()` background-thread
+`on_finished` handler invoking `QMessageBox.information(self, ...)`. No
+test in this file calls a real, unmocked `QMessageBox.information` at
+the top level — the shape (a worker's completion callback popping a
+real modal dialog late) matches item 41's own documented class exactly
+(a straggling `QThreadPool` worker from an EARLIER test — most likely
+one of the bulk "Replace all upgrades"/"Resolve all duplicate groups"
+tests just before this position in file order — completing after its
+own test returned, and firing into a window instance not yet actually
+destroyed). Under the real offscreen QPA a real modal `exec()` has
+nothing to click, so it blocks until something else in the process
+resolves it. Not further investigated this round: it self-resolved
+every time (never left the suite red or genuinely stuck), reproducing
+it on demand would need deliberately racing a bulk-action worker's
+real completion against test teardown, and this item's own scope is
+the Actions-column width bug, not this. Left as a named, open risk for
+a future round — the exact kind of intermittent-and-unreproduced-on-
+demand finding this project's own item 63/70 already set a precedent
+for recording rather than either chasing indefinitely or pretending it
+didn't happen.

@@ -21,7 +21,7 @@ a rewrite).
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QHeaderView, QProgressBar,
     QPushButton, QTableWidget, QVBoxLayout, QWidget,
@@ -157,6 +157,29 @@ def cell_widget(*widgets: QWidget) -> QWidget:
     return container
 
 
+def header_label_floor(table: QTableWidget, column: int) -> int:
+    """Roadmap item C2 (round 5) — the minimum pixel width a header
+    SECTION needs so its own label never clips, independent of
+    whatever real per-row content that column happens to hold this
+    render (which may be nothing at all — an empty table). Real fix
+    for "Action" reading as ".ction": the old
+    `size_action_column`'s fallback for zero real action widgets was
+    `header.minimumSectionSize()`, a generic 40px floor with no
+    relation to the word "Actions" — exactly what an empty Review/
+    Search/Duplicates table (the FIRST thing a new user sees on any of
+    those pages) hit every time. `QFontMetrics.horizontalAdvance`
+    measures the header's own real rendered text; the two `6`s mirror
+    the QSS `padding: 6px` on both sides of `QHeaderView::section`
+    (this file's own STYLESHEET) and the `+ 1` leaves room for the C1
+    divider itself, so the label's last character never touches it.
+    """
+    header = table.horizontalHeader()
+    item = table.horizontalHeaderItem(column)
+    text = item.text() if item is not None else ""
+    metrics = QFontMetrics(header.font())
+    return metrics.horizontalAdvance(text) + 6 + 6 + 1
+
+
 def apply_table_defaults(table: QTableWidget) -> None:
     """Roadmap item R5 (5a.1 + 5b.2) — the shared baseline every real
     QTableWidget in this app should be constructed with.
@@ -187,6 +210,20 @@ def apply_table_defaults(table: QTableWidget) -> None:
     ).sizeHint().height()
     table.verticalHeader().setMinimumSectionSize(representative_row_height)
 
+    # Roadmap item C2 (round 5, C2.3) — the shared invariant: no
+    # column's width may be less than its OWN header label needs,
+    # applied here for every column at construction time (when a table
+    # always starts with zero rows — the exact empty-table state a new
+    # user hits first on Review/Search/Duplicates).
+    # `size_action_column`, called later once real per-row content
+    # exists, widens the Actions column further where its widgets need
+    # more than this floor.
+    header = table.horizontalHeader()
+    for column in range(table.columnCount()):
+        floor = header_label_floor(table, column)
+        if header.sectionSize(column) < floor:
+            header.resizeSection(column, floor)
+
 
 def size_action_column(
         table: QTableWidget, column: int, action_widgets: list[QWidget],
@@ -204,11 +241,23 @@ def size_action_column(
     `header.setStretchLastSection(False)` — stretch-last overrides any
     resize mode set on the last section, Fixed included, if this
     column happens to be the last one.
+
+    Roadmap item C2 (round 5) — the width is now derived from BOTH the
+    widest real action widget AND the header label's own rendered
+    width (`header_label_floor`), not the widgets alone. The old
+    `default=header.minimumSectionSize()` (a generic 40px floor) fired
+    on every EMPTY table — no rows means no action widgets, so `max()`
+    fell straight through to it — clipping "Actions" to ".ction" on
+    exactly the screen (Review/Search/Duplicates with nothing in them
+    yet) a brand-new user sees first. `header_label_floor` is always in
+    the candidate set now, so an empty table still shows its header in
+    full, and a populated table with narrow buttons but a wide header
+    (or vice versa) always fits both.
     """
     header = table.horizontalHeader()
     action_width = max(
-        (widget.sizeHint().width() for widget in action_widgets),
-        default=header.minimumSectionSize(),
+        [widget.sizeHint().width() for widget in action_widgets]
+        + [header_label_floor(table, column)]
     )
     header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
     header.resizeSection(column, action_width)
