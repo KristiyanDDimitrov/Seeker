@@ -6592,6 +6592,9 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
             shared=False, share=None,
         ),
     ])
+    window.settings_page._render_locations(
+        [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
+    )
 
     tables_and_columns = [
         (window.track_table, 3),
@@ -6599,6 +6602,9 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
         (window.review_upgrades_table, 3),
         (window.review_local_table, 4),
         (window.sharing_locations_table, 4),
+        # Roadmap item 97 (B6.3) — settings_window.py's own table had
+        # never had a derived Actions width before this.
+        (window.settings_page.locations_table, 3),
     ]
 
     for table, actions_column in tables_and_columns:
@@ -6609,6 +6615,45 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
         header = table.horizontalHeader()
         assert header.sectionSize(actions_column) >= widget.sizeHint().width()
         assert table.rowHeight(0) >= widget.sizeHint().height()
+
+
+def test_every_table_and_list_goes_through_the_shared_chrome_helpers(qtbot):
+    # Roadmap item 97 (B6.4) — this is the third round in a row a shared
+    # table-chrome fix landed in main_window.py and not settings_window.py
+    # (item 80, then R5, now this). A real structural check over every
+    # live QTableWidget/QListWidget in the real app, not just the two
+    # settings_window.py had, so a FOURTH table added anywhere without
+    # going through apply_table_defaults()/make_card() fails this test
+    # instead of quietly reappearing as the same class of bug.
+    from PySide6.QtWidgets import QFrame, QListWidget, QTableWidget
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    def _has_card_ancestor(widget) -> bool:
+        parent = widget.parent()
+        while parent is not None:
+            if isinstance(parent, QFrame) and parent.objectName() == "card":
+                return True
+            parent = parent.parent()
+        return False
+
+    tables = window.findChildren(QTableWidget)
+    lists = window.findChildren(QListWidget)
+    assert tables, "no QTableWidget found — test itself is broken"
+    assert lists, "no QListWidget found — test itself is broken"
+
+    for table in tables:
+        assert table.verticalHeader().isVisible() is False, (
+            table.objectName() or repr(table)
+        )
+        assert _has_card_ancestor(table), table.objectName() or repr(table)
+
+    for widget_list in lists:
+        assert _has_card_ancestor(widget_list), (
+            widget_list.objectName() or repr(widget_list)
+        )
 
 
 # --- Roadmap item R7: run in the background from the macOS menu bar --------

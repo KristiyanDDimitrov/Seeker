@@ -78,3 +78,14 @@ def test_cell_widget_single_label_matches_existing_shared_state_pattern(qtbot):
     qtbot.addWidget(container)
 
     assert label.parentWidget() is container
+
+
+def test_header_section_has_a_right_hand_divider():
+    # Roadmap item 97 (B2.4) — a real regression from item 47:
+    # QHeaderView::section's own `border: none` removed the native
+    # left/right divider between column headers with no fallback
+    # underneath (once ANY QHeaderView::section rule exists, Qt paints
+    # the header entirely from that box model). A weak test — it can't
+    # see a real pixel — but it pins the exact property whose removal
+    # caused this, which is more than existed before.
+    assert "border-right: 1px solid" in theme.STYLESHEET

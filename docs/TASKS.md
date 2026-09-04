@@ -69,7 +69,14 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B2 + B6 — Table/card chrome (header dividers, Settings tables)
 
-- [ ] Not started.
+- [x] B2: `border-right` added to `QHeaderView::section` (suppressed on
+  the last section); body gridlines confirmed present all along via a
+  real pixel sample. B6: `locations_table`/`destinations_playlist_list`
+  routed through `apply_table_defaults`/`make_card`/`size_action_column`.
+  New structural test walks a real `MainWindow` (embeds `SettingsPage`)
+  asserting every table/list has a card ancestor — confirmed to
+  actually fail pre-fix. Pixel-verified: Downloads, Duplicates,
+  Settings → Library Locations. Roadmap item 97.
 
 ## B10 — Window title shows a commit SHA
 

@@ -434,7 +434,27 @@ QHeaderView::section {{
     color: {TEXT_MUTED};
     border: none;
     border-bottom: 1px solid {BORDER};
+    /* Roadmap item 97 (B2.1) — a real regression from item 47: once
+    ANY QHeaderView::section rule exists, Qt paints the header entirely
+    from this box model, so `border: none` above removed the native
+    left/right section divider with no fallback underneath — "I can
+    drag the column to resize it but I can't see where it is" is
+    exactly that missing edge. */
+    border-right: 1px solid {BORDER};
     padding: 6px;
+}}
+
+/* Suppresses the divider on the trailing section — nothing to
+separate it FROM on that side. Qt's support for `:last`/`:horizontal:
+last-child` on QHeaderView::section is version-dependent; if this
+doesn't take on some platform, a divider surviving on the last column
+is a cosmetic nit, not a reason to drop the fix above. */
+QHeaderView::section:last {{
+    border-right: none;
+}}
+
+QHeaderView::section:horizontal:last-child {{
+    border-right: none;
 }}
 
 /* Roadmap item R5 (5a.2) — belt and braces alongside

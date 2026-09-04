@@ -1533,6 +1533,27 @@ compress it here before moving on to the next item.
     Pixel-verified: a queued and a downloading row's bars now both sit
     within 2px of their row's own vertical center.
 
+97. **B2 + B6 — table/card chrome: header dividers + Settings' two
+    unstyled tables — done.** B2: `QHeaderView::section`'s `border:
+    none` (item 47) removed the native column-header divider with no
+    fallback, since any `QHeaderView::section` rule makes Qt paint the
+    header entirely from that box model — added `border-right: 1px
+    solid {BORDER}` (suppressed on the trailing section). Body
+    gridlines were never actually lost (pixel-verified: exact `BORDER`
+    match between rows) — `make_card`'s per-widget stylesheet doesn't
+    touch `gridline-color`. B6: `settings_window.py`'s `locations_table`
+    and `destinations_playlist_list` were the only two real
+    `QTableWidget`/`QListWidget` in the app never routed through
+    `apply_table_defaults()`/`make_card()`/`size_action_column()` (item
+    80/R5) — same black-column/square-corner/clipped-Actions defects,
+    now fixed identically to every `main_window.py` table. New
+    structural test walks `findChildren` on a real `MainWindow` (which
+    embeds `SettingsPage`) asserting every table/list has a
+    `QFrame#card` ancestor — confirmed to actually fail without the
+    fix, not just pass either way, closing the "third round a shared
+    fix landed in one file and not the other" gap for good. Pixel-
+    verified: Downloads, Duplicates, and Settings → Library Locations.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

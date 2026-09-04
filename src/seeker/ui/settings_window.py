@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -36,7 +37,7 @@ from seeker.docker_setup import (
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
-from seeker.ui import help_text
+from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice
 from seeker.ui.wizard import SLSKD_LOCAL_BASE_URL
@@ -155,8 +156,23 @@ class SettingsPage(QWidget):
         self.locations_table.setHorizontalHeaderLabels(
             ["Name", "Path", "Reachable", "Actions"]
         )
-        self.locations_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.locations_table)
+        # Roadmap item 97 (B6) — this file's own two tables/lists never
+        # went through the shared table-chrome helpers every real
+        # QTableWidget/QListWidget in main_window.py already does (item
+        # 80/R5): visible row-number header, square top-left corner
+        # cutting into the card's own rounded arc, Qt-default row
+        # heights, and (this table specifically) an underived Actions
+        # column width. size_action_column (called from _render_
+        # locations, after real Actions widgets exist to measure) needs
+        # setStretchLastSection(False) first — it overrides any
+        # per-column resize mode on the last section otherwise.
+        theme.apply_table_defaults(self.locations_table)
+        header = self.locations_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(theme.make_card(self.locations_table))
 
         add_row = QHBoxLayout()
         # No name field — the location is registered immediately under
@@ -194,6 +210,7 @@ class SettingsPage(QWidget):
         }
 
         self.locations_table.setRowCount(len(locations))
+        action_widgets: list[QWidget] = []
 
         for row, (location, reachable) in enumerate(locations):
             self.locations_table.setItem(
@@ -205,10 +222,6 @@ class SettingsPage(QWidget):
             self.locations_table.setItem(
                 row, 2, QTableWidgetItem("Yes" if reachable else "No"),
             )
-
-            actions = QWidget()
-            actions_layout = QHBoxLayout(actions)
-            actions_layout.setContentsMargins(0, 0, 0, 0)
 
             # Loaded from the DB via list_locations() above, so .id is
             # always set for a real row.
@@ -225,7 +238,6 @@ class SettingsPage(QWidget):
                         location_id, current_name,
                     )
             )
-            actions_layout.addWidget(rename_button)
 
             remove_button = QPushButton("Remove")
             remove_button.setToolTip(help_text.TOOLTIP_REMOVE_LOCATION)
@@ -235,9 +247,15 @@ class SettingsPage(QWidget):
                     name
                 )
             )
-            actions_layout.addWidget(remove_button)
 
+            actions = theme.cell_widget(rename_button, remove_button)
+            action_widgets.append(actions)
             self.locations_table.setCellWidget(row, 3, actions)
+
+        # Roadmap item 97 (B6.3) — derived from this render's own real
+        # Actions widgets, same as every other table with this column
+        # (theme.size_action_column's own docstring).
+        theme.size_action_column(self.locations_table, 3, action_widgets)
 
     def _on_add_location_clicked(self) -> None:
         self.locations_notice.dismiss()
@@ -312,7 +330,9 @@ class SettingsPage(QWidget):
         self.destinations_playlist_list.currentItemChanged.connect(
             self._on_destination_playlist_selected
         )
-        layout.addWidget(self.destinations_playlist_list, 1)
+        # Roadmap item 97 (B6.2) — same rounded-card treatment every
+        # QListWidget in main_window.py already gets (item 80).
+        layout.addWidget(theme.make_card(self.destinations_playlist_list), 1)
 
         right = QVBoxLayout()
 
