@@ -108,4 +108,41 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B11 — Observations to confirm or dismiss
 
-- [ ] Not started.
+- [x] B11.1: real data misconfiguration, not a code bug — playlist
+  "Test"'s destination location IS the "Test" library location
+  (already scoped to `.../Music/Test`) AND its stored subfolder is
+  also `"Music/Test"`, so the two legitimately double-join. Fix is a
+  Settings edit, left for the user. B11.2: confirmed a settled
+  download does NOT silently overwrite an existing match
+  (`_track_already_has_a_matched_file` guard, item 56 Phase 5.3) — the
+  Neuro→Test flip B3 found is far more likely `match_all()`'s own
+  documented no-provenance re-scoring (item 45). No code changed.
+  Roadmap item 101 / HISTORY §101.
+
+---
+
+## Brief closed
+
+All eleven items (B1–B11) addressed: nine real code fixes committed
+(B8, B3, B5, B1, B4, B2+B6, B10, B9, B7), plus B11's two confirmed
+observations (no code change needed). Two real findings surfaced
+beyond the brief's own scope while investigating B3.5 — an overlapping-
+library-locations topology issue and a real crash/data-loss pair in
+duplicate handling — reported to and corrected by the user, with the
+crash and data-loss guard fixed in the same commit; the overlapping-
+locations topology itself is left as an open, explicitly-scoped
+roadmap item (94/97... see item 93), a real user decision, not
+attempted here.
+
+**Left for the user, blocked by this sandboxed session's own real
+permission/environment gaps (not attempted-and-failed):**
+- B8.4/B8.7 — confirming the real token file's `expires_at` value and
+  a live past-expiry reload with no restart (needs the real machine,
+  real elapsed time).
+- B9.4 — the real macOS menu bar visual check in both light/dark
+  appearance (no Screen Recording permission in this session; an
+  offscreen proxy render confirms the glyph shape only).
+- B7.3 — the 9 real `cover.jpg` files already in the library, listed
+  in HISTORY §100, theirs to delete if wanted.
+- B11.1 — the "Test" playlist's misconfigured destination subfolder,
+  a one-field Settings edit, theirs to make.

@@ -1603,6 +1603,27 @@ compress it here before moving on to the next item.
      explicit confirmation); reported to the user, theirs to delete if
      they want.** [HISTORY §100](docs/HISTORY.md#100)
 
+101. **B11 — two observations, both confirmed against the real DB, no
+     code changed (as instructed).** B11.1: the doubly-nested
+     `Test/Music/Test/` folder is a real, simple data misconfiguration,
+     not a path-joining bug — playlist "Test" has
+     `download_location_id` pointing at the "Test" location (whose own
+     path is already `.../Music/Test`) **and** a stored
+     `download_subfolder` of `"Music/Test"`, so the two legitimately
+     concatenate. `_resolve_destination`'s join logic is doing exactly
+     what it's supposed to with what's stored; fixing this is a
+     Settings → Playlist Destinations edit (clear that playlist's
+     subfolder), not a code change — left for the user. B11.2: a
+     completed **settled** download does NOT silently overwrite an
+     existing match — `poll_downloads()` checks `_track_already_has_a_
+     matched_file()` before `_index_and_match_settled_download` ever
+     runs, and routes an already-matched track's completion to
+     `ready_for_review` instead (item 56 Phase 5.3, a real, existing
+     guard). The Neuro→Test flip B3 found is far more likely
+     `match_all()`'s own documented no-provenance-tracking behavior
+     (item 45) re-scoring once a second local candidate existed, not
+     this path. [HISTORY §101](docs/HISTORY.md#101)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

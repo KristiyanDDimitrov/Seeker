@@ -11798,3 +11798,68 @@ never write a new one but also won't touch these on its own.
 
 Full suite: `1055 passed, 1 skipped, 0 failed`. `mypy --strict src/`:
 clean, 85 files.
+
+### 101 — B11: two observations confirmed against the real production DB
+
+Neither of these was reported by the user — both were things the brief
+flagged as found while diagnosing B3/B8, worth confirming or dismissing
+rather than letting them re-surface unexplained in a future round.
+
+**B11.1 — the doubly-nested `Test/Music/Test/` folder.** Queried the
+real `playlists` table for every row with a `download_location_id` set:
+
+```
+id        name                     download_location_id  location_name  location_path               download_subfolder
+6lZfGv...  Test                     4                      Test           /Volumes/X9 Pro/Music/Test  Music/Test
+```
+
+The playlist named "Test" has its destination LOCATION set to the
+"Test" library location — whose own registered path is already
+`/Volumes/X9 Pro/Music/Test` — **and** a stored `download_subfolder` of
+`"Music/Test"`. `_resolve_destination`/`resolve_playlist_destination`
+join these as `location.path / subfolder`, exactly as designed:
+`/Volumes/X9 Pro/Music/Test` + `Music/Test` =
+`/Volumes/X9 Pro/Music/Test/Music/Test/` — the precise real path the
+brief found a file being actively tagged in. This is not a bug in the
+join logic; the join is doing exactly what its two stored inputs say
+to do. The real cause is that this playlist's `download_subfolder`
+field was set to a value that re-describes part of the destination
+location's own path, rather than a subfolder relative to it. The fix
+is a one-field edit in Settings → Playlist Destinations (clear or
+correct the "Test" playlist's subfolder), a real data/configuration
+decision left for the user — not a code change, and not something this
+session did on the user's behalf.
+
+**B11.2 — does a fresh download re-point an existing match?** Read
+`DownloadService.poll_downloads()` and `_index_and_match_settled_
+download()`/`_track_already_has_a_matched_file()` directly rather than
+inferring from behavior. The real, current answer: **no, not for an
+ordinary settled-download completion.** `poll_downloads()`'s main loop
+calls `_track_already_has_a_matched_file(request.track_id)` (item 56
+Phase 5.3) BEFORE ever calling `_move_completed_file`/`_index_and_
+match_settled_download` for a `role != "upgrade"` request — if
+`track_matches` already has a row for this track with a non-null
+`local_file_id`, the completion is instead converted into a
+`ready_for_review` upgrade candidate (`_supersede_others_for_track`),
+never silently overwriting the existing match. This guard is
+deliberately NOT applied to `apply_upgrade_decision`'s own explicit
+"Replace" action — a human clicking Replace is exactly the one place
+overwriting a match on purpose is correct, per that function's own
+docstring.
+
+So the Neuro→Test flip B3's own investigation found is NOT explained by
+this path — it's properly guarded and would have routed a second
+completed download to Review instead. The far more likely explanation,
+consistent with this project's own already-documented standing fact
+(item 45): `match_all()` recomputes every `track_matches` row from
+scratch on every run, with no "provenance-confirmed" concept for a
+plain (never manually confirmed) `'auto'` match — once the `Test/`
+copy existed as a second real `local_files` row (it didn't at the time
+of the original Aug 27 `Neuro/` match), a later routine match/rescan
+had a genuine second candidate to score and picked differently this
+time. This is pre-existing, deliberate behavior (item 45 already named
+it as a real, accepted gap), not a new bug this investigation found —
+recorded here so the exact mechanism doesn't need re-deriving next time
+this shape of report comes in.
+
+No code changed for either observation, per the brief's own instruction.
