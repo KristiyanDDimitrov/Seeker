@@ -1673,14 +1673,43 @@ compress it here before moving on to the next item.
      applies the same floor to EVERY column at construction (C2.3's
      shared invariant — no column may start narrower than its own
      header needs). Screenshot-confirmed: Review's three empty tables
-     all now show "Actions" in full. **Open finding, not this item's
-     own scope, caught live via a real `lldb` attach while re-running
-     the suite:** the full suite intermittently stalls for a few real
-     minutes (self-resolves, never a permanent hang) on a real,
-     unmocked `QMessageBox.information().exec()` — consistent with
-     item 41's own documented class (a straggling worker's completion
-     callback firing late). Not reproduced on demand; left open.
+     all now show "Actions" in full. **A full-suite stall caught live
+     via a real `lldb` attach while re-running the suite was reported
+     here as an unresolved open finding — item 105 (C3) root-caused and
+     fixed it for real; see there, not here.**
      [HISTORY §104](docs/HISTORY.md#104)
+
+104. **C3 — the Dashboard's own progress bar was a second, untouched
+     bug site — done.** B4/item 96 only fixed `_build_progress_widget`
+     (the Downloads page); `_render_track_statuses` builds its OWN bare
+     `QProgressBar` for the Dashboard track table, handed directly to
+     `setCellWidget` — the identical top-clamped-bar bug in a function
+     that fix never reached. Now wrapped through the SAME
+     `_wrap_progress_bar` container (no ETA label — deliberate, the
+     Dashboard doesn't track per-track ETA). Swept every real
+     `setCellWidget(` call site in `main_window.py`/`settings_window.py`
+     (15 matched lines; 2 are comments, 13 real calls) — confirmed the
+     only other bare-widget cases are two harmless empty `QWidget()`
+     placeholders and one bare `QRadioButton` (Duplicates' Keep column)
+     that live-rendering confirmed is NOT visually broken (a radio's
+     indicator paints centered regardless of cell stretch, unlike
+     QPushButton/QProgressBar). New structural regression test walks
+     every real table and fails on any bare `QProgressBar`/`QPushButton`
+     cell widget anywhere in the app. **Also root-caused and fixed
+     item 104's own "open finding":** a real, DETERMINISTIC (not
+     intermittent — the earlier "self-resolves" read was from giving up
+     a wait too early) full-suite stall. Three tests
+     (`test_replace_all_upgrades_button_calls_batch_with_every_
+     request_id` + two `test_resolve_all_duplicates_*` siblings) waited
+     only for a bulk action's SERVICE call to register, not for its
+     `on_finished` handler's own `QMessageBox.information()` — which
+     can still be queued, unmocked, when the test returns, popping a
+     real blocking modal during a LATER test with nothing to click
+     under the offscreen QPA. Standing rule now: **any test that clicks
+     a bulk action's confirm button must mock `QMessageBox.information`
+     even when not asserting on it.** Full suite: 1060 passed, 1
+     skipped, in 69.11s (no stall) — was inflated by real stall minutes
+     before this fix. [HISTORY §105](docs/HISTORY.md#105)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,

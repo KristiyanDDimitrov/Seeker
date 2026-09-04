@@ -12147,3 +12147,138 @@ a future round — the exact kind of intermittent-and-unreproduced-on-
 demand finding this project's own item 63/70 already set a precedent
 for recording rather than either chasing indefinitely or pretending it
 didn't happen.
+
+**Update, same round, item 105 below:** root-caused and fixed for real
+while producing this item's own full-suite verification run — the
+"reproduces sometimes, self-resolves" framing above was wrong; it is
+fully deterministic given the right two tests run in sequence, and item
+105 names the exact two.
+
+### 105 — C3: the Dashboard progress bar is a second site, B4 never touched
+
+**CONFIRMED exactly as the brief diagnosed.** The user's screenshot was
+the Dashboard track table (Track/Status/Progress/Actions columns,
+"In library"/"Downloading" rows with per-row "Tag" buttons) — not the
+Downloads table, which is what B4/item 96 actually fixed. Round 4's own
+brief scoped that fix to "the Downloads tab," so `MainWindow.
+_render_track_statuses` (the Dashboard's own progress-cell builder) was
+never touched and kept the exact bug B4 fixed everywhere else: a bare
+`QProgressBar` handed directly to `setCellWidget` gets resized to the
+whole (tall) row rect, and the global `QProgressBar { max-height:
+14px; }` rule then clamps it to the TOP instead of centering it.
+
+Fixed by routing the Dashboard's own bar through the same
+`_wrap_progress_bar` container `_build_progress_widget`/
+`_build_terminal_progress_widget` already use (item 96's own shared
+helper) — `label_text=None`, since the Dashboard doesn't track a
+per-track ETA the way Downloads does; that difference is now the one
+remaining deliberate divergence, commented in place.
+
+**C3.3 — the sweep, with the real count, not the brief's own
+estimate.** `grep -rn "setCellWidget(" src/seeker/ui/` returns 15
+matched lines; 2 are prose mentions inside comments (`main_window.py:
+2339` and `:3945`), leaving **13 real invocations**. Of those:
+
+- 11 already passed a real wrapped container (`theme.cell_widget(...)`
+  or `_wrap_progress_bar`/`_build_progress_widget`) — verified by
+  reading every `_build_*_actions` helper's own `return` statement, not
+  assumed from the call site alone.
+- 1 was this item's own bug (the Dashboard progress bar) — now fixed.
+- 1 is a genuinely harmless bare `QWidget()` placeholder (`track_table`
+  col 2 when a row isn't downloading) — empty, nothing to clip or
+  misalign.
+- 1 is a bare `QRadioButton` (`duplicates_table`'s own "Keep" column,
+  item R2's `keep_radio`) — checked live via a real render rather than
+  assumed safe by analogy: its geometry IS stretched to the full cell
+  rect exactly like the buggy cases, but a real `window.grab()`
+  screenshot shows it rendering correctly centered regardless (a radio
+  button's indicator paints centered within its own rect when there's
+  no label text competing for space — a genuinely different failure
+  mode than `QPushButton`'s "fills as an oversized block" or
+  `QProgressBar`'s "clamped to the top," not a coincidence worth
+  further chasing).
+
+New regression test `test_no_table_ever_hands_a_bare_progress_bar_or_
+button_to_setcellwidget` renders every real page (Dashboard, Downloads,
+Search, Duplicates, Review's three tables, Sharing, Settings → Library
+Locations) and walks every `QTableWidget` via `findChildren`, asserting
+no cell widget is ever a bare `QProgressBar` or `QPushButton` — a fifth
+call site introduced anywhere in the app fails this automatically,
+rather than needing a sixth brief to rediscover it.
+
+`test_dashboard_downloading_bar_is_vertically_centered` mirrors item
+96's own real pixel-scan method (not just `mapTo()` geometry) for this
+second site: painted bar span vs. row center, both under 2px. Also
+updated the pre-existing `test_dashboard_downloading_progress_bar_gets_
+the_accent_chunk_style`, which asserted `isinstance(cellWidget, 
+QProgressBar)` directly — now finds the bar via `findChild`, since the
+cell widget is the wrapping container, not the bar itself.
+
+Screenshot: a real offscreen render of the Dashboard with one
+downloading + one in-library row shows the progress bar centered in its
+row, matching the Downloads page's already-correct rendering.
+
+**The item 104 "open finding" (a full-suite stall on a real, unmocked
+`QMessageBox.exec()`) is root-caused and fixed here, for real, not left
+open.** Re-running the full suite for this item's own verification
+reproduced the stall a third time, but this time it did NOT self-
+resolve within a normal timeout — the earlier "self-resolves" read was
+wrong, caused by giving up the wait too early, not by the process
+actually recovering. Bisected properly instead of waiting it out again:
+`timeout 90 uv run pytest tests/test_ui_smoke.py -q` alone (no other
+test file needed) reproduces it at the exact same relative position
+every time; slicing to the 13 tests around that position and running
+them with `-v` isolates the exact offender —
+`test_replace_all_upgrades_button_calls_batch_with_every_request_id`
+never printed PASSED before the slice's own timeout.
+
+Real mechanism: this test clicks "Replace all upgrades," which
+`run_worker()`s `application.download_service.apply_upgrade_decisions_
+batch(...)` on a background `QThreadPool` thread, then waits only for
+`qtbot.waitUntil(lambda: ...batch_calls != [], timeout=2000)`. That
+list is appended to INSIDE the worker callable, on the background
+thread, before the worker's `finished` signal is even emitted — so the
+`waitUntil` condition can become true, and the test function can
+return, WHILE the finished-signal delivery (a queued cross-thread Qt
+event) and its `on_finished` handler
+(`_on_bulk_replace_upgrades_finished`, which calls a real
+`QMessageBox.information(self, ...)`) are still pending in the event
+queue. Nothing in this test mocks `QMessageBox.information`, so
+whenever that queued event finally gets processed — during a LATER,
+unrelated test's own event-loop pump, since the test that started it
+already returned — it pops a genuine modal dialog with nothing able to
+click it under the offscreen QPA, and the main thread blocks inside
+`QDialog::exec()` exactly as the real `lldb` backtrace showed. Two
+sibling tests had the identical shape:
+`test_resolve_all_duplicates_uses_default_and_custom_keep_selections`
+and `test_resolve_all_duplicates_skips_keep_all_groups` (both wait only
+for `resolve_groups_calls != []`, the duplicate-resolve equivalent).
+One already-correct sibling,
+`test_resolve_all_duplicates_drops_only_succeeded_groups_locally`,
+already mocked `QMessageBox.information` defensively even though it
+doesn't assert on it — that is the exact pattern the three broken tests
+were missing, and it's a real, standing convention worth stating
+explicitly: **any test that clicks a bulk action's confirm button must
+mock `QMessageBox.information` even if it isn't asserting on the
+result**, since the on_finished handler always shows one and nothing
+guarantees the test's own wait condition resolves after it fires,
+merely after the underlying service call does.
+
+Fixed by adding the same defensive mock to all three tests. Confirmed
+the fix directly: the previously-hanging 13-test slice now runs in
+3.04s, all passed. Full suite, run clean afterward with no stall at
+all: **1060 passed, 1 skipped, in 69.11s** — the earlier "unrelated,
+185s-ish runtime" runs were partly inflated by minutes of real stall
+time this fix removes entirely. `mypy --strict src/` clean.
+
+**Why this surfaced now and not in earlier rounds:** this bug has
+likely always existed in these three tests' own logic (nothing about
+it depends on anything C2/C3 changed), but item 103's own
+`_apply_real_theme` fixture is almost certainly why it went from
+"theoretically racy" to "reliably reproducible" — applying the real
+Fusion style + the full QSS stylesheet to every widget makes ordinary
+widget construction measurably heavier, widening the exact race window
+between "the background thread's list-append becomes visible" and "the
+main thread has processed the queued finished-signal event," which
+used to close fast enough in practice that this never actually fired in
+this project's own CI history before this round.

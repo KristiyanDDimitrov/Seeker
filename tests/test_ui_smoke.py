@@ -3896,6 +3896,23 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
         return QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(BulkReplaceUpgradesDialog, "exec", fake_exec)
+    # Roadmap item C3 (round 5) — found live while chasing a real,
+    # reproducible full-suite hang: `_on_bulk_replace_upgrades_finished`
+    # (the worker's on_finished callback) calls a real, unmocked
+    # `QMessageBox.information()` after this test's own wait condition
+    # is already satisfied (the batch call list is appended to on the
+    # WORKER thread, before its finished signal is even emitted/
+    # processed on the main thread) — so the test could return with
+    # that call still QUEUED, popping a genuine blocking modal `exec()`
+    # during a LATER, unrelated test with nothing to click under the
+    # offscreen QPA. Confirmed via a real `lldb -p <pid> -o "bt all"`
+    # attach on a live-hung `pytest` process: the main thread was
+    # inside `QDialog::exec()`, called from `Sbk_QMessageBoxFunc_
+    # information`. Mocked here (even though not asserted) so nothing
+    # leaks past this test's own scope — the same defensive pattern
+    # `test_resolve_all_duplicates_drops_only_succeeded_groups_locally`
+    # already used correctly.
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
 
     window.replace_all_upgrades_button.click()
 
@@ -4157,8 +4174,14 @@ def test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style(qtbot):
 
     window._render_track_statuses([status])
 
-    bar = window.track_table.cellWidget(0, 2)
-    assert isinstance(bar, QProgressBar)
+    # Roadmap item C3 (round 5) — this cell widget is now wrapped by
+    # _wrap_progress_bar (see the test just below for why: a bare bar
+    # here reproduced the exact same top-clamped-bar bug B4/item 96
+    # fixed on the Downloads page), so the real QProgressBar is a
+    # child of the cell widget, not the cell widget itself.
+    container = window.track_table.cellWidget(0, 2)
+    bar = container.findChild(QProgressBar)
+    assert bar is not None
     assert "chunk" in bar.styleSheet()
 
 
@@ -5732,6 +5755,13 @@ def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
         return QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+    # Roadmap item C3 (round 5) — see the identical fix/comment on
+    # test_replace_all_upgrades_button_calls_batch_with_every_request_id:
+    # this test's own wait condition (resolve_groups_calls != []) can be
+    # satisfied before `_on_bulk_resolve_duplicates_finished`'s real
+    # QMessageBox.information() call has fired, leaving it queued to
+    # pop a genuine blocking modal during a later test.
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
 
     window.resolve_all_duplicates_button.click()
 
@@ -5767,6 +5797,9 @@ def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
         return QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+    # Roadmap item C3 (round 5) — same real leaked-QMessageBox fix as
+    # the two tests above.
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
 
     window.resolve_all_duplicates_button.click()
 
@@ -6845,6 +6878,148 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
         window.resize(width, height)
         qtbot.wait(20)
         _assert_every_column_fits_its_own_header(window)
+
+
+def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
+    # Roadmap item C3 (round 5) — the real reported bug: the DASHBOARD
+    # track table (Track/Status/Progress/Actions, with "In library"/
+    # "Downloading" rows) builds its own bare QProgressBar directly in
+    # `_render_track_statuses`, a second, independent site B4/item 96
+    # never touched (that fix only reached the DOWNLOADS page's own
+    # `_build_progress_widget`). Same real pixel-scan method as item
+    # 96's own regression test — this is the Dashboard's own version of
+    # it, proving the shared `_wrap_progress_bar` container now covers
+    # both sites.
+    status = TrackStatus(
+        track=_make_track("t1"), state=DOWNLOADING,
+        bytes_transferred=500, total_bytes=1_000,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window._render_track_statuses([status])
+    qtbot.wait(100)
+
+    viewport = window.track_table.viewport()
+    row_rect = window.track_table.visualRect(
+        window.track_table.model().index(0, 2)
+    )
+    widget = window.track_table.cellWidget(0, 2)
+    assert widget is not None
+    bar = widget.findChild(QProgressBar)
+    assert bar is not None
+
+    bar_center_y = bar.mapTo(viewport, bar.rect().center()).y()
+    assert abs(bar_center_y - row_rect.center().y()) <= 2
+
+    # Real pixel scan (item 102's own lesson: geometry alone can lie
+    # about what actually got painted) — find the bar's real painted
+    # color span and compare ITS midpoint to the row's real center.
+    image = window.grab().toImage()
+    dpr = image.width() / window.width()
+    surface_rgb = tuple(
+        int(theme.BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
+    )
+    top_left = viewport.mapTo(window, viewport.rect().topLeft())
+    x = round((top_left.x() + row_rect.left() + 10) * dpr)
+    y0 = round((top_left.y() + row_rect.top()) * dpr)
+    y1 = round((top_left.y() + row_rect.bottom()) * dpr)
+
+    painted_ys = [
+        y for y in range(y0, y1 + 1)
+        if (
+            image.pixelColor(x, y).red(),
+            image.pixelColor(x, y).green(),
+            image.pixelColor(x, y).blue(),
+        ) != surface_rgb
+    ]
+    assert painted_ys, "no painted bar pixels found"
+    painted_center = (painted_ys[0] + painted_ys[-1]) / 2 / dpr
+    row_center = top_left.y() + row_rect.center().y()
+    assert abs(painted_center - row_center) <= 2
+
+
+def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
+        qtbot,
+):
+    # Roadmap item C3 (round 5, C3.3) — the actual root cause of both
+    # this item and B4/item 96: a bare QProgressBar or QPushButton
+    # handed directly to setCellWidget gets resized to fill the WHOLE
+    # cell rect, then either the global max-height rule clamps it to
+    # the top (QProgressBar) or it paints as an oversized filled block
+    # (QPushButton, item 80's own P10.3). A real structural sweep, not
+    # a hand-picked list of tables — a fifth call site introduced
+    # anywhere in the app fails this automatically.
+    from seeker.models.soulseek_file import SoulseekFile
+    from seeker.sharing_service import LocationShareState
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    window._render_track_statuses([
+        TrackStatus(
+            track=_make_track("t1"), state=DOWNLOADING,
+            bytes_transferred=500, total_bytes=1_000,
+        ),
+        _make_track_status(track_id="t2", state=IN_LIBRARY, tagged_at=None),
+    ])
+    window._show_page("downloads")
+    window._render_active_downloads([
+        _make_active_download(
+            track_id="t3", status="downloading",
+            bytes_transferred=500, total_bytes=1_000,
+        ),
+    ])
+    window._show_page("search")
+    window._render_search_results(
+        "Dom Dolla", "Rhyme Dust",
+        [
+            SoulseekFile(
+                username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+                extension="flac", size=25_000_000, queue_length=0,
+                upload_speed=1_000_000, has_free_upload_slot=True,
+            ),
+        ],
+    )
+    window._show_page("duplicates")
+    window._render_duplicate_groups([_make_duplicate_group()])
+    window._show_page("review")
+    window._render_needs_review_candidates(
+        [(_make_track(), _make_review_candidate())]
+    )
+    window._render_pending_upgrades(
+        [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    )
+    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._render_sharing_locations_table([
+        LocationShareState(
+            location=_make_location(1, "Music", "/Volumes/Drive/Music"),
+            shared=False, share=None,
+        ),
+    ])
+    window.settings_page._render_locations(
+        [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
+    )
+    qtbot.wait(20)
+
+    from PySide6.QtWidgets import QTableWidget
+
+    checked = 0
+    for table in window.findChildren(QTableWidget):
+        for row in range(table.rowCount()):
+            for column in range(table.columnCount()):
+                widget = table.cellWidget(row, column)
+                if widget is None:
+                    continue
+                checked += 1
+                assert not isinstance(widget, (QProgressBar, QPushButton)), (
+                    f"{table.objectName() or table!r} ({row}, {column}) "
+                    f"got a bare {type(widget).__name__} directly"
+                )
+    assert checked > 0, "no cell widgets found — test itself is broken"
 
 
 # --- Roadmap item R7: run in the background from the macOS menu bar --------

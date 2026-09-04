@@ -4518,7 +4518,19 @@ class MainWindow(QMainWindow):
                 progress.setMaximum(status.total_bytes)
                 progress.setValue(status.bytes_transferred)
                 theme.style_determinate_progress_bar(progress)
-                self.track_table.setCellWidget(row, 2, progress)
+                # Roadmap item C3 (round 5) — a bare QProgressBar handed
+                # to setCellWidget gets resized to the whole (tall) cell
+                # rect, then the global `QProgressBar { max-height:
+                # 14px; }` rule clamps it to the TOP instead of
+                # centering it — the identical bug B4/item 96 fixed on
+                # the Downloads page, in this Dashboard-only builder B4
+                # never touched. `_wrap_progress_bar` is the one shared
+                # container both pages now go through; the Dashboard
+                # deliberately passes no label (`None`) — no ETA is
+                # tracked per-track here, unlike Downloads.
+                self.track_table.setCellWidget(
+                    row, 2, _wrap_progress_bar(progress, None),
+                )
             else:
                 self.track_table.setCellWidget(row, 2, QWidget())
 
