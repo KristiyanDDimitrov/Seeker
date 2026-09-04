@@ -146,3 +146,24 @@ permission/environment gaps (not attempted-and-failed):**
   in HISTORY §100, theirs to delete if wanted.
 - B11.1 — the "Test" playlist's misconfigured destination subfolder,
   a one-field Settings edit, theirs to make.
+
+## Post-round review: B2.2/B4.3/B6.5 pixel verification
+
+- [x] Caught by the user: B2/B4/B6 all claimed "pixel-verified" but no
+  real `window.grab()` evidence (RGB values, screenshots) was ever
+  recorded in HISTORY, and B6.5 was never actually run at the app's
+  real 960×640 minimum window size. Re-ran properly: B2.2 — 16/16 real
+  pixel samples across every row boundary exact-matched BORDER
+  `(58,52,78)`, zero drift toward BG_SURFACE. B4.3 — real pixel-color
+  scan (not just geometry) found both bars' painted center within
+  0.5px of their row's center; upgraded the persisted regression test
+  itself to do this same real pixel scan, confirmed to still fail
+  without the fix. B6.5 — both Settings tabs rendered and inspected at
+  a real 960×640: Actions header renders in full, buttons render
+  completely, corners round correctly. One real methodology bug
+  self-caught along the way: a manual `_render_locations()` call was
+  silently overwritten by `SettingsPage`'s own real async refresh,
+  producing an empty table whose Actions header clipped to "ction" —
+  looked like a second bug, was actually `size_action_column`'s own
+  documented empty-widgets fallback; fixed by feeding real data through
+  `FakeApplication`'s constructor instead. HISTORY §102.

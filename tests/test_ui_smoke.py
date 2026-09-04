@@ -3208,6 +3208,42 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
 
         assert abs(bar_center_y - row_rect.center().y()) <= 2
 
+    # Roadmap item 102 — a post-round review correctly pointed out that
+    # a geometry check (mapTo above) isn't the same thing as verifying
+    # what actually got PAINTED (item 77's own lesson: occlusion/paint
+    # order is invisible to geometry queries). Real pixel scan of a
+    # real window.grab(): find the bar's actual colored pixel span
+    # inside the progress column and compare ITS midpoint to the row's
+    # own real center — independent of and stronger than the mapTo
+    # check above.
+    image = window.grab().toImage()
+    surface_rgb = tuple(
+        int(theme.BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
+    )
+    top_left = viewport.mapTo(window, viewport.rect().topLeft())
+
+    for row in (0, 1):
+        row_rect = window.downloads_table.visualRect(
+            window.downloads_table.model().index(row, 4)
+        )
+        x = top_left.x() + row_rect.left() + 10
+        y0 = top_left.y() + row_rect.top()
+        y1 = top_left.y() + row_rect.bottom()
+
+        painted_ys = [
+            y for y in range(y0, y1 + 1)
+            if (
+                image.pixelColor(x, y).red(),
+                image.pixelColor(x, y).green(),
+                image.pixelColor(x, y).blue(),
+            ) != surface_rgb
+        ]
+        assert painted_ys, f"row {row}: no painted bar pixels found"
+
+        painted_center = (painted_ys[0] + painted_ys[-1]) / 2
+        row_center = top_left.y() + row_rect.center().y()
+        assert abs(painted_center - row_center) <= 2
+
 
 def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
     # Locked/shortlisted rows have no real, current transfer — a

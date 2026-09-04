@@ -1530,8 +1530,11 @@ compress it here before moving on to the next item.
     shared `_wrap_progress_bar(bar, label_text)` used by all three exits
     (`label_text=None` omits the ETA label for the indeterminate case) —
     a fourth branch can no longer reintroduce this by skipping it.
-    Pixel-verified: a queued and a downloading row's bars now both sit
-    within 2px of their row's own vertical center.
+    Pixel-verified for real (item 102, after a post-round review found
+    the first "pixel-verified" claim was asserted, not recorded): a
+    real pixel scan of a `window.grab()` found the queued bar's real
+    color-span center 0.5px from its row's center, downloading 0.5px —
+    both well inside the brief's "within a pixel or two."
 
 97. **B2 + B6 — table/card chrome: header dividers + Settings' two
     unstyled tables — done.** B2: `QHeaderView::section`'s `border:
@@ -1539,20 +1542,26 @@ compress it here before moving on to the next item.
     fallback, since any `QHeaderView::section` rule makes Qt paint the
     header entirely from that box model — added `border-right: 1px
     solid {BORDER}` (suppressed on the trailing section). Body
-    gridlines were never actually lost (pixel-verified: exact `BORDER`
-    match between rows) — `make_card`'s per-widget stylesheet doesn't
-    touch `gridline-color`. B6: `settings_window.py`'s `locations_table`
-    and `destinations_playlist_list` were the only two real
-    `QTableWidget`/`QListWidget` in the app never routed through
-    `apply_table_defaults()`/`make_card()`/`size_action_column()` (item
-    80/R5) — same black-column/square-corner/clipped-Actions defects,
-    now fixed identically to every `main_window.py` table. New
+    gridlines were never actually lost — item 102's real pixel scan (16
+    samples across every row boundary of a real `window.grab()`) found
+    an exact `(58,52,78)`/`#3A344E` BORDER-color match at all 16, zero
+    drift toward BG_SURFACE — `make_card`'s per-widget stylesheet
+    doesn't touch `gridline-color`. B6: `settings_window.py`'s
+    `locations_table` and `destinations_playlist_list` were the only
+    two real `QTableWidget`/`QListWidget` in the app never routed
+    through `apply_table_defaults()`/`make_card()`/`size_action_column()`
+    (item 80/R5) — same black-column/square-corner/clipped-Actions
+    defects, now fixed identically to every `main_window.py` table. New
     structural test walks `findChildren` on a real `MainWindow` (which
     embeds `SettingsPage`) asserting every table/list has a
     `QFrame#card` ancestor — confirmed to actually fail without the
     fix, not just pass either way, closing the "third round a shared
-    fix landed in one file and not the other" gap for good. Pixel-
-    verified: Downloads, Duplicates, and Settings → Library Locations.
+    fix landed in one file and not the other" gap for good.
+    Pixel-verified for real (item 102) at the app's actual 960×640
+    minimum window size, not just default — both Settings tabs render
+    correctly at 960×640: the Actions column header renders in full
+    ("Actions", not clipped), both action buttons render completely.
+    [HISTORY §102](docs/HISTORY.md#102)
 
 98. **B10 — window title showed a commit SHA — done.** Reversed item 81
     (0.1): `setWindowTitle(f"Seeker — {_build_info.GIT_SHA}")` → plain

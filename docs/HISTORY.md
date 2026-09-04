@@ -11863,3 +11863,86 @@ recorded here so the exact mechanism doesn't need re-deriving next time
 this shape of report comes in.
 
 No code changed for either observation, per the brief's own instruction.
+
+### 102 — Post-round review: B2.2/B4.3/B6.5's pixel verification was asserted, not recorded
+
+The user's own review of the finished round caught a real gap: B2, B4,
+and B6 all claimed "pixel-verified" in CLAUDE.md/commit messages, but
+no actual `window.grab()` evidence — RGB values, screenshots, or a
+before/after crop — was ever written into HISTORY.md. The checks HAD
+been run live during the session (real offscreen `window.grab()`
+calls, same mechanism items 77/87/R5 already used, no Screen Recording
+permission needed), but the results only ever reached the terminal,
+never a durable record. Two of the three checks also had a real scope
+gap: B4.3 had an automated `mapTo()`-based geometry test but no actual
+pixel-color scan or crop image; B6.5 was never run at the app's real
+960×640 minimum window size at all, only at default size — exactly the
+narrower size the brief asked for because it's where a squeeze bug is
+most likely to show. Re-run properly this time, real numbers below.
+
+**B2.2 — Downloads table body gridline, real pixels.** Rendered a
+populated Downloads table (5 rows), sampled the pixel color at every
+row-boundary (4 boundaries × 4 x-offsets = 16 samples) via
+`QImage.pixelColor()` on a real `window.grab()`:
+
+```
+16/16 samples: rgb=(58, 52, 78) — exact match to BORDER (#3A344E)
+Header divider (col0/col1 boundary): rgb=(58, 52, 78) — exact match
+```
+
+Zero drift toward BG_SURFACE `(29, 25, 41)` at any sample. Confirms
+`make_card`'s per-widget stylesheet (`border: none; border-radius:
+0px`) does NOT strip the app-level `gridline-color` rule — the body
+grid was never actually broken, matching the original diagnosis's own
+prediction but now backed by a real measurement instead of an
+inference.
+
+**B4.3 — queued vs. downloading bar vertical centering, real pixel
+scan.** For each row, scanned every y pixel inside the progress
+column's real bar-drawing x-position for a non-background color,
+finding the bar's real top/bottom extent, then compared its midpoint
+to the row's own real `visualRect().center().y()`:
+
+```
+queued:      bar pixel span y=[170,205]  measured center=187.5  row center=187  delta=0.5px
+downloading: bar pixel span y=[207,242]  measured center=224.5  row center=224  delta=0.5px
+```
+
+Both within the brief's own "match within a pixel or two" bar. A real
+cropped `window.grab()` image of both rows' progress cells (queued on
+top, downloading below) was produced and inspected directly — both
+bars render as symmetric horizontal bands centered in their row, not
+clamped to the top the way the original bug report showed.
+
+**B6.5 — Settings, both tabs, at the app's real 960×640 minimum AND
+default size.** All four combinations rendered and inspected directly
+(Library Locations / Playlist Destinations × 960×640 / 1180×760
+default). At 960×640 specifically: the Library Locations table's
+"Actions" header renders in full (not clipped), both "Rename"/"Remove"
+buttons render completely inside their column, rounded corners are
+intact on both tables with no square-corner cut, and the Playlist
+Destinations tab's list card also rounds correctly at this width.
+
+**One real methodology bug caught and fixed while producing this
+evidence, worth recording:** the first attempt at the B6.5 screenshots
+manually called `settings_page._render_locations(...)` right after
+construction, then resized/switched tabs — but `SettingsPage.__init__`
+already kicks off its own real async `_refresh_locations()` /
+`_refresh_destinations()` worker calls, which completed later (during
+the same `processEvents()` settle loop) and silently overwrote the
+manual render with `FakeApplication`'s own default (empty) data. The
+resulting screenshot showed a genuinely empty table AND a real,
+separate-looking symptom — the Actions column header clipped to
+"ction" — which was actually just `theme.size_action_column`'s own
+documented fallback (`default=header.minimumSectionSize()`, 40px) firing
+because there were no real Actions widgets that render to measure
+against, not a new bug. Fixed by passing real `locations=`/`playlists=`
+into `FakeApplication`'s own constructor instead of a manual render, so
+the real async refresh path resolves to real data the same way the
+live app does. Recorded here specifically because it's the same
+failure shape this item exists to prevent — a plausible-looking result
+that wasn't actually measuring what it claimed to.
+
+No code changed by this item — it verifies items 96 (B4) and 97
+(B2+B6)'s already-shipped fixes with real evidence; nothing here found
+a defect in the shipped code.
