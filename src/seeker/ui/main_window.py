@@ -2386,6 +2386,9 @@ class MainWindow(QMainWindow):
         theme.size_action_column(
             self.search_results_table, _SearchColumn.ACTIONS, action_widgets,
         )
+        # Roadmap item D3 (round 6) — after every resize mode above is
+        # set, not at construction; see `theme.apply_column_floors`.
+        theme.apply_column_floors(self.search_results_table)
 
     def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
         download_button = QPushButton("Download this one")
@@ -2465,6 +2468,12 @@ class MainWindow(QMainWindow):
         )
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.downloads_table)
+        # Roadmap item D3 (round 6) — this table never sets a per-column
+        # resize mode of its own (relies on setStretchLastSection above
+        # for Progress), so the floor call belongs right here, once, at
+        # construction; `apply_column_floors` skips the stretched last
+        # column on its own.
+        theme.apply_column_floors(self.downloads_table)
         layout.addWidget(theme.make_card(self.downloads_table))
 
         return _build_page(
@@ -2517,6 +2526,7 @@ class MainWindow(QMainWindow):
         )
         self.history_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.history_table)
+        theme.apply_column_floors(self.history_table)
         layout.addWidget(theme.make_card(self.history_table))
 
         # Raw, unfiltered events from the last real fetch — the filter
@@ -2626,6 +2636,7 @@ class MainWindow(QMainWindow):
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
         self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.sharing_uploads_table)
+        theme.apply_column_floors(self.sharing_uploads_table)
         layout.addWidget(theme.make_card(self.sharing_uploads_table))
 
         self._current_sharing_reconciliation: list[LocationShareState] = []
@@ -2772,6 +2783,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         theme.size_action_column(self.sharing_locations_table, 4, action_widgets)
+        theme.apply_column_floors(self.sharing_locations_table)
 
     def _render_sharing_uploads_table(
             self, uploads: list[UploadStatus],
@@ -4433,6 +4445,7 @@ class MainWindow(QMainWindow):
         theme.size_action_column(
             self.duplicates_table, _DuplicatesColumn.ACTIONS, action_widgets,
         )
+        theme.apply_column_floors(self.duplicates_table)
 
     def _build_duplicate_group_actions(
             self,
@@ -4965,6 +4978,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         theme.size_action_column(self.track_table, 3, action_widgets)
+        theme.apply_column_floors(self.track_table)
 
     def _on_track_table_cell_double_clicked(
             self, row: int, _column: int,
@@ -5323,6 +5337,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         theme.size_action_column(self.review_needs_table, 3, action_widgets)
+        theme.apply_column_floors(self.review_needs_table)
 
     def _build_needs_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")
@@ -5423,6 +5438,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         theme.size_action_column(self.review_upgrades_table, 3, action_widgets)
+        theme.apply_column_floors(self.review_upgrades_table)
 
     def _on_upgrade_delete_checkbox_toggled(
             self, request_id: int, checked: bool,
@@ -5593,6 +5609,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         theme.size_action_column(self.review_local_table, 4, action_widgets)
+        theme.apply_column_floors(self.review_local_table)
 
     def _build_local_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")

@@ -388,16 +388,52 @@ def apply_table_defaults(table: QTableWidget) -> None:
     ).sizeHint().height()
     table.verticalHeader().setMinimumSectionSize(representative_row_height)
 
-    # Roadmap item C2 (round 5, C2.3) — the shared invariant: no
-    # column's width may be less than its OWN header label needs,
-    # applied here for every column at construction time (when a table
-    # always starts with zero rows — the exact empty-table state a new
-    # user hits first on Review/Search/Duplicates).
-    # `size_action_column`, called later once real per-row content
-    # exists, widens the Actions column further where its widgets need
-    # more than this floor.
+    # Roadmap item D3 (round 6) — the C2.3 header-label floor used to
+    # be applied to EVERY column right here, at construction time. That
+    # was itself the D3 regression: this method runs before the caller
+    # ever assigns its real per-column resize modes, so at this moment
+    # every column still reads as the default `Interactive` mode —
+    # `resizeSection()` pins an explicit width onto columns the caller
+    # is about to make `Stretch`/`ResizeToContents`, and that pinned
+    # width sticks (changing a section's resize mode does not itself
+    # make Qt recompute that section's current size), fighting the very
+    # mode meant to own that column and leaving a dead band where a
+    # `Stretch` column should have reclaimed the leftover viewport
+    # width. The floor itself is still correct — see
+    # `apply_column_floors` below, which every caller must invoke AFTER
+    # setting its own resize modes instead.
+
+
+def apply_column_floors(table: QTableWidget) -> None:
+    """Roadmap item D3 (round 6) — the C2.3 header-label floor, scoped
+    correctly this time: only to columns still in `Interactive`/`Fixed`
+    resize mode. `Stretch` and `ResizeToContents` size themselves;
+    pinning an explicit width onto one of them is the D3 bug itself, so
+    those modes are skipped outright rather than floored. A column
+    covered by `setStretchLastSection(True)` (the header-level flag a
+    few tables use instead of an explicit per-column `Stretch` mode —
+    Downloads/History/Sharing's uploads table) is skipped the same way,
+    for the same reason, even though `sectionResizeMode()` still
+    reports it as `Interactive`.
+
+    Call this AFTER assigning every column's real resize mode — at the
+    end of a table's own `_size_*_columns` render method for a table
+    that has one, or directly after setting modes at construction for
+    a table that never changes them again. A table that skips this call
+    regains item 103's own ".ction" bug for whichever column stays at
+    Qt's plain default width.
+    """
     header = table.horizontalHeader()
+    last_column = table.columnCount() - 1
     for column in range(table.columnCount()):
+        if header.stretchLastSection() and column == last_column:
+            continue
+        mode = header.sectionResizeMode(column)
+        if mode not in (
+            QHeaderView.ResizeMode.Interactive,
+            QHeaderView.ResizeMode.Fixed,
+        ):
+            continue
         floor = header_label_floor(table, column)
         if header.sectionSize(column) < floor:
             header.resizeSection(column, floor)

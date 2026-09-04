@@ -180,6 +180,9 @@ class SettingsPage(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        # Roadmap item D3 (round 6) — after resize modes, not before;
+        # see `theme.apply_column_floors`'s own docstring.
+        theme.apply_column_floors(self.locations_table)
         layout.addWidget(theme.make_card(self.locations_table))
 
         add_row = QHBoxLayout()

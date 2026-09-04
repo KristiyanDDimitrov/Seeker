@@ -6893,6 +6893,102 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
         _assert_every_column_fits_its_own_header(window)
 
 
+def _assert_no_dead_band_at_stretch_columns(window, qtbot) -> None:
+    from PySide6.QtWidgets import QHeaderView, QTableWidget
+
+    def has_a_stretch_column(table: QTableWidget) -> bool:
+        header = table.horizontalHeader()
+        if header.stretchLastSection():
+            return True
+        return any(
+            header.sectionResizeMode(column)
+            == QHeaderView.ResizeMode.Stretch
+            for column in range(table.columnCount())
+        )
+
+    for page_key in (
+        "dashboard", "search", "downloads", "review",
+        "duplicates", "sharing", "history", "settings",
+    ):
+        window._show_page(page_key)
+        qtbot.wait(10)
+        for table in window.findChildren(QTableWidget):
+            if not table.isVisible() or not has_a_stretch_column(table):
+                continue
+            header = table.horizontalHeader()
+            total = sum(
+                header.sectionSize(column)
+                for column in range(table.columnCount())
+            )
+            viewport_width = table.viewport().width()
+            assert total >= viewport_width - 2, (
+                f"{table.objectName() or table!r} on page {page_key!r}: "
+                f"sum(sectionSize)={total} < viewport width="
+                f"{viewport_width} — a Stretch column left dead space"
+            )
+
+
+def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
+    # Roadmap item D3.5 (round 6) — the actual regression check for the
+    # reported bug: a `Stretch` column pinned to its header-label floor
+    # by the OLD, unscoped `apply_table_defaults` loop, leaving a dead
+    # band between the last real column and the table's own right edge.
+    # Paired deliberately with the C2 header-floor test above — the two
+    # invariants pull in opposite directions (widen a column for its
+    # header vs. never pin a column that's supposed to size itself) and
+    # both must hold at once, with zero rows and with real ones, at the
+    # app's real 960x640 minimum and a default-sized window.
+    from seeker.models.soulseek_file import SoulseekFile
+    from seeker.sharing_service import LocationShareState
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    for width, height in [(960, 640), (1280, 800)]:
+        window.resize(width, height)
+        qtbot.wait(20)
+        _assert_no_dead_band_at_stretch_columns(window, qtbot)
+
+    window._render_track_statuses(
+        [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
+    )
+    window._render_search_results(
+        "Dom Dolla", "Rhyme Dust",
+        [
+            SoulseekFile(
+                username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+                extension="flac", size=25_000_000, queue_length=0,
+                upload_speed=1_000_000, has_free_upload_slot=True,
+            ),
+        ],
+    )
+    window._render_needs_review_candidates(
+        [(_make_track(), _make_review_candidate())]
+    )
+    window._render_pending_upgrades(
+        [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    )
+    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._render_sharing_locations_table([
+        LocationShareState(
+            location=_make_location(1, "Music", "/Volumes/Drive/Music"),
+            shared=False, share=None,
+        ),
+    ])
+    window._render_duplicate_groups([_make_duplicate_group()])
+    window.settings_page._render_locations(
+        [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
+    )
+    qtbot.wait(20)
+
+    for width, height in [(960, 640), (1280, 800)]:
+        window.resize(width, height)
+        qtbot.wait(20)
+        _assert_no_dead_band_at_stretch_columns(window, qtbot)
+
+
 def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
     # Roadmap item C3 (round 5) — the real reported bug: the DASHBOARD
     # track table (Track/Status/Progress/Actions, with "In library"/
