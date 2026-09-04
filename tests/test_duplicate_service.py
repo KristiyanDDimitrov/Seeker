@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 
 import numpy as np
@@ -242,6 +243,70 @@ def test_find_duplicate_groups_excludes_files_with_no_fingerprint_yet(
     assert groups == []
 
 
+def test_find_duplicate_groups_skips_a_stale_row_instead_of_crashing(
+        tmp_path,
+):
+    # Roadmap item 93 (B3.5) — a real, previously-uncaught crash: a file
+    # can have a cached fingerprint (so it clusters) while its
+    # local_files row no longer resolves to a real file on disk (a
+    # rename that updated one location's row but not an overlapping
+    # location's own copy of the same physical file — item 76's
+    # documented drift class). Reproduced directly: fingerprint two
+    # real duplicate files, then remove one from disk without touching
+    # its DB row.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    _write_tone(music_dir / "dupe_a.wav", frequency=440.0)
+    _write_tone(music_dir / "dupe_b.wav", frequency=440.0)
+    add_local_file(database, location, "dupe_a.wav", "wav", 3000)
+    add_local_file(database, location, "dupe_b.wav", "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+
+    # Simulate the stale-row shape: the real file is gone (renamed via
+    # a different, overlapping location's row), but this row's
+    # fingerprint stays cached.
+    (music_dir / "dupe_b.wav").unlink()
+
+    groups = service.find_duplicate_groups("Main")  # must not raise
+
+    # Only one real file remains present -- not a "duplicate" of
+    # anything any more, matches the same "silently excluded" precedent
+    # this function already applies to files with no fingerprint at all.
+    assert groups == []
+
+
+def test_find_duplicate_groups_drops_only_the_stale_file_from_a_larger_group(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    _write_tone(music_dir / "dupe_a.wav", frequency=440.0)
+    _write_tone(music_dir / "dupe_b.wav", frequency=440.0)
+    _write_tone(music_dir / "dupe_c.wav", frequency=440.0)
+    add_local_file(database, location, "dupe_a.wav", "wav", 3000)
+    add_local_file(database, location, "dupe_b.wav", "wav", 3000)
+    add_local_file(database, location, "dupe_c.wav", "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+
+    (music_dir / "dupe_c.wav").unlink()
+
+    groups = service.find_duplicate_groups("Main")
+
+    assert len(groups) == 1
+    filenames = {f.local_file.filename for f in groups[0].files}
+    assert filenames == {"dupe_a.wav", "dupe_b.wav"}
+
+
 def test_compute_fingerprints_raises_when_chromaprint_unavailable(
         tmp_path, monkeypatch,
 ):
@@ -361,7 +426,8 @@ def test_delete_local_files_removes_db_row_and_real_file(tmp_path):
     result = service.delete_local_files([local_file.id])
 
     assert result == {
-        "deleted": 1, "failed": 0, "details": [],
+        "deleted": 1, "failed": 0, "skipped_same_physical_file": 0,
+        "details": [],
         # Roadmap item 56 Phase 6.4 — the real, stat()-measured size of
         # the real file just deleted (b"fake audio data" is 15 bytes).
         "bytes_freed": 15,
@@ -487,7 +553,8 @@ def test_delete_local_files_already_missing_id_counts_as_deleted(tmp_path):
     # Nothing was ever really there — 0 real bytes freed, not a
     # missing/error value.
     assert result == {
-        "deleted": 1, "failed": 0, "details": [], "bytes_freed": 0,
+        "deleted": 1, "failed": 0, "skipped_same_physical_file": 0,
+        "details": [], "bytes_freed": 0,
     }
 
 
@@ -588,6 +655,119 @@ def test_delete_local_files_records_nothing_when_everything_fails(tmp_path):
     assert result["deleted"] == 0
     assert result["failed"] == 1
     assert service.get_cleanup_totals() == (0, 0)
+
+
+# --- Roadmap item 93 (R3.3): same-physical-file delete guard --------------
+#
+# Overlapping registered library locations (item 77's own documented
+# nesting: a location registered at a parent path and another at a
+# child path both cover the same real folder) can produce two distinct
+# local_files rows for the identical real file on disk. A hard link is
+# the reproducible stand-in here for "two rows, one real inode" —
+# exactly what same_file()/Path.samefile() actually checks, without
+# needing two real overlapping locations wired up in a test.
+
+def test_delete_local_files_refuses_when_target_is_same_physical_file_as_kept(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    real_file = music_dir / "keep.wav"
+    real_file.write_bytes(b"real-audio-bytes")
+    aliased_path = music_dir / "duplicate_row.wav"
+    os.link(real_file, aliased_path)
+
+    keep = add_local_file(database, location, "keep.wav", "wav", 3000)
+    duplicate_row = add_local_file(
+        database, location, "duplicate_row.wav", "wav", 3000,
+    )
+
+    service = make_service(database)
+    result = service.delete_local_files(
+        [duplicate_row.id], keep_local_file_id=keep.id,
+    )
+
+    assert result["deleted"] == 0
+    assert result["failed"] == 0
+    assert result["skipped_same_physical_file"] == 1
+    # Neither the kept file NOR the "duplicate" row's own file was
+    # touched -- deleting either would have deleted both, since they
+    # are the same real inode.
+    assert real_file.exists()
+    assert aliased_path.exists()
+
+    with database.transaction() as connection:
+        assert LocalFileRepository(database).get_by_id(
+            duplicate_row.id, connection,
+        ) is not None
+
+
+def test_delete_local_files_deletes_normally_when_files_are_genuinely_different(
+        tmp_path,
+):
+    # The guard must not misfire on two REAL, different files that just
+    # happen to be in the same delete_local_files() call.
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    (music_dir / "keep.wav").write_bytes(b"real-content-a")
+    (music_dir / "other.wav").write_bytes(b"real-content-b")
+
+    keep = add_local_file(database, location, "keep.wav", "wav", 3000)
+    other = add_local_file(database, location, "other.wav", "wav", 3000)
+
+    service = make_service(database)
+    result = service.delete_local_files(
+        [other.id], keep_local_file_id=keep.id,
+    )
+
+    assert result["deleted"] == 1
+    assert result["skipped_same_physical_file"] == 0
+    assert not (music_dir / "other.wav").exists()
+    assert (music_dir / "keep.wav").exists()
+
+
+def test_resolve_groups_reports_same_physical_file_skips(tmp_path):
+    from seeker.library.duplicate_service import GroupResolutionPlan
+
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+
+    real_file = music_dir / "keep.wav"
+    real_file.write_bytes(b"real-audio-bytes")
+    aliased_path = music_dir / "duplicate_row.wav"
+    os.link(real_file, aliased_path)
+
+    keep = add_local_file(database, location, "keep.wav", "wav", 3000)
+    duplicate_row = add_local_file(
+        database, location, "duplicate_row.wav", "wav", 3000,
+    )
+
+    service = make_service(database)
+    result = service.resolve_groups(
+        [
+            GroupResolutionPlan(
+                keep_local_file_id=keep.id,
+                delete_local_file_ids=[duplicate_row.id],
+                location_id=location.id,
+            ),
+        ]
+    )
+
+    assert result.files_deleted == 0
+    assert result.files_failed == 0
+    assert result.files_skipped_same_physical_file == 1
+    # Not a failure -- the safety check working correctly.
+    assert result.groups_resolved == 1
+    assert result.groups_failed == 0
+    assert real_file.exists()
 
 
 # --- Roadmap item R3.2: "Resolve all groups" ------------------------------

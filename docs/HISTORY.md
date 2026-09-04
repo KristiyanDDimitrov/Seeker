@@ -11550,3 +11550,179 @@ the same background-worker timing flake RR3 already documented
 (1/8 isolated repeats), unrelated to any file this item touched
 (`application.py`, `spotify/client.py`, `spotify/auth_manager.py`).
 `mypy --strict src/`: clean, 84 files.
+
+### 93 — B3: rename/tagging reporting fix, plus a real crash and a real data-loss path found investigating it
+
+**B3.1 (the required real-DB check) found a different state than the
+brief's premise, exactly as its own "stop and report" instruction
+anticipated.** The three tracks' `track_matches` rows currently point
+at the `Test/` copies, not `Neuro/` as the brief's snapshot showed —
+the match flipped since the brief was written. That's expected,
+documented behavior (item 45: `match_all()` recomputes from scratch on
+every run and can flip), not a new bug, and it doesn't change anything
+about B3.2-B3.4's fix (both compute from whatever the current match
+is).
+
+**B3.2-B3.4, done as scoped.** `RenamePlan` gained
+`current_relative`/`proposed_relative` (`Path`, computed directly from
+`local_file.relative_path` — no location object needed) and
+`destination_note` (set only when `plan_renames()` was called with a
+`playlist_name`, via new `destination_resolution.py::
+resolve_playlist_destination()` — extracted from `DownloadService.
+_resolve_destination` so the rename preview and the real download-move
+logic can't drift onto two different precedence rules). `RenamePreview
+Dialog` now shows the location-relative path with the absolute path as
+a tooltip, plus the destination note when present; the CLI's `library
+rename` output does the same. `MetadataService._tag_one_track`/
+`_fix_one_track_art`'s per-track `details` messages (the actual
+"tagging result panel," `main_window.py`'s `tagging_results`
+`QPlainTextEdit`) now name the file via new `_describe_track_file()`
+once `local_file` is resolved. 59 new/updated tests across
+`test_metadata_service.py`/`test_metadata_service_rename.py`.
+
+**Investigating B3.5 (does the Duplicates page group the three pairs)
+surfaced findings well beyond B3's own scope — reported to the user
+before continuing, per the standing rule that overlapping-location
+cleanup and any crash-adjacent behavior change are real decisions, not
+something to guess at.** The user's own review of the first pass
+corrected two things and identified a third, worse issue underneath:
+
+1. **The Neuro/Test copies are genuinely different files, not
+   duplicate index rows** — confirmed by real file size (Tractor Beam:
+   34,011,888 vs 33,971,993 bytes; Banana Shoes: 29,523,806 vs
+   29,656,747; Glassy Star: 22,601,444 vs 22,589,123). The Neuro↔Test
+   match flip is `match_all()`'s tie-break between two real rips, not
+   overlapping locations "creating" a fake duplicate. The overlapping
+   locations *can* still perturb that tie-break (more rows in the
+   scoring pool per copy), but "almost certainly why" — this session's
+   first-pass framing — overstated a plausible contributing factor into
+   a proven cause, the same class of mistake P4's own three prior
+   "could not reproduce" rounds warn against.
+2. **The three overlapping locations are not a new discovery** —
+   `resolve_folder_scopes`'s own docstring (item 77/P8,
+   `duplicate_service.py:358`) already names this exact nesting
+   (`x9-pro` ⊃ `Music` ⊃ `Test`), confirmed live against this same
+   production DB. What changed since item 77: `Music` had 0 scanned
+   files then; it has 3,454 now. The double-indexing became REAL when
+   `Music` got rescanned, not before.
+3. **Reconciled the file counts, as asked.** `x9-pro` (3,458 rows,
+   all under `Music/`) = `Music` (3,454 rows) + exactly 4 rows that
+   exist only in `x9-pro`'s index — and those 4 are 4 of the 8 stale
+   `x9-pro` rows found below (files renamed before `Music`'s own scan
+   ran, so `Music`'s scan correctly never indexed the old name).
+   Fully explained, zero unreconciled residual.
+4. **The real issue: "Resolve all groups" (item 88/R3.2) could delete
+   a real file it shouldn't have.** `find_duplicate_groups_across_
+   scopes` is deliberately content-based and location-agnostic
+   (`duplicate_service.py:~496`, "pools every given folder... across
+   scopes"). With two overlapping locations both indexing the SAME
+   physical file, that file's two rows cluster as a 100%-similarity
+   "duplicate group" — a real, valid cluster by the function's own
+   design, but not a real duplicate to clean up. `_delete_one_local_
+   file` (`:720`, pre-fix) built its delete path from `location +
+   relative_path` and deleted it with no check against the row being
+   kept — deleting "the other" row in that pair would delete the exact
+   same inode the kept row points at, then `_repoint_or_clear_match`
+   would repoint any match onto a row now pointing at a deleted file.
+   This is very likely the actual origin of the B11.1/B3 stale
+   `local_files` rows (see below) — a data-loss path that shipped in
+   round 3 (item 88).
+
+**The diagnostic query the user asked for first** (count `local_files`
+rows whose absolute path doesn't exist on disk, grouped by location) —
+run read-only against the real DB, no files touched: 13 total stale
+rows (`x9-pro`: 8, `Test`: 1, `Music`: 4), NOT "hundreds" — the
+systemic-staleness hypothesis doesn't hold at this scale. But the
+mechanism is real and multi-instance, not a one-off: the file behind
+B11.1 (`A-Cray, Zigi SC - Bit Perfect...`) is stale in ALL THREE
+locations at once; `Zigi SC, Prdk - Burning Inside (VIP)` and two
+`Overtune - Cut The Signal` filename variants are each stale in both
+`x9-pro` and `Music`. A rename that goes through one location's row
+correctly updates that row but leaves an overlapping location's own
+row for the identical physical file pointing at the old name.
+
+**The crash, fixed.** `find_duplicate_groups`/`find_duplicate_groups_
+across_scopes` → `_cluster_duplicate_groups` called `analyze_local_
+file_quality()` (opens the real file via mutagen) for every clustered
+file with NO try/except — the one disk-touching step in an otherwise
+pure-DB clustering pass. Reproduced directly against the real DB via
+`find_duplicate_groups_across_scopes` scoped to the B11.1 stale row's
+folder: `mutagen.MutagenError: [Errno 2] No such file or directory:
+'/Volumes/X9 Pro/Music/Test/Music/Test/A-Cray, Zigi SC - Bit Perfect
+(Original Mix) [www.dj-promo.org].mp3'`. Fixed with a per-file try/
+except inside `_cluster_duplicate_groups` (this codebase's own item-15
+"one bad item must not abort a batch" pattern, previously missing
+here), distinguishing `file_missing` (checked via `Path.exists()`
+before opening — a stale index, self-heals on the next `library scan`)
+from a real open/decode failure, printed as counts. A cluster that
+drops below 2 present files is excluded from the result, matching this
+function's own pre-existing "files with no fingerprint are silently
+excluded" precedent. **Deliberately kept the return type as
+`list[DuplicateGroup]`** rather than a `(groups, skipped)` tuple — the
+latter would have forced updating ~30 direct `_render_duplicate_
+groups()` calls across `test_ui_smoke.py` for a UI surface this round
+never asked for; the skip counts are reported via `print()`, the same
+console-reporting idiom this codebase already uses everywhere else
+(`compute_fingerprints`, `tag_tracks`). Surfacing this in the UI's own
+result panel is a real, explicitly-deferred follow-up, not done here.
+2 new tests reproduce both the "whole group disappears" and
+"only the stale file drops, the real group survives" shapes with real
+generated audio + a real deleted file (`test_find_duplicate_groups_
+skips_a_stale_row_instead_of_crashing`, `test_find_duplicate_groups_
+drops_only_the_stale_file_from_a_larger_group`).
+
+**The same-physical-file delete guard, added in the same commit as
+asked.** New `file_deletion.py::same_file()` (promoted out of
+`metadata_service.py`'s own `_same_file` — now a one-line alias — so
+both files share one real "is this the same inode" check instead of
+two independently-drifting copies, the same consolidation shape as
+`matching.py`'s own history). `DuplicateService.delete_local_files`
+resolves the KEPT file's real path once, up front; `_delete_one_local_
+file` now raises a new `_SamePhysicalFileError` (caught separately,
+counted as `skipped_same_physical_file`, never `failed`) before either
+the DB row or the disk file is touched, whenever the file about to be
+deleted is the same real inode as the one being kept. `resolve_groups`
+threads the count through `BulkDuplicateResolutionResult.files_
+skipped_same_physical_file` and adds an informational (not
+failure-framed) detail line. Reproduced with a real hard link (`os.
+link`) standing in for what two overlapping locations actually produce
+— two `local_files` rows, one real inode — since wiring up two real
+overlapping locations in a test is unnecessary to exercise exactly what
+`same_file()` checks. 3 new tests: the guard firing, the guard NOT
+misfiring on two genuinely different real files, and `resolve_groups`
+reporting the skip without counting the group as failed.
+
+**B3.5, answered for real after the crash fix — live-verified against
+the real DB, read-only (fingerprinting an already-fingerprinted file is
+a no-op; nothing was deleted or moved).** Scoped `find_duplicate_
+groups_across_scopes` across all three locations' `Test`/`Neuro`
+folders: 3 groups found, ALL THREE are `x9-pro` vs `Test`
+location-overlap index artifacts of the SAME real `Test/` file (100%
+similarity, confirmed via `same_file()` — literally the same inode).
+The `Neuro/` copies have NO fingerprint computed yet (confirmed via a
+direct query), so the Duplicates page does not currently show the
+Neuro/Test pair as a duplicate group at all — and per finding #1 above,
+it shouldn't, since they're genuinely different files, not duplicates.
+Concretely: had the user run "Resolve all groups" on these three
+groups before this fix, the new guard would have refused all three
+deletions (same physical file); before this session's fix, it would
+have silently deleted a real file out from under its own kept copy.
+
+**Left open, a real user decision, not attempted here.** The
+overlapping-location topology itself (`x9-pro` ⊃ `Music` ⊃ `Test`) is
+untouched — de-registering any of them deletes that location's
+`local_files` rows and orphans whatever `track_matches` currently
+point at them, and right now the winning matches are spread across all
+three, so a report of what removal actually does to existing matches
+should come before any cleanup is attempted, not this round. Two
+concrete follow-ups named for whoever picks this up: (a)
+`LibraryService.add_location`/`add_location_from_path` only check exact
+`path` string uniqueness (`library_location_repository.py` / roadmap
+item 49) — no parent/child containment check exists, so nothing stops
+a fourth overlapping location being registered tomorrow; (b) the count
+reconciliation above should be re-run if either location gets rescanned
+again, since it's a live number, not a fixed one.
+
+Full suite: `1045 passed, 1 skipped, 0 failed` — genuinely green this
+run, no recurrence of the `test_history_refresh_button_refetches`
+flake B8's report saw. `mypy --strict src/`: clean, 85 files.

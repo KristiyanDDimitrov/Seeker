@@ -27,7 +27,7 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
-from seeker.file_deletion import delete_file
+from seeker.file_deletion import delete_file, same_file
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -56,6 +56,18 @@ _REASON_ERROR = "error"
 
 class _FileMissingError(RuntimeError):
     pass
+
+
+class _SamePhysicalFileError(RuntimeError):
+    """Roadmap item 93 (R3.3) — overlapping registered library locations
+    (item 77) can index the SAME real file twice, as two different
+    local_files rows. find_duplicate_groups is deliberately content-
+    based and location-agnostic, so a group built from exactly that
+    pair is a real, valid cluster — but deleting "the other" row would
+    delete the very file the caller asked to keep. Raised by
+    _delete_one_local_file before either the DB row or the disk file is
+    touched; caught by delete_local_files and counted separately from
+    an ordinary failure."""
 
 
 class _EmptyFileError(RuntimeError):
@@ -162,6 +174,13 @@ class BulkDuplicateResolutionResult:
     groups_failed: int
     files_deleted: int
     files_failed: int
+    # Roadmap item 93 (R3.3) — a SUBSET of files that were neither
+    # deleted nor counted as failed: refused by the same-physical-file
+    # guard (an overlapping registered location indexed the exact file
+    # being kept a second time). Not a failure — the safety check did
+    # exactly what it should — but not silently folded into
+    # files_deleted either.
+    files_skipped_same_physical_file: int
     bytes_freed: int
     details: list[str]
     plan_outcomes: list[bool]
@@ -608,15 +627,29 @@ class DuplicateService:
         failed) records nothing at all, matching "an empty milestone
         is worse than no milestone."
         """
-        counts = {"deleted": 0, "failed": 0}
+        # Resolved ONCE, up front — every deletion attempt below compares
+        # against this same real path, not a per-file re-read of a row
+        # that this same loop could itself be in the middle of deleting.
+        keep_file_path = self._resolve_local_file_path(keep_local_file_id)
+
+        counts = {"deleted": 0, "failed": 0, "skipped_same_physical_file": 0}
         details: list[dict[str, str]] = []
         bytes_freed = 0
 
         for local_file_id in local_file_ids:
             try:
                 bytes_freed += self._delete_one_local_file(
-                    local_file_id, keep_local_file_id,
+                    local_file_id, keep_local_file_id, keep_file_path,
                 )
+            except _SamePhysicalFileError as error:
+                counts["skipped_same_physical_file"] += 1
+                details.append(
+                    {
+                        "local_file_id": str(local_file_id),
+                        "message": str(error),
+                    }
+                )
+                print(f"  Refused to delete local file {local_file_id}: {error}")
             except Exception as error:
                 counts["failed"] += 1
                 details.append(
@@ -651,6 +684,7 @@ class DuplicateService:
         groups_failed = 0
         files_deleted = 0
         files_failed = 0
+        files_skipped_same_physical_file = 0
         bytes_freed = 0
         details: list[str] = []
         plan_outcomes: list[bool] = []
@@ -670,8 +704,22 @@ class DuplicateService:
 
             files_deleted += result["deleted"]
             files_failed += result["failed"]
+            files_skipped_same_physical_file += result[
+                "skipped_same_physical_file"
+            ]
             bytes_freed += result["bytes_freed"]
 
+            if result["skipped_same_physical_file"]:
+                details.append(
+                    f"Group: {result['skipped_same_physical_file']} "
+                    f"file(s) refused — same real file as the one kept "
+                    f"(an overlapping library location double-indexed "
+                    f"it)."
+                )
+
+            # A same-physical-file skip is the safety check working
+            # correctly, not a failure — it does not move this group
+            # into groups_failed.
             if result["failed"] == 0:
                 groups_resolved += 1
                 plan_outcomes.append(True)
@@ -689,6 +737,7 @@ class DuplicateService:
             groups_failed=groups_failed,
             files_deleted=files_deleted,
             files_failed=files_failed,
+            files_skipped_same_physical_file=files_skipped_same_physical_file,
             bytes_freed=bytes_freed,
             details=details,
             plan_outcomes=plan_outcomes,
@@ -717,10 +766,32 @@ class DuplicateService:
         with self.database.transaction() as connection:
             return self.duplicate_cleanups.get_totals(connection)
 
+    def _resolve_local_file_path(
+            self, local_file_id: int | None,
+    ) -> Path | None:
+        if local_file_id is None:
+            return None
+
+        with self.database.transaction() as connection:
+            local_file = self.local_files.get_by_id(local_file_id, connection)
+
+            if local_file is None:
+                return None
+
+            location = self.locations.get_by_id(
+                local_file.location_id, connection,
+            )
+
+        if location is None:
+            return None
+
+        return Path(location.path) / local_file.relative_path
+
     def _delete_one_local_file(
             self,
             local_file_id: int,
             keep_local_file_id: int | None,
+            keep_file_path: Path | None = None,
     ) -> int:
         with self.database.transaction() as connection:
             local_file = self.local_files.get_by_id(local_file_id, connection)
@@ -738,6 +809,23 @@ class DuplicateService:
                 Path(location.path) / local_file.relative_path
                 if location is not None else None
             )
+
+            # Roadmap item 93 (R3.3) — checked before anything else
+            # touches the DB row or disk. See _SamePhysicalFileError's
+            # own docstring for why this is reachable at all: two
+            # overlapping registered locations can each hold their own
+            # local_files row for the identical real file.
+            if (
+                    local_file_id != keep_local_file_id
+                    and file_path is not None
+                    and keep_file_path is not None
+                    and same_file(file_path, keep_file_path)
+            ):
+                raise _SamePhysicalFileError(
+                    f"{file_path} is the same real file as the one "
+                    f"being kept ({keep_file_path}) — refused, not "
+                    f"deleted"
+                )
 
             # Roadmap item 56 Phase 6.4 — measured from the real file
             # via stat() BEFORE either the DB row or the file itself is
@@ -877,18 +965,61 @@ def _cluster_duplicate_groups(
     clusters = _cluster_by_similarity(fingerprinted, decoded_by_id, progress)
 
     groups = []
+    # Roadmap item 93 (B3.5/R3.3) — a real, previously-uncaught crash:
+    # a file can have a cached fingerprint (so it clusters here) while
+    # its local_files row no longer resolves to a real file on disk — a
+    # stale row left behind by a rename that updated one overlapping
+    # location's copy but not another's (item 76's own documented drift
+    # class). analyze_local_file_quality() opens the real file via
+    # mutagen, so this is the one place in clustering that touches disk
+    # at all. Per-file try/except, this codebase's own standing "one bad
+    # item must not abort a batch" pattern (item 15) — every OTHER batch
+    # method here already has this; clustering didn't. Two distinct,
+    # separately-counted reasons, not one generic "failed": a row whose
+    # path doesn't exist at all (stale index — self-heals on the next
+    # `library scan`) vs. a real file mutagen/the OS still can't open
+    # (a genuinely bad file). Reported via print(), matching this
+    # codebase's own console-reporting idiom for skipped-in-a-batch
+    # items (e.g. compute_fingerprints/tag_tracks) — surfacing this in
+    # the UI's own result panel is a real follow-up, not done here (see
+    # CLAUDE.md roadmap item 93 for why the return type stayed
+    # unchanged: list[DuplicateGroup], not a (groups, skipped) tuple).
+    skipped_missing = 0
+    skipped_other = 0
 
     for cluster in clusters:
-        files = [
-            DuplicateFile(
-                local_file=local_file,
-                quality=analyze_local_file_quality(
-                    Path(location_by_id[local_file.id].path)
-                    / local_file.relative_path
-                ),
-            )
-            for local_file in cluster
-        ]
+        files = []
+
+        for local_file in cluster:
+            location = location_by_id[local_file.id]
+            file_path = Path(location.path) / local_file.relative_path
+
+            try:
+                if not file_path.exists():
+                    raise _FileMissingError(f"{file_path} does not exist")
+
+                quality = analyze_local_file_quality(file_path)
+            except Exception as error:
+                if isinstance(error, _FileMissingError):
+                    skipped_missing += 1
+                else:
+                    skipped_other += 1
+                print(
+                    f"  Skipping {local_file.filename} from duplicate "
+                    f"clustering: {error}"
+                )
+                continue
+
+            files.append(DuplicateFile(local_file=local_file, quality=quality))
+
+        # A "duplicate" of one (or zero) remaining, present file isn't
+        # a group worth reporting any more — matches the same
+        # "silently excluded, not an error" precedent this function's
+        # own docstring already documents for files with no fingerprint
+        # at all.
+        if len(files) < 2:
+            continue
+
         files.sort(key=lambda f: _quality_sort_key(f.quality), reverse=True)
 
         groups.append(
@@ -896,6 +1027,14 @@ def _cluster_duplicate_groups(
                 files=files,
                 similarity=_min_pairwise_similarity(cluster, decoded_by_id),
             )
+        )
+
+    if skipped_missing or skipped_other:
+        print(
+            f"  Duplicate scan: {skipped_missing} file(s) skipped "
+            f"(index out of date — file no longer at its recorded "
+            f"path; a library scan will reconcile this), "
+            f"{skipped_other} file(s) skipped (could not be opened)."
         )
 
     return groups

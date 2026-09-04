@@ -915,12 +915,34 @@ class RenamePreviewDialog(QDialog):
             list_widget.addItem(header_item)
 
             for plan in rows:
-                if plan.current_path is not None and plan.proposed_path is not None:
-                    text = f"  {plan.current_path.name}  →  {plan.proposed_path.name}"
+                # Roadmap item 93 (B3.2) — the location-relative path
+                # (e.g. "Neuro/Audio, REEBZ - Tractor Beam.flac"), not
+                # just the basename: a basename-only "Already correct"
+                # row for a file elsewhere in the same library location
+                # was indistinguishable from the file the user was
+                # actually looking at (the real story behind B3's
+                # "nothing was renamed" report). Absolute path stays
+                # available as the tooltip for anyone who needs it.
+                if plan.current_relative is not None and plan.proposed_relative is not None:
+                    text = f"  {plan.current_relative}  →  {plan.proposed_relative}"
+                elif plan.current_relative is not None:
+                    text = f"  {plan.current_relative}"
                 else:
                     text = f"  {plan.message or plan.track_id}"
+
+                if plan.destination_note:
+                    text = f"{text}\n    ⚠ {plan.destination_note}"
+
                 item = QListWidgetItem(text)
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+                tooltip_parts = [
+                    str(path) for path in (plan.current_path, plan.proposed_path)
+                    if path is not None
+                ]
+                if tooltip_parts:
+                    item.setToolTip("\n".join(tooltip_parts))
+
                 list_widget.addItem(item)
 
         add_section(

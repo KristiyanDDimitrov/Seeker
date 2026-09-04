@@ -20,7 +20,23 @@ brief's own stated ordering: B8 → B3 → B5 → B1 → B4 → B2+B6 → B10 �
 
 ## B3 — Not a rename bug, a reporting bug
 
-- [ ] Not started.
+- [x] B3.2-B3.4: `RenamePlan` gained `current_relative`/
+  `proposed_relative` (location-relative paths) + `destination_note`
+  (new `destination_resolution.py`, shared with DownloadService).
+  Rename preview dialog + CLI show the relative path (absolute path as
+  tooltip); tagging result panel names files the same way via new
+  `_describe_track_file()`.
+  B3.1's real-DB check found the match had flipped to `Test/` since
+  the brief was written (expected, item 45) — doesn't affect the fix.
+  Investigating B3.5 surfaced two real findings beyond B3's scope,
+  confirmed/corrected by the user and addressed in the same commit:
+  a real crash in duplicate clustering on a stale row (fixed, with a
+  reason-classified skip) and a real data-loss path in "Resolve all
+  groups" for overlapping-location index artifacts (fixed with a new
+  same-physical-file delete guard, `file_deletion.py::same_file`).
+  Overlapping registered locations themselves (`x9-pro`⊃`Music`⊃`Test`)
+  left open as a real user decision — not de-registered.
+  [HISTORY §93](HISTORY.md#93)
 
 ## B5 — Only download real DJ formats
 

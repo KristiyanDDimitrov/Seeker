@@ -609,6 +609,42 @@ def test_tag_tracks_analyze_audio_false_is_completely_inert(
     assert reopened.tags.get("TKEY") is None
 
 
+def test_tag_tracks_detail_message_names_the_location_relative_path(
+        tmp_path,
+):
+    # Roadmap item 93 (B3.3) — a per-track detail message named only by
+    # artist/title was indistinguishable from the same track/title
+    # matched to a DIFFERENT file elsewhere in the library (the real B3
+    # report, applied to the tagging result panel this time). Skipping
+    # via already-tagged is the cheapest real path to a details entry.
+    root = tmp_path / "music"
+    dest = root / "Neuro" / "Real Artist - Real Title.mp3"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"fake-audio-bytes")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Neuro/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "Neuro/Real Artist - Real Title.mp3", connection,
+        )
+        service.local_files.mark_tagged(
+            local_file.id, "2026-08-27T00:00:00+00:00", connection,
+        )
+
+    result = service.tag_tracks(["t1"])
+
+    assert result["skipped_already_tagged"] == 1
+    message = result["details"][0]["message"]
+    assert "Neuro/Real Artist - Real Title.mp3" in message
+    assert "Real Artist - Real Title" in message
+
+
 def test_tag_tracks_already_tagged_skips_art_download_but_still_analyzes(
         tmp_path, monkeypatch,
 ):

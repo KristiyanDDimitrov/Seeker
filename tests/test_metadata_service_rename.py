@@ -11,13 +11,25 @@ from seeker.models.track_match import TrackMatch
 from test_metadata_service import make_service, seed_location, seed_matched_track
 
 
-def _seed_playlist_with_track(service, track_id: str) -> None:
+def _seed_playlist_with_track(
+        service, track_id: str,
+        download_location_id: int | None = None,
+        download_subfolder: str | None = None,
+) -> None:
     with service.database.transaction() as connection:
         service.playlists.save(
             Playlist(id="p1", name="Test Playlist", track_count=1),
             connection,
         )
         service.tracks.save_playlist_track("p1", track_id, connection)
+
+        # PlaylistRepository.save() doesn't persist the destination
+        # fields (they're set via the dedicated Settings action) — a
+        # real second write, same as the app's own real call path.
+        if download_location_id is not None:
+            service.playlists.set_destination(
+                "p1", download_location_id, download_subfolder, connection,
+            )
 
 
 def _write_real_file(path: Path, content: bytes = b"fake-audio-bytes") -> None:
@@ -644,3 +656,126 @@ def test_apply_renames_refuses_when_match_changed_after_confirm(tmp_path):
     assert result.failed == 1
     assert "plan_changed_since_confirmed" == result.details[0]["reason"]
     assert (root / "wrong_name.mp3").exists()
+
+
+# --- Roadmap item 93 (B3): location-relative paths + destination note --
+
+def test_plan_renames_populates_location_relative_paths(tmp_path):
+    # B3.2 — current_path/proposed_path are absolute; a preview showing
+    # only the basename made an "Already correct" row for a file in a
+    # DIFFERENT folder of the same library location indistinguishable
+    # from the file the user was actually looking at (the real B3
+    # report). current_relative/proposed_relative are the fix.
+    root = tmp_path / "music"
+    _write_real_file(root / "Neuro" / "Real Artist - Real Title.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Neuro/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert plans[0].action == "already_correct"
+    assert plans[0].current_relative == Path(
+        "Neuro/Real Artist - Real Title.mp3"
+    )
+    assert plans[0].proposed_relative == Path(
+        "Neuro/Real Artist - Real Title.mp3"
+    )
+
+
+def test_plan_renames_destination_note_when_matched_file_is_elsewhere(
+        tmp_path,
+):
+    # B3.4 — the actual B3 story: a track's matched file lives in
+    # Neuro/, the playlist's own configured destination resolves to
+    # Test/, and nothing said so anywhere. Reproduces it directly: the
+    # matched file sits in "Neuro/", the playlist's own destination
+    # resolves to a "Test" subfolder of the SAME location.
+    root = tmp_path / "music"
+    _write_real_file(root / "Neuro" / "Real Artist - Real Title.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Neuro/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(
+        service, "t1",
+        download_location_id=location.id, download_subfolder="Test",
+    )
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert plans[0].destination_note is not None
+    assert "Neuro" in plans[0].destination_note
+    assert "Test" in plans[0].destination_note
+
+
+def test_plan_renames_no_destination_note_when_file_matches_destination(
+        tmp_path,
+):
+    root = tmp_path / "music"
+    _write_real_file(root / "Test" / "Real Artist - Real Title.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Test/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(
+        service, "t1",
+        download_location_id=location.id, download_subfolder="Test",
+    )
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert plans[0].destination_note is None
+
+
+def test_plan_renames_no_destination_note_when_playlist_has_no_destination(
+        tmp_path,
+):
+    # No playlist-specific destination AND no configured default (the
+    # get_config default in make_service()) — nothing to compare
+    # against, so no note. Not an error: plenty of real playlists have
+    # never had a destination set.
+    root = tmp_path / "music"
+    _write_real_file(root / "Neuro" / "Real Artist - Real Title.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Neuro/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+    _seed_playlist_with_track(service, "t1")
+
+    plans = service.plan_renames(playlist_name="Test Playlist")
+
+    assert plans[0].destination_note is None
+
+
+def test_plan_renames_no_destination_note_via_explicit_track_ids(tmp_path):
+    # plan_renames(track_ids=...) has no playlist in scope at all (used
+    # by apply_renames' own fresh re-plan) — destination_note must stay
+    # None rather than erroring or guessing.
+    root = tmp_path / "music"
+    _write_real_file(root / "Neuro" / "Real Artist - Real Title.mp3")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "Neuro/Real Artist - Real Title.mp3",
+        artist="Real Artist", title="Real Title",
+    )
+
+    plans = service.plan_renames(track_ids=["t1"])
+
+    assert plans[0].destination_note is None

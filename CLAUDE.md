@@ -1476,6 +1476,21 @@ compress it here before moving on to the next item.
     plausible ~3600s-after-mtime value (B8.4), and a live past-expiry
     reload with no restart (B8.7).
 
+93. **B3 — reporting fix (done); two real findings surfaced, not fixed
+    (open).** Rename preview / tagging-result panel show a location-
+    relative path (not basename-only) + a destination-mismatch note
+    (new `destination_resolution.py`, shared with DownloadService).
+    Investigating B3.5 found and fixed a real crash: duplicate
+    clustering opened a stale row's file (a rename left one
+    overlapping-location copy pointing at a renamed/missing file, item
+    76's drift class) with no try/except; now skips it with an honest
+    reason, and `delete_local_files` refuses to delete either side of a
+    group whose two rows are the SAME physical file (new
+    `file_deletion.py::same_file`). **Left open, a real user decision:**
+    three registered locations nest inside each other (item 77) and now
+    double-index ~3,450 real files — `add_location` has no containment
+    check yet. [HISTORY §93](docs/HISTORY.md#93)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

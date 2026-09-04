@@ -24,6 +24,8 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.destination_resolution import resolve_playlist_destination
+from seeker.file_deletion import same_file
 from seeker.filename_format import build_track_filename
 from seeker.metadata import (
     embed_album_art,
@@ -32,6 +34,9 @@ from seeker.metadata import (
     write_analysis_tags,
     write_text_tags,
 )
+from seeker.models.library_location import LibraryLocation
+from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
 
@@ -85,6 +90,19 @@ class RenamePlan:
     # 'no_local_file' / 'error'
     action: str
     message: str | None = None
+    # Roadmap item 93 (B3.2) — current_path/proposed_path are absolute;
+    # a preview showing only the basename made an "Already correct" row
+    # for a duplicate file elsewhere in the same library location
+    # indistinguishable from the file the user was actually looking at
+    # (the real bug behind B3's "nothing was renamed" report). None
+    # exactly when the matching absolute path is also None.
+    current_relative: Path | None = None
+    proposed_relative: Path | None = None
+    # Roadmap item 93 (B3.4) — set only when plan_renames() was called
+    # with a playlist_name (so a real destination can be resolved) AND
+    # the matched file's real location/folder disagrees with it. None
+    # otherwise, including whenever there's nothing to compare against.
+    destination_note: str | None = None
 
 
 @dataclass
@@ -102,19 +120,56 @@ class RenameResult:
     details: list[dict[str, str]] = field(default_factory=list)
 
 
-def _same_file(path_a: Path, path_b: Path) -> bool:
-    # Roadmap item 67 (Phase 6.2/6.3) — the real, load-bearing check
-    # behind both "is this already correct" and "is this a genuine
-    # collision or just a case-only rename of itself." A plain string/
-    # Path equality check would say two differently-cased paths are
-    # different even when the filesystem (macOS's default APFS volume,
-    # case-insensitive) considers them the identical file.
-    if not path_b.exists():
-        return False
-    try:
-        return path_a.samefile(path_b)
-    except OSError:
-        return False
+# Roadmap item 67 (Phase 6.2/6.3) — the real, load-bearing check behind
+# both "is this already correct" and "is this a genuine collision or
+# just a case-only rename of itself." Shared with duplicate_service.py
+# (roadmap item 93/R3.3) via file_deletion.py, not a second copy.
+_same_file = same_file
+
+
+def _describe_track_file(track: Track, local_file: LocalFile) -> str:
+    """Roadmap item 93 (B3.3) — a per-track tagging/art-fix outcome
+    named only by artist/title made a run against a duplicate file
+    elsewhere in the library indistinguishable from the file the user
+    actually cared about (the same real B3 story as B3.2's rename
+    preview, applied here). `local_file.relative_path` is already
+    location-relative — no location object needed to display it."""
+    return f"{local_file.relative_path} ({track.artist} - {track.title})"
+
+
+def _destination_note(
+        location: LibraryLocation,
+        local_file: LocalFile,
+        destination: tuple[LibraryLocation, str | None] | None,
+) -> str | None:
+    """Roadmap item 93 (B3.4) — the actual B3 story: Seeker was
+    renaming/tagging the right file, but a track whose matched file
+    lives outside the playlist's own configured destination never said
+    so anywhere. `destination` is None when the playlist has no
+    resolvable destination at all — nothing to compare against, so no
+    note (not an error; plenty of playlists have never had one set)."""
+    if destination is None:
+        return None
+
+    destination_location, subfolder = destination
+    expected_dir = subfolder or ""
+    actual_dir = str(Path(local_file.relative_path).parent)
+
+    if actual_dir == ".":
+        actual_dir = ""
+
+    if location.id == destination_location.id and actual_dir == expected_dir:
+        return None
+
+    actual_display = actual_dir or f"the root of '{location.name}'"
+    expected_display = (
+        expected_dir or f"the root of '{destination_location.name}'"
+    )
+
+    return (
+        f"matched file is in {actual_display}, not this playlist's "
+        f"configured destination ({expected_display})"
+    )
 
 
 def _resolve_collision(current_path: Path, proposed_path: Path) -> Path:
@@ -447,7 +502,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "skipped_already_tagged",
                     "message": (
-                        f"{track.artist} - {track.title}: already "
+                        f"{_describe_track_file(track, local_file)}: already "
                         f"tagged at {local_file.tagged_at}, skipping "
                         f"text/art write"
                     ),
@@ -461,7 +516,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "skipped_already_analyzed",
                     "message": (
-                        f"{track.artist} - {track.title}: already "
+                        f"{_describe_track_file(track, local_file)}: already "
                         f"analyzed (bpm={local_file.bpm}), skipping "
                         f"audio analysis"
                     ),
@@ -481,7 +536,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "skipped_format_unsupported",
                     "message": (
-                        f"{track.artist} - {track.title}: mutagen could "
+                        f"{_describe_track_file(track, local_file)}: mutagen could "
                         f"not open '{local_file.filename}'"
                     ),
                 }
@@ -503,7 +558,7 @@ class MetadataService:
                         "track_id": track_id,
                         "reason": "skipped_format_unsupported",
                         "message": (
-                            f"{track.artist} - {track.title}: {error}"
+                            f"{_describe_track_file(track, local_file)}: {error}"
                         ),
                     }
                 )
@@ -566,7 +621,7 @@ class MetadataService:
             if art_outcome not in ("written", "written_wav_rarely_supported"):
                 print(
                     f"  Warning: could not embed album art for "
-                    f"{track.artist} - {track.title}: {art_message}"
+                    f"{_describe_track_file(track, local_file)}: {art_message}"
                 )
 
         if needs_analysis:
@@ -600,7 +655,7 @@ class MetadataService:
             except Exception as error:
                 print(
                     f"  Warning: could not analyze audio for "
-                    f"{track.artist} - {track.title}: {error}"
+                    f"{_describe_track_file(track, local_file)}: {error}"
                 )
 
         save_tags(mutagen_file)
@@ -608,7 +663,7 @@ class MetadataService:
         if skip_tag_write:
             print(
                 f"  Re-analyzed (already tagged): "
-                f"{track.artist} - {track.title}"
+                f"{_describe_track_file(track, local_file)}"
             )
             return
 
@@ -635,7 +690,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "tagged_art_rarely_supported_format",
                     "message": (
-                        f"{track.artist} - {track.title}: cover art "
+                        f"{_describe_track_file(track, local_file)}: cover art "
                         f"was embedded, but WAV art is rarely read by "
                         f"real DJ software — don't rely on it being "
                         f"visible"
@@ -644,7 +699,7 @@ class MetadataService:
             )
             print(
                 f"  Tagged (art embedded, WAV rarely supported): "
-                f"{track.artist} - {track.title}"
+                f"{_describe_track_file(track, local_file)}"
             )
         elif art_outcome != "written":
             counts["tagged_without_art"] += 1
@@ -653,15 +708,15 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": f"tagged_without_art_{art_outcome}",
                     "message": (
-                        f"{track.artist} - {track.title}: {art_message}"
+                        f"{_describe_track_file(track, local_file)}: {art_message}"
                     ),
                 }
             )
             print(
-                f"  Tagged (no cover art): {track.artist} - {track.title}"
+                f"  Tagged (no cover art): {_describe_track_file(track, local_file)}"
             )
         else:
-            print(f"  Tagged: {track.artist} - {track.title}")
+            print(f"  Tagged: {_describe_track_file(track, local_file)}")
 
     def fix_missing_art_for_playlist(self, playlist_name: str) -> dict[str, Any]:
         """Roadmap item 66 (Phase 5.2) — a narrower, safer repair action
@@ -800,7 +855,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "no_url",
                     "message": (
-                        f"{track.artist} - {track.title}: no album art "
+                        f"{_describe_track_file(track, local_file)}: no album art "
                         f"URL stored — re-run 'seeker sync-tracks' for "
                         f"this playlist to populate it"
                     ),
@@ -818,7 +873,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "format_unsupported",
                     "message": (
-                        f"{track.artist} - {track.title}: mutagen could "
+                        f"{_describe_track_file(track, local_file)}: mutagen could "
                         f"not open '{local_file.filename}'"
                     ),
                 }
@@ -842,7 +897,7 @@ class MetadataService:
                 {
                     "track_id": track_id,
                     "reason": "download_failed",
-                    "message": f"{track.artist} - {track.title}: {error}",
+                    "message": f"{_describe_track_file(track, local_file)}: {error}",
                 }
             )
             return
@@ -868,7 +923,7 @@ class MetadataService:
                 {
                     "track_id": track_id,
                     "reason": "embed_failed",
-                    "message": f"{track.artist} - {track.title}: {error}",
+                    "message": f"{_describe_track_file(track, local_file)}: {error}",
                 }
             )
             return
@@ -880,7 +935,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "format_unsupported",
                     "message": (
-                        f"{track.artist} - {track.title}: album art "
+                        f"{_describe_track_file(track, local_file)}: album art "
                         f"isn't supported for this file format"
                     ),
                 }
@@ -896,7 +951,7 @@ class MetadataService:
                     "track_id": track_id,
                     "reason": "fixed_wav_rarely_supported",
                     "message": (
-                        f"{track.artist} - {track.title}: cover art "
+                        f"{_describe_track_file(track, local_file)}: cover art "
                         f"was embedded, but WAV art is rarely read by "
                         f"real DJ software — don't rely on it being "
                         f"visible"
@@ -905,11 +960,11 @@ class MetadataService:
             )
             print(
                 f"  Fixed art (WAV, rarely supported): "
-                f"{track.artist} - {track.title}"
+                f"{_describe_track_file(track, local_file)}"
             )
         else:
             counts["fixed"] += 1
-            print(f"  Fixed art: {track.artist} - {track.title}")
+            print(f"  Fixed art: {_describe_track_file(track, local_file)}")
 
     def plan_renames(
             self,
@@ -930,6 +985,8 @@ class MetadataService:
                 "plan_renames requires exactly one of playlist_name or "
                 "track_ids"
             )
+
+        playlist: Playlist | None = None
 
         with self.database.transaction() as connection:
             if playlist_name is not None:
@@ -956,10 +1013,14 @@ class MetadataService:
                     if track is not None
                 ]
 
-        plans = [self._plan_one_rename(track) for track in tracks]
+        plans = [
+            self._plan_one_rename(track, playlist) for track in tracks
+        ]
         return _mark_within_batch_collisions(plans)
 
-    def _plan_one_rename(self, track: Track) -> RenamePlan:
+    def _plan_one_rename(
+            self, track: Track, playlist: Playlist | None = None,
+    ) -> RenamePlan:
         with self.database.transaction() as connection:
             match = self.track_matches.get_by_track_id(track.id, connection)
 
@@ -1000,6 +1061,15 @@ class MetadataService:
                     f"{local_file.location_id} not found",
                 )
 
+            destination = (
+                resolve_playlist_destination(
+                    playlist, self.locations, self._get_config, connection,
+                )
+                if playlist is not None else None
+            )
+
+        destination_note = _destination_note(location, local_file, destination)
+        current_relative = Path(local_file.relative_path)
         current_path = Path(location.path) / local_file.relative_path
         extension = current_path.suffix.lstrip(".")
 
@@ -1012,14 +1082,20 @@ class MetadataService:
                 track.id, local_file.id, current_path, None, "error",
                 f"{track.artist} - {track.title}: no usable artist/title "
                 f"to build a filename from",
+                current_relative=current_relative,
+                destination_note=destination_note,
             )
 
         proposed_path = current_path.parent / proposed_filename
+        proposed_relative = current_relative.parent / proposed_filename
 
         if proposed_path == current_path:
             return RenamePlan(
                 track.id, local_file.id, current_path, proposed_path,
                 "already_correct",
+                current_relative=current_relative,
+                proposed_relative=proposed_relative,
+                destination_note=destination_note,
             )
 
         if proposed_path.exists() and not _same_file(
@@ -1030,10 +1106,16 @@ class MetadataService:
                 "collision",
                 f"target '{proposed_path.name}' already exists as a "
                 f"different file",
+                current_relative=current_relative,
+                proposed_relative=proposed_relative,
+                destination_note=destination_note,
             )
 
         return RenamePlan(
             track.id, local_file.id, current_path, proposed_path, "rename",
+            current_relative=current_relative,
+            proposed_relative=proposed_relative,
+            destination_note=destination_note,
         )
 
     def apply_renames(self, plans: list[RenamePlan]) -> RenameResult:

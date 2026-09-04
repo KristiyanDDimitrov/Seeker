@@ -774,10 +774,12 @@ def handle_library(
             # Loaded by plan_renames — only 'not_auto_matched'/
             # 'no_local_file'/'error' plans ever have a None path, and
             # renames/collisions are filtered to exclude those.
-            assert plan.current_path is not None
-            assert plan.proposed_path is not None
+            assert plan.current_relative is not None
+            assert plan.proposed_relative is not None
             note = " (needs a numbered suffix)" if plan.action == "collision" else ""
-            print(f"  {plan.current_path.name} -> {plan.proposed_path.name}{note}")
+            print(f"  {plan.current_relative} -> {plan.proposed_relative}{note}")
+            if plan.destination_note:
+                print(f"    warning: {plan.destination_note}")
 
         print(
             f"\n{len(renames) + len(collisions)} to rename "

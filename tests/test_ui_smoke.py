@@ -199,7 +199,8 @@ class FakeDuplicateService:
         )
         self.resolve_groups_result = BulkDuplicateResolutionResult(
             groups_resolved=0, groups_failed=0, files_deleted=0,
-            files_failed=0, bytes_freed=0, details=[], plan_outcomes=[],
+            files_failed=0, files_skipped_same_physical_file=0,
+            bytes_freed=0, details=[], plan_outcomes=[],
         )
 
     def compute_fingerprints(
@@ -5656,7 +5657,8 @@ def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
     application.duplicate_service.resolve_groups_result = (
         BulkDuplicateResolutionResult(
             groups_resolved=1, groups_failed=1, files_deleted=1,
-            files_failed=1, bytes_freed=10,
+            files_failed=1, files_skipped_same_physical_file=0,
+            bytes_freed=10,
             details=["Group partially failed: 1 of 1 file(s) could not "
                      "be deleted."],
             plan_outcomes=[True, False],

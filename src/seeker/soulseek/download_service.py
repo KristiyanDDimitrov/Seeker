@@ -29,9 +29,9 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.destination_resolution import resolve_playlist_destination
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.file_deletion import delete_file
-from seeker.filename_sanitize import sanitize_path_component
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
@@ -1469,43 +1469,16 @@ class DownloadService:
         playlist-specific override, since there's no playlist), with a
         fixed "Manual" subfolder — never the per-playlist subfolder
         rule, which has no meaning here.
+
+        The actual precedence logic lives in destination_resolution.py
+        (roadmap item 93/B3.4) — shared with MetadataService's rename
+        preview, which needs to know a track's configured destination
+        without a second, drifting copy of this rule.
         """
         with self.database.transaction() as connection:
-            if playlist is not None and playlist.download_location_id is not None:
-                location = self.locations.get_by_id(
-                    playlist.download_location_id, connection,
-                )
-
-                if location is not None:
-                    return location, playlist.download_subfolder
-
-            config = self._get_config()
-
-            if config.default_download_location_id is None:
-                return None
-
-            default_location = self.locations.get_by_id(
-                config.default_download_location_id, connection,
+            return resolve_playlist_destination(
+                playlist, self.locations, self._get_config, connection,
             )
-
-        if default_location is None:
-            return None
-
-        if playlist is None:
-            # Unconditional, unlike the per-playlist case below — a
-            # manual download should never land mixed anonymously into
-            # the default location's root, and the subfolder-per-
-            # playlist TOGGLE has no meaning for something with no
-            # playlist to name a subfolder after.
-            return default_location, "Manual"
-
-        subfolder = (
-            sanitize_path_component(playlist.name)
-            if config.default_download_subfolder_per_playlist
-            else None
-        )
-
-        return default_location, subfolder
 
     def _move_completed_file(
             self,
