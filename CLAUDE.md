@@ -1768,6 +1768,26 @@ compress it here before moving on to the next item.
      (2.9:1 claimed, 4.35:1 real, verified against textbook WCAG
      reference pairs). [HISTORY §107](docs/HISTORY.md#107)
 
+108. **C6 — SoundCloud as a second source — deliberately deferred, not
+     started.** Two real blockers found researching this, both
+     disqualifying under this project's own standing principles: (1)
+     registering a SoundCloud API app requires a paid Artist Pro
+     subscription — with no account to test against, nothing here
+     could be verified against real behavior, which this project
+     treats as disqualifying rather than a detail. (2) SoundCloud
+     treats every client as confidential and requires a `client_secret`
+     even for a native app (unlike Spotify, where Seeker deliberately
+     uses PKCE with no secret) — a distributed `.dmg` can't hold a
+     secret safely, and a proxy server violates this project's
+     "prefer solutions that run locally" principle. **If ever picked
+     up:** the only architecture consistent with this project's
+     principles is bring-your-own-credentials (the user registers
+     their own app, pastes `client_id`+`client_secret` into Settings,
+     same shape as the existing Spotify client ID field) — and the
+     agreed UI is a source toggle at the top-right of the Dashboard,
+     Spotify green vs. SoundCloud orange. No code, no schema, no stubs
+     written for this.
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code
