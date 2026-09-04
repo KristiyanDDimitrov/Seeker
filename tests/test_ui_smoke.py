@@ -7177,6 +7177,137 @@ def test_wordmark_brows_asset_resolves_to_a_real_committed_file():
     assert path.exists()
 
 
+# --- Roadmap item D1 (round 6): the wordmark's own two bugs -----------------
+
+def test_wordmark_size_hint_reserves_real_font_metrics_not_ink(qtbot):
+    # Roadmap item D1.1/D1.3 (round 6) — the actual reported bug:
+    # `sizeHint()` measured height with `boundingRect(...)` (the INK
+    # rect — no descender reserved), while `paintEvent` positions the
+    # baseline at `ascent()` and never reserves `descent()` either —
+    # asking for ~10px less height than it actually draws into, so Qt
+    # clipped the bottom of the text. A mismatch between two methods on
+    # the same class is exactly what a test should hold, not trust.
+    wordmark = _Wordmark()
+    qtbot.addWidget(wordmark)
+
+    from PySide6.QtGui import QFontMetrics
+
+    metrics = QFontMetrics(wordmark._font)
+    top_reserve = wordmark._brow_reserve_height(metrics)
+    hint = wordmark.sizeHint()
+
+    assert hint.height() >= (
+        top_reserve + metrics.ascent() + metrics.descent()
+        + wordmark._BOTTOM_PADDING
+    )
+
+    # D1.2 — the matching width bug: `boundingRect().width()` omits the
+    # right side bearing that `horizontalAdvance` (what `drawText`
+    # actually advances by) includes; also never less than the brow
+    # span, so an overhanging brow can't be clipped either.
+    ee_left, ee_width = wordmark._ee_span(metrics)
+    assert hint.width() >= metrics.horizontalAdvance(wordmark._TEXT)
+    assert hint.width() >= ee_left + ee_width
+
+
+def test_brow_source_rect_uses_device_independent_size_not_raw_pixels(qtbot):
+    # Roadmap item D1.4/D1.5 (round 6) — the actual reported bug, tested
+    # directly and deterministically rather than through a real
+    # paint+grab round trip: this offscreen test session's own real
+    # devicePixelRatio is 1.0 (confirmed empirically), where device and
+    # device-independent pixels are numerically identical and a
+    # dpr-scaling bug like this literally cannot be forced to reproduce
+    # through rendering — the same class of gap `window.grab()`-based
+    # tests in this suite already had to work around once this round
+    # (HISTORY §107). A synthetic 2x pixmap sidesteps that entirely: a
+    # pixmap declared 200x100 DEVICE pixels at devicePixelRatio 2.0 has
+    # a 100x50 device-INDEPENDENT size — `drawPixmap`'s source rect must
+    # use the latter, or (the actual bug) only its top-left quadrant
+    # (the left brow) is ever visible, with the right one entirely
+    # outside the source rect.
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QPixmap
+
+    pixmap = QPixmap(200, 100)
+    pixmap.setDevicePixelRatio(2.0)
+
+    source_rect = _Wordmark._brow_source_rect(pixmap)
+
+    assert source_rect.width() == pytest.approx(100.0)
+    assert source_rect.height() == pytest.approx(50.0)
+    assert source_rect.topLeft() == QPointF(0, 0)
+
+
+def test_wordmark_paints_both_brows_not_just_the_left_one(qtbot):
+    # A coarse end-to-end smoke check, kept separate from the
+    # deterministic D1.4 unit test above: at this session's own real
+    # (1.0) devicePixelRatio, a real `grab()` must still show accent-
+    # colored pixels on BOTH halves of the "ee" span — proof the brow
+    # asset renders in full, not proof of the dpr fix specifically (see
+    # the test above for that). Real pixel scan, not a geometry check —
+    # item 77's own lesson that paint order/clipping is invisible to
+    # geometry queries alone.
+    wordmark = _Wordmark()
+    qtbot.addWidget(wordmark)
+    assert wordmark._brows_pixmap is not None
+    wordmark.resize(wordmark.sizeHint())
+    wordmark.show()
+    qtbot.waitExposed(wordmark)
+
+    from PySide6.QtGui import QFontMetrics
+
+    metrics = QFontMetrics(wordmark._font)
+    ee_left, ee_width = wordmark._ee_span(metrics)
+    top_reserve = wordmark._brow_reserve_height(metrics)
+
+    image = wordmark.grab().toImage()
+    # `grab()` returns DEVICE pixels; every geometry value above is in
+    # LOGICAL pixels (item C1's own standing gotcha).
+    dpr = image.width() / wordmark.width() if wordmark.width() else 1.0
+
+    accent_rgb = tuple(int(theme.ACCENT[i:i + 2], 16) for i in (1, 3, 5))
+
+    def has_accent_pixel(x0: float, x1: float) -> bool:
+        x_start, x_end = round(x0 * dpr), round(x1 * dpr)
+        y_end = max(1, round(top_reserve * dpr))
+        for x in range(max(0, x_start), min(image.width(), x_end)):
+            for y in range(0, min(image.height(), y_end)):
+                color = image.pixelColor(x, y)
+                if (color.red(), color.green(), color.blue()) == accent_rgb:
+                    return True
+        return False
+
+    left_half_end = ee_left + ee_width / 2
+    assert has_accent_pixel(ee_left, left_half_end), (
+        "left brow missing from the rendered wordmark"
+    )
+    assert has_accent_pixel(left_half_end, ee_left + ee_width), (
+        "right brow missing"
+    )
+
+
+def test_wordmark_rerenders_brows_on_a_device_pixel_ratio_change(
+        qtbot, monkeypatch,
+):
+    # Roadmap item D1.6 (round 6) — construction's own dpr fallback is
+    # 1.0 now (not a guessed 2.0); a real `DevicePixelRatioChange`
+    # event must re-render against the actual ratio rather than leaving
+    # whatever was rendered at construction permanently stale.
+    wordmark = _Wordmark()
+    qtbot.addWidget(wordmark)
+    original_pixmap = wordmark._brows_pixmap
+    assert original_pixmap is not None
+
+    from PySide6.QtCore import QEvent
+
+    monkeypatch.setattr(wordmark, "devicePixelRatioF", lambda: 3.0)
+    wordmark.changeEvent(QEvent(QEvent.Type.DevicePixelRatioChange))
+
+    assert wordmark._brows_pixmap is not original_pixmap
+    assert wordmark._brows_pixmap is not None
+    assert wordmark._brows_pixmap.devicePixelRatio() == pytest.approx(3.0)
+
+
 # --- Roadmap item C5: light/dark themes, with system-follow -----------------
 
 def test_theme_toggle_cycles_system_light_dark_and_persists(qtbot):

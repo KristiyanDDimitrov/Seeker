@@ -11,7 +11,9 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QThreadPool, QTimer
+from PySide6.QtCore import (
+    QEvent, QPointF, QRectF, QSize, Qt, QThreadPool, QTimer,
+)
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -457,6 +459,17 @@ class _Wordmark(QWidget):
         self._brows_pixmap = self._load_tinted_brows()
         self.update()
 
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        # Roadmap item D1.6 (round 6) — the widget's real DPR is only
+        # known once it actually has a window/screen; re-render the
+        # instant Qt reports that value changing (construction's own
+        # 1.0 fallback above included), rather than trusting whatever
+        # ratio happened to be current the one time `_load_tinted_brows`
+        # was first called.
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            self._brows_pixmap = self._load_tinted_brows()
+        super().changeEvent(event)
+
     def _load_tinted_brows(self) -> QPixmap | None:
         path = _resolve_wordmark_brows_path()
         if not path.exists():
@@ -465,7 +478,15 @@ class _Wordmark(QWidget):
         if not renderer.isValid():
             return None
 
-        dpr = self.devicePixelRatioF() if self.window() else 2.0
+        # Roadmap item D1.6 (round 6) — falls back to 1.0, not a
+        # guessed "probably Retina" 2.0: at construction time (the only
+        # time `self.window()` can be None/not-yet-real), there is no
+        # actual screen to read a ratio from at all, and a wrong guess
+        # here used to render at the wrong resolution semi-permanently.
+        # `changeEvent` below re-renders the instant Qt reports the
+        # real `DevicePixelRatioChange`, so this fallback only ever
+        # matters for the single frame before that first real event.
+        dpr = self.devicePixelRatioF() if self.window() else 1.0
         size = renderer.defaultSize()
         if size.width() <= 0 or size.height() <= 0:
             return None
@@ -489,13 +510,27 @@ class _Wordmark(QWidget):
         return pixmap
 
     def sizeHint(self) -> QSize:
+        # Roadmap item D1.1 (round 6) — this used to measure height
+        # with `boundingRect(...).size()` (the ink rect — roughly cap
+        # height, since "Seeker" has no descenders) while `paintEvent`
+        # positions the baseline at `ascent()` and never reserves
+        # `descent()` at all, so the widget asked for ~10px less height
+        # than it actually draws into and Qt clipped the bottom of the
+        # text. Reserve the real font metrics `paintEvent` actually
+        # uses, not the ink extent of this one specific string.
         metrics = QFontMetrics(self._font)
         top = self._brow_reserve_height(metrics) if self._brows_pixmap else 0
-        text_size = metrics.boundingRect(self._TEXT).size()
-        return QSize(
-            text_size.width(),
-            text_size.height() + top + self._BOTTOM_PADDING,
+        height = top + metrics.ascent() + metrics.descent() + (
+            self._BOTTOM_PADDING
         )
+        # D1.2 — same class of error on the width: `boundingRect().width()`
+        # omits the right side bearing. `horizontalAdvance` is what
+        # `paintEvent`'s `drawText` actually advances by; also take the
+        # max against the brow span so a brow that overhangs the text
+        # (a wide brow asset over a narrow font) can never be clipped.
+        ee_left, ee_width = self._ee_span(metrics)
+        width = max(metrics.horizontalAdvance(self._TEXT), ee_left + ee_width)
+        return QSize(width, height)
 
     def _brow_reserve_height(self, metrics: QFontMetrics) -> int:
         assert self._brows_pixmap is not None
@@ -536,10 +571,32 @@ class _Wordmark(QWidget):
             target = QRectF(
                 ee_left, brow_bottom - brow_height, ee_width, brow_height,
             )
-            painter.drawPixmap(target, self._brows_pixmap, QRectF(
-                0, 0, self._brows_pixmap.width(), self._brows_pixmap.height(),
-            ))
+            painter.drawPixmap(
+                target, self._brows_pixmap,
+                self._brow_source_rect(self._brows_pixmap),
+            )
         painter.end()
+
+    @staticmethod
+    def _brow_source_rect(pixmap: QPixmap) -> QRectF:
+        # Roadmap item D1.4 (round 6) — `QPixmap.width()`/`.height()`
+        # return DEVICE pixels (e.g. 507 * 2 = 1014 at 2x), but once a
+        # devicePixelRatio is set on the pixmap, `drawPixmap`'s source
+        # rect is interpreted in its DEVICE-INDEPENDENT coordinates —
+        # using the raw device-pixel size made the source rect twice
+        # the actual image in both axes, so only its top-left quadrant
+        # (the left brow) ever painted. `deviceIndependentSize()` is
+        # the value this call actually wants. Same DPR trap HISTORY
+        # §107 already hit once this round via `window.grab()`, in a
+        # second place. A `@staticmethod` taking the pixmap explicitly
+        # (rather than reading `self._brows_pixmap` inline) so this one
+        # size-unit conversion can be tested directly with a synthetic
+        # pixmap, independent of this offscreen test session's own real
+        # devicePixelRatio (confirmed empirically to be 1.0, where
+        # device and device-independent pixels are numerically
+        # identical and this bug can't be forced to reproduce through a
+        # real paint+grab round trip at all).
+        return QRectF(QPointF(0, 0), pixmap.deviceIndependentSize())
 
 
 _THEME_MODE_LABELS = {
