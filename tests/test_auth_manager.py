@@ -1,6 +1,7 @@
 import time
 
 import httpx
+import pytest
 
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.token import SpotifyToken
@@ -131,6 +132,26 @@ def test_get_valid_token_authorizes_when_no_token_saved(
     assert token.access_token == "first-time-access"
 
 
+def test_authorize_raises_actionable_error_on_callback_timeout(
+        tmp_path, monkeypatch,
+):
+    # Round 8 §6.3.1: wait_for_callback()'s new distinct `timed_out`
+    # outcome (an abandoned/closed authorization tab) must surface as a
+    # clear, actionable message rather than propagating some other
+    # generic failure or hanging.
+    manager = make_manager(tmp_path)
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.wait_for_callback",
+        lambda: (None, None, None, True),
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open", lambda url: None,
+    )
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        manager.get_valid_token()
+
+
 def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
         tmp_path, monkeypatch,
 ):
@@ -162,7 +183,7 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
 
     def fake_wait_for_callback():
         wait_for_callback_calls.append(True)
-        return ("real-code", "fixed-state", None)
+        return ("real-code", "fixed-state", None, False)
 
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.wait_for_callback",

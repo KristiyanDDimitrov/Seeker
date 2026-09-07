@@ -92,7 +92,10 @@ class SpotifyAuthManager:
         print("Opening Spotify authorization page...")
         webbrowser.open(authorization_url)
 
-        code, returned_state, error = wait_for_callback()
+        code, returned_state, error, timed_out = wait_for_callback()
+
+        if timed_out:
+            raise RuntimeError("Authorization timed out — try again.")
 
         if error:
             raise RuntimeError(
