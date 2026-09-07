@@ -19,7 +19,16 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - SLSKD_REMOTE_CONFIGURATION=true
+      # Roadmap item 116 (round 8, §6.1.3) — checked, not assumed: grep
+      # for api/v0/options, api/v0/config, and remote_configuration
+      # across src/ turns up nothing calling slskd's remote config API
+      # (SharingService.add_location_to_share's own comment records that
+      # PATCH /api/v0/options was tried for share-path changes and found
+      # unusable — it recreates the container via bring_up_slskd
+      # instead, a compose-level change, not a remote-configuration
+      # one). slskd defaults this to false; there was never a reason it
+      # was true here.
+      - SLSKD_REMOTE_CONFIGURATION=false
       - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
       - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
       - SLSKD_API_KEY=${SLSKD_API_KEY}

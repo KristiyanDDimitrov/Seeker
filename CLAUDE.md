@@ -311,6 +311,18 @@ uv run mypy --strict src/  # type check — must stay clean
       a new regression. Per this project's standing rule, diagnose a
       recurrence directly; do not reach for `pytest-rerunfailures` or
       any other rerun-until-green mechanism.
+- [ ] **Open, unconfirmed flake (2026-09-09, round 8 §6.1.3):**
+      `tests/test_ui_smoke.py::test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
+      failed once during a full-suite run immediately after a
+      docker-compose.yml-only change (no Python touched in that commit
+      at all), passing immediately in isolation and on two further
+      consecutive full-suite re-runs. A different test than the
+      existing documented flake above, and this round's own changes up
+      to that point never touched the Review tab, `apply_upgrade_
+      decision`, or anything it depends on — recorded per this
+      project's own "the pre-existing-failure count is a tracked
+      number, not a label" convention rather than waved off. If it
+      recurs, diagnose it directly.
 - [x] Fixed: `cli.py::handle_playlists` instantiated `PlaylistRepository`
       directly instead of going through `Application`. Now goes through
       `application.sync_service`/`application.download_service`
