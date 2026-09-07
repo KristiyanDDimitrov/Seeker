@@ -13404,3 +13404,25 @@ was checked, then down as each item landed). Full local
 passed all 1098 tests with no test needing a real display — the
 brief's own speculative `@pytest.mark.desktop` split was not needed and
 was not added.
+
+#### §4.8.9 — reconciling 837 → 662 (a real arithmetic error, checked
+by re-measuring at each commit rather than trusting the original
+narrative)
+
+The original report attributed the 837→662 drop to "−175 from 4.3, −1
+from 4.6, −1 dead noqa from 4.1," which sums to 660, not 662. Checked
+out `pyproject.toml`/`src`/`tests` at each of the three relevant
+commits and re-ran `uv run ruff check src tests --statistics` fresh at
+each one rather than trusting the earlier narrative:
+
+- `a2b0ea7` (4.1, config + dead-noqa removal, same commit): **837**
+- `4d9ab87` (4.3, line-length=79 partial pass): **663** (delta **−174**,
+  not −175 — a plain off-by-one in the original report)
+- `a823dd2` (4.6, S608 fix): **662** (delta −1, correct)
+
+837 − 174 − 1 = 662, exact. The "−1 dead noqa from 4.1" was never a
+real separate deduction — the noqa removal and the config landed in
+the *same* commit (`a2b0ea7`), so the 837 baseline already reflects it;
+counting it again as a later subtraction double-counted one finding.
+Two errors (the off-by-one plus the phantom double-count) summed to
+exactly the reported 2-finding gap.
