@@ -89,7 +89,9 @@ def test_two_different_keys_on_the_same_button_do_not_interfere(qtbot):
     registry = BusyActionRegistry()
 
     registry.begin("a", button, "Busy A")
-    registry.begin("b", button, "Busy B")  # already disabled -- no text clobber issue here since begin() only sets text, never reads current disabled state
+    # already disabled -- no text clobber issue here since begin() only
+    # sets text, never reads current disabled state
+    registry.begin("b", button, "Busy B")
 
     registry.end("a")
     # "a" ending restores to whatever text() was captured by "a"'s own

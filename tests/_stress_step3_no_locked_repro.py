@@ -133,7 +133,9 @@ def _seed_fake_spotify_token() -> None:
 
 
 def main() -> None:
-    assert TRACKS_JSON is not None, "usage: _stress_step3_no_locked_repro.py <duration_s> <tracks.json>"
+    assert TRACKS_JSON is not None, (
+        "usage: _stress_step3_no_locked_repro.py <duration_s> <tracks.json>"
+    )
 
     qapp = QApplication.instance() or QApplication([])
 
@@ -145,10 +147,16 @@ def main() -> None:
     _seed(application, TRACKS_JSON)
 
     with application.database.transaction() as connection:
-        locked_before = application.download_service.download_requests.get_locked(
-            connection,
+        locked_before = (
+            application.download_service.download_requests.get_locked(
+                connection,
+            )
         )
-    print(f"[step3] locked rows before download_playlist(): {len(locked_before)}", flush=True)
+    print(
+        f"[step3] locked rows before download_playlist(): "
+        f"{len(locked_before)}",
+        flush=True,
+    )
 
     result = application.download_service.download_playlist(PLAYLIST_NAME)
     print(f"[step3] download_playlist() result: {result}", flush=True)

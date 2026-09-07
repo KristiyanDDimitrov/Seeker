@@ -336,7 +336,10 @@ def test_broad_end_to_end_stress(qapp):
             timeout=90.0,
         )
         print(f"[stress] overlapping sync/scan/match settled: {settled}")
-        print(f"[stress] status_label after settle: {main_window.status_label.text()!r}")
+        print(
+            f"[stress] status_label after settle: "
+            f"{main_window.status_label.text()!r}"
+        )
         log.sample("sync/scan/match settled")
 
         # Compute fingerprints on 2 tiny synthetic WAVs finishes in well
@@ -698,7 +701,10 @@ def test_broad_end_to_end_stress(qapp):
         f"\n[stress] === summary: {last.t:.0f}s real duration, "
         f"{len(log.samples)} samples ==="
     )
-    print(f"[stress] RSS: {first.rss_mb:.1f}MB -> {last.rss_mb:.1f}MB (Δ{rss_growth:+.1f}MB)")
+    print(
+        f"[stress] RSS: {first.rss_mb:.1f}MB -> {last.rss_mb:.1f}MB "
+        f"(Δ{rss_growth:+.1f}MB)"
+    )
     print(f"[stress] fds: {first.num_fds} -> {last.num_fds} (Δ{fd_growth:+d})")
     print(
         f"[stress] threads: {first.num_threads} -> {last.num_threads} "
@@ -728,7 +734,10 @@ def test_broad_end_to_end_stress(qapp):
     # overlapping conditions (not just completed silently): the first
     # report (always emitted, see Worker.__init__), real throttled
     # midpoints, and the final one at the real total.
-    print(f"[stress] progress-heavy worker: {len(progress_events)} progress events delivered")
+    print(
+        f"[stress] progress-heavy worker: {len(progress_events)} "
+        f"progress events delivered"
+    )
     assert progress_events, "expected at least one delivered progress event"
     assert progress_events[
             0

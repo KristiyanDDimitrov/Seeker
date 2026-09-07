@@ -229,7 +229,11 @@ def main() -> None:
     _pump(lambda: _select_location(LOCATION_NAME), timeout=15.0)
     print("[hang-repro] firing compute_fingerprints...", flush=True)
     main_window.compute_fingerprints_button.click()
-    print("[hang-repro] all four fired, waiting for sync/scan/match to settle...", flush=True)
+    print(
+        "[hang-repro] all four fired, waiting for sync/scan/match to "
+        "settle...",
+        flush=True,
+    )
 
     settled = _pump(
         lambda: (

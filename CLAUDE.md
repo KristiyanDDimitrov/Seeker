@@ -159,15 +159,43 @@ src/seeker/
 - Tests: pytest, mock all external HTTP (Spotify, SoulSeek) — never hit
   real APIs in tests.
 - **Lint yes, format no — `ruff format` is deliberately not adopted.**
-  Roadmap item 115 (round 8, §4.2). This codebase has a consistent hand
-  -written house style (8-space hanging indent on multi-line `def`
-  signatures, trailing commas before closing parens, ~72-column prose
-  wrapping in comments) that `ruff format` does not produce.
+  Roadmap item 115 (round 8, §4.2). This codebase has a consistent
+  hand-written house style that `ruff format` does not produce.
   Reformatting the whole tree would produce an unreviewable diff,
   destroy `git blame` project-wide, and fight every future hand-wrapped
   comment. `ruff check` (see `[tool.ruff]` in `pyproject.toml`) is the
   enforced gate; `ruff format` is not run and should not be added
   without a deliberate, separate decision to re-litigate this.
+- **Multi-line hanging indent, verified by sampling the real codebase
+  (round 8, §4.8.1) rather than assumed from one example: 8 spaces for
+  a compound statement header that wraps (`def`/`if`/`elif`/`while`/
+  `for`/`with`/`class` — anything ending in `:` with an indented body
+  next), 4 spaces for everything else (plain calls, `return`/`raise`/
+  `assert`, assignments, comprehensions, literals, imports).** Sampled
+  336 real multi-line calls: 336/336 use 4 spaces. Sampled 74 real
+  compound headers: 71/74 use 8 spaces (3 pre-existing exceptions, not
+  followed). The reason is legible once seen: a compound header's own
+  body is already indented +4 from the header, so the header's
+  continuation uses +8 to stay visually distinct from that body; a
+  plain statement has no following body to stay distinct from, so
+  ordinary +4 is unambiguous. A round-8 line-wrap pass (§4.3) got this
+  wrong — applied 8-space hang uniformly, including to plain calls —
+  before this was verified; corrected in §4.8.1's own edits, the
+  pre-existing 4.3 diff was not swept for it (see item 115's own
+  HISTORY entry for the open question of whether it should be).
+  Trailing commas before a closing bracket stay the convention, and
+  house comment/prose wrapping stays a ~72-column habit — see the next
+  bullet for how that differs from the enforced line-length ceiling.
+- **Line length: `ruff`'s enforced ceiling is 88 (`[tool.ruff]
+  line-length` in `pyproject.toml`), but ~72-79 columns remains the
+  house *habit* for hand-wrapped prose and comments.** Roadmap item 115
+  (round 8, §4.3/§4.8.1) — 79 was tried first and reverted: the real
+  violation count checking both `src/` and `tests/` (341, not the
+  106 originally estimated from `src/` alone) meant sitting at 79 would
+  have needed 166 purely-cosmetic hand rewraps for zero behavioural
+  gain, right before Phase 6 starts moving those same files around. 88
+  is a ceiling the codebase can actually sit at (near-zero real
+  violations); 72-79 is still what a human should aim for by hand.
 - **Checking whether a test failure is "pre-existing": always `git
   stash -u`, never a bare `git stash`.** Roadmap item RR1 — a bare
   `git stash` does not stash untracked files, so it cannot see a

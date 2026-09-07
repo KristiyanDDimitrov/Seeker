@@ -9,7 +9,12 @@ from seeker.application import (
     _resolve_database_path,
     _resolve_spotify_token_path,
 )
-from seeker.config_store import SeekerConfig, load_config, resolve_config_path, save_config
+from seeker.config_store import (
+    SeekerConfig,
+    load_config,
+    resolve_config_path,
+    save_config,
+)
 from seeker.database.connection import Database
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore

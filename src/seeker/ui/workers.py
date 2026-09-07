@@ -4,7 +4,15 @@ from collections.abc import Callable
 from typing import Any
 
 import shiboken6
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, SignalInstance, Slot
+from PySide6.QtCore import (
+    QObject,
+    QRunnable,
+    QThreadPool,
+    QTimer,
+    Signal,
+    SignalInstance,
+    Slot,
+)
 from PySide6.QtWidgets import QAbstractButton, QLabel
 
 # Plain, non-Qt correlation ids for in-flight tasks. The dispatcher

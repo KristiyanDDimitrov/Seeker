@@ -301,7 +301,8 @@ class SharingService:
                 [
                     "docker", "inspect", self._container_name,
                     "--format",
-                    '{{index .Config.Labels "com.docker.compose.project.config_files"}}',
+                    '{{index .Config.Labels '
+                    '"com.docker.compose.project.config_files"}}',
                 ],
                 capture_output=True,
                 text=True,

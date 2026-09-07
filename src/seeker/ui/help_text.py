@@ -974,7 +974,10 @@ TOOLTIP_SUBFOLDER_PER_PLAYLIST_CHECKBOX = (
     "Give each playlist its own subfolder inside this location, named "
     "after the playlist."
 )
-TOOLTIP_SOULSEEK_USERNAME_FIELD = "Your SoulSeek network username (created on first login, not chosen in advance)."
+TOOLTIP_SOULSEEK_USERNAME_FIELD = (
+    "Your SoulSeek network username (created on first login, not "
+    "chosen in advance)."
+)
 TOOLTIP_SOULSEEK_PASSWORD_FIELD = "Your SoulSeek network password."
 SOULSEEK_ACCOUNT_MODE_EXPLANATION = (
     "SoulSeek has no separate signup — the account below is created "

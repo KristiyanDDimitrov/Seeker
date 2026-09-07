@@ -76,7 +76,11 @@ def main() -> None:
     )
     assert len(errors) == len(expected_err), (len(errors), len(expected_err))
 
-    print(f"OK: {len(received)} correct results, {len(errors)} correct errors", flush=True)
+    print(
+        f"OK: {len(received)} correct results, {len(errors)} correct "
+        f"errors",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

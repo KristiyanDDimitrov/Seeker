@@ -1085,8 +1085,14 @@ class RenamePreviewDialog(QDialog):
                 # actually looking at (the real story behind B3's
                 # "nothing was renamed" report). Absolute path stays
                 # available as the tooltip for anyone who needs it.
-                if plan.current_relative is not None and plan.proposed_relative is not None:
-                    text = f"  {plan.current_relative}  →  {plan.proposed_relative}"
+                if (
+                        plan.current_relative is not None
+                        and plan.proposed_relative is not None
+                ):
+                    text = (
+                        f"  {plan.current_relative}  →  "
+                        f"{plan.proposed_relative}"
+                    )
                 elif plan.current_relative is not None:
                     text = f"  {plan.current_relative}"
                 else:

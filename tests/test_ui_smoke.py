@@ -6697,7 +6697,9 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    delete_ids, keep_id, _location_id = application.duplicate_service.delete_local_files_calls[0]
+    delete_ids, keep_id, _location_id = (
+        application.duplicate_service.delete_local_files_calls[0]
+    )
     assert keep_id == 200  # files[0] is the group's own recommendation
     assert sorted(delete_ids) == [201, 202]
 
@@ -6726,7 +6728,9 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    delete_ids, keep_id, _location_id = application.duplicate_service.delete_local_files_calls[0]
+    delete_ids, keep_id, _location_id = (
+        application.duplicate_service.delete_local_files_calls[0]
+    )
     assert keep_id == 200
     assert sorted(delete_ids) == [201, 202, 203]
 

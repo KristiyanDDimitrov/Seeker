@@ -964,7 +964,15 @@ def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
     from mutagen.id3 import APIC, TIT2
     mutagen_file.tags.setall(
         "APIC",
-        [APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=FAKE_JPEG_BYTES)],
+        [
+            APIC(
+                encoding=3,
+                mime="image/jpeg",
+                type=3,
+                desc="Cover",
+                data=FAKE_JPEG_BYTES,
+            ),
+        ],
     )
     mutagen_file.tags.setall(
             "TIT2",
