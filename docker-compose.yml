@@ -41,6 +41,14 @@ services:
       - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
       - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
       - SLSKD_API_KEY=${SLSKD_API_KEY}
+      # Roadmap item 116 (round 8, §6.1.2) — the WEB UI login (distinct
+      # from SLSKD_SLSK_USERNAME/PASSWORD above, the Soulseek NETWORK
+      # login). Never set before this item, leaving the web UI at
+      # slskd's own vendor default ("slskd"/"slskd"). Same "empty means
+      # keep whatever's already persisted" behavior applies here as the
+      # top-of-file comment already documents for the other credentials.
+      - SLSKD_USERNAME=${SLSKD_USERNAME}
+      - SLSKD_PASSWORD=${SLSKD_PASSWORD}
     volumes:
       - ${SLSKD_DATA_DIR:-./slskd-data}:/app
       - "${SLSKD_SHARE_PATH:-/Volumes/X9 Pro/Music}:/shared/music:ro"

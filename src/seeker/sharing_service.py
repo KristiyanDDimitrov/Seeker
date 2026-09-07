@@ -478,6 +478,15 @@ class SharingService:
             soulseek_password=config.slskd_password or "",
             api_key=config.slskd_api_key or "",
             slskd_data_dir=data_dir,
+            # Roadmap item 116 (round 8, §6.1.2) — already generated and
+            # persisted by whichever earlier real bring-up (wizard or
+            # Settings) first shared a location; this recreate is only
+            # reachable once a location is ALREADY shared, so these are
+            # never genuinely unset here. Read directly rather than
+            # generating, since this service only holds a read-only
+            # get_config callable, not a config-store write path.
+            web_username=config.slskd_web_username or "",
+            web_password=config.slskd_web_password or "",
             library_location_path=original_share_host_path,
         )
 

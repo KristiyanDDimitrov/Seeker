@@ -558,6 +558,40 @@ def test_connection_tab_shows_no_warning_when_slskd_unconfigured(
     assert window.slskd_remote_warning_notice.isHidden()
 
 
+def test_connection_tab_displays_web_ui_login(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        slskd_web_username="seeker",
+        slskd_web_password="real-web-password",
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.slskd_web_username_display.text() == "seeker"
+    assert window.slskd_web_password_display.text() == "••••••••"
+
+    window.reveal_web_password_button.click()
+    assert window.slskd_web_password_display.text() == "real-web-password"
+
+    window.reveal_web_password_button.click()
+    assert window.slskd_web_password_display.text() == "••••••••"
+
+
+def test_connection_tab_web_ui_login_not_configured_when_unset(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.slskd_web_username_display.text() == "Not configured"
+    assert window.slskd_web_password_display.text() == "Not configured"
+    assert window.reveal_web_password_button.isHidden()
+
+
 def test_reveal_api_key_toggle_shows_and_hides_the_real_value(
         qtbot, tmp_path, monkeypatch,
 ):

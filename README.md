@@ -303,6 +303,12 @@ never reachable from another device on your network; only the Soulseek
 peer-connection port (`50300`) is published on every interface, since
 the protocol itself needs that.
 
+If you went through the wizard or Settings instead of this manual path,
+slskd's own web UI login is generated for you (Settings → Connection
+tab → "Web UI username"/"Web UI password") rather than left at slskd's
+vendor default (`slskd`/`slskd`) — set `SLSKD_USERNAME`/`SLSKD_PASSWORD`
+yourself in `.env` for a fully manual setup.
+
 **Note on destinations:** slskd's batch-download API only accepts a
 destination *relative to slskd's own download root* — it can't target an
 arbitrary path on your library drive directly. `seeker` works around

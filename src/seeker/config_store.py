@@ -23,6 +23,16 @@ class SeekerConfig:
     # exactly this real consumer.
     slskd_username: str | None = None
     slskd_password: str | None = None
+    # Roadmap item 116 (round 8, §6.1.2) — the slskd WEB UI login,
+    # distinct from slskd_username/slskd_password just above (which,
+    # despite the name, hold the SOULSEEK NETWORK login —
+    # docker_setup.py's own comment records this exact naming trap).
+    # Never set by Seeker before this item; the web UI was left at
+    # slskd's vendor default ("slskd"/"slskd"). Generated once by
+    # Application.ensure_slskd_web_credentials() and never rotated
+    # silently afterward.
+    slskd_web_username: str | None = None
+    slskd_web_password: str | None = None
     # None means "use matching.py's hardcoded default" — same
     # unset-means-unchanged discipline as every optional override in
     # this codebase (e.g. the BPM-range feature). Resolved per-call by
@@ -101,6 +111,8 @@ def load_config(path: Path) -> SeekerConfig:
         spotify_redirect_uri=data.get("spotify_redirect_uri"),
         slskd_username=data.get("slskd_username"),
         slskd_password=data.get("slskd_password"),
+        slskd_web_username=data.get("slskd_web_username"),
+        slskd_web_password=data.get("slskd_web_password"),
         auto_match_threshold=data.get("auto_match_threshold"),
         needs_review_threshold=data.get("needs_review_threshold"),
         default_download_location_id=data.get("default_download_location_id"),

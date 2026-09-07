@@ -737,6 +737,39 @@ def test_persist_soulseek_config_updates_store_disk_and_resets_client(
     assert reloaded.slskd_password == "real-password"
 
 
+def test_ensure_slskd_web_credentials_generates_and_persists_once(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    username, password = app.ensure_slskd_web_credentials()
+
+    assert username == "seeker"
+    assert password
+    assert app._config_store.slskd_web_username == username
+    assert app._config_store.slskd_web_password == password
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_web_username == username
+    assert reloaded.slskd_web_password == password
+
+
+def test_ensure_slskd_web_credentials_never_rotates_an_existing_value(
+        tmp_path, monkeypatch,
+):
+    # Roadmap item 116 (round 8, §6.1.2) — a second call (e.g. a later
+    # "Update SoulSeek credentials" or Sharing add-location recreate)
+    # must return the SAME login, not silently generate a new one that
+    # would lock the user out of a web UI session they're already in.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    first_username, first_password = app.ensure_slskd_web_credentials()
+    second_username, second_password = app.ensure_slskd_web_credentials()
+
+    assert second_username == first_username
+    assert second_password == first_password
+
+
 def test_persist_default_destination_updates_store_and_disk(
         tmp_path, monkeypatch,
 ):

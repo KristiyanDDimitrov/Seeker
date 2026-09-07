@@ -9,6 +9,8 @@ import pytest
 from seeker.docker_setup import (
     SLSKD_NETWORK_PASSWORD_ENV_VAR,
     SLSKD_NETWORK_USERNAME_ENV_VAR,
+    SLSKD_WEB_PASSWORD_ENV_VAR,
+    SLSKD_WEB_USERNAME_ENV_VAR,
     DockerState,
     SlskdHealthStatus,
     bring_up_slskd,
@@ -594,6 +596,8 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
         soulseek_password="realpass",
         api_key="real-api-key",
         slskd_data_dir="/data/slskd-data",
+        web_username="webuser",
+        web_password="webpass",
         library_location_path="/music",
     )
 
@@ -606,6 +610,8 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
     assert env["SLSKD_API_KEY"] == "real-api-key"
     assert env["SLSKD_DATA_DIR"] == "/data/slskd-data"
     assert env["SLSKD_SHARE_PATH"] == "/music"
+    assert env[SLSKD_WEB_USERNAME_ENV_VAR] == "webuser"
+    assert env[SLSKD_WEB_PASSWORD_ENV_VAR] == "webpass"
     # The real process environment is passed through, not replaced —
     # confirms **os.environ is actually spread in, not just assumed.
     assert env["UNRELATED_VAR"] == "should-be-preserved"

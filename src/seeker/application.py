@@ -33,7 +33,11 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
-from seeker.docker_setup import ensure_full_path_environment, slskd_data_dir
+from seeker.docker_setup import (
+    ensure_full_path_environment,
+    generate_api_key,
+    slskd_data_dir,
+)
 from seeker.history_service import HistoryService
 from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
@@ -285,6 +289,44 @@ class Application:
         # method forever, even after real credentials just landed.
         self._download_service = None
         self._sharing_service = None
+
+    def ensure_slskd_web_credentials(self) -> tuple[str, str]:
+        """Return the slskd WEB UI login, generating and persisting it
+        once if it doesn't exist yet.
+
+        Roadmap item 116 (round 8, §6.1.2) — Seeker never set this
+        before this item, leaving slskd's web UI at its own vendor
+        default ("slskd"/"slskd"). If both fields are already set,
+        return them unchanged — never rotate a real, working login
+        silently. This is the upgrade path for an existing install:
+        nothing changes until the next real `bring_up_slskd` call
+        (wizard bring-up, "Update SoulSeek credentials," or a Sharing
+        add-location recreate), at which point it gets a real generated
+        password instead of the vendor default, exactly once.
+        """
+        if (
+                self._config_store.slskd_web_username
+                and self._config_store.slskd_web_password
+        ):
+            return (
+                self._config_store.slskd_web_username,
+                self._config_store.slskd_web_password,
+            )
+
+        username = "seeker"
+        password = generate_api_key()
+
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(
+            current,
+            slskd_web_username=username,
+            slskd_web_password=password,
+        )
+        save_config(updated, config_path)
+        self._config_store = updated
+
+        return username, password
 
     def persist_default_destination(
             self,

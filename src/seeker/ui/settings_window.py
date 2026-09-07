@@ -91,6 +91,7 @@ class SettingsPage(QWidget):
         self._locations_by_name: dict[str, LibraryLocation] = {}
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
+        self._web_password_visible = False
         # Roadmap item C5.12 (round 5) — MainWindow's own
         # _apply_theme_mode, so the sidebar toggle and this tab's radio
         # group stay in sync in both directions. None only in tests
@@ -639,6 +640,30 @@ class SettingsPage(QWidget):
         api_key_row.addWidget(self.reveal_api_key_button)
         soulseek_form.addRow("API key:", api_key_row)
 
+        # Roadmap item 116 (round 8, §6.1.2) — surfaces the generated
+        # slskd WEB UI login (distinct from the SoulSeek network login
+        # above), otherwise nowhere in the app the user could ever find
+        # it once bring_up_slskd stopped leaving the web UI at slskd's
+        # own vendor default.
+        self.slskd_web_username_display = QLabel("Not configured")
+        soulseek_form.addRow(
+            "Web UI username:", self.slskd_web_username_display
+        )
+
+        web_password_row = QHBoxLayout()
+        self.slskd_web_password_display = QLabel("Not configured")
+        web_password_row.addWidget(self.slskd_web_password_display)
+        self.reveal_web_password_button = QPushButton("Show")
+        self.reveal_web_password_button.setToolTip(
+            "slskd's own web UI login — open its address (Sharing page) "
+            "and sign in with this username/password."
+        )
+        self.reveal_web_password_button.clicked.connect(
+            self._on_toggle_web_password_visibility
+        )
+        web_password_row.addWidget(self.reveal_web_password_button)
+        soulseek_form.addRow("Web UI password:", web_password_row)
+
         self.test_connection_button = QPushButton("Test connection")
         self.test_connection_button.setToolTip(
             help_text.TOOLTIP_TEST_CONNECTION
@@ -718,7 +743,33 @@ class SettingsPage(QWidget):
             "••••••••" if config.slskd_password else "Not configured"
         )
         self._render_api_key_display()
+        self._render_web_password_display()
         self._render_slskd_remote_warning()
+
+    def _render_web_password_display(self) -> None:
+        config = self.application._config_store
+
+        self.slskd_web_username_display.setText(
+            config.slskd_web_username or "Not configured"
+        )
+
+        if not config.slskd_web_password:
+            self.slskd_web_password_display.setText("Not configured")
+            self.reveal_web_password_button.hide()
+            return
+
+        self.reveal_web_password_button.show()
+
+        if self._web_password_visible:
+            self.slskd_web_password_display.setText(config.slskd_web_password)
+            self.reveal_web_password_button.setText("Hide")
+        else:
+            self.slskd_web_password_display.setText("••••••••")
+            self.reveal_web_password_button.setText("Show")
+
+    def _on_toggle_web_password_visibility(self) -> None:
+        self._web_password_visible = not self._web_password_visible
+        self._render_web_password_display()
 
     def _render_slskd_remote_warning(self) -> None:
         base_url = self.application._slskd_base_url
@@ -835,6 +886,9 @@ class SettingsPage(QWidget):
         api_key = generate_api_key()
         data_dir = slskd_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
+        web_username, web_password = (
+            self.application.ensure_slskd_web_credentials()
+        )
 
         def do_update() -> None:
             result = bring_up_slskd(
@@ -843,6 +897,8 @@ class SettingsPage(QWidget):
                 soulseek_password=password,
                 api_key=api_key,
                 slskd_data_dir=str(data_dir),
+                web_username=web_username,
+                web_password=web_password,
                 library_location_path=library_location_path,
             )
 

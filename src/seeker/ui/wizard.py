@@ -559,6 +559,9 @@ class OnboardingWizard(QMainWindow):
         api_key = generate_api_key()
         data_dir = slskd_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
+        web_username, web_password = (
+            self.application.ensure_slskd_web_credentials()
+        )
 
         library_path = self._library_location_path
 
@@ -569,6 +572,8 @@ class OnboardingWizard(QMainWindow):
                 soulseek_password=password,
                 api_key=api_key,
                 slskd_data_dir=str(data_dir),
+                web_username=web_username,
+                web_password=web_password,
                 library_location_path=library_path,
             )
 

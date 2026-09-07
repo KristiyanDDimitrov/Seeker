@@ -215,6 +215,13 @@ def generate_api_key() -> str:
 SLSKD_NETWORK_USERNAME_ENV_VAR = "SLSKD_SLSK_USERNAME"
 SLSKD_NETWORK_PASSWORD_ENV_VAR = "SLSKD_SLSK_PASSWORD"
 
+# Roadmap item 116 (round 8, §6.1.2) — the WEB UI pair the comment
+# directly above already named, now actually used: `bring_up_slskd`
+# passed neither before this item, leaving the web UI at slskd's own
+# vendor default ("slskd"/"slskd").
+SLSKD_WEB_USERNAME_ENV_VAR = "SLSKD_USERNAME"
+SLSKD_WEB_PASSWORD_ENV_VAR = "SLSKD_PASSWORD"
+
 
 SLSKD_HEALTHY_STATE = "Connected, LoggedIn"
 
@@ -366,6 +373,8 @@ def bring_up_slskd(
         soulseek_password: str,
         api_key: str,
         slskd_data_dir: str,
+        web_username: str,
+        web_password: str,
         library_location_path: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     # Passes the collected credentials/API key/paths directly as
@@ -388,6 +397,8 @@ def bring_up_slskd(
         SLSKD_NETWORK_PASSWORD_ENV_VAR: soulseek_password,
         "SLSKD_API_KEY": api_key,
         "SLSKD_DATA_DIR": slskd_data_dir,
+        SLSKD_WEB_USERNAME_ENV_VAR: web_username,
+        SLSKD_WEB_PASSWORD_ENV_VAR: web_password,
     }
 
     if library_location_path is not None:
