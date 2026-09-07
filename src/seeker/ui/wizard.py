@@ -47,7 +47,15 @@ from seeker.ui.workers import run_worker
 HEALTH_POLL_INTERVAL_MS = 2_000
 HEALTH_POLL_TIMEOUT_SECONDS = 60.0
 
-SLSKD_LOCAL_BASE_URL = "http://localhost:5030"
+# Roadmap item 116 (round 8, §6.1.1) — 127.0.0.1, not "localhost".
+# Docker's own "127.0.0.1:5030:5030" port binding (docker-compose.yml)
+# is IPv4-only; macOS resolves "localhost" to both ::1 and 127.0.0.1,
+# and getaddrinfo commonly returns ::1 first, so an httpx request to
+# "http://localhost:5030" could try IPv6, get connection refused, and
+# only then fall back to IPv4 -- a real per-request delay this sidesteps
+# deterministically rather than needing to time a before/after search on
+# real hardware.
+SLSKD_LOCAL_BASE_URL = "http://127.0.0.1:5030"
 
 
 class OnboardingWizard(QMainWindow):

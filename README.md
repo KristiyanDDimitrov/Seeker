@@ -266,7 +266,7 @@ SPOTIFY_CLIENT_ID=your-spotify-client-id
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
 
 # Only required once you use SoulSeek search/download commands.
-SLSKD_BASE_URL=http://localhost:5030
+SLSKD_BASE_URL=http://127.0.0.1:5030
 SLSKD_API_KEY=your-slskd-api-key
 
 # Host filesystem path to slskd's own configured download directory
@@ -294,10 +294,14 @@ protocol itself. A `docker-compose.yml` is included:
 docker compose up -d
 ```
 
-Then open `http://localhost:5030`, finish slskd's own setup (SoulSeek
+Then open `http://127.0.0.1:5030`, finish slskd's own setup (SoulSeek
 account credentials, an API key for `SLSKD_API_KEY` above, and which
 local folders it shares), and confirm its configured download directory
-matches `SLSKD_DOWNLOAD_DIR`.
+matches `SLSKD_DOWNLOAD_DIR`. **The web UI is bound to this machine
+only** (`docker-compose.yml`'s `127.0.0.1:5030:5030`/`5031:5031`) — it's
+never reachable from another device on your network; only the Soulseek
+peer-connection port (`50300`) is published on every interface, since
+the protocol itself needs that.
 
 **Note on destinations:** slskd's batch-download API only accepts a
 destination *relative to slskd's own download root* — it can't target an

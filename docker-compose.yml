@@ -13,8 +13,17 @@ services:
     image: slskd/slskd
     container_name: slskd
     ports:
-      - "5030:5030"
-      - "5031:5031"
+      # Roadmap item 116 (round 8, §6.1.1) — the web UI is bound to
+      # loopback only. Seeker's own client never talks to slskd over
+      # anything but localhost (SLSKD_LOCAL_BASE_URL, ui/wizard.py), and
+      # an unbound Docker port mapping binds 0.0.0.0 -- reachable from
+      # any device on the same network. Confirmed live: a real slskd
+      # container on this machine was published on 0.0.0.0/[::] before
+      # this change.
+      - "127.0.0.1:5030:5030"
+      - "127.0.0.1:5031:5031"
+      # MUST stay open on every interface -- real incoming Soulseek peer
+      # connections need it; the P2P protocol requires it.
       - "50300:50300"
     environment:
       - PUID=1000
