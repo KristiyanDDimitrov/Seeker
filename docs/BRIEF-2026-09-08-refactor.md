@@ -392,6 +392,21 @@ the rest explicitly, with reasons, in one place.
   needs and produce a wave of failures that look like the config's
   fault.
 
+  > **SHARPENED (2026-09-08), after this bit someone during 4.8.6.**
+  > The rule is stronger than "get the ordering right", and it is a
+  > standing convention for CLAUDE.md: **never run `ruff --fix` with a
+  > narrowed `--select`, and never narrow `--select` to `RUF100` at
+  > all.** RUF100 evaluates a `# noqa` against *only the rules enabled
+  > in that run* — its own message says so verbatim: `Unused 'noqa'
+  > directive (non-enabled: 'N802')`. So `ruff check --fix --select
+  > RUF100` marks **every** directive in the codebase unused, because
+  > nothing except RUF100 is enabled, and `--fix` then deletes them all.
+  > That is what stripped legitimate suppressions from seven files
+  > during 4.8.6, including 4.6's own `S608` justification. A stale
+  > `.ruff_cache` may have obscured it, but clearing the cache would not
+  > have prevented it — only running RUF100 under the project's full
+  > configured selection does. Fix the guard to match the real cause.
+
   Confirm the `extend-ignore-names` list against the real Qt overrides in
   `ui/flow_layout.py`, `ui/notice.py` and `ui/main_window.py` — I derived
   it from the `N802` hits, but check for ones the current selection did
@@ -621,6 +636,22 @@ unrelated noise.
   class is built on — but nothing should ever again rely on touching it
   for effect.
 
+  > **DONE in Phase 1 (§4.8.6), and my diagnosis above was wrong in a
+  > way worth recording.** I wrote that the side effect of `self.spotify`
+  > *is* opening the browser. It is not. `SpotifyClient.__init__` only
+  > stores `token_source` and `force_refresh` as attributes and never
+  > calls them, so constructing the client triggers no authorization at
+  > all. **The line was a genuine no-op and the comment above it was
+  > false** — `connect_spotify()` never opened the browser, and the
+  > wizard advanced past its Spotify step without the user having
+  > authorized anything; OAuth fired later, from whichever background
+  > worker first made a real API call.
+  >
+  > I repeated the comment's claim instead of checking the constructor —
+  > exactly the failure CLAUDE.md's own convention about unverified
+  > behavioural comments exists to prevent, committed by the person
+  > citing that convention. Recorded here rather than quietly fixed.
+
 - [ ] **5.3 — The small true positives.** One commit, or one per file:
   - `ui/formatting.py:73` — `max(int(round(seconds)), 0)`; `round()` on
     a float already returns `int` (`RUF046`).
@@ -828,6 +859,22 @@ be exchanged for access tokens until it is revoked.
   reviewer is looking for.
 
 ### 6.3 — MEDIUM: the OAuth callback server can hang a worker thread forever, and carries stale state between attempts
+
+> **PRIORITY RAISED (2026-09-08). 6.3.1 is now a companion requirement
+> to a fix that has already landed, not a standalone improvement.**
+> Phase 1's §4.8.6 corrected `connect_spotify()` so it really does call
+> `auth_manager.get_valid_token()`. Before that fix it returned
+> immediately and never blocked. **It now blocks on
+> `wait_for_callback()`, which has no timeout** — so the wizard's
+> first-run Spotify step, the very first thing a new user touches, can
+> now hang a worker thread permanently if they close the browser tab or
+> abandon the consent screen, leaving the Connect button disabled with
+> no way back except restarting the app.
+>
+> That is not a net regression — the previous behaviour was broken too,
+> just differently — but it is a worse failure mode in a worse place.
+> **Do 6.3.1–6.3.3 before any `.dmg` is built or shared**, ahead of the
+> rest of Phase 3 if that is the more convenient order.
 
 `spotify/callback_server.py` is 73 lines and has three real problems.
 
