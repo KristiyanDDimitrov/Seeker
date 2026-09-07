@@ -1,4 +1,5 @@
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -18,6 +19,41 @@ def _apply_real_theme(qapp):
     """
     from seeker.ui import theme
     theme.apply_theme(qapp)
+
+
+@pytest.fixture(autouse=True)
+def _flush_deferred_widget_deletion(qapp):
+    """Roadmap item 116 (round 8, §14.2) — found live wiring up
+    MainWindow.applicationStateChanged: pytest-qt's own qtbot.addWidget
+    teardown calls widget.close() THEN widget.deleteLater() on every
+    test's window unconditionally (confirmed by reading pytestqt's own
+    _close_widgets), but deleteLater() only actually destroys the
+    underlying object once the event loop next processes posted
+    events — nothing in this suite's own fixtures guaranteed that
+    happened before the NEXT test's body ran. Ordinarily harmless (a
+    still-alive-but-hidden previous test's MainWindow just sits there),
+    but MainWindow.__init__ connects a bound method to the GLOBAL
+    QApplication.applicationStateChanged signal, which (confirmed live,
+    unlike C5.6's colorSchemeChanged connection — see item 109's own
+    comment that colorSchemeChanged never actually fires under this
+    offscreen platform) DOES organically fire during ordinary
+    show()/close() calls even under QT_QPA_PLATFORM=offscreen: a
+    still-undeleted previous test's window would react to a LATER,
+    unrelated test's window activity by calling its own (stale)
+    _on_tray_open_seeker(), interfering with that later test.
+    Processing events at the START of every test flushes any deletion
+    the PREVIOUS test's teardown already posted, so a test never
+    starts with an earlier test's zombie window still connected.
+
+    Confirmed live, not assumed: a plain `qapp.processEvents()` does
+    NOT actually deliver a DeferredDelete event at all (verified with a
+    weakref probe -- a widget survived two processEvents() calls
+    untouched) — QCoreApplication.sendPostedEvents(None,
+    QEvent.Type.DeferredDelete) is the call that actually does, and is
+    what deleteLater()'s own documentation points to explicitly.
+    """
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    yield
 
 
 @pytest.fixture(autouse=True)

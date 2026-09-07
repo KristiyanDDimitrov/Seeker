@@ -1432,6 +1432,46 @@ class MainWindow(QMainWindow):
 
         self._build_tray_icon()
 
+        # Roadmap item 116 (round 8, §14.2) — macOS routes every
+        # "reopen a running app" gesture (Dock icon click, double-click
+        # in Finder/Applications, Spotlight, `open -a Seeker`) through
+        # NSApplicationDelegate's own applicationShouldHandleReopen:
+        # hasVisibleWindows:. Qt's Cocoa platform plugin handles that
+        # selector itself by emitting exactly this signal
+        # (Qt::ApplicationActive, forcePropagate=true so it fires even
+        # when the state is already Active) and returning YES — it
+        # never shows a window on its own. Showing one is this
+        # application's job; this signal is the only notification it
+        # gets. A connection to a GLOBAL object (QApplication), not this
+        # window, so it must be torn down explicitly in
+        # cleanup_before_quit — same shape as _system_scheme_connected
+        # just above.
+        #
+        # Gated on a real tray icon existing: with none (self._tray_icon
+        # is None), closeEvent takes the ordinary real-close path
+        # (super().closeEvent()) rather than hiding — there is no
+        # "hidden but still running" state for a reopen gesture to ever
+        # need to restore, so connecting here would be pure overhead
+        # (and, in this project's own offscreen test suite, needless
+        # extra exposure to a real, confirmed-live subtlety: this
+        # signal DOES fire organically from ordinary show()/close()
+        # calls even under QT_QPA_PLATFORM=offscreen, unlike
+        # colorSchemeChanged — see conftest.py's own
+        # _flush_deferred_widget_deletion for the full story).
+        app = QApplication.instance()
+        self._app_state_connected = False
+        if app is not None and self._tray_icon is not None:
+            # applicationStateChanged is a QGuiApplication signal;
+            # QApplication.instance()'s declared return type is the
+            # narrower QCoreApplication — real at runtime (this app
+            # always constructs a QApplication, itself a QGuiApplication
+            # subclass), just not visible to mypy from the stub alone.
+            assert isinstance(app, QGuiApplication)
+            app.applicationStateChanged.connect(
+                self._on_application_state_changed
+            )
+            self._app_state_connected = True
+
         # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit
         # SHA in the one string a user reads most often looked like a
         # bug even when it wasn't one. Build identity already has its
@@ -6271,6 +6311,39 @@ class MainWindow(QMainWindow):
         self._poll_next_step()
         self._render_activity_strip()
 
+    def _on_application_state_changed(
+            self, state: Qt.ApplicationState,
+    ) -> None:
+        # Roadmap item 116 (round 8, §14.2) — see the connection's own
+        # comment in __init__ for why this signal exists at all. Two
+        # things about this guard, both deliberate:
+        #
+        # ApplicationActive is not reopen-specific — it also fires on
+        # ordinary activation (Cmd-Tab, clicking a window), and because
+        # Qt passes forcePropagate=true it fires even when the state was
+        # already Active. `not self.isVisible()` narrows it to the case
+        # that matters; in every other case `_on_tray_open_seeker()`
+        # would have been a near-no-op anyway.
+        #
+        # Guards on `isVisible()`, not `_hidden_to_tray` — that flag is
+        # deliberately not set True until `_check_hidden_to_tray`
+        # confirms the hide at the platform level
+        # (`_HIDE_TO_TRAY_VERIFY_DELAY_MS` later), so on the ordinary
+        # hide path it stays False for that whole window. A user who
+        # closes the window and immediately clicks the Dock icon must
+        # still get it back; gating on `_hidden_to_tray` would ignore
+        # them for the first `_HIDE_TO_TRAY_VERIFY_DELAY_MS`.
+        #
+        # This proves the HANDLER's own contract (a hidden window comes
+        # back on ApplicationActive) — it does not and cannot prove a
+        # real Dock click reaches it, which no headless test can. See
+        # this item's own real-desktop verification checklist.
+        if state != Qt.ApplicationState.ApplicationActive:
+            return
+        if self.isVisible():
+            return
+        self._on_tray_open_seeker()
+
     def _on_tray_quit(self) -> None:
         # Roadmap item R7.7 — a real quit request, same as ⌘Q/dock
         # "Quit Seeker". Goes straight to QApplication.quit() (posts a
@@ -6306,6 +6379,18 @@ class MainWindow(QMainWindow):
                 self._on_system_color_scheme_changed
             )
             self._system_scheme_connected = False
+
+        # Roadmap item 116 (round 8, §14.2) — same reasoning as
+        # _system_scheme_connected just above: a connection to the
+        # GLOBAL QApplication instance, not this window.
+        if self._app_state_connected:
+            app = QApplication.instance()
+            if app is not None:
+                assert isinstance(app, QGuiApplication)
+                app.applicationStateChanged.disconnect(
+                    self._on_application_state_changed
+                )
+            self._app_state_connected = False
 
         if self._tray_icon is not None:
             self._tray_icon.hide()

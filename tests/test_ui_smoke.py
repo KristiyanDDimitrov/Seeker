@@ -5,7 +5,7 @@ from itertools import pairwise
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QItemSelectionModel, QRect
+from PySide6.QtCore import QItemSelectionModel, QRect, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -7680,6 +7680,104 @@ def test_tray_icon_not_built_when_unavailable(qtbot, monkeypatch):
     assert window._tray_icon is None
 
 
+def test_application_active_reopens_a_hidden_window(qtbot, monkeypatch):
+    # Roadmap item 116 (round 8, §14.2.3) — this proves the HANDLER's
+    # own contract (a hidden window comes back on a real
+    # applicationStateChanged(ApplicationActive) emission), not that a
+    # real Dock click reaches it -- that can't be produced under
+    # QT_QPA_PLATFORM=offscreen and is left for real-desktop
+    # verification.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.hide()
+    assert window.isHidden()
+
+    window._on_application_state_changed(
+        Qt.ApplicationState.ApplicationActive
+    )
+
+    assert not window.isHidden()
+
+
+def test_application_active_is_a_near_no_op_when_already_visible(
+        qtbot, monkeypatch,
+):
+    # ApplicationActive also fires on ordinary activation (Cmd-Tab,
+    # clicking a window) and, since Qt passes forcePropagate=true, even
+    # when the state was already Active -- must not re-enter
+    # _on_tray_open_seeker (and its poll calls) every time.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    assert not window.isHidden()
+
+    calls = []
+    monkeypatch.setattr(
+        window, "_on_tray_open_seeker", lambda: calls.append(1),
+    )
+
+    window._on_application_state_changed(
+        Qt.ApplicationState.ApplicationActive
+    )
+
+    assert calls == []
+
+
+def test_non_active_state_change_does_nothing(qtbot, monkeypatch):
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.hide()
+    assert window.isHidden()
+
+    window._on_application_state_changed(
+        Qt.ApplicationState.ApplicationInactive
+    )
+
+    assert window.isHidden()
+
+
+def test_app_state_signal_connected_on_construction(qtbot, monkeypatch):
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._app_state_connected is True
+
+
+def test_app_state_signal_not_connected_without_a_tray_icon(qtbot, monkeypatch):
+    # Roadmap item 116 (round 8, §14.2) — with no tray, closeEvent takes
+    # the ordinary real-close path; there's no "hidden but still
+    # running" state a reopen gesture would ever need to restore, so
+    # connecting here would be pure overhead.
+    _force_tray_available(monkeypatch, False)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._app_state_connected is False
+
+
+def test_cleanup_before_quit_disconnects_the_app_state_signal(qtbot, monkeypatch):
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    assert window._app_state_connected is True
+
+    window.cleanup_before_quit()
+
+    assert window._app_state_connected is False
+
+
 def test_close_event_falls_back_to_real_close_when_no_tray(qtbot, monkeypatch):
     # Roadmap item R7.2 — the explicit fallback: with no real tray to
     # hide to, closing behaves exactly like it always did (a REAL
@@ -7703,6 +7801,7 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
+    qtbot.wait(20)
     assert window._tray_icon is not None
 
     window.close()
@@ -8010,6 +8109,22 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
+    # Roadmap item 116 (round 8, §14.2) — found live wiring up
+    # applicationStateChanged: without settling the event loop here, a
+    # platform-level "just became active" notification queued by
+    # show() itself can be delivered LATE, after close() has already
+    # hidden the window — at delivery time isVisible() reads False, so
+    # _on_application_state_changed's own reopen guard (correctly)
+    # treats it as a real reopen request, which invalidates the
+    # pending hide-confirmation timer and this waitUntil never
+    # resolves. Not reachable through real interactive use (a human
+    # takes real time between a window appearing and closing it, which
+    # the already-spinning event loop uses to deliver this kind of
+    # notification long before any close() call); this is a test-
+    # timing gap, not a production race, and this qtbot.wait(20)
+    # matches the settling wait this file's own fullscreen-close test
+    # already uses for the same class of reason.
+    qtbot.wait(20)
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
@@ -8033,6 +8148,22 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
+    # Roadmap item 116 (round 8, §14.2) — found live wiring up
+    # applicationStateChanged: without settling the event loop here, a
+    # platform-level "just became active" notification queued by
+    # show() itself can be delivered LATE, after close() has already
+    # hidden the window — at delivery time isVisible() reads False, so
+    # _on_application_state_changed's own reopen guard (correctly)
+    # treats it as a real reopen request, which invalidates the
+    # pending hide-confirmation timer and this waitUntil never
+    # resolves. Not reachable through real interactive use (a human
+    # takes real time between a window appearing and closing it, which
+    # the already-spinning event loop uses to deliver this kind of
+    # notification long before any close() call); this is a test-
+    # timing gap, not a production race, and this qtbot.wait(20)
+    # matches the settling wait this file's own fullscreen-close test
+    # already uses for the same class of reason.
+    qtbot.wait(20)
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
@@ -8056,6 +8187,22 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
+    # Roadmap item 116 (round 8, §14.2) — found live wiring up
+    # applicationStateChanged: without settling the event loop here, a
+    # platform-level "just became active" notification queued by
+    # show() itself can be delivered LATE, after close() has already
+    # hidden the window — at delivery time isVisible() reads False, so
+    # _on_application_state_changed's own reopen guard (correctly)
+    # treats it as a real reopen request, which invalidates the
+    # pending hide-confirmation timer and this waitUntil never
+    # resolves. Not reachable through real interactive use (a human
+    # takes real time between a window appearing and closing it, which
+    # the already-spinning event loop uses to deliver this kind of
+    # notification long before any close() call); this is a test-
+    # timing gap, not a production race, and this qtbot.wait(20)
+    # matches the settling wait this file's own fullscreen-close test
+    # already uses for the same class of reason.
+    qtbot.wait(20)
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
