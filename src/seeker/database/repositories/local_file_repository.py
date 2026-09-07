@@ -313,12 +313,17 @@ class LocalFileRepository:
 
         placeholders = ", ".join("?" for _ in seen_relative_paths)
 
+        # Safe despite the f-string below (S608, suppressed there):
+        # `placeholders` is built only from "?" and ", " (one per item
+        # in seen_relative_paths, never from any value), and every real
+        # value is still passed through the parameter tuple; nothing
+        # user- or file-derived reaches the query string itself.
         connection.execute(
             f"""
             DELETE FROM local_files
             WHERE location_id = ?
             AND relative_path NOT IN ({placeholders})
-            """,
+            """,  # noqa: S608
             (location_id, *seen_relative_paths),
         )
 
