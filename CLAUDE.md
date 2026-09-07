@@ -259,6 +259,21 @@ uv run mypy --strict src/  # type check — must stay clean
 
 ## Known issues / backlog
 
+- [ ] **Open, unconfirmed flake (2026-09-08, round 8 §4.8.8):**
+      `tests/test_ui_smoke.py::test_close_event_falls_back_to_real_close_when_no_tray`
+      failed once during Phase 1's own repeated full-suite runs this
+      round (roughly a dozen full `uv run pytest` runs across the
+      session), passing immediately both in isolation and on every
+      other full-suite run including 3 consecutive re-runs right after
+      it fired. Not chased at the time since nothing in that round's
+      own changes (line-length/ruff config work) touched `closeEvent`
+      or tray logic at all. **Relevant now: round 8's own §14 is about
+      to modify `closeEvent` directly** — if this fires again during or
+      after that work, it is a known prior, not a fresh mystery: check
+      first whether §14's changes plausibly explain it before assuming
+      a new regression. Per this project's standing rule, diagnose a
+      recurrence directly; do not reach for `pytest-rerunfailures` or
+      any other rerun-until-green mechanism.
 - [x] Fixed: `cli.py::handle_playlists` instantiated `PlaylistRepository`
       directly instead of going through `Application`. Now goes through
       `application.sync_service`/`application.download_service`
