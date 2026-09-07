@@ -760,6 +760,15 @@ SHARING_FRAMING_BODY = (
     "you. It just shows, honestly, what's actually shared right now and "
     "who's actually downloading it — so you can see whether you're a "
     "genuine participant in the network you're relying on.</p>"
+    # Roadmap item 116 (round 8, §6.1.4) — states plainly what slskd is
+    # doing on this machine: it shares the library read-only with the
+    # SoulSeek network, and its own admin interface (the web UI at
+    # SLSKD_LOCAL_BASE_URL) is bound to this machine only, never
+    # reachable from another device on the network.
+    "<p>Seeker shares your library <b>read-only</b> — SoulSeek peers can "
+    "download from it, but nothing they send can write to your drive. "
+    "slskd's own admin interface (its web UI) is bound to this machine "
+    "only; it's never reachable from another device on your network.</p>"
 )
 
 TOOLTIP_SHARING_REFRESH = (
