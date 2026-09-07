@@ -158,6 +158,7 @@ def detect_docker_state() -> DockerState:
             ["docker", "info"],
             capture_output=True,
             timeout=10,
+            check=False,  # caller inspects result.returncode itself
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return DockerState.INSTALLED_NOT_RUNNING
@@ -378,4 +379,5 @@ def bring_up_slskd(
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,  # caller inspects .returncode itself
     )

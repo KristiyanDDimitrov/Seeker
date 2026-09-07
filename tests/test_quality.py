@@ -16,35 +16,35 @@ from seeker.soulseek.quality import (
 
 
 def make_track(**overrides) -> Track:
-    defaults = dict(
-        id="track1",
-        title="Rhyme Dust",
-        artist="Dom Dolla",
-        album="Rhyme Dust",
-        duration_ms=215_000,
-    )
+    defaults = {
+        "id": "track1",
+        "title": "Rhyme Dust",
+        "artist": "Dom Dolla",
+        "album": "Rhyme Dust",
+        "duration_ms": 215_000,
+    }
     defaults.update(overrides)
     return Track(**defaults)
 
 
 def make_file(**overrides) -> SoulseekFile:
-    defaults = dict(
-        username="some_seeder",
-        filename=(
+    defaults = {
+        "username": "some_seeder",
+        "filename": (
             "@@1a2b3c\\Music\\Dom Dolla\\Rhyme Dust\\"
             "Dom Dolla - Rhyme Dust.flac"
         ),
-        extension="flac",
-        size=34_567_890,
-        queue_length=2,
-        upload_speed=1_048_576,
-        has_free_upload_slot=True,
-        length=215,
-        bit_rate=None,
-        bit_depth=16,
-        sample_rate=44_100,
-        is_variable_bitrate=None,
-    )
+        "extension": "flac",
+        "size": 34_567_890,
+        "queue_length": 2,
+        "upload_speed": 1_048_576,
+        "has_free_upload_slot": True,
+        "length": 215,
+        "bit_rate": None,
+        "bit_depth": 16,
+        "sample_rate": 44_100,
+        "is_variable_bitrate": None,
+    }
     defaults.update(overrides)
     return SoulseekFile(**defaults)
 

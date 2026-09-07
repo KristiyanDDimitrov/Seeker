@@ -62,7 +62,12 @@ def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
     in between "wrapped" and "called," because they're the same
     statement.
     """
-    try:
+    # Deliberately kept as try/except, not contextlib.suppress (SIM105,
+    # suppressed): behaviorally identical either way, but per CLAUDE.md
+    # item 32/41's own standing rule, this file's control flow is not
+    # touched even for a cosmetic-only change — see this function's own
+    # docstring for why this exact shape was hard-won.
+    try:  # noqa: SIM105
         bound_signal.emit(*args)
     except RuntimeError:
         pass

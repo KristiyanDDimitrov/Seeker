@@ -130,7 +130,7 @@ class TrackMatcher:
         # current attribute; defaulting here to an always-empty config
         # keeps every existing caller (tests included) byte-for-byte
         # unchanged, since SeekerConfig()'s threshold fields are None.
-        self._get_config = get_config or (lambda: SeekerConfig())
+        self._get_config = get_config or SeekerConfig
 
     def match_all(
             self,

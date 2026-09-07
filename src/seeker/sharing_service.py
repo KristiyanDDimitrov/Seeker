@@ -199,7 +199,7 @@ class SharingService:
         # TrackMatcher (item 28) -- a Settings credential update takes
         # effect on the very next add_location_to_share call, no
         # restart or service-reconstruction needed.
-        self._get_config = get_config or (lambda: SeekerConfig())
+        self._get_config = get_config or SeekerConfig
 
     @property
     def soulseek(self) -> SoulseekClient:

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 from dataclasses import asdict, dataclass, replace
@@ -121,10 +122,8 @@ def save_config(seeker_config: SeekerConfig, path: Path) -> None:
     # This file will eventually hold real SoulSeek credentials — lock it
     # down where the OS supports POSIX chmod semantics. A platform where
     # chmod doesn't apply (Windows) is a no-op, not a failure.
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(0o600)
-    except OSError:
-        pass
 
 
 # Field name -> the legacy .env var it was previously read from. Covers

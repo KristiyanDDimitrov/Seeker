@@ -1,3 +1,4 @@
+import contextlib
 import math
 import subprocess
 import sys
@@ -363,15 +364,17 @@ def _open_in_file_manager(path: Path) -> None:
     # first since a brand-new install's slskd-data subfolder in
     # particular may not exist yet (SoulSeek skipped in the wizard) —
     # opening a folder that doesn't exist would otherwise silently do
-    # nothing on every platform.
+    # nothing on every platform. check=False is explicit, not
+    # forgotten: nothing useful to do with a failure here beyond what
+    # the user already sees (the folder just doesn't open).
     path.mkdir(parents=True, exist_ok=True)
 
     if sys.platform == "darwin":
-        subprocess.run(["open", str(path)])
+        subprocess.run(["open", str(path)], check=False)
     elif sys.platform == "win32":
-        subprocess.run(["explorer", str(path)])
+        subprocess.run(["explorer", str(path)], check=False)
     else:
-        subprocess.run(["xdg-open", str(path)])
+        subprocess.run(["xdg-open", str(path)], check=False)
 
 
 def _resolve_tray_icon_path() -> Path:
@@ -991,16 +994,14 @@ class DestinationDialog(QDialog):
         audio_file_count: int | None = None
 
         if exists:
-            try:
+            # An unreadable folder shouldn't block the dialog — just
+            # show the path itself without a file count (None).
+            with contextlib.suppress(OSError):
                 audio_file_count = sum(
                     1 for entry in path.iterdir()
                     if entry.is_file()
                     and entry.suffix.lower() in AUDIO_EXTENSIONS
                 )
-            except OSError:
-                # An unreadable folder shouldn't block the dialog — just
-                # show the path itself without a file count (None).
-                pass
 
         self.location_path_preview.setText(
             help_text.format_destination_preview(
@@ -1849,7 +1850,7 @@ class MainWindow(QMainWindow):
         # directly to _on_settings_clicked, whose first real parameter
         # is initial_tab, not a checked flag.
         self.settings_button.clicked.connect(
-            lambda: self._on_settings_clicked()
+            lambda: self._on_settings_clicked()  # noqa: PLW0108
         )
         layout.addWidget(self.settings_button)
 

@@ -203,7 +203,7 @@ class DownloadService:
         # not a snapshot, so a Settings-driven threshold change is
         # visible on the very next download_playlist() call without
         # needing DownloadService itself reconstructed.
-        self._get_config = get_config or (lambda: SeekerConfig())
+        self._get_config = get_config or SeekerConfig
         self.slskd_download_dir = slskd_download_dir
 
     @property

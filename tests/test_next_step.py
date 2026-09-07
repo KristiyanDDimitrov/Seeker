@@ -10,15 +10,15 @@ from seeker.ui.main_window import _decide_next_step, _NextStepFacts
 
 
 def _facts(**overrides) -> _NextStepFacts:
-    defaults = dict(
-        spotify_configured=True,
-        has_library_location=True,
-        has_cached_playlists=True,
-        selected_playlist_name="Test",
-        track_statuses=[],
-        has_scanned_library=True,
-        soulseek_configured=True,
-    )
+    defaults = {
+        "spotify_configured": True,
+        "has_library_location": True,
+        "has_cached_playlists": True,
+        "selected_playlist_name": "Test",
+        "track_statuses": [],
+        "has_scanned_library": True,
+        "soulseek_configured": True,
+    }
     defaults.update(overrides)
     return _NextStepFacts(**defaults)
 

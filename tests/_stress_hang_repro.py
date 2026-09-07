@@ -248,7 +248,7 @@ def main() -> None:
     print(f"[hang-repro] sync/scan/match settled: {settled}", flush=True)
 
     fingerprints_done = _pump(
-        lambda: main_window.compute_fingerprints_button.isEnabled(),
+        main_window.compute_fingerprints_button.isEnabled,
         timeout=30.0,
     )
     print(

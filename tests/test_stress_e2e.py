@@ -349,7 +349,7 @@ def test_broad_end_to_end_stress(qapp):
         # not just with sync/scan/match above.
         fingerprints_done = _pump(
             qapp,
-            lambda: main_window.compute_fingerprints_button.isEnabled(),
+            main_window.compute_fingerprints_button.isEnabled,
             timeout=30.0,
         )
         print(
@@ -588,7 +588,7 @@ def test_broad_end_to_end_stress(qapp):
                 main_window.match_button.click()
                 _pump(
                     qapp,
-                    lambda: main_window.match_button.isEnabled(),
+                    main_window.match_button.isEnabled,
                     timeout=60.0,
                 )
                 assert main_window.status_label.text() == "", (

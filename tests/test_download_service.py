@@ -345,15 +345,15 @@ def _seed_playlist_with_unmatched_tracks(
 
 
 def make_soulseek_file(**overrides) -> SoulseekFile:
-    defaults = dict(
-        username="peer1",
-        filename="Dom Dolla - Title.flac",
-        extension="flac",
-        size=1_000_000,
-        queue_length=2,
-        upload_speed=1_000_000,
-        has_free_upload_slot=True,
-    )
+    defaults = {
+        "username": "peer1",
+        "filename": "Dom Dolla - Title.flac",
+        "extension": "flac",
+        "size": 1_000_000,
+        "queue_length": 2,
+        "upload_speed": 1_000_000,
+        "has_free_upload_slot": True,
+    }
     defaults.update(overrides)
     return SoulseekFile(**defaults)
 
@@ -3180,21 +3180,21 @@ def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
 # (which wouldn't all survive quality.py's fuzzy title matching — that's
 # exercised separately in test_quality.py) don't need to round-trip
 # through filter_candidates here.
-REAL_RANK1 = dict(
-        username="Wolfring",
-        filename="wolfring.flac",
-        size=34_279_790,
-)
-REAL_RANK2 = dict(
-        username="lifelooop",
-        filename="lifelooop.flac",
-        size=58_789_866,
-)
-REAL_RANK3 = dict(
-        username="CDM-Addicted",
-        filename="cdm-addicted.wav",
-        size=58_701_680,
-)
+REAL_RANK1 = {
+        "username": "Wolfring",
+        "filename": "wolfring.flac",
+        "size": 34_279_790,
+}
+REAL_RANK2 = {
+        "username": "lifelooop",
+        "filename": "lifelooop.flac",
+        "size": 58_789_866,
+}
+REAL_RANK3 = {
+        "username": "CDM-Addicted",
+        "filename": "cdm-addicted.wav",
+        "size": 58_701_680,
+}
 
 
 def test_cascade_through_two_rejections_to_third_candidate_that_succeeds(

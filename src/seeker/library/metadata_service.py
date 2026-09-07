@@ -1,3 +1,4 @@
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -282,7 +283,7 @@ class MetadataService:
         # DownloadService/TrackMatcher/SharingService (item 28) — a
         # Settings toggle change takes effect on the very next tagging
         # run, no restart or service-reconstruction needed.
-        self._get_config = get_config or (lambda: SeekerConfig())
+        self._get_config = get_config or SeekerConfig
 
     def tag_playlist(
             self,
@@ -1284,10 +1285,8 @@ class MetadataService:
                     connection,
                 )
         except Exception as db_error:
-            try:
+            with contextlib.suppress(OSError):
                 final_path.rename(current_path)
-            except OSError:
-                pass
             result.failed += 1
             result.details.append(
                 {

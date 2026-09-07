@@ -59,6 +59,7 @@ def _run_deadlock_trial() -> str:
             capture_output=True,
             text=True,
             timeout=DEADLOCK_TRIAL_TIMEOUT_SECONDS,
+            check=False,  # inspects result.returncode itself below
         )
     except subprocess.TimeoutExpired:
         return "timeout"
@@ -95,6 +96,7 @@ def test_run_worker_delivers_correct_results_under_concurrency():
         capture_output=True,
         text=True,
         timeout=20.0,
+        check=False,  # asserts on result.returncode itself below
     )
 
     assert result.returncode == 0, (
@@ -120,6 +122,7 @@ def test_worker_run_survives_dispatcher_torn_down_around_the_emit():
         capture_output=True,
         text=True,
         timeout=30.0,
+        check=False,  # asserts on result.returncode itself below
     )
 
     assert result.returncode == 0, (

@@ -21,30 +21,30 @@ from seeker.models.track_match import TrackMatch
 
 
 def make_track(**overrides) -> Track:
-    defaults = dict(
-        id="track1",
-        title="Blinding Lights",
-        artist="The Weeknd",
-        album="After Hours",
-        duration_ms=200_000,
-    )
+    defaults = {
+        "id": "track1",
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "album": "After Hours",
+        "duration_ms": 200_000,
+    }
     defaults.update(overrides)
     return Track(**defaults)
 
 
 def make_local_file(**overrides) -> LocalFile:
-    defaults = dict(
-        location_id=1,
-        relative_path="song.mp3",
-        filename="song.mp3",
-        format="mp3",
-        size_bytes=1_000,
-        mtime=1.0,
-        scanned_at="2026-01-01T00:00:00+00:00",
-        tag_artist="The Weeknd",
-        tag_title="Blinding Lights",
-        duration_ms=200_000,
-    )
+    defaults = {
+        "location_id": 1,
+        "relative_path": "song.mp3",
+        "filename": "song.mp3",
+        "format": "mp3",
+        "size_bytes": 1_000,
+        "mtime": 1.0,
+        "scanned_at": "2026-01-01T00:00:00+00:00",
+        "tag_artist": "The Weeknd",
+        "tag_title": "Blinding Lights",
+        "duration_ms": 200_000,
+    }
     defaults.update(overrides)
     return LocalFile(**defaults)
 

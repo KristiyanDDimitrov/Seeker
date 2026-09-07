@@ -879,7 +879,7 @@ def test_support_page_renders_a_button_for_every_real_support_link(
 
     opened: list[str] = []
     monkeypatch.setattr(
-        main_window_module.webbrowser, "open", lambda url: opened.append(url)
+        main_window_module.webbrowser, "open", opened.append
     )
 
     application = FakeApplication()
@@ -1076,25 +1076,25 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
 def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
     from seeker.ui.main_window import _open_in_file_manager
 
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], dict]] = []
     monkeypatch.setattr(
         "seeker.ui.main_window.subprocess.run",
-        lambda args: calls.append(args),
+        lambda args, **kwargs: calls.append((args, kwargs)),
     )
     target = tmp_path / "does" / "not" / "exist" / "yet"
 
     monkeypatch.setattr("seeker.ui.main_window.sys.platform", "darwin")
     _open_in_file_manager(target)
-    assert calls[-1] == ["open", str(target)]
+    assert calls[-1] == (["open", str(target)], {"check": False})
     assert target.is_dir()  # created on demand, per the docstring
 
     monkeypatch.setattr("seeker.ui.main_window.sys.platform", "win32")
     _open_in_file_manager(target)
-    assert calls[-1] == ["explorer", str(target)]
+    assert calls[-1] == (["explorer", str(target)], {"check": False})
 
     monkeypatch.setattr("seeker.ui.main_window.sys.platform", "linux")
     _open_in_file_manager(target)
-    assert calls[-1] == ["xdg-open", str(target)]
+    assert calls[-1] == (["xdg-open", str(target)], {"check": False})
 
 
 def test_open_data_folder_button_calls_the_file_manager_opener(
@@ -1105,7 +1105,7 @@ def test_open_data_folder_button_calls_the_file_manager_opener(
     opened: list = []
     monkeypatch.setattr(
         main_window_module, "_open_in_file_manager",
-        lambda path: opened.append(path),
+        opened.append,
     )
 
     application = FakeApplication()
@@ -1732,7 +1732,7 @@ def test_action_row_download_button_hides_while_cta_offers_the_same_action(
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window.download_button.isHidden(), timeout=2000,
+        window.download_button.isHidden, timeout=2000,
     )
 
 
@@ -1821,7 +1821,7 @@ def test_scan_button_click_calls_scan_and_match_not_scan_all(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    qtbot.waitUntil(lambda: window.scan_button.isEnabled(), timeout=2000)
+    qtbot.waitUntil(window.scan_button.isEnabled, timeout=2000)
     window.scan_button.click()
 
     qtbot.waitUntil(
@@ -1892,7 +1892,7 @@ def _select_first_playlist(window, qtbot) -> None:
     # download_button — wait for it to actually land rather than
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
-    qtbot.waitUntil(lambda: window.download_button.isEnabled(), timeout=2000)
+    qtbot.waitUntil(window.download_button.isEnabled, timeout=2000)
 
 
 def test_download_with_no_selection_shows_a_warning_notice(qtbot):
@@ -2418,7 +2418,7 @@ def test_check_for_updates_click_runs_check_for_update_via_worker(
 
     qtbot.waitUntil(lambda: calls == [None], timeout=2000)
     qtbot.waitUntil(
-        lambda: window.check_for_updates_action.isEnabled(), timeout=2000,
+        window.check_for_updates_action.isEnabled, timeout=2000,
     )
 
 
@@ -2520,7 +2520,7 @@ def test_check_for_updates_action_disabled_while_running_and_reenabled(
     assert window.check_for_updates_action.isEnabled()
     window.check_for_updates_action.trigger()
     qtbot.waitUntil(
-        lambda: window.check_for_updates_action.isEnabled(), timeout=2000,
+        window.check_for_updates_action.isEnabled, timeout=2000,
     )
 
 
@@ -2612,7 +2612,7 @@ def test_about_dialog_renders_a_button_for_every_real_support_link(
 
     opened: list[str] = []
     monkeypatch.setattr(
-        main_window_module.webbrowser, "open", lambda url: opened.append(url)
+        main_window_module.webbrowser, "open", opened.append
     )
 
     assert all(
@@ -2726,7 +2726,7 @@ def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
     window.playlist_list.setCurrentRow(0)
 
     qtbot.waitUntil(
-        lambda: window.sync_tracks_button.isVisible(), timeout=2000,
+        window.sync_tracks_button.isVisible, timeout=2000,
     )
     assert application.sync_service.sync_playlist_tracks_calls == []
 
@@ -5290,7 +5290,7 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
     window.search_title_edit.setText("Rhyme Dust")
     window._on_search_clicked()
     qtbot.waitUntil(
-        lambda: window.download_best_button.isEnabled(), timeout=2000,
+        window.download_best_button.isEnabled, timeout=2000,
     )
 
     window.download_best_button.click()
@@ -5378,7 +5378,7 @@ def test_search_no_destination_shows_settings_guidance(qtbot):
     window.search_title_edit.setText("Rhyme Dust")
     window._on_search_clicked()
     qtbot.waitUntil(
-        lambda: window.download_best_button.isEnabled(), timeout=2000,
+        window.download_best_button.isEnabled, timeout=2000,
     )
 
     window.download_best_button.click()

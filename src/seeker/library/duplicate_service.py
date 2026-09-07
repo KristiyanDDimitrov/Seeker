@@ -1,3 +1,4 @@
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -841,10 +842,8 @@ class DuplicateService:
             # not a guess.
             bytes_freed = local_file.size_bytes
             if file_path is not None:
-                try:
+                with contextlib.suppress(OSError):
                     bytes_freed = file_path.stat().st_size
-                except OSError:
-                    pass
 
             self._repoint_or_clear_match(
                 local_file_id, keep_local_file_id, connection,

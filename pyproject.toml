@@ -127,11 +127,29 @@ ignore = [
 # a URL, not a credential.
 "src/seeker/spotify/auth.py" = ["S105"]
 # SLSKD_NETWORK_PASSWORD_ENV_VAR holds the NAME of an env var
-# ("SLSKD_SLSK_PASSWORD"), never a real password value.
-"src/seeker/docker_setup.py" = ["S105"]
+# ("SLSKD_SLSK_PASSWORD"), never a real password value. S603/S607 (see
+# the shared justification below) also apply to this file's own
+# subprocess calls (docker/docker compose).
+"src/seeker/docker_setup.py" = ["S105", "S603", "S607"]
 # DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
 # copy (a label and two tooltip strings), never a real credential.
 "src/seeker/ui/help_text.py" = ["S105"]
+# S603/S607 (subprocess: untrusted input / partial executable path):
+# every real call site (round 8, §6.6 of the brief, confirmed again
+# here) uses the list form — no `shell=True` anywhere in this codebase,
+# checked directly. Invoking `docker`, `ffmpeg`, `open`/`explorer`/
+# `xdg-open` by bare name relies on PATH, which
+# `ensure_full_path_environment()` (application.py) deliberately
+# extends for GUI launches — hardcoding an absolute path would break on
+# a Homebrew-vs-Docker-Desktop install instead. tests/*'s own two files
+# (`sys.executable` against a real repro script under this same repo,
+# never external/untrusted input) share the identical reasoning.
+"src/seeker/audio_fingerprint.py" = ["S603", "S607"]
+"src/seeker/sharing_service.py" = ["S603", "S607"]
+"src/seeker/ui/main_window.py" = ["S603", "S607"]
+"src/seeker/ui/wizard.py" = ["S603", "S607"]
+"tests/test_lazy_spotify_config.py" = ["S603"]
+"tests/test_workers_deadlock_regression.py" = ["S603"]
 # The six standalone `tests/_*_repro.py` scripts (leading underscore —
 # not collected as test modules, run only as a subprocess; see each
 # one's own docstring) share a documented pattern: monkeypatch

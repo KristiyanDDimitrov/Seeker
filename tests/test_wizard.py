@@ -56,7 +56,7 @@ def test_done_page_support_buttons_open_placeholder_links(
 
     opened: list[str] = []
     monkeypatch.setattr(
-        wizard_module.webbrowser, "open", lambda url: opened.append(url)
+        wizard_module.webbrowser, "open", opened.append
     )
 
     wizard.stack.setCurrentIndex(3)
@@ -236,7 +236,7 @@ def test_connect_spotify_button_calls_connect_spotify_and_advances(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", lambda client_id: calls.append(client_id),
+        application, "connect_spotify", calls.append,
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -269,7 +269,7 @@ def test_client_id_return_pressed_connects_when_field_is_non_empty(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", lambda client_id: calls.append(client_id),
+        application, "connect_spotify", calls.append,
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -297,7 +297,7 @@ def test_client_id_return_pressed_does_nothing_when_field_is_empty(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", lambda client_id: calls.append(client_id),
+        application, "connect_spotify", calls.append,
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)

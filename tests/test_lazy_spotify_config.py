@@ -38,6 +38,7 @@ def _run_fresh_environment_script(tmp_path: Path, script: str) -> str:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,  # asserts on result.returncode itself below
     )
 
     assert result.returncode == 0, (

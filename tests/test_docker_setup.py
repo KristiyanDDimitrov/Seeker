@@ -543,12 +543,13 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
     # SoulSeek-network-vs-web-UI env var names wrong once already.
     captured = {}
 
-    def fake_run(command, env, capture_output, text, timeout):
+    def fake_run(command, env, capture_output, text, timeout, check):
         captured["command"] = command
         captured["env"] = env
         captured["capture_output"] = capture_output
         captured["text"] = text
         captured["timeout"] = timeout
+        captured["check"] = check
 
         class FakeResult:
             returncode = 0
@@ -582,3 +583,6 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
     assert env["UNRELATED_VAR"] == "should-be-preserved"
     assert captured["capture_output"] is True
     assert captured["text"] is True
+    # Explicit, not defaulted (PLW1510, round 8 §4.8.6) — the caller
+    # inspects .returncode itself rather than wanting an exception.
+    assert captured["check"] is False
