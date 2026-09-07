@@ -2021,6 +2021,28 @@ compress it here before moving on to the next item.
      Full suite green: 1098 passed, 1 skipped (mypy --strict clean).
      [HISTORY §114](docs/HISTORY.md#114)
 
+115. **Round 8 Phase 1 — toolchain: explicit ruff config, pytest
+     config, CI — done.** `[tool.ruff]` in `pyproject.toml` makes
+     `select` explicit rather than inherited (ruff 0.16.0 widened its
+     own default from 59 to 413 rules mid-minor-version — an
+     unconfigured linter can no longer be trusted to mean the same
+     thing across a `ruff` upgrade). `ruff`/`mypy` are now
+     version-bounded (`<0.17`/`<3`) since both are CI gate tools. `ruff
+     format` deliberately NOT adopted (see Conventions above). New
+     `[tool.pytest.ini_options]` (`--strict-markers`, `seeker.*`-scoped
+     deprecation-to-error). New `.github/workflows/ci.yml`
+     (macos-latest, `QT_QPA_PLATFORM=offscreen`) — verified the full
+     1098-test suite (all 292 Qt widget tests included) passes headless
+     with no test needing a real display, so nothing is deselected.
+     `line-length = 79` applied via a purpose-built, verified rewrap
+     script (not `ruff format`, which uses a 4-space hang this
+     project's own 8-space convention doesn't match) — fixed 175 of the
+     real 341 violations (the brief's own 106-line estimate was `src/`
+     only on an older ruff); 166 remain, left for manual follow-up, not
+     claimed done. One `S608` false positive given a scoped `# noqa`
+     with a real justification, not a blanket suppression. [HISTORY
+     §115](docs/HISTORY.md#115)
+
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
 invariants, and gotchas that should shape how the *next* piece of code

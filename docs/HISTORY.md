@@ -13265,3 +13265,142 @@ believed to be the same defect as item 105 (C3)'s queued-`QMessageBox`
 fix or still separate — was already answered in CLAUDE.md's own item
 70 entry after round 6 ("still a separate, still-open defect"); nothing
 new this round changes that determination.
+
+### 115 — Round 8 Phase 1: toolchain (ruff config, pytest config, CI)
+
+Per `docs/BRIEF-2026-09-08-refactor.md` §4. Phase 0 (baseline) had
+already found the brief's own headline number obsolete before Phase 1
+started: ruff 0.16.0 widened its default rule set from 59 to 413 rules
+(pulling in `flake8-bugbear`, `pyupgrade`, `RUF`, and more, while
+dropping 18 opinionated pycodestyle/pyflakes rules), so the brief's
+"ruff finds 6 things by default" was true only on ruff 0.15.11. The
+real measurement on this tree under 0.16.5 was 223 (`src tests`,
+default rule set) before any config existed at all — confirmed with no
+hidden config responsible: neither a project `ruff.toml` nor a
+`~/.config/ruff/` user config exists on this machine. The 223-vs-153
+gap seen when re-checking with `--isolated` (which the user correctly
+pointed out is the right tool to rule out a user-level config, not a
+scratch directory, which still inherits one) turned out to be fully
+explained by `pyproject.toml`'s own `requires-python = ">=3.13"`
+driving ruff's `pyupgrade` target-version inference — `--isolated` also
+discards `pyproject.toml` itself, falling back to ruff's default target
+(3.10), which changes which `UP` findings fire. Not a hidden config;
+a real, traceable mechanism.
+
+#### 4.1 — the select list, and why `N` (naming) stays off
+
+The adopted `[tool.ruff.lint] select` list intentionally does NOT
+include `N` (pep8-naming), even though the brief's own snippet included
+a `per-file-ignores` entry and a whole `pep8-naming.extend-ignore-names`
+block for it. Read literally, the brief's own follow-up sentence makes
+this deliberate: "When this lands, `ui/main_window.py:456`'s
+`# noqa: N802` becomes genuinely unused... resolve that in the same
+commit" — which only happens if `N` is never turned on. Kept the
+per-file-ignore/extend-ignore-names blocks anyway as inert
+documentation-in-config for if naming rules are ever turned on later,
+and removed the now-dead `# noqa: N802` on `main_window.py:456` in the
+same commit as instructed.
+
+`extend-ignore-names` was verified against a real grep of every
+camelCase method definition in `src/seeker/ui/*.py` (not trusted from
+the brief's own derivation) — found three real Qt overrides missing
+from the brief's list: `minimumSize`, `horizontalSpacing`,
+`verticalSpacing` (all in `flow_layout.py`). Confirmed zero camelCase
+overrides exist anywhere outside `ui/`.
+
+#### 4.3 — line-length=79: a purpose-built rewrap script, and four real bugs it produced before any output was accepted
+
+`ruff format` was already ruled out in 4.2 (this project's own 8-space
+hanging-indent convention vs. `ruff format`'s 4-space one — confirmed
+directly by running `ruff format --diff` on a real file and diffing the
+result against the existing style, not assumed). E501 has no ruff
+auto-fix. Hand-editing 341 real violations (166 more than the brief's
+own 106-line, `src/`-only estimate) was judged impractical; a
+one-off Python script was written instead, using `tokenize` to find a
+safe rewrap point and reproduce this codebase's exact hang/comma/
+closing-bracket shape.
+
+The script was run, its output reverted via `git checkout`, and
+inspected via `git diff` three separate times before any output was
+accepted — each revert found a genuine bug that would otherwise have
+shipped broken code:
+
+1. **Raw SQL text inside a triple-quoted string got parsed as Python.**
+   `database/schema.py`'s `SCHEMA` constant has a long line of raw SQL
+   (`FOREIGN KEY (location_id) REFERENCES ...`) that happened to
+   exceed 79 columns. The script tokenized each violating line in
+   isolation, which is safe for a genuine one-line statement but has no
+   way to know a given physical line is actually pure string *content*
+   inside a much larger multi-line string literal elsewhere in the
+   file — it read the SQL's own parens as Python brackets and inserted
+   a Python-style trailing comma into raw SQL text. Fixed with a
+   whole-file pre-pass (via `tokenize`) that marks every line covered
+   by a multi-line `STRING`/`FSTRING_*` token as protected, checked
+   before any per-line rewrap is attempted.
+
+2. **A violating line that was only the opening line of an
+   already-multi-line call.** E.g. `locked_before = ...get_locked(`
+   with its arguments and closing paren on the next two lines. Isolated
+   from its continuation, this line has an unbalanced/incomplete
+   bracket; the script's "no bracket found" fallback then wrapped it as
+   if it were a complete standalone expression, producing nonsense
+   combined with the real continuation lines already below it (a real
+   `SyntaxError`, caught by the script's own `ast.parse` safety check
+   before writing — this bug never actually reached a committed file).
+   Fixed with a second whole-file pre-pass tracking logical-line spans
+   via `tokenize.NEWLINE` boundaries: any violating line belonging to
+   an already-multi-physical-line statement is left alone entirely.
+
+3. **Python 3.13's own f-string tokens read too literally.** PEP 701's
+   tokenizer emits genuine `OP` tokens for the `{`/`}` around an
+   f-string's interpolation fields (e.g. `f"{size:.0f}"`) —
+   indistinguishable from a real dict/set-literal brace unless f-string
+   spans are tracked explicitly. A line as simple as
+   `return f"{a} {b}"` was misread as containing two top-level `{}`
+   bracket groups and torn apart mid-string (another `SyntaxError`,
+   caught before writing). Fixed by tracking `FSTRING_START`/`_END`
+   depth and treating every token inside as opaque, the same way a
+   plain `STRING` token already was.
+
+4. **`assert cond, message` is two arguments, not a tuple.** Wrapping
+   the whole thing in one bracket produces `assert (cond, message)`,
+   which asserts the truthiness of a non-empty tuple — always `True`,
+   silently defeating the assert. No real violating line in this
+   dataset actually hit this path, but the input shape (a real
+   `assert ..., "usage: ..."` line in a stress-repro script) made it
+   reachable, so the script now refuses to comma-wrap an `assert`'s
+   top-level comma at all rather than trusting the general case.
+   Separately (found via the `dashboard_service.py` comprehension
+   case, `[request for request in requests if _is_visible(...)]`): the
+   script also stopped adding a trailing comma whenever a bracket
+   resolves to exactly one top-level element, since a single-element
+   `(x,)` is a different value than `(x)` (a 1-tuple) and a
+   single-index subscript `d[x,]` is a different key than `d[x]` — only
+   2+-element brackets (already unambiguous as a tuple/arg-list before
+   this pass) keep the trailing comma.
+
+Final result: 175 of 341 real violations fixed automatically and
+verified (every one of the 36 touched files re-checked with
+`py_compile`; full ruff count dropped by exactly 174 with zero change
+to any other rule's count, confirming no side effects; full suite
+still 1098 passed, 1 skipped after). 166 remain — some are already
+part of a multi-line statement needing real restructuring, some still
+exceed 79 columns even alone on their own hanging line, some had no
+safe automated rewrap at all — left for manual follow-up, not claimed
+done.
+
+#### Verification
+
+`uv run pytest` → 1098 passed, 1 skipped (one single, non-reproducing
+flake, `test_close_event_falls_back_to_real_close_when_no_tray`, seen
+once across this phase's several full-suite runs — passed immediately
+in isolation and on 3 subsequent full-suite re-runs; not pursued
+further since 4.3's own changes are whitespace-only inside
+already-parsed statements, which cannot alter runtime AST semantics).
+`mypy --strict src/` clean throughout. Ruff: 837 → 662 across all of
+4.1–4.6 (223 baseline once the config's own `select` list widened what
+was checked, then down as each item landed). Full local
+`QT_QPA_PLATFORM=offscreen` run (matching the new CI job exactly)
+passed all 1098 tests with no test needing a real display — the
+brief's own speculative `@pytest.mark.desktop` split was not needed and
+was not added.
