@@ -257,6 +257,32 @@ src/seeker/
   Search/Duplicates table the user photographed as broken, and passed.
   A skip condition derived from the state a bug corrupts is not a
   guard; it's a blindfold.
+- **Credential files (config.json, the Spotify token cache) are written
+  via `seeker/atomic_file.py::write_text_locked()` — 0600 permissions
+  plus an atomic same-directory temp-file-then-replace, never a bare
+  `write_text()`.** Roadmap item 116 (round 8, §6.2) — `TokenStore.save()`
+  used to write with no `chmod` at all (0644 on a default macOS account)
+  while `config_store.save_config()` right next to it already locked its
+  file down; the asymmetry was the proof it was an oversight, not a
+  decision. Any new file holding a credential or token belongs on this
+  helper from the start.
+- **Not using the macOS Keychain for the Spotify token, decided
+  deliberately (round 8, §6.2.3), not omitted.** It would add a
+  dependency, a second platform-specific code path, and a migration for
+  an existing install, to protect a file that — once 6.2.1 landed — is
+  already `0600` in the user's own per-account home directory. `0600`
+  plus atomic writes is a defensible position for a personal desktop
+  app; *silently world-readable* was not. Revisit only if this ever
+  stops being a single-user local app.
+- **`.env` was committed twice in this repo's history
+  (`a24d243`/`12de30d`, removed at `9207333`) — assessed, not a
+  live secret.** The Spotify client ID it held is PKCE-public by design
+  (transmitted in every authorization URL; this app has no client
+  secret at all), and the one field that could have been secret
+  (`SPOTIFY_CLIENT_SECRET`) was always the literal placeholder
+  `your_…`, never a real value. Decision: no history rewrite — scrubbing
+  a value that's public by design would cost every clone and every SHA
+  referenced across this file and `docs/HISTORY.md`, for no real gain.
 
 ## Commands
 

@@ -1,10 +1,11 @@
-import contextlib
 import json
 import os
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import platformdirs
+
+from seeker.atomic_file import write_text_locked
 
 
 @dataclass
@@ -116,14 +117,11 @@ def load_config(path: Path) -> SeekerConfig:
 
 
 def save_config(seeker_config: SeekerConfig, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(seeker_config), indent=2) + "\n")
-
-    # This file will eventually hold real SoulSeek credentials — lock it
-    # down where the OS supports POSIX chmod semantics. A platform where
-    # chmod doesn't apply (Windows) is a no-op, not a failure.
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
+    # This file holds real SoulSeek/Spotify credentials — write_text_
+    # locked() both locks it down (0600, a no-op on Windows) and makes
+    # the write atomic, so a crash mid-write can't leave truncated JSON
+    # in its place (roadmap item 6.2.2).
+    write_text_locked(path, json.dumps(asdict(seeker_config), indent=2) + "\n")
 
 
 # Field name -> the legacy .env var it was previously read from. Covers

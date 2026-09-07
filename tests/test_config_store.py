@@ -234,6 +234,14 @@ def test_save_config_sets_restrictive_permissions(tmp_path):
     assert mode == 0o600
 
 
+def test_save_config_leaves_no_temp_file_behind(tmp_path):
+    path = tmp_path / "config.json"
+
+    save_config(SeekerConfig(slskd_api_key="secret"), path)
+
+    assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
+
+
 def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SLSKD_BASE_URL", "http://localhost:5030")
     monkeypatch.setenv("SLSKD_API_KEY", "env-api-key")
