@@ -1,0 +1,20 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  check:
+    # The only platform Qt UI tests are proven on (packaging, the
+    # stress test, and every "confirmed live" comment in this codebase
+    # are all macOS-specific). Verified 2026-09-08: the full suite,
+    # including all 292 Qt widget tests, passes headless under
+    # QT_QPA_PLATFORM=offscreen on a real Mac — no test needs a real
+    # display, so nothing here is deselected.
+    runs-on: macos-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras --dev
+      - run: uv run ruff check src tests
+      - run: uv run mypy --strict src/
+      - run: uv run pytest --cov=seeker --cov-report=term-missing
