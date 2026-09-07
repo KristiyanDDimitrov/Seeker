@@ -91,7 +91,25 @@ ignore = [
 # (moved to top-level) and 3 are genuine heavy-dependency deferrals,
 # each given its own scoped `# noqa: PLC0415` with a reason, so a
 # future accidental local import in src/ still gets caught.
-"tests/*" = ["S101", "PLC0415"]
+#
+# S105/S106 (possible hardcoded password): every one of the real 59
+# findings (5 in src/, 54 in tests/) was read individually, not
+# sampled — round 8, §4.8.4. All 54 in tests/* are synthetic test
+# fixture values ("fake-access", "hunter2", "realkey", single letters)
+# never a real credential. Scoped narrowly per real src/ file below
+# rather than a project-wide ignore, so a genuine hardcoded secret
+# anywhere else is still caught.
+"tests/*" = ["S101", "PLC0415", "S105", "S106"]
+# NAME-only false positives (S105 fires on the ASSIGNMENT TARGET name
+# containing "token"/"password", regardless of the value): TOKEN_URL is
+# a URL, not a credential.
+"src/seeker/spotify/auth.py" = ["S105"]
+# SLSKD_NETWORK_PASSWORD_ENV_VAR holds the NAME of an env var
+# ("SLSKD_SLSK_PASSWORD"), never a real password value.
+"src/seeker/docker_setup.py" = ["S105"]
+# DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
+# copy (a label and two tooltip strings), never a real credential.
+"src/seeker/ui/help_text.py" = ["S105"]
 
 [tool.ruff.lint.pep8-naming]
 # Belt and braces for the same Qt point, for any file outside ui/ (none
