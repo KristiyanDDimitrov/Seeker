@@ -98,7 +98,10 @@ class LibraryService:
         resolved_path_str = str(resolved_path)
 
         with self.database.transaction() as connection:
-            existing = self.locations.get_by_path(resolved_path_str, connection)
+            existing = self.locations.get_by_path(
+                    resolved_path_str,
+                    connection,
+            )
 
             if existing is not None:
                 raise LibraryLocationPathAlreadyRegisteredError(existing)
@@ -133,7 +136,11 @@ class LibraryService:
 
         return saved
 
-    def rename_location(self, location_id: int, new_name: str) -> LibraryLocation:
+    def rename_location(
+            self,
+            location_id: int,
+            new_name: str,
+    ) -> LibraryLocation:
         with self.database.transaction() as connection:
             self.locations.update_name(location_id, new_name, connection)
             saved = self.locations.get_by_id(location_id, connection)

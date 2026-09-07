@@ -254,8 +254,12 @@ TOOLTIP_ANALYZE_AUDIO_CHECKBOX = (
     "Also detect BPM and musical key locally and write them to the "
     "file's tags."
 )
-TOOLTIP_BPM_MIN = "Lower bound for correcting octave errors (e.g. 128 detected as 64)."
-TOOLTIP_BPM_MAX = "Upper bound for correcting octave errors (e.g. 64 detected as 128)."
+TOOLTIP_BPM_MIN = (
+        "Lower bound for correcting octave errors (e.g. 128 detected as 64)."
+)
+TOOLTIP_BPM_MAX = (
+        "Upper bound for correcting octave errors (e.g. 64 detected as 128)."
+)
 TOOLTIP_TAG_SELECTED = (
     "Write Spotify's artist/title/album/art onto the selected tracks' "
     "matched local files."
@@ -521,7 +525,9 @@ TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX = (
     "as a tiebreak preference while this is checked."
 )
 TOOLTIP_DUPLICATES_ADD_FOLDER = "Add a folder to the scope."
-TOOLTIP_DUPLICATES_REMOVE_FOLDER = "Remove the selected folder(s) from the scope."
+TOOLTIP_DUPLICATES_REMOVE_FOLDER = (
+        "Remove the selected folder(s) from the scope."
+)
 DUPLICATES_FOLDER_NOT_IN_A_LOCATION = (
     "'{folder}' isn't inside any registered library location — add it "
     "as a location first, or pick a folder inside one that's already "
@@ -694,7 +700,10 @@ BULK_RESOLVE_DUPLICATES_NO_GROUPS = (
 )
 
 
-def format_bulk_resolve_duplicates_intro(group_count: int, file_count: int) -> str:
+def format_bulk_resolve_duplicates_intro(
+        group_count: int,
+        file_count: int,
+) -> str:
     group_plural = "s" if group_count != 1 else ""
     file_plural = "s" if file_count != 1 else ""
     return (
@@ -899,8 +908,12 @@ TOOLTIP_TEST_CONNECTION = (
     "Check whether Seeker can reach slskd right now with the currently "
     "saved connection details."
 )
-TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD = "Your SoulSeek network username (not slskd's own web login)."
-TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD = "Your SoulSeek network password (not slskd's own web login)."
+TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD = (
+        "Your SoulSeek network username (not slskd's own web login)."
+)
+TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD = (
+        "Your SoulSeek network password (not slskd's own web login)."
+)
 TOOLTIP_UPDATE_CREDENTIALS = (
     "Recreate the slskd container with these credentials and a freshly "
     "generated API key."
@@ -942,7 +955,9 @@ TOOLTIP_OPEN_SPOTIFY_DASHBOARD = (
     "Open developer.spotify.com/dashboard in your browser to register "
     "an app and get a Client ID."
 )
-TOOLTIP_COPY_REDIRECT_URI = "Copy the redirect URI to paste into your Spotify app's settings."
+TOOLTIP_COPY_REDIRECT_URI = (
+        "Copy the redirect URI to paste into your Spotify app's settings."
+)
 TOOLTIP_CLIENT_ID_FIELD = "Paste the Client ID from your Spotify app here."
 TOOLTIP_CONNECT_SPOTIFY = (
     "Open a browser window to authorize Seeker against your Spotify "

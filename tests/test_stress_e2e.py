@@ -322,7 +322,9 @@ def test_broad_end_to_end_stress(qapp):
             timeout=15.0,
         )
         main_window.compute_fingerprints_button.click()
-        log.sample("sync/scan/match + duplicates fingerprinting fired overlapping")
+        log.sample(
+                "sync/scan/match + duplicates fingerprinting fired overlapping"
+        )
 
         settled = _pump(
             qapp,
@@ -517,7 +519,9 @@ def test_broad_end_to_end_stress(qapp):
             # downloads/backend-poll traffic from the sections above may
             # still be in flight.
             if not duplicates_delete_done and main_window._current_duplicate_groups:
-                group: DuplicateGroup = main_window._current_duplicate_groups[0]
+                group: DuplicateGroup = main_window._current_duplicate_groups[
+                        0
+                ]
                 # Roadmap item 68 (Phase 7.1) — resolved by real header
                 # text, not a literal column index (item 56 Phase 6.3's
                 # own real "Keep column shifted Actions from 6 to 7"
@@ -595,11 +599,15 @@ def test_broad_end_to_end_stress(qapp):
                     "confirmed to affect the next match run without a "
                     "restart"
                 )
-                log.sample("threshold changed mid-session, next match confirmed")
+                log.sample(
+                        "threshold changed mid-session, next match confirmed"
+                )
 
             # Let the real backend timers actually fire while we wait
             # out the rest of this sampling interval.
-            remaining = SAMPLE_INTERVAL_SECONDS - (time.monotonic() - cycle_start)
+            remaining = SAMPLE_INTERVAL_SECONDS - (
+                    time.monotonic() - cycle_start
+            )
             if remaining > 0:
                 _pump(qapp, lambda: False, timeout=remaining)
 
@@ -654,7 +662,10 @@ def test_broad_end_to_end_stress(qapp):
         qapp.processEvents()
 
         if duplicates_scratch_dir is not None:
-            _cleanup_stress_duplicate_location(application, duplicates_scratch_dir)
+            _cleanup_stress_duplicate_location(
+                    application,
+                    duplicates_scratch_dir,
+            )
             print("[stress] disposable duplicates location + scratch files removed")
 
         save_config(original_config, config_path)
@@ -719,7 +730,9 @@ def test_broad_end_to_end_stress(qapp):
     # midpoints, and the final one at the real total.
     print(f"[stress] progress-heavy worker: {len(progress_events)} progress events delivered")
     assert progress_events, "expected at least one delivered progress event"
-    assert progress_events[0][1] == 1, "first progress report should always emit"
+    assert progress_events[
+            0
+    ][1] == 1, "first progress report should always emit"
     assert progress_events[-1] == ("stress", 3_000, 3_000), (
         "expected the final progress report to reach the real total"
     )

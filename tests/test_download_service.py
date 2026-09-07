@@ -1404,7 +1404,10 @@ def test_get_resolved_destination_resolves_via_the_default(tmp_path):
             connection,
         )
         location = locations.get_by_name("Main", connection)
-        playlists.save(Playlist(id="p1", name="Test", track_count=0), connection)
+        playlists.save(
+                Playlist(id="p1", name="Test", track_count=0),
+                connection,
+        )
 
     config = SeekerConfig(default_download_location_id=location.id)
     service = DownloadService(
@@ -1464,7 +1467,10 @@ def test_download_playlist_succeeds_with_only_a_default_destination_configured(
             connection,
         )
         location = locations.get_by_name("Main", connection)
-        playlists.save(Playlist(id="p1", name="Test", track_count=0), connection)
+        playlists.save(
+                Playlist(id="p1", name="Test", track_count=0),
+                connection,
+        )
         # Deliberately NOT calling playlists.set_destination — only a
         # default is configured, nothing playlist-specific.
 
@@ -1809,7 +1815,12 @@ def test_settled_role_rejection_does_not_trigger_upgrade_cascade(tmp_path):
         {"t1": "Completed, Rejected"},
         exceptions={"t1": "Transfer rejected: File not shared."},
     )
-    seed_pending_request(service, "t1", track_id="shared-track", role="settled")
+    seed_pending_request(
+            service,
+            "t1",
+            track_id="shared-track",
+            role="settled",
+    )
     seed_pending_request(
         service, None, track_id="shared-track", role="upgrade",
         status="shortlisted", rank=2, filename="other-candidate.mp3",
@@ -2743,7 +2754,10 @@ def _seed_upgrade_scenario(tmp_path):
         )
         location = locations.get_by_name("Main", connection)
 
-        playlists.save(Playlist(id="p1", name="DnB", track_count=1), connection)
+        playlists.save(
+                Playlist(id="p1", name="DnB", track_count=1),
+                connection,
+        )
         playlists.set_destination("p1", location.id, None, connection)
 
         tracks.save(
@@ -3025,7 +3039,10 @@ def _seed_two_upgrade_scenario(tmp_path):
         )
         location = locations.get_by_name("Main", connection)
 
-        playlists.save(Playlist(id="p1", name="DnB", track_count=2), connection)
+        playlists.save(
+                Playlist(id="p1", name="DnB", track_count=2),
+                connection,
+        )
         playlists.set_destination("p1", location.id, None, connection)
 
         rows = [
@@ -3091,7 +3108,10 @@ def test_apply_upgrade_decisions_batch_replaces_all_successfully(tmp_path):
     ]
     assert len(request_ids) == 2
 
-    result = service.apply_upgrade_decisions_batch(request_ids, delete_old=True)
+    result = service.apply_upgrade_decisions_batch(
+            request_ids,
+            delete_old=True,
+    )
 
     assert result.replaced == 2
     assert result.failed == 0
@@ -3114,7 +3134,10 @@ def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pen
     ]
     request_ids = real_request_ids + [999_999]
 
-    result = service.apply_upgrade_decisions_batch(request_ids, delete_old=False)
+    result = service.apply_upgrade_decisions_batch(
+            request_ids,
+            delete_old=False,
+    )
 
     assert result.replaced == 2
     assert result.failed == 1
@@ -3157,9 +3180,21 @@ def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
 # (which wouldn't all survive quality.py's fuzzy title matching — that's
 # exercised separately in test_quality.py) don't need to round-trip
 # through filter_candidates here.
-REAL_RANK1 = dict(username="Wolfring", filename="wolfring.flac", size=34_279_790)
-REAL_RANK2 = dict(username="lifelooop", filename="lifelooop.flac", size=58_789_866)
-REAL_RANK3 = dict(username="CDM-Addicted", filename="cdm-addicted.wav", size=58_701_680)
+REAL_RANK1 = dict(
+        username="Wolfring",
+        filename="wolfring.flac",
+        size=34_279_790,
+)
+REAL_RANK2 = dict(
+        username="lifelooop",
+        filename="lifelooop.flac",
+        size=58_789_866,
+)
+REAL_RANK3 = dict(
+        username="CDM-Addicted",
+        filename="cdm-addicted.wav",
+        size=58_701_680,
+)
 
 
 def test_cascade_through_two_rejections_to_third_candidate_that_succeeds(

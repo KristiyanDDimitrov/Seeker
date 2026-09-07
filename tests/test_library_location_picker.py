@@ -127,7 +127,9 @@ def test_pick_and_add_library_location_on_error_fires_for_a_real_failure(
 
     class FailingLibraryService:
         def add_location_from_path(self, path: str) -> LibraryLocation:
-            raise RuntimeError("'/music/main' is already registered as 'main'.")
+            raise RuntimeError(
+                    "'/music/main' is already registered as 'main'."
+            )
 
     class FailingApplication:
         def __init__(self) -> None:

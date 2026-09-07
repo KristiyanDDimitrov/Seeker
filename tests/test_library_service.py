@@ -196,7 +196,10 @@ def test_rename_location_updates_the_name(tmp_path):
 
     assert renamed.name == "My Music"
     with service.database.transaction() as connection:
-        assert service.locations.get_by_name("My Music", connection) is not None
+        assert service.locations.get_by_name(
+                "My Music",
+                connection,
+        ) is not None
         assert service.locations.get_by_name("Music", connection) is None
 
 

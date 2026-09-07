@@ -17,7 +17,9 @@ def test_minimum_size_is_widest_item_not_the_sum(qtbot):
         qtbot,
         ["short", "a much much much longer button label than the rest"],
     )
-    widths = [layout.itemAt(i).sizeHint().width() for i in range(layout.count())]
+    widths = [
+            layout.itemAt(i).sizeHint().width() for i in range(layout.count())
+    ]
 
     assert layout.minimumSize().width() < sum(widths)
     assert layout.minimumSize().width() >= max(widths)

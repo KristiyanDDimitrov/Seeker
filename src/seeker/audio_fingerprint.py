@@ -293,7 +293,9 @@ def _compute_fingerprint_via_soundfile(path: str | Path) -> Fingerprint:
             fingerprinter.feed(block.tobytes())
 
     fingerprint_bytes = fingerprinter.finish()
-    duration_seconds = info.frames / info.samplerate if info.samplerate else 0.0
+    duration_seconds = (
+            info.frames / info.samplerate if info.samplerate else 0.0
+    )
 
     return Fingerprint(
         data=fingerprint_bytes.decode("ascii"),
@@ -457,7 +459,10 @@ def decode_fingerprint(data: str) -> np.ndarray:
         )
     )
 
-    values = np.ctypeslib.as_array(result_ptr, shape=(result_size.value,)).copy()
+    values = np.ctypeslib.as_array(
+            result_ptr,
+            shape=(result_size.value,),
+    ).copy()
     lib.chromaprint_dealloc(result_ptr)
 
     return values.astype(np.uint32)
@@ -469,7 +474,10 @@ def decode_fingerprint(data: str) -> np.ndarray:
 # location's files is an O(n^2) pairwise comparison (see
 # library/duplicate_service.py), and a real fingerprint is ~10,000
 # uint32 values long (confirmed live, item 38's spike).
-_POPCOUNT_TABLE = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
+_POPCOUNT_TABLE = np.array(
+        [bin(i).count("1") for i in range(256)],
+        dtype=np.uint8,
+)
 
 
 def _popcount_uint32(values: np.ndarray) -> np.ndarray:

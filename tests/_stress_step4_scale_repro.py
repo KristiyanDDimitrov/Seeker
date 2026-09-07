@@ -198,7 +198,10 @@ def main() -> None:
     _seed_split_playlists(application, TRACKS_JSON)
 
     scratch_dir = _create_stress_duplicate_location(application)
-    print(f"[step4] duplicate scratch location ready: {scratch_dir}", flush=True)
+    print(
+            f"[step4] duplicate scratch location ready: {scratch_dir}",
+            flush=True,
+    )
 
     main_window = MainWindow(application)
     print("[step4] MainWindow constructed", flush=True)
@@ -261,7 +264,10 @@ def main() -> None:
             qapp.processEvents()
             time.sleep(0.05)
 
-        print(f"[step4] duration complete, download results: {results}", flush=True)
+        print(
+                f"[step4] duration complete, download results: {results}",
+                flush=True,
+        )
         main_window.close()
         qapp.processEvents()
     finally:

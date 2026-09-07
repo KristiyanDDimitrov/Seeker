@@ -53,7 +53,10 @@ class HistoryService:
         self.tracks = track_repository
         self.playlists = playlist_repository
 
-    def get_recent_events(self, limit: int = DEFAULT_LIMIT) -> list[HistoryEvent]:
+    def get_recent_events(
+            self,
+            limit: int = DEFAULT_LIMIT,
+    ) -> list[HistoryEvent]:
         with self.database.transaction() as connection:
             requests = self.download_requests.get_all(connection)
             local_files = self.local_files.get_all(connection)

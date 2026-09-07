@@ -858,7 +858,11 @@ def test_save_thresholds_rejects_equal_pair(qtbot, tmp_path, monkeypatch):
     assert application._config_store.auto_match_threshold is None
 
 
-def test_save_thresholds_rejects_non_numeric_input(qtbot, tmp_path, monkeypatch):
+def test_save_thresholds_rejects_non_numeric_input(
+        qtbot,
+        tmp_path,
+        monkeypatch,
+):
     application = make_application(tmp_path, monkeypatch)
 
     window = SettingsPage(application)

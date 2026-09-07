@@ -228,7 +228,11 @@ def test_untagged_file_matches_via_filename_alone():
     # to be a hard rejection — artist_matches() gated on tag_artist
     # specifically with no filename fallback, so a null tag_artist
     # rejected the file outright regardless of filename quality.
-    track = make_track(artist="3amdisco", title="Get Back", duration_ms=301_500)
+    track = make_track(
+            artist="3amdisco",
+            title="Get Back",
+            duration_ms=301_500,
+    )
 
     candidate = make_local_file(
         filename="3AMDISCO - Get Back.wav",

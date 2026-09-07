@@ -385,7 +385,9 @@ class FakeDownloadService:
         self.confirm_review_candidate_calls: list[str] = []
         self.reject_review_candidate_calls: list[str] = []
         self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
-        self.apply_upgrade_decision_result: str | None = "Replaced with /new/path"
+        self.apply_upgrade_decision_result: str | None = (
+                "Replaced with /new/path"
+        )
         # Roadmap item R3.1 — "Replace all".
         self.apply_upgrade_decisions_batch_calls: list[
             tuple[list[int], bool]
@@ -454,13 +456,17 @@ class FakeDownloadService:
             replace: bool,
             delete_old: bool = False,
     ) -> str | None:
-        self.apply_upgrade_decision_calls.append((request_id, replace, delete_old))
+        self.apply_upgrade_decision_calls.append(
+                (request_id, replace, delete_old)
+        )
         return self.apply_upgrade_decision_result if replace else None
 
     def apply_upgrade_decisions_batch(
             self, request_ids: list[int], delete_old: bool,
     ):
-        self.apply_upgrade_decisions_batch_calls.append((request_ids, delete_old))
+        self.apply_upgrade_decisions_batch_calls.append(
+                (request_ids, delete_old)
+        )
         return self.apply_upgrade_decisions_batch_result
 
     def search_manual(self, artist: str, title: str) -> list:
@@ -519,8 +525,12 @@ class FakeMetadataService:
         self._fix_art_result = fix_art_result or dict(_EMPTY_FIX_ART_RESULT)
         self._rename_plans = rename_plans or []
         self._rename_result = rename_result
-        self.tag_tracks_calls: list[tuple[list[str], bool, tuple | None, bool]] = []
-        self.tag_playlist_calls: list[tuple[str, bool, tuple | None, bool]] = []
+        self.tag_tracks_calls: list[
+                tuple[list[str], bool, tuple | None, bool]
+        ] = []
+        self.tag_playlist_calls: list[
+                tuple[str, bool, tuple | None, bool]
+        ] = []
         self.fix_missing_art_for_playlist_calls: list[str] = []
         self.plan_renames_calls: list[str] = []
         self.apply_renames_calls: list[list] = []
@@ -647,7 +657,10 @@ class FakeApplication:
 
     def set_downloads_paused(self, paused: bool) -> None:
         self.set_downloads_paused_calls.append(paused)
-        self._config_store = replace(self._config_store, downloads_paused=paused)
+        self._config_store = replace(
+                self._config_store,
+                downloads_paused=paused,
+        )
 
     def mark_tray_hide_notice_shown(self) -> None:
         self.mark_tray_hide_notice_shown_calls += 1
@@ -655,7 +668,11 @@ class FakeApplication:
             self._config_store, tray_hide_notice_shown=True,
         )
 
-    def set_notification_preference(self, field_name: str, enabled: bool) -> None:
+    def set_notification_preference(
+            self,
+            field_name: str,
+            enabled: bool,
+    ) -> None:
         self.set_notification_preference_calls.append((field_name, enabled))
         self._config_store = replace(
             self._config_store, **{field_name: enabled},
@@ -699,7 +716,9 @@ def test_dashboard_is_the_default_active_page(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window.stacked_widget.currentIndex() == window._page_indices["dashboard"]
+    assert window.stacked_widget.currentIndex() == window._page_indices[
+            "dashboard"
+    ]
     assert window._nav_buttons["dashboard"].isChecked()
 
 
@@ -710,7 +729,9 @@ def test_show_page_switches_stack_and_updates_checked_nav_button(qtbot):
 
     window._show_page("downloads")
 
-    assert window.stacked_widget.currentIndex() == window._page_indices["downloads"]
+    assert window.stacked_widget.currentIndex() == window._page_indices[
+            "downloads"
+    ]
     assert window._nav_buttons["downloads"].isChecked()
     assert not window._nav_buttons["dashboard"].isChecked()
 
@@ -764,7 +785,9 @@ def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    history_page = window.stacked_widget.widget(window._page_indices["history"])
+    history_page = window.stacked_widget.widget(
+            window._page_indices["history"]
+    )
     history_labels = [w.text() for w in history_page.findChildren(QLabel)]
     assert help_text.HISTORY_PAGE_SUBTITLE in history_labels
 
@@ -811,7 +834,9 @@ def test_support_page_exists_directly_below_help_in_the_sidebar(qtbot):
     qtbot.addWidget(window)
 
     assert "support" in window._page_indices
-    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    support_page = window.stacked_widget.widget(
+            window._page_indices["support"]
+    )
     labels = [w.text() for w in support_page.findChildren(QLabel)]
     assert help_text.SUPPORT_TAB_SUBTITLE in labels
 
@@ -833,8 +858,12 @@ def test_support_page_shows_honest_framing_and_non_financial_help(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    support_page = window.stacked_widget.widget(window._page_indices["support"])
-    labels_html = "\n".join(w.text() for w in support_page.findChildren(QLabel))
+    support_page = window.stacked_widget.widget(
+            window._page_indices["support"]
+    )
+    labels_html = "\n".join(
+            w.text() for w in support_page.findChildren(QLabel)
+    )
 
     assert "no telemetry" in labels_html
     assert "no paid tier" in labels_html
@@ -859,7 +888,9 @@ def test_support_page_renders_a_button_for_every_real_support_link(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    support_page = window.stacked_widget.widget(
+            window._page_indices["support"]
+    )
     buttons = [
         widget
         for widget in support_page.findChildren(QPushButton)
@@ -882,16 +913,22 @@ def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
     qtbot.addWidget(window)
 
     window._show_page("support")
-    assert window.stacked_widget.currentIndex() == window._page_indices["support"]
+    assert window.stacked_widget.currentIndex() == window._page_indices[
+            "support"
+    ]
 
-    support_page = window.stacked_widget.widget(window._page_indices["support"])
+    support_page = window.stacked_widget.widget(
+            window._page_indices["support"]
+    )
     go_button = next(
         widget for widget in support_page.findChildren(QPushButton)
         if widget.text() == help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
     )
     go_button.click()
 
-    assert window.stacked_widget.currentIndex() == window._page_indices["sharing"]
+    assert window.stacked_widget.currentIndex() == window._page_indices[
+            "sharing"
+    ]
 
 
 # --- Busy-action registry / activity strip (roadmap item 65, Phase 2) -----
@@ -1462,7 +1499,9 @@ def test_tagging_controls_row_minimum_size_is_the_widest_item_not_the_sum(
     qtbot.addWidget(window)
 
     layout = window.tagging_controls_layout
-    widths = [layout.itemAt(i).sizeHint().width() for i in range(layout.count())]
+    widths = [
+            layout.itemAt(i).sizeHint().width() for i in range(layout.count())
+    ]
 
     assert layout.minimumSize().width() < sum(widths) / 2
     assert layout.minimumSize().width() >= max(widths)
@@ -2281,13 +2320,19 @@ def test_destination_dialog_preview_updates_live_as_fields_change(
     )
     qtbot.addWidget(dialog)
 
-    assert str(Path(location_a.path) / "Sub") in dialog.location_path_preview.text()
+    assert str(
+            Path(location_a.path) / "Sub"
+    ) in dialog.location_path_preview.text()
 
     dialog.location_combo.setCurrentIndex(1)
-    assert str(Path(location_b.path) / "Sub") in dialog.location_path_preview.text()
+    assert str(
+            Path(location_b.path) / "Sub"
+    ) in dialog.location_path_preview.text()
 
     dialog.subfolder_field.setText("Other")
-    assert str(Path(location_b.path) / "Other") in dialog.location_path_preview.text()
+    assert str(
+            Path(location_b.path) / "Other"
+    ) in dialog.location_path_preview.text()
 
 
 def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(
@@ -2332,7 +2377,10 @@ def test_main_window_has_help_menu_with_about_action(qtbot):
 # _build_help_menu/_on_check_for_updates_clicked and update_check.py's
 # docstring for the real-external-dependency reasoning.
 
-def test_check_for_update_is_not_called_during_construction(qtbot, monkeypatch):
+def test_check_for_update_is_not_called_during_construction(
+        qtbot,
+        monkeypatch,
+):
     calls: list[None] = []
     monkeypatch.setattr(
         "seeker.ui.main_window.check_for_update",
@@ -2354,7 +2402,10 @@ def test_check_for_updates_click_runs_check_for_update_via_worker(
 
     def fake_check_for_update():
         calls.append(None)
-        return UpdateCheckResult(UpdateStatus.UP_TO_DATE, latest_version="v1.0.0")
+        return UpdateCheckResult(
+                UpdateStatus.UP_TO_DATE,
+                latest_version="v1.0.0",
+        )
 
     monkeypatch.setattr(
         "seeker.ui.main_window.check_for_update", fake_check_for_update,
@@ -2833,7 +2884,9 @@ def test_run_worker_on_finished_exception_surfaces_to_status_label(qtbot):
     assert "malformed render data" in label.text()
 
 
-def test_run_worker_on_finished_exception_without_status_label_still_safe(qtbot):
+def test_run_worker_on_finished_exception_without_status_label_still_safe(
+        qtbot
+):
     # The periodic-poll shape (e.g. the Downloads/Review tabs' 2s
     # refresh) — no status_label wired at all, by design, so a fetch
     # error doesn't flash a noisy message every tick. A render bug must
@@ -2863,7 +2916,9 @@ def test_run_worker_on_error_exception_does_not_propagate(qtbot):
     run_worker(SynchronousPool(), boom, on_error=on_error_that_raises)
 
 
-def test_run_worker_on_finished_exception_still_releases_worker_registry(qtbot):
+def test_run_worker_on_finished_exception_still_releases_worker_registry(
+        qtbot
+):
     class SynchronousPool:
         def start(self, worker):
             worker.run()
@@ -3062,7 +3117,9 @@ def test_downloads_aggregate_header_blank_with_no_active_downloads(qtbot):
     assert window.downloads_eta_label.toolTip() == ""
 
 
-def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(qtbot):
+def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(
+        qtbot
+):
     download = ActiveDownload(
         request=DownloadRequest(
             id=1, track_id="t1", username="peer1", filename="file.flac",
@@ -3083,8 +3140,16 @@ def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(q
     # aggregate() reads from _eta_tracker's own recorded samples, not
     # from the ActiveDownload snapshot itself — feed it two directly,
     # the same way _record_eta_samples does on a real 20s backend poll.
-    window._eta_tracker.record(1, 200, datetime(2026, 1, 1, tzinfo=timezone.utc))
-    window._eta_tracker.record(1, 500, datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc))
+    window._eta_tracker.record(
+            1,
+            200,
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    window._eta_tracker.record(
+            1,
+            500,
+            datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+    )
 
     window._render_active_downloads([download])
 
@@ -3709,7 +3774,9 @@ def test_review_tab_renders_needs_review_candidates(qtbot):
 
 
 def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
-    candidates = [(_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))]
+    candidates = [
+            (_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))
+    ]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -3728,7 +3795,9 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
 
 
 def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
-    candidates = [(_make_track(track_id="t9"), _make_review_candidate(track_id="t9"))]
+    candidates = [
+            (_make_track(track_id="t9"), _make_review_candidate(track_id="t9"))
+    ]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -3812,7 +3881,9 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
     # Roadmap item R2.1/R2.6 — the 2s poll_timer rebuilds this table's
     # checkboxes from scratch every tick; before this fix, checking the
     # box and letting even one more tick land would silently reset it.
-    details = [_make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")]
+    details = [
+            _make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
+    ]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -3833,7 +3904,9 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
 
 
 def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
-    details = [_make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")]
+    details = [
+            _make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
+    ]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -3937,7 +4010,10 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     ]
 
 
-def test_replace_all_upgrades_cancelled_dialog_calls_nothing(qtbot, monkeypatch):
+def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
+        qtbot,
+        monkeypatch,
+):
     details = [_make_upgrade_details(request_id=1)]
     application = FakeApplication()
     window = MainWindow(application)
@@ -3988,7 +4064,9 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
     # _poll_review_items() runs once in __init__ (like the Downloads
     # tab's own initial call) so the Review tab isn't empty for the
     # first poll interval either.
-    candidates = [(_make_track(track_id="tc"), _make_review_candidate(track_id="tc"))]
+    candidates = [
+            (_make_track(track_id="tc"), _make_review_candidate(track_id="tc"))
+    ]
     upgrades = [_make_upgrade_details(request_id=5)]
     application = FakeApplication(
         review_candidates=candidates, pending_upgrades=upgrades,
@@ -4208,7 +4286,9 @@ def test_tag_button_appears_only_for_in_library_tracks(qtbot):
     window._render_track_statuses(statuses)
 
     in_library_actions = window.track_table.cellWidget(0, 3)
-    assert [b.text() for b in in_library_actions.findChildren(QPushButton)] == ["Tag"]
+    assert [
+            b.text() for b in in_library_actions.findChildren(QPushButton)
+    ] == ["Tag"]
 
     not_found_actions = window.track_table.cellWidget(1, 3)
     assert not_found_actions.findChildren(QPushButton) == []
@@ -4440,7 +4520,10 @@ def test_dashboard_notice_survives_the_2s_poll_that_used_to_wipe_it(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.dashboard_notice.show_message("Something worth reading", kind="error")
+    window.dashboard_notice.show_message(
+            "Something worth reading",
+            kind="error",
+    )
     assert not window.dashboard_notice.isHidden()
 
     window._poll_selected_playlist()
@@ -5777,8 +5860,14 @@ def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
 
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    keep_radio_0 = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Keep"))
-    keep_radio_1 = window.duplicates_table.cellWidget(1, _duplicates_column(window, "Keep"))
+    keep_radio_0 = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Keep"),
+    )
+    keep_radio_1 = window.duplicates_table.cellWidget(
+            1,
+            _duplicates_column(window, "Keep"),
+    )
     assert isinstance(keep_radio_0, QRadioButton)
     assert isinstance(keep_radio_1, QRadioButton)
     assert keep_radio_0.isChecked() is True
@@ -5877,7 +5966,10 @@ def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
     assert plans[0].keep_local_file_id == 101
 
 
-def test_resolve_all_duplicates_cancelled_dialog_calls_nothing(qtbot, monkeypatch):
+def test_resolve_all_duplicates_cancelled_dialog_calls_nothing(
+        qtbot,
+        monkeypatch,
+):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -6003,8 +6095,14 @@ def test_duplicate_groups_keep_all_selection_survives_rerender(qtbot):
     ][0]
     assert keep_all_radio.isChecked() is True
     keep_column = _duplicates_column(window, "Keep")
-    assert window.duplicates_table.cellWidget(0, keep_column).isChecked() is False
-    assert window.duplicates_table.cellWidget(1, keep_column).isChecked() is False
+    assert window.duplicates_table.cellWidget(
+            0,
+            keep_column,
+    ).isChecked() is False
+    assert window.duplicates_table.cellWidget(
+            1,
+            keep_column,
+    ).isChecked() is False
 
 
 def test_duplicate_groups_keep_selection_pruned_when_group_removed(qtbot):
@@ -6133,13 +6231,19 @@ def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
 
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    first_row_actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    first_row_actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     # Roadmap item 77 (P7, 5th report) — a covered row now gets NO cell
     # widget at all (not even a blank placeholder): a blank widget there
     # used to be resolved by the span to the exact same rect as the
     # real widget and paint over it. The span itself, not a widget,
     # is what makes the covered row read as blank.
-    other_row_actions = window.duplicates_table.cellWidget(1, _duplicates_column(window, "Actions"))
+    other_row_actions = window.duplicates_table.cellWidget(
+            1,
+            _duplicates_column(window, "Actions"),
+    )
     assert first_row_actions.findChildren(QPushButton)
     assert other_row_actions is None
 
@@ -6334,7 +6438,10 @@ def test_delete_duplicates_without_confirm_checkbox_does_not_delete(qtbot):
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     delete_button = actions.findChildren(QPushButton)[0]
     delete_button.click()
 
@@ -6356,7 +6463,10 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6371,10 +6481,15 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
     # from a "current location" the UI happens to have loaded, so this
     # is correct even in this test's direct _render_duplicate_groups()
     # call with no combo selection made.
-    assert application.duplicate_service.delete_local_files_calls == [([102], 101, 1)]
+    assert application.duplicate_service.delete_local_files_calls == [
+            ([102], 101, 1)
+    ]
 
 
-def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch):
+def test_delete_duplicates_respects_a_changed_keep_selection(
+        qtbot,
+        monkeypatch,
+):
     # Moving the radio to a.mp3 (id 102) before deleting must delete
     # a.flac (id 101) instead of the pre-selected default.
     _confirm_yes(monkeypatch)
@@ -6385,9 +6500,15 @@ def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch)
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    window.duplicates_table.cellWidget(1, _duplicates_column(window, "Keep")).setChecked(True)
+    window.duplicates_table.cellWidget(
+            1,
+            _duplicates_column(window, "Keep"),
+    ).setChecked(True)
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6397,7 +6518,9 @@ def test_delete_duplicates_respects_a_changed_keep_selection(qtbot, monkeypatch)
         lambda: bool(application.duplicate_service.delete_local_files_calls),
         timeout=2000,
     )
-    assert application.duplicate_service.delete_local_files_calls == [([101], 102, 1)]
+    assert application.duplicate_service.delete_local_files_calls == [
+            ([101], 102, 1)
+    ]
 
 
 def test_delete_duplicates_finished_removes_group_locally_without_refetch(
@@ -6424,7 +6547,10 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
     )
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6439,7 +6565,10 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
     assert window._current_duplicate_groups == []
 
 
-def test_delete_duplicates_partial_failure_keeps_group_visible(qtbot, monkeypatch):
+def test_delete_duplicates_partial_failure_keeps_group_visible(
+        qtbot,
+        monkeypatch,
+):
     # A partial failure means the group's real DB/disk state may not
     # actually match "fully resolved" -- it must stay visible rather
     # than being dropped as if it were.
@@ -6454,7 +6583,10 @@ def test_delete_duplicates_partial_failure_keeps_group_visible(qtbot, monkeypatc
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6491,7 +6623,10 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
     window._current_duplicates_location_name = "Main"
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6510,7 +6645,10 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window._render_duplicate_groups([_make_duplicate_group()])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox = actions.findChildren(QCheckBox)[0]
     keep_all_radio = [
@@ -6535,7 +6673,10 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     assert application.duplicate_service.delete_local_files_calls == []
 
 
-def test_delete_duplicates_group_of_three_deletes_exactly_two(qtbot, monkeypatch):
+def test_delete_duplicates_group_of_three_deletes_exactly_two(
+        qtbot,
+        monkeypatch,
+):
     _confirm_yes(monkeypatch)
     group = _make_duplicate_group_with_n_files(3)
     application = FakeApplication(duplicate_groups=[group])
@@ -6543,7 +6684,10 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(qtbot, monkeypatch
     qtbot.addWidget(window)
     window._render_duplicate_groups([group])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -6558,7 +6702,10 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(qtbot, monkeypatch
     assert sorted(delete_ids) == [201, 202]
 
 
-def test_delete_duplicates_group_of_four_deletes_exactly_three(qtbot, monkeypatch):
+def test_delete_duplicates_group_of_four_deletes_exactly_three(
+        qtbot,
+        monkeypatch,
+):
     _confirm_yes(monkeypatch)
     group = _make_duplicate_group_with_n_files(4)
     application = FakeApplication(duplicate_groups=[group])
@@ -6566,7 +6713,10 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(qtbot, monkeypatc
     qtbot.addWidget(window)
     window._render_duplicate_groups([group])
 
-    actions = window.duplicates_table.cellWidget(0, _duplicates_column(window, "Actions"))
+    actions = window.duplicates_table.cellWidget(
+            0,
+            _duplicates_column(window, "Actions"),
+    )
     checkbox = actions.findChildren(QCheckBox)[0]
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox.setChecked(True)
@@ -7453,7 +7603,11 @@ def test_apply_theme_mode_survives_a_synchronous_scheme_signal_mid_apply(
         window._on_system_color_scheme_changed(object())
         return result
 
-    monkeypatch.setattr(theme, "apply_theme", apply_theme_with_synchronous_signal)
+    monkeypatch.setattr(
+            theme,
+            "apply_theme",
+            apply_theme_with_synchronous_signal,
+    )
 
     window._apply_theme_mode("light")
 
@@ -7946,7 +8100,9 @@ def test_tray_quit_calls_qapplication_quit(qtbot, monkeypatch):
     qtbot.addWidget(window)
 
     quit_calls = []
-    monkeypatch.setattr(QApplication, "quit", lambda self=None: quit_calls.append(True))
+    monkeypatch.setattr(
+            QApplication, "quit", lambda self=None: quit_calls.append(True)
+    )
 
     window._on_tray_quit()
 
@@ -8003,7 +8159,10 @@ def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):
     assert not window.backend_poll_timer.isActive()
 
 
-def test_needs_decision_notification_fires_only_on_increase(qtbot, monkeypatch):
+def test_needs_decision_notification_fires_only_on_increase(
+        qtbot,
+        monkeypatch,
+):
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
@@ -8032,7 +8191,10 @@ def test_needs_decision_notification_fires_only_on_increase(qtbot, monkeypatch):
     assert len(messages) == 2
 
 
-def test_needs_decision_notification_respects_config_toggle(qtbot, monkeypatch):
+def test_needs_decision_notification_respects_config_toggle(
+        qtbot,
+        monkeypatch,
+):
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     application._config_store = replace(
@@ -8187,7 +8349,10 @@ def test_resolve_tray_icon_path_dev_mode_points_at_real_repo_file():
     assert path.exists()
 
 
-def test_resolve_tray_icon_path_frozen_mode_uses_meipass(monkeypatch, tmp_path):
+def test_resolve_tray_icon_path_frozen_mode_uses_meipass(
+        monkeypatch,
+        tmp_path,
+):
     import sys
 
     monkeypatch.setattr(sys, "frozen", True, raising=False)

@@ -110,7 +110,10 @@ def main() -> None:
         exc = _run_already_dead_trial()
         if exc is not None:
             already_dead_escapes += 1
-            print(f"ALREADY-DEAD ESCAPE: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print(
+                    f"ALREADY-DEAD ESCAPE: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+            )
 
     check_then_act_escapes = 0
     check_then_act_hook_fires = 0
@@ -120,7 +123,10 @@ def main() -> None:
             check_then_act_hook_fires += 1
         if exc is not None:
             check_then_act_escapes += 1
-            print(f"CHECK-THEN-ACT ESCAPE: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print(
+                    f"CHECK-THEN-ACT ESCAPE: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+            )
 
     print(
         f"RESULT already_dead_escapes={already_dead_escapes}/{TRIALS} "

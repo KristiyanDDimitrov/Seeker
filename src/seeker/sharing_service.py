@@ -523,7 +523,10 @@ class SharingService:
         )
 
 
-def _get_or_raise_unauthorized(url: str, headers: dict[str, str]) -> httpx.Response:
+def _get_or_raise_unauthorized(
+        url: str,
+        headers: dict[str, str],
+) -> httpx.Response:
     response = httpx.get(url, headers=headers, timeout=10.0)
 
     try:

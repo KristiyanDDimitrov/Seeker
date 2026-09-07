@@ -186,7 +186,10 @@ class BulkDuplicateResolutionResult:
     plan_outcomes: list[bool]
 
 
-def _path_within_folder(file_relative_path: str, folder_relative_path: str) -> bool:
+def _path_within_folder(
+        file_relative_path: str,
+        folder_relative_path: str,
+) -> bool:
     # Roadmap item 68 (Phase 7.2) — path-prefix matching that respects
     # separator boundaries: "Trance" must never match "TranceX". A bare
     # str.startswith() check would get this wrong; PurePath.is_relative_to

@@ -225,7 +225,11 @@ def test_search_includes_real_lockedfiles_array_shape(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    results = client.search("Dom Dolla Rhyme Dust", timeout=5.0, poll_interval=0.01)
+    results = client.search(
+            "Dom Dolla Rhyme Dust",
+            timeout=5.0,
+            poll_interval=0.01,
+    )
 
     assert len(results) == 1
     assert results[0].locked is True

@@ -85,7 +85,11 @@ def _seed_fake_spotify_token() -> None:
     )
 
 
-def _write_tone(path: Path, frequency: float, duration_seconds: float = 2.0) -> None:
+def _write_tone(
+        path: Path,
+        frequency: float,
+        duration_seconds: float = 2.0,
+) -> None:
     sample_rate = 44_100
     t = np.linspace(0, duration_seconds, int(sample_rate * duration_seconds))
     samples = (np.sin(2 * np.pi * frequency * t) * 0.3).astype(np.float32)
@@ -96,7 +100,10 @@ def _seed_location(application: Application) -> None:
     music_dir = _THROWAWAY_DIR / "music"
     music_dir.mkdir(parents=True, exist_ok=True)
     _write_tone(music_dir / "a.wav", 440.0)
-    _write_tone(music_dir / "b.wav", 440.0)  # a real duplicate pair, same as the stress test
+    _write_tone(
+            music_dir / "b.wav",
+            440.0,
+    )  # a real duplicate pair, same as the stress test
 
     from datetime import datetime, timezone
 
@@ -150,7 +157,10 @@ def _seed_scale_location(application: Application) -> int:
             connection,
         )
 
-    print(f"[hang-repro] scale location: {count} real files symlinked", flush=True)
+    print(
+            f"[hang-repro] scale location: {count} real files symlinked",
+            flush=True,
+    )
     return count
 
 
@@ -162,7 +172,9 @@ def _dump_and_exit() -> None:
     )
     faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
     sys.stderr.flush()
-    os._exit(1)  # hard exit -- don't wait on anything else that might also be stuck
+    os._exit(
+            1
+    )  # hard exit -- don't wait on anything else that might also be stuck
 
 
 def main() -> None:

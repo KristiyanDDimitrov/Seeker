@@ -52,7 +52,9 @@ def build_track_filename(
     if not artists or not title:
         return None
 
-    artist_list = [name.strip() for name in artists.split(", ") if name.strip()]
+    artist_list = [
+            name.strip() for name in artists.split(", ") if name.strip()
+    ]
 
     if not artist_list:
         return None

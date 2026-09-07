@@ -148,7 +148,13 @@ def test_no_events_on_an_empty_database(tmp_path):
 def test_completed_download_produces_a_downloaded_event(tmp_path):
     service = make_service(tmp_path)
     seed_playlist(service, "p1", name="240KM/H")
-    seed_track(service, "t1", playlist_id="p1", artist="ZENEA", title="INFINITE")
+    seed_track(
+            service,
+            "t1",
+            playlist_id="p1",
+            artist="ZENEA",
+            title="INFINITE",
+    )
     seed_download_request(
         service, "t1", status="completed",
         completed_at="2026-01-02T00:00:00+00:00",
@@ -196,7 +202,13 @@ def test_pending_download_produces_no_event(tmp_path):
 def test_tagged_local_file_produces_a_tagged_event(tmp_path):
     service = make_service(tmp_path)
     seed_playlist(service, "p1", name="Test")
-    seed_track(service, "t1", playlist_id="p1", artist="Kamäleon", title="Quadrat")
+    seed_track(
+            service,
+            "t1",
+            playlist_id="p1",
+            artist="Kamäleon",
+            title="Quadrat",
+    )
     local_file_id = seed_local_file(
         service, filename="quadrat.mp3",
         tagged_at="2026-01-03T00:00:00+00:00",

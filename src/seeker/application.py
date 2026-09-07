@@ -84,7 +84,11 @@ def _resolve_spotify_token_path() -> Path:
     return data_dir / "spotify_token.json"
 
 
-def _migrate_legacy_file(new_path: Path, legacy_path: Path, label: str) -> bool:
+def _migrate_legacy_file(
+        new_path: Path,
+        legacy_path: Path,
+        label: str,
+) -> bool:
     # Only migrate into a genuinely fresh install — never overwrite a
     # file that already exists at the new location (e.g. a second run
     # after the migration already happened once).
@@ -345,7 +349,11 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
 
-    def set_notification_preference(self, field_name: str, enabled: bool) -> None:
+    def set_notification_preference(
+            self,
+            field_name: str,
+            enabled: bool,
+    ) -> None:
         """Roadmap item R7.5 — one setter for all three per-category
         toggles (notify_downloads_finished/notify_needs_decision/
         notify_errors), keyed by field name the same way

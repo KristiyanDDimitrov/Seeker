@@ -1191,7 +1191,9 @@ class BulkReplaceUpgradesDialog(QDialog):
         layout.addWidget(self.delete_old_checkbox)
 
         button_row = QHBoxLayout()
-        self.confirm_button = QPushButton(f"Replace {len(upgrades)} upgrade(s)")
+        self.confirm_button = QPushButton(
+                f"Replace {len(upgrades)} upgrade(s)"
+        )
         self.confirm_button.setProperty("variant", "primary")
         self.confirm_button.setEnabled(len(upgrades) > 0)
         self.confirm_button.clicked.connect(self.accept)
@@ -1850,7 +1852,9 @@ class MainWindow(QMainWindow):
 
     def _on_theme_toggle_clicked(self) -> None:
         current_index = _THEME_MODE_CYCLE.index(self._theme_mode)
-        next_mode = _THEME_MODE_CYCLE[(current_index + 1) % len(_THEME_MODE_CYCLE)]
+        next_mode = _THEME_MODE_CYCLE[
+                (current_index + 1) % len(_THEME_MODE_CYCLE)
+        ]
         self._apply_theme_mode(next_mode)
 
     def _apply_theme_mode(self, mode: str, persist: bool = True) -> None:
@@ -2712,7 +2716,11 @@ class MainWindow(QMainWindow):
             self, action_widgets: list[QWidget],
     ) -> None:
         self._configure_sharing_locations_columns()
-        theme.size_action_column(self.sharing_locations_table, 4, action_widgets)
+        theme.size_action_column(
+                self.sharing_locations_table,
+                4,
+                action_widgets,
+        )
         theme.apply_column_floors(self.sharing_locations_table)
 
     def _render_sharing_uploads_table(
@@ -2806,7 +2814,9 @@ class MainWindow(QMainWindow):
     def _on_add_location_to_share_finished(
             self, result: SharingApplyResult,
     ) -> None:
-        ready_note = "" if result.became_ready else " Still finishing the scan."
+        ready_note = (
+                "" if result.became_ready else " Still finishing the scan."
+        )
         self.sharing_status_label.setText(
             f"'{result.location.name}' shared — "
             f"{result.directories_after} directories, "
@@ -2892,7 +2902,9 @@ class MainWindow(QMainWindow):
             locations_form.addRow(label_text, path_label)
         inner_layout.addLayout(locations_form)
 
-        open_folder_button = QPushButton(help_text.OPEN_DATA_FOLDER_BUTTON_TEXT)
+        open_folder_button = QPushButton(
+                help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
+        )
         open_folder_button.setToolTip(help_text.TOOLTIP_OPEN_DATA_FOLDER)
         open_folder_button.clicked.connect(self._on_open_data_folder_clicked)
         inner_layout.addWidget(
@@ -3142,7 +3154,9 @@ class MainWindow(QMainWindow):
         # Roadmap item 67 (Phase 6.4) — always a preview first (item
         # 27's "no gate for tag-writing" precedent does NOT extend
         # here: this moves/replaces a real file).
-        self.rename_files_button = QPushButton("Rename files to match metadata")
+        self.rename_files_button = QPushButton(
+                "Rename files to match metadata"
+        )
         self.rename_files_button.setToolTip(help_text.TOOLTIP_RENAME_FILES)
         self.rename_files_button.clicked.connect(
             self._on_rename_files_clicked
@@ -3293,7 +3307,11 @@ class MainWindow(QMainWindow):
         menu.addAction(retag_action)
         menu.exec(self.track_table.viewport().mapToGlobal(position))
 
-    def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
+    def _on_tag_track_clicked(
+            self,
+            track_id: str,
+            button: QPushButton,
+    ) -> None:
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
@@ -3366,7 +3384,9 @@ class MainWindow(QMainWindow):
         # Analysis in particular does real, potentially slow per-track
         # work — an in-progress note beyond just the disabled button,
         # for anything wider than a single track.
-        self.status_label.setText(f"Tagging {len(track_ids)} selected track(s)...")
+        self.status_label.setText(
+                f"Tagging {len(track_ids)} selected track(s)..."
+        )
 
     def _on_tag_playlist_clicked(self) -> None:
         if self.selected_playlist is None:
@@ -3751,7 +3771,10 @@ class MainWindow(QMainWindow):
         duplicates_status_row.addWidget(self.resolve_all_duplicates_button)
         layout.addLayout(duplicates_status_row)
 
-        self.duplicates_table = QTableWidget(0, len(_DUPLICATES_COLUMN_HEADERS))
+        self.duplicates_table = QTableWidget(
+                0,
+                len(_DUPLICATES_COLUMN_HEADERS),
+        )
         self.duplicates_table.setHorizontalHeaderLabels(
             _DUPLICATES_COLUMN_HEADERS
         )
@@ -4436,7 +4459,11 @@ class MainWindow(QMainWindow):
         )
         _update_delete_enabled()
 
-        return theme.cell_widget(keep_all_radio, confirm_checkbox, delete_button)
+        return theme.cell_widget(
+                keep_all_radio,
+                confirm_checkbox,
+                delete_button,
+        )
 
     def _on_delete_duplicates_clicked(
             self,
@@ -4647,7 +4674,9 @@ class MainWindow(QMainWindow):
         # selections), never a stale plan from an earlier click.
         groups = self._current_duplicate_groups
 
-        plans_with_labels: list[tuple[GroupResolutionPlan, str, list[str]]] = []
+        plans_with_labels: list[
+                tuple[GroupResolutionPlan, str, list[str]]
+        ] = []
         resolved_groups: list[DuplicateGroup] = []
 
         for group in groups:
@@ -4871,7 +4900,11 @@ class MainWindow(QMainWindow):
             # page; every other status is a genuine no-op on
             # double-click, so only these get the affordance rather than
             # a misleading cue on every row.
-            if status.state in (NEEDS_REVIEW, AWAITING_REVIEW, REVIEW_CANDIDATE):
+            if status.state in (
+                    NEEDS_REVIEW,
+                    AWAITING_REVIEW,
+                    REVIEW_CANDIDATE,
+            ):
                 status_item.setToolTip(
                     help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
                 )
@@ -4940,7 +4973,11 @@ class MainWindow(QMainWindow):
 
         status = self._current_track_statuses[row]
 
-        if status.state not in (NEEDS_REVIEW, AWAITING_REVIEW, REVIEW_CANDIDATE):
+        if status.state not in (
+                NEEDS_REVIEW,
+                AWAITING_REVIEW,
+                REVIEW_CANDIDATE,
+        ):
             # A genuine no-op — every other status has nothing to jump
             # to, so double-clicking those rows must not navigate at all.
             return
@@ -5108,7 +5145,10 @@ class MainWindow(QMainWindow):
             on_finished=self._render_active_downloads,
         )
 
-    def _render_active_downloads(self, downloads: list[ActiveDownload]) -> None:
+    def _render_active_downloads(
+            self,
+            downloads: list[ActiveDownload],
+    ) -> None:
         # Roadmap item R7.3 — the tray menu's own status line, built
         # from this same fetch. Counted here (not deferred behind the
         # R7.6 hidden-window gate below) since the whole point of the
@@ -5270,7 +5310,9 @@ class MainWindow(QMainWindow):
                 row, 1, QTableWidgetItem(f"{candidate.score:.1f}"),
             )
 
-            candidate_text = f"{candidate.quality_descriptor} — {candidate.username}"
+            candidate_text = (
+                    f"{candidate.quality_descriptor} — {candidate.username}"
+            )
             self.review_needs_table.setItem(
                 row, 2, QTableWidgetItem(candidate_text),
             )
@@ -5292,7 +5334,10 @@ class MainWindow(QMainWindow):
         theme.size_action_column(self.review_needs_table, 3, [])
         theme.apply_column_floors(self.review_needs_table)
 
-    def _size_review_needs_columns(self, action_widgets: list[QWidget]) -> None:
+    def _size_review_needs_columns(
+            self,
+            action_widgets: list[QWidget],
+    ) -> None:
         self._configure_review_needs_columns()
         theme.size_action_column(self.review_needs_table, 3, action_widgets)
         theme.apply_column_floors(self.review_needs_table)
@@ -5399,7 +5444,10 @@ class MainWindow(QMainWindow):
         theme.size_action_column(self.review_upgrades_table, 3, [])
         theme.apply_column_floors(self.review_upgrades_table)
 
-    def _size_review_upgrades_columns(self, action_widgets: list[QWidget]) -> None:
+    def _size_review_upgrades_columns(
+            self,
+            action_widgets: list[QWidget],
+    ) -> None:
         self._configure_review_upgrades_columns()
         theme.size_action_column(self.review_upgrades_table, 3, action_widgets)
         theme.apply_column_floors(self.review_upgrades_table)
@@ -5576,7 +5624,10 @@ class MainWindow(QMainWindow):
         theme.size_action_column(self.review_local_table, 4, [])
         theme.apply_column_floors(self.review_local_table)
 
-    def _size_review_local_columns(self, action_widgets: list[QWidget]) -> None:
+    def _size_review_local_columns(
+            self,
+            action_widgets: list[QWidget],
+    ) -> None:
         self._configure_review_local_columns()
         theme.size_action_column(self.review_local_table, 4, action_widgets)
         theme.apply_column_floors(self.review_local_table)
@@ -5743,7 +5794,11 @@ class MainWindow(QMainWindow):
         for download in downloads:
             request = download.request
             if request.id is not None and request.bytes_transferred is not None:
-                self._eta_tracker.record(request.id, request.bytes_transferred, now)
+                self._eta_tracker.record(
+                        request.id,
+                        request.bytes_transferred,
+                        now,
+                )
 
     def _run_busy_worker(
             self,
@@ -6142,7 +6197,10 @@ class MainWindow(QMainWindow):
         self._tray_icon.activated.connect(self._on_tray_icon_activated)
         self._tray_icon.show()
 
-    def _on_tray_icon_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+    def _on_tray_icon_activated(
+            self,
+            reason: QSystemTrayIcon.ActivationReason,
+    ) -> None:
         # Roadmap item D5 (round 6) — this comment used to assert, with
         # no recorded observation behind it, that macOS routes a
         # left-click straight to the context menu and Trigger never
@@ -6475,7 +6533,10 @@ class MainWindow(QMainWindow):
             on_finished=self._on_notification_cutoff_seeded,
         )
 
-    def _on_notification_cutoff_seeded(self, events: list[HistoryEvent]) -> None:
+    def _on_notification_cutoff_seeded(
+            self,
+            events: list[HistoryEvent],
+    ) -> None:
         if events:
             self._last_notified_download_at = events[0].occurred_at
 
@@ -6503,7 +6564,10 @@ class MainWindow(QMainWindow):
             on_finished=self._on_download_notification_events,
         )
 
-    def _on_download_notification_events(self, events: list[HistoryEvent]) -> None:
+    def _on_download_notification_events(
+            self,
+            events: list[HistoryEvent],
+    ) -> None:
         cutoff = self._last_notified_download_at
         assert cutoff is not None
 

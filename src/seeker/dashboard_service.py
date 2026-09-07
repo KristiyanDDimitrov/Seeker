@@ -225,7 +225,9 @@ class DashboardService:
             )
 
         now = datetime.now(timezone.utc)
-        visible = [request for request in requests if _is_visible(request, now)]
+        visible = [
+                request for request in requests if _is_visible(request, now)
+        ]
         deduplicated = list(most_recent_per_candidate(visible).values())
 
         results = []

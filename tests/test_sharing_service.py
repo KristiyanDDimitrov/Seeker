@@ -74,7 +74,11 @@ def make_service(
     )
 
 
-def seed_location(service: SharingService, name: str, path: str) -> LibraryLocation:
+def seed_location(
+        service: SharingService,
+        name: str,
+        path: str,
+) -> LibraryLocation:
     location = LibraryLocation(
         name=name, path=path, added_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -459,7 +463,14 @@ def test_add_location_to_share_recreates_via_bring_up_slskd_with_real_credential
                 {"Destination": "/app", "Source": str(data_dir)},
             ]))
 
-        assert cmd == ["docker", "compose", "-f", str(compose_path), "up", "-d"]
+        assert cmd == [
+                "docker",
+                "compose",
+                "-f",
+                str(compose_path),
+                "up",
+                "-d",
+        ]
         captured_env.update(kwargs["env"])
         return FakeCompletedProcess()
 

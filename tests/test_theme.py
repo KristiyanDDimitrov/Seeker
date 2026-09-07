@@ -70,7 +70,9 @@ def test_cell_widget_packs_widgets_with_a_real_gap(qtbot):
     assert button_b.x() - (button_a.x() + button_a.width()) >= theme.SPACING_SM
 
 
-def test_cell_widget_does_not_stretch_a_lone_widget_to_fill_the_container(qtbot):
+def test_cell_widget_does_not_stretch_a_lone_widget_to_fill_the_container(
+        qtbot
+):
     # Roadmap item 80 (P10.3) — the brief's own named example: a bare
     # setCellWidget(button) gets resized to the whole cell rect by Qt.
     # cell_widget()'s trailing stretch must absorb that leftover space
@@ -120,31 +122,58 @@ def test_header_section_has_a_right_hand_divider():
 def test_contrast_ratio_matches_known_reference_values():
     # Textbook cases, not this project's own colors — proves the
     # formula itself is correct before trusting it to grade a palette.
-    assert theme.contrast_ratio("#000000", "#FFFFFF") == pytest.approx(21.0, abs=0.01)
-    assert theme.contrast_ratio("#FFFFFF", "#000000") == pytest.approx(21.0, abs=0.01)
-    assert theme.contrast_ratio("#808080", "#808080") == pytest.approx(1.0, abs=0.01)
+    assert theme.contrast_ratio(
+            "#000000",
+            "#FFFFFF",
+    ) == pytest.approx(21.0, abs=0.01)
+    assert theme.contrast_ratio(
+            "#FFFFFF",
+            "#000000",
+    ) == pytest.approx(21.0, abs=0.01)
+    assert theme.contrast_ratio(
+            "#808080",
+            "#808080",
+    ) == pytest.approx(1.0, abs=0.01)
     # A widely-cited reference pair (WCAG's own worked examples use
     # #767676 on white as landing almost exactly at the AA text floor).
-    assert theme.contrast_ratio("#767676", "#FFFFFF") == pytest.approx(4.54, abs=0.01)
+    assert theme.contrast_ratio(
+            "#767676",
+            "#FFFFFF",
+    ) == pytest.approx(4.54, abs=0.01)
 
 
-@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_body_text_meets_the_aa_floor_on_its_own_background(palette):
     assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE) >= 4.5
     assert theme.contrast_ratio(palette.TEXT, palette.BG_APP) >= 4.5
 
 
-@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_faint_text_and_borders_meet_the_decorative_floor(palette):
     # TEXT_FAINT is deliberately right at the edge (it's decorative, not
     # load-bearing text) — both palettes were designed to that same
     # ~3:1 floor, not a coincidence.
     assert theme.contrast_ratio(palette.TEXT_FAINT, palette.BG_SURFACE) >= 3.0
     assert theme.contrast_ratio(palette.BORDER, palette.BG_SURFACE) >= 1.0
-    assert theme.contrast_ratio(palette.BORDER_STRONG, palette.BG_SURFACE) >= 1.9
+    assert theme.contrast_ratio(
+            palette.BORDER_STRONG,
+            palette.BG_SURFACE,
+    ) >= 1.9
 
 
-@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
     # Roadmap item C5 (round 5) — found live via a real screenshot: the
     # percentage label spans the ACCENT fill AND the plain
@@ -156,7 +185,11 @@ def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
     assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE_2) >= 3.0
 
 
-@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_on_accent_text_meets_the_ui_component_floor(palette):
     # Roadmap item C5.8 — found live building this exact test: the
     # QSS used to put plain `TEXT` on top of a saturated ACCENT/DANGER

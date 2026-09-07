@@ -42,7 +42,9 @@ def make_track(track_id: str) -> Track:
     )
 
 
-def test_sync_playlist_tracks_rolls_back_snapshot_id_on_mid_sync_failure(tmp_path):
+def test_sync_playlist_tracks_rolls_back_snapshot_id_on_mid_sync_failure(
+        tmp_path
+):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 

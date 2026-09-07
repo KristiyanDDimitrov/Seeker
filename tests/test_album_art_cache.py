@@ -10,7 +10,11 @@ def test_get_returns_none_for_a_cold_cache(tmp_path):
 def test_put_then_get_round_trips_within_one_instance(tmp_path):
     cache = AlbumArtCache(tmp_path / "art")
 
-    cache.put("https://i.scdn.co/image/fake", b"\xff\xd8fakejpeg", "image/jpeg")
+    cache.put(
+            "https://i.scdn.co/image/fake",
+            b"\xff\xd8fakejpeg",
+            "image/jpeg",
+    )
 
     assert cache.get("https://i.scdn.co/image/fake") == (
         b"\xff\xd8fakejpeg", "image/jpeg",

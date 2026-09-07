@@ -684,7 +684,10 @@ class MetadataService:
         else:
             print(f"  Tagged: {_describe_track_file(track, local_file)}")
 
-    def fix_missing_art_for_playlist(self, playlist_name: str) -> dict[str, Any]:
+    def fix_missing_art_for_playlist(
+            self,
+            playlist_name: str,
+    ) -> dict[str, Any]:
         """Roadmap item 66 (Phase 5.2) — a narrower, safer repair action
         than a forced full re-tag: re-embeds art ONLY, never touches
         text tags, for auto-matched tracks whose embedded art is

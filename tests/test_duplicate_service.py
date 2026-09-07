@@ -38,7 +38,11 @@ def make_database(tmp_path) -> Database:
     return database
 
 
-def register_location(database: Database, path, name: str = "Main") -> LibraryLocation:
+def register_location(
+        database: Database,
+        path,
+        name: str = "Main",
+) -> LibraryLocation:
     repo = LibraryLocationRepository(database)
     location = LibraryLocation(
         name=name, path=str(path),
@@ -498,8 +502,20 @@ def test_delete_local_files_repoints_match_to_the_kept_file(tmp_path):
     location = register_location(database, music_dir)
     (music_dir / "low_quality.wav").write_bytes(b"fake audio data")
     (music_dir / "high_quality.wav").write_bytes(b"fake audio data")
-    low_quality = add_local_file(database, location, "low_quality.wav", "wav", 3000)
-    high_quality = add_local_file(database, location, "high_quality.wav", "wav", 3000)
+    low_quality = add_local_file(
+            database,
+            location,
+            "low_quality.wav",
+            "wav",
+            3000,
+    )
+    high_quality = add_local_file(
+            database,
+            location,
+            "high_quality.wav",
+            "wav",
+            3000,
+    )
 
     track_repo = TrackRepository(database)
     match_repo = TrackMatchRepository(database)
@@ -598,7 +614,13 @@ def test_delete_local_files_one_failure_does_not_abort_the_batch(tmp_path):
     good_file = add_local_file(database, location, "good.wav", "wav", 3000)
     # missing.wav is registered but never written to disk -- deleting it
     # fails, and must not stop good.wav from still being deleted.
-    missing_file = add_local_file(database, location, "missing.wav", "wav", 3000)
+    missing_file = add_local_file(
+            database,
+            location,
+            "missing.wav",
+            "wav",
+            3000,
+    )
 
     service = make_service(database)
     result = service.delete_local_files([missing_file.id, good_file.id])

@@ -398,7 +398,12 @@ def test_check_playlist_scoped_passes_playlist_id_to_review_candidates(
 
 
 class FakeDuplicateService:
-    def __init__(self, fingerprint_result=None, groups=None, cleanup_totals=(0, 0)):
+    def __init__(
+            self,
+            fingerprint_result=None,
+            groups=None,
+            cleanup_totals=(0, 0),
+    ):
         self._fingerprint_result = fingerprint_result or {
             "computed": 0, "skipped_already_computed": 0, "failed": 0,
             "details": [],
@@ -414,7 +419,12 @@ class FakeDuplicateService:
         self.compute_fingerprints_calls.append((location_name, force, folders))
         return self._fingerprint_result
 
-    def find_duplicate_groups(self, location_name, folders=None, progress=None):
+    def find_duplicate_groups(
+            self,
+            location_name,
+            folders=None,
+            progress=None,
+    ):
         self.find_duplicate_groups_calls.append((location_name, folders))
         return self._groups
 
@@ -438,7 +448,9 @@ def test_library_fingerprint_calls_compute_fingerprints_and_reports_counts(
         ["library", "fingerprint", "Main"],
     )
 
-    assert duplicate_service.compute_fingerprints_calls == [("Main", False, None)]
+    assert duplicate_service.compute_fingerprints_calls == [
+            ("Main", False, None)
+    ]
     output = capsys.readouterr().out
     assert "Fingerprinted: 2" in output
     assert "Skipped (already computed): 1" in output
@@ -453,7 +465,9 @@ def test_library_fingerprint_force_flag_is_passed_through(tmp_path):
         ["library", "fingerprint", "Main", "--force"],
     )
 
-    assert duplicate_service.compute_fingerprints_calls == [("Main", True, None)]
+    assert duplicate_service.compute_fingerprints_calls == [
+            ("Main", True, None)
+    ]
 
 
 def test_library_fingerprint_reports_failure_details(tmp_path, capsys):
@@ -1047,7 +1061,9 @@ def test_downloads_review_all_replaces_every_pending_upgrade(
         ["downloads", "review", "--all"],
     )
 
-    assert download_service.apply_upgrade_decisions_batch_calls == [([1], True)]
+    assert download_service.apply_upgrade_decisions_batch_calls == [
+            ([1], True)
+    ]
     output = capsys.readouterr().out
     assert "Replaced: 1, Failed: 0" in output
 

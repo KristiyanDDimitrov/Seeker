@@ -126,7 +126,11 @@ def seed_local_file(
         # must not wipe existing tagging state, same pattern as bpm/
         # fingerprint) — mark_tagged() is the real, separate write path.
         if tagged_at is not None:
-            service.local_files.mark_tagged(local_file.id, tagged_at, connection)
+            service.local_files.mark_tagged(
+                    local_file.id,
+                    tagged_at,
+                    connection,
+            )
 
     return local_file.id
 
@@ -667,7 +671,9 @@ def test_get_active_downloads_keeps_legitimate_multi_candidate_rows_separate(
     downloads = service.get_active_downloads()
 
     assert len(downloads) == 3
-    assert {d.request.username for d in downloads} == {"peerA", "peerB", "peerC"}
+    assert {
+            d.request.username for d in downloads
+    } == {"peerA", "peerB", "peerC"}
 
 
 def test_get_active_downloads_dedup_does_not_merge_across_roles(tmp_path):

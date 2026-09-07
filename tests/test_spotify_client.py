@@ -22,7 +22,9 @@ class FakeResponse:
         pass
 
 
-def test_get_current_user_playlists_reads_track_count_from_items_field(monkeypatch):
+def test_get_current_user_playlists_reads_track_count_from_items_field(
+        monkeypatch
+):
     def fake_get(url, headers=None, params=None, timeout=None):
         assert url == "https://api.spotify.com/v1/me/playlists"
         return FakeResponse(
@@ -47,7 +49,9 @@ def test_get_current_user_playlists_reads_track_count_from_items_field(monkeypat
     assert playlists[0].track_count == 42
 
 
-def test_get_playlist_tracks_reads_item_field_from_correct_endpoint(monkeypatch):
+def test_get_playlist_tracks_reads_item_field_from_correct_endpoint(
+        monkeypatch
+):
     requested_urls = []
 
     def fake_get(url, headers=None, params=None, timeout=None):
@@ -302,11 +306,16 @@ def test_401_after_a_forced_refresh_raises_readable_error(monkeypatch):
 
     client = SpotifyClient("stale", force_refresh=lambda: "still-stale")
 
-    with pytest.raises(SpotifyAuthenticationError, match="Re-authorize in Settings"):
+    with pytest.raises(
+            SpotifyAuthenticationError,
+            match="Re-authorize in Settings",
+    ):
         client.get_current_user_playlists()
 
 
-def test_401_with_no_force_refresh_raises_immediately_without_retry(monkeypatch):
+def test_401_with_no_force_refresh_raises_immediately_without_retry(
+        monkeypatch
+):
     calls = {"n": 0}
 
     def fake_get(url, headers=None, params=None, timeout=None):

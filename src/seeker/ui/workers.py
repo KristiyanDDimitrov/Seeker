@@ -354,7 +354,12 @@ def _schedule_native_delete(worker: Worker) -> None:
     QTimer.singleShot(0, lambda: _delete_native_worker(worker))
 
 
-def _handle_task_progress(task_id: int, stage: str, current: int, total: int) -> None:
+def _handle_task_progress(
+        task_id: int,
+        stage: str,
+        current: int,
+        total: int,
+) -> None:
     # Deliberately does NOT pop _progress_callbacks — a task can report
     # progress many times before it finishes; only _handle_task_finished/
     # _handle_task_error (below) ever remove the entry, once, when the
@@ -471,7 +476,13 @@ def run_worker(
         status_label.setText("")
 
     worker = Worker(fn, wants_progress=on_progress is not None)
-    _callbacks[worker.task_id] = (worker, button, status_label, on_finished, on_error)
+    _callbacks[worker.task_id] = (
+            worker,
+            button,
+            status_label,
+            on_finished,
+            on_error,
+    )
 
     if on_progress is not None:
         _progress_callbacks[worker.task_id] = on_progress

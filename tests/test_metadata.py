@@ -26,9 +26,15 @@ def _make_minimal_jpeg(width: int, height: int) -> bytes:
     # decodable image.
     soi = b"\xff\xd8"
     jfif_payload = b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
-    app0 = b"\xff\xe0" + struct.pack(">H", len(jfif_payload) + 2) + jfif_payload
+    app0 = b"\xff\xe0" + struct.pack(
+            ">H",
+            len(jfif_payload) + 2,
+    ) + jfif_payload
     sof0_payload = struct.pack(">BHHB", 8, height, width, 1) + b"\x01\x11\x00"
-    sof0 = b"\xff\xc0" + struct.pack(">H", len(sof0_payload) + 2) + sof0_payload
+    sof0 = b"\xff\xc0" + struct.pack(
+            ">H",
+            len(sof0_payload) + 2,
+    ) + sof0_payload
     eoi = b"\xff\xd9"
     return soi + app0 + sof0 + eoi
 
@@ -47,7 +53,10 @@ def _make_minimal_png(width: int, height: int) -> bytes:
         b"\x00" + b"\xff\x00\x00" * width for _ in range(height)
     )
     idat = zlib.compress(raw)
-    return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+    return sig + chunk(
+            b"IHDR",
+            ihdr,
+    ) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
 
 
 # Real files from the scanned x9-pro library, used to test tag-writing

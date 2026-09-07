@@ -966,7 +966,10 @@ def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
         "APIC",
         [APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=FAKE_JPEG_BYTES)],
     )
-    mutagen_file.tags.setall("TIT2", [TIT2(encoding=3, text=["Untouched Title"])])
+    mutagen_file.tags.setall(
+            "TIT2",
+            [TIT2(encoding=3, text=["Untouched Title"])],
+    )
     mutagen_file.save()
 
     service = make_service(tmp_path)
