@@ -1258,7 +1258,7 @@ class BulkResolveDuplicatesDialog(QDialog):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             list_widget.addItem(item)
 
-        for index, (plan, keep_path, delete_paths) in enumerate(
+        for index, (_plan, keep_path, delete_paths) in enumerate(
                 plans_with_labels, start=1,
         ):
             header_item = QListWidgetItem(f"Group {index}")
@@ -3202,8 +3202,8 @@ class MainWindow(QMainWindow):
 
         try:
             return True, (float(min_text), float(max_text)), force
-        except ValueError:
-            raise ValueError("BPM range must be numeric.")
+        except ValueError as error:
+            raise ValueError("BPM range must be numeric.") from error
 
     def _render_tag_result(self, result: dict[str, Any]) -> None:
         self.status_label.setText("")
@@ -4754,7 +4754,9 @@ class MainWindow(QMainWindow):
         # retry rather than assuming it's gone.
         succeeded_groups = {
             id(group)
-            for group, succeeded in zip(attempted_groups, result.plan_outcomes)
+            for group, succeeded in zip(
+                attempted_groups, result.plan_outcomes, strict=True,
+            )
             if succeeded
         }
         self._current_duplicate_groups = [

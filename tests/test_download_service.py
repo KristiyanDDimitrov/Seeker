@@ -76,7 +76,7 @@ def test_soulseek_property_raises_clear_error_when_client_is_none(tmp_path):
     service._soulseek_client = None
 
     with pytest.raises(RuntimeError, match="SoulSeek is not configured"):
-        service.soulseek
+        service.soulseek  # noqa: B018 -- the access itself is the test
 
 
 def test_set_destination_works_without_soulseek_configured(tmp_path):
@@ -3132,7 +3132,7 @@ def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pen
     real_request_ids = [
         details.request_id for details in service.get_pending_upgrade_reviews()
     ]
-    request_ids = real_request_ids + [999_999]
+    request_ids = [*real_request_ids, 999_999]
 
     result = service.apply_upgrade_decisions_batch(
             request_ids,

@@ -289,7 +289,7 @@ def test_request_download_raises_with_slskd_failure_message(monkeypatch):
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
 
-    with pytest.raises(SoulseekDownloadError, match="File not shared."):
+    with pytest.raises(SoulseekDownloadError, match=r"File not shared\."):
         client.request_download("peer1", "song.flac", 12345)
 
 

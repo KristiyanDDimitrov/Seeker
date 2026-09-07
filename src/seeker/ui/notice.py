@@ -82,7 +82,7 @@ class InlineNotice(QWidget):
         # suppress the noise.
         self._action_connected = False
 
-        # Plain ASCII "X" rather than a Unicode "✕"/"×" glyph — the
+        # Plain ASCII "X" rather than a Unicode "✕"/"×" glyph — the  # noqa: RUF003
         # theme's global QPushButton rule (padding: 6px 14px) needs no
         # special-casing for a plain ASCII glyph, and this avoids
         # depending on Unicode multiplication-sign coverage in whatever

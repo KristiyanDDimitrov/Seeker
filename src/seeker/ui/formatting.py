@@ -70,7 +70,7 @@ def format_duration_seconds(seconds: float) -> str:
     negative — a caller passing a stale/negative remaining-time value
     gets "0s" rather than a confusing negative duration.
     """
-    total_seconds = max(int(round(seconds)), 0)
+    total_seconds = max(round(seconds), 0)
 
     if total_seconds < 60:
         return f"{total_seconds}s"

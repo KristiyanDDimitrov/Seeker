@@ -54,7 +54,10 @@ def _build_window_with_worker(pool: QThreadPool) -> QMainWindow:
 
 
 def main() -> None:
-    app = QApplication.instance() or QApplication([])
+    # Held (not discarded) even though unused by name below -- keeps
+    # the Python wrapper alive so PySide6/shiboken doesn't GC it out
+    # from under the C++ singleton mid-script.
+    _app = QApplication.instance() or QApplication([])
     pool = QThreadPool()
     pool.setMaxThreadCount(16)
 

@@ -240,10 +240,13 @@ class Application:
         if force_reauthorize:
             TokenStore(self._spotify_token_path).clear()
 
-        # Triggers the existing OAuth flow via
-        # auth_manager.get_valid_token() — opens the system browser and
-        # waits for the local callback.
-        self.spotify
+        # Triggers the existing OAuth flow — opens the system browser
+        # and waits for the local callback. An explicit call, not a
+        # bare property access relied on for its side effect (B018,
+        # round 8 §4.8.6): a bare `self.spotify` statement reads as
+        # dead code to a linter or a future cleanup and deleting it
+        # would silently break first-time Spotify connect.
+        self.auth_manager.get_valid_token()
 
     def persist_soulseek_config(
             self,

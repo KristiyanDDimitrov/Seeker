@@ -262,7 +262,7 @@ def test_compute_fingerprint_raises_when_both_soundfile_and_ffmpeg_fail(
         raise_ffmpeg_error,
     )
 
-    with pytest.raises(FingerprintError, match="soundfile failed.*ffmpeg"):
+    with pytest.raises(FingerprintError, match=r"soundfile failed.*ffmpeg"):
         compute_fingerprint(tmp_path / "broken.mp3")
 
 
@@ -351,7 +351,7 @@ def test_compute_fingerprint_via_ffmpeg_does_not_deadlock_on_heavy_stderr(
 
     path = tmp_path / "heavy_stderr.mp3"
     rng = random.Random(42)
-    with open(path, "wb") as f:
+    with path.open("wb") as f:
         # A real mp3 frame-sync byte pair followed by garbage, repeated
         # -- ffmpeg's mp3 probe treats this as mp3 and logs a decode
         # error per bad frame it finds, which is what produces the
@@ -425,7 +425,11 @@ def test_real_production_file_soundfile_fails_but_ffmpeg_rescues_it():
     # errors, and the fallback picks that decode up correctly.
     import soundfile as sf
 
-    with pytest.raises(Exception):
+    # Deliberately blind (B017, suppressed): soundfile's exact failure
+    # mode on this real file is the unexplained part of this test's own
+    # finding (see the comment above) -- the assertion IS "this fails
+    # somehow," not which exception type.
+    with pytest.raises(Exception):  # noqa: B017
         sf.info(str(REAL_SOUNDFILE_FAILS_FFMPEG_RESCUES))
 
     result = compute_fingerprint(REAL_SOUNDFILE_FAILS_FFMPEG_RESCUES)

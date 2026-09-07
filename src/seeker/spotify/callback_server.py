@@ -50,10 +50,12 @@ class SpotifyCallbackHandler(BaseHTTPRequestHandler):
             """
         )
 
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         # Suppress BaseHTTPRequestHandler's default per-request stderr
         # logging — this is a short-lived local callback server, not
-        # something that needs request logging.
+        # something that needs request logging. `format` shadows the
+        # builtin only because this overrides the stdlib base class's
+        # own parameter name exactly.
         return
 
 

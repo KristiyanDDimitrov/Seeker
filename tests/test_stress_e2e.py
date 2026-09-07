@@ -541,11 +541,18 @@ def test_broad_end_to_end_stress(qapp):
                 checkbox.setChecked(True)
                 delete_button.click()
 
-                deleted = _pump(
-                    qapp,
-                    lambda: group not in main_window._current_duplicate_groups,
-                    timeout=30.0,
-                )
+                # `group` is safe to close over despite living in the
+                # outer while loop (B023, suppressed): _pump() blocks
+                # synchronously and returns before this same while
+                # iteration ends, so the lambda is never called after
+                # `group` could have been reassigned.
+                def _group_was_deleted() -> bool:
+                    return (
+                        group  # noqa: B023
+                        not in main_window._current_duplicate_groups
+                    )
+
+                deleted = _pump(qapp, _group_was_deleted, timeout=30.0)
                 print(
                     f"[stress] duplicates: group delete completed="
                     f"{deleted}, status="

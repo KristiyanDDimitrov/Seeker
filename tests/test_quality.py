@@ -517,7 +517,7 @@ def test_find_best_needs_review_candidate_respects_narrowed_band():
 def test_select_downloads_real_prdk_data_settles_with_lowered_threshold():
     track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
 
-    settled, upgrade_shortlist, needs_review = select_downloads(
+    settled, _upgrade_shortlist, _needs_review = select_downloads(
         track, [REAL_PRDK_CANDIDATE], auto_match_threshold=70.0,
     )
 

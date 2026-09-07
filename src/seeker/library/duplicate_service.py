@@ -1150,9 +1150,12 @@ def _plausible_duplicate_pair(
         b: LocalFile,
         decoded_by_id: dict[int, np.ndarray],
 ) -> bool:
-    if a.duration_ms is not None and b.duration_ms is not None:
-        if abs(a.duration_ms - b.duration_ms) > DURATION_TOLERANCE_MS:
-            return False
+    if (
+        a.duration_ms is not None
+        and b.duration_ms is not None
+        and abs(a.duration_ms - b.duration_ms) > DURATION_TOLERANCE_MS
+    ):
+        return False
 
     assert a.id is not None and b.id is not None
 

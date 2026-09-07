@@ -16,6 +16,7 @@ from seeker.config_store import (
     save_config,
 )
 from seeker.database.connection import Database
+from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 
@@ -544,7 +545,7 @@ def test_application_spotify_not_configured_raises_only_when_auth_manager_used(
     assert app.spotify_configured is False
 
     with pytest.raises(RuntimeError, match="SPOTIFY_CLIENT_ID"):
-        app.auth_manager
+        app.auth_manager  # noqa: B018 -- the access itself is the test
 
 
 # --- Step 8 §3: connection-management extraction ----------------------
@@ -574,12 +575,20 @@ def test_connect_spotify_persists_config_and_resets_auth_manager(
     app = _application_with_tmp_config(tmp_path, monkeypatch)
 
     # Stand in for the real OAuth round-trip (auth_manager /
-    # callback_server) — connect_spotify()'s last line just accesses
-    # `self.spotify`, so replacing that property confirms it's reached
-    # (a real trigger) without opening a real browser.
+    # callback_server) — connect_spotify()'s last line calls
+    # auth_manager.get_valid_token() directly (round 8 §4.8.6 — B018:
+    # this used to be a bare `self.spotify` statement, which turned out
+    # to be a real, separate bug of its own: SpotifyClient.__init__
+    # only stores its token_source/force_refresh callables, it never
+    # calls them, so the old code never actually triggered OAuth at
+    # all until something later made a real API call). Replacing
+    # get_valid_token confirms the real seam is reached without opening
+    # a real browser.
     triggered = []
     monkeypatch.setattr(
-        Application, "spotify", property(lambda self: triggered.append(True)),
+        SpotifyAuthManager,
+        "get_valid_token",
+        lambda self, force_refresh=False: triggered.append(True),
     )
 
     app._auth_manager = "stale-sentinel"  # type: ignore[assignment]
@@ -587,7 +596,12 @@ def test_connect_spotify_persists_config_and_resets_auth_manager(
     app.connect_spotify("real-client-id")
 
     assert triggered == [True]
-    assert app._auth_manager is None
+    # The stale sentinel is gone — replaced by a freshly-constructed
+    # SpotifyAuthManager (round 8 §4.8.6: unlike the old lazy
+    # `self.spotify` access, get_valid_token() being called directly
+    # means accessing `self.auth_manager` above genuinely reconstructs
+    # and caches a new one immediately, it doesn't stay None).
+    assert isinstance(app._auth_manager, SpotifyAuthManager)
     assert app._config_store.spotify_client_id == "real-client-id"
 
     # Persisted to disk too, not just the in-memory attribute — a
@@ -600,7 +614,15 @@ def test_connect_spotify_force_reauthorize_clears_cached_token(
         tmp_path, monkeypatch,
 ):
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr(Application, "spotify", property(lambda self: None))
+    # Neuter the real trigger (no real browser/network round trip)
+    # without caring whether it fires -- these tests only check the
+    # token-file side effects. round 8 §4.8.6: the seam moved from
+    # the old lazy `self.spotify` property to auth_manager.
+    # get_valid_token() being called directly.
+    monkeypatch.setattr(
+        SpotifyAuthManager, "get_valid_token",
+        lambda self, force_refresh=False: None,
+    )
 
     app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
     TokenStore(app._spotify_token_path).save(
@@ -627,7 +649,15 @@ def test_connect_spotify_without_force_leaves_cached_token_untouched(
     # practice, but confirms force_reauthorize's default (False) really
     # is inert, not silently always-clearing.
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr(Application, "spotify", property(lambda self: None))
+    # Neuter the real trigger (no real browser/network round trip)
+    # without caring whether it fires -- these tests only check the
+    # token-file side effects. round 8 §4.8.6: the seam moved from
+    # the old lazy `self.spotify` property to auth_manager.
+    # get_valid_token() being called directly.
+    monkeypatch.setattr(
+        SpotifyAuthManager, "get_valid_token",
+        lambda self, force_refresh=False: None,
+    )
 
     app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
     TokenStore(app._spotify_token_path).save(
@@ -651,12 +681,19 @@ def test_connect_spotify_reruns_authorization_when_client_already_cached(
     # `_spotify` cache from an earlier call in the same session, so
     # Settings' "Re-authorize" silently did nothing and the app kept
     # using the dead client — the exact bug that made B8's 401
-    # unrecoverable without restarting the app.
+    # unrecoverable without restarting the app. round 8 §4.8.6: the
+    # trigger itself moved to auth_manager.get_valid_token(), a
+    # separate real fix (see the first test in this group) — this
+    # regression test's own concern (does the STALE _spotify/
+    # _sync_service cache get cleared and the trigger still reached)
+    # is orthogonal and still applies identically to the new seam.
     app = _application_with_tmp_config(tmp_path, monkeypatch)
 
     triggered = []
     monkeypatch.setattr(
-        Application, "spotify", property(lambda self: triggered.append(True)),
+        SpotifyAuthManager,
+        "get_valid_token",
+        lambda self, force_refresh=False: triggered.append(True),
     )
 
     # Simulate a prior real call having already populated the cache.
@@ -751,7 +788,7 @@ def test_download_service_constructs_without_soulseek_configured(
     service = app.download_service  # must not raise
 
     with pytest.raises(RuntimeError, match="SoulSeek is not configured"):
-        service.soulseek
+        service.soulseek  # noqa: B018 -- the access itself is the test
 
 
 def test_persist_soulseek_config_resets_cached_download_service(

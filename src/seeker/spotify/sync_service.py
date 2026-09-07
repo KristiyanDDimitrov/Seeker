@@ -93,11 +93,11 @@ class SpotifySyncService:
                     playlist
                 )
 
-            for playlist_id in local_playlists:
+            for playlist_id, local_playlist in local_playlists.items():
                 if playlist_id not in spotify_playlist_ids:
                     print(
                         f"  Removed: "
-                        f"{local_playlists[playlist_id].name}"
+                        f"{local_playlist.name}"
                     )
 
                     self.playlists.delete(playlist_id, connection)

@@ -150,6 +150,11 @@ ignore = [
 "src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]
 "tests/test_workers_deadlock_regression.py" = ["S603"]
+# S311 (non-cryptographic random): both real uses generate synthetic
+# test data (a fake mp3's garbage bytes; a shuffled locked/queued
+# download-request status split) — never a security-sensitive value.
+"tests/_stress_step4_scale_repro.py" = ["S311"]
+"tests/test_audio_fingerprint.py" = ["S311"]
 # The six standalone `tests/_*_repro.py` scripts (leading underscore —
 # not collected as test modules, run only as a subprocess; see each
 # one's own docstring) share a documented pattern: monkeypatch

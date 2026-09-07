@@ -193,8 +193,10 @@ _load_attempted = False
 
 def _get_library() -> ctypes.CDLL:
     # Lazy, cached, call-time-only — see the module docstring for why
-    # this must never run at import time.
-    global _libchromaprint, _load_attempted
+    # this must never run at import time. `global` is the correct,
+    # idiomatic shape for a module-level lazy singleton cache — not
+    # worth a class wrapper for its own sake (PLW0603, suppressed).
+    global _libchromaprint, _load_attempted  # noqa: PLW0603
 
     if not _load_attempted:
         _libchromaprint = _load_library()

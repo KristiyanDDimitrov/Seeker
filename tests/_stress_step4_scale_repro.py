@@ -139,7 +139,7 @@ def _seed_split_playlists(application: Application, tracks_path: Path) -> None:
     thirds = [tracks_data[0::3], tracks_data[1::3], tracks_data[2::3]]
 
     with application.database.transaction() as connection:
-        for name, rows in zip(PLAYLIST_NAMES, thirds):
+        for name, rows in zip(PLAYLIST_NAMES, thirds, strict=True):
             playlist_id = f"step4-{name}"
 
             application.download_service.playlists.save(

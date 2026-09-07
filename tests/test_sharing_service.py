@@ -206,7 +206,7 @@ def test_get_reconciliation_matches_location_to_share_via_live_mounts(
         tmp_path, monkeypatch,
 ):
     service = make_service(tmp_path)
-    location = seed_location(service, "Music", "/Volumes/Drive/Music")
+    seed_location(service, "Music", "/Volumes/Drive/Music")
     seed_location(service, "Other", "/Volumes/Drive/Other")
 
     def fake_get(url, headers=None, timeout=None, params=None):

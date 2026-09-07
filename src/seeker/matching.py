@@ -34,7 +34,9 @@ NEEDS_REVIEW_THRESHOLD = 70.0
 ARTIST_UNCONFIRMED_SCORE_CAP = AUTO_MATCH_THRESHOLD - 1
 
 TRACK_NUMBER_PREFIX_RE = re.compile(r"^\s*\d{1,3}\s*[-.]\s*")
-TRAILING_SEPARATOR_RE = re.compile(r"[\s\-–—.]+$")
+TRAILING_SEPARATOR_RE = re.compile(
+    r"[\s\-–—.]+$"  # noqa: RUF001 -- en/em dash are real seps, not typos
+)
 WHITESPACE_RE = re.compile(r"\s+")
 WATERMARK_SUBSTRINGS = (".com", ".org", ".net")
 

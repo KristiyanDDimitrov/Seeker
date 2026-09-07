@@ -63,7 +63,7 @@ def test_wait_for_callback_captures_error_param():
     )
     thread.join(timeout=5.0)
 
-    code, state, error = result_queue.get(timeout=1.0)
+    code, _state, error = result_queue.get(timeout=1.0)
     assert code is None
     assert error == "access_denied"
 

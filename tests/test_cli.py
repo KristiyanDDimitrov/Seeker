@@ -607,7 +607,7 @@ def test_library_fingerprint_unknown_location_exits_nonzero(tmp_path, capsys):
             ),
             ["library", "fingerprint", "Nonexistent"],
         )
-        assert False, "expected SystemExit"
+        raise AssertionError("expected SystemExit")
     except SystemExit as exit_info:
         assert exit_info.code == 1
 
@@ -934,7 +934,7 @@ def test_search_download_flag_with_no_destination_gives_settings_guidance(
             FakeApplication(matcher, download_service=download_service),
             ["search", "Dom Dolla", "Rhyme Dust", "--download"],
         )
-        assert False, "expected SystemExit"
+        raise AssertionError("expected SystemExit")
     except SystemExit as exit_info:
         assert exit_info.code == 1
 

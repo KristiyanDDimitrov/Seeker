@@ -57,7 +57,7 @@ def add_local_file(
         database: Database,
         location: LibraryLocation,
         relative_path: str,
-        format: str,
+        file_format: str,
         duration_ms: int,
 ) -> LocalFile:
     repo = LocalFileRepository(database)
@@ -65,7 +65,7 @@ def add_local_file(
         location_id=location.id,
         relative_path=relative_path,
         filename=relative_path,
-        format=format,
+        format=file_format,
         size_bytes=1000,
         mtime=0.0,
         scanned_at=datetime.now(UTC).isoformat(),
@@ -333,12 +333,14 @@ def test_compute_fingerprints_raises_when_chromaprint_unavailable(
 
 # --- Pure clustering/scoring logic: synthetic data, no real audio ---------
 
-def _fake_local_file(id: int, fingerprint: str, duration_ms: int) -> LocalFile:
+def _fake_local_file(
+        file_id: int, fingerprint: str, duration_ms: int,
+) -> LocalFile:
     return LocalFile(
-        id=id,
+        id=file_id,
         location_id=1,
-        relative_path=f"file{id}.mp3",
-        filename=f"file{id}.mp3",
+        relative_path=f"file{file_id}.mp3",
+        filename=f"file{file_id}.mp3",
         format="mp3",
         size_bytes=1000,
         mtime=0.0,

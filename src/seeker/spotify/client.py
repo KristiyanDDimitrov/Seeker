@@ -1,7 +1,7 @@
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Any, Union, cast
+from typing import Any, cast
 
 import httpx
 
@@ -17,7 +17,7 @@ BASE_URL = "https://api.spotify.com/v1"
 # token's 1-hour lifetime still gets one get_valid_token() has already
 # refreshed, instead of the frozen string this class used to store
 # (roadmap item 92 / B8.2).
-TokenSource = Union[str, Callable[[], str]]
+TokenSource = str | Callable[[], str]
 
 # Bounds _get's 429-retry loop. Without this, a server that kept returning
 # a short Retry-After (e.g. 1s) indefinitely would retry forever — this
@@ -70,7 +70,13 @@ class SpotifyRateLimitedError(RuntimeError):
                 "(no Retry-After header returned)"
             )
         else:
-            retry_at = datetime.now() + timedelta(
+            # Deliberately local/naive, not UTC (DTZ005, suppressed):
+            # this feeds _format_clock_time() below, which renders a
+            # human-readable wall-clock message ("try again around
+            # 3:45 PM") for the user reading their own local clock —
+            # converting to UTC would make the displayed time wrong
+            # for anyone outside UTC.
+            retry_at = datetime.now() + timedelta(  # noqa: DTZ005
                 seconds=retry_after_seconds
             )
 

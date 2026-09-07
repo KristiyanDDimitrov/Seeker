@@ -1,6 +1,7 @@
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -1557,7 +1558,7 @@ def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
         # Adjacent items on the SAME row must have a real horizontal
         # gap; items that wrapped onto a new row must have a real
         # vertical gap. Every consecutive pair satisfies at least one.
-        for previous, current in zip(rects, rects[1:]):
+        for previous, current in pairwise(rects):
             same_row = previous.top() == current.top()
             if same_row:
                 assert current.left() - previous.right() >= theme.SPACING_SM
@@ -5938,10 +5939,10 @@ def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
 
     actions_column = _duplicates_column(window, "Actions")
     group_b_actions = window.duplicates_table.cellWidget(2, actions_column)
-    keep_all_radio = [
+    keep_all_radio = next(
         w for w in group_b_actions.findChildren(QRadioButton)
         if w.text() == "Keep all"
-    ][0]
+    )
     keep_all_radio.setChecked(True)
 
     def fake_exec(self):
@@ -6078,10 +6079,10 @@ def test_duplicate_groups_keep_all_selection_survives_rerender(qtbot):
     actions = window.duplicates_table.cellWidget(
         0, _duplicates_column(window, "Actions"),
     )
-    keep_all_radio = [
+    keep_all_radio = next(
         b for b in actions.findChildren(QRadioButton)
         if b.text() == "Keep all"
-    ][0]
+    )
     keep_all_radio.setChecked(True)
 
     window._render_duplicate_groups([group])
@@ -6089,10 +6090,10 @@ def test_duplicate_groups_keep_all_selection_survives_rerender(qtbot):
     actions = window.duplicates_table.cellWidget(
         0, _duplicates_column(window, "Actions"),
     )
-    keep_all_radio = [
+    keep_all_radio = next(
         b for b in actions.findChildren(QRadioButton)
         if b.text() == "Keep all"
-    ][0]
+    )
     assert keep_all_radio.isChecked() is True
     keep_column = _duplicates_column(window, "Keep")
     assert window.duplicates_table.cellWidget(
@@ -6651,10 +6652,10 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     )
     delete_button = actions.findChildren(QPushButton)[0]
     checkbox = actions.findChildren(QCheckBox)[0]
-    keep_all_radio = [
+    keep_all_radio = next(
         w for w in actions.findChildren(QRadioButton)
         if w.text() == "Keep all"
-    ][0]
+    )
 
     assert delete_button.isEnabled()
 
