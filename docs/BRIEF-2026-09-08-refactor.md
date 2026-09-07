@@ -410,12 +410,27 @@ the rest explicitly, with reasons, in one place.
   Conventions section** so the next round does not re-litigate it. Lint
   yes; format no.
 
-- [ ] **4.3 — `line-length = 79` is nearly free.** Measured: 99.61% of
-  `src/` lines are already ≤79 chars, and only **8 lines in the whole
-  tree** exceed 88. Fixing the 106 that exceed 79 is a small mechanical
-  commit that turns an informal habit into an enforced rule. The
-  longest offenders: `ui/help_text.py:962` (115), `ui/main_window.py:400`
-  (101), `ui/help_text.py:902-903` (99).
+- [ ] **4.3 — line length.** ~~`line-length = 79` is nearly free.~~
+
+  > **CORRECTED (2026-09-08).** That claim was wrong, and the error was
+  > mine: I measured `src/` only (99.61% already ≤79) and quoted 106
+  > lines to fix. The real figure across `src tests` is **341**, because
+  > `tests/` wraps to a different habit than `src/` does. Phase 1 got
+  > 175 of them rewrapped safely with a purpose-built script and
+  > correctly declined to force the remaining 166.
+  >
+  > **166 hand-rewraps for zero behavioural gain is bad value** — it is
+  > a large, churny diff that damages `git blame` across the test suite
+  > right before Phase 6 starts moving those tests around. **Set
+  > `line-length = 88`** (ruff's own default) instead: only 8 lines in
+  > the whole tree exceed it, so E501 goes to near-zero immediately, and
+  > the 175 rewraps already done stay valuable rather than wasted.
+  >
+  > Record in CLAUDE.md's Conventions that 72–79 remains the house
+  > *habit* for hand-wrapped prose and comments, and 88 is the enforced
+  > *ceiling*. An enforced limit the codebase can actually sit at beats
+  > an aspirational one that leaves 166 permanent violations in the
+  > gate.
 
 - [ ] **4.4 — Add `[tool.pytest.ini_options]`.**
 
@@ -475,6 +490,102 @@ the rest explicitly, with reasons, in one place.
 
 - [ ] **4.7** Report the new ruff count after 4.1–4.6, broken down by
   rule, and how many the config chose to suppress versus fix.
+
+### 4.8 — Get the gate to zero (added 2026-09-08, after 4.1–4.7 landed)
+
+**Phase 1 is not closeable without this.** The first pass took ruff from
+223 findings (unconfigured) to **837** (configured), then down to 662.
+That is the wrong direction, and it has a concrete consequence: §4.5
+committed a CI workflow whose second step is `uff run ruff check src
+tests`. With 662 findings that step exits non-zero. **The headline
+deliverable of this phase, on a portfolio project, is currently a
+workflow that goes red the moment it is pushed.** A red badge is worse
+than no badge.
+
+The fix is almost entirely configuration, not code. A codebase that
+passes `mypy --strict` cleanly and carries 1,098 green tests does not
+have 662 defects; it has a rule selection that is not yet earning its
+keep. §4 already states the principle — *"an unconfigured linter and an
+over-configured one are both ignored"* — and the first pass landed on
+the second failure mode.
+
+> **The standing rule this establishes, and it belongs in CLAUDE.md: a
+> lint configuration the project cannot sit at zero under is not a
+> configuration, it is a backlog wearing one.** The number must be zero
+> at the end of this phase, so that from here on *any* non-zero result
+> is a real, new signal rather than something to squint past.
+
+- [ ] **4.8.1 — `line-length = 88`.** See 4.3's correction above. Takes
+  E501 from 166 to roughly nothing. Keep the 175 rewraps already done.
+
+- [ ] **4.8.2 — `PLC0415` (127) — ignore it, but check first.**
+  Deferred imports look deliberate in this codebase: circular-import
+  avoidance (`TokenStore` inside `SpotifyAuthManager._load_token`,
+  `webbrowser` inside `_authorize`) and keeping heavy scientific
+  dependencies off the startup path — launch is 0.878 s and librosa/
+  scipy/numpy are the obvious reason it is not worse. **Sample 15–20 of
+  the 127 before writing the justification.** If they are mostly
+  deliberate, ignore the rule with a comment saying why. If a
+  meaningful share are accidental, say so and fix those instead — do
+  not write a justification you have not checked, per this project's
+  own standing convention on unverified claims.
+
+- [ ] **4.8.3 — `UP017` (70) — just fix it.** Auto-fixable, and it is
+  §5.4 of Phase 2 anyway. Pull it forward; there is no reason for 70
+  mechanical findings to sit in the gate.
+
+- [ ] **4.8.4 — `S105`/`S106` (25 + 34) — false positives, suppress
+  narrowly.** Every one I checked flags a *name*, not a value:
+  `TOKEN_URL = "https://accounts.spotify.com/api/token"`,
+  `SLSKD_NETWORK_PASSWORD_ENV_VAR = "SLSKD_SLSK_PASSWORD"`,
+  `TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD = "Your SoulSeek network
+  password…"`. **Use `per-file-ignores` for the specific files that
+  hold them, not a global `ignore`** — a genuine hardcoded credential
+  appearing somewhere else later must still be caught. Confirm all 59
+  are name-only before suppressing; if even one is a real value, that is
+  a security finding, not a lint finding.
+
+- [ ] **4.8.5 — `S101` (60) — decide, do not blanket-ignore.** These are
+  in `src/`, not tests (my §4.1 `per-file-ignores` covered `tests/*`,
+  which is why they survive). Most look like mypy-narrowing guards such
+  as `assert self._tray_icon is not None`. That is a legitimate Python
+  idiom, **but `python -O` strips asserts**, so any assert doing real
+  runtime validation in shipped code is a latent bug. Report the split —
+  how many are type-narrowing versus how many guard a real runtime
+  condition — then ignore `S101` with a CLAUDE.md convention line
+  ("asserts narrow types; they never validate user input or external
+  responses") and convert any that fail that test into real checks.
+
+- [ ] **4.8.6 — Triage whatever remains (~180) to zero.** Fix what is
+  worth fixing, suppress the rest in `pyproject.toml` with a reason per
+  entry. Report the final breakdown: fixed versus suppressed, and the
+  one-line justification for each suppression.
+
+- [ ] **4.8.7 — Push, and confirm CI is actually green.** A workflow
+  file that has never run is not evidence that it works. Local
+  verification under `QT_QPA_PLATFORM=offscreen` proved the *test* step;
+  it proved nothing about `uv sync` on a clean `macos-latest` runner,
+  the ruff step, or the mypy step. **Push and paste the real run URL and
+  its result.** If it fails, that failure is Phase 1's, not Phase 2's.
+
+- [ ] **4.8.8 — Record the flake by name.** `test_close_event_falls_
+  back_to_real_close_when_no_tray` fired once and did not reproduce in
+  four further runs. Not chasing it now is the right call — but this
+  project's own convention is that the failure count is a tracked
+  number, not a label, and a flake is that number moving. Two reasons it
+  cannot just be a sentence in a report: CI now runs this suite on every
+  push, and a flaky test in CI teaches everyone to ignore red; and
+  **§14 is about to modify `closeEvent`, which is exactly what this test
+  covers.** Add it to CLAUDE.md's open issues with the date and the
+  observed frequency, so that if it fires during §14 it is a known prior
+  rather than a fresh mystery. If it recurs, diagnose it — never reach
+  for `pytest-rerunfailures`.
+
+- [ ] **4.8.9 — Reconcile the count.** The report gives 837 → 662 as
+  "−175 from 4.3, −1 from 4.6, −1 dead noqa from 4.1", which arrives at
+  660, not 662. Probably rewrapping resolved some findings and created
+  others — which is precisely why it should be reconciled rather than
+  rounded. One line: what the two unaccounted findings are.
 
 ---
 
