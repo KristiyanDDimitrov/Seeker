@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 import pytest
 
@@ -543,7 +543,7 @@ def test_get_active_downloads_includes_recently_completed(tmp_path):
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
     recent = (
-        datetime.now(timezone.utc) - timedelta(seconds=10)
+        datetime.now(UTC) - timedelta(seconds=10)
     ).isoformat()
     seed_download_request(
         service, "t1", status="completed", completed_at=recent,
@@ -560,7 +560,7 @@ def test_get_active_downloads_excludes_long_completed(tmp_path):
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
     stale = (
-        datetime.now(timezone.utc) - timedelta(hours=1)
+        datetime.now(UTC) - timedelta(hours=1)
     ).isoformat()
     seed_download_request(
         service, "t1", status="completed", completed_at=stale,
@@ -576,7 +576,7 @@ def test_get_active_downloads_excludes_long_failed(tmp_path):
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
     stale = (
-        datetime.now(timezone.utc) - timedelta(hours=1)
+        datetime.now(UTC) - timedelta(hours=1)
     ).isoformat()
     seed_download_request(
         service, "t1", status="failed", completed_at=stale,

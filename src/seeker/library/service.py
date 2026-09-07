@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from seeker.database.connection import Database
@@ -67,7 +67,7 @@ class LibraryService:
         location = LibraryLocation(
             name=name,
             path=str(resolved_path),
-            added_at=datetime.now(timezone.utc).isoformat(),
+            added_at=datetime.now(UTC).isoformat(),
         )
 
         with self.database.transaction() as connection:
@@ -123,7 +123,7 @@ class LibraryService:
             location = LibraryLocation(
                 name=name,
                 path=resolved_path_str,
-                added_at=datetime.now(timezone.utc).isoformat(),
+                added_at=datetime.now(UTC).isoformat(),
             )
             self.locations.add(location, connection)
             saved = self.locations.get_by_name(name, connection)
@@ -353,7 +353,7 @@ class LibraryService:
         with self.database.transaction() as connection:
             self.track_matcher.track_matches.confirm(
                 track_id,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 connection,
             )
 

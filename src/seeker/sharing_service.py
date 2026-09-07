@@ -49,7 +49,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Callable
 
@@ -415,7 +415,7 @@ class SharingService:
         plan = self.preview_add_location(location)
         status_before = self.get_status()
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         compose_backup = self._compose_path.with_name(
             f"{self._compose_path.name}.bak-{timestamp}"
         )

@@ -3,7 +3,7 @@ import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -659,7 +659,7 @@ class DownloadService:
                     rank=rank,
                     transfer_id=transfer_id,
                     size=file.size,
-                    requested_at=datetime.now(timezone.utc).isoformat(),
+                    requested_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )
@@ -685,7 +685,7 @@ class DownloadService:
                     status="shortlisted",
                     rank=rank,
                     size=file.size,
-                    requested_at=datetime.now(timezone.utc).isoformat(),
+                    requested_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )
@@ -704,7 +704,7 @@ class DownloadService:
                     filename=file.filename,
                     score=score,
                     quality_descriptor=_quality_descriptor(file),
-                    found_at=datetime.now(timezone.utc).isoformat(),
+                    found_at=datetime.now(UTC).isoformat(),
                     size=file.size,
                 ),
                 connection,
@@ -803,7 +803,7 @@ class DownloadService:
                     role="settled",
                     transfer_id=transfer_id,
                     size=candidate.size,
-                    requested_at=datetime.now(timezone.utc).isoformat(),
+                    requested_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )
@@ -835,7 +835,7 @@ class DownloadService:
         # pattern no isolated repro has reproduced since (see
         # docs/HISTORY.md item 63).
         _debug_poll(
-            f"[poll_downloads] {datetime.now(timezone.utc).isoformat()} "
+            f"[poll_downloads] {datetime.now(UTC).isoformat()} "
             f"called"
         )
 
@@ -1225,7 +1225,7 @@ class DownloadService:
         # is the actual fix for item 63's storm regardless of whatever
         # its real trigger turns out to be — a violated next_retry_at
         # would now be a visible, checkable signal if it recurs.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if current.next_retry_at is not None:
             next_retry_at = datetime.fromisoformat(current.next_retry_at)
             if now < next_retry_at:
@@ -1373,7 +1373,7 @@ class DownloadService:
             LOCKED_RETRY_MAX_SECONDS,
         )
         next_retry_at = (
-            datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds)
+            datetime.now(UTC) + timedelta(seconds=backoff_seconds)
         ).isoformat()
 
         with self.database.transaction() as connection:
@@ -1687,7 +1687,7 @@ class DownloadService:
                         local_file_id=local_file.id,
                         match_method="auto",
                         score=score,
-                        matched_at=datetime.now(timezone.utc).isoformat(),
+                        matched_at=datetime.now(UTC).isoformat(),
                     ),
                     connection,
                 )
@@ -1840,7 +1840,7 @@ class DownloadService:
                     local_file_id=new_local_file.id,
                     match_method="auto",
                     score=100.0,
-                    matched_at=datetime.now(timezone.utc).isoformat(),
+                    matched_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )

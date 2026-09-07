@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (
@@ -54,7 +54,7 @@ from seeker.ui.workers import run_worker
 # working right now", not a redo of the wizard's own attempt-scoped
 # diagnosis.
 def _test_connection_since() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 SETTINGS_TAB_LOCATIONS = "Library Locations"

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 import numpy as np
 import pytest
@@ -46,7 +46,7 @@ def register_location(
     repo = LibraryLocationRepository(database)
     location = LibraryLocation(
         name=name, path=str(path),
-        added_at=datetime.now(timezone.utc).isoformat(),
+        added_at=datetime.now(UTC).isoformat(),
     )
     with database.transaction() as connection:
         repo.add(location, connection)
@@ -68,7 +68,7 @@ def add_local_file(
         format=format,
         size_bytes=1000,
         mtime=0.0,
-        scanned_at=datetime.now(timezone.utc).isoformat(),
+        scanned_at=datetime.now(UTC).isoformat(),
         duration_ms=duration_ms,
     )
     with database.transaction() as connection:
@@ -473,7 +473,7 @@ def test_delete_local_files_cascades_track_match_to_unmatched(tmp_path):
                 local_file_id=local_file.id,
                 match_method="auto",
                 score=100.0,
-                matched_at=datetime.now(timezone.utc).isoformat(),
+                matched_at=datetime.now(UTC).isoformat(),
             ),
             connection,
         )
@@ -1173,7 +1173,7 @@ def test_find_duplicate_groups_across_scopes_pools_across_two_real_locations(
         repo.add(
             LibraryLocation(
                 name="Other", path=str(music_dir_b),
-                added_at=datetime.now(timezone.utc).isoformat(),
+                added_at=datetime.now(UTC).isoformat(),
             ),
             connection,
         )

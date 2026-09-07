@@ -2,7 +2,7 @@ import subprocess
 import sys
 import webbrowser
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
@@ -593,7 +593,7 @@ class OnboardingWizard(QMainWindow):
         # entry from an earlier attempt (e.g. a mistyped password that
         # was already corrected), so a real reconnect isn't
         # false-flagged as bad credentials forever.
-        self._health_poll_started_at = datetime.now(timezone.utc)
+        self._health_poll_started_at = datetime.now(UTC)
         self.soulseek_progress.show()
         self.soulseek_status_label.setText(
             "Waiting for SoulSeek to connect..."

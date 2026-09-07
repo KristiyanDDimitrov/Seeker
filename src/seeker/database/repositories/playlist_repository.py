@@ -2,7 +2,7 @@ import sqlite3
 
 from seeker.models.playlist import Playlist
 from seeker.database.connection import Database
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 
 class PlaylistRepository:
@@ -10,7 +10,7 @@ class PlaylistRepository:
         self.database = database
 
     def save(self, playlist: Playlist, connection: sqlite3.Connection) -> None:
-        synced_at = datetime.now(timezone.utc).isoformat()
+        synced_at = datetime.now(UTC).isoformat()
 
         connection.execute(
             """

@@ -5,27 +5,24 @@ import time
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from enum import IntEnum
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
-    QEvent, QPointF, QRect, QRectF, QSize, Qt, QThreadPool, QTimer,
+    QPointF, QRect, QRectF, Qt, QThreadPool, QTimer,
 )
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
     QColor,
-    QFont,
-    QFontMetrics,
     QGuiApplication,
     QIcon,
     QPainter,
     QPainterPath,
     QPaintEvent,
-    QPixmap,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -96,7 +93,6 @@ from seeker.sharing_service import (
 )
 from seeker.soulseek.download_service import (
     BulkUpgradeReplaceResult,
-    NoDestinationConfiguredError,
 )
 from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
@@ -2745,7 +2741,7 @@ class MainWindow(QMainWindow):
         table.setRowCount(len(uploads))
 
         active_keys: set[tuple[str, str]] = set()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for row, upload in enumerate(uploads):
             table.setItem(
@@ -5796,7 +5792,7 @@ class MainWindow(QMainWindow):
         }
         self._eta_tracker.evict_except(active_request_ids)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for download in downloads:
             request = download.request
             if request.id is not None and request.bytes_transferred is not None:

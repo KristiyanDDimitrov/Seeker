@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import httpx
@@ -22,7 +22,7 @@ from seeker.docker_setup import (
 # A fixed reference point for "when this bring-up attempt started" —
 # tests construct log entries before/after this to exercise the
 # stale-entry filter.
-SINCE = datetime(2026, 8, 28, 15, 0, 0, tzinfo=timezone.utc)
+SINCE = datetime(2026, 8, 28, 15, 0, 0, tzinfo=UTC)
 BEFORE_SINCE = (SINCE - timedelta(minutes=5)).isoformat()
 AFTER_SINCE = (SINCE + timedelta(seconds=1)).isoformat()
 

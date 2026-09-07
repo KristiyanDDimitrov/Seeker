@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from seeker.database.connection import Database
 from seeker.models.download_request import DownloadRequest
@@ -546,7 +546,7 @@ class DownloadRequestRepository:
             connection: sqlite3.Connection,
     ) -> None:
         completed_at = (
-            datetime.now(timezone.utc).isoformat()
+            datetime.now(UTC).isoformat()
             if status in TERMINAL_STATUSES
             else None
         )
@@ -573,7 +573,7 @@ class DownloadRequestRepository:
         # on to 'queued'/'downloading' — either way, future status polls
         # need to target the latest attempt, not the stale one.
         completed_at = (
-            datetime.now(timezone.utc).isoformat()
+            datetime.now(UTC).isoformat()
             if status in TERMINAL_STATUSES
             else None
         )

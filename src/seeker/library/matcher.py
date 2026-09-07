@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -217,7 +217,7 @@ class TrackMatcher:
                         local_file_id=local_file_id,
                         match_method=match_method,
                         score=score,
-                        matched_at=datetime.now(timezone.utc).isoformat(),
+                        matched_at=datetime.now(UTC).isoformat(),
                     ),
                     connection,
                 )

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -260,7 +260,7 @@ def seed_pending_request(
                 rank=rank,
                 requested_at=(
                     requested_at
-                    or datetime.now(timezone.utc).isoformat()
+                    or datetime.now(UTC).isoformat()
                 ),
             ),
             connection,
@@ -2039,7 +2039,7 @@ def test_locked_retry_skipped_when_next_retry_at_is_in_the_future(tmp_path):
         service, "old-1", role="upgrade", status="locked", size=12_345,
     )
     future = (
-        datetime.now(timezone.utc) + timedelta(hours=1)
+        datetime.now(UTC) + timedelta(hours=1)
     ).isoformat()
     set_retry_state(
         service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
@@ -2071,7 +2071,7 @@ def test_locked_retry_runs_when_next_retry_at_has_passed(tmp_path):
         service, "old-1", role="upgrade", status="locked", size=12_345,
     )
     past = (
-        datetime.now(timezone.utc) - timedelta(seconds=5)
+        datetime.now(UTC) - timedelta(seconds=5)
     ).isoformat()
     set_retry_state(
         service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
@@ -2098,7 +2098,7 @@ def test_locked_retry_sets_exponential_backoff_after_each_attempt(tmp_path):
         service, "old-1", role="upgrade", status="locked", size=12_345,
     )
 
-    before_first = datetime.now(timezone.utc)
+    before_first = datetime.now(UTC)
     service.poll_downloads()
 
     with service.database.transaction() as connection:
@@ -2116,10 +2116,10 @@ def test_locked_retry_sets_exponential_backoff_after_each_attempt(tmp_path):
     set_retry_state(
         service, "Dom Dolla - Rhyme Dust.mp3", retry_count=1,
         next_retry_at=(
-            datetime.now(timezone.utc) - timedelta(seconds=1)
+            datetime.now(UTC) - timedelta(seconds=1)
         ).isoformat(),
     )
-    before_second = datetime.now(timezone.utc)
+    before_second = datetime.now(UTC)
     service.poll_downloads()
 
     with service.database.transaction() as connection:

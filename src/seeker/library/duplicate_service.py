@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -358,7 +358,7 @@ class DuplicateService:
                 local_file.id,
                 fingerprint.data,
                 fingerprint.duration_seconds,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 connection,
             )
 
@@ -755,7 +755,7 @@ class DuplicateService:
         with self.database.transaction() as connection:
             self.duplicate_cleanups.add(
                 DuplicateCleanup(
-                    occurred_at=datetime.now(timezone.utc).isoformat(),
+                    occurred_at=datetime.now(UTC).isoformat(),
                     files_deleted=files_deleted,
                     bytes_freed=bytes_freed,
                     location_id=location_id,
@@ -924,7 +924,7 @@ class DuplicateService:
                     local_file_id=keep_local_file_id,
                     match_method=match.match_method,
                     score=match.score,
-                    matched_at=datetime.now(timezone.utc).isoformat(),
+                    matched_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )

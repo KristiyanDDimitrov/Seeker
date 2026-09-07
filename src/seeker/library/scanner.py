@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -173,7 +173,7 @@ def _read_local_file(
         tag_title=tag_title,
         tag_album=tag_album,
         duration_ms=duration_ms,
-        scanned_at=datetime.now(timezone.utc).isoformat(),
+        scanned_at=datetime.now(UTC).isoformat(),
     )
 
 

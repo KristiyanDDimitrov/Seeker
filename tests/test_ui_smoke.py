@@ -1,6 +1,6 @@
 import threading
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 import pytest
@@ -30,7 +30,6 @@ from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_status import (
-    AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
     NEEDS_REVIEW,
@@ -3143,12 +3142,12 @@ def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(
     window._eta_tracker.record(
             1,
             200,
-            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, tzinfo=UTC),
     )
     window._eta_tracker.record(
             1,
             500,
-            datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
     )
 
     window._render_active_downloads([download])
@@ -3435,7 +3434,7 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     for i in range(3):
         window._eta_tracker.record(1, 1_000, now + timedelta(seconds=i * 20))
 
@@ -3551,7 +3550,7 @@ def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # 400 bytes/second over the last interval, 400 bytes remaining ->
     # a clean 1s ETA, easy to assert on exactly.
     window._eta_tracker.record(1, 200, now - timedelta(seconds=1))
@@ -3573,7 +3572,7 @@ def test_downloads_tab_eta_shows_stalled_after_flat_samples(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for offset in (2, 1, 0):
         window._eta_tracker.record(1, 600, now - timedelta(seconds=offset))
 
@@ -3589,7 +3588,7 @@ def test_record_eta_samples_evicts_ids_no_longer_active(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window._eta_tracker.record(1, 100, now)
     window._eta_tracker.record(1, 200, now)
 

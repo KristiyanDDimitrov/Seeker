@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 
 from seeker.ui.download_eta import (
     AggregateEta,
@@ -32,14 +32,14 @@ def test_describe_with_no_samples_is_calculating():
 
 def test_describe_with_one_sample_is_calculating():
     tracker = DownloadEtaTracker()
-    tracker.record(1, 100, datetime.now(timezone.utc))
+    tracker.record(1, 100, datetime.now(UTC))
 
     assert tracker.describe(1, 1_000) == "Calculating…"
 
 
 def test_describe_computes_eta_from_last_two_samples():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # 200 bytes/second, 600 bytes remaining -> 3s.
     tracker.record(1, 200, now - timedelta(seconds=1))
@@ -52,7 +52,7 @@ def test_describe_ignores_a_stale_earlier_sample_pair():
     # Only the LAST two samples should drive the estimate — an older,
     # faster interval must not skew a since-slowed-down real transfer.
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tracker.record(1, 0, now - timedelta(seconds=2))
     tracker.record(1, 900, now - timedelta(seconds=1))  # fast interval
@@ -63,7 +63,7 @@ def test_describe_ignores_a_stale_earlier_sample_pair():
 
 def test_describe_reports_stalled_after_several_flat_samples():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for offset in (2, 1, 0):
         tracker.record(1, 500, now - timedelta(seconds=offset))
@@ -76,7 +76,7 @@ def test_describe_not_yet_stalled_with_only_two_flat_samples():
     # two alone (one poll interval of no progress) isn't proof of a
     # real stall yet, so this reports "Calculating…", not "Stalled".
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tracker.record(1, 500, now - timedelta(seconds=1))
     tracker.record(1, 500, now)
@@ -86,7 +86,7 @@ def test_describe_not_yet_stalled_with_only_two_flat_samples():
 
 def test_describe_recovers_from_stalled_once_progress_resumes():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for offset in (3, 2, 1):
         tracker.record(1, 500, now - timedelta(seconds=offset))
@@ -99,7 +99,7 @@ def test_describe_recovers_from_stalled_once_progress_resumes():
 
 def test_record_bounds_history_size():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for i in range(10):
         tracker.record(1, i * 100, now + timedelta(seconds=i))
@@ -109,7 +109,7 @@ def test_record_bounds_history_size():
 
 def test_evict_except_drops_untracked_ids():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tracker.record(1, 100, now)
     tracker.record(2, 100, now)
 
@@ -122,7 +122,7 @@ def test_evict_except_drops_untracked_ids():
 
 def test_evict_except_keeps_ids_still_active():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tracker.record(1, 200, now - timedelta(seconds=1))
     tracker.record(1, 400, now)
 
@@ -137,7 +137,7 @@ def test_evict_drops_a_single_id_immediately():
     # seen as terminal, without needing evict_except()'s once-per-poll
     # sweep over the whole active set.
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tracker.record(1, 200, now - timedelta(seconds=1))
     tracker.record(1, 400, now)
     tracker.record(2, 100, now)
@@ -157,7 +157,7 @@ def test_evict_a_never_tracked_id_is_a_no_op():
 
 def test_tracks_multiple_requests_independently():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tracker.record(1, 200, now - timedelta(seconds=1))
     tracker.record(1, 400, now)
@@ -173,7 +173,7 @@ def test_tracks_multiple_requests_independently():
 
 def test_aggregate_sums_remaining_bytes_over_speed_for_contributors_only():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Request 1: 200 bytes/s, 800 bytes remaining of 1_000 -> 4s.
     tracker.record(1, 200, now - timedelta(seconds=1))
@@ -194,7 +194,7 @@ def test_aggregate_sums_remaining_bytes_over_speed_for_contributors_only():
 
 def test_aggregate_excludes_queued_downloads_with_no_samples_yet():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tracker.record(1, 200, now - timedelta(seconds=1))
     tracker.record(1, 400, now)
@@ -210,7 +210,7 @@ def test_aggregate_excludes_queued_downloads_with_no_samples_yet():
 
 def test_aggregate_excludes_downloads_with_unknown_total_bytes():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tracker.record(1, 200, now - timedelta(seconds=1))
     tracker.record(1, 400, now)
@@ -228,7 +228,7 @@ def test_aggregate_excludes_downloads_with_unknown_total_bytes():
 
 def test_aggregate_returns_none_eta_with_no_contributors():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Only one sample each — still "Calculating…", not stalled.
     tracker.record(1, 100, now)
@@ -244,7 +244,7 @@ def test_aggregate_returns_none_eta_with_no_contributors():
 
 def test_aggregate_flags_all_non_contributors_stalled():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for offset in (2, 1, 0):
         tracker.record(1, 500, now - timedelta(seconds=offset))
@@ -259,7 +259,7 @@ def test_aggregate_flags_all_non_contributors_stalled():
 
 def test_aggregate_not_all_stalled_when_mixed_with_still_calculating():
     tracker = DownloadEtaTracker()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for offset in (2, 1, 0):
         tracker.record(1, 500, now - timedelta(seconds=offset))

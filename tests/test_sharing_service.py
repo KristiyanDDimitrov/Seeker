@@ -1,6 +1,6 @@
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 import httpx
@@ -80,7 +80,7 @@ def seed_location(
         path: str,
 ) -> LibraryLocation:
     location = LibraryLocation(
-        name=name, path=path, added_at=datetime.now(timezone.utc).isoformat(),
+        name=name, path=path, added_at=datetime.now(UTC).isoformat(),
     )
 
     with service.database.transaction() as connection:

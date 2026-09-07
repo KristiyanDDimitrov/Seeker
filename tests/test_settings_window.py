@@ -8,7 +8,6 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
-from seeker.ui import help_text
 from seeker.ui.settings_window import SettingsPage
 
 

@@ -53,6 +53,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from seeker.application import Application  # noqa: E402
 from seeker.models.library_location import LibraryLocation  # noqa: E402
+from datetime import UTC
 
 LOCATION_NAME = "HangReproLocation"
 SCALE_LOCATION_NAME = "HangReproScaleLocation"
@@ -105,13 +106,13 @@ def _seed_location(application: Application) -> None:
             440.0,
     )  # a real duplicate pair, same as the stress test
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     with application.database.transaction() as connection:
         application.library_service.locations.add(
             LibraryLocation(
                 id=None, name=LOCATION_NAME, path=str(music_dir),
-                added_at=datetime.now(timezone.utc).isoformat(),
+                added_at=datetime.now(UTC).isoformat(),
             ),
             connection,
         )
@@ -146,13 +147,13 @@ def _seed_scale_location(application: Application) -> int:
         except OSError:
             continue
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     with application.database.transaction() as connection:
         application.library_service.locations.add(
             LibraryLocation(
                 id=None, name=SCALE_LOCATION_NAME, path=str(scale_dir),
-                added_at=datetime.now(timezone.utc).isoformat(),
+                added_at=datetime.now(UTC).isoformat(),
             ),
             connection,
         )

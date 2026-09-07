@@ -27,7 +27,7 @@ import os
 import random
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -92,7 +92,7 @@ def _seed_filler_backlog(application: Application, count: int) -> None:
     """~count synthetic download_requests rows, mixed status, against
     filler tracks no real download flow ever touches — simulates DB
     scale without needing count real Spotify tracks."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     with application.database.transaction() as connection:
         for i in range(count):
@@ -172,7 +172,7 @@ def _seed_split_playlists(application: Application, tracks_path: Path) -> None:
                     id=None,
                     name=f"Step4Dest-{name}",
                     path=str(location_dir),
-                    added_at=datetime.now(timezone.utc).isoformat(),
+                    added_at=datetime.now(UTC).isoformat(),
                 ),
                 connection,
             )

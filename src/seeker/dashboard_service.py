@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -224,7 +224,7 @@ class DashboardService:
                 self.playlists.get_playlist_names_by_track_id(connection)
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         visible = [
                 request for request in requests if _is_visible(request, now)
         ]

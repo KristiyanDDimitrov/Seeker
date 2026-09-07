@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -639,7 +639,7 @@ class MetadataService:
 
             self.local_files.mark_tagged(
                 local_file.id,
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 connection,
             )
 

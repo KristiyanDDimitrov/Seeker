@@ -49,6 +49,7 @@ from seeker.models.library_location import LibraryLocation  # noqa: E402
 from seeker.models.playlist import Playlist  # noqa: E402
 from seeker.models.track import Track  # noqa: E402
 from seeker.ui.main_window import MainWindow  # noqa: E402
+from datetime import UTC
 
 PLAYLIST_ID = "step3-under-pressure-repro"
 PLAYLIST_NAME = "Under Pressure (Deluxe)"
@@ -89,14 +90,14 @@ def _seed(application: Application, tracks_path: Path) -> None:
             connection,
         )
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         application.download_service.locations.add(
             LibraryLocation(
                 id=None,
                 name="Step3ReproDestination",
                 path=str(location_dir),
-                added_at=datetime.now(timezone.utc).isoformat(),
+                added_at=datetime.now(UTC).isoformat(),
             ),
             connection,
         )
