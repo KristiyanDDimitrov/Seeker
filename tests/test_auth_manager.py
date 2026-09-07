@@ -131,6 +131,70 @@ def test_get_valid_token_authorizes_when_no_token_saved(
     assert token.access_token == "first-time-access"
 
 
+def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
+        tmp_path, monkeypatch,
+):
+    # Round 8 §4.8.6/follow-up: application.py's connect_spotify() was
+    # changed from a bare `self.spotify` access (which never actually
+    # triggered OAuth at all -- SpotifyClient.__init__ only stores its
+    # token_source callable, never calls it) to a direct
+    # auth_manager.get_valid_token() call, which DOES eagerly run the
+    # real browser/callback round-trip. This is the regression that
+    # change could have introduced: does the very next get_valid_token()
+    # call (the shape of what SpotifyClient's token_source lambda does
+    # on the first real API call right after connect_spotify() returns)
+    # silently re-authorize instead of reusing the token _authorize()
+    # just persisted? Exercises the REAL _authorize()/_save_token()
+    # path end to end (not mocked out, unlike the test above) -- only
+    # the actual network/browser boundaries are faked.
+    manager = make_manager(tmp_path)
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.generate_state",
+        lambda: "fixed-state",
+    )
+    webbrowser_open_calls: list[str] = []
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open",
+        webbrowser_open_calls.append,
+    )
+    wait_for_callback_calls = []
+
+    def fake_wait_for_callback():
+        wait_for_callback_calls.append(True)
+        return ("real-code", "fixed-state", None)
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.wait_for_callback",
+        fake_wait_for_callback,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.exchange_code_for_token",
+        lambda **kwargs: SpotifyToken(
+            access_token="real-access-token",
+            refresh_token="real-refresh-token",
+            expires_at=time.time() + 3600,
+        ),
+    )
+
+    first_token = manager.get_valid_token()
+
+    assert len(webbrowser_open_calls) == 1
+    assert "client_id=client-id" in webbrowser_open_calls[0]
+    assert "state=fixed-state" in webbrowser_open_calls[0]
+    assert len(wait_for_callback_calls) == 1
+    assert TokenStore(manager.token_path).load() is not None
+
+    second_token = manager.get_valid_token()
+
+    assert len(webbrowser_open_calls) == 1, (
+        "a second get_valid_token() call must reuse the just-persisted "
+        "token, not re-run the browser/callback authorization flow"
+    )
+    assert len(wait_for_callback_calls) == 1
+    assert second_token.access_token == first_token.access_token
+
+
 def test_get_valid_token_force_refresh_refreshes_a_still_valid_token(
         tmp_path, monkeypatch,
 ):
