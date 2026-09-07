@@ -34,6 +34,7 @@ from seeker.docker_setup import (
     check_slskd_health,
     compose_file_path,
     generate_api_key,
+    is_non_loopback_http_url,
     slskd_data_dir,
 )
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
@@ -581,6 +582,12 @@ class SettingsPage(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
+        # Roadmap item 116 (round 8, §6.6.1) — starts hidden; only shown
+        # by _refresh_connection_display() when the configured slskd
+        # base URL is actually plain http:// pointed off this machine.
+        self.slskd_remote_warning_notice = InlineNotice()
+        layout.addWidget(self.slskd_remote_warning_notice)
+
         spotify_group = QGroupBox("Spotify")
         spotify_form = QFormLayout(spotify_group)
 
@@ -711,6 +718,21 @@ class SettingsPage(QWidget):
             "••••••••" if config.slskd_password else "Not configured"
         )
         self._render_api_key_display()
+        self._render_slskd_remote_warning()
+
+    def _render_slskd_remote_warning(self) -> None:
+        base_url = self.application._slskd_base_url
+
+        if base_url and is_non_loopback_http_url(base_url):
+            self.slskd_remote_warning_notice.show_message(
+                "Your SoulSeek connection is configured for a "
+                f"non-local address over plain HTTP ({base_url}). Your "
+                "API key would cross the network unencrypted — use "
+                "HTTPS, or keep slskd on this machine.",
+                kind="warning",
+            )
+        else:
+            self.slskd_remote_warning_notice.dismiss()
 
     def _render_api_key_display(self) -> None:
         config = self.application._config_store

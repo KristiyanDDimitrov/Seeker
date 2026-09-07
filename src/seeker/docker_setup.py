@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import platformdirs
@@ -167,6 +168,25 @@ def detect_docker_state() -> DockerState:
         return DockerState.RUNNING
 
     return DockerState.INSTALLED_NOT_RUNNING
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def is_non_loopback_http_url(url: str) -> bool:
+    """True when `url` is plain (unencrypted) HTTP pointed somewhere
+    other than this machine.
+
+    Roadmap item 116 (round 8, §6.6.1) — `SoulseekClient` sends
+    `X-API-Key` as a plain header on every request; over loopback
+    that's fine, but a `SLSKD_BASE_URL` pointed at a remote host over
+    `http://` would put the key on the wire in clear. Used to warn in
+    Settings, not to block anything — this project already has no
+    remote-slskd flow of its own, but `.env`'s `SLSKD_BASE_URL` is
+    still user-editable outside the app.
+    """
+    parsed = urlparse(url)
+    return parsed.scheme == "http" and parsed.hostname not in _LOOPBACK_HOSTS
 
 
 def generate_api_key() -> str:

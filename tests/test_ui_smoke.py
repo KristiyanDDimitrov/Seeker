@@ -630,6 +630,13 @@ class FakeApplication:
         # §connection tabs) — mirrored here rather than adding a
         # second, fake-only access pattern.
         self._config_store = SeekerConfig()
+        # Roadmap item 116 (round 8, §6.6.1) — settings_window.py's
+        # connection tab reads this at construction time now (the new
+        # remote-slskd-over-http warning); mirrors the real
+        # Application's own `_config_store.slskd_base_url or
+        # config.SLSKD_BASE_URL` fallback, always None here since no
+        # smoke test needs a configured slskd URL.
+        self._slskd_base_url: str | None = None
         self.persist_default_destination_calls: list[tuple[int, bool]] = []
         # Roadmap item R7.4/R7.1/R7.5 — mirrors the real Application's
         # own methods, same shape as persist_default_destination above.

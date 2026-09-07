@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
+import pytest
 
 from seeker.docker_setup import (
     SLSKD_NETWORK_PASSWORD_ENV_VAR,
@@ -16,6 +17,7 @@ from seeker.docker_setup import (
     detect_docker_state,
     ensure_full_path_environment,
     generate_api_key,
+    is_non_loopback_http_url,
     slskd_data_dir,
 )
 
@@ -51,6 +53,32 @@ def test_generate_api_key_is_within_slskd_documented_length_range():
 
 def test_generate_api_key_produces_distinct_values():
     assert generate_api_key() != generate_api_key()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://192.168.1.50:5030",
+        "http://slskd.example.com:5030",
+        "http://[::1:2]:5030",  # not the loopback ::1 literal
+    ],
+)
+def test_is_non_loopback_http_url_flags_remote_plain_http(url):
+    assert is_non_loopback_http_url(url) is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:5030",
+        "http://127.0.0.1:5030",
+        "http://[::1]:5030",
+        "https://192.168.1.50:5030",  # remote but encrypted
+        "https://localhost:5030",
+    ],
+)
+def test_is_non_loopback_http_url_allows_loopback_or_encrypted(url):
+    assert is_non_loopback_http_url(url) is False
 
 
 def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(

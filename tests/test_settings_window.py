@@ -511,6 +511,53 @@ def test_connection_tab_displays_current_config_values(
     assert window.soulseek_api_key_display.text() == "••••••••"
 
 
+def test_connection_tab_warns_on_remote_plain_http_slskd_url(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Roadmap item 116 (round 8, §6.6.1) — X-API-Key crosses the network
+    # in clear if slskd_base_url is ever pointed at a remote host over
+    # plain HTTP (only reachable today via a hand-edited .env, since no
+    # in-app flow sets it to anything but the local wizard's own
+    # loopback constant).
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        slskd_base_url="http://192.168.1.50:5030",
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert not window.slskd_remote_warning_notice.isHidden()
+    assert "192.168.1.50" in window.slskd_remote_warning_notice.text()
+
+
+def test_connection_tab_shows_no_warning_for_loopback_slskd_url(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        slskd_base_url="http://127.0.0.1:5030",
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.slskd_remote_warning_notice.isHidden()
+
+
+def test_connection_tab_shows_no_warning_when_slskd_unconfigured(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.slskd_remote_warning_notice.isHidden()
+
+
 def test_reveal_api_key_toggle_shows_and_hides_the_real_value(
         qtbot, tmp_path, monkeypatch,
 ):
