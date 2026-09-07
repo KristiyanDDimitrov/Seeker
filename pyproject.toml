@@ -82,8 +82,16 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Qt overrides are camelCase by framework contract, not by choice.
 "src/seeker/ui/*" = ["N802"]
-# Tests assert; that is their job.
-"tests/*" = ["S101"]
+# Tests assert; that is their job. PLC0415 (import outside top level):
+# sampled 20 of the real 119 tests/* findings (round 8, §4.8.2) — every
+# one is a genuine, narrow per-test/per-fixture import (a constant or
+# class only that one test needs), a deliberate pytest scoping
+# convention, not an accident. src/'s own findings were checked
+# separately and are NOT covered by this ignore — 4 were accidental
+# (moved to top-level) and 3 are genuine heavy-dependency deferrals,
+# each given its own scoped `# noqa: PLC0415` with a reason, so a
+# future accidental local import in src/ still gets caught.
+"tests/*" = ["S101", "PLC0415"]
 
 [tool.ruff.lint.pep8-naming]
 # Belt and braces for the same Qt point, for any file outside ui/ (none

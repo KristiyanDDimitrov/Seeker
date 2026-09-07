@@ -1,3 +1,4 @@
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -355,7 +356,11 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
 
 
 def _measure_clipping_ratio(path: str | Path) -> float:
-    import soundfile as sf
+    # Deferred (PLC0415, suppressed): soundfile is a heavy scientific
+    # dependency this module only needs for the rare candidate that
+    # reaches quality measurement at all — importing it at module level
+    # would put it on every startup path that merely imports quality.py.
+    import soundfile as sf  # noqa: PLC0415
 
     data, _ = sf.read(str(path), dtype="int16", always_2d=True)
 
@@ -370,10 +375,12 @@ def _measure_clipping_ratio(path: str | Path) -> float:
 
 
 def _measure_integrated_loudness(path: str | Path) -> float | None:
-    import math
-
-    import pyloudnorm
-    import soundfile as sf
+    # Deferred (PLC0415, suppressed) for the same reason as
+    # _measure_clipping_ratio above: pyloudnorm/soundfile are heavy
+    # scientific dependencies this module only needs this deep in the
+    # rare quality-measurement path, not on every import of quality.py.
+    import pyloudnorm  # noqa: PLC0415
+    import soundfile as sf  # noqa: PLC0415
 
     data, rate = sf.read(str(path))
 

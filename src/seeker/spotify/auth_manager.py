@@ -1,4 +1,5 @@
 import time
+import webbrowser
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,7 @@ from seeker.spotify.auth import (
 )
 from seeker.spotify.callback_server import wait_for_callback
 from seeker.spotify.token import SpotifyToken
+from seeker.spotify.token_store import TokenStore
 
 
 # Spotify rotates the refresh token on every PKCE refresh — the old one
@@ -65,13 +67,9 @@ class SpotifyAuthManager:
         return time.time() >= token.expires_at - 60
 
     def _load_token(self) -> SpotifyToken | None:
-        from seeker.spotify.token_store import TokenStore
-
         return TokenStore(self.token_path).load()
 
     def _save_token(self, token: SpotifyToken) -> None:
-        from seeker.spotify.token_store import TokenStore
-
         self.token_path.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -90,8 +88,6 @@ class SpotifyAuthManager:
             state=state,
             code_challenge=code_challenge,
         )
-
-        import webbrowser
 
         print("Opening Spotify authorization page...")
         webbrowser.open(authorization_url)

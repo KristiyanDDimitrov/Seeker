@@ -47,6 +47,7 @@ from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.client import SpotifyClient
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.spotify.sync_service import SpotifySyncService
+from seeker.spotify.token_store import TokenStore
 
 
 # Pre-platformdirs location — a real, non-empty database may still exist
@@ -238,8 +239,6 @@ class Application:
         self._sync_service = None
 
         if force_reauthorize:
-            from seeker.spotify.token_store import TokenStore
-
             TokenStore(self._spotify_token_path).clear()
 
         # Triggers the existing OAuth flow via
