@@ -453,7 +453,7 @@ class _ThemeToggleButton(QPushButton):
         label = _THEME_MODE_LABELS.get(self._mode, self._mode)
         self.setToolTip(f"Theme: {label} (click to change)")
 
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
