@@ -209,7 +209,7 @@ artefacts, and quote them in every later report.
 - [ ] **0.2 — The three numbers.** Run and record verbatim:
   - `uv run pytest` → the exact summary line (e.g. `1098 passed, 1 skipped in 214.03s`) **and** the name of every failure or skip.
   - `uv run mypy --strict src/` → the exact summary line.
-  - `uv run ruff check src tests` → the exact count. **Today this is 6 errors, all `F401` unused imports** (`QEvent`, `QSize`, `QFont` and three others, all in `main_window.py`). That number is low only because ruff is running with its default rule set — see Phase 1.
+  - `uv run ruff check src tests` → the exact count. **Measured on the real tree: 223 errors under ruff 0.16.5, 150 of them auto-fixable.** (An earlier draft of this brief said 6, measured on ruff 0.15.11 — that figure is obsolete; see the correction at the head of Phase 1.)
 
   These three numbers are the definition of "no regression" for the rest
   of the round. Per CLAUDE.md's own convention, the pre-existing failure
@@ -226,6 +226,29 @@ artefacts, and quote them in every later report.
   not evidence that the UI still looks right** — round 7's E2 exists
   precisely because a green sweep test skipped the broken case.
 
+  > **AMENDED (2026-09-08), after the first pass captured 26 shots — one
+  > state per screen.** "Both populated and empty" is the load-bearing
+  > half of this item and it needs a mechanism, because a machine with a
+  > real library cannot show you an empty Duplicates page and a machine
+  > with an empty database cannot show you a populated Dashboard. **Two
+  > passes, two databases.** Pass one against the real data (what you
+  > already have). Pass two against a **scratch data directory** — patch
+  > `application._resolve_database_path` and
+  > `config_store.resolve_config_path` to a temp dir in a throwaway
+  > launcher outside the repo, so the app comes up first-run-clean and
+  > every page renders its genuine empty state. **Never move, rename or
+  > delete the real data directory to achieve this** — that is a real
+  > user file and this project's own rule forbids touching one without
+  > explicit confirmation. The scratch database is reusable later: seed
+  > it with invented playlist names and it becomes the source for the
+  > README screenshots in §11.3.1, which must not contain real library
+  > data.
+  >
+  > Also sweep all captured frames for blank or half-painted renders
+  > rather than spot-checking a couple — a uniform-colour PNG in a
+  > baseline set is silently useless six phases later, and file size or
+  > a one-line colour-variance check catches it in seconds.
+
 - [ ] **0.4 — Performance baseline, cheap version.** Time `uv run
   seeker-ui` from launch to first paint, three runs, record the median.
   Phase 6 changes construction order; if launch gets materially slower
@@ -235,10 +258,33 @@ artefacts, and quote them in every later report.
 
 ## 4. Phase 1 — Make the toolchain catch what review should not have to
 
+> **CORRECTION (2026-09-08, after Phase 0 measured it).** An earlier
+> draft of this section said ruff runs a default set of `E4`, `E7`,
+> `E9`, `F` and finds 6 things. **That is obsolete.** Ruff **v0.16.0
+> expanded the default rule set from 59 rules to 413**, pulling in
+> flake8-bugbear (`B`), pyupgrade (`UP`) and Ruff's own `RUF` family
+> among others, while *removing* 18 more-opinionated pycodestyle/
+> pyflakes rules (E401, E402, E701–E703, E711–E714, E721, E731,
+> E741–E743, F403, F405, F406, F722). The 6-error figure came from ruff
+> 0.15.11, which predates that change. Phase 0 re-measured on the real
+> tree with 0.16.5: **223 errors, 150 auto-fixable**, with no config
+> file anywhere (independently corroborated: there is no
+> `~/.config/ruff/` on this machine, so no user-level config explains
+> it — the default really did move).
+>
+> **This changes the framing of Phase 1, not its conclusion.** The job
+> is no longer "switch the linter on". It is "decide which of 413
+> moving defaults this project actually keeps, and stop them from
+> moving again". An explicit `[tool.ruff.lint] select` is now *more*
+> important, not less: it is the only thing that makes this repo's lint
+> verdict reproducible across ruff versions, and Astral's own guidance
+> for projects that want version-stable behaviour is to state `select`
+> explicitly rather than inherit whatever the current default happens
+> to be.
+
 `ruff` is a declared dev dependency (`ruff>=0.16.4`) with **no
 configuration anywhere** — no `[tool.ruff]` in `pyproject.toml`, no
-`ruff.toml`. It therefore runs its default rule set (`E4`, `E7`, `E9`,
-`F`) and finds 6 things in 27,000 lines. `pytest` has no configuration
+`ruff.toml`, no user-level config. `pytest` has no configuration
 either. `pytest-cov` is installed and nothing measures coverage. There
 is no `.github/` directory and no CI of any kind.
 
@@ -248,9 +294,13 @@ and no CI is the gap a reviewer notices first.
 
 ### What a real rule set finds
 
-I ran ruff 0.15.11 against `src/` with a broad selection. **397 findings.**
-Note the version: your `uv run ruff` will be ≥0.16.4 and the exact
-numbers will differ slightly — re-measure, do not quote mine.
+The table below is from ruff **0.15.11** against `src/` only, with a
+broad explicit selection — **397 findings.** It is kept because the
+*shape* of the distribution is what the config decisions below reason
+about. **It is not the current number and must not be quoted as one:**
+Phase 0's real measurement is 223 on `src tests` under 0.16.5's
+defaults. Re-derive every count from your own run before deciding what
+to ignore.
 
 ```
 62 TRY003  raise-vanilla-args          23 PLR2004 magic-value-comparison
@@ -319,6 +369,28 @@ the rest explicitly, with reasons, in one place.
       "addItem", "count", "setVisible",
   ]
   ```
+
+  **In the same commit, pin the tools whose output is a gate.**
+  `ruff>=0.16.4` has no upper bound, and ruff has just demonstrated that
+  it will change its default rule set inside a minor release. Once
+  Phase 1 adds CI, an unbounded ruff means the build's verdict can
+  change with no commit to this repo — a red CI run nobody caused.
+  Change it to `ruff>=0.16.4,<0.17` and apply the same reasoning to
+  `mypy` (`>=2.3.1`, also unbounded, also a CI gate). Leave the runtime
+  dependencies alone; this is specifically about tools that render a
+  pass/fail judgement. Say in the commit message that this is a direct
+  consequence of the 0.16.0 default-set change.
+
+  **Sequencing trap — read before touching any `# noqa`.** Phase 0
+  reports **36 `RUF100` (unused noqa)** hits. That number is a function
+  of which rules are enabled, and Phase 1 is about to change which rules
+  are enabled. A `# noqa: N802` reads as "unused" only while `N802` is
+  off; the moment the config turns it on, that same directive becomes
+  load-bearing. **Do not clean up a single `RUF100` until the config in
+  4.1 has landed**, then re-run and treat whatever survives as the real
+  list. Deleting them first would strip suppressions the new config
+  needs and produce a wave of failures that look like the config's
+  fault.
 
   Confirm the `extend-ignore-names` list against the real Qt overrides in
   `ui/flow_layout.py`, `ui/notice.py` and `ui/main_window.py` — I derived
@@ -1376,10 +1448,20 @@ about audience.
 - [ ] **11.3.1 — There is not a single screenshot.** `grep -nE "!\[|<img"
   README.md` returns nothing, for a **GUI application** that is
   explicitly a portfolio piece. This is the highest-value single change
-  in the entire brief for the CV audience and it takes twenty minutes:
-  add 3–5 images near the top — Dashboard populated, Review, Duplicates,
-  and a dark/light pair. You already have them from Phase 0.3. Put them
-  in `docs/screenshots/`.
+  in the entire brief for the CV audience: add 3–5 images near the top —
+  Dashboard populated, Review, Duplicates, and a dark/light pair. Put
+  them in `docs/screenshots/`.
+
+  > **CORRECTED (2026-09-08).** An earlier draft said "you already have
+  > them from Phase 0.3." **Do not use the Phase 0.3 baselines here.**
+  > They were captured against the real production database and contain
+  > Kris's actual playlist names, library paths and potentially SoulSeek
+  > usernames. They are a regression baseline living outside the repo,
+  > and they must stay outside it. README screenshots get their own
+  > pass, taken against the scratch demo database described in §3's 0.3
+  > note, with invented playlist names — which also makes them
+  > reproducible by anyone rather than a snapshot of one person's
+  > library.
 
 - [ ] **11.3.2 — Lead with the reader's first 30 seconds.** The
   structure is currently setup-first. Reorder to: name and one-line
@@ -2005,6 +2087,11 @@ slskd's own configuration documentation (web UI auth defaults, API keys,
 RFC 9700, *Best Current Practice for OAuth 2.0 Security*, at
 <https://www.rfc-editor.org/info/rfc9700/>; RFC 8252 §7.3 on loopback
 redirect URIs for native apps.
+
+For Phase 1's correction: Astral's Ruff v0.16.0 release announcement
+(default set 59 → 413 rules; the 18 removed; the recommendation to state
+`select` explicitly for version-stable behaviour) at
+<https://astral.sh/blog/ruff-v0.16.0>, and Ruff's `BREAKING_CHANGES.md`.
 
 For §14: Qt's own Cocoa platform plugin source,
 `src/plugins/platforms/cocoa/qcocoaapplicationdelegate.mm`
