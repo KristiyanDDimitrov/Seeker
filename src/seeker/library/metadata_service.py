@@ -45,6 +45,29 @@ class PlaylistNotFoundError(RuntimeError):
     pass
 
 
+# Roadmap item 116 (round 8, §6.4) — album_art_url comes from Spotify's
+# own CDN at sync time, so it's trusted in practice, but it's read back
+# out of a local SQLite file and _download_album_art streams rather
+# than buffering an unbounded response body. A few MB is generous for
+# real cover art; untuned, no real track's art has ever come close.
+MAX_ALBUM_ART_BYTES = 10 * 1024 * 1024
+
+# Real magic-byte prefixes, checked instead of trusting the response's
+# Content-Type header (§6.4.2).
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _sniff_image_mime_type(image_bytes: bytes) -> str:
+    if image_bytes.startswith(_JPEG_MAGIC):
+        return "image/jpeg"
+    if image_bytes.startswith(_PNG_MAGIC):
+        return "image/png"
+    raise ValueError(
+        "album art response is not a recognized JPEG/PNG image"
+    )
+
+
 @dataclass
 class RenamePlan:
     """Roadmap item 67 (Phase 6.3) — one track's rename decision, pure
@@ -1309,11 +1332,32 @@ class MetadataService:
         if cached is not None:
             return cached
 
-        response = httpx.get(url, timeout=15.0)
-        response.raise_for_status()
+        # Roadmap item 116 (round 8, §6.4.1) — streamed rather than
+        # httpx.get()'s implicit full-body buffering, so a response
+        # larger than MAX_ALBUM_ART_BYTES is caught without ever
+        # holding the whole thing in memory. httpx doesn't follow
+        # redirects by default — deliberately left that way, do not
+        # add follow_redirects=True here.
+        with httpx.stream("GET", url, timeout=15.0) as response:
+            response.raise_for_status()
 
-        mime_type = response.headers.get("content-type", "image/jpeg")
+            chunks = []
+            total_bytes = 0
 
-        self.album_art_cache.put(url, response.content, mime_type)
+            for chunk in response.iter_bytes():
+                total_bytes += len(chunk)
+                if total_bytes > MAX_ALBUM_ART_BYTES:
+                    raise ValueError(
+                        "album art response exceeded "
+                        f"{MAX_ALBUM_ART_BYTES} bytes"
+                    )
+                chunks.append(chunk)
 
-        return response.content, mime_type
+        image_bytes = b"".join(chunks)
+        # §6.4.2 — the real image bytes decide the MIME type, not the
+        # Content-Type header a response could set to anything.
+        mime_type = _sniff_image_mime_type(image_bytes)
+
+        self.album_art_cache.put(url, image_bytes, mime_type)
+
+        return image_bytes, mime_type

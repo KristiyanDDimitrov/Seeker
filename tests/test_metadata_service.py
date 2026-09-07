@@ -1,3 +1,4 @@
+import contextlib
 import shutil
 import wave
 from pathlib import Path
@@ -23,6 +24,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.metadata_service import (
+    MAX_ALBUM_ART_BYTES,
     MetadataService,
     PlaylistNotFoundError,
 )
@@ -41,6 +43,20 @@ requires_x9_pro = pytest.mark.skipif(
 )
 
 FAKE_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"0" * 256
+
+
+def _as_stream(get_like):
+    # Roadmap item 116 (round 8, §6.4.1) — _download_album_art now calls
+    # httpx.stream("GET", url, timeout=...) as a context manager instead
+    # of httpx.get(url, timeout=...). Adapts this file's existing
+    # `(url, timeout=None) -> httpx.Response`-shaped fakes (kept as-is,
+    # including the ones that raise to assert "must not be called") into
+    # the `(method, url, timeout=None) -> context manager` shape the
+    # real call now needs, rather than rewriting every fake individually.
+    def fake_stream(method, url, timeout=None):
+        return contextlib.nullcontext(get_like(url, timeout))
+
+    return fake_stream
 
 
 def make_synthetic_wav(path: Path) -> None:
@@ -286,7 +302,7 @@ def test_tag_tracks_album_art_failure_does_not_block_text_tags(
     def failing_get(url, timeout=None):
         raise httpx.ConnectError("simulated network failure")
 
-    monkeypatch.setattr(httpx, "get", failing_get)
+    monkeypatch.setattr(httpx, "stream", _as_stream(failing_get))
 
     counts = service.tag_tracks(["t1"])
 
@@ -464,7 +480,7 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
         album_art_url="https://i.scdn.co/image/fake",
     )
 
-    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
 
     counts = service.tag_tracks(["t1"])
 
@@ -479,6 +495,73 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
     assert str(reopened.tags["TPE1"]) == "Test Artist"
     assert str(reopened.tags["TALB"]) == "Test Album"
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_download_album_art_rejects_a_response_over_the_size_cap(
+        tmp_path, monkeypatch,
+):
+    def oversized(url, timeout=None):
+        return httpx.Response(
+            200,
+            content=b"\xff\xd8\xff" + b"0" * (MAX_ALBUM_ART_BYTES + 1),
+            headers={"content-type": "image/jpeg"},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "stream", _as_stream(oversized))
+
+    service = make_service(tmp_path)
+
+    with pytest.raises(ValueError, match="exceeded"):
+        service._download_album_art("https://i.scdn.co/image/fake")
+
+
+def test_download_album_art_rejects_content_with_no_recognized_magic_bytes(
+        tmp_path, monkeypatch,
+):
+    # §6.4.2 — a spoofed/wrong Content-Type header must not be trusted;
+    # this response claims to be a JPEG but the actual bytes are not.
+    def fake_html(url, timeout=None):
+        return httpx.Response(
+            200,
+            content=b"<html>not an image</html>",
+            headers={"content-type": "image/jpeg"},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "stream", _as_stream(fake_html))
+
+    service = make_service(tmp_path)
+
+    with pytest.raises(ValueError, match="not a recognized"):
+        service._download_album_art("https://i.scdn.co/image/fake")
+
+
+def test_download_album_art_derives_mime_type_from_real_png_magic_bytes(
+        tmp_path, monkeypatch,
+):
+    # The response header lies (says jpeg); the real bytes are PNG and
+    # must win.
+    fake_png_bytes = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    def fake_png(url, timeout=None):
+        return httpx.Response(
+            200,
+            content=fake_png_bytes,
+            headers={"content-type": "image/jpeg"},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "stream", _as_stream(fake_png))
+
+    service = make_service(tmp_path)
+
+    image_bytes, mime_type = service._download_album_art(
+        "https://i.scdn.co/image/fake"
+    )
+
+    assert mime_type == "image/png"
+    assert image_bytes == fake_png_bytes
 
 
 def test_tag_tracks_analyze_audio_false_is_completely_inert(
@@ -605,7 +688,7 @@ def test_tag_tracks_already_tagged_skips_art_download_but_still_analyzes(
             "album art must not be downloaded when already tagged"
         )
 
-    monkeypatch.setattr(httpx, "get", fail_if_called)
+    monkeypatch.setattr(httpx, "stream", _as_stream(fail_if_called))
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
@@ -657,7 +740,7 @@ def test_tag_tracks_already_analyzed_skips_analysis_but_still_retags(
             local_file.id, 161.499, "3A", 0.477, connection
         )
 
-    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
 
     def fail_if_called(file_path, expected_bpm_range=None):
         raise AssertionError(
@@ -725,7 +808,7 @@ def test_tag_tracks_force_bypasses_both_skip_checks_independently(
         art_calls["n"] += 1
         return _fake_jpeg_response(url, timeout)
 
-    monkeypatch.setattr(httpx, "get", counting_get)
+    monkeypatch.setattr(httpx, "stream", _as_stream(counting_get))
 
     counts = service.tag_tracks(["t1"], analyze_audio=True, force=True)
 
@@ -792,7 +875,7 @@ def test_tag_tracks_real_already_tagged_track_is_skipped_not_reprocessed(
     def fail_if_analysis_called(file_path, expected_bpm_range=None):
         raise AssertionError("must not re-analyze a skipped track")
 
-    monkeypatch.setattr(httpx, "get", fail_if_art_called)
+    monkeypatch.setattr(httpx, "stream", _as_stream(fail_if_art_called))
     monkeypatch.setattr(
         "seeker.library.metadata_service.run_audio_analysis",
         fail_if_analysis_called,
@@ -834,7 +917,7 @@ def test_tag_tracks_real_wav_round_trips(tmp_path, monkeypatch):
         album_art_url="https://i.scdn.co/image/fake",
     )
 
-    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
 
     counts = service.tag_tracks(["t1"])
 
@@ -929,7 +1012,7 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
     )
     _seed_playlist_with_track(service, "t1")
 
-    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
@@ -994,7 +1077,7 @@ def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
             "should not re-download art that's already byte-correct"
         )
 
-    monkeypatch.setattr(httpx, "get", _fake_jpeg_response)
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
     # First call is allowed (to compare against); patch a counting
     # wrapper so a SECOND real fix run makes no further real call.
     calls = {"n": 0}
@@ -1003,7 +1086,7 @@ def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
         calls["n"] += 1
         return _fake_jpeg_response(url, timeout)
 
-    monkeypatch.setattr(httpx, "get", counting_get)
+    monkeypatch.setattr(httpx, "stream", _as_stream(counting_get))
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
