@@ -28,6 +28,11 @@ seeker-ui = "seeker.main_ui:main"
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --strict-config"
+filterwarnings = ["error::DeprecationWarning:seeker.*"]
+
 [dependency-groups]
 dev = [
     "dmgbuild>=1.6.7",
