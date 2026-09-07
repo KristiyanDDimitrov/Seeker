@@ -2,9 +2,8 @@ import struct
 from typing import Any
 
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import ID3, APIC, TALB, TBPM, TIT2, TKEY, TPE1
+from mutagen.id3 import APIC, ID3, TALB, TBPM, TIT2, TKEY, TPE1
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
-
 
 # Tag-writing helpers for Phase B (writing canonical Spotify metadata onto
 # matched local files). Dispatches on the mutagen object's actual tag type

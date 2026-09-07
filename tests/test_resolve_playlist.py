@@ -8,6 +8,8 @@ from seeker.database.repositories.playlist_repository import (
 from seeker.models.playlist import Playlist
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
+)
+from seeker.spotify.sync_service import (
     SpotifySyncService,
 )
 

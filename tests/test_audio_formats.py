@@ -11,6 +11,6 @@ def test_audio_extensions_includes_aiff_variants():
 
 
 def test_audio_extensions_unchanged_for_pre_existing_formats():
-    assert AUDIO_EXTENSIONS >= {
+    assert {
         ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg",
-    }
+    } <= AUDIO_EXTENSIONS

@@ -1,6 +1,6 @@
 import threading
 from dataclasses import replace
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -19,9 +19,10 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.config_store import SeekerConfig
+from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.active_download import ActiveDownload
-from seeker.models.download_request import DownloadRequest
 from seeker.models.data_locations import DataLocations
+from seeker.models.download_request import DownloadRequest
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -38,8 +39,9 @@ from seeker.models.track_status import (
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text, theme
-from seeker.library.metadata_service import RenamePlan, RenameResult
+from seeker.ui import workers as workers_module
 from seeker.ui.main_window import (
+    _THEME_MODE_CYCLE,
     AboutDialog,
     BulkReplaceUpgradesDialog,
     BulkResolveDuplicatesDialog,
@@ -47,13 +49,10 @@ from seeker.ui.main_window import (
     MainWindow,
     RenamePreviewDialog,
     _resolve_tray_icon_path,
-    _THEME_MODE_CYCLE,
     _ThemeToggleButton,
 )
-from seeker.update_check import UpdateCheckResult, UpdateStatus
-from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
-
+from seeker.update_check import UpdateCheckResult, UpdateStatus
 
 # Per this project's own testing philosophy, applied to the UI layer:
 # widget construction/wiring is thin glue around already-tested
@@ -5127,6 +5126,7 @@ def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
     # three call sites by eye, so a future one added anywhere in ui/ is
     # covered automatically.
     import ast
+
     import seeker.ui as ui_package
 
     def rendered_text(node: ast.expr) -> str | None:
@@ -5176,6 +5176,7 @@ def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
     # so a future string added anywhere in this file is covered
     # automatically.
     import re
+
     import seeker.ui.main_window as main_window_module
 
     source = Path(main_window_module.__file__).read_text()

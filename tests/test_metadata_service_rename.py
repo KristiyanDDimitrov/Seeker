@@ -7,7 +7,6 @@ from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
-
 from test_metadata_service import make_service, seed_location, seed_matched_track
 
 
@@ -571,7 +570,7 @@ def test_apply_renames_refuses_when_a_new_collision_appears_after_confirm(
 
     assert result.renamed == 0
     assert result.failed == 1
-    assert "plan_changed_since_confirmed" == result.details[0]["reason"]
+    assert result.details[0]["reason"] == "plan_changed_since_confirmed"
     # Neither file was touched.
     assert (root / "wrong_name.mp3").read_bytes() == b"content"
     assert (root / "Real Artist - Real Title.mp3").read_bytes() == (
@@ -654,7 +653,7 @@ def test_apply_renames_refuses_when_match_changed_after_confirm(tmp_path):
 
     assert result.renamed == 0
     assert result.failed == 1
-    assert "plan_changed_since_confirmed" == result.details[0]["reason"]
+    assert result.details[0]["reason"] == "plan_changed_since_confirmed"
     assert (root / "wrong_name.mp3").exists()
 
 

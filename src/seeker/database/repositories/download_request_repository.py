@@ -1,9 +1,8 @@
 import sqlite3
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from seeker.database.connection import Database
 from seeker.models.download_request import DownloadRequest
-
 
 # Roadmap item 66 (Phase 4.3) — 'unavailable' added: a locked row that
 # exhausted its retry budget is genuinely terminal (no further

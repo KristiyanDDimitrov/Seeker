@@ -2,7 +2,7 @@ import subprocess
 import sys
 import webbrowser
 from collections.abc import Callable
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (

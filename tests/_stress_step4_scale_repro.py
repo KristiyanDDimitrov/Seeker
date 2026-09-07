@@ -27,7 +27,7 @@ import os
 import random
 import sys
 import time
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -36,11 +36,11 @@ DURATION_SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 300.0
 TRACKS_JSON = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 FILLER_ROW_COUNT = int(sys.argv[3]) if len(sys.argv) > 3 else 50
 
-import tempfile  # noqa: E402
+import tempfile
 
 _THROWAWAY_DIR = Path(tempfile.mkdtemp(prefix="seeker_step4_repro_"))
 
-import platformdirs  # noqa: E402
+import platformdirs
 
 
 def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
@@ -49,18 +49,18 @@ def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
 
 platformdirs.user_data_dir = _fake_user_data_dir  # type: ignore[assignment]
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
 
-from seeker.application import Application  # noqa: E402
-from seeker.models.download_request import DownloadRequest  # noqa: E402
-from seeker.models.library_location import LibraryLocation  # noqa: E402
-from seeker.models.playlist import Playlist  # noqa: E402
-from seeker.models.track import Track  # noqa: E402
-from seeker.ui.main_window import MainWindow  # noqa: E402
-from seeker.ui.workers import run_worker  # noqa: E402
+from seeker.application import Application
+from seeker.models.download_request import DownloadRequest
+from seeker.models.library_location import LibraryLocation
+from seeker.models.playlist import Playlist
+from seeker.models.track import Track
+from seeker.ui.main_window import MainWindow
+from seeker.ui.workers import run_worker
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_stress_e2e import (  # noqa: E402
+from test_stress_e2e import (
     STRESS_DUPLICATES_LOCATION_NAME,
     _cleanup_stress_duplicate_location,
     _create_stress_duplicate_location,

@@ -6,7 +6,6 @@ import librosa
 import numpy as np
 import scipy.stats
 
-
 # Krumhansl-Schmuckler key profiles — standard, well-established empirical
 # pitch-class weightings for major/minor tonality perception. Index 0 is
 # C, matching librosa's chroma bin convention (chroma bin 0 is always C —

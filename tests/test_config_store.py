@@ -12,7 +12,6 @@ from seeker.config_store import (
     save_config,
 )
 
-
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="POSIX chmod semantics don't apply on Windows",

@@ -10,10 +10,10 @@ import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QThreadPool  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QThreadPool
+from PySide6.QtWidgets import QApplication
 
-from seeker.ui.workers import run_worker  # noqa: E402
+from seeker.ui.workers import run_worker
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 500
 # Every 97th task deliberately raises, to confirm on_error() is routed

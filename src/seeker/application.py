@@ -12,6 +12,7 @@ from seeker.config_store import (
     resolve_config_path,
     save_config,
 )
+from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -32,7 +33,6 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
-from seeker.dashboard_service import DashboardService
 from seeker.docker_setup import ensure_full_path_environment, slskd_data_dir
 from seeker.history_service import HistoryService
 from seeker.library.duplicate_service import DuplicateService
@@ -44,11 +44,10 @@ from seeker.sharing_service import SharingService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
 from seeker.spotify.auth_manager import SpotifyAuthManager
-from seeker.spotify.client import SpotifyClient
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
+from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
 from seeker.spotify.token_store import TokenStore
-
 
 # Pre-platformdirs location — a real, non-empty database may still exist
 # here from before this migrated to an OS-conventional app-data

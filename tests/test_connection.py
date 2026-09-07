@@ -432,14 +432,14 @@ def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
                     download_requests.update_progress(
                         request_id, i, 1_000, connection,
                     )
-        except BaseException as error:  # noqa: BLE001 - captured for the assertion below
+        except BaseException as error:
             errors.append(error)
 
     def reader() -> None:
         try:
             for _ in range(iterations):
                 dashboard_service.get_active_downloads()
-        except BaseException as error:  # noqa: BLE001 - captured for the assertion below
+        except BaseException as error:
             errors.append(error)
 
     threads = [

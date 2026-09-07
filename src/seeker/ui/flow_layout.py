@@ -18,7 +18,11 @@ breakpoint constants to tune, purely derived from Qt's own layout pass.
 
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt
 from PySide6.QtWidgets import (
-    QLayout, QLayoutItem, QSizePolicy, QStyle, QWidget,
+    QLayout,
+    QLayoutItem,
+    QSizePolicy,
+    QStyle,
+    QWidget,
 )
 
 

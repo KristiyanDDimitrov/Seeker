@@ -17,7 +17,6 @@ from seeker.matching import (
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 
-
 # Roadmap item R1 — "aiff"/"aif" only, deliberately not "aifc"; see
 # audio_formats.py's own comment on why AIFF-C isn't automatically
 # lossless the way AIFF is.

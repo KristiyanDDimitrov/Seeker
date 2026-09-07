@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import (

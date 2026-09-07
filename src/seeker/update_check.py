@@ -81,7 +81,7 @@ def check_for_update() -> UpdateCheckResult:
     # .py's check_slskd_health/detect_docker_state).
     try:
         return _check_for_update()
-    except Exception as error:  # noqa: BLE001 - see docstring above
+    except Exception as error:
         return UpdateCheckResult(
             UpdateStatus.UNAVAILABLE,
             reason=f"Unexpected error while checking for updates: {error}",

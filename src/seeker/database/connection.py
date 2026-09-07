@@ -2,6 +2,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
 from seeker.database.schema import SCHEMA
 
 

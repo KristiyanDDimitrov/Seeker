@@ -132,6 +132,20 @@ ignore = [
 # DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
 # copy (a label and two tooltip strings), never a real credential.
 "src/seeker/ui/help_text.py" = ["S105"]
+# The six standalone `tests/_*_repro.py` scripts (leading underscore —
+# not collected as test modules, run only as a subprocess; see each
+# one's own docstring) share a documented pattern: monkeypatch
+# platformdirs/os.environ (QT_QPA_PLATFORM, a throwaway data dir, a
+# fake cached token) BEFORE importing Qt/seeker, specifically so the
+# real import machinery picks up the patched state. Three of the six
+# (the _stress_* ones) genuinely trigger E402 on every import after
+# that monkeypatch (28 real findings, confirmed individually with a
+# freshly-cleared ruff cache — see this entry's own HISTORY note on why
+# that check needed a fresh cache); the other three don't (their
+# monkeypatch shape doesn't trip E402 at all). One glob covering the
+# whole documented category reads better than a mix of real and
+# no-longer-needed inline noqas across six near-identical scripts.
+"tests/_*.py" = ["E402"]
 
 [tool.ruff.lint.pep8-naming]
 # Belt and braces for the same Qt point, for any file outside ui/ (none

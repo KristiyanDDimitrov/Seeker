@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,8 +11,10 @@ from seeker.audio_fingerprint import (
     FingerprintingUnavailableError,
     compute_fingerprint,
     decode_fingerprint,
-    is_available as fingerprinting_is_available,
     similarity_from_decoded,
+)
+from seeker.audio_fingerprint import (
+    is_available as fingerprinting_is_available,
 )
 from seeker.database.connection import Database
 from seeker.database.repositories.duplicate_cleanup_repository import (

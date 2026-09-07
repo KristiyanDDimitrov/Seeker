@@ -34,11 +34,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 HANG_TIMEOUT_SECONDS = 150.0
 
-import tempfile  # noqa: E402
+import tempfile
 
 _THROWAWAY_DIR = Path(tempfile.mkdtemp(prefix="seeker_hang_repro_"))
 
-import platformdirs  # noqa: E402
+import platformdirs
 
 
 def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
@@ -47,13 +47,14 @@ def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
 
 platformdirs.user_data_dir = _fake_user_data_dir  # type: ignore[assignment]
 
-import numpy as np  # noqa: E402
-import soundfile as sf  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from seeker.application import Application  # noqa: E402
-from seeker.models.library_location import LibraryLocation  # noqa: E402
 from datetime import UTC
+
+import numpy as np
+import soundfile as sf
+from PySide6.QtWidgets import QApplication
+
+from seeker.application import Application
+from seeker.models.library_location import LibraryLocation
 
 LOCATION_NAME = "HangReproLocation"
 SCALE_LOCATION_NAME = "HangReproScaleLocation"

@@ -1,7 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
-
 # Single source of truth for the local callback port — the onboarding
 # wizard displays DEFAULT_REDIRECT_URI (built from this) as the fixed,
 # copy-pasteable value the user registers on Spotify's dashboard, so it

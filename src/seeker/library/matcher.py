@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,6 @@ from seeker.matching import (
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track, is_manual_track_id
 from seeker.models.track_match import TrackMatch
-
 
 # Duration pre-filter window. Starting at ±5 seconds — tune this once real
 # match data shows how tight/loose it needs to be.

@@ -41,8 +41,15 @@ from dataclasses import dataclass, fields
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QHeaderView, QProgressBar,
-    QPushButton, QTableWidget, QVBoxLayout, QWidget,
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 # --- Palettes ----------------------------------------------------------

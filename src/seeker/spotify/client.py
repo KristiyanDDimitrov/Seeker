@@ -1,12 +1,12 @@
-import httpx
 import time
-
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Any, Callable, Union, cast
+from typing import Any, Union, cast
+
+import httpx
 
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
-
 
 BASE_URL = "https://api.spotify.com/v1"
 

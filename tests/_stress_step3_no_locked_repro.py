@@ -29,11 +29,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 DURATION_SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 300.0
 TRACKS_JSON = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 
-import tempfile  # noqa: E402
+import tempfile
 
 _THROWAWAY_DIR = Path(tempfile.mkdtemp(prefix="seeker_step3_repro_"))
 
-import platformdirs  # noqa: E402
+import platformdirs
 
 
 def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
@@ -42,14 +42,15 @@ def _fake_user_data_dir(appname: str, **kwargs: object) -> str:
 
 platformdirs.user_data_dir = _fake_user_data_dir  # type: ignore[assignment]
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from seeker.application import Application  # noqa: E402
-from seeker.models.library_location import LibraryLocation  # noqa: E402
-from seeker.models.playlist import Playlist  # noqa: E402
-from seeker.models.track import Track  # noqa: E402
-from seeker.ui.main_window import MainWindow  # noqa: E402
 from datetime import UTC
+
+from PySide6.QtWidgets import QApplication
+
+from seeker.application import Application
+from seeker.models.library_location import LibraryLocation
+from seeker.models.playlist import Playlist
+from seeker.models.track import Track
+from seeker.ui.main_window import MainWindow
 
 PLAYLIST_ID = "step3-under-pressure-repro"
 PLAYLIST_NAME = "Under Pressure (Deluxe)"

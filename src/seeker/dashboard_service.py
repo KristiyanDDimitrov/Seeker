@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (

@@ -1009,8 +1009,8 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
 def test_health_poll_timeout_shows_message_after_elapsed_threshold(
         qtbot, tmp_path, monkeypatch,
 ):
-    from seeker.ui.wizard import HEALTH_POLL_TIMEOUT_SECONDS
     from seeker.docker_setup import SlskdHealthStatus
+    from seeker.ui.wizard import HEALTH_POLL_TIMEOUT_SECONDS
 
     monkeypatch.setattr(
         "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",

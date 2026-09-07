@@ -366,7 +366,7 @@ def test_compute_fingerprint_via_ffmpeg_does_not_deadlock_on_heavy_stderr(
             result["fingerprint"] = (
                 audio_fingerprint._compute_fingerprint_via_ffmpeg(path)
             )
-        except Exception as error:  # noqa: BLE001 -- either outcome is fine
+        except Exception as error:
             result["error"] = error
 
     thread = threading.Thread(target=run, daemon=True)

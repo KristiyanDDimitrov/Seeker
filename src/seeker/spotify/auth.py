@@ -1,13 +1,12 @@
 import base64
 import hashlib
 import secrets
+import time
 from urllib.parse import urlencode
 
 import httpx
-import time
 
 from seeker.spotify.token import SpotifyToken
-
 
 AUTHORIZATION_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"

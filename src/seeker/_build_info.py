@@ -21,7 +21,7 @@ all — it just tries to import the generated module and falls back to
 clone that has never been built).
 """
 
-__all__ = ["GIT_SHA", "GIT_DESCRIBE", "BUILT_AT"]
+__all__ = ["BUILT_AT", "GIT_DESCRIBE", "GIT_SHA"]
 
 try:
     # Roadmap item RR1.3 — no blanket `# type: ignore` here: the

@@ -1,8 +1,8 @@
 import sqlite3
+from datetime import UTC, datetime
 
-from seeker.models.playlist import Playlist
 from seeker.database.connection import Database
-from datetime import datetime, UTC
+from seeker.models.playlist import Playlist
 
 
 class PlaylistRepository:

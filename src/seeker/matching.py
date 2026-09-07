@@ -4,7 +4,6 @@ from pathlib import Path
 
 from rapidfuzz import fuzz
 
-
 # Shared by library/matcher.py (Spotify track vs. scanned local file) and
 # soulseek/quality.py (Spotify track vs. Soulseek search result) — both
 # sides fuzzy-match a Spotify artist/title against some local text source

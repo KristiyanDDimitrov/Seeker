@@ -97,7 +97,7 @@ def build_track_filename(
 def _truncate_to_byte_budget(base: str, ext: str) -> str:
     # The extension is never touched — only base (artist + title) gives
     # up bytes to fit MAX_FILENAME_BYTES.
-    suffix_bytes = len(f".{ext}".encode("utf-8"))
+    suffix_bytes = len(f".{ext}".encode())
     budget = MAX_FILENAME_BYTES - suffix_bytes
 
     encoded = base.encode("utf-8")

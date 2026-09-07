@@ -50,10 +50,10 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import shiboken6  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+import shiboken6
+from PySide6.QtWidgets import QApplication
 
-from seeker.ui import workers  # noqa: E402
+from seeker.ui import workers
 
 TRIALS = int(sys.argv[1]) if len(sys.argv) > 1 else 50
 

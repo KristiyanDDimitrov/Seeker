@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 
-
 # Mutually exclusive primary states, in the exact precedence order
 # DashboardService.get_playlist_track_status() checks them (first match
 # wins) — see dashboard_service.py's docstring for the full contract.

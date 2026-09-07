@@ -5,14 +5,19 @@ import time
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import IntEnum
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
-    QPointF, QRect, QRectF, Qt, QThreadPool, QTimer,
+    QPointF,
+    QRect,
+    QRectF,
+    Qt,
+    QThreadPool,
+    QTimer,
 )
 from PySide6.QtGui import (
     QAction,
@@ -97,7 +102,6 @@ from seeker.soulseek.download_service import (
 from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
-from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
     DownloadEtaTracker,
@@ -113,6 +117,7 @@ from seeker.ui.settings_window import (
 )
 from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
+from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
 PendingUpgrades = list[UpgradeReviewDetails]

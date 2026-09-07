@@ -25,8 +25,11 @@ from seeker.soulseek.quality import rank_candidates
 from seeker.spotify.client import SpotifyRateLimitedError
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
+)
+from seeker.spotify.sync_service import (
     find_close_playlist_matches,
 )
+
 # Pure-function formatter, no Qt/PySide6 dependency (see its own
 # docstring) — CLI and UI share the exact same local-time conversion
 # rather than the CLI growing a second copy.
