@@ -13426,3 +13426,79 @@ the *same* commit (`a2b0ea7`), so the 837 baseline already reflects it;
 counting it again as a later subtraction double-counted one finding.
 Two errors (the off-by-one plus the phantom double-count) summed to
 exactly the reported 2-finding gap.
+
+#### The 4.8.6 noqa-stripping incident — corrected root cause
+
+Commit `dd6916b`'s own message attributed the incident to `.ruff_cache`
+staleness: "something in that accumulated cache state made ruff's own
+'is this noqa still needed' analysis wrong during the fix pass
+specifically." **That diagnosis was wrong**, caught on follow-up and
+confirmed by direct reproduction rather than argued from theory:
+
+```
+$ printf 'import subprocess\n\nsubprocess.run(["docker", "info"])  # noqa: S607\n' \
+    > src/seeker/_probe_ruf100.py
+$ rm -rf .ruff_cache
+$ uv run ruff check src/seeker/_probe_ruf100.py --select RUF100 --fix
+Found 1 error (1 fixed, 0 remaining).
+$ cat src/seeker/_probe_ruf100.py
+import subprocess
+
+subprocess.run(["docker", "info"])
+```
+
+A completely fresh cache, on a two-line file, still strips the `S607`
+directive. The real mechanism is `RUF100`'s own semantics: it flags a
+`# noqa: X` as unused when `X` is not among the rules *enabled in that
+invocation* — its own message says so verbatim
+(`non-enabled: 'BLE001'` was printed for the genuinely-unused BLE001
+cases throughout this same incident, and nobody read what that word
+was actually claiming). `--select RUF100` narrows the enabled set to
+RUF100 alone for that run, so **every** other rule's directive reads as
+"not enabled" and `--fix` deletes all of them — regardless of cache
+state. Clearing `.ruff_cache` before the recovery pass didn't fix
+anything; switching away from a narrowed `--select` for the
+verification checks (which is what the recovery actually did from that
+point on) is what made the subsequent checks trustworthy. New CLAUDE.md
+convention added as a direct result: never run `ruff --fix` with a
+narrowed `--select`, and never narrow `--select` to `RUF100` at all.
+
+**Honest file-count reconciliation**, since the original commit
+message's own "7 more files" claim doesn't survive a real recount
+either. Diffing `d18a8dd` (pre-incident) against `dd6916b` (as
+committed, i.e. post-recovery) for added/removed `# noqa` lines:
+
+```
+src/seeker/update_check.py:               -1
+tests/_stress_hang_repro.py:               -7
+tests/_stress_step3_no_locked_repro.py:    -8
+tests/_stress_step4_scale_repro.py:       -11
+tests/_workers_correctness_repro.py:       -3
+tests/_workers_deadlock_repro.py:          -3
+tests/_workers_teardown_race_repro.py:     -3
+tests/test_audio_fingerprint.py:           -1
+tests/test_connection.py:                  -2
+```
+
+Nine files show a net change in the committed diff.
+`src/seeker/soulseek/quality.py` and
+`src/seeker/database/repositories/local_file_repository.py` show **zero**
+— both were restored inline before committing, confirmed by `git diff
+d18a8dd dd6916b -- <path>` showing no noqa-related hunk for either
+(quality.py shows one unrelated blank-line change from the same
+commit's separate import-sort autofix).
+
+Of the eleven files the incident actually touched (9 with a visible net
+diff + the 2 restored to zero), only **five** were genuine bugs needing
+a fix: `local_file_repository.py` and `quality.py` (restored inline),
+plus the three `_stress_*_repro.py` scripts (real E402 findings,
+covered by the new `tests/_*.py` per-file-ignore glob rather than
+restored as inline noqas). The other **six** —
+`update_check.py`, `test_audio_fingerprint.py`, `test_connection.py`
+(all three genuinely non-enabled `BLE001`), and the three
+`_workers_*_repro.py` scripts (E402 genuinely doesn't fire for their
+particular monkeypatch shape) — were correctly stripped; they were
+never part of the damage, just swept into the same broad "43 fixed"
+operation alongside it. "7 more files" was neither number: not the 5
+genuinely broken, not the 9 with a visible net diff. Corrected here
+rather than left standing.

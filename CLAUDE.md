@@ -208,6 +208,17 @@ src/seeker/
   `assert` that would validate something a user or an external system
   actually controls is not covered by this convention and needs a real
   `if`/`raise` instead.
+- **Never run `ruff check --fix` with a narrowed `--select`, and never
+  narrow `--select` to `RUF100` at all.** Roadmap item 115 (round 8,
+  §4.8.6) — `RUF100` (unused `noqa`) flags a directive as unused when
+  its rule isn't among the ones *enabled in that invocation*, not
+  whether it's enabled in the project's real config. Narrowing
+  `--select` to `RUF100` alone makes every other rule's directive read
+  as "not enabled," and `--fix` deletes all of them — confirmed by
+  direct reproduction with a fresh `.ruff_cache`, not assumed. This
+  round's own first diagnosis of the incident that established this
+  rule blamed a stale cache instead; that was wrong, corrected in
+  [HISTORY §115](docs/HISTORY.md#115).
 - **Checking whether a test failure is "pre-existing": always `git
   stash -u`, never a bare `git stash`.** Roadmap item RR1 — a bare
   `git stash` does not stash untracked files, so it cannot see a
