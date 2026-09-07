@@ -196,6 +196,18 @@ src/seeker/
   gain, right before Phase 6 starts moving those same files around. 88
   is a ceiling the codebase can actually sit at (near-zero real
   violations); 72-79 is still what a human should aim for by hand.
+- **`assert` in `src/` narrows types/logic invariants; it never
+  validates user input or an external response.** Roadmap item 115
+  (round 8, §4.8.5) — ruff's `S101` is ignored project-wide on exactly
+  this basis, checked against every one of the real 60 findings at the
+  time (not sampled): 59 narrow an Optional/union already guaranteed
+  non-None by preceding control flow (a dataclass `id: int | None`
+  known-persisted by the calling code's own logic, a stdlib/library API
+  contract mypy can't see statically, or a state check performed a few
+  lines above), so `python -O` stripping them is always safe. A new
+  `assert` that would validate something a user or an external system
+  actually controls is not covered by this convention and needs a real
+  `if`/`raise` instead.
 - **Checking whether a test failure is "pre-existing": always `git
   stash -u`, never a bare `git stash`.** Roadmap item RR1 — a bare
   `git stash` does not stash untracked files, so it cannot see a

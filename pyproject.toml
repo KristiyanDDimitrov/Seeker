@@ -77,13 +77,35 @@ ignore = [
     #          codebase's error strings are user-facing and read well
     #          inline; churning them buys nothing.
     "COM812",  # conflicts with the existing trailing-comma style
+    # S101 (assert) — every one of the real 60 src/ findings was read
+    # individually (round 8, §4.8.5), not sampled: 59/60 narrow an
+    # Optional/union already guaranteed non-None by preceding control
+    # flow (a dataclass `id: int | None` known-persisted by the calling
+    # code's own logic, a stdlib/library API contract mypy can't see
+    # statically, or a state check just performed a few lines above) —
+    # the standing convention this establishes: asserts in this
+    # codebase narrow types/logic invariants, they never validate user
+    # input or an external response, so `python -O` stripping them is
+    # always safe. The 60th (audio_formats.py's own
+    # DOWNLOADABLE_EXTENSIONS <= AUDIO_EXTENSIONS) is a different
+    # animal — a module-level self-consistency check between two
+    # hardcoded constant sets, not narrowing anything and not guarding
+    # external input either; any real drift would already fail this
+    # exact assert on the first import in any environment (including
+    # every normal, non -O test run), so -O-stripping poses no
+    # additional risk. Kept as-is, not converted to a manual `raise`,
+    # for the same reason type-narrowing asserts are kept: it is
+    # already effectively enforced by every test run.
+    "S101",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Qt overrides are camelCase by framework contract, not by choice.
 "src/seeker/ui/*" = ["N802"]
-# Tests assert; that is their job. PLC0415 (import outside top level):
-# sampled 20 of the real 119 tests/* findings (round 8, §4.8.2) — every
+# S101 (assert) is ignored project-wide above (§4.8.5) so tests/* needs
+# no entry for it here — kept off this list rather than left as a
+# redundant duplicate. PLC0415 (import outside top level): sampled 20
+# of the real 119 tests/* findings (round 8, §4.8.2) — every
 # one is a genuine, narrow per-test/per-fixture import (a constant or
 # class only that one test needs), a deliberate pytest scoping
 # convention, not an accident. src/'s own findings were checked
@@ -99,7 +121,7 @@ ignore = [
 # never a real credential. Scoped narrowly per real src/ file below
 # rather than a project-wide ignore, so a genuine hardcoded secret
 # anywhere else is still caught.
-"tests/*" = ["S101", "PLC0415", "S105", "S106"]
+"tests/*" = ["PLC0415", "S105", "S106"]
 # NAME-only false positives (S105 fires on the ASSIGNMENT TARGET name
 # containing "token"/"password", regardless of the value): TOKEN_URL is
 # a URL, not a credential.
