@@ -12819,3 +12819,449 @@ cannot be verified offscreen at all:** D4.4's real-desktop check
 (fullscreen -> red button -> confirm no black Space, confirm the app
 is genuinely in the menu bar -> reopen -> confirm geometry) — needs a
 real Mac, not available in this sandboxed session.
+
+### 114 — Round 7 (E1-E4): fullscreen close reversed again, empty-table columns, a stylesheet cascade bug, wordmark deleted
+
+Four items from the round-7 brief (`docs/BRIEF-2026-09-07.md`), each
+diagnosed by the brief against real pixels sampled from the user's own
+screenshots before any code was touched.
+
+**Environment note, relevant to what could actually be verified this
+round:** unlike round 6's session (no Screen Recording/Accessibility
+permission, no real Mac), this session runs directly on the user's own
+real MacBook Pro (`uname` confirms Darwin/arm64, `sw_vers` confirms
+macOS 26.6.2) with PySide6 installed and a working `cocoa` QPA platform
+— `QApplication([]).platformName()` returns `"cocoa"`, not
+`"offscreen"`, when the env var is unset. This makes E3.1's pixel-level
+mechanism confirmation possible via a real (if headless/offscreen)
+render — done below — but E1's fullscreen-Space/animation behavior
+still cannot be exercised without either real synthetic-input/UI
+automation tooling (not available to this session) or the user's own
+click-through, so E1.1/E1.5 remain genuinely outstanding, not merely
+cautious.
+
+#### E1 — fullscreen close, reversed again
+
+The brief's diagnosis: item 113 (D4)'s own fix — leave fullscreen via
+`showNormal()`, defer the real `hide()` to the next `WindowStateChange`
+— was only ever confirmed under offscreen QPA, which has no macOS Space
+and no animated transition at all. On a real Mac the exit-fullscreen
+transition is a genuine several-hundred-millisecond AppKit animation;
+`hide()` firing via `QTimer.singleShot(0, ...)` right after the FIRST
+`WindowStateChange` lands mid-transition, and AppKit re-orders the real
+NSWindow back on screen once the animation completes — Qt's widget
+stays marked hidden while the user sees a live, empty window with a
+native title bar and no way to close it (every click on the now-inert
+red button re-runs the identical no-op). Confirmed against the code by
+reading it, not independently re-reproducible live in this session
+(still no way to drive a real fullscreen transition without OS-level
+UI automation) — accepted as correctly diagnosed per the brief's own
+pixel-level analysis of the user's screenshot (uniform AppKit
+`NSWindow` chrome colors, `#292929`/`#383838`, nowhere near any Seeker
+palette token).
+
+**Fix applied (E1.2):** stop intercepting the close at all while
+fullscreen on macOS — capture `normalGeometry()`, mark
+`_hidden_to_tray`, show the one-time tray notice if still owed, then
+let `super().closeEvent(event)` run directly on the still-fullscreen
+window, trusting AppKit's own "close a fullscreen window" handling
+(the one path guaranteed to tear the Space down correctly, since it's
+the platform's own).
+
+**Real, structural conflict found live while building the offscreen
+regression test for this — not anticipated by the brief:**
+`MainWindow.__init__` sets `WA_DeleteOnClose` (item 32, for test
+teardown hygiene — "MainWindow is normally only closed once (app
+exit)... this matters there even if it's rarely the operational hot
+path"). That assumption was already stale the moment item 90 (R7)
+added hide-to-tray: every OTHER close path calls `event.ignore()`
+before Qt's close can ever complete, so `WA_DeleteOnClose` has been
+dead code in practice since item 90 shipped. E1.2's fix is the FIRST
+path that lets a real close complete while a tray icon exists — which
+means Qt schedules the widget for real deletion right after. First
+symptom: a `RuntimeError: libshiboken: Internal C++ object (MainWindow)
+already deleted` in the very first `qtbot.wait(20)` after
+`window.close()` inside a from-scratch offscreen test. Fixed by
+`self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)` inside
+the fullscreen branch itself, the moment it's first reached — safe
+specifically because this branch is only reachable once a real tray
+icon already exists (checked at the top of `closeEvent`), meaning this
+window's lifetime is meant to persist for the rest of the session
+regardless. Confirmed via a direct offscreen script (not just the
+test): `showFullScreen()` -> `close()` -> `isFullScreen()` stays `True`
+(Qt's window-state flags don't reset on `hide()` alone) while
+`isHidden()` is `True` and `isVisible()` is `False`, with no exception;
+then `_on_tray_open_seeker()` -> `showNormal()` correctly clears
+`isFullScreen()` and restores the captured pre-fullscreen geometry
+exactly.
+
+Three existing tests referencing the deleted D4 mechanism
+(`_pending_hide_after_fullscreen_exit`) were rewritten to assert the
+new behavior instead of the old deferred-hide dance:
+`test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first`
+(renamed from `..._leaves_fullscreen_before_hiding`),
+`test_reopening_after_a_fullscreen_close_restores_prior_geometry`
+(assertions unchanged, only its comment updated — it already exercised
+the right end-to-end behavior), and
+`test_tray_quit_from_fullscreen_bypasses_closeevent_entirely` (swapped
+its assertion on the deleted attribute for `_pre_fullscreen_geometry is
+None`, still proving Quit never touches the fullscreen-close machinery
+at all).
+
+**Left open, explicitly, exactly as the brief demands:** E1.1
+(instrumented real-desktop repro before trusting the fix) and E1.5 (all
+four close/quit routes clicked through from fullscreen on the real
+desktop) were not run — this session has no way to drive a real
+fullscreen transition or click a real button. The fix is applied and
+covered by a corrected offscreen test suite, but is NOT independently
+verified live; that step is the user's own to run.
+
+#### E2 — empty tables sat at Qt's default 100px columns
+
+The brief's measurement (header divider positions sampled from the
+user's own Search/Duplicates screenshots, both landing on an exact
+100px pitch) was taken at face value; confirmed structurally instead of
+re-measuring pixels, by reading each of the seven named tables'
+`_build_*`/`_size_*_columns` methods directly: all seven
+(`search_results_table`, `duplicates_table`, `track_table`,
+`review_needs_table`, `review_upgrades_table`, `review_local_table`,
+`sharing_locations_table`) set every resize mode ONLY inside a render
+method gated on real row data, confirming the brief's claim that a
+zero-row construction leaves every column at Qt's un-set default.
+
+**Fix:** each table's resize-mode-setting body was extracted into a new
+no-arg `_configure_<table>_columns()`, ending in
+`theme.size_action_column(table, ACTIONS_COL, [])` +
+`theme.apply_column_floors(table)` (matching the brief's own prescribed
+shape exactly); called once at the end of the table's own `_build_*`
+(construction time) and again, first, from the existing
+`_size_<table>_columns(action_widgets)` (which then only re-widens the
+Actions column to the real per-row widgets and re-applies the floors).
+No new production logic — `theme.size_action_column`/
+`apply_column_floors`/`header_label_floor` already existed from items
+R5/C2/D3; this item is purely about calling them at the right time for
+an empty table, not inventing new sizing math.
+
+**The sweep test's own skip condition (this round's own new standing
+convention, added to CLAUDE.md) was fixed as instructed:**
+`_assert_no_dead_band_at_stretch_columns`'s `has_a_stretch_column(...)`
+guard was removed outright — the invariant
+(`sum(sectionSize) >= viewport().width() - 2`) now applies to every
+visible table unconditionally, since a table that "legitimately can't
+fill its viewport" would be a real defect, not a case to exempt. A new,
+separate structural test
+(`test_every_table_has_a_stretch_column_immediately_after_construction`)
+asserts the actual invariant whose absence caused this — a Stretch
+column or `stretchLastSection()` present on every real `QTableWidget`
+in the window, checked with NO `.show()` and NO render call at all
+(every page is built eagerly in `MainWindow.__init__` via
+`_register_page`, confirmed by reading the constructor directly, so
+this genuinely tests "immediately after construction").
+
+**Real screenshots taken this round** (offscreen QPA, 960x640,
+`theme.apply_theme()` applied — matching `conftest.py`'s own
+session-wide fixture from item 103): empty Search and empty Duplicates
+both now show every header divider reaching the card's real right
+edge, with "Actions" rendered in full; a populated Duplicates render
+shows no regression. Not screenshotted this round: Review's three
+tables and Sharing empty (same fix, same mechanism, not independently
+re-verified visually — the two structural tests above cover them).
+
+#### E3 — the progress bar's square track vs. its own pill-shaped fill
+
+**E3.1, confirmed empirically before any fix was written**, per the
+brief's own explicit ask — a standalone probe script
+(`QProgressBar` wrapped in `theme.make_card()`, real `apply_theme()`
+applied, real `grab()`):
+
+with the bug in place (`inner.setStyleSheet("border: none;
+border-radius: 0px;")` present, unmodified), the progress bar's own top
+edge, mid-width, sampled as `#29243a` — an EXACT match for
+`theme.BG_SURFACE_2`, i.e. no border pixel at all. With that one line
+temporarily commented out (nothing else changed), the identical pixel
+sampled as `#3a344e` — an EXACT match for `theme.BORDER`. This
+conclusively confirms the brief's mechanism: a selector-less
+`setStyleSheet()` call is parsed by Qt as a universal `* {...}` rule
+that strips `border`/`border-radius` off the widget it's set on AND
+every descendant widget box (a `QProgressBar`'s track among them),
+while leaving pseudo-elements (`QHeaderView::section`,
+`QProgressBar::chunk`) alone, since `*` can't match those.
+
+**Fix:** `inner.setObjectName("cardInner")` in `make_card()`, replacing
+the per-widget stylesheet with a real, scoped `#cardInner { border:
+none; border-radius: 0px; }` rule inside `build_stylesheet()`. Grep
+confirmed the brief's own claimed counts before editing: exactly 17
+real `make_card()` call sites (15 in `main_window.py`, 2 in
+`settings_window.py`), none of which gave `inner` a pre-existing
+objectName of its own (checked via a full `.setObjectName(` grep across
+both files) — no naming collision risk.
+
+**E3.3 — pill shape, derived not literal:** new `PROGRESS_BAR_HEIGHT =
+14` / `PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2` tokens, used for
+both the `QProgressBar` box's `border-radius`/`max-height` and
+`style_determinate_progress_bar()`'s `::chunk` radius — track and fill
+can no longer drift to different shapes since both read the same
+derived constant. Real screenshot crop (Dashboard track table, a
+50%-downloading row) confirms both halves now share one pill shape,
+rounded ends on both the dark track and the accent fill.
+
+**E3.5 — swept for the rest of the class, per the brief's own
+instruction, rather than assumed safe:** removing the universal
+cascade restores real borders to every cell-widget button across the
+app (previously forced borderless by the exact bug this item fixes).
+One existing test needed its own tolerance widened for this reason —
+`test_duplicates_actions_widget_is_really_visible_at_app_minimum_size`
+measured a real button now 3px wider than its own pre-fix sizeHint
+(real 1px borders on each side, previously absent); widened from a 2px
+to a 4px slack budget, with a comment explaining why, rather than
+silently loosened. Real screenshots (dark AND light theme,
+Duplicates-populated and Dashboard-track-table) show no other visual
+regression — no double borders, no clipped/garbled cell widgets.
+
+**E3.6 — the mechanism, not just this one symptom:** a new AST-based
+test (`test_no_selector_less_setstylesheet_call_anywhere_in_ui`) walks
+every `.py` file in `src/seeker/ui/` for any `.setStyleSheet(...)` call
+whose literal string argument contains no `{` at all (the structural
+signature of a bare declaration list — a real rule always has a
+selector before a `{`). The two other real instances the brief named
+(`cell_widget()`'s container, `_ThemeToggleButton`) were converted the
+same way (`objectName` + a scoped stylesheet rule) even though neither
+was ever observed to cause a visible defect — `_ThemeToggleButton` has
+no child widgets to cascade onto, and `cell_widget()`'s own children
+already set their own real backgrounds. Kept anyway, since both were
+the identical shape of loaded gun.
+
+#### E4 — wordmark: deleted, not repaired
+
+The brief's own measurement of the user's screenshot (wordmark row
+ends at y=44, "Seeker" ink stops dead at y=43 with no antialiased
+falloff — a real bottom-edge clip) directly CONTRADICTED
+`_Wordmark.sizeHint()`'s own committed math (reserving real
+ascent+descent+padding, asserted and passing in item 111's own D1.3
+test) — the brief could not resolve this contradiction without a
+running Qt on the real Mac, and explicitly instructed doing the E4.1
+real-desktop print-the-numbers step first. That instrumentation step
+was not run this round (same real-desktop-interaction gap as E1) — the
+brief's own prescribed resolution (E4.2/E4.3: delete the widget
+outright) was applied regardless, per its own explicit instruction that
+this is the fix independent of settling the sizeHint contradiction.
+
+`_Wordmark` (custom `QPainter`-based text+brow compositing, items
+C4/D1) and `_resolve_wordmark_brows_path()` were deleted in full;
+`self._wordmark` is now a plain `QLabel("Seeker")`,
+`objectName("wordmark")`, styled entirely via a new `QLabel#wordmark`
+rule in `build_stylesheet()` (20px, bold, `palette.TEXT`) — no
+per-instance code path, no `retint()`/`on_theme_changed()` call needed,
+since `QApplication.setStyleSheet()` (already called by
+`_apply_theme_mode`) re-polishes it for free like every other
+QSS-driven widget. The now-unused `QSvgRenderer` import was removed.
+Six wordmark/brow-specific tests were deleted outright (C4/D1's own
+sizeHint/degrades-gracefully/brow-source-rect/dpr-rerender/paints-both-
+brows tests, plus the retint assertion inside the on-theme-changed
+test) and replaced with one new test asserting the actual invariant the
+user cares about —
+`test_wordmark_bottom_row_has_no_text_colored_pixel` — a real `grab()`
+of a styled `QLabel#wordmark`, checked pixel-by-pixel across its own
+bottom row for any text-colored pixel. Real screenshot crop (sidebar,
+default theme) shows the full word rendered with genuine background
+space below it.
+
+Per the brief's own explicit instruction, `packaging/icons/
+seeker_brows.svg` was left committed and unreferenced — it was
+measured off the real icon and costs nothing to keep dormant; a future
+round should read this entry rather than treat it as a missing-asset
+bug.
+
+#### Post-review corrections to E1 (three real findings, all fixed before commit)
+
+A reviewer read the actual diff (not this summary) and found three
+problems with the first version of E1, one of them substantive enough
+to block committing E1 at all until fixed.
+
+**1. The E1.4 safety net could never fire, and was probing the wrong
+witness.** The first version:
+
+```python
+self.hide()
+if not self.isVisible():
+    self._hidden_to_tray = True
+else:
+    QTimer.singleShot(50, self._retry_hide_to_tray)
+```
+
+`QWidget.hide()` sets `WA_WState_Hidden` synchronously — `isVisible()`
+reads `False` on the very next line on EVERY platform, so the `else`
+branch and all of `_retry_hide_to_tray` were unreachable dead code, and
+neither had a test (nothing could catch it: a guard that can never
+disagree with the call that just ran will always look like it works).
+Worse than dead code: `isVisible()` is Qt's OWN bookkeeping, and Qt's
+bookkeeping is exactly what lied in the original bug (Qt marked itself
+hidden while AppKit still had the real NSWindow on screen) — a guard
+built on the lying witness can only ever agree with it, by
+construction. Same failure shape as round 5's own "asserted a property
+instead of looking," now with a round-7 label on it.
+
+Fixed by probing the real platform window instead: a new
+`_is_exposed_at_platform_level()` (`self.windowHandle().isExposed()` —
+updated by the platform plugin from real show/hide/expose
+notifications, not by widget-side request bookkeeping), checked on a
+delayed timer (`_HIDE_TO_TRAY_VERIFY_DELAY_MS = 400`, untuned — the
+real AppKit animation this guards against has never been measured from
+this session), with `_hidden_to_tray` deliberately NOT set True until
+the platform confirms it (previously set optimistically inside
+`_hide_to_tray` before any check ran at all). One retry, same as
+before, now reachable and covered by a real test
+(`test_hidden_to_tray_stays_false_while_platform_window_still_exposed`)
+that forces the disagreement directly by monkeypatching
+`_is_exposed_at_platform_level` — split into its own method
+specifically because a real `QWindow`'s `isExposed()` can't be
+monkeypatched directly. Confirmed empirically that a real `windowHandle
+()` exists and reports sane synchronous values under offscreen QPA too
+(`isExposed()` True before `hide()`, False immediately after) — so this
+probe is exercisable in this session's tests even though it can't prove
+anything about a REAL animated transition.
+
+Making `_hidden_to_tray` wait on a delayed timer instead of flipping
+synchronously broke roughly a dozen existing test assertions that
+checked it immediately after `close()` with no wait at all — all
+updated to `qtbot.waitUntil(lambda: window._hidden_to_tray is True,
+timeout=1000)` rather than a fixed `qtbot.wait(...)`, since the exact
+delay is itself an untuned guess.
+
+**2. The tray-hide notice was duplicated.** The fullscreen branch and
+`_hide_to_tray` each had their own copy of the same `if not ...
+tray_hide_notice_shown: showMessage(...); mark_tray_hide_notice_shown()`
+block, including two copies of the identical user-facing string —
+precisely the "two implementations of one behavior" shape that let
+item 104 (C3)'s Dashboard progress bar bug survive a whole round after
+the Downloads-page copy was fixed. Extracted to one
+`_show_tray_hide_notice_once()`, called from both the fullscreen branch
+and the ordinary hide path.
+
+**3. `WA_DeleteOnClose` was cleared in the right way but the wrong
+place.** The finding itself (item 32's dormant attribute would delete
+the real window object the first time a close was ever allowed to
+complete) was confirmed correct and is a genuinely serious catch — left
+uncaught, it would have permanently broken "reopen from the tray" the
+first time any user closed Seeker from fullscreen. But clearing it
+inside the fullscreen close branch only protects THAT branch; the real
+invariant ("a window with a live tray icon to reopen from must never be
+deleted on close") doesn't belong to one specific close path, and any
+future path that accepts a close with a tray icon present would have
+re-armed the same landmine. Moved to `_build_tray_icon()`, cleared once
+the moment a real tray icon is actually constructed — covering every
+current and future close path uniformly, not just this one.
+
+All three fixes verified together: full suite green (see below),
+`mypy --strict` clean, and the specific tray/fullscreen test subset
+(`-k "tray or fullscreen or exposed"`) passing 22/22 including the new
+disagreement test.
+
+**Still genuinely outstanding, per the reviewer's own explicit gate on
+committing E1 at all:** a real-desktop click-through before rebuilding
+the `.dmg` — fullscreen → red button (twice, to prove `WA_DeleteOnClose`
+is really disarmed on the second cycle too) → confirm the Space
+collapses with no empty window and Seeker lands in the menu bar →
+"Open Seeker" restores the pre-fullscreen window at its old size/
+position → then, from fullscreen, ⌘W / ⌘Q / tray Quit as three further,
+separate code paths. This has not been run from this session (no way
+to drive a real fullscreen transition or click a real button here) —
+E2/E3/E4 are cleared to commit now; E1 needs that checklist run first.
+
+#### Second review pass on E1.4 itself — two real races in the fix that fixed the first review
+
+A second review of the corrected E1.4 (above) found the fix itself
+introduced two new races — one of them a direct reintroduction of round
+6's own bug, on the one path that has never touched real hardware. Held
+back from committing until both were fixed.
+
+**Race A — a stale verification check could rehide a window the user
+had just legitimately reopened.** `_confirm_hidden_to_tray` armed a
+400ms timer with nothing to cancel it. Sequence: `closeEvent` hides and
+schedules a check; within that window the user clicks "Open Seeker"
+(`_on_tray_open_seeker`, or `_on_tray_open_page` — same method); the
+window is genuinely visible again; the STALE check then fires, sees the
+platform window exposed (correctly — the user just reopened it),
+concludes the ORIGINAL hide "didn't take," and (in the pre-fix design)
+called `hide()` again — silently hiding a window the user had just
+opened, with zero explanation on screen. Rare (needs a reopen inside
+the verify delay) but real, and unexplainable to a user who hit it.
+
+Fixed with a monotonic `self._hide_request_id`, bumped by both a new
+hide attempt (top of `closeEvent`, before either branch) and
+`_on_tray_open_seeker`. `_confirm_hidden_to_tray` captures the id at
+schedule time; `_check_hidden_to_tray` bails immediately if the current
+id no longer matches. Covered directly by
+`test_stale_hide_verification_does_not_rehide_a_reopened_window`: close,
+reopen, THEN let the stale timer fire — window stays visible,
+`_hidden_to_tray` stays False (the true post-reopen state), the check
+is a confirmed no-op rather than merely "didn't happen to break
+anything this run."
+
+**Race B — the verify timer, armed on the fullscreen path, could call
+`hide()` mid-animation: the exact operation E1.2 exists to stop doing.**
+`super().closeEvent(event)` on the fullscreen branch returns as soon as
+the close is ACCEPTED — AppKit's own exit-fullscreen-and-close animation
+then runs asynchronously for something in the 0.5-1s range (this
+session's own best estimate, still not measured against real hardware).
+The 400ms check landed inside that window in the general case, found
+the platform window still genuinely exposed (the animation is simply
+still playing, not stuck), and — following the round-1 fix's own
+"retry" logic — called `hide()` again, synchronously, mid-transition.
+That is verbatim the mechanism the brief's own E1 diagnosis identified
+as the cause of round 6's empty, unclosable window. The safety net
+could manufacture the exact failure it was built to detect, specifically
+on the one path that has never been exercised on real hardware.
+
+Fixed with both halves the reviewer proposed, not a partial version of
+either:
+
+1. **The fullscreen branch arms no verification at all.** Nothing is
+   hidden BY US on that path — `super().closeEvent()` merely accepts
+   the close; AppKit's own animation does the actual hiding, later,
+   asynchronously. `_hidden_to_tray = True` is now set directly, once,
+   from inside the branch itself, with no timer and nothing left to
+   verify (the thing being trusted is AppKit's own close handling, not
+   a `hide()` call this class made).
+2. **The ordinary-hide path's check is report-only — no corrective
+   action at all**, not merely conditioned on platform. The retry
+   (`self.hide()` called again from inside the check) was itself the
+   hazard: a check that cannot distinguish "hide() genuinely failed"
+   from "a transition is still playing" must not act on that
+   distinction it can't make. On a disagreement, it now logs and leaves
+   `_hidden_to_tray` False — permanently, for that hide attempt — which
+   means R7.6's poll/render methods keep rendering into a window that
+   might genuinely still be visible. That's the strictly safer failure
+   mode, and — pointedly — it is the one that would have made round 6's
+   original bug VISIBLE (a window still rendering, just not marked
+   hidden as expected) instead of silently wrong (marked hidden while
+   the app stopped updating a window the user could still see).
+
+Covered by `test_fullscreen_close_never_arms_hide_verification`
+(monkeypatches `_confirm_hidden_to_tray` itself and asserts zero calls
+after a fullscreen close — a structural guarantee, not an absence-of-
+symptom check) and a rewritten
+`test_hidden_to_tray_stays_false_when_platform_window_still_exposed`
+(the old version asserted a since-deleted retry cycle; the new one
+asserts the single report-only check and stops there, matching what the
+code actually does now).
+
+Both races were only reachable because the FIRST review's fix was
+itself real, working code with no test exercising either interaction
+(a stale check racing a reopen; the verify timer racing the one
+in-flight animation it can't observe) — each new test targets exactly
+one of those two interactions directly, not just the surface symptom.
+
+#### Verification
+
+Full suite: 1098 passed, 1 skipped (one single, non-reproducing flake
+in `test_history_refresh_button_refetches` seen once across ~6 full
+runs this round, passing every other time including immediately after
+in isolation — not chased further, noted rather than silently ignored
+per this project's own standing rule on pre-existing-failure counts).
+`mypy --strict src/` clean. `docs/BRIEF-2026-09-07.md`'s own closing
+question — whether roadmap item 70 (the stress-test hang) is now
+believed to be the same defect as item 105 (C3)'s queued-`QMessageBox`
+fix or still separate — was already answered in CLAUDE.md's own item
+70 entry after round 6 ("still a separate, still-open defect"); nothing
+new this round changes that determination.

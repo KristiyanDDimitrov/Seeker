@@ -48,10 +48,8 @@ from seeker.ui.main_window import (
     MainWindow,
     RenamePreviewDialog,
     _resolve_tray_icon_path,
-    _resolve_wordmark_brows_path,
     _THEME_MODE_CYCLE,
     _ThemeToggleButton,
-    _Wordmark,
 )
 from seeker.update_check import UpdateCheckResult, UpdateStatus
 from seeker.ui import workers as workers_module
@@ -5033,6 +5031,58 @@ def test_duplicates_milestone_shown_with_real_totals(qtbot):
     assert "312 files" in text
 
 
+def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
+    # Roadmap item E3.6 (round 7) — the actual mechanism behind E3, not
+    # just that one symptom: Qt parses a `setStyleSheet()` string with
+    # no selector as a universal `* {...}` rule, applying it to the
+    # target widget AND EVERY DESCENDANT — this is what silently
+    # stripped a QProgressBar's border inside make_card() (E3) and was
+    # present in two more places (`cell_widget()`'s container,
+    # `_ThemeToggleButton`) that happened not to cause visible harm yet.
+    # A real rule always contains a `{` (selector, then a brace, then
+    # properties); a bare declaration list like "border: none;" never
+    # does — checked structurally via `ast`, not by re-reading these
+    # three call sites by eye, so a future one added anywhere in ui/ is
+    # covered automatically.
+    import ast
+    import seeker.ui as ui_package
+
+    def rendered_text(node: ast.expr) -> str | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.JoinedStr):
+            # Interpolated values (ACCENT, PROGRESS_BAR_RADIUS, etc.)
+            # are never selector/brace syntax themselves — a placeholder
+            # preserves the surrounding literal text's structure.
+            return "".join(
+                str(part.value) if isinstance(part, ast.Constant) else "X"
+                for part in node.values
+            )
+        return None
+
+    ui_dir = Path(ui_package.__file__).parent
+    violations = []
+    for path in sorted(ui_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "setStyleSheet"
+                and len(node.args) == 1
+            ):
+                continue
+            text = rendered_text(node.args[0])
+            if text is not None and "{" not in text:
+                violations.append(f"{path.name}:{node.lineno}: {text!r}")
+
+    assert violations == [], (
+        "selector-less setStyleSheet() call(s) found (Qt parses these "
+        "as a universal `* {...}` rule that cascades onto every "
+        "descendant widget):\n" + "\n".join(violations)
+    )
+
+
 def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
     # Roadmap item 79 (P12) — a bare "&" in a QPushButton/QLabel string
     # literal is a real Qt keyboard-mnemonic marker (consumed, renders
@@ -6144,12 +6194,17 @@ def test_duplicates_actions_widget_is_really_visible_at_app_minimum_size(
 
     assert header.sectionSize(actions_column) >= widget.sizeHint().width()
     visible_width = widget.visibleRegion().boundingRect().width()
-    # A 1-2px rounding/border gap between a widget's real width and its
+    # A small rounding/border gap between a widget's real width and its
     # own sizeHint is normal Qt layout behavior, not a visibility bug —
     # the actual regression this guards against is a widget clipped to
     # a SLIVER (confirmed live: a real 0px visibleRegion at 960x640
-    # before this fix), not an exact-pixel match.
-    assert visible_width >= widget.sizeHint().width() - 2
+    # before this fix), not an exact-pixel match. Widened 2 -> 4px by
+    # item E3 (round 7): removing make_card's universal `*` stylesheet
+    # cascade let the button inside this cell widget draw its OWN real
+    # 1px QPushButton border on each side for the first time (previously
+    # forced off by the exact bug E3 fixed) — a genuine few-px shift in
+    # its real rendered size, not a new visibility defect.
+    assert visible_width >= widget.sizeHint().width() - 4
 
 
 def test_duplicates_actions_widget_is_not_occluded_by_a_covered_row_widget(
@@ -6894,18 +6949,19 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
 
 
 def _assert_no_dead_band_at_stretch_columns(window, qtbot) -> None:
-    from PySide6.QtWidgets import QHeaderView, QTableWidget
+    from PySide6.QtWidgets import QTableWidget
 
-    def has_a_stretch_column(table: QTableWidget) -> bool:
-        header = table.horizontalHeader()
-        if header.stretchLastSection():
-            return True
-        return any(
-            header.sectionResizeMode(column)
-            == QHeaderView.ResizeMode.Stretch
-            for column in range(table.columnCount())
-        )
-
+    # Roadmap item E2.3 (round 7) — this used to `continue` past any
+    # table with no Stretch column/stretchLastSection, which sounds
+    # like a reasonable "this invariant doesn't apply here" guard but
+    # is derived from the SAME state E2's own bug corrupts: an empty
+    # table (nothing has ever assigned it a resize mode) reads as "no
+    # stretch column" and was skipped by this exact test, on the exact
+    # screen (an empty Search/Duplicates table) the user photographed
+    # as broken. A skip condition computed from the state the bug
+    # corrupts cannot be a guard — asserting the real invariant
+    # unconditionally for every visible table is the only way this test
+    # can't blind itself to the case it exists to catch.
     for page_key in (
         "dashboard", "search", "downloads", "review",
         "duplicates", "sharing", "history", "settings",
@@ -6913,7 +6969,7 @@ def _assert_no_dead_band_at_stretch_columns(window, qtbot) -> None:
         window._show_page(page_key)
         qtbot.wait(10)
         for table in window.findChildren(QTableWidget):
-            if not table.isVisible() or not has_a_stretch_column(table):
+            if not table.isVisible():
                 continue
             header = table.horizontalHeader()
             total = sum(
@@ -6987,6 +7043,44 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
         window.resize(width, height)
         qtbot.wait(20)
         _assert_no_dead_band_at_stretch_columns(window, qtbot)
+
+
+def test_every_table_has_a_stretch_column_immediately_after_construction(
+        qtbot,
+):
+    # Roadmap item E2.4 (round 7) — the structural invariant whose
+    # absence caused E2 in the first place: seven tables only assigned
+    # their real resize modes (a Stretch column, or stretchLastSection)
+    # inside a render method that never runs while the table is empty,
+    # so a freshly-built, still-empty table sat at Qt's default 100px-
+    # per-column layout with no column owning the leftover viewport
+    # width. Checked with NO `.show()` and NO render call at all — every
+    # page is built eagerly in `MainWindow.__init__` (`_register_page`),
+    # so this is genuinely "immediately after construction," the exact
+    # moment E2's fix (`_configure_*_columns`, called from each table's
+    # own `_build_*`) must already hold.
+    from PySide6.QtWidgets import QHeaderView, QTableWidget
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    tables = window.findChildren(QTableWidget)
+    assert tables, "expected at least one QTableWidget in the window"
+
+    for table in tables:
+        header = table.horizontalHeader()
+        has_stretch = header.stretchLastSection() or any(
+            header.sectionResizeMode(column)
+            == QHeaderView.ResizeMode.Stretch
+            for column in range(table.columnCount())
+        )
+        assert has_stretch, (
+            f"{table.objectName() or table!r} has no Stretch column and "
+            f"no stretchLastSection immediately after construction — an "
+            f"empty render of this table will sit at Qt's default "
+            f"100px-per-column layout"
+        )
 
 
 def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
@@ -7131,181 +7225,35 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
     assert checked > 0, "no cell widgets found — test itself is broken"
 
 
-# --- Roadmap item C4: wordmark with brows over the "ee" ---------------------
+# --- Roadmap item E4 (round 7): wordmark, plain QLabel, no brows ------------
 
-def test_wordmark_size_hint_accommodates_the_full_word(qtbot):
-    wordmark = _Wordmark()
-    qtbot.addWidget(wordmark)
+def test_wordmark_bottom_row_has_no_text_colored_pixel(qtbot):
+    # Roadmap item E4.5 (round 7) — the actual invariant the user cares
+    # about, which the deleted `_Wordmark`'s own D1.3 test never
+    # expressed (it asserted a `sizeHint()` number, not a real pixel):
+    # nothing in the rendered label may touch its own bottom edge. A
+    # plain QLabel reserves real font-metric ascent/descent internally,
+    # so this holds structurally rather than by any hand-tuned padding
+    # constant. Real pixel scan (item 77's own lesson — geometry alone
+    # can't prove a paint result), not a geometry-only check.
+    label = QLabel("Seeker")
+    label.setObjectName("wordmark")
+    qtbot.addWidget(label)
+    from seeker.ui import theme as theme_module
+    label.setStyleSheet(theme_module.build_stylesheet(theme_module.DARK))
+    label.resize(label.sizeHint())
+    label.show()
+    qtbot.waitExposed(label)
 
-    from PySide6.QtGui import QFontMetrics
-
-    metrics = QFontMetrics(wordmark._font)
-    text_width = metrics.boundingRect(wordmark._TEXT).size().width()
-
-    hint = wordmark.sizeHint()
-    assert hint.width() >= text_width
-    # Room reserved above the text for the brows, plus the bottom
-    # padding the old QLabel's own stylesheet used to apply.
-    assert hint.height() > metrics.boundingRect(wordmark._TEXT).height()
-
-
-def test_wordmark_degrades_to_plain_text_when_asset_is_missing(qtbot, monkeypatch):
-    # C4.5 — a packaged build missing this one resource must never show
-    # a blank label; render must still succeed and still show the word.
-    monkeypatch.setattr(
-        "seeker.ui.main_window._resolve_wordmark_brows_path",
-        lambda: Path("/nonexistent/seeker_brows.svg"),
-    )
-    wordmark = _Wordmark()
-    qtbot.addWidget(wordmark)
-
-    assert wordmark._brows_pixmap is None
-    # Must still render without crashing, and sizeHint must still cover
-    # the word (with no extra top reserve, since there are no brows).
-    wordmark.resize(wordmark.sizeHint())
-    wordmark.show()
-    qtbot.wait(20)
-    assert wordmark.sizeHint().width() > 0
-
-
-def test_wordmark_brows_asset_resolves_to_a_real_committed_file():
-    # Confirms the dev-mode (non-frozen) branch of the resolver points
-    # at the real, already-committed asset — not just that SOME path
-    # string is returned.
-    path = _resolve_wordmark_brows_path()
-    assert path.name == "seeker_brows.svg"
-    assert path.exists()
-
-
-# --- Roadmap item D1 (round 6): the wordmark's own two bugs -----------------
-
-def test_wordmark_size_hint_reserves_real_font_metrics_not_ink(qtbot):
-    # Roadmap item D1.1/D1.3 (round 6) — the actual reported bug:
-    # `sizeHint()` measured height with `boundingRect(...)` (the INK
-    # rect — no descender reserved), while `paintEvent` positions the
-    # baseline at `ascent()` and never reserves `descent()` either —
-    # asking for ~10px less height than it actually draws into, so Qt
-    # clipped the bottom of the text. A mismatch between two methods on
-    # the same class is exactly what a test should hold, not trust.
-    wordmark = _Wordmark()
-    qtbot.addWidget(wordmark)
-
-    from PySide6.QtGui import QFontMetrics
-
-    metrics = QFontMetrics(wordmark._font)
-    top_reserve = wordmark._brow_reserve_height(metrics)
-    hint = wordmark.sizeHint()
-
-    assert hint.height() >= (
-        top_reserve + metrics.ascent() + metrics.descent()
-        + wordmark._BOTTOM_PADDING
-    )
-
-    # D1.2 — the matching width bug: `boundingRect().width()` omits the
-    # right side bearing that `horizontalAdvance` (what `drawText`
-    # actually advances by) includes; also never less than the brow
-    # span, so an overhanging brow can't be clipped either.
-    ee_left, ee_width = wordmark._ee_span(metrics)
-    assert hint.width() >= metrics.horizontalAdvance(wordmark._TEXT)
-    assert hint.width() >= ee_left + ee_width
-
-
-def test_brow_source_rect_uses_device_independent_size_not_raw_pixels(qtbot):
-    # Roadmap item D1.4/D1.5 (round 6) — the actual reported bug, tested
-    # directly and deterministically rather than through a real
-    # paint+grab round trip: this offscreen test session's own real
-    # devicePixelRatio is 1.0 (confirmed empirically), where device and
-    # device-independent pixels are numerically identical and a
-    # dpr-scaling bug like this literally cannot be forced to reproduce
-    # through rendering — the same class of gap `window.grab()`-based
-    # tests in this suite already had to work around once this round
-    # (HISTORY §107). A synthetic 2x pixmap sidesteps that entirely: a
-    # pixmap declared 200x100 DEVICE pixels at devicePixelRatio 2.0 has
-    # a 100x50 device-INDEPENDENT size — `drawPixmap`'s source rect must
-    # use the latter, or (the actual bug) only its top-left quadrant
-    # (the left brow) is ever visible, with the right one entirely
-    # outside the source rect.
-    from PySide6.QtCore import QPointF
-    from PySide6.QtGui import QPixmap
-
-    pixmap = QPixmap(200, 100)
-    pixmap.setDevicePixelRatio(2.0)
-
-    source_rect = _Wordmark._brow_source_rect(pixmap)
-
-    assert source_rect.width() == pytest.approx(100.0)
-    assert source_rect.height() == pytest.approx(50.0)
-    assert source_rect.topLeft() == QPointF(0, 0)
-
-
-def test_wordmark_paints_both_brows_not_just_the_left_one(qtbot):
-    # A coarse end-to-end smoke check, kept separate from the
-    # deterministic D1.4 unit test above: at this session's own real
-    # (1.0) devicePixelRatio, a real `grab()` must still show accent-
-    # colored pixels on BOTH halves of the "ee" span — proof the brow
-    # asset renders in full, not proof of the dpr fix specifically (see
-    # the test above for that). Real pixel scan, not a geometry check —
-    # item 77's own lesson that paint order/clipping is invisible to
-    # geometry queries alone.
-    wordmark = _Wordmark()
-    qtbot.addWidget(wordmark)
-    assert wordmark._brows_pixmap is not None
-    wordmark.resize(wordmark.sizeHint())
-    wordmark.show()
-    qtbot.waitExposed(wordmark)
-
-    from PySide6.QtGui import QFontMetrics
-
-    metrics = QFontMetrics(wordmark._font)
-    ee_left, ee_width = wordmark._ee_span(metrics)
-    top_reserve = wordmark._brow_reserve_height(metrics)
-
-    image = wordmark.grab().toImage()
-    # `grab()` returns DEVICE pixels; every geometry value above is in
-    # LOGICAL pixels (item C1's own standing gotcha).
-    dpr = image.width() / wordmark.width() if wordmark.width() else 1.0
-
-    accent_rgb = tuple(int(theme.ACCENT[i:i + 2], 16) for i in (1, 3, 5))
-
-    def has_accent_pixel(x0: float, x1: float) -> bool:
-        x_start, x_end = round(x0 * dpr), round(x1 * dpr)
-        y_end = max(1, round(top_reserve * dpr))
-        for x in range(max(0, x_start), min(image.width(), x_end)):
-            for y in range(0, min(image.height(), y_end)):
-                color = image.pixelColor(x, y)
-                if (color.red(), color.green(), color.blue()) == accent_rgb:
-                    return True
-        return False
-
-    left_half_end = ee_left + ee_width / 2
-    assert has_accent_pixel(ee_left, left_half_end), (
-        "left brow missing from the rendered wordmark"
-    )
-    assert has_accent_pixel(left_half_end, ee_left + ee_width), (
-        "right brow missing"
-    )
-
-
-def test_wordmark_rerenders_brows_on_a_device_pixel_ratio_change(
-        qtbot, monkeypatch,
-):
-    # Roadmap item D1.6 (round 6) — construction's own dpr fallback is
-    # 1.0 now (not a guessed 2.0); a real `DevicePixelRatioChange`
-    # event must re-render against the actual ratio rather than leaving
-    # whatever was rendered at construction permanently stale.
-    wordmark = _Wordmark()
-    qtbot.addWidget(wordmark)
-    original_pixmap = wordmark._brows_pixmap
-    assert original_pixmap is not None
-
-    from PySide6.QtCore import QEvent
-
-    monkeypatch.setattr(wordmark, "devicePixelRatioF", lambda: 3.0)
-    wordmark.changeEvent(QEvent(QEvent.Type.DevicePixelRatioChange))
-
-    assert wordmark._brows_pixmap is not original_pixmap
-    assert wordmark._brows_pixmap is not None
-    assert wordmark._brows_pixmap.devicePixelRatio() == pytest.approx(3.0)
+    image = label.grab().toImage()
+    text_rgb = tuple(int(theme.DARK.TEXT[i:i + 2], 16) for i in (1, 3, 5))
+    bottom_row = image.height() - 1
+    for x in range(image.width()):
+        color = image.pixelColor(x, bottom_row)
+        assert (color.red(), color.green(), color.blue()) != text_rgb, (
+            f"text-colored pixel at x={x} on the label's own bottom "
+            f"row — the wordmark is touching its own edge"
+        )
 
 
 # --- Roadmap item C5: light/dark themes, with system-follow -----------------
@@ -7390,24 +7338,6 @@ def test_cleanup_before_quit_disconnects_the_system_scheme_signal(qtbot):
     window.cleanup_before_quit()
 
     assert window._system_scheme_connected is False
-
-
-def test_on_theme_changed_retints_the_wordmark_and_updates_the_toggle_icon(
-        qtbot,
-):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    original_pixmap = window._wordmark._brows_pixmap
-    assert original_pixmap is not None
-
-    window._theme_toggle.click()  # system -> light: a real palette switch
-
-    # A NEW pixmap, re-tinted against the new palette's ACCENT — not
-    # the same (now stale) object reused.
-    assert window._wordmark._brows_pixmap is not original_pixmap
-    assert window._theme_toggle._mode == "light"
 
 
 # --- Roadmap item C5.8 — the palettes' own contrast floors are tested in
@@ -7611,20 +7541,34 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
 
     window.close()
 
+    # `isHidden()` is synchronous (hide() itself is not deferred) — only
+    # `_hidden_to_tray` waits on the delayed platform-level confirmation
+    # (E1.4, round 7, corrected after review).
     assert window.isHidden()
-    assert window._hidden_to_tray is True
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
 
-def test_close_event_from_fullscreen_leaves_fullscreen_before_hiding(
+def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
         qtbot, monkeypatch,
 ):
-    # Roadmap item D4 (round 6) — the actual reported bug: on macOS a
-    # fullscreen window owns its own Space, and hiding it while still
-    # fullscreen leaves that Space in place with nothing in it. Closing
-    # from fullscreen must leave fullscreen first (this offscreen QPA
-    # session has no window animation, so the `WindowStateChange` this
-    # depends on lands synchronously — a real Mac's animated transition
-    # is what D4.4 explicitly can't be verified for here).
+    # Roadmap item E1 (round 7) — reverses D4 (round 6). D4's own fix
+    # (leave fullscreen via `showNormal()`, defer the real hide to the
+    # next `WindowStateChange`) was only ever confirmed under offscreen
+    # QPA, which has no macOS Space and no animated transition at all —
+    # a real Mac's exit-fullscreen animation runs for a genuine several
+    # hundred milliseconds, and the deferred `hide()` landed mid-
+    # transition, leaving Qt's widget marked hidden while AppKit
+    # re-ordered the real NSWindow back on screen once the animation
+    # finished (an empty, unclosable window — reported live). Fixed by
+    # NOT calling `showNormal()` at all on macOS: this window's `hide()`
+    # now runs directly on the still-fullscreen window (via `super().
+    # closeEvent()`, on/macOS whenever fullscreen), trusting AppKit's own
+    # "close a fullscreen window" handling — the one path guaranteed to
+    # tear the Space down correctly, since it's the platform's own.
+    # `isFullScreen()` deliberately still reports True here — Qt's
+    # window-state flags don't reset on hide() alone, only on the
+    # explicit `showNormal()` `_on_tray_open_seeker` performs on reopen
+    # (see the geometry-restore test below).
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
@@ -7637,16 +7581,22 @@ def test_close_event_from_fullscreen_leaves_fullscreen_before_hiding(
     qtbot.wait(20)
 
     assert window.isHidden()
-    assert window._hidden_to_tray is True
-    assert not window.isFullScreen()
-    assert window._pending_hide_after_fullscreen_exit is False
+    # `_hidden_to_tray` waits on the delayed platform-level confirmation
+    # (E1.4, round 7, corrected after review) — `isHidden()` above is
+    # unaffected, since `hide()` itself is never deferred.
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    assert window._pre_fullscreen_geometry is not None
 
 
 def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
         qtbot, monkeypatch,
 ):
-    # D4.2 — reopening from the menu bar must give back the window the
-    # user had, not an arbitrary default.
+    # D4.2/E1 — reopening from the menu bar must give back the window
+    # the user had, not an arbitrary default. `_pre_fullscreen_geometry`
+    # is captured in `closeEvent`, before anything about fullscreen
+    # state changes at all (E1 no longer calls `showNormal()` there);
+    # `_on_tray_open_seeker` is what actually clears fullscreen and
+    # restores it.
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
@@ -7666,6 +7616,112 @@ def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
 
     assert not window.isFullScreen()
     assert window.geometry() == expected_geometry
+
+
+def test_hidden_to_tray_stays_false_when_platform_window_still_exposed(
+        qtbot, monkeypatch,
+):
+    # Roadmap item E1.4 (round 7, corrected after a SECOND review) — the
+    # actual invariant this guard exists for, exercised directly rather
+    # than left uncovered: when the real platform window disagrees with
+    # Qt's own hidden bookkeeping (exactly the reported bug — Qt marked
+    # itself hidden while AppKit still had the real NSWindow on screen),
+    # `_hidden_to_tray` must NOT flip True. `windowHandle().isExposed()`
+    # can't be monkeypatched directly on a real `QWindow`, so this forces
+    # the disagreement through `_is_exposed_at_platform_level` — the one
+    # production code path that reads it either way.
+    #
+    # This guard is deliberately REPORT-ONLY now (a second review found
+    # the first version's "retry" — calling `hide()` again from inside
+    # this same check — was itself a corrective ACTION taken during a
+    # state indistinguishable from "a real transition is still playing,"
+    # which is how round 6's bug was built in the first place). So there
+    # is no second check to wait for here: `_hidden_to_tray` stays False
+    # permanently once this one check finds a disagreement — logged, not
+    # acted on — matching the ordinary (non-fullscreen) hide path this is
+    # only ever reachable from.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    monkeypatch.setattr(
+        window, "_is_exposed_at_platform_level", lambda: True,
+    )
+
+    window.close()
+
+    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
+    assert window._hidden_to_tray is False
+
+
+def test_stale_hide_verification_does_not_rehide_a_reopened_window(
+        qtbot, monkeypatch,
+):
+    # Roadmap item E1.4 (round 7, corrected after a SECOND review) — a
+    # single tray-menu click within the verify delay (a legitimate
+    # reopen) used to be indistinguishable from "the hide didn't take":
+    # the delayed check would see the platform window legitimately
+    # exposed (because the user just reopened it) and, in the OLD
+    # "retry" design, call `hide()` again — silently hiding a window the
+    # user had just deliberately reopened, with no explanation. Fixed
+    # via `_hide_request_id`, bumped by both the hide attempt and
+    # `_on_tray_open_seeker`; a stale check (captured BEFORE the reopen)
+    # must see its id no longer matches and do nothing at all.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    # The real platform window genuinely IS still exposed for a moment
+    # after `close()` in this scenario (nothing artificial here) — what
+    # matters is that the user reopens before the delayed check fires.
+    monkeypatch.setattr(
+        window, "_is_exposed_at_platform_level", lambda: True,
+    )
+
+    window.close()
+    window._on_tray_open_seeker()
+    assert window.isVisible()
+    assert window._hidden_to_tray is False
+
+    # Let the stale check (scheduled by the close, before the reopen)
+    # actually fire — it must be a no-op: the window stays visible, and
+    # `_hidden_to_tray` stays False (the true, post-reopen state), not
+    # flipped True by a check that no longer reflects reality.
+    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
+    assert window.isVisible()
+    assert window._hidden_to_tray is False
+
+
+def test_fullscreen_close_never_arms_hide_verification(qtbot, monkeypatch):
+    # Roadmap item E1.4 (round 7, corrected after a SECOND review) — the
+    # fullscreen close branch must not schedule ANY verification check:
+    # nothing is hidden BY US on that path (AppKit's own exit-fullscreen-
+    # and-close animation does the real hiding, asynchronously); a check
+    # landing mid-animation would see the platform window still
+    # genuinely exposed and, in the report-only design, merely log —
+    # but in a design that ever grows a corrective action again, would
+    # call `hide()` mid-transition, reproducing round 6's bug. Asserted
+    # structurally (no `_confirm_hidden_to_tray` call at all), not just
+    # by absence of a symptom.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+
+    confirm_calls = []
+    monkeypatch.setattr(
+        window, "_confirm_hidden_to_tray",
+        lambda *a, **k: confirm_calls.append((a, k)),
+    )
+
+    window.close()
+
+    assert confirm_calls == []
+    assert window._hidden_to_tray is True
 
 
 def test_close_event_shows_one_off_notice_only_once(qtbot, monkeypatch):
@@ -7789,7 +7845,7 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window.show()
     window.close()
-    assert window._hidden_to_tray is True
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
     window._on_tray_open_seeker()
 
@@ -7812,7 +7868,7 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window.show()
     window.close()
-    assert window._hidden_to_tray is True
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
     window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
@@ -7835,7 +7891,7 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     qtbot.addWidget(window)
     window.show()
     window.close()
-    assert window._hidden_to_tray is True
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
     window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
@@ -7905,11 +7961,11 @@ def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
     # otherwise fixes, and needs checking on its own rather than
     # assumed to share the same fix. `_on_tray_quit` goes straight to
     # `QApplication.quit()`, never `self.close()` (see its own
-    # docstring) — it never reaches `closeEvent`/the fullscreen-exit-
-    # then-hide dance at all, so the black-Space bug is structurally
-    # unreachable from this path regardless of fullscreen state: the
-    # whole app (and its Space) is what's actually going away, not just
-    # this window being hidden.
+    # docstring) — it never reaches `closeEvent`/E1's own fullscreen
+    # branch at all, so the black-Space bug is structurally unreachable
+    # from this path regardless of fullscreen state: the whole app (and
+    # its Space) is what's actually going away, not just this window
+    # being hidden.
     from PySide6.QtWidgets import QApplication
 
     _force_tray_available(monkeypatch, True)
@@ -7930,7 +7986,7 @@ def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
     assert quit_calls == [True]
     # Nothing about the close/hide-to-tray machinery fired.
     assert window._hidden_to_tray is False
-    assert window._pending_hide_after_fullscreen_exit is False
+    assert window._pre_fullscreen_geometry is None
 
 
 def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):

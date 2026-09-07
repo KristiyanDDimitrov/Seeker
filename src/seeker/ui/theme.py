@@ -239,6 +239,13 @@ SPACING_XL = 24
 RADIUS_CONTROL = 6
 RADIUS_CARD = 10
 
+# Roadmap item E3.3 (round 7) — the user's explicit request: track and
+# fill should be the SAME pill shape at 0%, mid-download and 100%. The
+# radius is derived from the height (never a literal), so the two can
+# never drift apart again.
+PROGRESS_BAR_HEIGHT = 14
+PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
+
 
 def set_variant(widget: QWidget, variant: str | None) -> None:
     """Set a widget's `variant` dynamic property (used by the
@@ -269,7 +276,7 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
     bar.setStyleSheet(
         f"QProgressBar::chunk {{"
         f"  background-color: {ACCENT};"
-        f"  border-radius: {RADIUS_CONTROL}px;"
+        f"  border-radius: {PROGRESS_BAR_RADIUS}px;"
         f"}}"
     )
 
@@ -303,7 +310,18 @@ def make_card(inner: QWidget) -> QFrame:
     # corner), not a visible "gap" of its own.
     margin = SPACING_XS
     layout.setContentsMargins(margin, margin, margin, margin)
-    inner.setStyleSheet("border: none; border-radius: 0px;")
+    # Roadmap item E3 (round 7) — used to be a per-widget
+    # `inner.setStyleSheet("border: none; border-radius: 0px;")`. Qt
+    # parses a selector-less declaration list as a universal `* {...}`
+    # rule, which strips border/radius off EVERY descendant widget BOX
+    # (a QProgressBar's track, the most visible case — see E3), not
+    # just `inner` itself. Scoped to a real selector via objectName
+    # instead — `#cardInner` in build_stylesheet's `QFrame#card` block
+    # is the only rule this widget or its children now match for this.
+    # None of the 17 real make_card() call sites give `inner` an
+    # objectName of its own (confirmed by grep before this fix), so
+    # there's no existing name to preserve/coexist with here.
+    inner.setObjectName("cardInner")
     layout.addWidget(inner)
     return frame
 
@@ -323,7 +341,15 @@ def cell_widget(*widgets: QWidget) -> QWidget:
     filled cell).
     """
     container = QWidget()
-    container.setStyleSheet("background: transparent;")
+    # Roadmap item E3.6 (round 7) — was a selector-less
+    # `setStyleSheet("background: transparent;")`, the same shape Qt
+    # parses as a universal `* {...}` rule that E3 found stripping a
+    # QProgressBar's border. This container has no descendants that
+    # need transparency forced onto them (its own children set their
+    # own real backgrounds), so it was never observed to cause harm —
+    # scoped via objectName anyway; see `#cellWidgetContainer` in
+    # build_stylesheet.
+    container.setObjectName("cellWidgetContainer")
     layout = QHBoxLayout(container)
     layout.setContentsMargins(
         SPACING_SM, SPACING_XS, SPACING_SM, SPACING_XS,
@@ -631,6 +657,17 @@ QLabel#sectionHeaderLabel {{
     color: {palette.TEXT};
 }}
 
+/* Roadmap item E4 (round 7) — reverses C4/D1's custom-painted
+`_Wordmark` widget. A plain QLabel re-themes for free on
+QApplication.setStyleSheet() (no retint()/on_theme_changed() call
+needed) and reserves its own font's ascent/descent internally, so it
+cannot exhibit D1's "clipped at the bottom" bug class at all. */
+QLabel#wordmark {{
+    font-size: 20px;
+    font-weight: 700;
+    color: {palette.TEXT};
+}}
+
 #sidebarPanel {{
     background-color: {palette.BG_SIDEBAR};
     border-right: 1px solid {palette.BORDER};
@@ -793,6 +830,41 @@ QFrame#card {{
     border-radius: {RADIUS_CARD}px;
 }}
 
+/* Roadmap item E3 (round 7) — reverses part of item 80's own fix.
+make_card() used to apply "border: none; border-radius: 0px;" as a
+per-widget setStyleSheet() with no selector; Qt parses a selector-less
+declaration list as `* {{ ... }}`, applying it to `inner` AND EVERY ONE
+OF ITS DESCENDANTS. A rule with no pseudo-element only ever matches a
+widget's BOX, never a pseudo-element/sub-control — so this silently
+stripped border/radius off every plain widget box nested inside a card
+(a QProgressBar's track, line edits, combo boxes, buttons in cells...)
+while leaving `QHeaderView::section`/`QProgressBar::chunk` alone, since
+those are pseudo-elements `*` can't match. Confirmed live (E3.1): with
+this per-widget sheet in place, a determinate QProgressBar's own top
+edge samples as BG_SURFACE_2 (no border at all); with it removed, the
+same pixel samples as BORDER, exactly as this rule now enforces via a
+real selector instead of a universal one. */
+#cardInner {{
+    border: none;
+    border-radius: 0px;
+}}
+
+/* Roadmap item E3.6 (round 7) — `cell_widget()`'s container and
+`_ThemeToggleButton` both used to set the exact same shape of
+selector-less per-widget stylesheet as `make_card()`'s own bug above;
+neither was ever observed to cause a real visible defect (the former is
+a background color on a leaf-ish container, the latter a childless
+button), but both are the same loaded gun, scoped here the same way so
+a source-level sweep can assert none of these exist anywhere in ui/. */
+#cellWidgetContainer {{
+    background: transparent;
+}}
+
+#themeToggleButton {{
+    border: none;
+    background: transparent;
+}}
+
 QListWidget::item {{
     padding: 4px;
 }}
@@ -868,7 +940,7 @@ QTableCornerButton::section {{
 QProgressBar {{
     background-color: {palette.BG_SURFACE_2};
     border: 1px solid {palette.BORDER};
-    border-radius: {RADIUS_CONTROL}px;
+    border-radius: {PROGRESS_BAR_RADIUS}px;
     text-align: center;
     /* Roadmap item C5 (round 5) — found live via a real screenshot of
     the light palette: the percentage text sits on TWO different
@@ -881,7 +953,7 @@ QProgressBar {{
     BG_SURFACE_2 — the strictly better choice for text that must read
     on both. */
     color: {palette.TEXT};
-    max-height: 14px;
+    max-height: {PROGRESS_BAR_HEIGHT}px;
 }}
 
 /* Deliberately no global `QProgressBar::chunk` rule here — found live

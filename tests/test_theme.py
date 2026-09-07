@@ -18,13 +18,26 @@ def test_make_card_turns_off_the_inner_widgets_own_border(qtbot):
     # Roadmap item 80 (P10.1) — the frame owns the real rounded border;
     # `inner` must have its own turned off, or the same corner-cutting
     # defect just moves one level in (see make_card's own docstring).
+    #
+    # Roadmap item E3 (round 7) — this used to be a per-widget
+    # `inner.setStyleSheet("border: none; border-radius: 0px;")`, which
+    # Qt parses as a universal `* {...}` rule cascading onto every
+    # descendant (found live stripping a QProgressBar's own border
+    # inside a card). Scoped via objectName + a real `#cardInner`
+    # selector in the app-wide stylesheet instead — checked here via the
+    # objectName and the global stylesheet text, not a per-widget one
+    # (`table.styleSheet()` is correctly empty now).
     table = QTableWidget(0, 1)
     card = theme.make_card(table)
     qtbot.addWidget(card)
 
-    style = table.styleSheet()
-    assert "border: none" in style
-    assert "border-radius: 0px" in style
+    assert table.styleSheet() == ""
+    assert table.objectName() == "cardInner"
+
+    stylesheet = theme.build_stylesheet(theme.DARK)
+    assert "#cardInner" in stylesheet
+    assert "border: none" in stylesheet
+    assert "border-radius: 0px" in stylesheet
 
 
 def test_make_card_leaves_a_real_margin_between_inner_and_the_frame(qtbot):

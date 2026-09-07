@@ -27,7 +27,6 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPixmap,
 )
-from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -401,204 +400,6 @@ def _resolve_tray_icon_path() -> Path:
     return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]
 
 
-def _resolve_wordmark_brows_path() -> Path:
-    """Roadmap item C4 (round 5) — same `sys.frozen`/`sys._MEIPASS`
-    branch as `_resolve_tray_icon_path` above; `packaging/icons/`
-    already ships wholesale as a PyInstaller `datas` entry (item 90),
-    so no `seeker.spec` change is needed for this new asset."""
-    if not getattr(sys, "frozen", False):
-        return (
-            Path(__file__).resolve().parent.parent.parent.parent
-            / "packaging" / "icons" / "seeker_brows.svg"
-        )
-
-    return Path(sys._MEIPASS) / "icons" / "seeker_brows.svg"  # type: ignore[attr-defined]
-
-
-class _Wordmark(QWidget):
-    """Roadmap item C4 (round 5) — the sidebar's "Seeker" label, with
-    the logo's brow strokes composited above the real "ee". Draws its
-    own text (rather than a QLabel + a separately-positioned QLabel for
-    the brows) so the brow position can be derived from the SAME
-    QFontMetrics call that lays out the text — `horizontalAdvance("S")`
-    gives the left edge of "ee" and `horizontalAdvance("See") -
-    horizontalAdvance("S")` its width, so this survives a font/size
-    change with no hardcoded offset.
-
-    `QSvgRenderer` has no `currentColor` support (C4.3) — the SVG is
-    rendered to a `QPixmap` once at construction, then tinted with
-    `QPainter` `CompositionMode_SourceIn`, the same template-image
-    treatment `_resolve_tray_icon_path`'s asset gets from AppKit
-    natively. One untinted asset then serves any palette (dark today;
-    C5's light palette needs no second asset).
-
-    Degrades to plain text with no brows (C4.5) if the SVG asset is
-    missing or fails to parse — a packaged build must never show a
-    blank label just because one resource didn't make it into the
-    bundle.
-    """
-
-    _TEXT = "Seeker"
-    _BROW_GAP = 3
-    _BOTTOM_PADDING = theme.SPACING_MD  # matches the old label's own value
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._font = QFont()
-        self._font.setBold(True)
-        self._font.setPixelSize(20)
-        self._brows_pixmap = self._load_tinted_brows()
-
-    def retint(self) -> None:
-        """Roadmap item C5.4 — called by `MainWindow.on_theme_changed()`
-        on every theme switch: re-renders the brow pixmap against the
-        NOW-current `theme.ACCENT` and repaints. Cheap enough to just
-        redo (one small SVG render), and far simpler than trying to
-        tint-in-place a pixmap whose old tint is already baked into its
-        alpha-multiplied pixels."""
-        self._brows_pixmap = self._load_tinted_brows()
-        self.update()
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        # Roadmap item D1.6 (round 6) — the widget's real DPR is only
-        # known once it actually has a window/screen; re-render the
-        # instant Qt reports that value changing (construction's own
-        # 1.0 fallback above included), rather than trusting whatever
-        # ratio happened to be current the one time `_load_tinted_brows`
-        # was first called.
-        if event.type() == QEvent.Type.DevicePixelRatioChange:
-            self._brows_pixmap = self._load_tinted_brows()
-        super().changeEvent(event)
-
-    def _load_tinted_brows(self) -> QPixmap | None:
-        path = _resolve_wordmark_brows_path()
-        if not path.exists():
-            return None
-        renderer = QSvgRenderer(str(path))
-        if not renderer.isValid():
-            return None
-
-        # Roadmap item D1.6 (round 6) — falls back to 1.0, not a
-        # guessed "probably Retina" 2.0: at construction time (the only
-        # time `self.window()` can be None/not-yet-real), there is no
-        # actual screen to read a ratio from at all, and a wrong guess
-        # here used to render at the wrong resolution semi-permanently.
-        # `changeEvent` below re-renders the instant Qt reports the
-        # real `DevicePixelRatioChange`, so this fallback only ever
-        # matters for the single frame before that first real event.
-        dpr = self.devicePixelRatioF() if self.window() else 1.0
-        size = renderer.defaultSize()
-        if size.width() <= 0 or size.height() <= 0:
-            return None
-
-        pixmap = QPixmap(
-            max(1, round(size.width() * dpr)),
-            max(1, round(size.height() * dpr)),
-        )
-        pixmap.setDevicePixelRatio(dpr)
-        pixmap.fill(Qt.GlobalColor.transparent)
-
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.setCompositionMode(
-            QPainter.CompositionMode.CompositionMode_SourceIn
-        )
-        painter.fillRect(
-            0, 0, pixmap.width(), pixmap.height(), QColor(theme.ACCENT),
-        )
-        painter.end()
-        return pixmap
-
-    def sizeHint(self) -> QSize:
-        # Roadmap item D1.1 (round 6) — this used to measure height
-        # with `boundingRect(...).size()` (the ink rect — roughly cap
-        # height, since "Seeker" has no descenders) while `paintEvent`
-        # positions the baseline at `ascent()` and never reserves
-        # `descent()` at all, so the widget asked for ~10px less height
-        # than it actually draws into and Qt clipped the bottom of the
-        # text. Reserve the real font metrics `paintEvent` actually
-        # uses, not the ink extent of this one specific string.
-        metrics = QFontMetrics(self._font)
-        top = self._brow_reserve_height(metrics) if self._brows_pixmap else 0
-        height = top + metrics.ascent() + metrics.descent() + (
-            self._BOTTOM_PADDING
-        )
-        # D1.2 — same class of error on the width: `boundingRect().width()`
-        # omits the right side bearing. `horizontalAdvance` is what
-        # `paintEvent`'s `drawText` actually advances by; also take the
-        # max against the brow span so a brow that overhangs the text
-        # (a wide brow asset over a narrow font) can never be clipped.
-        ee_left, ee_width = self._ee_span(metrics)
-        width = max(metrics.horizontalAdvance(self._TEXT), ee_left + ee_width)
-        return QSize(width, height)
-
-    def _brow_reserve_height(self, metrics: QFontMetrics) -> int:
-        assert self._brows_pixmap is not None
-        ee_width = self._ee_span(metrics)[1]
-        aspect = self._brows_pixmap.height() / self._brows_pixmap.width()
-        brow_height = ee_width * aspect
-        # Room for the brows AND the tallest capital letter ("S"), which
-        # rises higher above baseline than the "ee"'s own x-height.
-        return round(max(
-            brow_height + self._BROW_GAP,
-            metrics.capHeight() - metrics.xHeight(),
-        ))
-
-    def _ee_span(self, metrics: QFontMetrics) -> tuple[int, int]:
-        s_width = metrics.horizontalAdvance("S")
-        ee_width = metrics.horizontalAdvance("See") - s_width
-        return s_width, ee_width
-
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        metrics = QFontMetrics(self._font)
-        top_reserve = (
-            self._brow_reserve_height(metrics) if self._brows_pixmap else 0
-        )
-        baseline_y = top_reserve + metrics.ascent()
-
-        painter.setFont(self._font)
-        painter.setPen(QColor(theme.TEXT))
-        painter.drawText(0, baseline_y, self._TEXT)
-
-        if self._brows_pixmap is not None:
-            ee_left, ee_width = self._ee_span(metrics)
-            aspect = self._brows_pixmap.height() / self._brows_pixmap.width()
-            brow_height = ee_width * aspect
-            top_of_ee = baseline_y - metrics.xHeight()
-            brow_bottom = top_of_ee - self._BROW_GAP
-            target = QRectF(
-                ee_left, brow_bottom - brow_height, ee_width, brow_height,
-            )
-            painter.drawPixmap(
-                target, self._brows_pixmap,
-                self._brow_source_rect(self._brows_pixmap),
-            )
-        painter.end()
-
-    @staticmethod
-    def _brow_source_rect(pixmap: QPixmap) -> QRectF:
-        # Roadmap item D1.4 (round 6) — `QPixmap.width()`/`.height()`
-        # return DEVICE pixels (e.g. 507 * 2 = 1014 at 2x), but once a
-        # devicePixelRatio is set on the pixmap, `drawPixmap`'s source
-        # rect is interpreted in its DEVICE-INDEPENDENT coordinates —
-        # using the raw device-pixel size made the source rect twice
-        # the actual image in both axes, so only its top-left quadrant
-        # (the left brow) ever painted. `deviceIndependentSize()` is
-        # the value this call actually wants. Same DPR trap HISTORY
-        # §107 already hit once this round via `window.grab()`, in a
-        # second place. A `@staticmethod` taking the pixmap explicitly
-        # (rather than reading `self._brows_pixmap` inline) so this one
-        # size-unit conversion can be tested directly with a synthetic
-        # pixmap, independent of this offscreen test session's own real
-        # devicePixelRatio (confirmed empirically to be 1.0, where
-        # device and device-independent pixels are numerically
-        # identical and this bug can't be forced to reproduce through a
-        # real paint+grab round trip at all).
-        return QRectF(QPointF(0, 0), pixmap.deviceIndependentSize())
-
-
 _THEME_MODE_LABELS = {
     "system": "Follow system",
     "light": "Light",
@@ -612,7 +413,8 @@ class _ThemeToggleButton(QPushButton):
     circle glyph set, drawn with `QPainter` rather than shipped as SVG/
     PNG assets, so it's resolution-independent and tints with the
     active palette for free (reads `theme.TEXT_MUTED` fresh on every
-    paint, same self-healing shape as `_Wordmark`'s own text draw).
+    paint — this widget draws its own glyph rather than using a
+    palette-driven QSS icon).
 
     A logo-derived glyph (one eye from the mark, solid/outlined/half-
     filled per mode) was tried first and rejected: at real sidebar
@@ -629,7 +431,16 @@ class _ThemeToggleButton(QPushButton):
         self.setFlat(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(28, 28)
-        self.setStyleSheet("border: none; background: transparent;")
+        # Roadmap item E3.6 (round 7) — a selector-less setStyleSheet()
+        # string is the exact mechanism item E3 found stripping borders
+        # off a QProgressBar's track (Qt parses it as a universal `*`
+        # rule). This button paints its own glyph with no children, so
+        # there was never anything for it to cascade onto — but scoped
+        # via objectName anyway, so the new ui-wide regression test
+        # (theme.py's own selector-less-setStyleSheet sweep) can't be
+        # tripped by a control that happens to be safe today only
+        # because it's childless.
+        self.setObjectName("themeToggleButton")
         self._mode = mode
         self._update_tooltip()
 
@@ -1500,6 +1311,11 @@ class MainWindow(QMainWindow):
         # SingleShotConnection fix) — isolated by temporarily removing
         # each of the two changes independently against the full test
         # suite before concluding which one was actually responsible.
+        # Roadmap item E1 (round 7) — "normally only closed once" is no
+        # longer quite true: `_build_tray_icon()` clears this attribute
+        # again, permanently, the moment a real tray icon exists — see
+        # that method's own comment for why a window with a live tray
+        # icon to reopen from must never actually be deleted on close.
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.thread_pool = QThreadPool()
@@ -1556,12 +1372,23 @@ class MainWindow(QMainWindow):
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
         self._hidden_to_tray = False
-        # Roadmap item D4 (round 6) — set while `closeEvent` is waiting
-        # for a fullscreen exit it just triggered to actually land
-        # (the transition is animated/async) before hiding to tray; see
-        # `closeEvent`/`changeEvent`.
-        self._pending_hide_after_fullscreen_exit = False
+        # Roadmap item E1 (round 7) — captured in `closeEvent` before a
+        # fullscreen window is allowed to close for real, so `_on_tray_
+        # open_seeker` can restore the pre-fullscreen size/position
+        # instead of whatever a bare reopen resolves to.
         self._pre_fullscreen_geometry: QRect | None = None
+        # Roadmap item E1.4 (round 7, corrected after a second review) —
+        # a monotonic counter, bumped on every hide-to-tray attempt AND
+        # every deliberate reopen (`_on_tray_open_seeker`). A delayed
+        # verification check captures this value when scheduled and
+        # bails if it no longer matches by the time the timer fires —
+        # otherwise a stale check landing after the user has ALREADY
+        # reopened the window (a single tray-menu click within the
+        # verify delay) would see the platform window legitimately
+        # exposed, conclude the hide "didn't take," and hide the window
+        # right back out from under the user with no explanation. A
+        # stale check must never act.
+        self._hide_request_id = 0
         self._tray_icon: QSystemTrayIcon | None = None
         # R7.5 — de-duplicates "N item(s) need your decision" so it
         # only fires on a genuine INCREASE, never every poll tick the
@@ -1944,7 +1771,21 @@ class MainWindow(QMainWindow):
 
         wordmark_row = QHBoxLayout()
         wordmark_row.setContentsMargins(0, 0, 0, 0)
-        self._wordmark = _Wordmark()
+        # Roadmap item E4 (round 7) — reverses C4 (round 5)/D1 (round
+        # 6). The custom-painted `_Wordmark` widget's own committed
+        # `sizeHint()` (reserving real ascent+descent) contradicted what
+        # a real Mac actually rendered — the label was still clipped at
+        # the bottom in a live screenshot, with no way to settle the
+        # contradiction offscreen. A plain QLabel reserves its own
+        # font's ascent/descent internally and cannot exhibit this class
+        # of bug at all; styled entirely via `QLabel#wordmark` in
+        # `build_stylesheet` (theme.py), so it re-themes for free on
+        # `setStyleSheet()` with no `retint()`/`on_theme_changed()` call
+        # needed. The brow-strokes-over-"ee" idea is deliberately not
+        # carried forward — see HISTORY §E4 for why the asset stays,
+        # dormant, in the repo rather than deleted outright.
+        self._wordmark = QLabel("Seeker")
+        self._wordmark.setObjectName("wordmark")
         wordmark_row.addWidget(self._wordmark)
         wordmark_row.addStretch()
         # Roadmap item C5.10/C5.11 — right-aligned on the wordmark's own
@@ -2095,10 +1936,13 @@ class MainWindow(QMainWindow):
         `_apply_theme_mode` above) re-polishes every one of them
         automatically.
         """
-        # The wordmark's brow pixmap is tinted once at construction
-        # time (QSvgRenderer has no currentColor) — must be re-tinted
-        # and repainted explicitly.
-        self._wordmark.retint()
+        # Roadmap item E4 (round 7) — the wordmark used to be a custom-
+        # painted `_Wordmark` widget needing an explicit re-tint call
+        # here (QSvgRenderer has no currentColor). It's a plain
+        # QLabel#wordmark now, styled entirely through the global
+        # stylesheet, which `_apply_theme_mode`'s own
+        # `setStyleSheet()` call above already re-polishes for free —
+        # nothing left to do here for it.
         self._theme_toggle.update()
 
         # Roadmap item C5.3 point 3 — QColor(theme.ACCENT)/setForeground
@@ -2237,6 +2081,7 @@ class MainWindow(QMainWindow):
         self.track_table.cellDoubleClicked.connect(
             self._on_track_table_cell_double_clicked
         )
+        self._configure_track_columns()
         self.track_area_stack = QStackedWidget()
         # Roadmap item 80 (P10.1) — the CARD, not the bare table, is
         # the stack's real page; setCurrentWidget() calls below target
@@ -2324,6 +2169,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.search_results_table)
         layout.addWidget(theme.make_card(self.search_results_table))
+        self._configure_search_columns()
 
         self._search_artist = ""
         self._search_title = ""
@@ -2424,10 +2270,14 @@ class MainWindow(QMainWindow):
 
         self._size_search_columns(action_widgets)
 
-    def _size_search_columns(self, action_widgets: list[QWidget]) -> None:
-        # Roadmap item 82 (P13.5) — the exact P4/item 73 lesson applied
-        # to a brand-new table from day one, rather than repeating the
-        # "nothing ever sets a column width" mistake.
+    def _configure_search_columns(self) -> None:
+        # Roadmap item E2 (round 7) — split off from `_size_search_
+        # columns` so a brand-new, still-empty table gets a real column
+        # layout at construction, not only on its first populated
+        # render (which never runs while the table has zero rows —
+        # exactly the gap that left an empty Search table sitting at
+        # Qt's default 100px columns with no Actions divider). Called
+        # again, harmlessly, at the top of `_size_search_columns` below.
         header = self.search_results_table.horizontalHeader()
         header.setMinimumSectionSize(40)
         header.setStretchLastSection(False)
@@ -2446,6 +2296,16 @@ class MainWindow(QMainWindow):
             _SearchColumn.FILENAME, QHeaderView.ResizeMode.Stretch,
         )
 
+        theme.size_action_column(
+            self.search_results_table, _SearchColumn.ACTIONS, [],
+        )
+        theme.apply_column_floors(self.search_results_table)
+
+    def _size_search_columns(self, action_widgets: list[QWidget]) -> None:
+        # Roadmap item 82 (P13.5) — the exact P4/item 73 lesson applied
+        # to a brand-new table from day one, rather than repeating the
+        # "nothing ever sets a column width" mistake.
+        self._configure_search_columns()
         theme.size_action_column(
             self.search_results_table, _SearchColumn.ACTIONS, action_widgets,
         )
@@ -2686,6 +2546,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.sharing_locations_table)
         layout.addWidget(theme.make_card(self.sharing_locations_table))
+        self._configure_sharing_locations_columns()
 
         uploads_label = QLabel("Currently uploading")
         # Roadmap item C5.3 — QLabel#sectionHeaderLabel in theme.py.
@@ -2835,16 +2696,22 @@ class MainWindow(QMainWindow):
 
         self._size_sharing_locations_columns(action_widgets)
 
-    def _size_sharing_locations_columns(
-            self, action_widgets: list[QWidget],
-    ) -> None:
-        # Roadmap item R5 (5b.1).
+    def _configure_sharing_locations_columns(self) -> None:
+        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
+        # empty table gets this layout at construction.
         header = self.sharing_locations_table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.sharing_locations_table, 4, [])
+        theme.apply_column_floors(self.sharing_locations_table)
+
+    def _size_sharing_locations_columns(
+            self, action_widgets: list[QWidget],
+    ) -> None:
+        self._configure_sharing_locations_columns()
         theme.size_action_column(self.sharing_locations_table, 4, action_widgets)
         theme.apply_column_floors(self.sharing_locations_table)
 
@@ -3700,6 +3567,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.review_needs_table)
         layout.addWidget(theme.make_card(self.review_needs_table))
+        self._configure_review_needs_columns()
 
         upgrades_header_row = QHBoxLayout()
         upgrades_header_row.addWidget(
@@ -3726,6 +3594,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.review_upgrades_table)
         layout.addWidget(theme.make_card(self.review_upgrades_table))
+        self._configure_review_upgrades_columns()
 
         # Third section — roadmap item 56 Phase 2, closing item 7's
         # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
@@ -3739,6 +3608,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.review_local_table)
         layout.addWidget(theme.make_card(self.review_local_table))
+        self._configure_review_local_columns()
 
         # Roadmap item R2.1 — the 2s poll_timer rebuilds this table's
         # checkboxes from scratch every tick (see poll_timer's own
@@ -3887,6 +3757,7 @@ class MainWindow(QMainWindow):
         )
         theme.apply_table_defaults(self.duplicates_table)
         layout.addWidget(theme.make_card(self.duplicates_table))
+        self._configure_duplicates_columns()
 
         # QButtonGroup instances (one per duplicate group, so only one
         # radio per group can be selected) have no Qt parent-child
@@ -4460,9 +4331,7 @@ class MainWindow(QMainWindow):
 
         self._size_duplicates_columns(action_widgets)
 
-    def _size_duplicates_columns(
-            self, action_widgets: list[QWidget],
-    ) -> None:
+    def _configure_duplicates_columns(self) -> None:
         """Roadmap item 73 (P4) — a real, live-measured floor for the
         Actions column, closing the actual reported bug: at the app's
         real 960x640 minimum window size, against real production
@@ -4474,6 +4343,10 @@ class MainWindow(QMainWindow):
         it. Fixed mode + an explicit width DERIVED from the real
         widget's own sizeHint() (never a magic number) makes this
         column immune to that squeeze regardless of window width.
+
+        Roadmap item E2 (round 7) — split off from `_size_duplicates_
+        columns` so an empty table gets this layout at construction,
+        not only on its first populated render.
         """
         header = self.duplicates_table.horizontalHeader()
         # A floor no column can be silently squeezed below (item 4.3) —
@@ -4502,6 +4375,15 @@ class MainWindow(QMainWindow):
             _DuplicatesColumn.PATH, QHeaderView.ResizeMode.Stretch,
         )
 
+        theme.size_action_column(
+            self.duplicates_table, _DuplicatesColumn.ACTIONS, [],
+        )
+        theme.apply_column_floors(self.duplicates_table)
+
+    def _size_duplicates_columns(
+            self, action_widgets: list[QWidget],
+    ) -> None:
+        self._configure_duplicates_columns()
         # Roadmap item R5 (5b.1) — extracted into the shared
         # theme.size_action_column, now also used by Search/Track/
         # Sharing/Review's Actions columns instead of a tenth copy.
@@ -5031,15 +4913,22 @@ class MainWindow(QMainWindow):
 
         self._size_track_columns(action_widgets)
 
-    def _size_track_columns(self, action_widgets: list[QWidget]) -> None:
+    def _configure_track_columns(self) -> None:
         # Roadmap item R5 (5b.1) — same shape as
         # _size_duplicates_columns/_size_search_columns, via the new
         # shared theme.size_action_column.
+        # Roadmap item E2 (round 7) — split off so the table has this
+        # layout from construction, not only its first populated render.
         header = self.track_table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.track_table, 3, [])
+        theme.apply_column_floors(self.track_table)
+
+    def _size_track_columns(self, action_widgets: list[QWidget]) -> None:
+        self._configure_track_columns()
         theme.size_action_column(self.track_table, 3, action_widgets)
         theme.apply_column_floors(self.track_table)
 
@@ -5392,13 +5281,19 @@ class MainWindow(QMainWindow):
 
         self._size_review_needs_columns(action_widgets)
 
-    def _size_review_needs_columns(self, action_widgets: list[QWidget]) -> None:
-        # Roadmap item R5 (5b.1).
+    def _configure_review_needs_columns(self) -> None:
+        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
+        # empty table gets this layout at construction.
         header = self.review_needs_table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_needs_table, 3, [])
+        theme.apply_column_floors(self.review_needs_table)
+
+    def _size_review_needs_columns(self, action_widgets: list[QWidget]) -> None:
+        self._configure_review_needs_columns()
         theme.size_action_column(self.review_needs_table, 3, action_widgets)
         theme.apply_column_floors(self.review_needs_table)
 
@@ -5493,13 +5388,19 @@ class MainWindow(QMainWindow):
 
         self._size_review_upgrades_columns(action_widgets)
 
-    def _size_review_upgrades_columns(self, action_widgets: list[QWidget]) -> None:
-        # Roadmap item R5 (5b.1).
+    def _configure_review_upgrades_columns(self) -> None:
+        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
+        # empty table gets this layout at construction.
         header = self.review_upgrades_table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_upgrades_table, 3, [])
+        theme.apply_column_floors(self.review_upgrades_table)
+
+    def _size_review_upgrades_columns(self, action_widgets: list[QWidget]) -> None:
+        self._configure_review_upgrades_columns()
         theme.size_action_column(self.review_upgrades_table, 3, action_widgets)
         theme.apply_column_floors(self.review_upgrades_table)
 
@@ -5663,14 +5564,20 @@ class MainWindow(QMainWindow):
 
         self._size_review_local_columns(action_widgets)
 
-    def _size_review_local_columns(self, action_widgets: list[QWidget]) -> None:
-        # Roadmap item R5 (5b.1).
+    def _configure_review_local_columns(self) -> None:
+        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
+        # empty table gets this layout at construction.
         header = self.review_local_table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        theme.size_action_column(self.review_local_table, 4, [])
+        theme.apply_column_floors(self.review_local_table)
+
+    def _size_review_local_columns(self, action_widgets: list[QWidget]) -> None:
+        self._configure_review_local_columns()
         theme.size_action_column(self.review_local_table, 4, action_widgets)
         theme.apply_column_floors(self.review_local_table)
 
@@ -6173,6 +6080,26 @@ class MainWindow(QMainWindow):
         self._tray_icon = QSystemTrayIcon(icon, self)
         self._tray_icon.setToolTip("Seeker")
 
+        # Roadmap item E1 (round 7, corrected after review) — the real
+        # invariant is "a window with a live tray icon to reopen from
+        # must never be deleted on close," which belongs HERE, where
+        # that tray icon is created (once, for the life of the
+        # session), not inside one specific close branch. `WA_
+        # DeleteOnClose` (set at construction — see its own comment
+        # there) was written back when this window's only real close
+        # happened once, at app exit; every close path that reaches
+        # `event.ignore()` first (the ordinary hide-to-tray path) never
+        # actually triggers it regardless, but the fullscreen-close
+        # path (E1.2) deliberately lets a real close complete — with
+        # this attribute still set, Qt would schedule the actual C++
+        # object for deletion right after, silently breaking `_on_tray_
+        # open_seeker` (and this tray icon/menu) the next time the user
+        # tries to reopen. Clearing it here, the moment a tray icon
+        # exists, covers every current and future close path that
+        # reaches this point with a tray present — not just the one
+        # branch that happened to need it first.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
         menu = QMenu()
 
         self._tray_status_action = menu.addAction("Idle")
@@ -6248,6 +6175,14 @@ class MainWindow(QMainWindow):
         self._trigger_backend_poll()
 
     def _on_tray_open_seeker(self) -> None:
+        # Roadmap item E1.4 (round 7) — a deliberate reopen invalidates
+        # any still-pending hide-verification check (see
+        # `_hide_request_id`'s own comment at its declaration) — without
+        # this, a check scheduled by an earlier `closeEvent` could still
+        # fire after the user has already reopened the window from here,
+        # see it legitimately exposed, and hide it right back out from
+        # under them.
+        self._hide_request_id += 1
         self._hidden_to_tray = False
         self.showNormal()
         # D4.2 — give back the exact window the user had before it was
@@ -6340,6 +6275,14 @@ class MainWindow(QMainWindow):
         self._tray_pause_action.setChecked(self.application.downloads_paused)
         self._tray_pause_action.blockSignals(False)
 
+    # Roadmap item E1.4 (round 7, corrected after a second review) —
+    # untuned: the real AppKit exit-fullscreen-then-close animation
+    # measures somewhere in the 0.5-1s range (per this item's own
+    # diagnosis, still not measured against real hardware from this
+    # session), so this is a round number comfortably above that, not a
+    # verified figure.
+    _HIDE_TO_TRAY_VERIFY_DELAY_MS = 400
+
     def closeEvent(self, event: QCloseEvent) -> None:
         # Roadmap item R7.1/R7.2 — hides to the menu bar instead of
         # quitting, but ONLY when there's a real tray icon to hide to;
@@ -6350,73 +6293,175 @@ class MainWindow(QMainWindow):
             super().closeEvent(event)
             return
 
-        event.ignore()
+        # Roadmap item E1.4 (round 7) — a new hide attempt invalidates
+        # any earlier one's still-pending verification (see
+        # `_hide_request_id`'s own comment at its declaration).
+        self._hide_request_id += 1
 
-        # Roadmap item D4 (round 6) — the actual reported bug: on
-        # macOS, a fullscreen window owns its own Space; hiding it
-        # while still fullscreen leaves that Space in place with
-        # nothing in it (the reported black Space), and the Space is
-        # only ever torn down when the window leaves fullscreen, which
-        # `hide()` alone never triggers. Leave fullscreen FIRST — the
-        # transition is animated/async, so the actual hide is deferred
-        # to `changeEvent` below, once Qt reports the state change has
-        # actually landed, rather than racing it in this same call.
-        if self.isFullScreen():
-            # D4.2 — captured HERE, before touching fullscreen state at
-            # all, not after the exit transition: confirmed live that
-            # `normalGeometry()` read back from inside the deferred
-            # post-exit callback below is unreliable — it can still
-            # report a stale/placeholder value for a tick while the
-            # platform window settles out of fullscreen, even though
-            # the same call made from outside that callback already
-            # reports correctly. Reading it here, before any state
-            # change is requested, has no such timing dependency at all.
+        # Roadmap item E1 (round 7) — reverses D4 (round 6). D4's
+        # "exit fullscreen, defer the hide to the next WindowStateChange"
+        # was only ever confirmed under offscreen QPA, which has no
+        # macOS Space and no animated transition at all — the deferred
+        # `hide()` there lands instantly, with nothing to race. On a
+        # real Mac the exit is a genuine multi-hundred-millisecond
+        # AppKit animation; `hide()` firing mid-transition left Qt's
+        # widget marked hidden while AppKit re-ordered the real NSWindow
+        # back on screen once the animation finished — an empty,
+        # unclosable window with a native title bar Qt no longer thinks
+        # exists (reported live; see docs/HISTORY.md#E1).
+        #
+        # Fixed by not intercepting the close at all while fullscreen:
+        # let AppKit's own "close a fullscreen window" handling run,
+        # which tears down the Space correctly because it's the
+        # platform's own path, not anything this app has to get right
+        # itself. `setQuitOnLastWindowClosed(False)` (main_ui.py) keeps
+        # the app alive in the tray exactly as before. `WA_
+        # DeleteOnClose` is handled once, where the tray icon is built
+        # (`_build_tray_icon`) — not here; see that comment.
+        if sys.platform == "darwin" and self.isFullScreen():
             self._pre_fullscreen_geometry = self.normalGeometry()
-            self._pending_hide_after_fullscreen_exit = True
-            self.showNormal()
+            self._show_tray_hide_notice_once()
+            super().closeEvent(event)
+            # Roadmap item E1.4 (round 7, corrected after a SECOND
+            # review) — this branch does NOT arm the verify timer.
+            # Nothing is being hidden BY US here: `super().closeEvent()`
+            # just accepted the close, and it's AppKit's own exit-
+            # fullscreen-and-close animation that does the actual
+            # hiding, asynchronously, over the next ~0.5-1s. A verify
+            # check landing inside that window would see the platform
+            # window still genuinely exposed (the animation is still
+            # playing, not stuck), conclude the hide "didn't take," and
+            # call `hide()` again MID-TRANSITION — which is exactly the
+            # operation that produced round 6's empty, unclosable
+            # window in the first place. A safety net that can
+            # manufacture the exact failure it exists to detect, on the
+            # one path that has never run on real hardware, is worse
+            # than no safety net. There is nothing left to verify on
+            # this path anyway: AppKit's own close handling is the
+            # thing being trusted, not a `hide()` call this class made
+            # itself.
+            self._hidden_to_tray = True
             return
 
-        self._hide_to_tray()
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        # D4.1 — the deferred half of the fullscreen-exit-then-hide
-        # sequence `closeEvent` starts above: once Qt actually finishes
-        # leaving fullscreen (reported via `WindowStateChange`, not a
-        # guessed delay), hide to tray for real.
-        #
-        # Confirmed live, in this offscreen test session (not assumed —
-        # see CLAUDE.md's own standing convention on comments like this
-        # one): calling `hide()` SYNCHRONOUSLY from inside the very
-        # `changeEvent` call that reports the fullscreen-exit state
-        # change does not stick — the window is still mid-transition,
-        # and something in Qt's own handling re-asserts visibility once
-        # that transition finishes, silently undoing the `hide()`.
-        # Deferring the actual hide with `QTimer.singleShot(0, ...)` —
-        # letting this state-change event finish being handled first —
-        # reproducibly fixes it, 100% in repeated local runs, 0% for
-        # the direct-call version.
-        if (
-                self._pending_hide_after_fullscreen_exit
-                and event.type() == QEvent.Type.WindowStateChange
-                and not self.isFullScreen()
-        ):
-            self._pending_hide_after_fullscreen_exit = False
-            QTimer.singleShot(0, self._hide_to_tray)
-        super().changeEvent(event)
-
-    def _hide_to_tray(self) -> None:
-        assert self._tray_icon is not None
+        event.ignore()
         self.hide()
-        self._hidden_to_tray = True
+        self._show_tray_hide_notice_once()
+        self._confirm_hidden_to_tray(self._hide_request_id)
 
-        if not self.application._config_store.tray_hide_notice_shown:
-            self._tray_icon.showMessage(
-                "Seeker",
-                "Seeker is still running in the menu bar. Use the menu "
-                "bar icon to reopen it, or Quit from there to exit.",
-                QSystemTrayIcon.MessageIcon.Information,
+    def _show_tray_hide_notice_once(self) -> None:
+        # Roadmap item E1 (round 7, corrected after review) — was
+        # duplicated (the fullscreen branch above and the ordinary hide
+        # path each had their own copy of this, including the
+        # user-facing string) — the exact "two implementations of one
+        # behavior" shape this project's own CLAUDE.md already warns
+        # about (item 104/C3's Dashboard-vs-Downloads progress bar).
+        assert self._tray_icon is not None
+        if self.application._config_store.tray_hide_notice_shown:
+            return
+        self._tray_icon.showMessage(
+            "Seeker",
+            "Seeker is still running in the menu bar. Use the menu "
+            "bar icon to reopen it, or Quit from there to exit.",
+            QSystemTrayIcon.MessageIcon.Information,
+        )
+        self.application.mark_tray_hide_notice_shown()
+
+    def _confirm_hidden_to_tray(self, request_id: int) -> None:
+        # Roadmap item E1.4 (round 7, corrected after review) — the
+        # first version of this guard probed `self.isVisible()`, which
+        # is Qt's OWN bookkeeping: `hide()` sets it synchronously and
+        # unconditionally, so it reads False on the very next line on
+        # every platform regardless of what the real platform window is
+        # doing — dead code, confirmed by review, with no test having
+        # caught it (nothing could: it can never disagree with the call
+        # that just ran). Worse than dead code: that bookkeeping is
+        # EXACTLY what lied in the original bug (Qt marked itself hidden
+        # while AppKit still had the real NSWindow on screen) — a guard
+        # built on the lying witness can only ever agree with it.
+        #
+        # The real platform window's own reported exposure
+        # (`QWindow.isExposed()` — updated by the platform plugin from
+        # real show/hide/expose notifications, not by a widget's own
+        # "did something call hide()" flag) is the witness that can
+        # actually disagree. `_hidden_to_tray` is deliberately NOT set
+        # True until it's confirmed: every poll/render method in this
+        # class gates on that flag (R7.6), and setting it optimistically
+        # before confirmation is exactly how the original bug went
+        # silent (rendering stopped into a window the user could still
+        # see). Only reachable from the ordinary (non-fullscreen) hide
+        # path — see the fullscreen branch above for why THAT path
+        # deliberately arms no verification at all.
+        #
+        # `request_id` is captured here, at schedule time, and
+        # re-checked when the timer fires (round 7, corrected after a
+        # SECOND review) — a single tray-menu click within this delay
+        # (a legitimate reopen via `_on_tray_open_seeker`) must not let
+        # a now-stale check see the platform window legitimately
+        # exposed, conclude the EARLIER hide "didn't take," and hide the
+        # window right back out from under the user with no
+        # explanation. A stale check must never act.
+        QTimer.singleShot(
+            self._HIDE_TO_TRAY_VERIFY_DELAY_MS,
+            lambda: self._check_hidden_to_tray(request_id),
+        )
+
+    def _is_exposed_at_platform_level(self) -> bool:
+        # Split out from `_check_hidden_to_tray` so a test can force the
+        # "Qt says hidden, the platform still disagrees" case directly
+        # (monkeypatching a real `QWindow`'s own `isExposed()` isn't
+        # practical) — this is the one production code path that reads
+        # it either way.
+        handle = self.windowHandle()
+        return handle is not None and handle.isExposed()
+
+    def _check_hidden_to_tray(self, request_id: int) -> None:
+        # This delayed callback's target (`self`) can be gone by the
+        # time it fires — most visibly in tests, where qtbot tears a
+        # window down well before a real-world delay would elapse, but
+        # in principle any real close racing a real quit too. Mirrors
+        # `ui/workers.py`'s own `_emit_or_drop` finding: wrapping the
+        # actual use in `try/except RuntimeError` is the confirmed-safe
+        # boundary for a deleted Qt object (a clean, catchable
+        # exception, never corruption) — not a preceding `isValid`
+        # check, which that item's own research showed still races in
+        # the cross-thread case. This callback runs entirely on the GUI
+        # thread with nothing else able to delete `self` mid-call, so
+        # there's no real race here either way; wrapping anyway keeps
+        # this in line with the one pattern this codebase already
+        # trusts for "the widget a deferred callback targets might not
+        # exist anymore."
+        try:
+            if request_id != self._hide_request_id:
+                # Stale — a newer hide attempt or a reopen has happened
+                # since this check was scheduled. See `_hide_request_id`
+                # and `_confirm_hidden_to_tray`'s own comments.
+                return
+
+            if not self._is_exposed_at_platform_level():
+                self._hidden_to_tray = True
+                return
+
+            # Roadmap item E1.4 (round 7, corrected after a SECOND
+            # review) — the first version of this branch called
+            # `self.hide()` again here as a "retry." That is a
+            # corrective ACTION taken during a state this guard cannot
+            # distinguish from "AppKit's own transition is still
+            # playing" — indistinguishable, in fact, from the exact
+            # fullscreen-close scenario the branch above now deliberately
+            # never reaches this method for. Report-only: log the
+            # disagreement and leave `_hidden_to_tray` False, so
+            # rendering continues into a window that might genuinely
+            # still be visible (R7.6) — the strictly safer failure
+            # mode, and the one that would have made round 6's bug
+            # VISIBLE (a window rendering fine, just not hidden as
+            # expected) instead of silently wrong (a window marked
+            # hidden while the app stopped updating it).
+            print(
+                "Seeker: window still exposed at the platform level "
+                "after hide() -- _hidden_to_tray left False."
             )
-            self.application.mark_tray_hide_notice_shown()
+        except RuntimeError:
+            return
 
     def _seed_notification_cutoff(self) -> None:
         # Roadmap item R7.5 — silently records the newest existing
