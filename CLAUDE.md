@@ -158,6 +158,16 @@ src/seeker/
   that style unless we explicitly decide to add SQLAlchemy.
 - Tests: pytest, mock all external HTTP (Spotify, SoulSeek) — never hit
   real APIs in tests.
+- **Lint yes, format no — `ruff format` is deliberately not adopted.**
+  Roadmap item 115 (round 8, §4.2). This codebase has a consistent hand
+  -written house style (8-space hanging indent on multi-line `def`
+  signatures, trailing commas before closing parens, ~72-column prose
+  wrapping in comments) that `ruff format` does not produce.
+  Reformatting the whole tree would produce an unreviewable diff,
+  destroy `git blame` project-wide, and fight every future hand-wrapped
+  comment. `ruff check` (see `[tool.ruff]` in `pyproject.toml`) is the
+  enforced gate; `ruff format` is not run and should not be added
+  without a deliberate, separate decision to re-litigate this.
 - **Checking whether a test failure is "pre-existing": always `git
   stash -u`, never a bare `git stash`.** Roadmap item RR1 — a bare
   `git stash` does not stash untracked files, so it cannot see a
