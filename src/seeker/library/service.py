@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryLocationPathAlreadyRegisteredError(RuntimeError):
@@ -78,7 +81,9 @@ class LibraryService:
         # must exist.
         assert saved is not None
 
-        print(f"Added library location '{saved.name}': {saved.path}")
+        logger.info(
+            "Added library location '%s': %s", saved.name, saved.path,
+        )
 
         return saved
 
@@ -132,7 +137,9 @@ class LibraryService:
         # must exist.
         assert saved is not None
 
-        print(f"Added library location '{saved.name}': {saved.path}")
+        logger.info(
+            "Added library location '%s': %s", saved.name, saved.path,
+        )
 
         return saved
 
@@ -150,7 +157,7 @@ class LibraryService:
                 f"Location {location_id} no longer exists."
             )
 
-        print(f"Renamed library location to '{saved.name}'.")
+        logger.info("Renamed library location to '%s'.", saved.name)
 
         return saved
 
@@ -184,8 +191,8 @@ class LibraryService:
             location = self.locations.get_by_name(name, connection)
 
             if location is None:
-                print(
-                    f"No library location named '{name}' is registered."
+                logger.warning(
+                    "No library location named '%s' is registered.", name,
                 )
                 return
 
@@ -193,7 +200,7 @@ class LibraryService:
             assert location.id is not None
             self.locations.delete(location.id, connection)
 
-        print(f"Removed library location '{name}'.")
+        logger.info("Removed library location '%s'.", name)
 
     def scan_all(self) -> dict[str, int]:
         totals = {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}
@@ -202,15 +209,15 @@ class LibraryService:
             locations = self.locations.get_all(connection)
 
         if not locations:
-            print("No library locations registered.")
+            logger.info("No library locations registered.")
             return totals
 
         for location in locations:
             if not Path(location.path).is_dir():
-                print(
-                    f"Skipping '{location.name}' ({location.path}): "
-                    f"path is unreachable. The drive it lives on may "
-                    f"not be connected."
+                logger.warning(
+                    "Skipping '%s' (%s): path is unreachable. The drive "
+                    "it lives on may not be connected.",
+                    location.name, location.path,
                 )
                 continue
 

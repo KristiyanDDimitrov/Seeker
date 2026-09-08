@@ -1,4 +1,5 @@
 import glob
+import logging
 import os
 import shutil
 from collections.abc import Callable
@@ -51,6 +52,8 @@ from seeker.soulseek.client import (
     is_recognized_rejection,
 )
 from seeker.soulseek.quality import select_downloads
+
+logger = logging.getLogger(__name__)
 
 
 def _debug_poll(message: str) -> None:
@@ -249,9 +252,9 @@ class DownloadService:
             )
 
         suffix = f"/{subfolder}" if subfolder else ""
-        print(
-            f"'{playlist_name}' will download to "
-            f"'{location_name}'{suffix}"
+        logger.info(
+            "'%s' will download to '%s'%s", playlist_name, location_name,
+            suffix,
         )
 
     def get_resolved_destination(
@@ -373,9 +376,9 @@ class DownloadService:
                     statuses = ", ".join(
                         sorted({request.status for request in blocking})
                     )
-                    print(
-                        f"  Already in progress for {track.artist} - "
-                        f"{track.title} ({statuses}) — skipping."
+                    logger.info(
+                        "Already in progress for %s - %s (%s) — skipping.",
+                        track.artist, track.title, statuses,
                     )
                     skipped += 1
                     already_in_progress.append(
@@ -383,7 +386,7 @@ class DownloadService:
                     )
                     continue
 
-                print(f"Searching: {track.artist} - {track.title}")
+                logger.info("Searching: %s - %s", track.artist, track.title)
 
                 files = self.soulseek.search(
                     _build_search_query(track.artist, track.title)
@@ -411,8 +414,8 @@ class DownloadService:
                         # silently discarded. Counted as requested, not
                         # skipped — a real download WAS requested, just
                         # not a settled one.
-                        print(
-                            "  No practical candidate — requesting "
+                        logger.info(
+                            "No practical candidate — requesting "
                             "locked/upgrade-only candidate(s)."
                         )
                         self._request_upgrade_shortlist(
@@ -429,25 +432,25 @@ class DownloadService:
                         self._record_review_candidate(
                             track, review_file, review_score
                         )
-                        print(
-                            f"  No auto-match candidate — needs-review "
-                            f"candidate found (score {review_score:.1f}): "
-                            f"{review_file.username}: "
-                            f"{review_file.filename}"
+                        logger.info(
+                            "No auto-match candidate — needs-review "
+                            "candidate found (score %.1f): %s: %s",
+                            review_score, review_file.username,
+                            review_file.filename,
                         )
                         skipped += 1
                         needs_review_tracks.append(
                             f"{track.artist} - {track.title}"
                         )
                     else:
-                        print("  No candidates found.")
+                        logger.info("No candidates found.")
                         skipped += 1
                     continue
 
                 self._request_and_record(track, settled, role="settled")
-                print(
-                    f"  Requested from {settled.username}: "
-                    f"{settled.filename}"
+                logger.info(
+                    "Requested from %s: %s", settled.username,
+                    settled.filename,
                 )
                 requested += 1
 
@@ -455,8 +458,8 @@ class DownloadService:
                     self._request_upgrade_shortlist(track, upgrade_shortlist)
             except Exception as error:
                 failed += 1
-                print(
-                    f"  Failed: {track.artist} - {track.title}: {error}"
+                logger.warning(
+                    "Failed: %s - %s: %s", track.artist, track.title, error,
                 )
 
         return {
@@ -543,7 +546,9 @@ class DownloadService:
 
         if chosen is not None:
             self._request_and_record(track, chosen, role="settled")
-            print(f"  Requested from {chosen.username}: {chosen.filename}")
+            logger.info(
+                "Requested from %s: %s", chosen.username, chosen.filename,
+            )
             return {
                 "track_id": track.id,
                 "requested": True,
@@ -579,7 +584,9 @@ class DownloadService:
 
         if settled is not None:
             self._request_and_record(track, settled, role="settled")
-            print(f"  Requested from {settled.username}: {settled.filename}")
+            logger.info(
+                "Requested from %s: %s", settled.username, settled.filename,
+            )
 
             if upgrade_shortlist:
                 self._request_upgrade_shortlist(track, upgrade_shortlist)
@@ -597,7 +604,10 @@ class DownloadService:
         # Requested the same way a locked-only playlist track is (see
         # download_playlist above): lands in poll_downloads' existing
         # locked-retry cascade instead of being silently discarded.
-        print("  No practical candidate — requesting locked/upgrade-only candidate(s).")
+        logger.info(
+            "No practical candidate — requesting locked/upgrade-only "
+            "candidate(s)."
+        )
         self._request_upgrade_shortlist(track, upgrade_shortlist)
         return {
             "track_id": track.id,
@@ -618,17 +628,16 @@ class DownloadService:
         # slskd until poll_downloads' cascade needs them.
         top = upgrade_shortlist[0]
         self._request_and_record(track, top, role="upgrade", rank=1)
-        print(
-            f"  Requested upgrade from {top.username}: "
-            f"{top.filename} (rank 1)"
+        logger.info(
+            "Requested upgrade from %s: %s (rank 1)",
+            top.username, top.filename,
         )
 
         for rank, candidate in enumerate(upgrade_shortlist[1:], start=2):
             self._record_shortlisted(track, candidate, rank=rank)
-            print(
-                f"  Shortlisted upgrade candidate from "
-                f"{candidate.username}: {candidate.filename} "
-                f"(rank {rank})"
+            logger.info(
+                "Shortlisted upgrade candidate from %s: %s (rank %d)",
+                candidate.username, candidate.filename, rank,
             )
 
     def _request_and_record(
@@ -1010,8 +1019,8 @@ class DownloadService:
                     counts[request.status] += 1
             except Exception as error:
                 counts["failed"] += 1
-                print(
-                    f"  Failed to poll '{request.filename}': {error}"
+                logger.warning(
+                    "Failed to poll '%s': %s", request.filename, error,
                 )
 
         # Phase 3 retry, now covering the whole shortlist rather than a
@@ -1027,9 +1036,9 @@ class DownloadService:
             try:
                 self._retry_locked_request(request, counts)
             except Exception as error:
-                print(
-                    f"  Failed to retry locked '{request.filename}': "
-                    f"{error}"
+                logger.warning(
+                    "Failed to retry locked '%s': %s",
+                    request.filename, error,
                 )
 
         counts["ready_for_review"] = len(self._get_ready_for_review())
@@ -1438,7 +1447,7 @@ class DownloadService:
         requests = self._get_ready_for_review()
 
         if not requests:
-            print("Nothing to review.")
+            logger.info("Nothing to review.")
             return
 
         for request in requests:
@@ -1517,9 +1526,9 @@ class DownloadService:
             request: DownloadRequest,
     ) -> tuple[LibraryLocation, str] | None:
         if not self.slskd_download_dir:
-            print(
-                f"  Warning: SLSKD_DOWNLOAD_DIR is not configured; "
-                f"cannot move '{request.filename}'."
+            logger.warning(
+                "SLSKD_DOWNLOAD_DIR is not configured; cannot move '%s'.",
+                request.filename,
             )
             return None
 
@@ -1551,10 +1560,9 @@ class DownloadService:
             resolved = self._resolve_destination(None)
 
         if resolved is None:
-            print(
-                f"  Warning: no configured destination found for "
-                f"track {request.track_id}; leaving "
-                f"'{request.filename}' in place."
+            logger.warning(
+                "No configured destination found for track %s; leaving "
+                "'%s' in place.", request.track_id, request.filename,
             )
             return None
 
@@ -1588,7 +1596,7 @@ class DownloadService:
         destination_path = destination_dir / basename
         shutil.move(str(matches[0]), str(destination_path))
 
-        print(f"  Moved '{basename}' to {destination_dir}")
+        logger.info("Moved '%s' to %s", basename, destination_dir)
 
         relative_path = str(
             destination_path.relative_to(Path(location.path))
@@ -1695,9 +1703,9 @@ class DownloadService:
             counts["indexed"] = counts.get("indexed", 0) + 1
         except Exception as error:
             counts["index_failed"] = counts.get("index_failed", 0) + 1
-            print(
-                f"  Warning: downloaded '{request.filename}' but failed "
-                f"to index/match it into the library: {error}"
+            logger.warning(
+                "Downloaded '%s' but failed to index/match it into the "
+                "library: %s", request.filename, error,
             )
 
     def get_upgrade_review_details(

@@ -242,14 +242,15 @@ def test_save_config_leaves_no_temp_file_behind(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
 
 
-def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, capsys):
+def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("SLSKD_BASE_URL", "http://localhost:5030")
     monkeypatch.setenv("SLSKD_API_KEY", "env-api-key")
     monkeypatch.setenv("SLSKD_DOWNLOAD_DIR", "/mnt/slskd/downloads")
 
     path = tmp_path / "config.json"
 
-    result = migrate_legacy_env_config(path)
+    with caplog.at_level("INFO"):
+        result = migrate_legacy_env_config(path)
 
     assert result.slskd_base_url == "http://localhost:5030"
     assert result.slskd_api_key == "env-api-key"
@@ -258,15 +259,14 @@ def test_migrate_copies_env_into_empty_store(tmp_path, monkeypatch, capsys):
     persisted = load_config(path)
     assert persisted == result
 
-    output = capsys.readouterr().out
-    assert "Migrated config from .env" in output
-    assert "SLSKD_BASE_URL" in output
-    assert "SLSKD_API_KEY" in output
-    assert "SLSKD_DOWNLOAD_DIR" in output
+    assert "Migrated config from .env" in caplog.text
+    assert "SLSKD_BASE_URL" in caplog.text
+    assert "SLSKD_API_KEY" in caplog.text
+    assert "SLSKD_DOWNLOAD_DIR" in caplog.text
 
 
 def test_migrate_copies_spotify_env_into_empty_store(
-        tmp_path, monkeypatch, capsys,
+        tmp_path, monkeypatch, caplog,
 ):
     # Same chain, extended fields (this task's onboarding wizard) — not
     # a separate mechanism, just two more entries in the same
@@ -279,14 +279,14 @@ def test_migrate_copies_spotify_env_into_empty_store(
 
     path = tmp_path / "config.json"
 
-    result = migrate_legacy_env_config(path)
+    with caplog.at_level("INFO"):
+        result = migrate_legacy_env_config(path)
 
     assert result.spotify_client_id == "real-client-id"
     assert result.spotify_redirect_uri == "http://127.0.0.1:8888/callback"
 
-    output = capsys.readouterr().out
-    assert "SPOTIFY_CLIENT_ID" in output
-    assert "SPOTIFY_REDIRECT_URI" in output
+    assert "SPOTIFY_CLIENT_ID" in caplog.text
+    assert "SPOTIFY_REDIRECT_URI" in caplog.text
 
 
 def _clear_migration_env(monkeypatch):
@@ -360,7 +360,7 @@ def test_migrate_is_idempotent_on_second_call(tmp_path, monkeypatch, capsys):
 
 
 def test_migrate_partial_fields_only_copies_the_missing_ones(
-        tmp_path, monkeypatch, capsys,
+        tmp_path, monkeypatch, caplog,
 ):
     # Store already has base_url set (real, current); api_key is still
     # unset. Only api_key should be migrated in.
@@ -374,13 +374,13 @@ def test_migrate_partial_fields_only_copies_the_missing_ones(
         path,
     )
 
-    result = migrate_legacy_env_config(path)
+    with caplog.at_level("INFO"):
+        result = migrate_legacy_env_config(path)
 
     assert result.slskd_base_url == "http://current-store-value:5030"
     assert result.slskd_api_key == "env-api-key"
     assert result.slskd_download_dir is None
 
-    output = capsys.readouterr().out
-    assert "SLSKD_API_KEY" in output
-    assert "SLSKD_BASE_URL" not in output
-    assert "SLSKD_DOWNLOAD_DIR" not in output
+    assert "SLSKD_API_KEY" in caplog.text
+    assert "SLSKD_BASE_URL" not in caplog.text
+    assert "SLSKD_DOWNLOAD_DIR" not in caplog.text

@@ -1,9 +1,12 @@
+import logging
 import struct
 from typing import Any
 
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, TALB, TBPM, TIT2, TKEY, TPE1
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
+
+logger = logging.getLogger(__name__)
 
 # Tag-writing helpers for Phase B (writing canonical Spotify metadata onto
 # matched local files). Dispatches on the mutagen object's actual tag type
@@ -173,9 +176,9 @@ def embed_album_art(
         ]
         return True
 
-    print(
-        f"  Skipping album art: unsupported tag format "
-        f"({type(mutagen_file).__name__})."
+    logger.warning(
+        "Skipping album art: unsupported tag format (%s).",
+        type(mutagen_file).__name__,
     )
     return False
 

@@ -1,3 +1,4 @@
+import logging
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -53,6 +54,8 @@ from seeker.spotify.client import SpotifyClient
 from seeker.spotify.sync_service import SpotifySyncService
 from seeker.spotify.token_store import TokenStore
 
+logger = logging.getLogger(__name__)
+
 # Pre-platformdirs location — a real, non-empty database may still exist
 # here from before this migrated to an OS-conventional app-data
 # directory. Relative to the current working directory, matching where
@@ -75,6 +78,16 @@ def _resolve_database_path() -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     return data_dir / "seeker.db"
+
+
+def resolve_log_dir() -> Path:
+    # Shared by main_ui.py's RotatingFileHandler setup and
+    # data_locations below — one resolved path, never a second,
+    # drifting copy (§7.2.3).
+    log_dir = Path(platformdirs.user_log_dir("Seeker", appauthor=False))
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    return log_dir
 
 
 def _resolve_spotify_token_path() -> Path:
@@ -100,7 +113,9 @@ def _migrate_legacy_file(
         return False
 
     shutil.move(str(legacy_path), str(new_path))
-    print(f"Migrated existing {label} from {legacy_path} to {new_path}.")
+    logger.info(
+        "Migrated existing %s from %s to %s.", label, legacy_path, new_path
+    )
 
     return True
 
@@ -657,6 +672,7 @@ class Application:
             spotify_token_path=self._spotify_token_path,
             slskd_data_dir=slskd_data_dir(),
             base_dir=self.database.path.parent,
+            log_dir=resolve_log_dir(),
         )
 
     @property

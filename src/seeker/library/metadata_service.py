@@ -1,4 +1,4 @@
-import contextlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -39,6 +39,8 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
+
+logger = logging.getLogger(__name__)
 
 
 class PlaylistNotFoundError(RuntimeError):
@@ -275,7 +277,7 @@ def _rename_sidecar_if_present(current_path: Path, final_path: Path) -> None:
         else:
             sidecar.rename(new_sidecar)
     except OSError as error:
-        print(f"  Warning: could not rename AppleDouble sidecar: {error}")
+        logger.warning("Could not rename AppleDouble sidecar: %s", error)
 
 
 class MetadataService:
@@ -387,7 +389,7 @@ class MetadataService:
                         "message": str(error),
                     }
                 )
-                print(f"  Failed to tag track {track_id}: {error}")
+                logger.warning("Failed to tag track %s: %s", track_id, error)
 
         return {**counts, "details": details}
 
@@ -609,9 +611,9 @@ class MetadataService:
                             art_outcome = "written_wav_rarely_supported"
 
             if art_outcome not in ("written", "written_wav_rarely_supported"):
-                print(
-                    f"  Warning: could not embed album art for "
-                    f"{_describe_track_file(track, local_file)}: {art_message}"
+                logger.warning(
+                    "Could not embed album art for %s: %s",
+                    _describe_track_file(track, local_file), art_message,
                 )
 
         if needs_analysis:
@@ -643,17 +645,17 @@ class MetadataService:
                         connection,
                     )
             except Exception as error:
-                print(
-                    f"  Warning: could not analyze audio for "
-                    f"{_describe_track_file(track, local_file)}: {error}"
+                logger.warning(
+                    "Could not analyze audio for %s: %s",
+                    _describe_track_file(track, local_file), error,
                 )
 
         save_tags(mutagen_file)
 
         if skip_tag_write:
-            print(
-                f"  Re-analyzed (already tagged): "
-                f"{_describe_track_file(track, local_file)}"
+            logger.info(
+                "Re-analyzed (already tagged): %s",
+                _describe_track_file(track, local_file),
             )
             return
 
@@ -687,9 +689,9 @@ class MetadataService:
                     ),
                 }
             )
-            print(
-                f"  Tagged (art embedded, WAV rarely supported): "
-                f"{_describe_track_file(track, local_file)}"
+            logger.info(
+                "Tagged (art embedded, WAV rarely supported): %s",
+                _describe_track_file(track, local_file),
             )
         elif art_outcome != "written":
             counts["tagged_without_art"] += 1
@@ -702,11 +704,14 @@ class MetadataService:
                     ),
                 }
             )
-            print(
-                f"  Tagged (no cover art): {_describe_track_file(track, local_file)}"
+            logger.info(
+                "Tagged (no cover art): %s",
+                _describe_track_file(track, local_file),
             )
         else:
-            print(f"  Tagged: {_describe_track_file(track, local_file)}")
+            logger.info(
+                "Tagged: %s", _describe_track_file(track, local_file),
+            )
 
     def fix_missing_art_for_playlist(
             self,
@@ -763,7 +768,9 @@ class MetadataService:
                         "message": str(error),
                     }
                 )
-                print(f"  Failed to fix art for track {track.id}: {error}")
+                logger.warning(
+                    "Failed to fix art for track %s: %s", track.id, error,
+                )
 
         return {**counts, "details": details}
 
@@ -948,13 +955,15 @@ class MetadataService:
                     ),
                 }
             )
-            print(
-                f"  Fixed art (WAV, rarely supported): "
-                f"{_describe_track_file(track, local_file)}"
+            logger.info(
+                "Fixed art (WAV, rarely supported): %s",
+                _describe_track_file(track, local_file),
             )
         else:
             counts["fixed"] += 1
-            print(f"  Fixed art: {_describe_track_file(track, local_file)}")
+            logger.info(
+                "Fixed art: %s", _describe_track_file(track, local_file),
+            )
 
     def plan_renames(
             self,
@@ -1182,8 +1191,9 @@ class MetadataService:
                             "message": str(error),
                         }
                     )
-                    print(
-                        f"  Failed to rename track {plan.track_id}: {error}"
+                    logger.warning(
+                        "Failed to rename track %s: %s",
+                        plan.track_id, error,
                     )
 
         return result
@@ -1308,8 +1318,15 @@ class MetadataService:
                     connection,
                 )
         except Exception as db_error:
-            with contextlib.suppress(OSError):
+            try:
                 final_path.rename(current_path)
+            except OSError:
+                logger.error(
+                    "Renamed %s -> %s on disk, the database update then "
+                    "failed (%s), and renaming back also failed — the "
+                    "file and the database now disagree on its path.",
+                    current_path, final_path, db_error, exc_info=True,
+                )
             result.failed += 1
             result.details.append(
                 {
@@ -1324,7 +1341,9 @@ class MetadataService:
             return
 
         result.renamed += 1
-        print(f"  Renamed: {current_path.name} -> {final_path.name}")
+        logger.info(
+            "Renamed: %s -> %s", current_path.name, final_path.name,
+        )
 
     def _download_album_art(self, url: str) -> tuple[bytes, str]:
         cached = self.album_art_cache.get(url)

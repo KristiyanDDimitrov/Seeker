@@ -17,3 +17,6 @@ class DataLocations:
     # slskd_data_dir, which is a subfolder of it) live in — what "Open
     # Data Folder" actually opens.
     base_dir: Path
+    # A separate OS-conventional directory (platformdirs.user_log_dir) —
+    # never under base_dir — what "Open Log Folder" opens (§7.2.3).
+    log_dir: Path

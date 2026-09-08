@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 from datetime import UTC, datetime
@@ -13,6 +14,8 @@ from seeker.database.repositories.local_file_repository import (
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryUnavailableError(RuntimeError):
@@ -44,7 +47,7 @@ class LibraryScanner:
         if not root.is_dir():
             raise LibraryUnavailableError(root)
 
-        print(f"Scanning library location '{location.name}': {root}")
+        logger.info("Scanning library location '%s': %s", location.name, root)
 
         added = 0
         updated = 0
@@ -111,9 +114,9 @@ class LibraryScanner:
             "unchanged": unchanged,
         }
 
-        print(
-            f"  Added: {added}, Updated: {updated}, "
-            f"Removed: {removed}, Unchanged: {unchanged}."
+        logger.info(
+            "Added: %d, Updated: %d, Removed: %d, Unchanged: %d.",
+            added, updated, removed, unchanged,
         )
 
         return summary

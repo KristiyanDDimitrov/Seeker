@@ -1,14 +1,37 @@
+import logging
 import sys
+from logging.handlers import RotatingFileHandler
 
 from PySide6.QtWidgets import QApplication, QMainWindow
 
-from seeker.application import Application
+from seeker.application import Application, resolve_log_dir
 from seeker.ui.main_window import MainWindow
 from seeker.ui.theme import apply_theme
 from seeker.ui.wizard import OnboardingWizard
 
 
+def _configure_logging() -> None:
+    # The GUI has no console a launched-from-Finder .app can write to
+    # (§7.2.1) — a real log file is the only support story that works.
+    # Same "seeker" logger tree as main.py's CLI StreamHandler, so
+    # every service's logger.*() call reaches whichever of the two is
+    # actually configured, with no per-call special-casing.
+    log_path = resolve_log_dir() / "seeker.log"
+    handler = RotatingFileHandler(
+        log_path, maxBytes=1_000_000, backupCount=3, encoding="utf-8",
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+
+    logger = logging.getLogger("seeker")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def main() -> None:
+    _configure_logging()
+
     # Spotify/SoulSeek config is resolved lazily now (config store,
     # falling back to .env) — see Application.auth_manager. The
     # onboarding wizard is what actually collects this on a fresh

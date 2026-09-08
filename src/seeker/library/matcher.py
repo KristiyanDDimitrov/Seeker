@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,8 @@ from seeker.matching import (
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track, is_manual_track_id
 from seeker.models.track_match import TrackMatch
+
+logger = logging.getLogger(__name__)
 
 # Duration pre-filter window. Starting at ±5 seconds — tune this once real
 # match data shows how tight/loose it needs to be.
@@ -221,11 +224,9 @@ class TrackMatcher:
                     connection,
                 )
 
-        print(
-            f"Matching complete. "
-            f"Auto: {counts['auto']}, "
-            f"Needs review: {counts['needs_review']}, "
-            f"Unmatched: {counts['unmatched']}."
+        logger.info(
+            "Matching complete. Auto: %d, Needs review: %d, Unmatched: %d.",
+            counts["auto"], counts["needs_review"], counts["unmatched"],
         )
 
         return counts

@@ -3163,13 +3163,14 @@ def test_apply_upgrade_decisions_batch_empty_list_is_a_no_op(tmp_path):
 
 
 def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
-        tmp_path, capsys,
+        tmp_path, caplog,
 ):
     service = make_service(tmp_path, {})
 
-    service.review_pending_upgrades()
+    with caplog.at_level("INFO"):
+        service.review_pending_upgrades()
 
-    assert "Nothing to review." in capsys.readouterr().out
+    assert "Nothing to review." in caplog.text
 
 
 # Real peer usernames/sizes captured from a live "Dom Dolla Rhyme Dust"

@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import math
 import subprocess
 import sys
@@ -122,6 +123,8 @@ from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_updat
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
 PendingUpgrades = list[UpgradeReviewDetails]
+
+logger = logging.getLogger(__name__)
 
 
 # Untuned constant — matches the ~2s cadence already observed against
@@ -2996,6 +2999,7 @@ class MainWindow(QMainWindow):
                     locations.spotify_token_path,
                 ),
                 (help_text.DATA_LOCATION_SLSKD_LABEL, locations.slskd_data_dir),
+                (help_text.DATA_LOCATION_LOG_LABEL, locations.log_dir),
         ):
             path_label = QLabel(str(path))
             path_label.setTextInteractionFlags(
@@ -3005,14 +3009,26 @@ class MainWindow(QMainWindow):
             locations_form.addRow(label_text, path_label)
         inner_layout.addLayout(locations_form)
 
+        buttons_row = QHBoxLayout()
+
         open_folder_button = QPushButton(
                 help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
         )
         open_folder_button.setToolTip(help_text.TOOLTIP_OPEN_DATA_FOLDER)
         open_folder_button.clicked.connect(self._on_open_data_folder_clicked)
-        inner_layout.addWidget(
-            open_folder_button, alignment=Qt.AlignmentFlag.AlignLeft,
+        buttons_row.addWidget(open_folder_button)
+
+        open_log_folder_button = QPushButton(
+                help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
         )
+        open_log_folder_button.setToolTip(help_text.TOOLTIP_OPEN_LOG_FOLDER)
+        open_log_folder_button.clicked.connect(
+            self._on_open_log_folder_clicked
+        )
+        buttons_row.addWidget(open_log_folder_button)
+
+        buttons_row.addStretch()
+        inner_layout.addLayout(buttons_row)
 
         inner_layout.addStretch()
 
@@ -3033,6 +3049,9 @@ class MainWindow(QMainWindow):
 
     def _on_open_data_folder_clicked(self) -> None:
         _open_in_file_manager(self.application.data_locations.base_dir)
+
+    def _on_open_log_folder_clicked(self) -> None:
+        _open_in_file_manager(self.application.data_locations.log_dir)
 
     def _build_support_page(self) -> QWidget:
         # Roadmap item 64 — a real sidebar page, directly below Help.
@@ -6708,9 +6727,9 @@ class MainWindow(QMainWindow):
             # VISIBLE (a window rendering fine, just not hidden as
             # expected) instead of silently wrong (a window marked
             # hidden while the app stopped updating it).
-            print(
-                "Seeker: window still exposed at the platform level "
-                "after hide() -- _hidden_to_tray left False."
+            logger.warning(
+                "Window still exposed at the platform level after "
+                "hide() -- _hidden_to_tray left False."
             )
         except RuntimeError:
             return

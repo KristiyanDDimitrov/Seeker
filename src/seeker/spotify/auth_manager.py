@@ -1,3 +1,4 @@
+import logging
 import time
 import webbrowser
 from pathlib import Path
@@ -15,6 +16,8 @@ from seeker.spotify.auth import (
 from seeker.spotify.callback_server import wait_for_callback
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
+
+logger = logging.getLogger(__name__)
 
 
 # Spotify rotates the refresh token on every PKCE refresh — the old one
@@ -45,7 +48,7 @@ class SpotifyAuthManager:
             return self._authorize()
 
         if force_refresh or self._is_expired(token):
-            print("Spotify access token expired. Refreshing...")
+            logger.info("Spotify access token expired. Refreshing...")
 
             try:
                 token = refresh_access_token(
@@ -53,9 +56,9 @@ class SpotifyAuthManager:
                     token.refresh_token,
                 )
             except httpx.HTTPStatusError:
-                print(
-                    "Spotify token refresh failed. "
-                    "Starting a new authorization..."
+                logger.warning(
+                    "Spotify token refresh failed. Starting a new "
+                    "authorization..."
                 )
                 return self._authorize()
 
@@ -89,7 +92,7 @@ class SpotifyAuthManager:
             code_challenge=code_challenge,
         )
 
-        print("Opening Spotify authorization page...")
+        logger.info("Opening Spotify authorization page...")
         webbrowser.open(authorization_url)
 
         code, returned_state, error, timed_out = wait_for_callback()

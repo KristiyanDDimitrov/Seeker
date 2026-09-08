@@ -604,6 +604,7 @@ class FakeApplication:
             spotify_token_path=Path("/fake/spotify_token.json"),
             slskd_data_dir=Path("/fake/slskd-data"),
             base_dir=Path("/fake"),
+            log_dir=Path("/fake/logs"),
         )
         self.dashboard_service = FakeDashboardService(
             statuses, active_downloads,
@@ -840,6 +841,7 @@ def test_help_page_shows_the_real_resolved_data_paths(qtbot):
     assert str(locations.config_path) in labels_text
     assert str(locations.spotify_token_path) in labels_text
     assert str(locations.slskd_data_dir) in labels_text
+    assert str(locations.log_dir) in labels_text
 
 
 # --- Support page (roadmap item 64) -----------------------------------
@@ -1138,6 +1140,31 @@ def test_open_data_folder_button_calls_the_file_manager_opener(
     button.click()
 
     assert opened == [application.data_locations.base_dir]
+
+
+def test_open_log_folder_button_calls_the_file_manager_opener(
+        qtbot, monkeypatch,
+):
+    from seeker.ui import main_window as main_window_module
+
+    opened: list = []
+    monkeypatch.setattr(
+        main_window_module, "_open_in_file_manager",
+        opened.append,
+    )
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    help_page = window.stacked_widget.widget(window._page_indices["help"])
+    button = next(
+        widget for widget in help_page.findChildren(QPushButton)
+        if widget.text() == help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
+    )
+    button.click()
+
+    assert opened == [application.data_locations.log_dir]
 
 
 # --- History page (roadmap Phase 10) ----------------------------------------

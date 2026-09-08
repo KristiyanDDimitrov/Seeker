@@ -1,4 +1,5 @@
 import itertools
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,8 @@ from PySide6.QtCore import (
     Slot,
 )
 from PySide6.QtWidgets import QAbstractButton, QLabel
+
+logger = logging.getLogger(__name__)
 
 # Plain, non-Qt correlation ids for in-flight tasks. The dispatcher
 # signal carries this, never the Worker/QRunnable instance itself — see
@@ -70,6 +73,10 @@ def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
     try:  # noqa: SIM105
         bound_signal.emit(*args)
     except RuntimeError:
+        # Left unlogged (§7.2.4) — this is the confirmed-safe, expected
+        # teardown race the docstring above describes, not a failure
+        # mode; a debug log on every routine emit-after-delete would be
+        # noise, not a diagnostic.
         pass
 
 
@@ -384,8 +391,8 @@ def _handle_task_progress(
 
     try:
         callback(stage, current, total)
-    except Exception as error:
-        print(f"Error handling worker progress: {error}")
+    except Exception:
+        logger.error("Error handling worker progress", exc_info=True)
 
 
 def _handle_task_finished(task_id: int, result: Any) -> None:
@@ -409,7 +416,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
         try:
             on_finished(result)
         except Exception as error:
-            print(f"Error handling worker result: {error}")
+            logger.error("Error handling worker result", exc_info=True)
 
             if status_label is not None:
                 status_label.setText(f"Error: {error}")
@@ -435,8 +442,10 @@ def _handle_task_error(task_id: int, message: str) -> None:
     if on_error is not None:
         try:
             on_error(message)
-        except Exception as error:
-            print(f"Error handling worker error callback: {error}")
+        except Exception:
+            logger.error(
+                "Error handling worker error callback", exc_info=True,
+            )
 
     _schedule_native_delete(worker)
 

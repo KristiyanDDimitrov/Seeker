@@ -121,9 +121,14 @@ DATA_LOCATION_DATABASE_LABEL = "Database:"
 DATA_LOCATION_CONFIG_LABEL = "Config:"
 DATA_LOCATION_SPOTIFY_TOKEN_LABEL = "Spotify token:"
 DATA_LOCATION_SLSKD_LABEL = "SoulSeek data:"
+DATA_LOCATION_LOG_LABEL = "Log folder:"
 OPEN_DATA_FOLDER_BUTTON_TEXT = "Open Data Folder"
 TOOLTIP_OPEN_DATA_FOLDER = (
     "Open the folder above in Finder/Explorer/your file manager."
+)
+OPEN_LOG_FOLDER_BUTTON_TEXT = "Open Log Folder"
+TOOLTIP_OPEN_LOG_FOLDER = (
+    "Open the log folder above — useful when reporting a problem."
 )
 HELP_BUILD_IDENTITY_LABEL = "Build:"
 

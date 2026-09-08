@@ -50,7 +50,7 @@ def test_resolve_database_path_creates_directory_and_uses_platformdirs(
 
 
 def test_migrate_legacy_database_moves_existing_file_and_preserves_data(
-        tmp_path, capsys,
+        tmp_path, caplog,
 ):
     legacy_path = tmp_path / "old" / ".seeker" / "seeker.db"
     legacy_path.parent.mkdir(parents=True)
@@ -59,7 +59,8 @@ def test_migrate_legacy_database_moves_existing_file_and_preserves_data(
     new_path = tmp_path / "new" / "seeker.db"
     new_path.parent.mkdir(parents=True)
 
-    migrated = _migrate_legacy_database(new_path, legacy_path=legacy_path)
+    with caplog.at_level("INFO"):
+        migrated = _migrate_legacy_database(new_path, legacy_path=legacy_path)
 
     assert migrated is True
     assert not legacy_path.exists()
@@ -67,10 +68,9 @@ def test_migrate_legacy_database_moves_existing_file_and_preserves_data(
         new_path.read_bytes() == b"real sqlite bytes, not a fresh empty db"
     )
 
-    output = capsys.readouterr().out
-    assert "Migrated existing database" in output
-    assert str(legacy_path) in output
-    assert str(new_path) in output
+    assert "Migrated existing database" in caplog.text
+    assert str(legacy_path) in caplog.text
+    assert str(new_path) in caplog.text
 
 
 def test_migrate_legacy_database_does_nothing_when_neither_exists(
@@ -129,7 +129,7 @@ def test_application_fresh_install_creates_database_at_new_location(
 
 
 def test_application_migrates_real_legacy_database_on_startup(
-        tmp_path, monkeypatch, capsys,
+        tmp_path, monkeypatch, caplog,
 ):
     # A real, non-empty database already exists at the old CWD-relative
     # .seeker/seeker.db location (e.g. a pre-migration install) — this
@@ -157,7 +157,8 @@ def test_application_migrates_real_legacy_database_on_startup(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application()
+    with caplog.at_level("INFO"):
+        app = Application()
 
     new_db_path = data_dir / "seeker.db"
     assert app.database.path == new_db_path
@@ -172,8 +173,7 @@ def test_application_migrates_real_legacy_database_on_startup(
     assert row["name"] == "Real Playlist"
     assert row["track_count"] == 3
 
-    output = capsys.readouterr().out
-    assert "Migrated existing database" in output
+    assert "Migrated existing database" in caplog.text
 
 
 def test_application_does_not_migrate_when_new_database_already_exists(
@@ -237,7 +237,7 @@ def test_resolve_spotify_token_path_creates_directory_and_uses_platformdirs(
     assert fake_data_dir.is_dir()
 
 
-def test_migrate_legacy_spotify_token_moves_existing_file(tmp_path, capsys):
+def test_migrate_legacy_spotify_token_moves_existing_file(tmp_path, caplog):
     legacy_path = tmp_path / "old" / ".seeker" / "spotify_token.json"
     legacy_path.parent.mkdir(parents=True)
     legacy_path.write_text('{"access_token": "real-token"}')
@@ -245,16 +245,18 @@ def test_migrate_legacy_spotify_token_moves_existing_file(tmp_path, capsys):
     new_path = tmp_path / "new" / "spotify_token.json"
     new_path.parent.mkdir(parents=True)
 
-    migrated = _migrate_legacy_spotify_token(new_path, legacy_path=legacy_path)
+    with caplog.at_level("INFO"):
+        migrated = _migrate_legacy_spotify_token(
+            new_path, legacy_path=legacy_path,
+        )
 
     assert migrated is True
     assert not legacy_path.exists()
     assert new_path.read_text() == '{"access_token": "real-token"}'
 
-    output = capsys.readouterr().out
-    assert "Migrated existing Spotify token" in output
-    assert str(legacy_path) in output
-    assert str(new_path) in output
+    assert "Migrated existing Spotify token" in caplog.text
+    assert str(legacy_path) in caplog.text
+    assert str(new_path) in caplog.text
 
 
 def test_migrate_legacy_spotify_token_does_nothing_when_neither_exists(
@@ -289,7 +291,7 @@ def test_migrate_legacy_spotify_token_does_not_overwrite_existing_new_token(
 
 
 def test_application_migrates_real_legacy_spotify_token_on_startup(
-        tmp_path, monkeypatch, capsys,
+        tmp_path, monkeypatch, caplog,
 ):
     # Mirrors test_application_migrates_real_legacy_database_on_startup
     # above — the real bug this covers only ever showed up via an
@@ -311,7 +313,8 @@ def test_application_migrates_real_legacy_spotify_token_on_startup(
         _fake_user_data_dir(data_dir),
     )
 
-    app = Application()
+    with caplog.at_level("INFO"):
+        app = Application()
 
     new_token_path = data_dir / "spotify_token.json"
     assert app._spotify_token_path == new_token_path
@@ -319,8 +322,7 @@ def test_application_migrates_real_legacy_spotify_token_on_startup(
     assert not legacy_token_path.exists()
     assert new_token_path.read_text() == '{"access_token": "real-legacy-token"}'
 
-    output = capsys.readouterr().out
-    assert "Migrated existing Spotify token" in output
+    assert "Migrated existing Spotify token" in caplog.text
 
 
 def test_application_spotify_token_path_is_not_cwd_relative(

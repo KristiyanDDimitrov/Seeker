@@ -1,3 +1,5 @@
+import logging
+
 from rapidfuzz.distance import Levenshtein
 
 from seeker.database.connection import Database
@@ -5,6 +7,8 @@ from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.models.playlist import Playlist
 from seeker.spotify.client import SpotifyClient
+
+logger = logging.getLogger(__name__)
 
 
 class PlaylistNotFoundError(RuntimeError):
@@ -51,7 +55,7 @@ class SpotifySyncService:
         self.tracks = TrackRepository(database)
 
     def sync_playlists(self) -> list[Playlist]:
-        print("Synchronizing Spotify playlists...")
+        logger.info("Synchronizing Spotify playlists...")
 
         spotify_playlists = (
             self.spotify.get_current_user_playlists()
@@ -78,14 +82,10 @@ class SpotifySyncService:
                         and local_playlist.snapshot_id
                         == playlist.snapshot_id
                 ):
-                    print(
-                        f"  Unchanged: {playlist.name}"
-                    )
+                    logger.info("Unchanged: %s", playlist.name)
                     continue
 
-                print(
-                    f"  Updated: {playlist.name}"
-                )
+                logger.info("Updated: %s", playlist.name)
 
                 self.playlists.save(playlist, connection)
 
@@ -95,14 +95,11 @@ class SpotifySyncService:
 
             for playlist_id, local_playlist in local_playlists.items():
                 if playlist_id not in spotify_playlist_ids:
-                    print(
-                        f"  Removed: "
-                        f"{local_playlist.name}"
-                    )
+                    logger.info("Removed: %s", local_playlist.name)
 
                     self.playlists.delete(playlist_id, connection)
 
-        print("Playlist synchronization complete.")
+        logger.info("Playlist synchronization complete.")
 
         return playlists_needing_track_sync
 
@@ -136,9 +133,7 @@ class SpotifySyncService:
             self,
             playlist: Playlist,
     ) -> int:
-        print(
-            f"Synchronizing tracks: {playlist.name}"
-        )
+        logger.info("Synchronizing tracks: %s", playlist.name)
 
         tracks = self.spotify.get_playlist_tracks(
             playlist.id
@@ -176,10 +171,10 @@ class SpotifySyncService:
             and track.album_art_url is not None
         )
 
-        print(
-            f"  Saved {len(tracks)} tracks."
-        )
+        logger.info("Saved %d tracks.", len(tracks))
         if art_urls_filled:
-            print(f"  Filled in {art_urls_filled} missing album art URL(s).")
+            logger.info(
+                "Filled in %d missing album art URL(s).", art_urls_filled,
+            )
 
         return art_urls_filled

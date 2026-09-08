@@ -1,3 +1,4 @@
+import logging
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -7,6 +8,8 @@ import httpx
 
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.spotify.com/v1"
 
@@ -169,9 +172,9 @@ class SpotifyClient:
                         quota_exceeded=quota_exceeded,
                     )
 
-                print(
-                    f"Spotify rate limit reached. "
-                    f"Waiting {retry_after_seconds} seconds..."
+                logger.warning(
+                    "Spotify rate limit reached. Waiting %s seconds...",
+                    retry_after_seconds,
                 )
 
                 time.sleep(retry_after_seconds)

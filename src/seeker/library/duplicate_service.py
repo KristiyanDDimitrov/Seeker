@@ -1,4 +1,5 @@
 import contextlib
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,6 +37,8 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryLocationNotFoundError(RuntimeError):
@@ -321,7 +324,9 @@ class DuplicateService:
                         "message": f"{local_file.filename}: {error}",
                     }
                 )
-                print(f"  Failed to fingerprint {local_file.filename}: {error}")
+                logger.warning(
+                    "Failed to fingerprint %s: %s", local_file.filename, error,
+                )
 
             if progress is not None:
                 progress("Fingerprinting", index, total)
@@ -366,7 +371,7 @@ class DuplicateService:
             )
 
         counts["computed"] += 1
-        print(f"  Fingerprinted: {local_file.filename}")
+        logger.debug("Fingerprinted: %s", local_file.filename)
 
     def resolve_folder_scopes(
             self,
@@ -655,7 +660,10 @@ class DuplicateService:
                         "message": str(error),
                     }
                 )
-                print(f"  Refused to delete local file {local_file_id}: {error}")
+                logger.warning(
+                    "Refused to delete local file %s: %s",
+                    local_file_id, error,
+                )
             except Exception as error:
                 counts["failed"] += 1
                 details.append(
@@ -664,7 +672,10 @@ class DuplicateService:
                         "message": str(error),
                     }
                 )
-                print(f"  Failed to delete local file {local_file_id}: {error}")
+                logger.error(
+                    "Failed to delete local file %s: %s",
+                    local_file_id, error,
+                )
             else:
                 counts["deleted"] += 1
 
@@ -982,9 +993,9 @@ def _cluster_duplicate_groups(
     # separately-counted reasons, not one generic "failed": a row whose
     # path doesn't exist at all (stale index — self-heals on the next
     # `library scan`) vs. a real file mutagen/the OS still can't open
-    # (a genuinely bad file). Reported via print(), matching this
-    # codebase's own console-reporting idiom for skipped-in-a-batch
-    # items (e.g. compute_fingerprints/tag_tracks) — surfacing this in
+    # (a genuinely bad file). Reported via logger.warning() (§7.2),
+    # matching this codebase's own reporting idiom for skipped-in-a-
+    # batch items (e.g. compute_fingerprints/tag_tracks) — surfacing this in
     # the UI's own result panel is a real follow-up, not done here (see
     # CLAUDE.md roadmap item 93 for why the return type stayed
     # unchanged: list[DuplicateGroup], not a (groups, skipped) tuple).
@@ -1008,9 +1019,9 @@ def _cluster_duplicate_groups(
                     skipped_missing += 1
                 else:
                     skipped_other += 1
-                print(
-                    f"  Skipping {local_file.filename} from duplicate "
-                    f"clustering: {error}"
+                logger.warning(
+                    "Skipping %s from duplicate clustering: %s",
+                    local_file.filename, error,
                 )
                 continue
 
@@ -1034,11 +1045,11 @@ def _cluster_duplicate_groups(
         )
 
     if skipped_missing or skipped_other:
-        print(
-            f"  Duplicate scan: {skipped_missing} file(s) skipped "
-            f"(index out of date — file no longer at its recorded "
-            f"path; a library scan will reconcile this), "
-            f"{skipped_other} file(s) skipped (could not be opened)."
+        logger.warning(
+            "Duplicate scan: %d file(s) skipped (index out of date — "
+            "file no longer at its recorded path; a library scan will "
+            "reconcile this), %d file(s) skipped (could not be opened).",
+            skipped_missing, skipped_other,
         )
 
     return groups

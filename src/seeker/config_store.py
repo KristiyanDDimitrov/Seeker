@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -6,6 +7,8 @@ from pathlib import Path
 import platformdirs
 
 from seeker.atomic_file import write_text_locked
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -183,9 +186,9 @@ def migrate_legacy_env_config(path: Path) -> SeekerConfig:
 
     if migrated_fields:
         save_config(seeker_config, path)
-        print(
-            f"Migrated config from .env to the local config "
-            f"store ({path}): {', '.join(migrated_fields)}."
+        logger.info(
+            "Migrated config from .env to the local config store "
+            "(%s): %s.", path, ", ".join(migrated_fields),
         )
 
     return seeker_config
