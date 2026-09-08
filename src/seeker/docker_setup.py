@@ -367,6 +367,51 @@ def check_slskd_health(
     return SlskdHealthCheckResult(SlskdHealthStatus.NOT_READY)
 
 
+class SlskdWebLoginStatus(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    UNKNOWN = "unknown"
+
+
+def check_slskd_web_login(
+        base_url: str,
+        username: str,
+        password: str,
+) -> SlskdWebLoginStatus:
+    """Confirm a WEB UI login (distinct from the API-key-authenticated
+    calls everywhere else in this codebase) actually works against the
+    real running container, by attempting the same
+    `POST /api/v0/session` slskd's own login page uses.
+
+    Roadmap item 116/S1.2 — `ensure_slskd_web_credentials()` generates
+    and persists a login, but slskd will not let `SLSKD_USERNAME`/
+    `SLSKD_PASSWORD` override a web UI login that was already
+    customised before Seeker ever set the env var — the persisted
+    value can silently stop matching what the container will actually
+    accept. Live-confirmed against a real running production
+    container: a generated credential that didn't take produces a
+    real `401`, not an error. `UNKNOWN` covers slskd being unreachable
+    at all (caller should not claim a login is broken when it simply
+    couldn't be checked).
+    """
+    try:
+        response = httpx.post(
+            f"{base_url}/api/v0/session",
+            json={"username": username, "password": password},
+            timeout=10.0,
+        )
+    except httpx.HTTPError:
+        return SlskdWebLoginStatus.UNKNOWN
+
+    if response.status_code == 200:
+        return SlskdWebLoginStatus.ACTIVE
+
+    if response.status_code == 401:
+        return SlskdWebLoginStatus.INACTIVE
+
+    return SlskdWebLoginStatus.UNKNOWN
+
+
 def bring_up_slskd(
         compose_file: str,
         soulseek_username: str,

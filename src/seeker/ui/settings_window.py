@@ -30,8 +30,10 @@ from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
+    SlskdWebLoginStatus,
     bring_up_slskd,
     check_slskd_health,
+    check_slskd_web_login,
     compose_file_path,
     generate_api_key,
     is_non_loopback_http_url,
@@ -92,6 +94,12 @@ class SettingsPage(QWidget):
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
         self._web_password_visible = False
+        # S1.2 — whether the generated slskd web UI login is actually
+        # the one the container will accept right now (it may not be:
+        # slskd won't let SLSKD_USERNAME/PASSWORD override a login the
+        # user had already customised). None until the background
+        # check in _refresh_web_login_status() completes.
+        self._web_login_status: SlskdWebLoginStatus | None = None
         # Roadmap item C5.12 (round 5) — MainWindow's own
         # _apply_theme_mode, so the sidebar toggle and this tab's radio
         # group stay in sync in both directions. None only in tests
@@ -745,19 +753,86 @@ class SettingsPage(QWidget):
         self._render_api_key_display()
         self._render_web_password_display()
         self._render_slskd_remote_warning()
+        self._refresh_web_login_status()
+
+    def _refresh_web_login_status(self) -> None:
+        """Background-check whether the persisted web UI credential is
+        the one the container will actually accept right now (S1.2) —
+        `ensure_slskd_web_credentials()` only ever generates and
+        persists a value, it never confirms slskd took it, and slskd
+        silently won't override an already-customised login. A stale
+        `self._web_login_status` from a previous check is kept showing
+        (not reset to None) until the new result lands, so the display
+        doesn't flicker to "checking" on every tab re-open.
+        """
+        config = self.application._config_store
+        base_url = self.application._slskd_base_url
+
+        if (
+                not base_url
+                or not config.slskd_web_username
+                or not config.slskd_web_password
+        ):
+            self._web_login_status = None
+            self._render_web_password_display()
+            return
+
+        run_worker(
+            self.thread_pool,
+            lambda: check_slskd_web_login(
+                base_url,
+                config.slskd_web_username,
+                config.slskd_web_password,
+            ),
+            on_finished=self._on_web_login_status_checked,
+        )
+
+    def _on_web_login_status_checked(
+            self,
+            status: SlskdWebLoginStatus,
+    ) -> None:
+        self._web_login_status = status
+        self._render_web_password_display()
 
     def _render_web_password_display(self) -> None:
         config = self.application._config_store
 
-        self.slskd_web_username_display.setText(
-            config.slskd_web_username or "Not configured"
-        )
-
-        if not config.slskd_web_password:
+        if not config.slskd_web_username or not config.slskd_web_password:
+            self.slskd_web_username_display.setText("Not configured")
             self.slskd_web_password_display.setText("Not configured")
             self.reveal_web_password_button.hide()
             return
 
+        # S1.2 — never show a credential that isn't the one the
+        # container will actually accept: slskd won't let a generated
+        # SLSKD_USERNAME/PASSWORD override a login already customised
+        # before Seeker ever set it.
+        if self._web_login_status == SlskdWebLoginStatus.INACTIVE:
+            self.slskd_web_username_display.setText(
+                "An existing web UI login is already in place — "
+                "Seeker did not change it."
+            )
+            self.slskd_web_password_display.setText("")
+            self.reveal_web_password_button.hide()
+            return
+
+        if self._web_login_status == SlskdWebLoginStatus.UNKNOWN:
+            self.slskd_web_username_display.setText(
+                "Not confirmed (SoulSeek isn't reachable right now)"
+            )
+            self.slskd_web_password_display.setText("")
+            self.reveal_web_password_button.hide()
+            return
+
+        if self._web_login_status != SlskdWebLoginStatus.ACTIVE:
+            # Still checking — show nothing definite rather than a
+            # credential that hasn't been confirmed to work yet.
+            self.slskd_web_username_display.setText("Checking…")
+            self.slskd_web_password_display.setText("")
+            self.reveal_web_password_button.hide()
+            return
+
+        self.slskd_web_username_display.setText(config.slskd_web_username)
         self.reveal_web_password_button.show()
 
         if self._web_password_visible:

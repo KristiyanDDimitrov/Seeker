@@ -13,8 +13,10 @@ from seeker.docker_setup import (
     SLSKD_WEB_USERNAME_ENV_VAR,
     DockerState,
     SlskdHealthStatus,
+    SlskdWebLoginStatus,
     bring_up_slskd,
     check_slskd_health,
+    check_slskd_web_login,
     compose_file_path,
     detect_docker_state,
     ensure_full_path_environment,
@@ -562,6 +564,59 @@ def test_check_slskd_health_ignores_error_entry_with_unparseable_timestamp(
     result = check_slskd_health("http://localhost:5030", "key", SINCE)
 
     assert result.status == SlskdHealthStatus.NOT_READY
+
+
+class FakePostResponse:
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+
+
+def test_check_slskd_web_login_active_on_200(monkeypatch):
+    # S1.2 — confirmed live against a real running production
+    # container: a working web UI login returns 200 from
+    # POST /api/v0/session.
+    def fake_post(url, json=None, timeout=None):
+        assert url == "http://localhost:5030/api/v0/session"
+        assert json == {"username": "seeker", "password": "real-pw"}
+        return FakePostResponse(200)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = check_slskd_web_login(
+        "http://localhost:5030", "seeker", "real-pw",
+    )
+
+    assert result == SlskdWebLoginStatus.ACTIVE
+
+
+def test_check_slskd_web_login_inactive_on_401(monkeypatch):
+    # S1.2's real reported bug: a generated web credential that slskd
+    # silently refused to apply (an already-customised login was
+    # already in place) — confirmed live to produce a real 401, not an
+    # error, against a real running production container.
+    def fake_post(url, json=None, timeout=None):
+        return FakePostResponse(401)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = check_slskd_web_login(
+        "http://localhost:5030", "seeker", "generated-but-inert",
+    )
+
+    assert result == SlskdWebLoginStatus.INACTIVE
+
+
+def test_check_slskd_web_login_unknown_when_unreachable(monkeypatch):
+    def fake_post(url, json=None, timeout=None):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = check_slskd_web_login(
+        "http://localhost:5030", "seeker", "real-pw",
+    )
+
+    assert result == SlskdWebLoginStatus.UNKNOWN
 
 
 def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):

@@ -3,7 +3,11 @@ from dataclasses import replace
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QPushButton
 
 from seeker.application import Application
-from seeker.docker_setup import SlskdHealthCheckResult, SlskdHealthStatus
+from seeker.docker_setup import (
+    SlskdHealthCheckResult,
+    SlskdHealthStatus,
+    SlskdWebLoginStatus,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.spotify.token import SpotifyToken
@@ -558,18 +562,31 @@ def test_connection_tab_shows_no_warning_when_slskd_unconfigured(
     assert window.slskd_remote_warning_notice.isHidden()
 
 
-def test_connection_tab_displays_web_ui_login(qtbot, tmp_path, monkeypatch):
+def test_connection_tab_displays_web_ui_login_when_confirmed_active(
+        qtbot, tmp_path, monkeypatch,
+):
+    # S1.2 — the display must never show a credential without first
+    # confirming, via a real POST /api/v0/session check, that it's the
+    # one the container will actually accept.
     application = make_application(tmp_path, monkeypatch)
     application._config_store = replace(
         application._config_store,
+        slskd_base_url="http://127.0.0.1:5030",
         slskd_web_username="seeker",
         slskd_web_password="real-web-password",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.check_slskd_web_login",
+        lambda *a, **k: SlskdWebLoginStatus.ACTIVE,
     )
 
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    assert window.slskd_web_username_display.text() == "seeker"
+    qtbot.waitUntil(
+        lambda: window.slskd_web_username_display.text() == "seeker",
+        timeout=2000,
+    )
     assert window.slskd_web_password_display.text() == "••••••••"
 
     window.reveal_web_password_button.click()
@@ -577,6 +594,36 @@ def test_connection_tab_displays_web_ui_login(qtbot, tmp_path, monkeypatch):
 
     window.reveal_web_password_button.click()
     assert window.slskd_web_password_display.text() == "••••••••"
+
+
+def test_connection_tab_hides_web_ui_login_when_it_did_not_take(
+        qtbot, tmp_path, monkeypatch,
+):
+    # S1.2's actual reported bug: a generated login that slskd silently
+    # refused to apply (an already-customised web UI login was already
+    # in place) must never be shown as if it were real.
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        slskd_base_url="http://127.0.0.1:5030",
+        slskd_web_username="seeker",
+        slskd_web_password="generated-but-inert",
+    )
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.check_slskd_web_login",
+        lambda *a, **k: SlskdWebLoginStatus.INACTIVE,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: "already in place"
+        in window.slskd_web_username_display.text(),
+        timeout=2000,
+    )
+    assert window.slskd_web_password_display.text() == ""
+    assert window.reveal_web_password_button.isHidden()
 
 
 def test_connection_tab_web_ui_login_not_configured_when_unset(
