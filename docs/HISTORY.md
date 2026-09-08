@@ -13503,6 +13503,49 @@ operation alongside it. "7 more files" was neither number: not the 5
 genuinely broken, not the 9 with a visible net diff. Corrected here
 rather than left standing.
 
+#### §4.8.2/§4.8.4/§4.8.5 — the per-file-ignore sampling behind
+`pyproject.toml`'s suppressions (condensed out of that file's own
+comments during CLAUDE.md's S1 size pass; the standing fact stays in
+`pyproject.toml`, this is the investigation behind it)
+
+**S101 (assert), §4.8.5 — all 60 real `src/` findings read
+individually, not sampled.** 59/60 narrow an `Optional`/union already
+guaranteed non-`None` by preceding control flow (a dataclass
+`id: int | None` known-persisted by the calling code's own logic, a
+stdlib/library API contract mypy can't see statically, or a state
+check performed a few lines above) — `python -O` stripping any of
+these is always safe. The 60th
+(`audio_formats.py::DOWNLOADABLE_EXTENSIONS <= AUDIO_EXTENSIONS`) is a
+module-level self-consistency check between two hardcoded constant
+sets rather than a narrowing assert, but poses no additional `-O` risk
+either: any real drift would already fail this exact assert on the
+first import in any environment, including every normal (non-`-O`)
+test run. This read established the project-wide convention recorded
+in `CLAUDE.md`'s Conventions section: an `assert` in `src/` narrows
+types/logic invariants, never validates user input or an external
+response.
+
+**PLC0415 (import outside top level), §4.8.2 — 20 of the real 119
+`tests/*` findings sampled**, every one a genuine, narrow
+per-test/per-fixture import (a constant or class only that one test
+needs) — a deliberate pytest scoping convention, not an accident.
+`src/`'s own findings were checked separately (not covered by the
+blanket `tests/*` ignore): 4 were accidental (moved to top-level) and
+3 are genuine heavy-dependency deferrals, each given its own scoped
+`# noqa: PLC0415` with a reason.
+
+**S105/S106 (possible hardcoded password), §4.8.4 — all 59 real
+findings (5 `src/`, 54 `tests/`) read individually, not sampled.** All
+54 in `tests/*` are synthetic fixture values (`"fake-access"`,
+`"hunter2"`, `"realkey"`, single letters), never a real credential —
+scoped as a blanket `tests/*` ignore. The 5 real `src/` findings were
+each NAME-only false positives (S105 fires on the assignment target's
+name containing "token"/"password", regardless of the actual value:
+`TOKEN_URL` is a URL, env-var-name constants hold var *names* not
+values, UI copy strings) — each scoped narrowly per file rather than
+project-wide, so a genuine hardcoded secret anywhere else is still
+caught.
+
 ### 116 — Round 8 Phase 3 + 3B: security hardening and the macOS Dock icon
 
 Per `docs/BRIEF-2026-09-09-security.md`. Kris's own framing — "there is
