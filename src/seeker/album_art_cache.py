@@ -1,8 +1,11 @@
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 import platformdirs
+
+logger = logging.getLogger(__name__)
 
 
 def default_cache_dir() -> Path:
@@ -76,7 +79,10 @@ class AlbumArtCache:
             # Disk cache is purely an optimization — a write failure
             # (disk full, permissions) must never break tagging itself;
             # the in-memory entry above still covers this run.
-            pass
+            logger.debug(
+                "Failed to write album art cache entry for %s", url,
+                exc_info=True,
+            )
 
     @staticmethod
     def _key_for(url: str) -> str:

@@ -28,6 +28,7 @@ PyInstaller build later.
 
 import ctypes
 import ctypes.util
+import logging
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,8 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+logger = logging.getLogger(__name__)
 
 # chromaprint's own default algorithm (matches fpcalc's default and
 # pyacoustid's ALGORITHM_DEFAULT) — not exposed as a caller-facing
@@ -126,6 +129,10 @@ def _load_library() -> ctypes.CDLL | None:
                 try:
                     return ctypes.CDLL(str(candidate))
                 except OSError:
+                    logger.debug(
+                        "Could not load candidate library %s", candidate,
+                        exc_info=True,
+                    )
                     continue
 
     # Falls through to the system's own default search behavior —
@@ -136,6 +143,9 @@ def _load_library() -> ctypes.CDLL | None:
         try:
             return ctypes.CDLL(name)
         except OSError:
+            logger.debug(
+                "Could not load library by name %s", name, exc_info=True,
+            )
             continue
 
     found = ctypes.util.find_library("chromaprint")
@@ -143,7 +153,10 @@ def _load_library() -> ctypes.CDLL | None:
         try:
             return ctypes.CDLL(found)
         except OSError:
-            pass
+            logger.debug(
+                "Could not load discovered library %s", found,
+                exc_info=True,
+            )
 
     return None
 

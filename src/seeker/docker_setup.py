@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import secrets
@@ -12,6 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 import platformdirs
+
+logger = logging.getLogger(__name__)
 
 # Explicit fallback for the two real-world locations `docker` (and any
 # other GUI-invoked CLI tool) commonly lives in but that a GUI launch's
@@ -362,7 +365,7 @@ def check_slskd_health(
                     detail=str(entry.get("message")),
                 )
     except httpx.HTTPError:
-        pass
+        logger.debug("Failed to read slskd logs for health check", exc_info=True)
 
     return SlskdHealthCheckResult(SlskdHealthStatus.NOT_READY)
 
