@@ -10,16 +10,17 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `b2ef2fa` — "S11.1: repoint History/Help/Support tests at
-  their page widgets, drop delegating properties" (S11.1's own two-
-  commit mechanism landed; this session's own tick/handoff commit goes
-  on top)
+- **HEAD:** `b907cfb` — "S11.2: repoint Search/Sharing tests at their
+  page widgets, drop delegating properties" (S11.2's own two-commit
+  mechanism landed; this session's own tick/handoff commit goes on top)
 - **Working tree:** clean except this rewrite
 - **`origin/main`:** not re-checked this session — ask before pushing
   regardless.
-- **pytest:** 1149 passed, 1 skipped, 0 real failures — identical to
-  S10/S11's own numbers. Confirmed stable across two repeated full runs
-  this session.
+- **pytest:** 1149 passed, 1 skipped on a clean run — identical to
+  S10/S11/S11.1's own numbers. One of the two already-tracked
+  fullscreen-close flakes failed on 2 of 4 full runs this session
+  (different one each time), always passing in isolation immediately
+  after — not a regression, see "Known flakes" below.
 - **mypy --strict src/:** clean, 99 source files (unchanged count —
   this session only touched tests + main_window.py)
 - **ruff check src tests:** **0 findings — this must stay at 0**
@@ -31,57 +32,58 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/round8/SESSION-PLAN.md`. **Read the session plan, not the full
 brief** — the brief is 115 KB, you only need your own session's slice.
 
-- **Done:** Phase 0–4, S1–S10, S11, **S11.1** (§9.3.4 test-split for
-  dialogs + History + Help/Support, mirroring S5's own extraction
-  order).
-- **Next session: S11.2** (Search + Sharing, mirrors S6). Same
-  mechanism, same two-commit split — see "What S11.1 found" below
-  before starting; it changes what "step 4" actually means in
-  practice, which S11.2–S11.7 all still need to apply.
+- **Done:** Phase 0–4, S1–S10, S11, S11.1 (dialogs + History +
+  Help/Support), **S11.2** (Search + Sharing, mirroring S6's own
+  extraction order).
+- **Next session: S11.3** (Downloads + Tagging panel, mirrors S7). Same
+  mechanism, same two-commit split — see "What S11.2 found" below,
+  which is now the third confirmation of the same pattern S11.1
+  established; S11.3–S11.7 should keep applying it.
 
-## S11.1 — what landed (§9.3.4 test-split: dialogs, History, Help/Support)
+## S11.2 — what landed (§9.3.4 test-split: Search, Sharing)
 
-Two commits (`fd228f0`, `b2ef2fa`) — the first time §9.3's own step-4
-"repoint + delete delegating members" has actually been exercised (S5–
-S11 all stopped after step 3). 24 tests moved out of test_ui_smoke.py
-into `tests/pages/test_dialogs.py` (8 — About/Destination only;
-RenamePreviewDialog/BulkReplaceUpgradesDialog/
-BulkResolveDuplicatesDialog are each constructed by one specific
-already-extracted page, not MainWindow, so their tests wait for that
-page's own session — S11.3/S11.5/S11.6), `test_history_page.py` (5),
-and `test_static_pages.py` (11, Help+Support).
+Two commits (`da30f59`, `b907cfb`). 11 tests moved out of
+test_ui_smoke.py into `tests/pages/test_search_page.py` (6, plus the
+Search-only `_search_column` helper) and `tests/pages/
+test_sharing_page.py` (5).
 
-**What "step 4" actually means in practice, found live this session —
-read before S11.2–S11.7:**
+**Nothing new discovered vs. S11.1's own findings (still read those
+before S11.3) — this session just re-confirmed all four hold:**
 
-1. **"Address the page widget directly" = `window._history_page.
-   <attr>`, not constructing the page standalone.** Pages are exercised
-   through real `MainWindow` navigation (`window._show_page(...)`), and
-   some tests assert MainWindow-owned call counts (e.g. the silent
-   `_seed_notification_cutoff` fetch) — building `HistoryPage(context)`
-   in isolation would lose that. One precedent already existed
-   (`window._help_page`) — followed it everywhere.
-2. **Cross-page structural sweep tests can silently depend on a
-   property you're about to delete.** Two tests that check every page's
-   tables at once (not owned by any one page's file) still referenced
-   `window.history_table` by name and broke when it was deleted. **Grep
-   the attribute name across the WHOLE test file before deleting a
-   MainWindow property** — a moved test isn't the only consumer.
-3. **No shared fixtures module exists yet.** `FakeApplication` lives in
-   test_ui_smoke.py; new page test files import it with a plain
-   cross-file `from test_ui_smoke import FakeApplication` — reliable
-   because `tests/conftest.py` puts `tests/` on `sys.path` before any
-   test file imports, regardless of collection order. Fine at 3 files;
-   revisit if it gets unwieldy.
-4. Dialogs split into "shell-owned" (About/Destination — test imports
-   repointed `main_window` → `seeker.ui.dialogs`, their real module) vs.
-   "page-owned" (the other three — left alone, deferred).
+1. Repointed tests address `window._search_page.<attr>` /
+   `window._sharing_page.<attr>` directly, not a standalone page
+   construction.
+2. **Six** structural sweep tests (not five — one more than S11.1's own
+   two) referenced Search/Sharing attributes by name and needed
+   repointing after the delegating properties were deleted:
+   `test_every_table_and_list_widget_is_routed_through_make_card`,
+   `test_every_actions_column_table_has_a_derived_floor_for_row_height_
+   and_width`, `test_no_table_column_clips_its_own_header_label_when_
+   populated`, `test_stretch_columns_reach_the_viewport_edge_with_no_
+   dead_band`, `test_every_table_has_a_stretch_column_immediately_
+   after_construction`, `test_no_table_ever_hands_a_bare_progress_bar_
+   or_button_to_setcellwidget`. **Grep every deleted attribute/method
+   name across the WHOLE file before deleting — this keeps costing
+   more than it looks like it will.**
+3. `_search_column` (Search-only) moved in full with its tests, same as
+   any page-only helper. `_make_location`/`_confirm_yes` (shared with
+   the sweep tests and Duplicates' own tests) stayed in
+   test_ui_smoke.py and were imported into the new file — same
+   precedent as `_make_history_event`.
+4. Deleting the delegating properties left three now-unused imports in
+   main_window.py (`SoulseekFile`, `LocationShareState`, `UploadStatus`)
+   — `ruff check` catches these immediately; check for it every time a
+   delegate block is deleted, don't rely on remembering.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2, not seen this session's two runs but don't assume fixed.
+since S2. This session, one or the other failed on 2 of 4 full runs
+(never both at once), always green in isolation run immediately after.
+More frequent than S11.1's own "not seen this session" report — worth
+someone eventually instrumenting rather than continuing to note as
+background noise, but still not a S11.3 blocker.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -111,8 +113,9 @@ you aren't doing.
   assumption only holds once the repo is public.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
 - **Three round-8 flakes already in CLAUDE.md's Open Issues, plus the
-  fullscreen-close pair above** — diagnose any recurrence directly,
-  never `pytest-rerunfailures`.
+  fullscreen-close pair above (now firing more often — see "Known
+  flakes")** — diagnose any recurrence directly, never
+  `pytest-rerunfailures`.
 - **S9's recorded pytest skip count (29) doesn't match S10/S11's
   clean-tree baseline (1)** — unresolved since S10, no regression to
   chase.
