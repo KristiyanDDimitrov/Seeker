@@ -14075,6 +14075,16 @@ selection), found the same way `PageContext`'s own extra fields were:
 by grepping every method being moved for what it actually touches
 before assuming a clean lift.
 
+**`ui/pages/dashboard_page.py` — the biggest single page moved, and a
+third seam beyond `PageContext` (S8).** New `DashboardHost` carries the
+handful of actions that live on `MainWindow` because they're shared
+across several not-yet-migrated pages (Sync/Scan/Match/Download/
+Settings-navigation), or because they need a second argument
+`PageContext.navigate`'s one-argument `Callable[[str], None]` shape
+can't carry (an initial Settings tab; a track id to focus when jumping
+to Review). Same grep-every-method-first approach as
+`TaggingPanelHost`.
+
 **S11's two gotchas, confirmed live, relevant to every later page's
 delegating-stub removal (S11.1-S11.7), not just tray's own (S11.7):**
 (1) a signal connected directly to a bound method of a non-`QObject`
