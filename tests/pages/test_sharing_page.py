@@ -27,16 +27,12 @@ def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
 
     window._show_page("sharing")
 
-    qtbot.waitUntil(
-        lambda: bool(window.sharing_summary_label.text()), timeout=2000,
-    )
-    assert "isn't configured" not in window.sharing_summary_label.text() or True
+    summary_label = window._sharing_page.sharing_summary_label
+    qtbot.waitUntil(lambda: bool(summary_label.text()), timeout=2000)
+    assert "isn't configured" not in summary_label.text() or True
     from seeker.ui import help_text
-    assert (
-        window.sharing_summary_label.text()
-        == help_text.SHARING_UNCONFIGURED_NOTICE
-    )
-    assert window.sharing_locations_table.rowCount() == 0
+    assert summary_label.text() == help_text.SHARING_UNCONFIGURED_NOTICE
+    assert window._sharing_page.sharing_locations_table.rowCount() == 0
 
 
 def test_sharing_renders_reconciliation_and_uploads(qtbot):
@@ -70,16 +66,14 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
 
     window._show_page("sharing")
 
-    qtbot.waitUntil(
-        lambda: window.sharing_locations_table.rowCount() == 2, timeout=2000,
-    )
-    assert window.sharing_locations_table.item(0, 1).text() == "Yes"
-    assert window.sharing_locations_table.item(1, 1).text() == "No"
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 2, timeout=2000)
+    assert locations_table.item(0, 1).text() == "Yes"
+    assert locations_table.item(1, 1).text() == "No"
     assert (
-        window.sharing_locations_table.cellWidget(1, 4)
-        .findChild(QPushButton) is not None
+        locations_table.cellWidget(1, 4).findChild(QPushButton) is not None
     )
-    assert window.sharing_uploads_table.item(0, 0).text() == (
+    assert window._sharing_page.sharing_uploads_table.item(0, 0).text() == (
         help_text.NO_UPLOADS_LABEL
     )
 
@@ -98,19 +92,19 @@ def test_sharing_uploads_table_clears_stale_span_after_empty_state(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_sharing_uploads_table([])
-    assert window.sharing_uploads_table.columnSpan(0, 0) == 4
+    window._sharing_page._render_sharing_uploads_table([])
+    assert window._sharing_page.sharing_uploads_table.columnSpan(0, 0) == 4
 
-    window._render_sharing_uploads_table([
+    window._sharing_page._render_sharing_uploads_table([
         UploadStatus(
             username="alice", filename="track.flac", state="InProgress",
             bytes_transferred=100, size=1000,
         ),
     ])
 
-    assert window.sharing_uploads_table.rowSpan(0, 0) == 1
-    assert window.sharing_uploads_table.columnSpan(0, 0) == 1
-    assert window.sharing_uploads_table.item(0, 1).text() == "track.flac"
+    assert window._sharing_page.sharing_uploads_table.rowSpan(0, 0) == 1
+    assert window._sharing_page.sharing_uploads_table.columnSpan(0, 0) == 1
+    assert window._sharing_page.sharing_uploads_table.item(0, 1).text() == "track.flac"
 
 
 def test_sharing_add_to_share_button_calls_service_after_confirm(
@@ -139,13 +133,10 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
     _confirm_yes(monkeypatch)
 
     window._show_page("sharing")
-    qtbot.waitUntil(
-        lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
-    )
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
 
-    button = window.sharing_locations_table.cellWidget(0, 4).findChild(
-        QPushButton,
-    )
+    button = locations_table.cellWidget(0, 4).findChild(QPushButton)
     button.click()
 
     qtbot.waitUntil(
@@ -188,13 +179,10 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
     )
 
     window._show_page("sharing")
-    qtbot.waitUntil(
-        lambda: window.sharing_locations_table.rowCount() == 1, timeout=2000,
-    )
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
 
-    button = window.sharing_locations_table.cellWidget(0, 4).findChild(
-        QPushButton,
-    )
+    button = locations_table.cellWidget(0, 4).findChild(QPushButton)
     button.click()
 
     assert len(info_calls) == 1

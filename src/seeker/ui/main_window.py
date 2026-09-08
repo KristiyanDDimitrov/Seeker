@@ -50,9 +50,7 @@ from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
-from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track_status import TrackStatus
-from seeker.sharing_service import LocationShareState, UploadStatus
 from seeker.soulseek.download_service import (
     BulkUpgradeReplaceResult,
 )
@@ -762,60 +760,10 @@ class MainWindow(QMainWindow):
 
     # History's own delegating properties (window.history_table, etc.)
     # were deleted at the test-split session (S11.1, §9.3.4) — its
-    # tests now address self._history_page directly. Same temporary-
-    # delegation pattern below, for every
-    # SearchPage attribute/method test_ui_smoke.py touches by name.
-    @property
-    def search_artist_edit(self) -> QLineEdit:
-        return self._search_page.search_artist_edit
-
-    @property
-    def search_title_edit(self) -> QLineEdit:
-        return self._search_page.search_title_edit
-
-    @property
-    def search_status_label(self) -> QLabel:
-        return self._search_page.search_status_label
-
-    @property
-    def search_results_table(self) -> QTableWidget:
-        return self._search_page.search_results_table
-
-    @property
-    def download_best_button(self) -> QPushButton:
-        return self._search_page.download_best_button
-
-    def _on_search_clicked(self) -> None:
-        self._search_page._on_search_clicked()
-
-    def _render_search_results(
-            self, artist: str, title: str, files: list[SoulseekFile],
-    ) -> None:
-        self._search_page._render_search_results(artist, title, files)
-
-    # Same temporary-delegation pattern for every SharingPage attribute/
-    # method test_ui_smoke.py touches by name.
-    @property
-    def sharing_summary_label(self) -> QLabel:
-        return self._sharing_page.sharing_summary_label
-
-    @property
-    def sharing_locations_table(self) -> QTableWidget:
-        return self._sharing_page.sharing_locations_table
-
-    @property
-    def sharing_uploads_table(self) -> QTableWidget:
-        return self._sharing_page.sharing_uploads_table
-
-    def _render_sharing_locations_table(
-            self, reconciliation: list[LocationShareState],
-    ) -> None:
-        self._sharing_page._render_sharing_locations_table(reconciliation)
-
-    def _render_sharing_uploads_table(
-            self, uploads: list[UploadStatus],
-    ) -> None:
-        self._sharing_page._render_sharing_uploads_table(uploads)
+    # tests now address self._history_page directly. Search's and
+    # Sharing's own delegating properties/methods were deleted the same
+    # way at S11.2 — their tests now address self._search_page/
+    # self._sharing_page directly.
 
     # Same temporary-delegation pattern for every DownloadsPage
     # attribute test_ui_smoke.py touches by name, plus `_eta_tracker`/

@@ -4754,14 +4754,11 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         "playlist_list",
         "track_table",
         "downloads_table",
-        "sharing_locations_table",
-        "sharing_uploads_table",
         "review_needs_table",
         "review_upgrades_table",
         "review_local_table",
         "duplicates_folders_list",
         "duplicates_table",
-        "search_results_table",
     ]
     for attr in table_and_list_attrs:
         widget = getattr(window, attr)
@@ -4771,11 +4768,23 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
             f"{attr}'s parent is {parent!r}, not routed through make_card()"
         )
 
-    # History has no delegating property (S11.1, §9.3.4) — same check,
-    # against its own page widget directly.
-    history_parent = window._history_page.history_table.parentWidget()
-    assert history_parent is not None
-    assert history_parent.objectName() == "card"
+    # History/Search/Sharing have no delegating properties (S11.1/S11.2,
+    # §9.3.4) — same check, against their own page widgets directly.
+    page_owned_tables = [
+        ("history_table", window._history_page.history_table),
+        ("search_results_table", window._search_page.search_results_table),
+        (
+            "sharing_locations_table",
+            window._sharing_page.sharing_locations_table,
+        ),
+        ("sharing_uploads_table", window._sharing_page.sharing_uploads_table),
+    ]
+    for name, widget in page_owned_tables:
+        parent = widget.parentWidget()
+        assert parent is not None, name
+        assert parent.objectName() == "card", (
+            f"{name}'s parent is {parent!r}, not routed through make_card()"
+        )
 
 
 def test_duplicates_tab_controls_have_tooltips(qtbot):
@@ -6131,7 +6140,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
     window._render_local_needs_review_matches([_make_needs_review_match()])
-    window._render_sharing_locations_table([
+    window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
             shared=False, share=None,
@@ -6146,7 +6155,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
         (window.review_needs_table, 3),
         (window.review_upgrades_table, 3),
         (window.review_local_table, 4),
-        (window.sharing_locations_table, 4),
+        (window._sharing_page.sharing_locations_table, 4),
         # Roadmap item 97 (B6.3) — settings_window.py's own table had
         # never had a derived Actions width before this.
         (window.settings_page.locations_table, 3),
@@ -6263,7 +6272,7 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
     window._render_local_needs_review_matches([_make_needs_review_match()])
-    window._render_sharing_locations_table([
+    window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
             shared=False, share=None,
@@ -6343,7 +6352,7 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
     window._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
-    window._render_search_results(
+    window._search_page._render_search_results(
         "Dom Dolla", "Rhyme Dust",
         [
             SoulseekFile(
@@ -6360,7 +6369,7 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
     window._render_local_needs_review_matches([_make_needs_review_match()])
-    window._render_sharing_locations_table([
+    window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
             shared=False, share=None,
@@ -6421,7 +6430,7 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
     # to be derived and are not the bug class E2 fixed.
     _no_column_layout = {
         window.downloads_table, window._history_page.history_table,
-        window.sharing_uploads_table,
+        window._sharing_page.sharing_uploads_table,
     }
 
     for table in tables:
@@ -6554,7 +6563,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
         ),
     ])
     window._show_page("search")
-    window._render_search_results(
+    window._search_page._render_search_results(
         "Dom Dolla", "Rhyme Dust",
         [
             SoulseekFile(
@@ -6574,7 +6583,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
     window._render_local_needs_review_matches([_make_needs_review_match()])
-    window._render_sharing_locations_table([
+    window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
             shared=False, share=None,
