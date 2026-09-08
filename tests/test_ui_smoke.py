@@ -3270,7 +3270,7 @@ def test_application_active_is_a_near_no_op_when_already_visible(
 
     calls = []
     monkeypatch.setattr(
-        window, "_on_tray_open_seeker", lambda: calls.append(1),
+        window._tray, "_on_tray_open_seeker", lambda: calls.append(1),
     )
 
     window._on_application_state_changed(
@@ -3354,7 +3354,7 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window.show()
     qtbot.wait(20)
-    assert window._tray_icon is not None
+    assert window._tray._tray_icon is not None
 
     window.close()
 
@@ -3429,7 +3429,7 @@ def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
     qtbot.wait(20)
     assert window.isHidden()
 
-    window._on_tray_open_seeker()
+    window._tray._on_tray_open_seeker()
 
     assert not window.isFullScreen()
     assert window.geometry() == expected_geometry
@@ -3498,7 +3498,7 @@ def test_stale_hide_verification_does_not_rehide_a_reopened_window(
     )
 
     window.close()
-    window._on_tray_open_seeker()
+    window._tray._on_tray_open_seeker()
     assert window.isVisible()
     assert window._hidden_to_tray is False
 
@@ -3591,7 +3591,7 @@ def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
     # already ran (synchronously, inside close(), with the tray still
     # visible) -- patched only now, so it's specifically the LATER
     # confirm-check's own guard being exercised, not closeEvent's.
-    monkeypatch.setattr(window._tray_icon, "isVisible", lambda: False)
+    monkeypatch.setattr(window._tray._tray_icon, "isVisible", lambda: False)
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
     assert dock_calls == []
@@ -3673,7 +3673,7 @@ def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
         dock_calls.append,
     )
 
-    window._on_tray_open_seeker()
+    window._tray._on_tray_open_seeker()
 
     assert dock_calls == [True]
 
@@ -3766,7 +3766,7 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
-    window._on_tray_open_seeker()
+    window._tray._on_tray_open_seeker()
 
     assert window._hidden_to_tray is False
     assert window.isVisible()
@@ -3805,7 +3805,7 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
-    window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
     assert window._hidden_to_tray is True
     assert not window.isVisible()
@@ -3844,7 +3844,7 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     window.close()
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
 
-    window._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
+    window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
     assert window._hidden_to_tray is False
     assert window.isVisible()
@@ -3857,7 +3857,7 @@ def test_tray_check_now_triggers_backend_poll(qtbot, monkeypatch):
     qtbot.addWidget(window)
     window.backend_poll_timer.stop()
 
-    window._on_tray_check_now()
+    window._tray._on_tray_check_now()
 
     qtbot.waitUntil(
         lambda: application.download_service.poll_downloads_calls
@@ -3900,7 +3900,7 @@ def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
         QApplication, "quit", lambda self=None: quit_calls.append(True),
     )
 
-    window._on_tray_quit()
+    window._tray._on_tray_quit()
 
     assert quit_calls == [True]
     # Nothing about the close/hide-to-tray machinery fired.

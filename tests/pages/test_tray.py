@@ -36,7 +36,7 @@ def test_tray_icon_not_built_when_unavailable(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._tray_icon is None
+    assert window._tray._tray_icon is None
 
 
 def test_tray_pause_action_reflects_and_persists_config(qtbot, monkeypatch):
@@ -45,9 +45,9 @@ def test_tray_pause_action_reflects_and_persists_config(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._tray_pause_action.isChecked() is False
+    assert window._tray._tray_pause_action.isChecked() is False
 
-    window._tray_pause_action.setChecked(True)
+    window._tray._tray_pause_action.setChecked(True)
 
     assert application.set_downloads_paused_calls == [True]
     assert application.downloads_paused is True
@@ -60,9 +60,9 @@ def test_tray_menu_status_shows_idle_with_nothing_active(qtbot, monkeypatch):
     qtbot.addWidget(window)
 
     window._downloads_page._render_active_downloads([])
-    window._render_tray_menu()
+    window._tray._render_tray_menu()
 
-    assert window._tray_status_action.text() == "Idle"
+    assert window._tray._tray_status_action.text() == "Idle"
 
 
 def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
@@ -83,9 +83,9 @@ def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
         ),
     ]
     window._downloads_page._render_active_downloads(downloads)
-    window._render_tray_menu()
+    window._tray._render_tray_menu()
 
-    assert window._tray_status_action.text() == "1 downloading"
+    assert window._tray._tray_status_action.text() == "1 downloading"
 
 
 def test_tray_menu_status_shows_paused_suffix(qtbot, monkeypatch):
@@ -97,9 +97,9 @@ def test_tray_menu_status_shows_paused_suffix(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_tray_menu()
+    window._tray._render_tray_menu()
 
-    assert "(paused)" in window._tray_status_action.text()
+    assert "(paused)" in window._tray._tray_status_action.text()
 
 
 def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
@@ -113,10 +113,10 @@ def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
         [_make_upgrade_details(), _make_upgrade_details(request_id=2)],
         [],
     ))
-    window._render_tray_menu()
+    window._tray._render_tray_menu()
 
-    assert window._tray_review_action.text() == "Review (1)"
-    assert window._tray_upgrades_action.text() == "Upgrades (2)"
+    assert window._tray._tray_review_action.text() == "Review (1)"
+    assert window._tray._tray_upgrades_action.text() == "Upgrades (2)"
 
 
 def test_tray_check_now_action_is_named_unambiguously(qtbot, monkeypatch):
@@ -127,7 +127,7 @@ def test_tray_check_now_action_is_named_unambiguously(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    menu = window._tray_icon.contextMenu()
+    menu = window._tray._tray_icon.contextMenu()
     actions_by_text = {action.text(): action for action in menu.actions()}
 
     assert "Check now" not in actions_by_text
@@ -148,7 +148,7 @@ def test_tray_quit_calls_qapplication_quit(qtbot, monkeypatch):
             QApplication, "quit", lambda self=None: quit_calls.append(True)
     )
 
-    window._on_tray_quit()
+    window._tray._on_tray_quit()
 
     assert quit_calls == [True]
 
@@ -164,24 +164,24 @@ def test_needs_decision_notification_fires_only_on_increase(
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
-    window._check_for_needs_decision_notification(3)
+    window._tray.check_for_needs_decision_notification(3)
     assert len(messages) == 1
     assert "3 item" in messages[0]
 
     # Same count again -- no repeat notification.
-    window._check_for_needs_decision_notification(3)
+    window._tray.check_for_needs_decision_notification(3)
     assert len(messages) == 1
 
     # A genuine increase -- notifies again.
-    window._check_for_needs_decision_notification(5)
+    window._tray.check_for_needs_decision_notification(5)
     assert len(messages) == 2
 
     # A decrease resets the baseline silently.
-    window._check_for_needs_decision_notification(1)
+    window._tray.check_for_needs_decision_notification(1)
     assert len(messages) == 2
 
 
@@ -199,11 +199,11 @@ def test_needs_decision_notification_respects_config_toggle(
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
-    window._check_for_needs_decision_notification(3)
+    window._tray.check_for_needs_decision_notification(3)
 
     assert messages == []
 
@@ -216,12 +216,12 @@ def test_error_notification_is_rate_limited(qtbot, monkeypatch):
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
-    window._notify_error("slskd unreachable")
-    window._notify_error("slskd unreachable")
+    window._tray.notify_error("slskd unreachable")
+    window._tray.notify_error("slskd unreachable")
 
     assert len(messages) == 1
 
@@ -237,11 +237,11 @@ def test_error_notification_respects_config_toggle(qtbot, monkeypatch):
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
-    window._notify_error("slskd unreachable")
+    window._tray.notify_error("slskd unreachable")
 
     assert messages == []
 
@@ -254,11 +254,11 @@ def test_download_notifications_batch_per_playlist(qtbot, monkeypatch):
     # Seeding (construction-time) found nothing -- simulate the cutoff
     # already being set, as it would be after a real seed with no
     # existing history.
-    window._last_notified_download_at = "2026-01-01T00:00:00+00:00"
+    window._tray._last_notified_download_at = "2026-01-01T00:00:00+00:00"
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
@@ -273,12 +273,12 @@ def test_download_notifications_batch_per_playlist(qtbot, monkeypatch):
             occurred_at="2026-01-02T00:00:00+00:00", playlist_name="B",
         ),
     ]
-    window._on_download_notification_events(events)
+    window._tray._on_download_notification_events(events)
 
     assert len(messages) == 1
     assert "A: 2 tracks downloaded" in messages[0]
     assert "B: 1 track downloaded" in messages[0]
-    assert window._last_notified_download_at == "2026-01-02T00:00:02+00:00"
+    assert window._tray._last_notified_download_at == "2026-01-02T00:00:02+00:00"
 
 
 def test_download_notifications_skip_events_before_cutoff(qtbot, monkeypatch):
@@ -286,17 +286,17 @@ def test_download_notifications_skip_events_before_cutoff(qtbot, monkeypatch):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._last_notified_download_at = "2026-01-02T00:00:00+00:00"
+    window._tray._last_notified_download_at = "2026-01-02T00:00:00+00:00"
 
     messages = []
     monkeypatch.setattr(
-        window._tray_icon, "showMessage",
+        window._tray._tray_icon, "showMessage",
         lambda title, msg, *a, **k: messages.append(msg),
     )
 
     # Every event is at or before the cutoff -- nothing new.
     events = [_make_history_event(occurred_at="2026-01-02T00:00:00+00:00")]
-    window._on_download_notification_events(events)
+    window._tray._on_download_notification_events(events)
 
     assert messages == []
 

@@ -32,13 +32,11 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QStackedWidget,
-    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker.application import Application
-from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
@@ -74,13 +72,6 @@ from seeker.ui.settings_window import SettingsPage
 from seeker.ui.tray import (
     TrayController,
     TrayHost,
-    # Roadmap item 9.3.2 (round 8, Phase 6) — moved to tray.py with the
-    # rest of the tray/notification group, but
-    # test_ui_smoke.py's two _resolve_tray_icon_path tests still import
-    # it from THIS module's own namespace (same re-export shape as
-    # BulkReplaceUpgradesDialog above) — dropped once the test-split
-    # (§9.3.4) repoints them, not before.
-    _resolve_tray_icon_path,  # noqa: F401
     _set_dock_icon_visible,
 )
 from seeker.ui.workers import run_worker
@@ -401,8 +392,8 @@ class MainWindow(QMainWindow):
         # cleanup_before_quit — same shape as _system_scheme_connected
         # just above.
         #
-        # Gated on a real tray icon existing: with none (self._tray_icon
-        # is None), closeEvent takes the ordinary real-close path
+        # Gated on a real tray icon existing: with none (self._tray.
+        # _tray_icon is None), closeEvent takes the ordinary real-close path
         # (super().closeEvent()) rather than hiding — there is no
         # "hidden but still running" state for a reopen gesture to ever
         # need to restore, so connecting here would be pure overhead
@@ -414,7 +405,7 @@ class MainWindow(QMainWindow):
         # _flush_deferred_widget_deletion for the full story).
         app = QApplication.instance()
         self._app_state_connected = False
-        if app is not None and self._tray_icon is not None:
+        if app is not None and self._tray._tray_icon is not None:
             # applicationStateChanged is a QGuiApplication signal;
             # QApplication.instance()'s declared return type is the
             # narrower QCoreApplication — real at runtime (this app
@@ -1186,40 +1177,6 @@ class MainWindow(QMainWindow):
             self._history_loaded = True
             self._history_page._refresh_history()
 
-    # Same temporary-delegation pattern every other page used before
-    # its own test-split session repointed and removed it (S11.1-S11.6,
-    # §9.3.4) — the last one left, for TrayController's state (round 8
-    # §9.3.2), until its own test-split session (S11.7). `_last_
-    # notified_download_at` gets a setter too since existing tests
-    # assign it directly.
-    @property
-    def _tray_icon(self) -> QSystemTrayIcon | None:
-        return self._tray._tray_icon
-
-    @property
-    def _tray_status_action(self) -> QAction:
-        return self._tray._tray_status_action
-
-    @property
-    def _tray_pause_action(self) -> QAction:
-        return self._tray._tray_pause_action
-
-    @property
-    def _tray_review_action(self) -> QAction:
-        return self._tray._tray_review_action
-
-    @property
-    def _tray_upgrades_action(self) -> QAction:
-        return self._tray._tray_upgrades_action
-
-    @property
-    def _last_notified_download_at(self) -> str | None:
-        return self._tray._last_notified_download_at
-
-    @_last_notified_download_at.setter
-    def _last_notified_download_at(self, value: str | None) -> None:
-        self._tray._last_notified_download_at = value
-
     def _trigger_backend_poll(self) -> None:
         if self._backend_poll_in_progress:
             # A previous poll_downloads() call (real slskd network
@@ -1563,10 +1520,10 @@ class MainWindow(QMainWindow):
     # `self._tray` in __init__. What stays here — closeEvent and the
     # hide-to-tray verification below — is round 7's E1, genuinely
     # subtle, and about the *window*, not the tray; see tray.py's own
-    # module docstring. The delegating stubs immediately below exist
-    # only for the identifiers test_ui_smoke.py still calls by name on
-    # `window`; every other internal call site now reaches `self._tray`
-    # directly.
+    # module docstring. `_on_application_state_changed` also stays: it
+    # is the real QObject-bound slot `applicationStateChanged` is
+    # connected to (see that connect() call's own comment) — a plain
+    # `TrayController` method can't hold that connection safely.
 
     def _set_hidden_to_tray(self, value: bool) -> None:
         self._hidden_to_tray = value
@@ -1584,25 +1541,10 @@ class MainWindow(QMainWindow):
         # tray.py's own.
         _set_dock_icon_visible(visible)
 
-    def _on_tray_icon_activated(
-            self,
-            reason: QSystemTrayIcon.ActivationReason,
-    ) -> None:
-        self._tray._on_tray_icon_activated(reason)
-
-    def _on_tray_check_now(self) -> None:
-        self._tray._on_tray_check_now()
-
-    def _on_tray_open_seeker(self) -> None:
-        self._tray._on_tray_open_seeker()
-
     def _on_application_state_changed(
             self, state: Qt.ApplicationState,
     ) -> None:
         self._tray.on_application_state_changed(state)
-
-    def _on_tray_quit(self) -> None:
-        self._tray._on_tray_quit()
 
     def cleanup_before_quit(self) -> None:
         # Roadmap item R7.7 — the one real cleanup path for every quit
@@ -1648,21 +1590,6 @@ class MainWindow(QMainWindow):
         _set_dock_icon_visible(True)
 
         self._tray.hide_icon()
-
-    def _render_tray_menu(self) -> None:
-        self._tray._render_tray_menu()
-
-    def _check_for_needs_decision_notification(self, total: int) -> None:
-        self._tray.check_for_needs_decision_notification(total)
-
-    def _notify_error(self, message: str) -> None:
-        self._tray.notify_error(message)
-
-    def _on_download_notification_events(
-            self,
-            events: list[HistoryEvent],
-    ) -> None:
-        self._tray._on_download_notification_events(events)
 
     # Roadmap item 116 (round 8, §14.5) — corrected: the previous
     # comment here claimed "400ms is comfortably above" a stated
