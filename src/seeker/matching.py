@@ -7,11 +7,9 @@ from rapidfuzz import fuzz
 # Shared by library/matcher.py (Spotify track vs. scanned local file) and
 # soulseek/quality.py (Spotify track vs. Soulseek search result) — both
 # sides fuzzy-match a Spotify artist/title against some local text source
-# and need the exact same answer. This used to be two independently
-# maintained copies; they drifted apart twice (once on artist-null
-# handling, once on title-only vs. artist+title scoring) before being
-# consolidated here — same root cause, same fix, as the earlier
-# AUDIO_EXTENSIONS consolidation.
+# and need the exact same answer. Do not re-split this into two copies:
+# it already drifted twice before consolidation.
+# HISTORY §matcher-and-quality-fuzzy-matching-logic-drifted-apart-twice
 
 # Fuzzy match score cutoffs (rapidfuzz's 0-100 scale, from score_title()
 # below). Untuned starting guesses, not derived from any real precision/
@@ -225,7 +223,7 @@ def evaluate_match(
     bug, confirmed live against three real Bring Me The Horizon files
     whose artist tag matched perfectly but whose TITLE text drifted from
     Spotify's own stylization enough to land in needs_review or below
-    (see CLAUDE.md item 56). This function narrows that: the gate is
+    (HISTORY §56). This function narrows that: the gate is
     still hard when a real, populated tag actively disagrees (genuine
     negative evidence), but a merely-unconfirmable fallback source (no
     tag existed, and nothing in the filename/path names the artist
