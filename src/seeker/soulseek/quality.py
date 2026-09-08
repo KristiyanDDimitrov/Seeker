@@ -17,9 +17,9 @@ from seeker.matching import (
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 
-# Roadmap item R1 — "aiff"/"aif" only, deliberately not "aifc"; see
-# audio_formats.py's own comment on why AIFF-C isn't automatically
-# lossless the way AIFF is.
+# "aiff"/"aif" only, deliberately not "aifc" — see audio_formats.py's
+# own comment on why AIFF-C isn't automatically lossless the way AIFF
+# is. HISTORY §85.
 LOSSLESS_EXTENSIONS = {"flac", "wav", "aiff", "aif"}
 LOSSY_EXTENSIONS = {"mp3", "m4a", "aac", "ogg"}
 
@@ -49,11 +49,10 @@ def _score_candidate(track: Track, file: SoulseekFile) -> float | None:
     # Returns None when the file isn't audio or the artist doesn't match
     # at all (not just "scored too low") — distinct from a real score of
     # 0, so callers never have to special-case "no signal at all."
-    # Roadmap item 94 (B5.3) — DOWNLOADABLE_EXTENSIONS, not the wider
-    # AUDIO_EXTENSIONS the library scanner uses: this gates a NEW file
-    # being fetched from SoulSeek, where "can Seeker actually finish
-    # tagging/indexing this afterward" matters, not just "is this
-    # audio."
+    # DOWNLOADABLE_EXTENSIONS, not the wider AUDIO_EXTENSIONS the
+    # library scanner uses: this gates a NEW file being fetched from
+    # SoulSeek, where "can Seeker finish tagging/indexing this
+    # afterward" matters, not just "is this audio." HISTORY §94.
     if not is_downloadable_extension(file.extension):
         return None
 
@@ -102,10 +101,9 @@ def find_best_needs_review_candidate(
     #
     # Both thresholds are plain optional parameters, not read from
     # config here — this module stays as decoupled from config/
-    # filesystem concerns as matching.py itself (see CLAUDE.md item 28).
-    # DownloadService, the one real caller, resolves config-or-default
-    # once per download_playlist() run and passes the numbers in
-    # explicitly.
+    # filesystem concerns as matching.py itself. DownloadService, the
+    # one real caller, resolves config-or-default once per
+    # download_playlist() run and passes the numbers in explicitly.
     best: tuple[SoulseekFile, float] | None = None
 
     for file in files:
@@ -127,11 +125,10 @@ def quality_tier_for_format(extension: str) -> int:
     """Lossless(2)/lossy(1)/unknown(0) tiering keyed by a bare format
     string (e.g. LocalFile.format, which is already stored exactly
     this way — see library/scanner.py) rather than a SoulseekFile.
-    Factored out so the local-duplicate detector (roadmap item 5) can
-    reuse this project's one real "is this file better" ranking
-    instead of writing a third copy of it — same drift lesson
-    matching.py's own consolidation already taught this codebase once
-    (see CLAUDE.md)."""
+    Factored out so the local-duplicate detector can reuse this
+    project's one real "is this file better" ranking instead of
+    writing a third copy of it — same drift lesson matching.py's own
+    consolidation already taught this codebase once. HISTORY §5."""
     normalized = extension.lower().lstrip(".")
 
     if normalized in LOSSLESS_EXTENSIONS:
@@ -189,25 +186,23 @@ def _sort_key(file: SoulseekFile) -> tuple[int, int, int, int]:
 
 
 def score_candidate(track: Track, file: SoulseekFile) -> float | None:
-    """Roadmap item 82 (P13) — the public form of `_score_candidate`,
-    the same per-candidate score `filter_candidates`/select_downloads
-    use internally. The manual-search UI's results table shows this
-    per-row so a real number backs the ranking it displays, not just
-    an opaque sort order."""
+    """The public form of `_score_candidate`, the same per-candidate
+    score `filter_candidates`/select_downloads use internally. The
+    manual-search UI's results table shows this per-row so a real
+    number backs the ranking it displays, not just an opaque sort
+    order. HISTORY §82."""
     return _score_candidate(track, file)
 
 
 def rank_candidates(files: list[SoulseekFile]) -> list[SoulseekFile]:
-    """Roadmap item 82 (P13) — the public form of the same ranking
-    `select_downloads` uses internally (`_sort_key`, best-first: tier,
-    bitrate, lock status, queue length). The manual-search UI's
-    results table needs to display candidates in this exact order
-    without a second, drifting copy of the tiebreak logic.
-
-    Roadmap item 94 (B5.3) — also the one gate raw SEARCH results (the
-    Search page and `seeker search`) had never had at all: filtered to
-    DOWNLOADABLE_EXTENSIONS before ranking, so an unsupported format
-    (e.g. a peer's .ogg) is never even listed as pickable.
+    """The public form of the same ranking `select_downloads` uses
+    internally (`_sort_key`, best-first: tier, bitrate, lock status,
+    queue length). The manual-search UI's results table needs to
+    display candidates in this exact order without a second, drifting
+    copy of the tiebreak logic. Also filters to DOWNLOADABLE_EXTENSIONS
+    before ranking, so an unsupported format (e.g. a peer's .ogg) is
+    never listed as pickable — the one gate raw SEARCH results had
+    never had at all. HISTORY §82, §94.
     """
     downloadable = [
         file for file in files if is_downloadable_extension(file.extension)
@@ -278,7 +273,7 @@ def select_downloads(
     return (settled, shortlist, needs_review)
 
 
-# --- Local-file quality analysis (roadmap item 5) ---------------------
+# --- Local-file quality analysis ---------------------------------------
 #
 # Everything above this point ranks remote SoulSeek search results;
 # this section adds what's missing to rank real files already on disk
@@ -332,12 +327,10 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
         info = mutagen_file.info
         sample_rate = getattr(info, "sample_rate", None)
 
-        # Roadmap item R1.4 — checked live, not assumed: mutagen 1.48.1's
-        # AIFFInfo (mutagen/aiff.py) already computes
+        # Confirmed live: mutagen 1.48.1's AIFFInfo already computes
         # `bitrate = channels * sample_size * sample_rate` in its own
-        # __init__ and exposes it as `.bitrate`, exactly the derivation
-        # this comment used to say was needed here — so no AIFF-specific
-        # branch is needed; the existing getattr already captures it.
+        # __init__ and exposes it as `.bitrate` — no AIFF-specific
+        # branch needed here. HISTORY §85.
         raw_bitrate = getattr(info, "bitrate", None)
         if raw_bitrate:
             bitrate_kbps = int(raw_bitrate // 1000)
