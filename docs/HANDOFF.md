@@ -10,17 +10,18 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `b907cfb` — "S11.2: repoint Search/Sharing tests at their
-  page widgets, drop delegating properties" (S11.2's own two-commit
-  mechanism landed; this session's own tick/handoff commit goes on top)
+- **HEAD:** `a105372` — "S11.3: repoint Downloads/Tagging-panel tests
+  at their page widgets, drop delegating properties" (S11.3's own two-
+  commit mechanism landed; this session's own tick/handoff commit goes
+  on top)
 - **Working tree:** clean except this rewrite
 - **`origin/main`:** not re-checked this session — ask before pushing
   regardless.
 - **pytest:** 1149 passed, 1 skipped on a clean run — identical to
-  S10/S11/S11.1's own numbers. One of the two already-tracked
-  fullscreen-close flakes failed on 2 of 4 full runs this session
-  (different one each time), always passing in isolation immediately
-  after — not a regression, see "Known flakes" below.
+  S10/S11/S11.1/S11.2's own numbers. The tracked fullscreen-close flake
+  pair fired once (of three full runs) this session, always passing in
+  isolation immediately after — not a regression, see "Known flakes"
+  below.
 - **mypy --strict src/:** clean, 99 source files (unchanged count —
   this session only touched tests + main_window.py)
 - **ruff check src tests:** **0 findings — this must stay at 0**
@@ -33,57 +34,59 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 brief** — the brief is 115 KB, you only need your own session's slice.
 
 - **Done:** Phase 0–4, S1–S10, S11, S11.1 (dialogs + History +
-  Help/Support), **S11.2** (Search + Sharing, mirroring S6's own
-  extraction order).
-- **Next session: S11.3** (Downloads + Tagging panel, mirrors S7). Same
-  mechanism, same two-commit split — see "What S11.2 found" below,
-  which is now the third confirmation of the same pattern S11.1
-  established; S11.3–S11.7 should keep applying it.
+  Help/Support), S11.2 (Search + Sharing), **S11.3** (Downloads +
+  Tagging panel, mirroring S7's own extraction order).
+- **Next session: S11.4** (Dashboard, mirrors S8). Read "What S11.3
+  found" below first — it changes what S11.4 walks into.
 
-## S11.2 — what landed (§9.3.4 test-split: Search, Sharing)
+## S11.3 — what landed (§9.3.4 test-split: Downloads, Tagging panel)
 
-Two commits (`da30f59`, `b907cfb`). 11 tests moved out of
-test_ui_smoke.py into `tests/pages/test_search_page.py` (6, plus the
-Search-only `_search_column` helper) and `tests/pages/
-test_sharing_page.py` (5).
+Two commits (`473fb19`, `a105372`). 24 tests moved out of
+test_ui_smoke.py: 20 into `tests/pages/test_downloads_page.py` (the
+whole contiguous ETA/progress-bar/row-rendering block plus the paged-
+render-while-hidden test) and only 4 into `tests/pages/
+test_tagging_panel.py` (the FlowLayout/checkbox-width tests).
 
-**Nothing new discovered vs. S11.1's own findings (still read those
-before S11.3) — this session just re-confirmed all four hold:**
+**New pattern, not seen at S11.1/S11.2, that S11.4+ will hit again:**
+TaggingPanel is a sub-widget of Dashboard, not a standalone page — most
+of its own candidate tests also drive Dashboard's not-yet-extracted
+`track_table`/`playlist_list`/`dashboard_notice`/`_render_track_
+statuses`/`_on_retag_track_clicked`/`_render_tag_result` to set up a
+selection or assert a notice. Moving those would have broken S11.1/
+S11.2's own precedent (a moved page's tests reference ONLY that page's
+own attributes — confirmed by grep, zero foreign-page references in
+`test_search_page.py`/`test_sharing_page.py`). So ~18 Tagging-adjacent
+tests (`test_tag_selected_*`, `test_tag_playlist_*`, `test_force_
+retag_*`, `test_bpm_range_*`, `test_fix_missing_art_*`, `test_fill_
+missing_art_urls_*`, `test_rename_files_*`, `test_rename_result_
+notice_*`, `test_results_panel_*`, `test_retag_context_menu_*`)
+**stayed** in test_ui_smoke.py as cross-cutting, repointed only for
+their TaggingPanel-attribute reads — the Dashboard half
+(`window.track_table` etc.) is untouched. **S11.4 will need to decide
+where these ~18 tests ultimately belong** once it deletes Dashboard's
+own delegates — its job is not a clean mirror of S5–S10's mechanism.
 
-1. Repointed tests address `window._search_page.<attr>` /
-   `window._sharing_page.<attr>` directly, not a standalone page
-   construction.
-2. **Six** structural sweep tests (not five — one more than S11.1's own
-   two) referenced Search/Sharing attributes by name and needed
-   repointing after the delegating properties were deleted:
-   `test_every_table_and_list_widget_is_routed_through_make_card`,
-   `test_every_actions_column_table_has_a_derived_floor_for_row_height_
-   and_width`, `test_no_table_column_clips_its_own_header_label_when_
-   populated`, `test_stretch_columns_reach_the_viewport_edge_with_no_
-   dead_band`, `test_every_table_has_a_stretch_column_immediately_
-   after_construction`, `test_no_table_ever_hands_a_bare_progress_bar_
-   or_button_to_setcellwidget`. **Grep every deleted attribute/method
-   name across the WHOLE file before deleting — this keeps costing
-   more than it looks like it will.**
-3. `_search_column` (Search-only) moved in full with its tests, same as
-   any page-only helper. `_make_location`/`_confirm_yes` (shared with
-   the sweep tests and Duplicates' own tests) stayed in
-   test_ui_smoke.py and were imported into the new file — same
-   precedent as `_make_history_event`.
-4. Deleting the delegating properties left three now-unused imports in
-   main_window.py (`SoulseekFile`, `LocationShareState`, `UploadStatus`)
-   — `ruff check` catches these immediately; check for it every time a
-   delegate block is deleted, don't rely on remembering.
+Other findings, consistent with S11.1/S11.2's own: (1) deleted ALL TEN
+TaggingPanel delegating properties, not just the four the moved tests
+used — repointing the ~18 cross-cutting tests first left zero bare
+`window.<attr>` references to any of them; (2) `_active_downloads_
+count` wasn't just a test artifact — MainWindow's own real PageContext
+wiring (tray/nav-badge count) also read it, repointed alongside the
+deletion — grep for real callers, not just test_ui_smoke.py; (3) three
+structural sweep tests plus the nav-badge and tray-status tests touched
+deleted Downloads attributes by name, same "grep the whole file first"
+lesson, third confirmation; (4) now-unused `ActiveDownload`/
+`DownloadEtaTracker`/`QLineEdit`/`QPlainTextEdit`/`FlowLayout` imports
+dropped via unrestricted `ruff check --fix` (not narrowed `--select`).
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2. This session, one or the other failed on 2 of 4 full runs
-(never both at once), always green in isolation run immediately after.
-More frequent than S11.1's own "not seen this session" report — worth
-someone eventually instrumenting rather than continuing to note as
-background noise, but still not a S11.3 blocker.
+since S2. This session, one fired on 1 of 3 full runs, always green in
+isolation run immediately after. Same background-noise rate as before
+S11.2's own higher-frequency report; still not an S11.4 blocker, but
+still worth someone eventually instrumenting.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -113,12 +116,12 @@ you aren't doing.
   assumption only holds once the repo is public.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
 - **Three round-8 flakes already in CLAUDE.md's Open Issues, plus the
-  fullscreen-close pair above (now firing more often — see "Known
-  flakes")** — diagnose any recurrence directly, never
-  `pytest-rerunfailures`.
+  fullscreen-close pair above** — diagnose any recurrence directly,
+  never `pytest-rerunfailures`.
 - **S9's recorded pytest skip count (29) doesn't match S10/S11's
   clean-tree baseline (1)** — unresolved since S10, no regression to
   chase.
+- **S11.4 (Dashboard) scope** — see "S11.3 — what landed" above.
 
 ## How to end your session
 
