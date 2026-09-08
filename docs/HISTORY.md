@@ -13502,3 +13502,159 @@ never part of the damage, just swept into the same broad "43 fixed"
 operation alongside it. "7 more files" was neither number: not the 5
 genuinely broken, not the 9 with a visible net diff. Corrected here
 rather than left standing.
+
+### 116 — Round 8 Phase 3 + 3B: security hardening and the macOS Dock icon
+
+Per `docs/BRIEF-2026-09-09-security.md`. Kris's own framing — "there is
+little that can go wrong with this app as no sensitive user credentials
+are actually stored" — was independently checked rather than taken on
+faith, and was wrong on both halves before any code was touched:
+`docker ps` on the real machine showed the real `slskd` container
+published on `0.0.0.0`/`[::]` on 5030/5031 (reachable from any device on
+the LAN) with the vendor-default `slskd`/`slskd` web login and remote
+configuration on, and the real `spotify_token.json` was `0644`
+world-readable.
+
+#### §6.1 — the live container recreate, done and verified against production
+
+Kris explicitly approved recreating his real, currently-running
+container rather than leaving it for later. Extracted the real
+in-use SoulSeek network credentials from the running container's own
+env (`docker inspect`) rather than trusting config.json (which had
+`slskd_username`/`password` as `None` — the real network login was
+already being passed as empty strings, with slskd falling through to
+what's persisted in `slskd-data/slskd.yml`, confirmed live via the
+container's own env before touching anything), then called
+`Application.ensure_slskd_web_credentials()` for real and
+`bring_up_slskd()` with real values.
+
+**Verified after recreate:** `docker ps` shows
+`127.0.0.1:5030-5031->5030-5031/tcp` (was `0.0.0.0`/`[::]`) plus
+`50300` still open on every interface; container reports `healthy`;
+real search-path health confirmed (`Logged in to the Soulseek server
+as seekerapp`, a real X-API-Key request against `/api/v0/application`
+returns 200); `remoteConfiguration: false` confirmed via
+`/api/v0/options`. `curl` from this same machine against its own real
+LAN IP (192.168.0.104:5030) now gets connection refused — the closest
+verification available without a genuine second device.
+
+**Real, unplanned finding: the generated web UI login does not
+actually work.** `/api/v0/options`'s `web.authentication.username`
+reports `"sinthesis"` — Kris had already customized the web UI login
+away from the vendor default at some point outside Seeker's own code
+(how, and when, is unknown). slskd evidently applies the SAME
+"won't clobber an already-set value" precedence to
+`SLSKD_USERNAME`/`SLSKD_PASSWORD` that the existing top-of-file
+compose comment already documented for the network login pair — a new,
+non-empty env value did NOT override the real persisted login (both
+the newly generated "seeker" credential and the plain vendor default
+`slskd`/`slskd` both got a real `401` from `/api/v0/session`).
+Deliberately NOT chased further or reset — guessing at or resetting an
+already-working login neither this session nor Kris fully understands
+the provenance of is exactly the kind of real-account lockout risk this
+round's own standing rules exist to prevent. Net effect: 6.1.2's own
+code is correct and will do the right thing for a genuinely fresh
+install, but for THIS install specifically, Settings' displayed
+"Web UI username/password" fields show a real, persisted, but
+currently-inert credential — Kris keeps using his own already-working
+login, unaffected either way. Real spotify_token.json chmod'd 0600
+directly (not waiting for the app's next token refresh to pick up
+6.2's fix).
+
+#### §14.2/§14.3 — a real, reproducible test-suite race, root-caused
+
+Wiring up `QApplication.applicationStateChanged` (§14.2) surfaced a
+real bug in the test suite itself, not in the shipped app: pytest-qt's
+own `qtbot.addWidget` teardown calls `widget.close()` then
+`widget.deleteLater()` unconditionally, but a plain
+`QApplication.processEvents()` does **not** actually deliver a
+`DeferredDelete` event — confirmed directly with a weakref probe (a
+widget survived two `processEvents()` calls untouched;
+`QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)`
+is what actually destroys it, and is what `deleteLater()`'s own docs
+point to). Harmless on its own, except `applicationStateChanged`
+(unlike `colorSchemeChanged`, confirmed inert under this offscreen
+platform per item 109) **does** fire organically from ordinary
+`show()`/`close()` calls even under `QT_QPA_PLATFORM=offscreen`: a
+previous test's still-undeleted `MainWindow` could remain connected to
+the shared `QApplication` and react to a later, unrelated test's window
+activity by calling its own stale `_on_tray_open_seeker()`. Reproduced
+directly (traced with a print inside the handler — fired once, with
+`state=Active` and `isVisible=False`, on a window from an EARLIER
+statement in the SAME test, delivered late) and fixed two ways: a new
+autouse `tests/conftest.py::_flush_deferred_widget_deletion` (the real
+`sendPostedEvents` call, at the start of every test) closes the general
+mechanism; gating the new connection on a real tray icon existing
+(§14.3's own precondition anyway) independently shrinks how many tests
+ever connect it.
+
+**Verified the fix actually closes the mechanism, not just reduces its
+rate:** a throwaway repro test tracked a window via `weakref`, ran the
+flush, then called `gc.get_referrers()` on the still-Python-alive
+object — which raised `RuntimeError: libshiboken: Internal C++ object
+(MainWindow) already deleted`. The Python wrapper husk can still
+linger (held by a stray closure `cell`, confirmed via the same
+referrer inspection), but it's provably inert: no live Qt object, no
+live signal connections, unable to call anything. Four existing tests
+(`test_close_event_hides_to_tray_when_available` plus three
+tray-reopen tests) had a related but distinct SAME-TEST race — `show()`
+immediately followed by `close()` with zero event-loop turns in
+between let a platform-level "just became active" notification queued
+by `show()` get delivered late, after `close()` already hid the
+window, and be (correctly) treated as a real reopen. Fixed with
+`qtbot.wait(20)` after `show()` in all four, matching this file's own
+existing fullscreen-close test's settling wait. One related flake
+(`test_history_refresh_button_refetches`) was still observed once
+*after* both fixes landed and was not fully explained — recorded
+honestly in `CLAUDE.md`'s open issues rather than claimed fixed; the
+`QThreadPool` starvation and background-system-load hypotheses were
+both considered but neither was confirmed.
+
+#### §14.3/§14.4 — real Dock-icon verification against an installed `.dmg`
+
+Built via `packaging/build_dmg.py` and installed to `/Applications`
+with Kris's explicit approval. Size gate: old `.dmg` ~105.2MB → new
+~105.8MB (~700KB growth from PyObjC), old `.app` 306M → new 308M — both
+comfortably under the brief's own ~15MB flag threshold. Tree stayed
+clean after the build (confirms item 83's own fix: `build_dmg.py`
+writes only the gitignored `_build_info_generated.py`).
+
+Real-desktop verification, via `osascript`/System Events/`lsappinfo`
+(this session unexpectedly had working Accessibility automation
+permission, unlike every prior session's documented attempts — see
+items 84/89/90's own "blocked" notes, which do NOT apply this time):
+
+- Closing the real window flips `lsappinfo`'s reported type from
+  `Foreground` to `UIElement` (Accessory) — confirmed the Dock tile
+  itself is gone from the real Dock's own UI element list while hidden.
+- Reopening via `open -a Seeker`, via Finder's "open application file"
+  (the `/Applications` double-click route), and via the app's own tray
+  menu all restore `Foreground` and the window, and — the specific
+  concern §14.4 existed to check — **never started a second process**:
+  `ps aux` showed exactly one `Seeker` PID throughout every reopen.
+- The menu bar (app menu, "Quit Seeker") is present and functional
+  after a reopen; clicking real "Quit Seeker" terminates the process
+  cleanly (0 processes after).
+- One ambiguous result, reported honestly rather than smoothed over:
+  a bare scripted `open -a Seeker` left the window behind another app
+  (frontmost stayed "Claude", this session's own terminal) until an
+  explicit `tell application "Seeker" to activate` was sent. Real,
+  physical Dock-icon clicks are never subject to the focus-stealing
+  prevention that can suppress activation for a script-launched `open`
+  — so this is most likely a limitation of testing via a background
+  script rather than a genuine Seeker bug, but it was **not** cleanly
+  distinguishable from one in this session, and `NSApp().
+  activateIgnoringOtherApps_(True)` was deliberately NOT added
+  speculatively per the brief's own "only add it if you actually
+  observe the problem" instruction — this specific ambiguity doesn't
+  clear that bar. Left for Kris's own real Dock-icon click to settle.
+- The fullscreen-close path's own Dock-icon-hiding was confirmed
+  structurally (offscreen tests) but not on the real desktop: macOS
+  hides a fullscreen window's close affordance from the accessibility
+  tree entirely (confirmed live — `window 1` exposes only an `AXRaise`
+  action, no close action, while `AXFullScreen` is true), so it could
+  not be triggered via automation to observe directly. The ordinary
+  (non-fullscreen) path's own real timing WAS measured this way: a real
+  `AXCloseButton` click to the Dock icon actually disappearing took
+  ~530ms including real AppleScript/process overhead, consistent with
+  the existing 400ms `_HIDE_TO_TRAY_VERIFY_DELAY_MS` — see §14.5.

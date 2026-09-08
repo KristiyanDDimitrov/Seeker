@@ -2188,6 +2188,48 @@ compress it here before moving on to the next item.
      claimed done. One `S608` false positive given a scoped `# noqa`
      with a real justification, not a blanket suppression. [HISTORY
      §115](docs/HISTORY.md#115)
+116. **Round 8 Phase 3 + 3B — security hardening + the macOS Dock icon —
+     done, verified against real production infrastructure.** §6.1:
+     slskd's web UI bound to loopback only
+     (`127.0.0.1:5030:5030`/`5031:5031`, `50300` stays open),
+     `SLSKD_REMOTE_CONFIGURATION=false` (confirmed nothing calls the
+     remote-config API), a real generated web UI login
+     (`Application.ensure_slskd_web_credentials()`, surfaced in
+     Settings). **Recreated Kris's real, live container with his
+     explicit approval** — verified new bindings, health, remote-config
+     status, and Soulseek connectivity all live; found and reported (not
+     silently fixed) that the generated web UI credential doesn't
+     actually take effect for THIS install, since slskd won't override
+     an already-customized login via env var, same precedence the
+     network-login pair already had — Kris's own existing login is
+     untouched and unaffected either way. §6.2: `TokenStore`/
+     `config_store` writes go through new `seeker/atomic_file.py::
+     write_text_locked()` (0600 + atomic); real `spotify_token.json`
+     chmod'd 0600 directly, not left for the next token refresh. Not
+     using the Keychain is a standing decision (see Conventions), not an
+     omission. §6.4: album art download capped/streamed
+     (`MAX_ALBUM_ART_BYTES`) and validated by real magic bytes, not the
+     `Content-Type` header. §6.6.1: Settings warns on a non-loopback
+     `http://` slskd URL. §14.2: `MainWindow` now reopens on a real
+     macOS reopen gesture (`QApplication.applicationStateChanged`),
+     gated on a real tray icon existing. §14.3: the Dock icon itself
+     hides while minimized to the menu bar (`NSApplication` activation
+     policy, new `pyobjc-framework-Cocoa` dependency) and restores on
+     reopen/quit. **All of §14.2-14.4 verified live** against a real
+     `.dmg` installed to `/Applications` — real Dock-icon
+     disappearance/reappearance, and critically, reopening via `open
+     -a`/Finder/tray menu never starts a second process. One real,
+     substantial test-suite bug found and fixed along the way: pytest-qt's
+     own widget teardown doesn't actually flush Qt's deferred deletion
+     (a plain `processEvents()` doesn't do it —
+     `QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)`
+     does), which let a previous test's still-alive `MainWindow` react to
+     `applicationStateChanged` from later tests; fixed via a new autouse
+     `tests/conftest.py` fixture, and confirmed closed (not just
+     narrowed) with a throwaway `gc`/`weakref` repro. One flake
+     (`test_history_refresh_button_refetches`) recurred once after the
+     fix and was not fully explained — recorded in Known issues, not
+     claimed fixed. [HISTORY §116](docs/HISTORY.md#116)
 
 This file and `docs/HISTORY.md` split the same information by shelf life:
 `CLAUDE.md` (this file) holds standing facts — current behavior,
