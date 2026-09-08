@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -286,6 +287,26 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
         f"  border-radius: {PROGRESS_BAR_RADIUS}px;"
         f"}}"
     )
+
+
+def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
+    """Roadmap item 96 (B4.2) — the one place a progress bar gets put
+    into a cell-ready container. A bare bar returned directly from a
+    `setCellWidget` call gets resized to the full cell rect by Qt, and
+    the global stylesheet's `QProgressBar { max-height: 14px; }` then
+    clamps it to the TOP of that tall cell instead of centering it.
+    `label_text=None` omits the label entirely (an indeterminate
+    "busy" bar has nothing determinate to show an ETA for). Shared by
+    the Downloads page's own progress cells and the Dashboard's
+    track_table (round 8 Phase 6 — moved here, out of main_window.py,
+    the moment a second, still-unmigrated caller needed it too)."""
+    container = QWidget()
+    layout = QHBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(bar, 1)
+    if label_text is not None:
+        layout.addWidget(QLabel(label_text))
+    return container
 
 
 def make_card(inner: QWidget) -> QFrame:

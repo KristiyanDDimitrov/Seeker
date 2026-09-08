@@ -44,12 +44,27 @@ class PageContext:
     implementation to bind it to today (InlineNotice instances are
     built per-page, not through one shared MainWindow method). Add it,
     wired to something real, when a page that needs it moves.
+
+    `update_nav_badge` and `is_hidden_to_tray` are two more additions
+    beyond §9.2's original sketch, both found extracting Downloads
+    (round 8 Phase 6, S7): `_render_active_downloads` needs to set the
+    sidebar's "Downloads (N)" badge (shell state — `self._nav_buttons`
+    — no page owns it) and to skip its own table rebuild while the
+    window is hidden to the tray (R7.6; `_hidden_to_tray` is real
+    MainWindow lifecycle state, set by `closeEvent`/tray reopen, not
+    something a page should own a second copy of). Same
+    read-through-the-seam treatment as `run_busy_worker` above, for the
+    same reason: a page reaches the shell through one narrow named
+    callable, never by importing MainWindow or reaching past this
+    object.
     """
     application: Application
     thread_pool: QThreadPool
     busy_actions: BusyActionRegistry
     navigate: Callable[[str], None]
     run_busy_worker: Callable[..., None]
+    update_nav_badge: Callable[[str, int], None]
+    is_hidden_to_tray: Callable[[], bool]
 
 
 def build_subtitle_label(text: str) -> QLabel:
