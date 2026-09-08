@@ -16,43 +16,22 @@ import platformdirs
 
 logger = logging.getLogger(__name__)
 
-# Explicit fallback for the two real-world locations `docker` (and any
-# other GUI-invoked CLI tool) commonly lives in but that a GUI launch's
-# minimal launchd PATH doesn't include — Docker Desktop's own CLI
-# symlink (/usr/local/bin) and Apple Silicon Homebrew (/opt/homebrew/
-# bin). path_helper below already covers /usr/local/bin (it's always
-# in /etc/paths) and often covers /opt/homebrew/bin too (when a real
-# /etc/paths.d/homebrew file exists), but that file isn't guaranteed on
-# every Homebrew install — Homebrew's own installer instructions rely
-# on a shell-profile `eval "$(brew shellenv)"` instead, which a GUI
-# launch never runs. Listed explicitly so detection doesn't silently
-# depend on that file happening to exist.
+# /opt/homebrew/bin (Apple Silicon Homebrew) isn't guaranteed to reach
+# PATH via path_helper below — it depends on a /etc/paths.d/homebrew
+# file that isn't present on every install. Listed explicitly rather
+# than relying on that file happening to exist. HISTORY §44.
 _FALLBACK_BIN_DIRS = ("/opt/homebrew/bin", "/usr/local/bin")
 
 
 def ensure_full_path_environment() -> None:
     """Extend os.environ["PATH"] to match what a real login/interactive
     shell would have, not the minimal PATH a GUI-launched macOS app
-    actually gets.
-
-    Root cause (item 44, confirmed live via a real ephemeral
-    LaunchAgent probe — a genuine launchd-spawned process with no
-    shell in the chain, the same path a double-clicked .app takes):
-    a GUI launch's PATH is launchd's bare default,
-    `/usr/bin:/bin:/usr/sbin:/sbin` — it does NOT include
-    /usr/local/bin or /opt/homebrew/bin, since those are added by
-    `/usr/libexec/path_helper` reading /etc/paths + /etc/paths.d/*,
-    which only runs as part of a login shell's startup (/etc/zprofile
-    et al.), never as part of a GUI app launch. `uv run seeker-ui`
-    never hits this, since a terminal shell's PATH is already fully
-    resolved by the time it inherits it — the same "works via uv run,
-    breaks via a real double-click" shape as item 43's CWD bug, just
-    for PATH instead of CWD. Called once at Application startup,
-    before anything Docker-related runs, rather than patched into each
-    individual subprocess.run(["docker", ...]) call site — every
-    docker_setup.py call already passes env=None (inherit) or
-    `{**os.environ, ...}`, so mutating the process's own os.environ
-    here fixes every current and future call site at once.
+    actually gets (launchd's bare `/usr/bin:/bin:/usr/sbin:/sbin`,
+    missing /usr/local/bin and /opt/homebrew/bin — confirmed live via
+    a real ephemeral LaunchAgent probe, HISTORY §44). Called once at
+    Application startup, before anything Docker-related runs — every
+    docker_setup.py subprocess call inherits os.environ already, so
+    mutating it here fixes every call site at once.
     """
     try:
         result = subprocess.run(
@@ -83,38 +62,28 @@ def ensure_full_path_environment() -> None:
 
 
 def compose_file_path() -> Path:
-    # Same reasoning/home as slskd_data_dir() just above: both
-    # wizard.py and settings_window.py need the identical path, so it
-    # lives here rather than being duplicated or imported UI-to-UI.
+    # Same home as slskd_data_dir() just below — both wizard.py and
+    # settings_window.py need the identical path.
     #
-    # docker-compose.yml is real *resource data*, not application code
-    # — a packaged build (see packaging/seeker.spec) bundles it as a
-    # PyInstaller `datas` entry. In an ordinary `uv run seeker-ui` dev
-    # run, `sys.frozen` is never set, so this falls through to the same
-    # CWD-relative path as before — `docker compose up` is documented
-    # (README) to run from the project root, the same assumption
-    # LEGACY_DATABASE_PATH made elsewhere before item 18. Deliberately
-    # NOT source-tree-relative (e.g. via `__file__`) for the dev-mode
-    # branch — that would be a real behavior change from what's shipped
-    # and tested today, not just a packaging-mode addition.
+    # docker-compose.yml is real *resource data*: a packaged build
+    # bundles it as a PyInstaller `datas` entry (packaging/seeker.spec).
+    # In dev, `sys.frozen` is never set, so this stays CWD-relative
+    # (`docker compose up` is documented, README, to run from the
+    # project root) — deliberately not source-tree-relative, which
+    # would be a real behavior change from what's shipped and tested.
     if not getattr(sys, "frozen", False):
         return Path("docker-compose.yml")
 
-    # Roadmap item 74 (P5.3) — a frozen build used to resolve this
-    # straight to `sys._MEIPASS`, the bundle's own extracted resource
-    # root. Real, live-confirmed problem: `SharingService.
-    # is_self_managed()` compares the running container's real
-    # `com.docker.compose.project.config_files` label (recorded once,
-    # at bring-up) against THIS path — but `sys._MEIPASS` is
-    # regenerated by PyInstaller on every build, so a rebuilt or
-    # relocated `.app` could never again recognize a container it had
-    # itself previously created as self-managed. Fixed the same way
-    # item 18 stabilized the DB's location: copy the bundled resource,
-    # once, into the same stable per-user `slskd_data_dir()` this app
-    # already treats as its permanent home, and always return THAT
-    # canonical path afterward — guarded (only copies if the canonical
-    # copy doesn't already exist yet) so a later Sharing-added volume
-    # line is never clobbered by a subsequent app update.
+    # A frozen build must NOT resolve this to sys._MEIPASS directly —
+    # PyInstaller regenerates that path on every build, so a rebuilt or
+    # relocated .app could never again recognize a container it had
+    # itself previously created as self-managed (SharingService.
+    # is_self_managed() compares against the running container's
+    # recorded config-files label). Copy the bundled resource, once,
+    # into the stable per-user slskd_data_dir() and always return that
+    # canonical path afterward — guarded so a later Sharing-added
+    # volume line is never clobbered by a subsequent app update.
+    # HISTORY §74 (P5.3).
     canonical_path = slskd_data_dir() / "docker-compose.yml"
 
     if not canonical_path.exists():
@@ -129,10 +98,9 @@ def compose_file_path() -> Path:
 
 
 def slskd_data_dir() -> Path:
-    # Moved here from ui/wizard.py (Step 8) so Settings' "Update SoulSeek
-    # credentials" action can resolve the identical path without either
-    # duplicating it or importing a UI module from a service-layer one.
-    # Same per-user app-data directory the DB/config store live in.
+    # Shared by both wizard.py and settings_window.py, hence living in
+    # a service-layer module rather than either UI one. Same per-user
+    # app-data directory the DB/config store live in.
     return Path(
         platformdirs.user_data_dir("Seeker", appauthor=False)
     ) / "slskd-data"
@@ -180,13 +148,12 @@ def is_non_loopback_http_url(url: str) -> bool:
     """True when `url` is plain (unencrypted) HTTP pointed somewhere
     other than this machine.
 
-    Roadmap item 116 (round 8, §6.6.1) — `SoulseekClient` sends
-    `X-API-Key` as a plain header on every request; over loopback
-    that's fine, but a `SLSKD_BASE_URL` pointed at a remote host over
-    `http://` would put the key on the wire in clear. Used to warn in
-    Settings, not to block anything — this project already has no
-    remote-slskd flow of its own, but `.env`'s `SLSKD_BASE_URL` is
-    still user-editable outside the app.
+    `SoulseekClient` sends `X-API-Key` as a plain header on every
+    request; over loopback that's fine, but a `SLSKD_BASE_URL` pointed
+    at a remote host over `http://` would put the key on the wire in
+    clear. Used to warn in Settings, not to block anything — this
+    project has no remote-slskd flow of its own, but `.env`'s
+    `SLSKD_BASE_URL` is still user-editable outside the app.
     """
     parsed = urlparse(url)
     return parsed.scheme == "http" and parsed.hostname not in _LOOPBACK_HOSTS
@@ -199,76 +166,34 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
 
 
-# Real, confirmed-live env var names (2026-08-28) — read straight from
-# the slskd binary's own `--envars` output against the actual running
-# container, not assumed from docs. Two real, distinguishable
-# credential pairs exist and are easy to conflate:
-#   SLSKD_USERNAME / SLSKD_PASSWORD       -> the WEB UI login
-#     (--help: "username/password for web UI", default "slskd"/"slskd")
-#   SLSKD_SLSK_USERNAME / SLSKD_SLSK_PASSWORD -> the SOULSEEK NETWORK
-#     login (--help: "username/password for the Soulseek network").
-# Confirmed empirically which is which by starting a throwaway
-# container with each candidate pair and reading its own logs: setting
-# SLSKD_SOULSEEK_USERNAME/PASSWORD (a plausible-looking but WRONG
-# guess) and bare SLSKD_USERNAME/PASSWORD both produced "Not connecting
-# to the Soulseek server; username and/or password invalid"; only
-# SLSKD_SLSK_USERNAME/SLSKD_SLSK_PASSWORD produced a real
-# "Logged in to the Soulseek server as <username>" — this wizard's
-# credential fields map to these two, and only these two.
+# Two real, distinguishable credential pairs, confirmed live against
+# slskd's own `--envars` output — easy to conflate, do not merge them:
+# SLSKD_USERNAME/PASSWORD is the WEB UI login; SLSKD_SLSK_USERNAME/
+# PASSWORD is the SOULSEEK NETWORK login. HISTORY §23.
 SLSKD_NETWORK_USERNAME_ENV_VAR = "SLSKD_SLSK_USERNAME"
 SLSKD_NETWORK_PASSWORD_ENV_VAR = "SLSKD_SLSK_PASSWORD"
 
-# Roadmap item 116 (round 8, §6.1.2) — the WEB UI pair the comment
-# directly above already named, now actually used: `bring_up_slskd`
-# passed neither before this item, leaving the web UI at slskd's own
-# vendor default ("slskd"/"slskd").
 SLSKD_WEB_USERNAME_ENV_VAR = "SLSKD_USERNAME"
 SLSKD_WEB_PASSWORD_ENV_VAR = "SLSKD_PASSWORD"
 
 
 SLSKD_HEALTHY_STATE = "Connected, LoggedIn"
 
-# Real, confirmed-live finding (2026-08-28): slskd's /api/v0/server (and
-# /api/v0/application's "server" block) never distinguishes "still
-# negotiating" from "rejected — bad credentials" — its ServerState
-# schema (confirmed via the live swagger spec) carries only
-# state/isConnected/isLoggedIn/isTransitioning, no error/reason field
-# at all. Both a genuine bad-password rejection and an unrelated
-# "kicked, another client already logged in with this username" case
-# were observed live to converge on the exact same terminal
-# state: "Disconnected". The real reason only ever appears via
-# /api/v0/logs' Error-level entries — confirmed live for a deliberately
-# wrong password: "Disconnected from the Soulseek server: invalid
-# username or password" / "Failed to reconnect: ...INVALIDPASS".
-#
-# Checked for a more structured signal before settling on substring
-# matching, not assumed to be the only option: a real captured entry's
-# full shape is {timestamp, context, level, message} — "context" is
-# real ("slskd.Application") but too coarse to discriminate a
-# credential rejection from any other application-level error, so it
-# narrows nothing beyond level=="Error" (already checked separately in
-# check_slskd_health). Message-substring matching against these two
-# confirmed real strings is genuinely the most specific signal
-# available, not a shortcut taken over a better one. Matched
-# case-insensitively, same discipline as RECOGNIZED_REJECTION_PATTERNS
-# elsewhere in this codebase — not broadened past what's actually been
-# confirmed. A future slskd version could still reword these messages;
-# there's no structured error-code field to pin to instead, so this
-# stays worth re-checking against a real container after any slskd
-# upgrade.
+# slskd's /api/v0/application carries no error/reason field at all
+# (confirmed via its live swagger spec) — a bad-password rejection and
+# an unrelated "kicked, another client already logged in" case both
+# converge on the same terminal state, "Disconnected". The real reason
+# only ever appears via /api/v0/logs' Error-level entries, matched by
+# message substring — no structured error-code field exists to pin to
+# instead, confirmed by inspecting a real captured entry's shape
+# ({timestamp, context, level, message}). Matched case-insensitively.
+# Worth re-checking against a real container after any slskd upgrade,
+# since a future version could reword these messages. HISTORY §23, §52.
 BAD_CREDENTIALS_LOG_PATTERNS = ("invalid username or password", "invalidpass")
 
-# Roadmap item 8 — the third real state item 23's own comment above
-# already flagged as observed-but-unclassified. Confirmed live
-# (2026-08-31) via two genuinely disposable, throwaway slskd containers
-# (never the real production one — see docs/HISTORY.md item 8 for the
-# full setup): logging a second client in with the SAME real,
-# already-connected username produces a real, distinct Error-level log
-# line — "Disconnected from the Soulseek server: another client logged
-# in using the same username" — preceded by an Information-level
-# "Kicked from server." This substring is genuinely disjoint from
-# BAD_CREDENTIALS_LOG_PATTERNS above (no shared words), so checking it
-# first or after makes no difference to correctness.
+# Disjoint from BAD_CREDENTIALS_LOG_PATTERNS (no shared words) — real,
+# distinct Error-level text confirmed live against two disposable
+# throwaway containers. HISTORY §52.
 KICKED_LOG_PATTERNS = ("another client logged in using the same username",)
 
 
@@ -300,19 +225,16 @@ def check_slskd_health(
         api_key: str,
         since: datetime,
 ) -> SlskdHealthCheckResult:
-    # A single check, not a blocking poll loop — the wizard's own QTimer
-    # calls this repeatedly (same pattern as the dashboard's live-status
-    # poll), tracking overall elapsed time itself for the timeout. Keeps
-    # this directly, deterministically testable per call.
-    #
-    # `since` (the real timestamp this specific bring-up attempt
-    # started, captured by the caller) matters because /api/v0/logs
-    # returns the whole recent log buffer, not just what happened after
-    # this call — without filtering, a stale Error entry from an
-    # earlier attempt (e.g. the user mistyped their password once,
-    # corrected it, and the wizard retried) would false-positive every
-    # later poll as BAD_CREDENTIALS forever, even after a real
-    # successful reconnect.
+    """A single check, not a blocking poll loop — the caller (the
+    wizard's own QTimer) calls this repeatedly, tracking overall
+    elapsed time itself for the timeout.
+
+    `since` filters /api/v0/logs' Error entries to this specific
+    bring-up attempt: that endpoint returns the whole recent log
+    buffer, so without filtering, a stale entry from an earlier,
+    already-corrected attempt would false-positive every later poll as
+    BAD_CREDENTIALS forever. HISTORY §23.
+    """
     headers = {"X-API-Key": api_key}
 
     try:
@@ -386,16 +308,14 @@ def check_slskd_web_login(
     real running container, by attempting the same
     `POST /api/v0/session` slskd's own login page uses.
 
-    Roadmap item 116/S1.2 — `ensure_slskd_web_credentials()` generates
-    and persists a login, but slskd will not let `SLSKD_USERNAME`/
-    `SLSKD_PASSWORD` override a web UI login that was already
-    customised before Seeker ever set the env var — the persisted
-    value can silently stop matching what the container will actually
-    accept. Live-confirmed against a real running production
-    container: a generated credential that didn't take produces a
-    real `401`, not an error. `UNKNOWN` covers slskd being unreachable
-    at all (caller should not claim a login is broken when it simply
-    couldn't be checked).
+    `ensure_slskd_web_credentials()` generates and persists a login,
+    but slskd will not let `SLSKD_USERNAME`/`SLSKD_PASSWORD` override a
+    web UI login already customised before Seeker set the env var — the
+    persisted value can silently stop matching what the container will
+    actually accept. Live-confirmed: a generated credential that didn't
+    take produces a real `401`, not an error. `UNKNOWN` covers slskd
+    being unreachable at all (caller should not claim a login is broken
+    when it simply couldn't be checked). HISTORY §116, §117.
     """
     try:
         response = httpx.post(
@@ -428,17 +348,14 @@ def bring_up_slskd(
     # Passes the collected credentials/API key/paths directly as
     # environment variables to `docker compose up`, which Compose
     # substitutes into docker-compose.yml's ${VAR} placeholders — no
-    # second, compose-specific env file (matches how Task 1 already
-    # rejected a second .env-editing mechanism for this exact reason).
+    # second, compose-specific env file.
     #
-    # `library_location_path` is optional (roadmap item R6) — a
-    # recreate triggered by SharingService.add_location_to_share
-    # already knows the CURRENT live-mounted original share path (or
-    # genuinely doesn't, if that mount is somehow gone) and must not
-    # clobber it with a blank; omitting the key entirely lets Compose
-    # fall through to docker-compose.yml's own `${SLSKD_SHARE_PATH:-...}`
-    # default instead of substituting an explicit empty string, same
-    # reasoning as R6's own root-cause diagnosis for SLSKD_API_KEY.
+    # `library_location_path` is optional: a recreate triggered by
+    # SharingService.add_location_to_share may not know the current
+    # live-mounted share path and must not clobber it with a blank —
+    # omitting the key lets Compose fall through to docker-compose.yml's
+    # own `${SLSKD_SHARE_PATH:-...}` default instead of substituting an
+    # explicit empty string. HISTORY §84 (R6).
     env = {
         **os.environ,
         SLSKD_NETWORK_USERNAME_ENV_VAR: soulseek_username,
