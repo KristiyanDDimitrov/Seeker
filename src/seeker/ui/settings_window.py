@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -62,6 +61,10 @@ SETTINGS_TAB_LOCATIONS = "Library Locations"
 SETTINGS_TAB_DESTINATIONS = "Playlist Destinations"
 SETTINGS_TAB_CONNECTION = "Connection"
 SETTINGS_TAB_THRESHOLDS = "Thresholds"
+
+# Roadmap item 8.1.3 (round 8, Phase 5) — Name/Path/Reachable/Actions,
+# see theme.ColumnLayout.
+_LOCATIONS_COLUMNS = theme.ColumnLayout(stretch=(1,), fit_content=(0, 2), actions=3)
 
 
 class SettingsPage(QWidget):
@@ -178,29 +181,9 @@ class SettingsPage(QWidget):
         # 80/R5): visible row-number header, square top-left corner
         # cutting into the card's own rounded arc, Qt-default row
         # heights, and (this table specifically) an underived Actions
-        # column width. size_action_column (called from _render_
-        # locations, after real Actions widgets exist to measure) needs
-        # setStretchLastSection(False) first — it overrides any
-        # per-column resize mode on the last section otherwise.
+        # column width.
         theme.apply_table_defaults(self.locations_table)
-        header = self.locations_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        # Roadmap item 8.1.3 (round 8, Phase 5) — this table never got
-        # round 7's E2 fix: every other Actions-column table derives
-        # this column's width at construction too (from an empty
-        # widget list), so an empty/still-loading table's Actions
-        # column isn't left at Qt's plain default width. This table's
-        # own load is async (`_render_locations` runs as an
-        # `on_finished` worker callback, not synchronously here), so
-        # the gap was real, just harder to notice than the fully
-        # synchronous MainWindow tables E2 was written against.
-        theme.size_action_column(self.locations_table, 3, [])
-        # Roadmap item D3 (round 6) — after resize modes, not before;
-        # see `theme.apply_column_floors`'s own docstring.
-        theme.apply_column_floors(self.locations_table)
+        theme.configure_columns(self.locations_table, _LOCATIONS_COLUMNS)
         layout.addWidget(theme.make_card(self.locations_table))
 
         add_row = QHBoxLayout()
@@ -284,7 +267,7 @@ class SettingsPage(QWidget):
         # Roadmap item 97 (B6.3) — derived from this render's own real
         # Actions widgets, same as every other table with this column
         # (theme.size_action_column's own docstring).
-        theme.size_action_column(self.locations_table, 3, action_widgets)
+        theme.size_columns(self.locations_table, _LOCATIONS_COLUMNS, action_widgets)
 
     def _on_add_location_clicked(self) -> None:
         self.locations_notice.dismiss()
