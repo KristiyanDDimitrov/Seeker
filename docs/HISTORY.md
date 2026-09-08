@@ -13918,3 +13918,99 @@ ever produced. Result: `17 failed, 1099 passed, 32 skipped`.
 `3 failed, 1116 passed, 29 skipped` — exactly the 3
 `test_callback_server.py` timeouts and nothing else, confirming the
 chromaprint gap really was the entire cause of the other 14.
+
+### 118 — Round 8 S4: deduplication (§8.1, §8.2)
+
+**§8.1 — the fourteen column methods collapsed into
+`theme.ColumnLayout` + `configure_columns()`/`size_columns()`.** Seven
+tables' `_configure_*_columns`/`_size_*_columns` pairs (~214 lines)
+became seven module-level `ColumnLayout` constants plus thin
+delegating methods. Zero test edits needed to keep the suite green —
+confirmed the refactor was behaviour-neutral before any test change
+could have masked a regression, per the session protocol.
+
+**A real, if minor, E2-class gap found and fixed while auditing which
+tables could fold in (§8.1.3).** `settings_window.py`'s
+`locations_table` never got round 7's E2 fix: every other
+Actions-column table derives that column's width at construction
+(`size_action_column(table, col, [])`, closing the "empty table sits
+at Qt's default width" gap); this table's construction never called
+it, relying only on its real render (`_render_locations`, invoked as
+an async `on_finished` worker callback — never synchronous, unlike
+every MainWindow table E2 was written against). Fixed as its own
+behaviour commit before folding the table into `ColumnLayout`, per
+the "refactor commit has no behaviour change" rule.
+`downloads_table`/`history_table`/`sharing_uploads_table` were also
+checked and left alone — they have no Actions column and no
+per-column resize mode at all, only `setStretchLastSection(True)`;
+there is no `stretch`/`fit_content`/`actions` shape for
+`ColumnLayout` to declare, and forcing one would mean fighting that
+one correct line with a `setStretchLastSection(False)` call. Comments
+left at each site so the exclusion reads as a checked decision, not a
+gap.
+
+**§8.1.2 — the E2.4 structural test strengthened, and the
+strengthening verified to actually catch something.** The old test
+only asserted a table has SOME real flex column. Extended to also
+assert no non-stretch column sits at Qt's raw `defaultSectionSize()`
+immediately after construction, for every table with a real
+`ColumnLayout`. Verified with two throwaway sabotages (both reverted
+before committing): no-opping the shared `configure_columns` fails
+the ORIGINAL check (as expected — no flex column at all); skipping
+only the Actions-column derivation inside `configure_columns` passes
+the original check but fails the new one — proving the strengthening
+closes a real gap the old test would have missed.
+
+**§8.2.1 — the `_render_*` table-loop methods surveyed, extraction
+rejected.** ~10 table-render methods share the shallow shape
+"setRowCount, loop rows, setItem per column, build an actions widget,
+call `_size_*_columns`" — but compared in detail
+(`_render_search_results`, `_render_needs_review_candidates`,
+`_render_pending_upgrades`, `_render_track_statuses`,
+`_render_duplicate_groups`), they diverge in exactly the ways that
+matter: different column counts and bespoke per-cell formatting logic
+(score computation, bitrate/size text, conditional tooltips), different
+pre-loop guards (`_hidden_to_tray` early return present in some, absent
+in others; ranking/scoring setup unique to Search), different
+mid-method side effects (button enable/text updates, stale-selection
+pruning, `clearSpans()` for span-using tables), and at least one
+(`_render_track_statuses`) with a wholly separate empty-state branch
+that switches stacked widgets. A shared helper would need a
+column-formatter callback per column plus hooks for each table's
+distinct pre/post-loop logic — the exact "bad abstraction over eleven
+slightly-different loops" the brief warned against. No extraction
+made; this is a reported measurement, not a skipped task.
+
+**§8.2.2 — the `_hidden_to_tray` guard dedup, deferred to Phase 6 as
+the brief itself directs** ("this interacts with Phase 6 — do it *as
+part of* the decomposition, since the poll fan-out is being
+restructured anyway"). Not attempted in S4.
+
+**§8.2.3 — `build_stylesheet`'s 467-line/one-f-string QSS blob split
+into eleven per-concern functions**
+(`_base_qss`/`_notice_qss`/`_button_qss`/`_input_qss`/`_table_qss`/
+`_card_qss`/`_table_header_qss`/`_progress_qss`/`_form_control_qss`/
+`_misc_qss`/`_menu_tab_qss`), composed in the original order by
+`build_stylesheet`. Verified more strictly than the brief's suggested
+`window.grab()` pixel comparison: every character was mechanically
+sliced from the original file by a one-off script (never retyped by
+hand), and a second script asserted `build_stylesheet(palette)`
+produces byte-for-byte identical output before and after the change,
+for both the dark and light palettes. Byte-identical QSS text fed to
+the same Qt version makes a pixel diff strictly redundant — it can
+only fail if the string itself differs, which the byte comparison
+already rules out — so the screenshot step was consciously skipped,
+not overlooked. One real bug hit and fixed while writing the split
+script: each per-concern function's f-string literally began with a
+newline (Python's usual `f"""` triple-quote-then-newline idiom), so
+naive concatenation inserted an extra blank line at every function
+boundary; fixed by using the `f"""\` (backslash-continuation) opener
+on every section but the first, which matches the original single
+f-string's actual leading-newline placement exactly.
+
+Full suite green after every commit in this session, with test edits
+made only where §8.1.2 called for a genuine strengthening (never to
+paper over a broken refactor): `1148-1149 passed, 1 skipped`, 0-2 of
+the pre-existing fullscreen-close flakes firing across runs (both
+already tracked in CLAUDE.md's Open issues, unrelated to this
+session's changes).
