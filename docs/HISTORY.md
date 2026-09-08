@@ -10861,6 +10861,22 @@ Full suite: 951 passed / 1 skipped, 0 regressions.
 manual download against live slskd, after asking the user to confirm
 the target — not run autonomously in this session.
 
+### 83 — R1: post-implementation review of item 81 found a real build permanently dirtying the tree
+
+`packaging/build_dmg.py` used to overwrite the TRACKED
+`src/seeker/_build_info.py` directly. `.gitignore`'s entry for that
+path did nothing — git never applies ignore rules to an
+already-tracked file — so every real `.dmg` build left the tree dirty,
+and a careless commit could sweep a real git SHA in over the intended
+`"dev"` fallback. Fixed by splitting the write target:
+`build_dmg.py` now writes a genuinely gitignored
+`src/seeker/_build_info_generated.py`; the tracked `_build_info.py`
+only `try/except ImportError`s it, falling back to `"dev"`, and is
+never itself written to by anything.
+`tests/test_build_info.py` guards the tracked fallback's literal
+source text so a future edit can't accidentally reintroduce a direct
+write to the tracked file.
+
 ### 84 — R6: Sharing's 401 Unauthorized
 
 **Diagnosis confirmed live against this real machine's own data**
@@ -11726,6 +11742,93 @@ again, since it's a live number, not a fixed one.
 Full suite: `1045 passed, 1 skipped, 0 failed` — genuinely green this
 run, no recurrence of the `test_history_refresh_button_refetches`
 flake B8's report saw. `mypy --strict src/`: clean, 85 files.
+
+### 94 — B5: only download real DJ formats
+
+New `audio_formats.py::DOWNLOADABLE_EXTENSIONS = {".mp3", ".flac",
+".wav", ".aiff", ".aif", ".m4a"}` (asserted a subset of the wider,
+still-permissive `AUDIO_EXTENSIONS`) plus shared
+`is_downloadable_extension()`, applied at all three real entry points:
+`quality._score_candidate`, `rank_candidates()` (the Search page and
+the CLI's raw results — had no gate before this), and
+`download_manual(chosen=...)` (bypasses `select_downloads` entirely,
+so it needed its own gate — new `UnsupportedDownloadFormatError`,
+refuses loudly rather than a silent no-op). Judgement calls, stated
+directly in the module comment: `.m4a` is in but bare `.mp4` is out
+(video-file collision risk); `.aac`/`.aifc`/`.ogg`/etc. are all out.
+The one real `.ogg` file already present in the user's library is
+untouched by this — indexing and playback don't go through this gate.
+
+### 95 — B1: Enter submits on wizard/Settings forms
+
+`OnboardingWizard` is a `QMainWindow`, not a `QDialog`, so Qt's
+autoDefault machinery never applied to it — Enter had no keyboard path
+to any button at all before this fix. Wired `returnPressed` on the
+wizard's Client ID field (guarded by `connect_button.isEnabled()`,
+mirroring the click-disabled state) and on the SoulSeek username/
+password fields (`_on_bring_up_clicked`'s own validation already
+covers empty fields, so no new guard was needed there). Extended to
+every other single-obvious-submit-target field in `settings_window.py`
+(destination subfolder, Spotify client ID, SoulSeek update-credentials,
+both threshold fields) — all four self-validate identically to a
+click, so this was the same reasoning applied uniformly rather than
+scoped to just the one form the report named.
+
+### 96 — B4: the "Queued" progress bar sat at the top of its cell
+
+`_build_progress_widget`'s indeterminate branch returned a bare
+`QProgressBar` directly from `setCellWidget` — the global
+`QProgressBar { max-height: 14px; }` rule then clamped it to the top
+of a tall row (Qt's default layout behavior for a widget smaller than
+its cell with no layout of its own), while the other two exits
+(the determinate branch here, and `_build_terminal_progress_widget`'s
+own determinate branch) already wrapped their bar in a centering
+`QHBoxLayout` container and so didn't show the bug. New shared
+`_wrap_progress_bar(bar, label_text)` is now used by all three exits
+(`label_text=None` omits the ETA label for the indeterminate case) —
+a fourth branch can no longer reintroduce this by skipping it.
+Pixel-verified for real in item 102 (a post-round review found the
+first "pixel-verified" claim for this fix was asserted, not actually
+recorded): a real pixel scan of a `window.grab()` found the queued
+bar's real color-span center 0.5px from its row's center — well inside
+"within a pixel or two."
+
+### 98 — B10: window title showed a commit SHA
+
+Reversed item 81 (0.1): `setWindowTitle(f"Seeker — {_build_info.
+GIT_SHA}")` became plain `"Seeker"`. Build identity's real home, Help →
+About Seeker, is untouched — `AboutDialog` already renders
+`GIT_SHA`/`GIT_DESCRIBE`/`BUILT_AT`, so nothing about traceability was
+lost, only the window title's own display of it. Updated
+`test_main_window_constructs_without_crashing`'s title assertion; left
+`test_about_dialog_shows_build_identity` exactly as item 91 (RR1.1)
+fixed it, since it asserts the About dialog's own separate label text,
+unaffected by this change.
+
+### 99 — B9: the macOS menu bar icon, and "Check now"'s real name
+
+`_resolve_tray_icon_path()` now points at a real template asset
+(`packaging/icons/seeker_menubar_Template.png`/`...@2x.png`,
+37×18/75×36, committed this round) instead of the full-colour app
+`.icns`. Root cause of the reported solid squircle blob:
+`setIsMask(True)` against the `.icns` discards its color and stamps
+only the alpha channel, which for that asset is one opaque rounded
+square for the whole icon. The new asset is derived, not redrawn
+(luminance-thresholded from the real 1024px icon, background circle
+dropped, cropped to the artwork's bounding box, brow strokes dilated
+to survive an 18px downscale, re-emitted as black pixels with the
+glyph in the alpha channel) — reproducible, documented inline.
+`seeker.spec` already bundles the whole `packaging/icons/` directory
+as a `datas` entry (item 90), so the new PNGs needed no separate spec
+change. Tray's "Check now" (ambiguous with Help → "Check for
+updates…", a wholly different action) renamed to "Check downloads
+now" with a tooltip. **Left for the user:** the real macOS menu bar
+check (both light/dark appearances) — this sandboxed session has no
+Screen Recording permission (same gap as items 84/89/90); an
+offscreen-rendered proxy (the icon composited on light/dark swatches)
+confirms the alpha-channel glyph shape is now legible instead of a
+filled blob, but can't exercise AppKit's own real template
+auto-recolor pipeline.
 
 ### 100 — B7: removed the cover.jpg sidecar feature (reverses R4.2)
 
@@ -12724,6 +12827,24 @@ a subsequent full-suite run). `mypy --strict` clean.
 
 **Left open:** D1.7's real-desktop screenshots (both themes, 1x and 2x
 if available) — needs a real Mac.
+
+### 112 — D5 (round 6): a menu bar left-click both opened the context menu and the window on macOS
+
+`_on_tray_icon_activated` connected `Trigger` unconditionally, guarded
+only by a comment claiming "macOS routes a left-click... straight to
+its context menu already (Trigger never fires there...)" — asserted
+with no citation and never actually checked. A real user's report on a
+real Mac (PySide6 6.11) proved it false. Fixed by skipping `Trigger`
+outright on `sys.platform == "darwin"`; Windows/Linux unchanged. This
+is the second time an unmarked confident claim about platform/
+framework behavior turned out wrong (round 5's C1 was the CSS-invalid
+`:last-child` QSS selector) — established the standing CLAUDE.md
+convention that a comment asserting platform/framework behavior must
+cite a real observation or say UNVERIFIED plainly. Swept `ui/` for
+similar comments per the brief's instruction (mark, don't fix): one
+real hit, `theme.py`'s C5.5 docstring claiming `setColorScheme()`
+changes the native macOS title bar — never actually checked on a real
+Mac — now marked UNVERIFIED.
 
 ### 113 — D4: closing a fullscreen window left a black macOS Space behind
 
