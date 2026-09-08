@@ -14,7 +14,8 @@ from PySide6.QtWidgets import QLabel, QPushButton
 
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text
-from seeker.ui.main_window import AboutDialog, DestinationDialog, MainWindow
+from seeker.ui.dialogs import AboutDialog, DestinationDialog
+from seeker.ui.main_window import MainWindow
 from test_ui_smoke import FakeApplication
 
 
@@ -184,11 +185,15 @@ def test_about_dialog_filters_out_a_placeholder_support_link(
     # SUPPORT_LINKS no longer has a TODO entry to filter (PayPal went
     # live), inject a synthetic one here so a dead, non-URL button is
     # still proven to never render, rather than this guard silently
-    # stopping being exercised.
-    from seeker.ui import main_window as main_window_module
+    # stopping being exercised. Patched on seeker.ui.dialogs's own
+    # help_text binding — that's where AboutDialog's build_support_
+    # links_row() actually reads SUPPORT_LINKS from (help_text is a
+    # shared singleton module either way, so this patches the same real
+    # object main_window's own binding would have too).
+    from seeker.ui import dialogs as dialogs_module
 
     monkeypatch.setattr(
-        main_window_module.help_text, "SUPPORT_LINKS",
+        dialogs_module.help_text, "SUPPORT_LINKS",
         {
             "Revolut": "https://revolut.me/kddimitrov",
             "Ko-fi": "TODO: paste real Ko-fi link",

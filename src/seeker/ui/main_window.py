@@ -760,30 +760,10 @@ class MainWindow(QMainWindow):
     def _register_page(self, key: str, widget: QWidget) -> None:
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
 
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
-    # properties for every HistoryPage attribute test_ui_smoke.py
-    # touches by name (window.history_table, etc.), so moving the page
-    # out from under MainWindow proves behaviour-neutral (full suite
-    # green with zero test edits) before any test is repointed at the
-    # page widget directly. Deleted, alongside that repointing, at the
-    # test-split session (S11, §9.3.4) — not before, per SESSION-PLAN.md.
-    @property
-    def history_table(self) -> QTableWidget:
-        return self._history_page.history_table
-
-    @property
-    def history_filter_combo(self) -> QComboBox:
-        return self._history_page.history_filter_combo
-
-    @property
-    def history_refresh_button(self) -> QPushButton:
-        return self._history_page.history_refresh_button
-
-    @property
-    def history_status_label(self) -> QLabel:
-        return self._history_page.history_status_label
-
-    # Same temporary-delegation pattern as History above, for every
+    # History's own delegating properties (window.history_table, etc.)
+    # were deleted at the test-split session (S11.1, §9.3.4) — its
+    # tests now address self._history_page directly. Same temporary-
+    # delegation pattern below, for every
     # SearchPage attribute/method test_ui_smoke.py touches by name.
     @property
     def search_artist_edit(self) -> QLineEdit:

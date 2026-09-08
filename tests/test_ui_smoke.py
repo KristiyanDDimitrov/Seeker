@@ -4955,7 +4955,6 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         "playlist_list",
         "track_table",
         "downloads_table",
-        "history_table",
         "sharing_locations_table",
         "sharing_uploads_table",
         "review_needs_table",
@@ -4972,6 +4971,12 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         assert parent.objectName() == "card", (
             f"{attr}'s parent is {parent!r}, not routed through make_card()"
         )
+
+    # History has no delegating property (S11.1, §9.3.4) — same check,
+    # against its own page widget directly.
+    history_parent = window._history_page.history_table.parentWidget()
+    assert history_parent is not None
+    assert history_parent.objectName() == "card"
 
 
 def test_duplicates_tab_controls_have_tooltips(qtbot):
@@ -6792,7 +6797,7 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
     # test exists to guard; their non-flex columns were never claimed
     # to be derived and are not the bug class E2 fixed.
     _no_column_layout = {
-        window.downloads_table, window.history_table,
+        window.downloads_table, window._history_page.history_table,
         window.sharing_uploads_table,
     }
 

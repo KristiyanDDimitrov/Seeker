@@ -15,14 +15,12 @@ def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    history_page = window.stacked_widget.widget(
-            window._page_indices["history"]
-    )
-    history_labels = [w.text() for w in history_page.findChildren(QLabel)]
+    history_labels = [
+        w.text() for w in window._history_page.findChildren(QLabel)
+    ]
     assert help_text.HISTORY_PAGE_SUBTITLE in history_labels
 
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    help_labels = [w.text() for w in help_page.findChildren(QLabel)]
+    help_labels = [w.text() for w in window._help_page.findChildren(QLabel)]
     assert help_text.HELP_PAGE_SUBTITLE in help_labels
 
 
@@ -33,8 +31,9 @@ def test_help_page_shows_walkthrough_and_troubleshooting(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    labels_html = "\n".join(w.text() for w in help_page.findChildren(QLabel))
+    labels_html = "\n".join(
+        w.text() for w in window._help_page.findChildren(QLabel)
+    )
 
     assert "How Seeker works" in labels_html
     assert "Troubleshooting" in labels_html
@@ -46,8 +45,7 @@ def test_help_page_shows_the_real_resolved_data_paths(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    labels_text = [w.text() for w in help_page.findChildren(QLabel)]
+    labels_text = [w.text() for w in window._help_page.findChildren(QLabel)]
 
     locations = application.data_locations
     assert str(locations.database_path) in labels_text
@@ -102,9 +100,8 @@ def test_open_data_folder_button_calls_the_file_manager_opener(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
     button = next(
-        widget for widget in help_page.findChildren(QPushButton)
+        widget for widget in window._help_page.findChildren(QPushButton)
         if widget.text() == help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
     )
     button.click()
@@ -127,9 +124,8 @@ def test_open_log_folder_button_calls_the_file_manager_opener(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
     button = next(
-        widget for widget in help_page.findChildren(QPushButton)
+        widget for widget in window._help_page.findChildren(QPushButton)
         if widget.text() == help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
     )
     button.click()
@@ -143,13 +139,8 @@ def test_help_page_shows_build_identity_and_per_account_note(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    # HelpPage (round 8 §9.3.1) is now a real, independently-constructed
-    # QWidget already registered under window's own stacked_widget — no
-    # need to build a second, separate instance.
-    help_page = window._help_page
-
     combined = "\n".join(
-        widget.text() for widget in help_page.findChildren(QLabel)
+        widget.text() for widget in window._help_page.findChildren(QLabel)
     )
 
     assert "Build:" in combined
@@ -164,10 +155,9 @@ def test_support_page_exists_directly_below_help_in_the_sidebar(qtbot):
     qtbot.addWidget(window)
 
     assert "support" in window._page_indices
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
-    labels = [w.text() for w in support_page.findChildren(QLabel)]
+    labels = [
+        w.text() for w in window._support_page.findChildren(QLabel)
+    ]
     assert help_text.SUPPORT_TAB_SUBTITLE in labels
 
     # Directly below Help — both individually-built (not part of the
@@ -188,11 +178,8 @@ def test_support_page_shows_honest_framing_and_non_financial_help(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
     labels_html = "\n".join(
-            w.text() for w in support_page.findChildren(QLabel)
+            w.text() for w in window._support_page.findChildren(QLabel)
     )
 
     assert "no telemetry" in labels_html
@@ -224,12 +211,9 @@ def test_support_page_renders_a_button_for_every_real_support_link(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
     buttons = [
         widget
-        for widget in support_page.findChildren(QPushButton)
+        for widget in window._support_page.findChildren(QPushButton)
         if widget.text().startswith("Support on")
     ]
     assert len(buttons) == len(help_text.SUPPORT_LINKS)
@@ -253,11 +237,8 @@ def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
             "support"
     ]
 
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
     go_button = next(
-        widget for widget in support_page.findChildren(QPushButton)
+        widget for widget in window._support_page.findChildren(QPushButton)
         if widget.text() == help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
     )
     go_button.click()

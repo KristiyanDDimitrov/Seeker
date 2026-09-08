@@ -19,8 +19,8 @@ def test_history_page_has_the_right_table_columns(qtbot):
     qtbot.addWidget(window)
 
     labels = [
-        window.history_table.horizontalHeaderItem(i).text()
-        for i in range(window.history_table.columnCount())
+        window._history_page.history_table.horizontalHeaderItem(i).text()
+        for i in range(window._history_page.history_table.columnCount())
     ]
     assert labels == ["When", "What", "Track", "Detail"]
 
@@ -40,17 +40,16 @@ def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
 
     window._show_page("history")
 
-    qtbot.waitUntil(
-        lambda: window.history_table.rowCount() == 2, timeout=2000,
-    )
+    history_table = window._history_page.history_table
+    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=2000)
     # Roadmap item R7.5 — MainWindow's own construction already makes
     # one real get_recent_events(limit=1) call to silently seed the
     # download-notification cutoff (see _seed_notification_cutoff), so
     # the History page's own first real fetch is real call #2, not #1.
     assert application.history_service.get_recent_events_calls == 2
-    assert window.history_table.item(0, 1).text() == "Downloaded"
-    assert "ZENEA - INFINITE" in window.history_table.item(0, 2).text()
-    assert window.history_table.item(1, 1).text() == "Tagged"
+    assert history_table.item(0, 1).text() == "Downloaded"
+    assert "ZENEA - INFINITE" in history_table.item(0, 2).text()
+    assert history_table.item(1, 1).text() == "Tagged"
 
     # Lazy-load-once, same precedent as Duplicates — switching away and
     # back must not refetch.
@@ -68,10 +67,10 @@ def test_history_page_empty_state_message(qtbot):
 
     qtbot.waitUntil(
         lambda: "no downloaded or tagged" in
-        window.history_status_label.text().lower(),
+        window._history_page.history_status_label.text().lower(),
         timeout=2000,
     )
-    assert window.history_table.rowCount() == 0
+    assert window._history_page.history_table.rowCount() == 0
 
 
 def test_history_filter_combo_filters_by_event_type(qtbot):
@@ -83,20 +82,20 @@ def test_history_filter_combo_filters_by_event_type(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
+    history_table = window._history_page.history_table
+    filter_combo = window._history_page.history_filter_combo
     window._show_page("history")
-    qtbot.waitUntil(
-        lambda: window.history_table.rowCount() == 2, timeout=2000,
-    )
+    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=2000)
 
-    downloaded_index = window.history_filter_combo.findData(DOWNLOADED)
-    window.history_filter_combo.setCurrentIndex(downloaded_index)
+    downloaded_index = filter_combo.findData(DOWNLOADED)
+    filter_combo.setCurrentIndex(downloaded_index)
 
-    assert window.history_table.rowCount() == 1
-    assert window.history_table.item(0, 1).text() == "Downloaded"
+    assert history_table.rowCount() == 1
+    assert history_table.item(0, 1).text() == "Downloaded"
 
-    all_index = window.history_filter_combo.findData(None)
-    window.history_filter_combo.setCurrentIndex(all_index)
-    assert window.history_table.rowCount() == 2
+    all_index = filter_combo.findData(None)
+    filter_combo.setCurrentIndex(all_index)
+    assert history_table.rowCount() == 2
 
 
 def test_history_refresh_button_refetches(qtbot):
@@ -113,7 +112,7 @@ def test_history_refresh_button_refetches(qtbot):
         timeout=2000,
     )
 
-    window.history_refresh_button.click()
+    window._history_page.history_refresh_button.click()
 
     qtbot.waitUntil(
         lambda: application.history_service.get_recent_events_calls == 3,
