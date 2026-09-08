@@ -1,6 +1,4 @@
-"""The Sharing page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py.
-"""
+"""The Sharing page (HISTORY §119)."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -39,7 +37,7 @@ _SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
 
 @dataclass
 class _SharingSnapshot:
-    """Everything the Sharing page (roadmap item 62, Phase 7) needs to
+    """Everything the Sharing page (HISTORY §56 Phase 7) needs to
     render one background-thread fetch — bundled the same way
     _NextStepFacts bundles the Dashboard CTA's facts, so run_worker's
     single-callable contract only needs one round trip per refresh
@@ -56,8 +54,8 @@ class SharingPage(QWidget):
         super().__init__()
         self._context = context
 
-        # Roadmap item 62 (Phase 7) — what Seeker is giving back to the
-        # SoulSeek network it downloads from. See help_text.py's
+        # What Seeker is giving back to the SoulSeek network it
+        # downloads from (HISTORY §56 Phase 7). See help_text.py's
         # SHARING_FRAMING_BODY for why this page frames things honestly
         # rather than as a persuasive pitch.
         content = QWidget()
@@ -92,7 +90,7 @@ class SharingPage(QWidget):
         self._configure_sharing_locations_columns()
 
         uploads_label = QLabel("Currently uploading")
-        # Roadmap item C5.3 — QLabel#sectionHeaderLabel in theme.py.
+        # QLabel#sectionHeaderLabel in theme.py.
         uploads_label.setObjectName("sectionHeaderLabel")
         layout.addWidget(uploads_label)
 
@@ -101,8 +99,8 @@ class SharingPage(QWidget):
             ["Peer", "File", "State", "Progress"]
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
-        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
-        # the same note on `downloads_table` in main_window.py.
+        # No ColumnLayout shape here either — see the same note on
+        # `downloads_table` in downloads_page.py.
         self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.sharing_uploads_table)
         theme.apply_column_floors(self.sharing_uploads_table)
@@ -111,12 +109,12 @@ class SharingPage(QWidget):
         self._current_sharing_reconciliation: list[LocationShareState] = []
         self._current_sharing_self_managed = False
 
-        # Roadmap item 62 (Phase 7.6) — lazy-loaded like Duplicates
-        # (first real page SHOW, never at construction — see item 39's
-        # deadlock), but ALSO joins the standing 20s backend_poll_timer
-        # once visited, same shape as Downloads' own real-slskd-call
-        # poll — sharing status/uploads are live external state, not a
-        # one-shot local read like Duplicates/History.
+        # Lazy-loaded like Duplicates (first real page SHOW, never at
+        # construction — see HISTORY §39's deadlock), but also joins the
+        # standing 20s backend_poll_timer once visited, same shape as
+        # Downloads' own real-slskd-call poll — sharing status/uploads
+        # are live external state, not a one-shot local read like
+        # Duplicates/History (HISTORY §56 Phase 7).
         self._sharing_page_visited = False
         self._sharing_poll_in_progress = False
         self._upload_eta_tracker = UploadEtaTracker()
@@ -242,12 +240,12 @@ class SharingPage(QWidget):
                 lambda _checked=False, location=state.location:
                 self._on_add_location_to_share_clicked(location)
             )
-            # Roadmap item 80 (P10.3) — the brief's own named example:
-            # a bare setCellWidget(button) gets literally resized to
+            # A bare setCellWidget(button) gets literally resized to
             # fill the whole cell rect (setCellWidget positions its
             # widget directly, bypassing normal layout sizing), reading
             # as a filled cell rather than a button. cell_widget()'s
-            # trailing stretch absorbs the leftover width instead.
+            # trailing stretch absorbs the leftover width instead
+            # (HISTORY §80).
             button_widget = theme.cell_widget(button)
             action_widgets.append(button_widget)
             table.setCellWidget(row, 4, button_widget)
