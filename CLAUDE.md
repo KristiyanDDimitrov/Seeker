@@ -434,7 +434,17 @@ Genuinely open only — no "done" items, no flakes that resolved.
     that session touched close/fullscreen logic, so not a regression
     from it). Passed cleanly when re-run alone immediately after.
     Consistent with fullscreen-close instability informally noted
-    across S11.2-S11.7 but never before named here specifically.
+    across S11.2-S11.7 but never before named here specifically. **S14:
+    a second, different fullscreen-close test
+    (`test_reopening_after_a_fullscreen_close_restores_prior_geometry`)
+    fired alongside it in the same full-suite run** (this session
+    touched only `CLAUDE.md`/`README.md`, so again not a regression
+    from the session's own work) — both passed cleanly re-run alone
+    immediately after. Two different tests in the same fullscreen-close
+    area failing together, only under the full suite, is stronger
+    evidence of a real ordering/state-leak bug in that area than either
+    single occurrence was; worth a dedicated diagnosis session if it
+    recurs a third time.
 - **Three registered library locations nest inside each other and
   double-index ~3,450 real files** — `add_location`/
   `add_location_from_path` only check exact path-string uniqueness, no
