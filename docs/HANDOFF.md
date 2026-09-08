@@ -10,14 +10,14 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `24507fd` — "7.2.4: log three previously-silent library-
-  loading/cache exception swallows" (S3 close-out)
-- **Working tree:** clean
-- **`origin/main`:** **5 commits ahead, not pushed** (dd3931e/92a6cad/
-  bb7d2fd/253f347 from S2, plus this session's 2b0c84c/24507fd). Ask
-  before pushing.
-- **pytest:** 1148 passed, 1 skipped, 1 flaky (see "Known flakes" below
-  — not a regression, reproduces on an untouched tree)
+- **HEAD:** `4823ad1` — "docs: HISTORY §118 for round 8 S4
+  (deduplication)" (S4 close-out, pending this commit's own tick/handoff
+  commit on top)
+- **Working tree:** clean except this rewrite + the SESSION-PLAN.md tick
+- **`origin/main`:** was 5 commits ahead as of S3's handoff, not
+  re-checked this session — ask before pushing regardless.
+- **pytest:** 1149 passed, 1 skipped, 0 failures this run (the two
+  tracked fullscreen-close flakes did not fire — see "Known flakes")
 - **mypy --strict:** clean, 86 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
@@ -31,68 +31,65 @@ slice of it.
 
 - **Done:** Phase 0 (baseline), Phase 1 (toolchain, ruff config, CI),
   Phase 3 (security §6.1–§6.6), Phase 3B (§14 Dock icon), S1 (CLAUDE.md
-  shrunk to 25,260 chars), S2 (§7.1 — private-attribute layering),
-  **S3** (§7.2 — logging, all five items 7.2.1–7.2.5).
-- **Next session: S4 — Deduplication (§8.1, §8.2)**. See
-  `docs/round8/SESSION-PLAN.md`.
+  shrunk to 25,260 chars), S2 (§7.1 — private-attribute layering), S3
+  (§7.2 — logging), **S4** (§8.1, §8.2 — deduplication).
+- **Next session: S5 — Phase 6 prep + dialogs + static pages** (§9.2,
+  §9.3.1: dialogs, History, Help/Support). This is the start of the
+  `MainWindow` decomposition — read `docs/round8/SESSION-PLAN.md`'s own
+  "Phase 6 — the part that needs the most care" section before starting,
+  not just your row.
 
-## S3 — what landed (§7.2)
+## S4 — what landed (§8.1, §8.2)
 
-The brief's own count (70 service-layer prints) was close but stale —
-actual count was 68 in the service layer plus 4 more in `ui/` (main_
-window.py, workers.py), all now converted; two commits:
+Six commits, full detail in [HISTORY §118](docs/HISTORY.md#118):
 
-- **2b0c84c** (7.2.1–7.2.3 + part of 7.2.4) — module-level
-  `logger = logging.getLogger(__name__)` in every affected module.
-  Handlers live in exactly two places: `main.py` attaches a
-  `StreamHandler(stdout)` with a bare `"%(message)s"` formatter (the
-  CLI's print() replacement — identical visible text, confirmed by a
-  real run); `main_ui.py` attaches a `RotatingFileHandler` under
-  `platformdirs.user_log_dir("Seeker")` (confirmed by a real run
-  producing a real log file with correctly formatted lines). Both sit
-  on the shared `"seeker"` logger tree, so one `logger.*()` call
-  reaches whichever handler is actually configured — no per-site
-  dual-path special-casing needed. New `Application.resolve_log_dir()`
-  / `DataLocations.log_dir`, surfaced in the Help page's data-locations
-  list plus a new "Open Log Folder" button next to "Open Data Folder".
-  Every print() converted, level chosen per message (progress -> INFO,
-  recoverable issues -> WARNING, real failures -> ERROR, per-file batch
-  chatter -> DEBUG). `download_service.py` keeps exactly two prints —
-  both genuinely CLI-only interactive paths (`SEEKER_DEBUG_POLL`-gated
-  `_debug_poll`, `_confirm_upgrade`'s `input()` confirmation), neither
-  reachable from the GUI, so neither is a layering violation. Tests
-  that asserted on captured stdout (`capsys`) now use `caplog`. Also
-  fixed a silent double-failure found while converting
-  `metadata_service.py`'s rename rollback: if the disk rename-back
-  itself failed after an already-failed DB update, the result still
-  unconditionally reported "renamed back" — now logged at ERROR with
-  `exc_info`.
-- **24507fd** (rest of 7.2.4) — an AST sweep for bare `except: pass`
-  found four sites; three were genuinely silent with no logging and now
-  get `logger.debug(..., exc_info=True)`: `album_art_cache.py`'s disk-
-  cache write failure, `docker_setup.py`'s slskd-log health-check read,
-  `audio_fingerprint.py`'s three-stage libchromaprint search loop. The
-  fourth (`ui/workers.py`'s Qt-teardown-race emit) already had a real
-  justifying comment and stays silent — a note was added explaining why
-  it's deliberately not logged. Three more `contextlib.suppress` sites
-  (`atomic_file.py` chmod-on-Windows, `main_window.py` folder-preview
-  stat, `duplicate_service.py` size_bytes fallback) were reviewed and
-  left alone — each already has a real comment justifying the silence.
-
-**7.2.5 report:** remaining `print()` count outside `cli.py`: **2**,
-both documented CLI-only exceptions (see above) — target was "zero
-outside justified CLI voice," met. `cli.py` keeps its 84 prints
-unchanged (that's its own legitimate output channel).
+- **§8.1.1** — the seven tables' `_configure_*_columns`/
+  `_size_*_columns` pairs (14 methods, ~214 lines) collapsed into
+  `theme.ColumnLayout` + `theme.configure_columns()`/`size_columns()`,
+  one `ColumnLayout` constant per table. Zero test edits — full suite
+  green proved the move behaviour-neutral before any test could mask a
+  regression.
+- **§8.1.3** — found and fixed a real (if minor) E2-class gap along the
+  way: `settings_window.py`'s `locations_table` never got round 7's E2
+  fix (its Actions column wasn't derived at construction, because its
+  real render is an async callback, not synchronous like every
+  MainWindow table E2 was written against). Fixed as its own behaviour
+  commit, *then* folded into `ColumnLayout` as a separate pure-refactor
+  commit. `downloads_table`/`history_table`/`sharing_uploads_table`
+  checked and left alone with an explaining comment — genuinely no
+  `ColumnLayout` shape (no Actions column, `setStretchLastSection` only).
+- **§8.1.2** — strengthened the E2.4 structural test to also assert no
+  non-stretch column sits at Qt's raw `defaultSectionSize()` after
+  construction. Verified the strengthening actually catches something
+  via two throwaway sabotages (both reverted before committing).
+- **§8.2.1** — surveyed ~10 `_render_*` table-loop methods; **no
+  extraction made**. They diverge in column count, per-cell formatting,
+  pre-loop guards, and post-loop side effects enough that a shared
+  helper would be the "bad abstraction over eleven slightly-different
+  loops" the brief warned against. This is a reported measurement, not
+  a skipped task — see HISTORY §118 for the specific methods compared.
+- **§8.2.2** — **not attempted**, per the brief's own instruction: it
+  explicitly says to do the `_hidden_to_tray` guard dedup as part of
+  Phase 6's poll-fan-out restructuring, not before it.
+- **§8.2.3** — `build_stylesheet`'s 467-line/one-f-string QSS blob split
+  into 11 per-concern functions. Verified stricter than a pixel diff: a
+  script mechanically sliced every character from the original file
+  (never retyped) and confirmed byte-for-byte identical output for both
+  palettes before/after. One real bug caught while writing that script
+  — naive per-function f-strings each contributed their own leading
+  newline, corrupting the composed output with extra blank lines; fixed
+  via the `f"""\` backslash-continuation opener. See HISTORY §118 for
+  the mechanism.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request`
-(`test_ui_smoke.py`) — found in S2, confirmed pre-existing via
-`git stash -u` against a clean tree. This session saw the same pair
-fire intermittently (never more than one per run). Same likely cause as
-CLAUDE.md's other tracked flakes (pytest-qt teardown / Qt deferred-
-deletion timing). Not diagnosed further — out of scope for S3.
+(`test_ui_smoke.py`) — tracked since S2, confirmed pre-existing via
+`git stash -u` against a clean tree. Fired intermittently in S3 (0-2 per
+run); did not fire in this session's final full-suite run. Same likely
+cause as CLAUDE.md's other tracked flakes (pytest-qt teardown / Qt
+deferred-deletion timing). Not diagnosed further — out of scope for S4.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -114,8 +111,9 @@ deletion timing). Not diagnosed further — out of scope for S3.
 - [ ] Reopen via Spotlight.
 - [ ] From a **second device on the same network**, confirm
       `http://<mac-lan-ip>:5030` no longer answers.
-- [ ] Push the 5 unpushed commits to `origin/main` (or say go ahead and
-      a future session will).
+- [ ] Push the unpushed commits to `origin/main` (or say go ahead and a
+      future session will) — count not re-verified this session, check
+      `git status` / `git log origin/main..HEAD` fresh.
 
 ## Open questions
 
