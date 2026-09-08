@@ -67,7 +67,7 @@ named split point rather than pushing through.
 | ☑ S11.3 | Test-split: Downloads + Tagging panel | §9.3.4 (mirrors S7) | ~100 K |
 | ☑ S11.4 | Test-split: Dashboard | §9.3.4 (mirrors S8) | ~100 K |
 | ☑ S11.5 | Test-split: Review | §9.3.4 (mirrors S9) | ~110 K |
-| ☐ S11.6 | Test-split: Duplicates | §9.3.4 (mirrors S10) | ~110 K |
+| ☑ S11.6 | Test-split: Duplicates | §9.3.4 (mirrors S10) | ~110 K |
 | ☐ S11.7 | Test-split: Tray | §9.3.4 (mirrors S11) | ~90 K |
 | ☐ S12 | Comment triage, pass 1 | §10.1 (small files: `audio_formats`, `docker_setup`, `matching`, `config_store`, `quality`, `audio_analysis`) | ~100 K |
 | ☐ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
