@@ -225,11 +225,13 @@ Each links to the HISTORY.md item where the full investigation lives.
 - A generated slskd web UI login only takes effect on a genuinely fresh
   install — slskd silently refuses to let `SLSKD_USERNAME`/`PASSWORD`
   override an already-customised login. Confirmed live both ways: a
-  fresh throwaway container accepts it; a container with a pre-existing
-  login returns a real `401` from `POST /api/v0/session` for the
-  generated one. `docker_setup.check_slskd_web_login()` checks this
-  directly; Settings only displays a credential once confirmed active.
-  [HISTORY §116](docs/HISTORY.md#116)
+  fresh throwaway container accepts it (real `200` from
+  `POST /api/v0/session`); a container with a pre-existing login
+  returns a real `401` for the generated one.
+  `docker_setup.check_slskd_web_login()` checks this directly; Settings
+  only displays a credential once confirmed active.
+  [HISTORY §116](docs/HISTORY.md#116),
+  [§117](docs/HISTORY.md#117)
 - The slskd web UI is bound to loopback only
   (`127.0.0.1:5030:5030`/`5031:5031`); `50300` must stay published on
   every interface for real incoming Soulseek peer connections.
@@ -388,6 +390,12 @@ Genuinely open only — no "done" items, no flakes that resolved.
   `add_location_from_path` only check exact path-string uniqueness, no
   containment check exists. A real user decision, deliberately left
   open. [HISTORY §93](docs/HISTORY.md#93)
+- **CI has never completed a real run — a GitHub billing block on
+  Kris's account, not a code defect.** Both runs on record failed
+  before any check executed: one cancelled after 6h, one failed in 10s
+  with "recent account payments have failed or your spending limit
+  needs to be increased." Needs Kris to resolve billing in GitHub's own
+  settings; nothing in the repo can fix this. [HISTORY §117](docs/HISTORY.md#117)
 
 ## Roadmap
 

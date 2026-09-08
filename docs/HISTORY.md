@@ -13842,3 +13842,39 @@ items 84/89/90's own "blocked" notes, which do NOT apply this time):
   `AXCloseButton` click to the Dock icon actually disappearing took
   ~530ms including real AppleScript/process overhead, consistent with
   the existing 400ms `_HIDE_TO_TRAY_VERIFY_DELAY_MS` — see §14.5.
+
+### 117 — Round 8 S1.1/S1.3: CI billing block, fresh-install web login confirmed live
+
+**S1.3 — §6.1.2's generated slskd web UI login, confirmed live on a
+genuinely fresh install.** Every prior observation of
+`ensure_slskd_web_credentials`/`check_slskd_web_login` (S1.2) was
+against this machine's real container, which already had a customised
+login before Seeker ever set `SLSKD_USERNAME`/`PASSWORD` — so the
+generated-credential path itself was still unexercised. Brought up a
+genuinely disposable, throwaway container (`docker run`, not `docker
+compose` against the real `docker-compose.yml`) on a fresh scratch data
+directory with no pre-existing `slskd.yml`, distinct host ports
+(15030/15031/15300), `SLSKD_USERNAME=seeker` and a freshly generated
+`secrets.token_urlsafe(32)` password — the exact same generation
+`ensure_slskd_web_credentials` uses. `POST /api/v0/session` with that
+credential returned a real `200`; the same call with a deliberately
+wrong password returned a real `401` — exactly the ACTIVE/INACTIVE
+split `check_slskd_web_login` (S1.2) already codes against, now
+confirmed on the untested side of the login-already-set/fresh-install
+split. Container and scratch data directory removed immediately after
+(`docker rm -f`); confirmed via `docker ps -a --filter name=slskd`
+that only the real production container remained, never modified.
+
+**S1.1 — pushed; CI has still never completed a real run, and the
+cause is a billing block, not a code defect.** `origin/main` was
+already up to date with `HEAD` at session start (a prior session pushed
+without recording it in `docs/HANDOFF.md`). `gh run list` shows exactly
+two runs ever, both broken before any check executed: the most recent
+(triggered by the `S1.4` commit) failed in 10s with the annotation
+"recent account payments have failed or your spending limit needs to
+be increased"; the one before it (Phase 1's `4.8.6 part 3` push) ran
+6 hours before being cancelled, consistent with the same block rather
+than a hung job. This is a GitHub billing/account issue on Kris's own
+account — not something fixable from the repo, and not Phase 1's CI
+config being broken. Surfaced to Kris directly rather than guessed at
+or worked around.
