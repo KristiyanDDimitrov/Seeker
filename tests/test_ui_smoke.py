@@ -1100,25 +1100,28 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
 
 
 def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
-    from seeker.ui.main_window import _open_in_file_manager
+    # _open_in_file_manager (round 8 §9.3.1) now lives in
+    # seeker.ui.pages.static_pages, alongside the Help page that's its
+    # only caller.
+    from seeker.ui.pages.static_pages import _open_in_file_manager
 
     calls: list[tuple[list[str], dict]] = []
     monkeypatch.setattr(
-        "seeker.ui.main_window.subprocess.run",
+        "seeker.ui.pages.static_pages.subprocess.run",
         lambda args, **kwargs: calls.append((args, kwargs)),
     )
     target = tmp_path / "does" / "not" / "exist" / "yet"
 
-    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "darwin")
+    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "darwin")
     _open_in_file_manager(target)
     assert calls[-1] == (["open", str(target)], {"check": False})
     assert target.is_dir()  # created on demand, per the docstring
 
-    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "win32")
+    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "win32")
     _open_in_file_manager(target)
     assert calls[-1] == (["explorer", str(target)], {"check": False})
 
-    monkeypatch.setattr("seeker.ui.main_window.sys.platform", "linux")
+    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "linux")
     _open_in_file_manager(target)
     assert calls[-1] == (["xdg-open", str(target)], {"check": False})
 
@@ -1126,11 +1129,14 @@ def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
 def test_open_data_folder_button_calls_the_file_manager_opener(
         qtbot, monkeypatch,
 ):
-    from seeker.ui import main_window as main_window_module
+    # HelpPage's click handler resolves _open_in_file_manager from its
+    # own module's globals (seeker.ui.pages.static_pages), not
+    # main_window's — see the identical note above.
+    from seeker.ui.pages import static_pages as static_pages_module
 
     opened: list = []
     monkeypatch.setattr(
-        main_window_module, "_open_in_file_manager",
+        static_pages_module, "_open_in_file_manager",
         opened.append,
     )
 
@@ -1151,11 +1157,11 @@ def test_open_data_folder_button_calls_the_file_manager_opener(
 def test_open_log_folder_button_calls_the_file_manager_opener(
         qtbot, monkeypatch,
 ):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui.pages import static_pages as static_pages_module
 
     opened: list = []
     monkeypatch.setattr(
-        main_window_module, "_open_in_file_manager",
+        static_pages_module, "_open_in_file_manager",
         opened.append,
     )
 
@@ -2622,8 +2628,10 @@ def test_help_page_shows_build_identity_and_per_account_note(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    help_page = window._build_help_page()
-    qtbot.addWidget(help_page)
+    # HelpPage (round 8 §9.3.1) is now a real, independently-constructed
+    # QWidget already registered under window's own stacked_widget — no
+    # need to build a second, separate instance.
+    help_page = window._help_page
 
     combined = "\n".join(
         widget.text() for widget in help_page.findChildren(QLabel)

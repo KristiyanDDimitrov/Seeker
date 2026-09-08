@@ -119,7 +119,7 @@ ignore = [
 # never external/untrusted input) share the identical reasoning.
 "src/seeker/audio_fingerprint.py" = ["S603", "S607"]
 "src/seeker/sharing_service.py" = ["S603", "S607"]
-"src/seeker/ui/main_window.py" = ["S603", "S607"]
+"src/seeker/ui/pages/static_pages.py" = ["S603", "S607"]
 "src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]
 "tests/test_workers_deadlock_regression.py" = ["S603"]

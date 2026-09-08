@@ -1,6 +1,5 @@
 import logging
 import math
-import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -49,7 +48,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QStackedWidget,
     QSystemTrayIcon,
     QTableWidget,
@@ -58,7 +56,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seeker import _build_info
 from seeker.application import Application
 from seeker.library.duplicate_service import (
     BulkDuplicateResolutionResult,
@@ -68,7 +65,7 @@ from seeker.library.duplicate_service import (
 from seeker.library.metadata_service import RenamePlan
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
-from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
+from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
@@ -104,7 +101,6 @@ from seeker.ui.dialogs import (
     BulkResolveDuplicatesDialog,
     DestinationDialog,
     RenamePreviewDialog,
-    build_support_links_row,
 )
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
@@ -114,6 +110,9 @@ from seeker.ui.download_eta import (
 from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.formatting import format_file_size, format_timestamp
 from seeker.ui.notice import InlineNotice
+from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.pages.history_page import HistoryPage
+from seeker.ui.pages.static_pages import HelpPage, SupportPage
 from seeker.ui.settings_window import (
     SETTINGS_TAB_CONNECTION,
     SETTINGS_TAB_LOCATIONS,
@@ -300,11 +299,6 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
     stretch=(0, 1), fit_content=(2, 3), actions=4,
 )
 
-_HISTORY_EVENT_LABELS = {
-    DOWNLOADED: "Downloaded",
-    TAGGED: "Tagged",
-}
-
 # Untuned constant — a fixed sidebar width narrow enough to leave real
 # room for content, wide enough that "Duplicates" (the longest nav
 # label) never wraps or clips.
@@ -344,84 +338,6 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     "search_manual": "Searching SoulSeek…",
     "download_manual": "Requesting download…",
 }
-
-
-def _build_subtitle_label(text: str) -> QLabel:
-    # Persistent, not hover-dependent (Task 1) — a muted one-liner under
-    # each tab's own header, aimed at someone who never reads the
-    # README and goes straight into the app.
-    label = QLabel(text)
-    # Roadmap item C5.3 — routed through the global stylesheet's
-    # QLabel[badge="muted"] rule (theme.py) rather than a per-widget
-    # setStyleSheet() call, so a runtime theme switch re-colors this
-    # automatically with no MainWindow.on_theme_changed() code needed.
-    label.setProperty("badge", "muted")
-    label.setWordWrap(True)
-    return label
-
-
-def _build_page(
-        title: str,
-        subtitle: str,
-        content: QWidget,
-        header_extra: QWidget | None = None,
-) -> QWidget:
-    # Every page in the shell gets the identical [title, subtitle,
-    # content] shape and the identical page-level margins (Phase 3's
-    # own documented layout convention) — this is the one place that
-    # convention actually gets enforced, rather than each page copying
-    # setContentsMargins/setSpacing by hand and drifting.
-    #
-    # header_extra (roadmap item 56 Phase 3) — an optional widget placed
-    # to the LEFT of the title, in the same row. Only the Settings page
-    # uses this today (its "← Back" button), but it's a real, reusable
-    # extension point rather than a Settings-specific special case
-    # bolted onto this shared helper.
-    page = QWidget()
-    layout = QVBoxLayout(page)
-    layout.setContentsMargins(
-        theme.SPACING_XL, theme.SPACING_LG,
-        theme.SPACING_XL, theme.SPACING_LG,
-    )
-    layout.setSpacing(theme.SPACING_MD)
-
-    title_row = QHBoxLayout()
-    title_row.setSpacing(theme.SPACING_SM)
-
-    if header_extra is not None:
-        title_row.addWidget(header_extra)
-
-    title_label = QLabel(title)
-    # Roadmap item C5.3 — QLabel#pageTitleLabel in theme.py.
-    title_label.setObjectName("pageTitleLabel")
-    title_row.addWidget(title_label)
-    title_row.addStretch()
-
-    layout.addLayout(title_row)
-    layout.addWidget(_build_subtitle_label(subtitle))
-    layout.addWidget(content, 1)
-
-    return page
-
-
-def _open_in_file_manager(path: Path) -> None:
-    # Cross-platform "reveal in Finder/Explorer" — same
-    # subprocess/best-effort spirit as docker_setup.py's own OS calls,
-    # just for the desktop file manager instead of Docker. `path.mkdir`
-    # first since a brand-new install's slskd-data subfolder in
-    # particular may not exist yet (SoulSeek skipped in the wizard) —
-    # opening a folder that doesn't exist would otherwise silently do
-    # nothing on every platform. check=False is explicit, not
-    # forgotten: nothing useful to do with a failure here beyond what
-    # the user already sees (the folder just doesn't open).
-    path.mkdir(parents=True, exist_ok=True)
-
-    if sys.platform == "darwin":
-        subprocess.run(["open", str(path)], check=False)
-    elif sys.platform == "win32":
-        subprocess.run(["explorer", str(path)], check=False)
-    else:
-        subprocess.run(["xdg-open", str(path)], check=False)
 
 
 def _resolve_tray_icon_path() -> Path:
@@ -1144,18 +1060,34 @@ class MainWindow(QMainWindow):
         self._register_page("dashboard", self._build_dashboard_page())
         self._register_page("search", self._build_search_page())
         self._register_page("downloads", self._build_downloads_page())
-        self._register_page("review", _build_page(
+        self._register_page("review", build_page(
             "Review", help_text.REVIEW_TAB_SUBTITLE,
             self._build_review_content(),
         ))
-        self._register_page("duplicates", _build_page(
+        self._register_page("duplicates", build_page(
             "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
             self._build_duplicates_content(),
         ))
         self._register_page("sharing", self._build_sharing_page())
-        self._register_page("history", self._build_history_page())
-        self._register_page("help", self._build_help_page())
-        self._register_page("support", self._build_support_page())
+
+        # Roadmap item 9.2 (round 8, Phase 6 prep) — the seam a migrated
+        # page gets instead of reaching past it to MainWindow directly.
+        # See PageContext's own docstring for why run_busy_worker is
+        # here despite not being in the brief's original four-field
+        # sketch.
+        page_context = PageContext(
+            application=self.application,
+            thread_pool=self.thread_pool,
+            busy_actions=self.busy_actions,
+            navigate=self._show_page,
+            run_busy_worker=self._run_busy_worker,
+        )
+        self._history_page = HistoryPage(page_context)
+        self._register_page("history", self._history_page)
+        self._help_page = HelpPage(page_context)
+        self._register_page("help", self._help_page)
+        self._support_page = SupportPage(page_context)
+        self._register_page("support", self._support_page)
 
         # Roadmap item 56 Phase 3 — Settings reversed from item 48's
         # separate-dialog decision into a real page, hosted the same
@@ -1171,7 +1103,7 @@ class MainWindow(QMainWindow):
             self.application, on_about_requested=self._on_about_clicked,
             on_theme_mode_changed=self._apply_theme_mode,
         )
-        self._register_page("settings", _build_page(
+        self._register_page("settings", build_page(
             "Settings", help_text.SETTINGS_WINDOW_SUBTITLE,
             self.settings_page, header_extra=self.settings_back_button,
         ))
@@ -1221,6 +1153,29 @@ class MainWindow(QMainWindow):
 
     def _register_page(self, key: str, widget: QWidget) -> None:
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
+
+    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
+    # properties for every HistoryPage attribute test_ui_smoke.py
+    # touches by name (window.history_table, etc.), so moving the page
+    # out from under MainWindow proves behaviour-neutral (full suite
+    # green with zero test edits) before any test is repointed at the
+    # page widget directly. Deleted, alongside that repointing, at the
+    # test-split session (S11, §9.3.4) — not before, per SESSION-PLAN.md.
+    @property
+    def history_table(self) -> QTableWidget:
+        return self._history_page.history_table
+
+    @property
+    def history_filter_combo(self) -> QComboBox:
+        return self._history_page.history_filter_combo
+
+    @property
+    def history_refresh_button(self) -> QPushButton:
+        return self._history_page.history_refresh_button
+
+    @property
+    def history_status_label(self) -> QLabel:
+        return self._history_page.history_status_label
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1720,7 +1675,7 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(right, 3)
 
-        return _build_page(
+        return build_page(
             "Dashboard", help_text.DASHBOARD_TAB_SUBTITLE, content,
         )
 
@@ -1786,7 +1741,7 @@ class MainWindow(QMainWindow):
         self._search_title = ""
         self._search_files: list[SoulseekFile] = []
 
-        return _build_page("Search", help_text.SEARCH_TAB_SUBTITLE, content)
+        return build_page("Search", help_text.SEARCH_TAB_SUBTITLE, content)
 
     def _on_search_clicked(self) -> None:
         artist = self.search_artist_edit.text().strip()
@@ -1984,120 +1939,9 @@ class MainWindow(QMainWindow):
         theme.apply_column_floors(self.downloads_table)
         layout.addWidget(theme.make_card(self.downloads_table))
 
-        return _build_page(
+        return build_page(
             "Downloads", help_text.DOWNLOADS_TAB_SUBTITLE, content,
         )
-
-    def _build_history_page(self) -> QWidget:
-        # Derived entirely from existing download_requests/local_files
-        # rows via Application.history_service — no new table, no new
-        # poll timer (this is a "look back" view, not an active-
-        # progress one like Downloads; a manual Refresh button is
-        # enough). The honest "not a permanent log" limits live in
-        # HISTORY_PAGE_SUBTITLE, not repeated here.
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        controls = QHBoxLayout()
-        controls.addWidget(QLabel("Show:"))
-
-        self.history_filter_combo = QComboBox()
-        self.history_filter_combo.setToolTip(
-            help_text.TOOLTIP_HISTORY_FILTER_COMBO
-        )
-        self.history_filter_combo.addItem("All", None)
-        self.history_filter_combo.addItem("Downloaded", DOWNLOADED)
-        self.history_filter_combo.addItem("Tagged", TAGGED)
-        self.history_filter_combo.currentIndexChanged.connect(
-            self._render_history_table
-        )
-        controls.addWidget(self.history_filter_combo)
-
-        controls.addStretch()
-
-        self.history_refresh_button = QPushButton("Refresh")
-        self.history_refresh_button.setToolTip(
-            help_text.TOOLTIP_HISTORY_REFRESH_BUTTON
-        )
-        self.history_refresh_button.clicked.connect(self._refresh_history)
-        controls.addWidget(self.history_refresh_button)
-
-        layout.addLayout(controls)
-
-        self.history_status_label = QLabel("")
-        layout.addWidget(self.history_status_label)
-
-        self.history_table = QTableWidget(0, 4)
-        self.history_table.setHorizontalHeaderLabels(
-            ["When", "What", "Track", "Detail"]
-        )
-        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
-        # the same note on `downloads_table` above.
-        self.history_table.horizontalHeader().setStretchLastSection(True)
-        theme.apply_table_defaults(self.history_table)
-        theme.apply_column_floors(self.history_table)
-        layout.addWidget(theme.make_card(self.history_table))
-
-        # Raw, unfiltered events from the last real fetch — the filter
-        # combo re-renders from this in memory rather than re-querying,
-        # since it's already a bounded, already-fetched list (DEFAULT_
-        # LIMIT), not a live/paginated one.
-        self._history_events: list[HistoryEvent] = []
-
-        return _build_page(
-            "History", help_text.HISTORY_PAGE_SUBTITLE, content,
-        )
-
-    def _refresh_history(self) -> None:
-        self._run_busy_worker(
-            "history_refresh", self.history_refresh_button,
-            self.application.history_service.get_recent_events,
-            status_label=self.history_status_label,
-            on_finished=self._on_history_fetched,
-        )
-
-    def _on_history_fetched(self, events: list[HistoryEvent]) -> None:
-        self._history_events = events
-        self._render_history_table()
-
-    def _render_history_table(self) -> None:
-        selected_type = self.history_filter_combo.currentData()
-        events = (
-            self._history_events if selected_type is None
-            else [
-                event for event in self._history_events
-                if event.event_type == selected_type
-            ]
-        )
-
-        if not self._history_events:
-            self.history_status_label.setText(
-                "No downloaded or tagged tracks yet."
-            )
-        else:
-            self.history_status_label.setText("")
-
-        self.history_table.setRowCount(len(events))
-
-        for row, event in enumerate(events):
-            self.history_table.setItem(
-                row, 0, QTableWidgetItem(format_timestamp(event.occurred_at)),
-            )
-            self.history_table.setItem(
-                row, 1,
-                QTableWidgetItem(_HISTORY_EVENT_LABELS[event.event_type]),
-            )
-            self.history_table.setItem(
-                row, 2,
-                QTableWidgetItem(
-                    f"{event.track_artist} - {event.track_title} "
-                    f"({event.playlist_name})"
-                ),
-            )
-            self.history_table.setItem(
-                row, 3, QTableWidgetItem(event.detail),
-            )
 
     def _build_sharing_page(self) -> QWidget:
         # Roadmap item 62 (Phase 7) — what Seeker is giving back to the
@@ -2155,7 +1999,7 @@ class MainWindow(QMainWindow):
         self._current_sharing_reconciliation: list[LocationShareState] = []
         self._current_sharing_self_managed = False
 
-        return _build_page("Sharing", help_text.SHARING_TAB_SUBTITLE, content)
+        return build_page("Sharing", help_text.SHARING_TAB_SUBTITLE, content)
 
     def _gather_sharing_snapshot(self) -> _SharingSnapshot:
         if not self.application.soulseek_configured:
@@ -2403,186 +2247,6 @@ class MainWindow(QMainWindow):
             + ready_note
         )
         self._refresh_sharing()
-
-    def _build_help_page(self) -> QWidget:
-        # Real content (walkthrough/troubleshooting/data locations),
-        # not a placeholder. Every data-location value below is a real,
-        # already-resolved path (Application.data_locations) — cheap,
-        # synchronous, purely local string formatting, so this builds
-        # directly at page-construction time like AboutDialog's own
-        # version() lookup, no lazy-load/run_worker needed (contrast
-        # with Duplicates/History, which do a real DB read).
-        inner = QWidget()
-        inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-        inner_layout.setSpacing(theme.SPACING_LG)
-
-        walkthrough_label = QLabel(help_text.HELP_WALKTHROUGH_BODY)
-        walkthrough_label.setTextFormat(Qt.TextFormat.RichText)
-        walkthrough_label.setWordWrap(True)
-        inner_layout.addWidget(walkthrough_label)
-
-        troubleshooting_label = QLabel(help_text.HELP_TROUBLESHOOTING_BODY)
-        troubleshooting_label.setTextFormat(Qt.TextFormat.RichText)
-        troubleshooting_label.setWordWrap(True)
-        inner_layout.addWidget(troubleshooting_label)
-
-        locations = self.application.data_locations
-
-        data_heading = QLabel(help_text.HELP_DATA_LOCATIONS_HEADING)
-        data_heading.setTextFormat(Qt.TextFormat.RichText)
-        inner_layout.addWidget(data_heading)
-
-        intro_label = QLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
-        intro_label.setWordWrap(True)
-        inner_layout.addWidget(intro_label)
-
-        # Roadmap item 81 (0.2) — said explicitly, in the app, not just
-        # in CLAUDE.md: a "fix didn't work on the other account" report
-        # is very often a different-database report, not a
-        # different-behavior one.
-        per_account_label = QLabel(
-            help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE
-        )
-        per_account_label.setWordWrap(True)
-        inner_layout.addWidget(per_account_label)
-
-        # Roadmap item 81 (0.1) — next to the data locations, not
-        # buried in About, since this page is exactly where "which
-        # build is this?" troubleshooting starts.
-        build_identity = help_text.format_build_identity(
-            _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
-            _build_info.BUILT_AT,
-        )
-        build_label = QLabel(
-            f"{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}"
-        )
-        build_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        inner_layout.addWidget(build_label)
-
-        locations_form = QFormLayout()
-        for label_text, path in (
-                (help_text.DATA_LOCATION_DATABASE_LABEL, locations.database_path),
-                (help_text.DATA_LOCATION_CONFIG_LABEL, locations.config_path),
-                (
-                    help_text.DATA_LOCATION_SPOTIFY_TOKEN_LABEL,
-                    locations.spotify_token_path,
-                ),
-                (help_text.DATA_LOCATION_SLSKD_LABEL, locations.slskd_data_dir),
-                (help_text.DATA_LOCATION_LOG_LABEL, locations.log_dir),
-        ):
-            path_label = QLabel(str(path))
-            path_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-            path_label.setWordWrap(True)
-            locations_form.addRow(label_text, path_label)
-        inner_layout.addLayout(locations_form)
-
-        buttons_row = QHBoxLayout()
-
-        open_folder_button = QPushButton(
-                help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
-        )
-        open_folder_button.setToolTip(help_text.TOOLTIP_OPEN_DATA_FOLDER)
-        open_folder_button.clicked.connect(self._on_open_data_folder_clicked)
-        buttons_row.addWidget(open_folder_button)
-
-        open_log_folder_button = QPushButton(
-                help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
-        )
-        open_log_folder_button.setToolTip(help_text.TOOLTIP_OPEN_LOG_FOLDER)
-        open_log_folder_button.clicked.connect(
-            self._on_open_log_folder_clicked
-        )
-        buttons_row.addWidget(open_log_folder_button)
-
-        buttons_row.addStretch()
-        inner_layout.addLayout(buttons_row)
-
-        inner_layout.addStretch()
-
-        # Scrollable — the walkthrough + troubleshooting + data-location
-        # sections together are genuinely longer than this app's
-        # 960x640 minimum window (item 48), unlike every other page.
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setWidget(inner)
-
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(scroll_area)
-
-        return _build_page("Help", help_text.HELP_PAGE_SUBTITLE, content)
-
-    def _on_open_data_folder_clicked(self) -> None:
-        _open_in_file_manager(self.application.data_locations.base_dir)
-
-    def _on_open_log_folder_clicked(self) -> None:
-        _open_in_file_manager(self.application.data_locations.log_dir)
-
-    def _build_support_page(self) -> QWidget:
-        # Roadmap item 64 — a real sidebar page, directly below Help.
-        # Every string here is entirely static copy (no service/DB call
-        # at all, unlike Duplicates/History) — built directly at
-        # construction time, the same "nothing to lazily load" reasoning
-        # _build_help_page's own docstring already gives for its
-        # Application.data_locations lookup, just with even less to
-        # fetch here.
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SPACING_LG)
-
-        framing_label = QLabel(help_text.SUPPORT_PAGE_FRAMING_BODY)
-        framing_label.setTextFormat(Qt.TextFormat.RichText)
-        framing_label.setWordWrap(True)
-        layout.addWidget(framing_label)
-
-        layout.addLayout(build_support_links_row())
-
-        non_financial_heading = QLabel(
-            help_text.SUPPORT_PAGE_NON_FINANCIAL_HEADING
-        )
-        non_financial_heading.setTextFormat(Qt.TextFormat.RichText)
-        layout.addWidget(non_financial_heading)
-
-        report_bug_label = QLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY)
-        report_bug_label.setTextFormat(Qt.TextFormat.RichText)
-        report_bug_label.setWordWrap(True)
-        report_bug_label.setOpenExternalLinks(True)
-        layout.addWidget(report_bug_label)
-
-        share_library_label = QLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)
-        share_library_label.setTextFormat(Qt.TextFormat.RichText)
-        share_library_label.setWordWrap(True)
-        layout.addWidget(share_library_label)
-
-        go_to_sharing_button = QPushButton(
-            help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
-        )
-        go_to_sharing_button.clicked.connect(
-            lambda: self._show_page("sharing")
-        )
-        layout.addWidget(
-            go_to_sharing_button, alignment=Qt.AlignmentFlag.AlignLeft,
-        )
-
-        author_label = QLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
-        author_label.setTextFormat(Qt.TextFormat.RichText)
-        author_label.setWordWrap(True)
-        author_label.setOpenExternalLinks(True)
-        layout.addWidget(author_label)
-
-        layout.addStretch()
-
-        return _build_page(
-            "Support", help_text.SUPPORT_TAB_SUBTITLE, content,
-        )
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()
@@ -3434,7 +3098,7 @@ class MainWindow(QMainWindow):
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True
-            self._refresh_history()
+            self._history_page._refresh_history()
 
     def _refresh_duplicates_locations(self) -> None:
         run_worker(
