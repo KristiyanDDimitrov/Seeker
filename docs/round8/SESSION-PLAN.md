@@ -56,7 +56,7 @@ named split point rather than pushing through.
 | ☑ S3 | Layering: logging | §7.2 | ~120 K |
 | ☑ S4 | Deduplication | §8.1, §8.2 | ~110 K |
 | ☑ S5 | Phase 6 prep + dialogs + static pages | §9.2, §9.3.1 (dialogs, History, Help/Support) | ~110 K |
-| ☐ S6 | Search + Sharing pages | §9.3.1 | ~110 K |
+| ☑ S6 | Search + Sharing pages | §9.3.1 | ~110 K |
 | ☐ S7 | Downloads + Tagging panel | §9.3.1 | ~120 K |
 | ☐ S8 | Dashboard page | §9.3.1 | ~110 K |
 | ☐ S9 | Review page | §9.3.1 | ~120 K |
