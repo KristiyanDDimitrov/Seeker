@@ -61,7 +61,14 @@ named split point rather than pushing through.
 | ☑ S8 | Dashboard page | §9.3.1 | ~110 K |
 | ☑ S9 | Review page | §9.3.1 | ~120 K |
 | ☑ S10 | Duplicates page | §9.3.1 | ~120 K |
-| ☐ S11 | Tray extraction + `MainWindow` close-out | §9.3.2, §9.3.3, §9.3.4 | ~110 K |
+| ☑ S11 | Tray extraction + `MainWindow` close-out | §9.3.2, §9.3.3 | ~110 K |
+| ☐ S11.1 | Test-split: dialogs + History + Help/Support | §9.3.4 (mirrors S5) | ~90 K |
+| ☐ S11.2 | Test-split: Search + Sharing | §9.3.4 (mirrors S6) | ~90 K |
+| ☐ S11.3 | Test-split: Downloads + Tagging panel | §9.3.4 (mirrors S7) | ~100 K |
+| ☐ S11.4 | Test-split: Dashboard | §9.3.4 (mirrors S8) | ~100 K |
+| ☐ S11.5 | Test-split: Review | §9.3.4 (mirrors S9) | ~110 K |
+| ☐ S11.6 | Test-split: Duplicates | §9.3.4 (mirrors S10) | ~110 K |
+| ☐ S11.7 | Test-split: Tray | §9.3.4 (mirrors S11) | ~90 K |
 | ☐ S12 | Comment triage, pass 1 | §10.1 (small files: `audio_formats`, `docker_setup`, `matching`, `config_store`, `quality`, `audio_analysis`) | ~100 K |
 | ☐ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
 | ☐ S14 | CLAUDE.md 8b + README | §11.2.4, §11.2.5, §11.3 | ~90 K |
@@ -70,6 +77,42 @@ named split point rather than pushing through.
 §12.6–§12.10 (UX Group B) are product decisions for Kris and are not
 scheduled. §9.4 (the other long functions) is optional; fold individual
 items into a session that finishes early, or skip and say so.
+
+**S11 split, discovered mid-session:** the original row bundled §9.3.2
+(tray extraction), §9.3.3 (`__init__` shrink), and §9.3.4 (the
+test-file split + delegating-stub removal for all nine already-moved
+pages plus dialogs and tray). §9.3.2/§9.3.3 landed and are ticked
+above. §9.3.4 turned out to be comparable in size to the ENTIRE S5–S10
+arc — 307 tests across `test_ui_smoke.py`, ~121 delegating
+properties/stubs still on `MainWindow` (73 properties + 48 stub
+methods, `grep -c` confirmed) — not something one more session on top
+of S11's own real work could absorb without the same risk the small-
+session strategy exists to avoid. Split into S11.1–S11.7 below, one
+per already-extracted page/group, in the SAME order S5–S10 originally
+extracted them (dialogs+History+Help/Support, Search+Sharing,
+Downloads+Tagging, Dashboard, Review, Duplicates), plus a new S11.7
+for Tray (this session's own extraction). Each sub-session's own
+first concrete step is the same one §9.1's method-group table gave
+S5–S10: grep `test_ui_smoke.py` for every `window.<attr>`/
+`window._method(...)` identifier that page's delegating stubs/
+properties exist for, confirm the full list against that page's own
+module, then apply the established two-commit mechanism (§9.3, step
+4) — move verbatim into `tests/pages/<name>_test.py` (or similar,
+next session's own call) and confirm green with zero further edits,
+THEN a separate commit repointing to the page widget directly and
+deleting the delegating members. Two gotchas found genuinely worth
+knowing before S11.7 (Tray) specifically, both confirmed live: (1) a
+signal connected directly to a bound method of a non-`QObject`
+controller (e.g. `TrayController`) loses Qt's automatic disconnect-
+on-receiver-destruction, producing a real "already deleted"
+`RuntimeError` on later delivery — route such a connection through a
+`QObject` (page/MainWindow) method instead; (2) a test that
+monkeypatches a module-qualified name (`main_window_module.
+_set_dock_icon_visible`) only intercepts a bare-name call resolved in
+THAT module's own globals — a moved call site executing in the new
+module's namespace silently stops being patched. Watch for both
+patterns in any page whose delegating stub bodies get deleted in
+S11.1–S11.6 too, not just S11.7.
 
 ---
 
