@@ -1,8 +1,6 @@
-"""Help and Support — the two static pages, moved verbatim out of
-main_window.py (round 8 Phase 6, §9.3.1). Grouped in one module because
-they're grouped that way in the target layout
-(docs/BRIEF-2026-09-08-refactor.md §9.2's own tree) and share
-`_open_in_file_manager`/`build_support_links_row`.
+"""Help and Support — the two static pages (HISTORY §119). Grouped in
+one module since they share `_open_in_file_manager`/
+`build_support_links_row`.
 """
 
 import subprocess
@@ -83,19 +81,18 @@ class HelpPage(QWidget):
         intro_label.setWordWrap(True)
         inner_layout.addWidget(intro_label)
 
-        # Roadmap item 81 (0.2) — said explicitly, in the app, not just
-        # in CLAUDE.md: a "fix didn't work on the other account" report
-        # is very often a different-database report, not a
-        # different-behavior one.
+        # Said explicitly, in the app, not just in a doc (HISTORY §81):
+        # a "fix didn't work on the other account" report is very often
+        # a different-database report, not a different-behavior one.
         per_account_label = QLabel(
             help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE
         )
         per_account_label.setWordWrap(True)
         inner_layout.addWidget(per_account_label)
 
-        # Roadmap item 81 (0.1) — next to the data locations, not
-        # buried in About, since this page is exactly where "which
-        # build is this?" troubleshooting starts.
+        # Next to the data locations, not buried in About, since this
+        # page is exactly where "which build is this?" troubleshooting
+        # starts (HISTORY §81).
         build_identity = help_text.format_build_identity(
             _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
             _build_info.BUILT_AT,
@@ -152,7 +149,7 @@ class HelpPage(QWidget):
 
         # Scrollable — the walkthrough + troubleshooting + data-location
         # sections together are genuinely longer than this app's
-        # 960x640 minimum window (item 48), unlike every other page.
+        # 960x640 minimum window (HISTORY §48), unlike every other page.
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -180,13 +177,12 @@ class SupportPage(QWidget):
         super().__init__()
         self._context = context
 
-        # Roadmap item 64 — a real sidebar page, directly below Help.
-        # Every string here is entirely static copy (no service/DB call
-        # at all, unlike Duplicates/History) — built directly at
-        # construction time, the same "nothing to lazily load" reasoning
-        # HelpPage's own docstring already gives for its
-        # Application.data_locations lookup, just with even less to
-        # fetch here.
+        # A real sidebar page, directly below Help (HISTORY §64). Every
+        # string here is entirely static copy (no service/DB call at
+        # all, unlike Duplicates/History) — built directly at
+        # construction time, same "nothing to lazily load" reasoning as
+        # HelpPage's own Application.data_locations lookup above, just
+        # with even less to fetch here.
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
