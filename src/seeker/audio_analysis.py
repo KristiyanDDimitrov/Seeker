@@ -9,8 +9,8 @@ import scipy.stats
 # Krumhansl-Schmuckler key profiles — standard, well-established empirical
 # pitch-class weightings for major/minor tonality perception. Index 0 is
 # C, matching librosa's chroma bin convention (chroma bin 0 is always C —
-# a stable, documented convention, unlike the tempo/chroma function names
-# themselves, which have shifted across librosa versions; see CLAUDE.md).
+# a stable, documented convention, unlike the tempo return shape, which
+# has shifted across librosa versions; see below). HISTORY §11.
 _MAJOR_PROFILE = np.array(
     [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
 )
@@ -60,31 +60,24 @@ def analyze_audio(
     # metadata.py's tag writers.
     y, sr = librosa.load(str(file_path), sr=22050, mono=True)
 
-    # beat_track accepts a `prior` — a scipy.stats.rv_continuous over BPM
-    # — to bias its internal tempo search, confirmed live on this
-    # version (1.0.0): a uniform prior over 70-90 BPM changed a real
-    # 161.5 BPM detection to 80.75 (exactly half). When no range is
-    # given, prior stays None — the exact same call as before this
-    # feature existed, so behavior is unchanged. scipy.stats.uniform's
-    # signature is (loc, scale) meaning the range [loc, loc+scale], NOT
-    # [loc, scale] — a real gotcha confirmed against this version's
-    # actual behavior, not assumed from the parameter names.
-    # Typed Any: scipy.stats.uniform(...) returns a frozen
-    # rv_continuous_frozen instance, not literally an rv_continuous —
-    # librosa's stub expects the latter, but the frozen distribution is
-    # duck-type compatible and confirmed working at runtime (live-
-    # verified: this exact call changed a real 161.5 BPM detection to
-    # 80.75). An acceptable, checked exception to the stub, not a guess.
+    # beat_track's `prior` biases its internal tempo search — confirmed
+    # live, a uniform prior over 70-90 BPM changed a real 161.5 BPM
+    # detection to 80.75 (exactly half). When no range is given, prior
+    # stays None (beat_track's own default), so behavior is unchanged.
+    # scipy.stats.uniform(loc, scale) means the range [loc, loc+scale],
+    # NOT [loc, scale] — confirmed against real behavior, not assumed
+    # from the parameter names. Typed Any: scipy.stats.uniform(...)
+    # returns rv_continuous_frozen, not the rv_continuous librosa's stub
+    # expects, but it's duck-type compatible and confirmed working at
+    # runtime. HISTORY §11.
     prior: Any = None
     if expected_bpm_range is not None:
         low, high = expected_bpm_range
         prior = scipy.stats.uniform(low, high - low)
 
-    # beat_track's tempo return has shifted shape across librosa versions
-    # (bare scalar vs. a length-1 array depending on version/channel
-    # count) — confirmed live on this version (1.0.0) that it's a
-    # length-1 ndarray; np.atleast_1d handles either shape without
-    # guessing which one we'll get.
+    # beat_track's tempo return has shifted shape across librosa
+    # versions (bare scalar vs. length-1 array) — np.atleast_1d handles
+    # either shape without guessing which one we'll get. HISTORY §11.
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr, prior=prior)
     bpm = float(np.atleast_1d(tempo)[0])
 
