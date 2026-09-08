@@ -404,6 +404,61 @@ def _resolve_tray_icon_path() -> Path:
     return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]
 
 
+def _set_dock_icon_visible(visible: bool) -> None:
+    """Roadmap item 116 (round 8, §14.3) — the Dock icon while hidden to
+    the menu bar. No-op off macOS. The mechanism is NSApplication's own
+    activation policy: Regular (Dock icon + menu bar) while the window
+    is up, Accessory (menu bar extra only, no Dock icon) while it's
+    hidden.
+
+    Deliberately NOT `LSUIElement` in the Info.plist, which is what
+    Apple's own DTS engineers recommend when asked this: `Accessory`/
+    `LSUIElement` means no Dock icon AND NO MENU BAR, ever — including
+    while the window is open and in use, which would take the Help
+    menu, the application menu, and Cmd-Q with it. Switching the policy
+    at runtime gives exactly the described behavior instead: icon while
+    the window is up, none while it's not.
+
+    This is still a platform claim, and this project has been wrong
+    about confident unverified platform claims twice already (see
+    CLAUDE.md's own standing convention). Programmatic
+    setActivationPolicy_() calls around NSApplicationMain at LAUNCH
+    have reported real flakiness (icons lingering, or flashing before
+    disappearing) per Apple's own developer forums — the reasoning for
+    calling it here instead, at runtime, on the main thread, in
+    response to a window closing/reopening, is that this is a
+    materially different situation and the pattern menu-bar apps
+    normally use — but verify live before trusting a comment that says
+    it works.
+    """
+    if sys.platform != "darwin":
+        return
+
+    # Deferred import is deliberate — matches how this project's other
+    # genuine heavy/platform-only dependency deferrals are already
+    # scoped (docker_setup.py's TokenStore-inside-_load_token,
+    # auth_manager.py's webbrowser-inside-_authorize).
+    from AppKit import (  # noqa: PLC0415
+        NSApp,
+        NSApplicationActivationPolicyAccessory,
+        NSApplicationActivationPolicyRegular,
+    )
+
+    # Real, confirmed-live gap, not a defensive-for-nothing check:
+    # NSApp() returns None under this project's own offscreen test
+    # platform (no real NSApplication is ever created there), and
+    # nothing guarantees a real Cocoa NSApplication has been created by
+    # the moment this runs in every possible caller order either.
+    app = NSApp()
+    if app is None:
+        return
+
+    app.setActivationPolicy_(
+        NSApplicationActivationPolicyRegular if visible
+        else NSApplicationActivationPolicyAccessory
+    )
+
+
 _THEME_MODE_LABELS = {
     "system": "Follow system",
     "light": "Light",
@@ -6292,6 +6347,10 @@ class MainWindow(QMainWindow):
         # under them.
         self._hide_request_id += 1
         self._hidden_to_tray = False
+        # Roadmap item 116 (round 8, §14.3.3) — order matters: the
+        # window must be shown by an app that is already Regular, or it
+        # can come up behind other applications.
+        _set_dock_icon_visible(True)
         self.showNormal()
         # D4.2 — give back the exact window the user had before it was
         # hidden, rather than whatever `showNormal()` alone resolves to
@@ -6391,6 +6450,12 @@ class MainWindow(QMainWindow):
                     self._on_application_state_changed
                 )
             self._app_state_connected = False
+
+        # Roadmap item 116 (round 8, §14.3.4) — a quit must never leave
+        # the process in Accessory mode mid-teardown; unconditional, not
+        # gated on any hidden-state tracking, so a quit from ANY state
+        # (visible, hidden, mid-fullscreen-close) always restores it.
+        _set_dock_icon_visible(True)
 
         if self._tray_icon is not None:
             self._tray_icon.hide()
@@ -6494,6 +6559,17 @@ class MainWindow(QMainWindow):
             # thing being trusted, not a `hide()` call this class made
             # itself.
             self._hidden_to_tray = True
+            # Roadmap item 116 (round 8, §14.3.2) — a POLICY-ONLY
+            # deferred check, deliberately separate from
+            # _confirm_hidden_to_tray above: it never calls hide() and
+            # never touches _hidden_to_tray, so it cannot manufacture
+            # the exact failure this branch's own comment just
+            # described. Dropping the Dock icon is safe to attempt here
+            # precisely because it takes no corrective action on the
+            # window itself.
+            self._schedule_dock_icon_policy_check_after_fullscreen_close(
+                self._hide_request_id
+            )
             return
 
         event.ignore()
@@ -6592,6 +6668,13 @@ class MainWindow(QMainWindow):
 
             if not self._is_exposed_at_platform_level():
                 self._hidden_to_tray = True
+                # Roadmap item 116 (round 8, §14.3.2) — the ordinary
+                # hide path: confirmed genuinely hidden at the platform
+                # level, so drop the Dock icon here. Guarded on a real,
+                # VISIBLE tray icon (§14.3.4) — that state is otherwise
+                # unrecoverable: no Dock icon, and no tray icon either.
+                if self._tray_icon is not None and self._tray_icon.isVisible():
+                    _set_dock_icon_visible(False)
                 return
 
             # Roadmap item E1.4 (round 7, corrected after a SECOND
@@ -6612,6 +6695,55 @@ class MainWindow(QMainWindow):
             print(
                 "Seeker: window still exposed at the platform level "
                 "after hide() -- _hidden_to_tray left False."
+            )
+        except RuntimeError:
+            return
+
+    # Roadmap item 116 (round 8, §14.3.2) — one reschedule only: the
+    # fullscreen-exit-and-close animation is a one-shot transition, not
+    # an open-ended wait; if it hasn't finished by the second check,
+    # something else is going on and this stops trying rather than
+    # polling forever.
+    _DOCK_ICON_POLICY_CHECK_MAX_ATTEMPTS = 2
+
+    def _schedule_dock_icon_policy_check_after_fullscreen_close(
+            self, request_id: int, attempt: int = 1,
+    ) -> None:
+        QTimer.singleShot(
+            self._HIDE_TO_TRAY_VERIFY_DELAY_MS,
+            lambda: self._check_dock_icon_policy_after_fullscreen_close(
+                request_id, attempt,
+            ),
+        )
+
+    def _check_dock_icon_policy_after_fullscreen_close(
+            self, request_id: int, attempt: int,
+    ) -> None:
+        # Mirrors `_check_hidden_to_tray`'s own RuntimeError-on-a-
+        # deleted-Qt-object handling — same reasoning, same boundary.
+        try:
+            if request_id != self._hide_request_id:
+                # Stale — a reopen has happened since this was
+                # scheduled. See `_hide_request_id`'s own comment.
+                return
+
+            if not self._is_exposed_at_platform_level():
+                if (
+                        self._tray_icon is not None
+                        and self._tray_icon.isVisible()
+                ):
+                    _set_dock_icon_visible(False)
+                return
+
+            if attempt >= self._DOCK_ICON_POLICY_CHECK_MAX_ATTEMPTS:
+                # The animation is still playing well past what this
+                # class expected — give up rather than poll forever.
+                # No corrective ACTION is being skipped here (this
+                # check never took one), only a further check.
+                return
+
+            self._schedule_dock_icon_policy_check_after_fullscreen_close(
+                request_id, attempt + 1,
             )
         except RuntimeError:
             return

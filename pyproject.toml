@@ -18,6 +18,7 @@ dependencies = [
     "rapidfuzz>=3.14.5",
     "scipy>=1.18.1",
     "soundfile>=0.14.0",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -211,6 +212,14 @@ ignore_missing_imports = true
 # types-pyloudnorm package on PyPI (confirmed).
 [[tool.mypy.overrides]]
 module = "pyloudnorm"
+ignore_missing_imports = true
+
+# Roadmap item 116 (round 8, §14.3.1) — pyobjc-framework-Cocoa ships no
+# py.typed marker and no types-pyobjc package exists on PyPI (confirmed);
+# same real gap as soundfile/pyloudnorm above, for the AppKit import
+# behind _set_dock_icon_visible's Dock-icon activation-policy switch.
+[[tool.mypy.overrides]]
+module = "AppKit"
 ignore_missing_imports = true
 
 # Roadmap item RR1.3 — _build_info_generated.py is gitignored and only

@@ -100,7 +100,12 @@ a = Analysis(
     pathex=[str(SRC_DIR)],
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    # Roadmap item 116 (round 8, §14.3.1) — main_window.py's deferred
+    # `from AppKit import ...` (the Dock-icon-hiding activation-policy
+    # switch) isn't statically visible to PyInstaller's own import
+    # scanner as a top-level import, so it needs to be listed
+    # explicitly or a frozen build would ship without it.
+    hiddenimports=["AppKit", "Foundation", "objc"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -323,6 +323,48 @@ uv run mypy --strict src/  # type check — must stay clean
       project's own "the pre-existing-failure count is a tracked
       number, not a label" convention rather than waved off. If it
       recurs, diagnose it directly.
+- [ ] **Open, unconfirmed flake (2026-09-08, round 8 §14.2), substantially
+      investigated, not fully explained:**
+      `tests/test_ui_smoke.py::test_history_refresh_button_refetches`
+      timed out waiting for a `qtbot.waitUntil` a handful of times across
+      this round's own repeated full-suite runs (roughly 1 in 8-10),
+      clean every other time including immediate re-runs. This surfaced
+      while wiring up `applicationStateChanged` (§14.2) — that work
+      also found a REAL, separate, now-fixed bug: pytest-qt's own
+      `qtbot.addWidget` teardown calls `close()` then `deleteLater()`
+      unconditionally, but a plain `QApplication.processEvents()` does
+      NOT actually deliver a `DeferredDelete` event (confirmed with a
+      weakref probe), so a previous test's `MainWindow` could stay
+      alive well into a later, unrelated test — harmless on its own,
+      except `applicationStateChanged` (unlike `colorSchemeChanged`,
+      confirmed inert under this offscreen platform per item 109) DOES
+      fire organically from ordinary `show()`/`close()` calls, so a
+      surviving previous window could react and call its own stale
+      `_on_tray_open_seeker()`. Fixed via a new autouse
+      `tests/conftest.py::_flush_deferred_widget_deletion`
+      (`QCoreApplication.sendPostedEvents(None,
+      QEvent.Type.DeferredDelete)` at the start of every test) plus
+      gating the new signal connection on a real tray icon existing.
+      **Directly verified after that fix, with a throwaway repro test,
+      that the underlying C++ MainWindow object from a previous test
+      IS genuinely destroyed** (`gc.get_referrers` on a weakref-tracked
+      instance raised `RuntimeError: libshiboken: Internal C++ object
+      (MainWindow) already deleted` — the Python wrapper husk can
+      linger, held by a stray closure `cell`, but it's inert: no live
+      Qt object, no live signal connections, can't call anything). So
+      the specific mechanism this investigation found and fixed is
+      confirmed closed, but this exact flake was still observed at
+      least once AFTER that fix landed too — its real cause, if
+      different from the one just described, was not found. Worth a
+      focused look in a future round: instrument `_run_busy_worker`/
+      `QThreadPool` timing directly rather than inferring from output,
+      and check whether real background system load (this session had
+      a real Docker container and a second real `Seeker.app` process
+      both running throughout) can push a 2000ms `waitUntil` over the
+      edge on a loaded machine — that would make this an environmental
+      flake rather than a code defect, but that wasn't confirmed
+      either. Per this project's standing rule: diagnose a recurrence
+      directly, do not reach for `pytest-rerunfailures`.
 - [x] Fixed: `cli.py::handle_playlists` instantiated `PlaylistRepository`
       directly instead of going through `Application`. Now goes through
       `application.sync_service`/`application.download_service`

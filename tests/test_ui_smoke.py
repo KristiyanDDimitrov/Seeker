@@ -7989,6 +7989,172 @@ def test_fullscreen_close_never_arms_hide_verification(qtbot, monkeypatch):
     assert window._hidden_to_tray is True
 
 
+# --- Roadmap item 116 (round 8, §14.3): the Dock icon while hidden ----
+
+def test_ordinary_hide_drops_the_dock_icon_once_confirmed(qtbot, monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window.close()
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+
+    assert dock_calls == [False]
+
+
+def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
+        qtbot, monkeypatch,
+):
+    # §14.3.4 — that state is unrecoverable (no Dock icon, no tray
+    # icon either), so the switch is guarded on a real, visible tray
+    # icon, same precondition closeEvent's own hide-to-tray branch uses.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window.close()
+    # closeEvent's own initial "is there a real tray to hide to" check
+    # already ran (synchronously, inside close(), with the tray still
+    # visible) -- patched only now, so it's specifically the LATER
+    # confirm-check's own guard being exercised, not closeEvent's.
+    monkeypatch.setattr(window._tray_icon, "isVisible", lambda: False)
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+
+    assert dock_calls == []
+
+
+def test_fullscreen_close_schedules_a_policy_only_check(qtbot, monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+    hide_calls = []
+    monkeypatch.setattr(window, "hide", lambda: hide_calls.append(1))
+
+    window.close()
+    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+
+    # Never calls hide() itself (nothing to manufacture round 6's bug
+    # with) and does drop the Dock icon once the window reads as
+    # genuinely not exposed (true under offscreen QPA immediately after
+    # a real close()).
+    assert hide_calls == []
+    assert dock_calls == [False]
+
+
+def test_fullscreen_close_policy_check_ignores_a_stale_request(
+        qtbot, monkeypatch,
+):
+    # A reopen between the fullscreen close and the deferred check
+    # firing must make the check a no-op — same `_hide_request_id`
+    # staleness guard `_check_hidden_to_tray` already uses.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window.close()
+    window._hide_request_id += 1  # simulates a reopen racing the check
+
+    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+
+    assert dock_calls == []
+
+
+def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+    window.close()
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window._on_tray_open_seeker()
+
+    assert dock_calls == [True]
+
+
+def test_cleanup_before_quit_restores_the_dock_icon(qtbot, monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window.cleanup_before_quit()
+
+    assert dock_calls == [True]
+
+
+def test_set_dock_icon_visible_is_a_no_op_off_macos(monkeypatch):
+    from seeker.ui import main_window as main_window_module
+
+    monkeypatch.setattr(main_window_module.sys, "platform", "win32")
+
+    # Must not raise or attempt any AppKit import off-macOS.
+    main_window_module._set_dock_icon_visible(True)
+    main_window_module._set_dock_icon_visible(False)
+
+
 def test_close_event_shows_one_off_notice_only_once(qtbot, monkeypatch):
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
