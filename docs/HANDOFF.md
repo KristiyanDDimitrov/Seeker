@@ -10,16 +10,15 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `270e9ea` — "9.3.1: Phase 6 — extract Search and Sharing
-  pages" (S6 close-out, pending this commit's own tick/handoff commit
-  on top)
+- **HEAD:** `67dff93` — "9.3.1: Phase 6 — extract Tagging panel" (S7
+  close-out, pending this commit's own tick/handoff commit on top)
 - **Working tree:** clean except this rewrite
-- **`origin/main`:** was 15 commits ahead as of S4's handoff, not
-  re-checked this session — ask before pushing regardless.
+- **`origin/main`:** not re-checked this session — ask before pushing
+  regardless.
 - **pytest:** 1147 passed, 1 skipped, 0 real failures this run (the two
   tracked fullscreen-close flakes fired in the full run, passed 2/2 in
   isolation right after — see "Known flakes")
-- **mypy --strict:** clean, 93 source files
+- **mypy --strict:** clean, 95 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
 ## Where we are in the plan
@@ -33,81 +32,62 @@ brief** — the brief is 115 KB, you only need your own session's slice.
   Phase 3 (security §6.1–§6.6), Phase 3B (§14 Dock icon), S1 (CLAUDE.md
   shrunk), S2 (§7.1), S3 (§7.2 — logging), S4 (§8.1, §8.2 —
   deduplication), S5 (§9.2, §9.3.1 — Phase 6 prep + dialogs +
-  History/Help/Support pages), **S6** (§9.3.1 — Search + Sharing
-  pages).
-- **Next session: S7 — Downloads + Tagging panel** (§9.3.1). Read
+  History/Help/Support pages), S6 (§9.3.1 — Search + Sharing pages),
+  **S7** (§9.3.1 — Downloads + Tagging panel).
+- **Next session: S8 — Dashboard page** (§9.3.1, ~22 methods per §9.1's
+  table — the biggest single page moved so far). Read
   `docs/round8/SESSION-PLAN.md`'s own "Phase 6 — the part that needs the
-  most care" section before starting, not just your row — and read the
-  "Phase 6 mechanics, refined by S5/S6" section below.
-  **Tagging panel is currently inside the Dashboard page's own
-  `_build_dashboard_page`/tagging methods (17 methods, per §9.1's
-  table) — it hasn't been extracted as a separate page yet, so this is
-  the first row that has to pull a group of methods OUT of a page
-  that's still otherwise on Dashboard**, not out of MainWindow
-  directly. Confirm the method boundary with a grep before assuming
-  it's a clean lift.
+  most care" section before starting, not just your row — and read
+  "Phase 6 mechanics, refined by S5/S6/S7" below.
+  **The Tagging panel already lives inside Dashboard as a sub-widget**
+  (`self._tagging_panel = TaggingPanel(page_context, TaggingPanelHost(...))`,
+  built in `_build_dashboard_page` and added to `right`) — that
+  construction call, and the `TaggingPanelHost` it binds, moves along
+  with Dashboard verbatim; nothing about TaggingPanel itself changes.
 
-## S6 — what landed (§9.3.1: Search, Sharing pages)
+## S7 — what landed (§9.3.1: Downloads page, Tagging panel)
 
-One commit (`270e9ea`), full detail in the commit message:
+Two commits (`916a00f`, `67dff93`), full detail in each commit message.
+`ui/pages/downloads_page.py` (`DownloadsPage`) and
+`ui/pages/tagging_panel.py` (`TaggingPanel`, a Dashboard *sub-widget*,
+not a registered page) moved verbatim, both with temporary delegating
+properties/methods on MainWindow for everything test_ui_smoke.py
+touches. Full suite green, zero test edits. Visually verified
+(offscreen QPA, both themes) — not committed.
 
-- `ui/pages/search_page.py` (`SearchPage`, 9 methods) and
-  `ui/pages/sharing_page.py` (`SharingPage`, 10 methods) — moved
-  verbatim, same shape as S5's HistoryPage.
-- **SharingPage owns its own page-visited/poll-in-progress/ETA-tracker
-  state now** — these were plain `MainWindow` instance fields
-  (`_sharing_page_visited`, `_sharing_poll_in_progress`,
-  `_upload_eta_tracker`) that only ever existed to support the Sharing
-  page; moved onto the page itself rather than kept on the shell.
-  `MainWindow.backend_poll_timer` now connects directly to
-  `self._sharing_page._trigger_sharing_poll`, and `_on_page_changed`
-  sets `self._sharing_page._sharing_page_visited` / calls
-  `self._sharing_page._refresh_sharing()` — same "reach the private
-  method on the page object directly" pattern History's
-  `_refresh_history()` call already established.
-- Delegating properties for every widget attribute tests touch by name
-  (`search_artist_edit`, `search_results_table`,
-  `download_best_button`, `sharing_summary_label`,
-  `sharing_locations_table`, `sharing_uploads_table`, etc.) **plus
-  delegating methods** for private methods called directly on a fresh
-  `MainWindow` instance: `_on_search_clicked`, `_render_search_results`,
-  `_render_sharing_locations_table`, `_render_sharing_uploads_table`.
-  Found these by grepping the test file for `window._` inside each
-  page's test block — see the gap S5 already flagged below.
-- Visually verified: an offscreen-QPA script (real theme stack, the
-  test file's own `FakeApplication`) grabbed both pages in both themes
-  and matched the Phase 0.3 baselines structurally. Not committed.
+## Phase 6 mechanics, refined by S5/S6/S7 — read before S8
 
-## Phase 6 mechanics, refined by S5/S6 — read before S7
-
-Two real gaps in SESSION-PLAN.md's 5-step mechanism found so far:
-
-1. **`PageContext` needed a fifth field the brief's own sketch didn't
-   have: `run_busy_worker`**, bound from `MainWindow._run_busy_worker`.
-   `notify` stays OUT — still no real implementation to bind it to.
-2. **"Zero test edits" only covers `window.<attr>`-style widget access
-   — not a page's private module-level helper patched by dotted path,
-   and not a MainWindow method (builder or otherwise) called directly
-   on a fresh instance.** Before assuming a page is a clean zero-edit
-   move, grep the page's test block for
-   `monkeypatch.setattr(main_window_module,` and `window._<method>(`
-   calls — S5 found this with `_build_help_page()`/`webbrowser.open`;
-   S6 found it again with `_on_search_clicked`, `_render_search_results`,
-   `_render_sharing_locations_table`, `_render_sharing_uploads_table` —
-   all four needed a delegating **method**, not just a property. Do the
-   grep per-page; don't assume the delegating-properties-only shape from
-   History generalizes.
+1. **`PageContext` grows fields one at a time, as a page moved turns
+   out to need one**: `run_busy_worker` (S5), `update_nav_badge`/
+   `is_hidden_to_tray` (S7/Downloads), `render_activity_strip`
+   (S7/Tagging — a call site that begins a busy action by hand).
+   Always bound to the real MainWindow method, never reimplemented.
+2. **A sub-widget of a not-yet-migrated page needs a SECOND, narrower
+   seam** beyond PageContext — S7 added `TaggingPanelHost` for Tagging
+   (inside Dashboard). Expect the same shape for any other sub-widget
+   pulled out ahead of its host page.
+3. **"Zero test edits" covers three gotchas, not one** — check all
+   per page: `window.<attr>` widget access; a MainWindow method/
+   module-level helper called or dotted-path-patched on a fresh
+   instance (S5/S6); and **a class the test file imports FROM
+   main_window.py's own namespace** rather than its real module (S7:
+   `RenamePreviewDialog`, kept re-exported with `noqa: F401`) — grep
+   the test file's own import block for the name, not just its usage.
+4. **A helper shared by the page moving AND a page that hasn't moved
+   yet** needs a home both can import without a circular dependency —
+   S7 used `theme.py` for `wrap_progress_bar`; judge the right home
+   per case, don't default to either `theme.py` or `context.py`.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2. Fired in the full suite again this session (S6), passed 2/2
-in isolation immediately after, same as S5. Same pytest-qt teardown /
-Qt deferred-deletion cause already documented. Not diagnosed further —
-worth real instrumentation if a session has spare budget (see
-CLAUDE.md's "history_refresh_button" flake entry for the kind of probe
-that would help).
+since S2. Fired in the full suite again this session (S7), passed 2/2
+in isolation immediately after, same as every prior session. Same
+pytest-qt teardown / Qt deferred-deletion cause already documented. Not
+diagnosed further — worth real instrumentation if a session has spare
+budget (see CLAUDE.md's "history_refresh_button" flake entry for the
+kind of probe that would help).
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
