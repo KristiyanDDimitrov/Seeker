@@ -1,8 +1,6 @@
-"""The History page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py as the first real page extraction (dialogs.py, the
-warm-up before this, was a pure class move with no MainWindow state
-attached; History is the first case that actually touches
-PageContext).
+"""The History page — HISTORY §119, the first page extraction that
+actually touched PageContext (dialogs.py, moved before this, was a
+pure class move with no MainWindow state attached).
 """
 
 from PySide6.QtWidgets import (
@@ -77,8 +75,8 @@ class HistoryPage(QWidget):
         self.history_table.setHorizontalHeaderLabels(
             ["When", "What", "Track", "Detail"]
         )
-        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
-        # the same note on `downloads_table` in main_window.py.
+        # No ColumnLayout shape here either — see the same note on
+        # `downloads_table` in downloads_page.py.
         self.history_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.history_table)
         theme.apply_column_floors(self.history_table)
