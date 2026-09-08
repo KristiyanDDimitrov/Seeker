@@ -14025,3 +14025,54 @@ paper over a broken refactor): `1148-1149 passed, 1 skipped`, 0-2 of
 the pre-existing fullscreen-close flakes firing across runs (both
 already tracked in CLAUDE.md's Open issues, unrelated to this
 session's changes).
+
+### 119 — Round 8 Phase 6 (S5-S11.7): `MainWindow` decomposed into `ui/pages/*`
+
+The nine-phase brief's biggest single arc: `main_window.py` and
+`test_ui_smoke.py` (~173K tokens read whole) split into one
+`ui/pages/<name>_page.py` module per screen, one page per session
+(S5-S10), then tray extraction plus `__init__` shrink (S11) and the
+matching test-file split (S11.1-S11.7). Mechanism, unchanged across
+every session (`docs/round8/SESSION-PLAN.md`'s own summary of brief
+§9.3): move the page's methods verbatim into the new module, add
+temporary delegating properties on `MainWindow` for whatever the tests
+still touch, confirm the full suite green with **zero test edits**
+(proving the move was behaviour-neutral), only then repoint tests at
+the page widget directly and delete the delegating members, in a
+separate commit.
+
+**`ui/pages/context.py`'s `PageContext` grew organically, one field
+per extraction, never speculatively.** The brief's own §9.2 sketch had
+four fields (`application`/`thread_pool`/`busy_actions`/`navigate`).
+Real fields added only once a page being moved was found to actually
+need them, each still bound to the one real `MainWindow` implementation
+rather than a reimplemented copy:
+- `run_busy_worker` — found extracting the History page (first page
+  moved), which calls `MainWindow._run_busy_worker()` directly.
+- `update_nav_badge`/`is_hidden_to_tray` — found extracting Downloads
+  (S7): `_render_active_downloads` sets the sidebar's "Downloads (N)"
+  badge (shell state, `self._nav_buttons`, no page owns it) and skips
+  its own table rebuild while hidden to the tray (`_hidden_to_tray` is
+  real `MainWindow` lifecycle state set by `closeEvent`/tray reopen).
+- `render_activity_strip` — found extracting the Tagging panel (same
+  S7 session): the persistent activity strip's re-render, needed by a
+  call site that begins a busy action by hand
+  (`busy_actions.begin(...)`) rather than through `run_busy_worker`.
+
+A `notify` field from the brief's own sketch was deliberately never
+added — no moved page has needed it, and there's no single real
+shell-side implementation to bind it to (`InlineNotice` instances are
+built per-page, not through one shared `MainWindow` method). Add it,
+wired to something real, when a page that needs it moves.
+
+**S11's two gotchas, confirmed live, relevant to every later page's
+delegating-stub removal (S11.1-S11.7), not just tray's own (S11.7):**
+(1) a signal connected directly to a bound method of a non-`QObject`
+controller (e.g. `TrayController`) loses Qt's automatic disconnect-on-
+receiver-destruction, producing a real "already deleted" `RuntimeError`
+on later delivery — route such a connection through a `QObject`
+(page/`MainWindow`) method instead; (2) a test that monkeypatches a
+module-qualified name (`main_window_module._set_dock_icon_visible`)
+only intercepts a bare-name call resolved in THAT module's own
+globals — a moved call site executing in the new module's namespace
+silently stops being patched.

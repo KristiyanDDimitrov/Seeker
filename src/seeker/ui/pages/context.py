@@ -1,5 +1,5 @@
-"""The seam between MainWindow (the shell) and page widgets — round 8
-Phase 6 (docs/BRIEF-2026-09-08-refactor.md §9.2).
+"""The seam between MainWindow (the shell) and page widgets
+(HISTORY §119).
 
 Also carries the shared page-chrome builders (`build_page`/
 `build_subtitle_label`), moved verbatim out of main_window.py — every
@@ -28,43 +28,11 @@ class PageContext:
     not around it" discipline CLAUDE.md already requires one layer
     down, applied within the UI layer itself).
 
-    `run_busy_worker` is a real addition beyond §9.2's own four-field
-    sketch (application/thread_pool/busy_actions/navigate) — found
-    necessary extracting the first page (History) that actually calls
-    MainWindow._run_busy_worker(). It's bound from that exact method, so
-    a page gets the identical begin()/end()/activity-strip-render
-    behavior every existing call site already has, not a reimplemented
-    copy. thread_pool and busy_actions stay in the context too, for a
-    future page that builds its own bespoke run_worker() call (custom
-    progress reporting, no button) the way several MainWindow methods
-    already do.
-
-    §9.2's `notify` field is deliberately NOT included yet — no page
-    moved so far needs it, and there's no single real shell-side
-    implementation to bind it to today (InlineNotice instances are
-    built per-page, not through one shared MainWindow method). Add it,
-    wired to something real, when a page that needs it moves.
-
-    `update_nav_badge` and `is_hidden_to_tray` are two more additions
-    beyond §9.2's original sketch, both found extracting Downloads
-    (round 8 Phase 6, S7): `_render_active_downloads` needs to set the
-    sidebar's "Downloads (N)" badge (shell state — `self._nav_buttons`
-    — no page owns it) and to skip its own table rebuild while the
-    window is hidden to the tray (R7.6; `_hidden_to_tray` is real
-    MainWindow lifecycle state, set by `closeEvent`/tray reopen, not
-    something a page should own a second copy of). Same
-    read-through-the-seam treatment as `run_busy_worker` above, for the
-    same reason: a page reaches the shell through one narrow named
-    callable, never by importing MainWindow or reaching past this
-    object.
-
-    `render_activity_strip` (same S7 session, found extracting the
-    Tagging panel) is the persistent activity strip's own re-render —
-    genuinely shell chrome (visible above every page, not owned by
-    any one of them), needed by a call site that begins a busy action
-    by hand (`busy_actions.begin(...)` directly) rather than through
-    `run_busy_worker`, so the render has to be triggered the same way
-    the hand-rolled begin() was.
+    Every field beyond application/thread_pool/busy_actions/navigate
+    was added only once a real page being extracted needed it, each
+    bound to the one real MainWindow implementation rather than a
+    reimplemented copy — see HISTORY §119 for which page found which
+    field necessary, and for the deliberately-not-yet-added `notify`.
     """
     application: Application
     thread_pool: QThreadPool
@@ -77,14 +45,14 @@ class PageContext:
 
 
 def build_subtitle_label(text: str) -> QLabel:
-    # Persistent, not hover-dependent (Task 1) — a muted one-liner under
-    # each tab's own header, aimed at someone who never reads the
-    # README and goes straight into the app.
+    # Persistent, not hover-dependent — a muted one-liner under each
+    # tab's own header, aimed at someone who never reads the README and
+    # goes straight into the app.
     label = QLabel(text)
-    # Roadmap item C5.3 — routed through the global stylesheet's
-    # QLabel[badge="muted"] rule (theme.py) rather than a per-widget
-    # setStyleSheet() call, so a runtime theme switch re-colors this
-    # automatically with no MainWindow.on_theme_changed() code needed.
+    # Routed through the global stylesheet's QLabel[badge="muted"] rule
+    # (theme.py) rather than a per-widget setStyleSheet() call, so a
+    # runtime theme switch re-colors this automatically with no
+    # MainWindow.on_theme_changed() code needed.
     label.setProperty("badge", "muted")
     label.setWordWrap(True)
     return label
@@ -97,16 +65,16 @@ def build_page(
         header_extra: QWidget | None = None,
 ) -> QWidget:
     # Every page in the shell gets the identical [title, subtitle,
-    # content] shape and the identical page-level margins (Phase 3's
-    # own documented layout convention) — this is the one place that
-    # convention actually gets enforced, rather than each page copying
-    # setContentsMargins/setSpacing by hand and drifting.
+    # content] shape and the identical page-level margins — this is the
+    # one place that convention actually gets enforced, rather than
+    # each page copying setContentsMargins/setSpacing by hand and
+    # drifting.
     #
-    # header_extra (roadmap item 56 Phase 3) — an optional widget placed
-    # to the LEFT of the title, in the same row. Only the Settings page
-    # uses this today (its "← Back" button), but it's a real, reusable
-    # extension point rather than a Settings-specific special case
-    # bolted onto this shared helper.
+    # header_extra — an optional widget placed to the LEFT of the
+    # title, in the same row. Only the Settings page uses this today
+    # (its "← Back" button), but it's a real, reusable extension point
+    # rather than a Settings-specific special case bolted onto this
+    # shared helper.
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(
@@ -122,7 +90,7 @@ def build_page(
         title_row.addWidget(header_extra)
 
     title_label = QLabel(title)
-    # Roadmap item C5.3 — QLabel#pageTitleLabel in theme.py.
+    # QLabel#pageTitleLabel in theme.py.
     title_label.setObjectName("pageTitleLabel")
     title_row.addWidget(title_label)
     title_row.addStretch()
