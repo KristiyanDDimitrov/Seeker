@@ -836,7 +836,8 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
     qtbot.addWidget(window)
 
     window.busy_actions.begin(
-        "compute_fingerprints", window.compute_fingerprints_button,
+        "compute_fingerprints",
+        window._duplicates_page.compute_fingerprints_button,
     )
     window._on_activity_progress("compute_fingerprints", "Decoding", 40, 100)
 
@@ -2375,21 +2376,9 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    table_and_list_attrs = [
-        "duplicates_folders_list",
-        "duplicates_table",
-    ]
-    for attr in table_and_list_attrs:
-        widget = getattr(window, attr)
-        parent = widget.parentWidget()
-        assert parent is not None, attr
-        assert parent.objectName() == "card", (
-            f"{attr}'s parent is {parent!r}, not routed through make_card()"
-        )
-
-    # History/Search/Sharing/Downloads/Dashboard/Review have no
-    # delegating properties (S11.1/S11.2/S11.3/S11.4/S11.5, §9.3.4) —
-    # same check, against their own page widgets directly.
+    # History/Search/Sharing/Downloads/Dashboard/Review/Duplicates have
+    # no delegating properties (S11.1/S11.2/S11.3/S11.4/S11.5/S11.6,
+    # §9.3.4) — same check, against their own page widgets directly.
     page_owned_tables = [
         ("history_table", window._history_page.history_table),
         ("search_results_table", window._search_page.search_results_table),
@@ -2404,6 +2393,11 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         ("review_needs_table", window._review_page.review_needs_table),
         ("review_upgrades_table", window._review_page.review_upgrades_table),
         ("review_local_table", window._review_page.review_local_table),
+        (
+            "duplicates_folders_list",
+            window._duplicates_page.duplicates_folders_list,
+        ),
+        ("duplicates_table", window._duplicates_page.duplicates_table),
     ]
     for name, widget in page_owned_tables:
         parent = widget.parentWidget()
@@ -2457,7 +2451,7 @@ def _duplicates_column(window, header_text: str) -> int:
     # 6.2's brief hypothesized (a test sharing the code's own mistake
     # proves nothing). Used everywhere below instead of a bare column
     # number.
-    table = window.duplicates_table
+    table = window._duplicates_page.duplicates_table
     for column in range(table.columnCount()):
         header_item = table.horizontalHeaderItem(column)
         if header_item is not None and header_item.text() == header_text:
@@ -2682,7 +2676,7 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
             shared=False, share=None,
         ),
     ])
-    window._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
     window.settings_page._render_locations(
         [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
     )
@@ -2779,7 +2773,7 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
             shared=False, share=None,
         ),
     ])
-    window._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
     window.settings_page._render_locations(
         [(_make_location(2, "Main", "/Volumes/Drive/Main"), True)]
     )
@@ -2918,7 +2912,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
         ],
     )
     window._show_page("duplicates")
-    window._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
     window._show_page("review")
     window._review_page._render_needs_review_candidates(
         [(_make_track(), _make_review_candidate())]

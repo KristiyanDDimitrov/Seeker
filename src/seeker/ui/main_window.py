@@ -24,43 +24,26 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QCheckBox,
-    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
-    QListWidget,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QStackedWidget,
     QSystemTrayIcon,
-    QTableWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker.application import Application
-from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
-    # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
-    # (BulkResolveDuplicatesDialog moved to duplicates_page.py with the
-    # rest of Duplicates), but test_ui_smoke.py still imports it from
-    # THIS module's own namespace (`from seeker.ui.main_window import
-    # BulkResolveDuplicatesDialog`), not from seeker.ui.dialogs
-    # directly. Kept as a deliberate re-export until Duplicates' own
-    # test-split session (S11.6) repoints that import — dropped
-    # alongside it, not before. BulkReplaceUpgradesDialog's own
-    # re-export dropped at S11.5, once the tests using it (moved to
-    # review_page.py at S11.5) finally moved out of test_ui_smoke.py
-    # too.
-    BulkResolveDuplicatesDialog,  # noqa: F401
     DestinationDialog,
 )
 from seeker.ui.pages.context import PageContext, build_page
@@ -1203,136 +1186,12 @@ class MainWindow(QMainWindow):
             self._history_loaded = True
             self._history_page._refresh_history()
 
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
-    # methods/properties for DuplicatesPage's own attributes/methods
-    # test_ui_smoke.py touches directly on a fresh MainWindow instance
-    # (window._render_duplicate_groups(...), window.duplicates_table,
-    # etc.). Deleted, alongside repointing those tests at the page
-    # widget directly, at the test-split session (S11, §9.3.4) — not
-    # before. Same shape as every other page's own stub block above.
-    def _render_duplicates_milestone(
-            self, totals: tuple[int, int],
-    ) -> None:
-        self._duplicates_page._render_duplicates_milestone(totals)
-
-    def _render_duplicates_locations(
-            self,
-            locations: list[tuple[Any, bool]],
-    ) -> None:
-        self._duplicates_page._render_duplicates_locations(locations)
-
-    def _selected_duplicates_location(self) -> str | None:
-        return self._duplicates_page._selected_duplicates_location()
-
-    def _on_find_duplicates_clicked(self) -> None:
-        self._duplicates_page._on_find_duplicates_clicked()
-
-    def _on_compute_fingerprints_clicked(self) -> None:
-        self._duplicates_page._on_compute_fingerprints_clicked()
-
-    def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
-        self._duplicates_page._render_duplicate_groups(groups)
-
-    def _on_delete_duplicates_clicked(
-            self,
-            group: DuplicateGroup,
-            button_group: QButtonGroup,
-            confirm_checkbox: QCheckBox,
-            button: QPushButton,
-    ) -> None:
-        self._duplicates_page._on_delete_duplicates_clicked(
-            group, button_group, confirm_checkbox, button,
-        )
-
-    def _on_remove_duplicates_folder_clicked(self) -> None:
-        self._duplicates_page._on_remove_duplicates_folder_clicked()
-
-    @property
-    def duplicates_milestone_label(self) -> QLabel:
-        return self._duplicates_page.duplicates_milestone_label
-
-    @property
-    def duplicates_location_combo(self) -> QComboBox:
-        return self._duplicates_page.duplicates_location_combo
-
-    @property
-    def duplicates_folders_checkbox(self) -> QCheckBox:
-        return self._duplicates_page.duplicates_folders_checkbox
-
-    @property
-    def duplicates_folders_panel(self) -> QWidget:
-        return self._duplicates_page.duplicates_folders_panel
-
-    @property
-    def duplicates_folders_list(self) -> QListWidget:
-        return self._duplicates_page.duplicates_folders_list
-
-    @property
-    def duplicates_add_folder_button(self) -> QPushButton:
-        return self._duplicates_page.duplicates_add_folder_button
-
-    @property
-    def duplicates_remove_folder_button(self) -> QPushButton:
-        return self._duplicates_page.duplicates_remove_folder_button
-
-    @property
-    def duplicates_scope_count_label(self) -> QLabel:
-        return self._duplicates_page.duplicates_scope_count_label
-
-    @property
-    def duplicates_status_label(self) -> QLabel:
-        return self._duplicates_page.duplicates_status_label
-
-    @property
-    def duplicates_table(self) -> QTableWidget:
-        return self._duplicates_page.duplicates_table
-
-    @property
-    def compute_fingerprints_button(self) -> QPushButton:
-        return self._duplicates_page.compute_fingerprints_button
-
-    @property
-    def find_duplicates_button(self) -> QPushButton:
-        return self._duplicates_page.find_duplicates_button
-
-    @property
-    def resolve_all_duplicates_button(self) -> QPushButton:
-        return self._duplicates_page.resolve_all_duplicates_button
-
-    @property
-    def _duplicate_button_groups(self) -> list[QButtonGroup]:
-        return self._duplicates_page._duplicate_button_groups
-
-    @property
-    def _current_duplicate_groups(self) -> list[DuplicateGroup]:
-        return self._duplicates_page._current_duplicate_groups
-
-    @property
-    def _duplicates_keep_selection(self) -> dict[frozenset[int], int]:
-        return self._duplicates_page._duplicates_keep_selection
-
-    @property
-    def _current_duplicates_location_name(self) -> str | None:
-        return self._duplicates_page._current_duplicates_location_name
-
-    @_current_duplicates_location_name.setter
-    def _current_duplicates_location_name(self, value: str | None) -> None:
-        self._duplicates_page._current_duplicates_location_name = value
-
-    @property
-    def _duplicates_folder_paths(self) -> list[str]:
-        return self._duplicates_page._duplicates_folder_paths
-
-    @_duplicates_folder_paths.setter
-    def _duplicates_folder_paths(self, value: list[str]) -> None:
-        self._duplicates_page._duplicates_folder_paths = value
-
-    # Same temporary-delegation pattern as every other page's own
-    # attributes above, for TrayController's state (round 8 §9.3.2) —
-    # test_ui_smoke.py still touches these by name on `window`.
-    # `_last_notified_download_at` gets a setter too (like
-    # `selected_playlist` above) since existing tests assign it
-    # directly.
+    # Same temporary-delegation pattern every other page used before
+    # its own test-split session repointed and removed it (S11.1-S11.6,
+    # §9.3.4) — the last one left, for TrayController's state (round 8
+    # §9.3.2), until its own test-split session (S11.7). `_last_
+    # notified_download_at` gets a setter too since existing tests
+    # assign it directly.
     @property
     def _tray_icon(self) -> QSystemTrayIcon | None:
         return self._tray._tray_icon
