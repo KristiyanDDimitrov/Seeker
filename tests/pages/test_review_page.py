@@ -33,14 +33,14 @@ def test_review_tab_renders_needs_review_candidates(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_needs_review_candidates(candidates)
+    window._review_page._render_needs_review_candidates(candidates)
 
-    assert window.review_needs_table.rowCount() == 1
-    assert window.review_needs_table.item(0, 0).text() == "Artist - Title"
-    assert window.review_needs_table.item(0, 1).text() == "73.2"
-    assert "peer1" in window.review_needs_table.item(0, 2).text()
+    assert window._review_page.review_needs_table.rowCount() == 1
+    assert window._review_page.review_needs_table.item(0, 0).text() == "Artist - Title"
+    assert window._review_page.review_needs_table.item(0, 1).text() == "73.2"
+    assert "peer1" in window._review_page.review_needs_table.item(0, 2).text()
 
-    actions = window.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     assert set(buttons) == {"Confirm", "Reject"}
 
@@ -53,9 +53,9 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_needs_review_candidates(candidates)
+    window._review_page._render_needs_review_candidates(candidates)
 
-    actions = window.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Confirm"].click()
 
@@ -74,9 +74,9 @@ def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_needs_review_candidates(candidates)
+    window._review_page._render_needs_review_candidates(candidates)
 
-    actions = window.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Reject"].click()
 
@@ -95,13 +95,14 @@ def test_review_tab_renders_pending_upgrades_with_delete_checkbox_when_old_file_
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
-    assert window.review_upgrades_table.rowCount() == 1
-    assert window.review_upgrades_table.item(0, 1).text() == "mp3"
-    assert window.review_upgrades_table.item(0, 2).text() == "flac 1000kbps"
+    table = window._review_page.review_upgrades_table
+    assert table.rowCount() == 1
+    assert table.item(0, 1).text() == "mp3"
+    assert table.item(0, 2).text() == "flac 1000kbps"
 
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     assert len(actions.findChildren(QCheckBox)) == 1
     buttons = {b.text() for b in actions.findChildren(QPushButton)}
     assert buttons == {"Replace", "Decline"}
@@ -117,9 +118,9 @@ def test_review_tab_renders_pending_upgrades_without_delete_checkbox_when_no_old
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     assert actions.findChildren(QCheckBox) == []
 
 
@@ -131,9 +132,9 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     checkbox = actions.findChildren(QCheckBox)[0]
     checkbox.setChecked(True)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
@@ -160,19 +161,19 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    window._review_page._render_pending_upgrades(details)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     actions.findChildren(QCheckBox)[0].setChecked(True)
-    assert window._upgrade_delete_checked == {7}
+    assert window._review_page._upgrade_delete_checked == {7}
 
     # Three more "poll ticks" — a brand-new checkbox widget each time.
     for _ in range(3):
-        window._render_pending_upgrades(details)
+        window._review_page._render_pending_upgrades(details)
 
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     checkbox = actions.findChildren(QCheckBox)[0]
     assert checkbox.isChecked() is True
-    assert window._upgrade_delete_checked == {7}
+    assert window._review_page._upgrade_delete_checked == {7}
 
 
 def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
@@ -183,18 +184,17 @@ def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
-    window.review_upgrades_table.cellWidget(0, 3).findChildren(QCheckBox)[0].setChecked(
-        True
-    )
-    assert window._upgrade_delete_checked == {7}
+    window._review_page._render_pending_upgrades(details)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
+    actions.findChildren(QCheckBox)[0].setChecked(True)
+    assert window._review_page._upgrade_delete_checked == {7}
 
     # The row is gone (e.g. resolved) -- its stale key must not linger
     # forever (R2.3), and a LATER row that happens to reuse the same
     # request_id (can't really happen for a real autoincrement PK, but
     # confirms the map doesn't just grow unbounded) starts unchecked.
-    window._render_pending_upgrades([])
-    assert window._upgrade_delete_checked == set()
+    window._review_page._render_pending_upgrades([])
+    assert window._review_page._upgrade_delete_checked == set()
 
 
 def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_false(
@@ -205,9 +205,9 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
-    actions = window.review_upgrades_table.cellWidget(0, 3)
+    actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Decline"].click()
 
@@ -228,9 +228,9 @@ def test_replace_all_upgrades_button_disabled_when_no_upgrades(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades([])
+    window._review_page._render_pending_upgrades([])
 
-    assert window.replace_all_upgrades_button.isEnabled() is False
+    assert window._review_page.replace_all_upgrades_button.isEnabled() is False
 
 
 def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
@@ -244,8 +244,8 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_pending_upgrades(details)
-    assert window.replace_all_upgrades_button.isEnabled() is True
+    window._review_page._render_pending_upgrades(details)
+    assert window._review_page.replace_all_upgrades_button.isEnabled() is True
 
     def fake_exec(self):
         self.delete_old_checkbox.setChecked(True)
@@ -270,7 +270,7 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     # already used correctly.
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
 
-    window.replace_all_upgrades_button.click()
+    window._review_page.replace_all_upgrades_button.click()
 
     qtbot.waitUntil(
         lambda: application.download_service.apply_upgrade_decisions_batch_calls
@@ -290,14 +290,14 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
     monkeypatch.setattr(
         BulkReplaceUpgradesDialog, "exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
 
-    window.replace_all_upgrades_button.click()
+    window._review_page.replace_all_upgrades_button.click()
 
     assert application.download_service.apply_upgrade_decisions_batch_calls == []
 
@@ -314,7 +314,7 @@ def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._render_pending_upgrades(details)
+    window._review_page._render_pending_upgrades(details)
 
     monkeypatch.setattr(
         BulkReplaceUpgradesDialog, "exec",
@@ -326,7 +326,7 @@ def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
         lambda *a, **k: info_calls.append(a),
     )
 
-    window.replace_all_upgrades_button.click()
+    window._review_page.replace_all_upgrades_button.click()
 
     qtbot.waitUntil(lambda: info_calls != [], timeout=2000)
     assert "Replaced: 1, Failed: 0" in info_calls[0][2]
@@ -347,9 +347,9 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.review_needs_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_needs_table.rowCount() == 1, timeout=2000,
     )
-    assert window.review_upgrades_table.rowCount() == 1
+    assert window._review_page.review_upgrades_table.rowCount() == 1
 
 
 def test_review_tab_renders_local_needs_review_matches(qtbot):
@@ -359,13 +359,13 @@ def test_review_tab_renders_local_needs_review_matches(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
     )
-    assert window.review_local_table.item(0, 0).text() == "Artist - Title"
-    assert window.review_local_table.item(0, 1).text() == "Music/song.mp3"
-    assert window.review_local_table.item(0, 2).text() == "Main"
-    assert window.review_local_table.item(0, 3).text() == "85.7"
-    assert window.review_local_table.cellWidget(0, 4) is not None
+    assert window._review_page.review_local_table.item(0, 0).text() == "Artist - Title"
+    assert window._review_page.review_local_table.item(0, 1).text() == "Music/song.mp3"
+    assert window._review_page.review_local_table.item(0, 2).text() == "Main"
+    assert window._review_page.review_local_table.item(0, 3).text() == "85.7"
+    assert window._review_page.review_local_table.cellWidget(0, 4) is not None
 
 
 def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
@@ -376,9 +376,9 @@ def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
     )
-    confirm_button = window.review_local_table.cellWidget(
+    confirm_button = window._review_page.review_local_table.cellWidget(
         0, 4
     ).findChildren(QPushButton)[0]
     confirm_button.click()
@@ -397,9 +397,9 @@ def test_review_tab_reject_local_match_calls_reject_match(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
     )
-    reject_button = window.review_local_table.cellWidget(
+    reject_button = window._review_page.review_local_table.cellWidget(
         0, 4
     ).findChildren(QPushButton)[1]
     reject_button.click()

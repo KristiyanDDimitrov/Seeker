@@ -45,27 +45,21 @@ from seeker.application import Application
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
-from seeker.models.needs_review_match import NeedsReviewMatch
-from seeker.soulseek.download_service import (
-    BulkUpgradeReplaceResult,
-)
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
     # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
-    # (BulkReplaceUpgradesDialog moved to review_page.py with the rest
-    # of Review; BulkResolveDuplicatesDialog moved to duplicates_page.py
-    # with the rest of Duplicates), but test_ui_smoke.py imports both
-    # from THIS module's own namespace (`from seeker.ui.main_window
-    # import BulkReplaceUpgradesDialog`), not from seeker.ui.dialogs
-    # directly. Kept as deliberate re-exports until each page's own
-    # test-split session repoints those imports (Review: S11.5,
-    # Duplicates: S11.6) — dropped alongside it, not before.
-    # RenamePreviewDialog's own re-export dropped at S11.4, once the
-    # tests using it (moved to tagging_panel.py at S11.3) finally moved
-    # out of test_ui_smoke.py too.
-    BulkReplaceUpgradesDialog,  # noqa: F401
+    # (BulkResolveDuplicatesDialog moved to duplicates_page.py with the
+    # rest of Duplicates), but test_ui_smoke.py still imports it from
+    # THIS module's own namespace (`from seeker.ui.main_window import
+    # BulkResolveDuplicatesDialog`), not from seeker.ui.dialogs
+    # directly. Kept as a deliberate re-export until Duplicates' own
+    # test-split session (S11.6) repoints that import — dropped
+    # alongside it, not before. BulkReplaceUpgradesDialog's own
+    # re-export dropped at S11.5, once the tests using it (moved to
+    # review_page.py at S11.5) finally moved out of test_ui_smoke.py
+    # too.
     BulkResolveDuplicatesDialog,  # noqa: F401
     DestinationDialog,
 )
@@ -87,8 +81,6 @@ from seeker.ui.pages.downloads_page import DownloadsPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.history_page import HistoryPage
 from seeker.ui.pages.review_page import (
-    NeedsReviewCandidates,
-    PendingUpgrades,
     ReviewHost,
     ReviewPage,
 )
@@ -349,11 +341,12 @@ class MainWindow(QMainWindow):
         self._backend_poll_in_progress = False
         # Roadmap item R7 — menu-bar background operation. The tray
         # menu's own status line and "Review (N)"/"Upgrades (N)" items
-        # read the `_needs_review_count`/`_pending_upgrades_count`
-        # delegating properties below — real ReviewPage state
-        # (round 8 Phase 6), built from data its own poll already
-        # fetches, never a third source of truth (R7.3's own explicit
-        # instruction). `_pending_review_focus_track_id`/
+        # read `self._review_page._needs_review_count`/
+        # `_pending_upgrades_count` directly (their own delegating
+        # properties deleted at the test-split session, S11.5, §9.3.4)
+        # — real ReviewPage state (round 8 Phase 6), built from data
+        # its own poll already fetches, never a third source of truth
+        # (R7.3's own explicit instruction). `_pending_review_focus_track_id`/
         # `selected_playlist`/`_current_track_statuses`/the next-step
         # dismissal keys all moved to page modules with the rest of
         # their own pages the same way. The downloading count itself
@@ -594,8 +587,10 @@ class MainWindow(QMainWindow):
             bump_hide_request_id=self._bump_hide_request_id,
             get_pre_fullscreen_geometry=lambda: self._pre_fullscreen_geometry,
             clear_pre_fullscreen_geometry=self._clear_pre_fullscreen_geometry,
-            needs_review_count=lambda: self._needs_review_count,
-            pending_upgrades_count=lambda: self._pending_upgrades_count,
+            needs_review_count=lambda: self._review_page._needs_review_count,
+            pending_upgrades_count=(
+                lambda: self._review_page._pending_upgrades_count
+            ),
             active_downloads_count=(
                 lambda: self._downloads_page.active_downloads_count
             ),
@@ -1331,69 +1326,6 @@ class MainWindow(QMainWindow):
     @_duplicates_folder_paths.setter
     def _duplicates_folder_paths(self, value: list[str]) -> None:
         self._duplicates_page._duplicates_folder_paths = value
-
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
-    # methods for ReviewPage's own attributes/methods
-    # test_ui_smoke.py touches directly on a fresh MainWindow instance
-    # (window._render_review_items(...), etc.). Deleted, alongside
-    # repointing those tests at the page widget directly, at the
-    # test-split session (S11, §9.3.4) — not before.
-    def _render_review_items(
-            self,
-            data: tuple[
-                NeedsReviewCandidates, PendingUpgrades,
-                list[NeedsReviewMatch],
-            ],
-    ) -> None:
-        self._review_page._render_review_items(data)
-
-    def _render_needs_review_candidates(
-            self,
-            candidates: NeedsReviewCandidates,
-    ) -> None:
-        self._review_page._render_needs_review_candidates(candidates)
-
-    def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
-        self._review_page._render_pending_upgrades(upgrades)
-
-    def _render_local_needs_review_matches(
-            self,
-            matches: list[NeedsReviewMatch],
-    ) -> None:
-        self._review_page._render_local_needs_review_matches(matches)
-
-    def _on_bulk_replace_upgrades_finished(
-            self, result: BulkUpgradeReplaceResult,
-    ) -> None:
-        self._review_page._on_bulk_replace_upgrades_finished(result)
-
-    @property
-    def review_needs_table(self) -> QTableWidget:
-        return self._review_page.review_needs_table
-
-    @property
-    def review_upgrades_table(self) -> QTableWidget:
-        return self._review_page.review_upgrades_table
-
-    @property
-    def review_local_table(self) -> QTableWidget:
-        return self._review_page.review_local_table
-
-    @property
-    def replace_all_upgrades_button(self) -> QPushButton:
-        return self._review_page.replace_all_upgrades_button
-
-    @property
-    def _upgrade_delete_checked(self) -> set[int]:
-        return self._review_page._upgrade_delete_checked
-
-    @property
-    def _needs_review_count(self) -> int:
-        return self._review_page._needs_review_count
-
-    @property
-    def _pending_upgrades_count(self) -> int:
-        return self._review_page._pending_upgrades_count
 
     # Same temporary-delegation pattern as every other page's own
     # attributes above, for TrayController's state (round 8 §9.3.2) —

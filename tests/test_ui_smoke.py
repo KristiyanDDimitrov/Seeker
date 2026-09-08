@@ -780,7 +780,7 @@ def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
     )
     assert window._nav_buttons["downloads"].text() == "Downloads  (2)"
 
-    window._render_review_items(
+    window._review_page._render_review_items(
         ([(_make_track("t1"), _make_review_candidate("t1"))], [], [])
     )
     assert window._nav_buttons["review"].text() == "Review  (1)"
@@ -2210,13 +2210,13 @@ def test_double_clicking_needs_review_row_navigates_to_review_and_selects_it(
         == window._page_indices["review"]
     )
     qtbot.waitUntil(
-        lambda: window.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
     )
     qtbot.waitUntil(
-        lambda: window.review_local_table.selectedItems() != [],
+        lambda: window._review_page.review_local_table.selectedItems() != [],
         timeout=2000,
     )
-    assert window.review_local_table.currentRow() == 0
+    assert window._review_page.review_local_table.currentRow() == 0
 
 
 def test_double_clicking_in_library_row_is_a_no_op(qtbot):
@@ -2417,9 +2417,6 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
     qtbot.addWidget(window)
 
     table_and_list_attrs = [
-        "review_needs_table",
-        "review_upgrades_table",
-        "review_local_table",
         "duplicates_folders_list",
         "duplicates_table",
     ]
@@ -2431,9 +2428,9 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
             f"{attr}'s parent is {parent!r}, not routed through make_card()"
         )
 
-    # History/Search/Sharing/Downloads/Dashboard have no delegating
-    # properties (S11.1/S11.2/S11.3/S11.4, §9.3.4) — same check, against
-    # their own page widgets directly.
+    # History/Search/Sharing/Downloads/Dashboard/Review have no
+    # delegating properties (S11.1/S11.2/S11.3/S11.4/S11.5, §9.3.4) —
+    # same check, against their own page widgets directly.
     page_owned_tables = [
         ("history_table", window._history_page.history_table),
         ("search_results_table", window._search_page.search_results_table),
@@ -2445,6 +2442,9 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         ("downloads_table", window._downloads_page.downloads_table),
         ("playlist_list", window._dashboard_page.playlist_list),
         ("track_table", window._dashboard_page.track_table),
+        ("review_needs_table", window._review_page.review_needs_table),
+        ("review_upgrades_table", window._review_page.review_upgrades_table),
+        ("review_local_table", window._review_page.review_local_table),
     ]
     for name, widget in page_owned_tables:
         parent = widget.parentWidget()
@@ -3800,13 +3800,13 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
     window._dashboard_page._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
-    window._render_needs_review_candidates(
+    window._review_page._render_needs_review_candidates(
         [(_make_track(), _make_review_candidate())]
     )
-    window._render_pending_upgrades(
+    window._review_page._render_pending_upgrades(
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
-    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._review_page._render_local_needs_review_matches([_make_needs_review_match()])
     window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
@@ -3819,9 +3819,9 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
 
     tables_and_columns = [
         (window._dashboard_page.track_table, 3),
-        (window.review_needs_table, 3),
-        (window.review_upgrades_table, 3),
-        (window.review_local_table, 4),
+        (window._review_page.review_needs_table, 3),
+        (window._review_page.review_upgrades_table, 3),
+        (window._review_page.review_local_table, 4),
         (window._sharing_page.sharing_locations_table, 4),
         # Roadmap item 97 (B6.3) — settings_window.py's own table had
         # never had a derived Actions width before this.
@@ -3932,13 +3932,13 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
     window._dashboard_page._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
-    window._render_needs_review_candidates(
+    window._review_page._render_needs_review_candidates(
         [(_make_track(), _make_review_candidate())]
     )
-    window._render_pending_upgrades(
+    window._review_page._render_pending_upgrades(
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
-    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._review_page._render_local_needs_review_matches([_make_needs_review_match()])
     window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
@@ -4029,13 +4029,13 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
             ),
         ],
     )
-    window._render_needs_review_candidates(
+    window._review_page._render_needs_review_candidates(
         [(_make_track(), _make_review_candidate())]
     )
-    window._render_pending_upgrades(
+    window._review_page._render_pending_upgrades(
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
-    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._review_page._render_local_needs_review_matches([_make_needs_review_match()])
     window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
@@ -4183,13 +4183,13 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
     window._show_page("duplicates")
     window._render_duplicate_groups([_make_duplicate_group()])
     window._show_page("review")
-    window._render_needs_review_candidates(
+    window._review_page._render_needs_review_candidates(
         [(_make_track(), _make_review_candidate())]
     )
-    window._render_pending_upgrades(
+    window._review_page._render_pending_upgrades(
         [_make_upgrade_details(old_file_path="/music/old.mp3")]
     )
-    window._render_local_needs_review_matches([_make_needs_review_match()])
+    window._review_page._render_local_needs_review_matches([_make_needs_review_match()])
     window._sharing_page._render_sharing_locations_table([
         LocationShareState(
             location=_make_location(1, "Music", "/Volumes/Drive/Music"),
@@ -5089,7 +5089,7 @@ def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_review_items((
+    window._review_page._render_review_items((
         [(_make_track(), _make_review_candidate())],
         [_make_upgrade_details(), _make_upgrade_details(request_id=2)],
         [],
