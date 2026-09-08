@@ -14092,6 +14092,12 @@ moved page's private state directly, from the one shell method that
 legitimately needs to" precedent `_invalidate_after_leaving_settings`
 already uses calling `self._dashboard_page._poll_next_step()`.
 
+**`ui/pages/duplicates_page.py` — the last of the nine pages, and the
+only one needing no second Host seam (S10).** Every method here reaches
+only `PageContext` (application/thread_pool/run_busy_worker) plus its
+own widgets — Duplicates owns its own status label rather than sharing
+Dashboard's, unlike Review/Tagging/Dashboard.
+
 **`ui/pages/dashboard_page.py` — the biggest single page moved, and a
 third seam beyond `PageContext` (S8).** New `DashboardHost` carries the
 handful of actions that live on `MainWindow` because they're shared

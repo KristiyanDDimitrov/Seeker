@@ -1,14 +1,4 @@
-"""The Duplicates page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py. ~21 methods per §9.1's table (23 counting the
-fingerprint-computation trio and the constructor's own former
-`_build_duplicates_content`) — the last of the nine pages, per the
-plan's own easiest-first ordering.
-
-No second Host seam needed, unlike Review/Tagging/Dashboard: every
-method here reaches only PageContext (application/thread_pool/
-run_busy_worker) plus its own widgets — Duplicates owns its own status
-label rather than sharing the Dashboard's.
-"""
+"""The Duplicates page (HISTORY §119)."""
 
 from collections.abc import Callable
 from enum import IntEnum
@@ -45,30 +35,26 @@ from seeker.ui.formatting import format_file_size
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.workers import run_worker
 
-# Roadmap item 56 Phase 6.3 — a sentinel QButtonGroup id for the "Keep
-# all" option, sharing the same group as the per-file keep radios so
-# selecting one deselects the others (the exact behavior the user
-# asked to keep). Real local_file ids are always positive
-# (AUTOINCREMENT starts at 1), so 0 can never collide with one — and,
-# confirmed live, -1 specifically CANNOT be used here: QButtonGroup.
-# addButton(button, id=-1) doesn't set the id to -1 at all — Qt treats
-# -1 as its own "auto-assign an id" sentinel and silently substitutes a
-# different, Qt-generated negative id (checkedId() returned -2 in a
-# real, direct repro), breaking any comparison against a real -1
-# constant.
+# A sentinel QButtonGroup id for the "Keep all" option, sharing the
+# same group as the per-file keep radios so selecting one deselects the
+# others (the exact behavior the user asked to keep). Real local_file
+# ids are always positive (AUTOINCREMENT starts at 1), so 0 can never
+# collide with one — and, confirmed live, -1 specifically CANNOT be
+# used here: QButtonGroup.addButton(button, id=-1) doesn't set the id
+# to -1 at all — Qt treats -1 as its own "auto-assign an id" sentinel
+# and silently substitutes a different, Qt-generated negative id
+# (checkedId() returned -2 in a real, direct repro), breaking any
+# comparison against a real -1 constant (HISTORY §56 Phase 6.3).
 KEEP_ALL_DUPLICATES_ID = 0
 
-# Roadmap item 68 (Phase 7.1) — named constants for the duplicates
-# table's real column layout, replacing literal indices scattered
-# across the render path. Three independent investigations (item 61
-# Phase 6.2, and this block's own Phase 0.5 — both a real-service/
-# real-libchromaprint repro and a 15-group/45-row real-scale repro at
-# the real default window size) could NOT reproduce a genuine index-vs-
+# Named constants for the duplicates table's real column layout,
+# replacing literal indices scattered across the render path. Two
+# independent investigations could NOT reproduce a genuine index-vs-
 # header mismatch; this hardening exists so that bug CLASS becomes
 # structurally impossible regardless, and so the regression test can
 # resolve "Actions" by its real header text instead of sharing the same
 # literal the render code uses (a test that shares the code's own
-# mistake proves nothing).
+# mistake proves nothing) (HISTORY §68).
 class _DuplicatesColumn(IntEnum):
     GROUP = 0
     LOCATION = 1
@@ -85,9 +71,9 @@ _DUPLICATES_COLUMN_HEADERS = [
     "Keep", "Actions",
 ]
 
-# Roadmap item 8.1 (round 8, Phase 5) — the declarative layout each
-# table used to write out by hand across a `_configure_*_columns`/
-# `_size_*_columns` pair; see `theme.ColumnLayout`.
+# The declarative layout each table used to write out by hand across a
+# `_configure_*_columns`/`_size_*_columns` pair; see `theme.ColumnLayout`
+# (HISTORY §118).
 _DUPLICATES_COLUMNS = theme.ColumnLayout(
     stretch=(_DuplicatesColumn.PATH,),
     fit_content=(
@@ -105,20 +91,19 @@ class DuplicatesPage(QWidget):
         self._context = context
 
         # Fingerprint computation + clustering/scoring were built and
-        # live-verified first, read-only, per roadmap item 5's own
-        # build order; the delete action below (item 40) is the later,
-        # explicitly-scoped follow-up. Scoped to one library location
-        # at a time (the location combo below), never merged across all
-        # of them.
+        # live-verified first, read-only; the delete action below is
+        # the later, explicitly-scoped follow-up (HISTORY §5, §40).
+        # Scoped to one library location at a time (the location combo
+        # below), never merged across all of them.
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Roadmap item 56 Phase 6.4 — persistent, cumulative, and
-        # celebratory. Hidden entirely at zero — "an empty milestone is
-        # worse than no milestone" (the brief's own framing, matching
-        # this app's existing "blank, not a misleading control"
-        # precedent for a genuinely-nothing-to-show state).
+        # Persistent, cumulative, and celebratory. Hidden entirely at
+        # zero — "an empty milestone is worse than no milestone,"
+        # matching this app's existing "blank, not a misleading
+        # control" precedent for a genuinely-nothing-to-show state
+        # (HISTORY §56 Phase 6.4).
         self.duplicates_milestone_label = QLabel("")
         self.duplicates_milestone_label.hide()
         layout.addWidget(self.duplicates_milestone_label)
@@ -134,13 +119,13 @@ class DuplicatesPage(QWidget):
         )
         controls.addWidget(self.duplicates_location_combo)
 
-        # Roadmap item 77 (P9) — the combo above used to be disabled in
-        # folder-scope mode (reversed: see item 68 Phase 7.2's original
-        # comment here, and CLAUDE.md item 77). It stays enabled now —
-        # once resolve_folder_scopes() does most-specific-wins matching
-        # (P8.2), the selected location is a genuinely useful tiebreak
-        # preference for an ambiguous (nested-location) folder, not
-        # dead weight the user had to uncheck-then-recheck around.
+        # The combo above used to be disabled in folder-scope mode
+        # (reversed from an earlier version of this comment). It stays
+        # enabled now — once resolve_folder_scopes() does
+        # most-specific-wins matching, the selected location is a
+        # genuinely useful tiebreak preference for an ambiguous
+        # (nested-location) folder, not dead weight the user had to
+        # uncheck-then-recheck around (HISTORY §77).
         self.duplicates_folders_checkbox = QCheckBox("Only these folders…")
         self.duplicates_folders_checkbox.setToolTip(
             help_text.TOOLTIP_DUPLICATES_FOLDERS_CHECKBOX
@@ -170,12 +155,12 @@ class DuplicatesPage(QWidget):
 
         layout.addLayout(controls)
 
-        # Roadmap item 68 (Phase 7.2) — hidden by default; shown only
-        # when "Only these folders…" is checked. A plain QListWidget of
-        # real absolute paths, resolved against registered locations
-        # only at scope-count/run time (resolve_folder_scopes), not on
-        # every add — an unregistered folder is a run-time error, not
-        # something that blocks merely listing it.
+        # Hidden by default; shown only when "Only these folders…" is
+        # checked. A plain QListWidget of real absolute paths, resolved
+        # against registered locations only at scope-count/run time
+        # (resolve_folder_scopes), not on every add — an unregistered
+        # folder is a run-time error, not something that blocks merely
+        # listing it (HISTORY §68).
         self.duplicates_folders_panel = QWidget()
         folders_panel_layout = QVBoxLayout(self.duplicates_folders_panel)
         folders_panel_layout.setContentsMargins(0, 0, 0, 0)
@@ -208,8 +193,8 @@ class DuplicatesPage(QWidget):
         folders_panel_layout.addLayout(folders_buttons_row)
 
         # Shown BEFORE a real, potentially ~10-minute-at-real-scale run
-        # (item 39's own real number) — see
-        # help_text.format_duplicates_scope_count's own docstring.
+        # (HISTORY §39) — see help_text.format_duplicates_scope_count's
+        # own docstring.
         self.duplicates_scope_count_label = QLabel("")
         folders_panel_layout.addWidget(self.duplicates_scope_count_label)
 
@@ -220,7 +205,7 @@ class DuplicatesPage(QWidget):
         self.duplicates_status_label = QLabel("")
         duplicates_status_row.addWidget(self.duplicates_status_label)
         duplicates_status_row.addStretch()
-        # Roadmap item R3.2 — "Resolve all groups". Real count set in
+        # "Resolve all groups" (HISTORY §88). Real count set in
         # _render_duplicate_groups, never stale against the table.
         self.resolve_all_duplicates_button = QPushButton("Resolve all groups")
         self.resolve_all_duplicates_button.setToolTip(
@@ -246,33 +231,33 @@ class DuplicatesPage(QWidget):
 
         # QButtonGroup instances (one per duplicate group, so only one
         # radio per group can be selected) have no Qt parent-child
-        # ownership tie to the table cells their radios live in -- kept
+        # ownership tie to the table cells their radios live in — kept
         # alive here for the same reason ui/workers.py's _callbacks
-        # keeps a Worker reference until its own completion, and item
-        # 22's docstring on that pattern more generally: a Qt object
-        # with nothing else referencing it is a live GC/use-after-free
-        # hazard, not just a style preference. Reset on every render.
+        # keeps a Worker reference until its own completion (HISTORY
+        # §22): a Qt object with nothing else referencing it is a live
+        # GC/use-after-free hazard, not just a style preference. Reset
+        # on every render.
         self._duplicate_button_groups: list[QButtonGroup] = []
         self._current_duplicate_groups: list[DuplicateGroup] = []
-        # Roadmap item R2.2 — same rebuild-destroys-state bug as R2.1,
-        # for the Duplicates "keep" radio selection: a group has no
-        # stable id of its own (it's recomputed fresh by clustering, or
-        # locally re-derived after a delete — see
+        # Same rebuild-destroys-state bug the Review page's checkbox
+        # fix addresses, for the Duplicates "keep" radio selection: a
+        # group has no stable id of its own (it's recomputed fresh by
+        # clustering, or locally re-derived after a delete — see
         # _on_delete_duplicates_finished), so the group's OWN set of
         # member local_file ids is used as the key instead — stable
         # across the poll rebuild and across a local re-render, since
         # neither changes which files belong to a still-open group.
         # Value is the checked button's id — either a real
         # local_file.id or the KEEP_ALL_DUPLICATES_ID sentinel. Pruned
-        # to only still-present groups on every render (R2.3).
+        # to only still-present groups on every render (HISTORY §86).
         self._duplicates_keep_selection: dict[frozenset[int], int] = {}
         self._current_duplicates_location_name: str | None = None
         self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
-        # Roadmap item 68 (Phase 7.2) — resolved by local_file.location_id
-        # at render time so the LOCATION column (and the delete flow's
-        # own path resolution below) reads correctly per-file even for a
-        # pooled, cross-location folder-scope result — a single "current
-        # location" no longer holds for those.
+        # Resolved by local_file.location_id at render time so the
+        # LOCATION column (and the delete flow's own path resolution
+        # below) reads correctly per-file even for a pooled,
+        # cross-location folder-scope result — a single "current
+        # location" no longer holds for those (HISTORY §68).
         self._duplicates_locations_by_id: dict[int, LibraryLocation] = {}
         # Persisted across page shows deliberately (never reset in
         # _on_page_changed) — same "don't lose it on every revisit"
@@ -317,21 +302,20 @@ class DuplicatesPage(QWidget):
             self,
             locations: list[tuple[Any, bool]],
     ) -> None:
-        # Preserve the current selection across a refresh (Phase 6.1)
-        # when that location still exists — losing it on every page
-        # revisit would be a real regression of its own.
+        # Preserve the current selection across a refresh when that
+        # location still exists — losing it on every page revisit would
+        # be a real regression of its own (HISTORY §56 Phase 6.1).
         previously_selected = self._selected_duplicates_location()
 
         self.duplicates_location_combo.clear()
-        # Roadmap item 56 Phase 6.3/6.4 — the real LibraryLocation
-        # (path for the delete-confirmation dialog's exact full paths
-        # and the table's own Location column; id for the reclaimed-
-        # space milestone's cleanup record). Neither is carried on
-        # LocalFile/DuplicateFile at all (only location_id, and not
-        # even that on the milestone side), and find_duplicate_groups()
-        # is already scoped to one location per call, so this is
-        # resolved once here rather than plumbed through the service
-        # layer.
+        # The real LibraryLocation (path for the delete-confirmation
+        # dialog's exact full paths and the table's own Location
+        # column; id for the reclaimed-space milestone's cleanup
+        # record). Neither is carried on LocalFile/DuplicateFile at all
+        # (only location_id, and not even that on the milestone side),
+        # and find_duplicate_groups() is already scoped to one location
+        # per call, so this is resolved once here rather than plumbed
+        # through the service layer (HISTORY §56 Phase 6.3/6.4).
         self._duplicates_locations_by_name = {
             location.name: location for location, _ in locations
         }
@@ -358,10 +342,10 @@ class DuplicatesPage(QWidget):
         return str(name) if name is not None else None
 
     def _selected_duplicates_location_id(self) -> int | None:
-        # Roadmap item 77 (P9) — the combo stays enabled in folder-scope
-        # mode now, and its selection is passed through as
-        # resolve_folder_scopes()'s tiebreak preference (P8.2) rather
-        # than being dead weight while checked.
+        # The combo stays enabled in folder-scope mode now, and its
+        # selection is passed through as resolve_folder_scopes()'s
+        # tiebreak preference rather than being dead weight while
+        # checked (HISTORY §77).
         name = self._selected_duplicates_location()
         if name is None:
             return None
@@ -378,10 +362,10 @@ class DuplicatesPage(QWidget):
         self._refresh_duplicates_folder_scope_count()
 
     def _on_duplicates_location_changed(self) -> None:
-        # Roadmap item 77 (P9) — a location-combo change can change
-        # which real location a tied folder scope resolves to (P8.2's
-        # tiebreak), so the scope count must reflect it live, not just
-        # sit stale until the next folder is added/removed.
+        # A location-combo change can change which real location a tied
+        # folder scope resolves to, so the scope count must reflect it
+        # live, not just sit stale until the next folder is
+        # added/removed (HISTORY §77).
         self._refresh_duplicates_folder_scope_count()
 
     def _on_add_duplicates_folder_clicked(self) -> None:
@@ -481,14 +465,14 @@ class DuplicatesPage(QWidget):
             progress: Callable[[str, int, int], None],
             preferred_location_id: int | None = None,
     ) -> dict[str, Any]:
-        # Roadmap item 68 (Phase 7.2/7.3) — compute_fingerprints() is
-        # itself scoped to one library location per call; folder mode
-        # can span more than one (find_duplicate_groups_across_scopes'
-        # own cross-location pooling), so this groups the resolved
-        # scopes by location, calls it once per location, and translates
-        # each call's own 1..N progress into a running offset against
-        # the real combined total — so the activity strip still reads
-        # 1..total once, not resetting partway through.
+        # compute_fingerprints() is itself scoped to one library
+        # location per call; folder mode can span more than one
+        # (find_duplicate_groups_across_scopes' own cross-location
+        # pooling), so this groups the resolved scopes by location,
+        # calls it once per location, and translates each call's own
+        # 1..N progress into a running offset against the real combined
+        # total — so the activity strip still reads 1..total once, not
+        # resetting partway through (HISTORY §68).
         service = self._context.application.duplicate_service
         scopes = service.resolve_folder_scopes(
             folders, preferred_location_id=preferred_location_id,
@@ -579,13 +563,13 @@ class DuplicatesPage(QWidget):
             )
             return
 
-        # Roadmap item 56 Phase 6.3 — the delete-confirmation dialog's
-        # full paths need a real location; captured here rather than
-        # re-read from the combo later, so a combo selection change
-        # while this search is still running can't attach the wrong
-        # location name to the results it eventually renders. (The
-        # LOCATION column itself resolves per-file, not from this — see
-        # item 68.)
+        # The delete-confirmation dialog's full paths need a real
+        # location; captured here rather than re-read from the combo
+        # later, so a combo selection change while this search is still
+        # running can't attach the wrong location name to the results
+        # it eventually renders (HISTORY §56 Phase 6.3). The LOCATION
+        # column itself resolves per-file, not from this — see
+        # HISTORY §68.
         self._current_duplicates_location_name = location_name
 
         self._context.run_busy_worker(
@@ -617,18 +601,18 @@ class DuplicatesPage(QWidget):
         # after every resolution is not an option at real scale.
         self._current_duplicate_groups = groups
 
-        # Roadmap item 73 (P4) — setRowCount() does NOT clear spans, so
-        # a stale span from a PREVIOUS render (different group shapes)
-        # could silently hide a real Actions widget under a new row that
-        # happens to land inside an old span's coverage. Confirmed via
-        # grep: this was never called anywhere in this file before.
+        # setRowCount() does NOT clear spans, so a stale span from a
+        # PREVIOUS render (different group shapes) could silently hide
+        # a real Actions widget under a new row that happens to land
+        # inside an old span's coverage. Confirmed via grep: this was
+        # never called anywhere in this file before (HISTORY §73).
         self.duplicates_table.clearSpans()
 
-        # Roadmap item R2.3 — prune selection state for groups no
-        # longer present (resolved, or no longer clustered together).
-        # Runs even for an empty `groups` list (the early-return branch
-        # right below) — a "no duplicates found" render must not leave
-        # stale selections sitting in the map forever either.
+        # Prune selection state for groups no longer present (resolved,
+        # or no longer clustered together). Runs even for an empty
+        # `groups` list (the early-return branch right below) — a "no
+        # duplicates found" render must not leave stale selections
+        # sitting in the map forever either (HISTORY §86).
         live_group_keys = {
             frozenset(f.local_file.id for f in group.files)
             for group in groups
@@ -660,11 +644,11 @@ class DuplicatesPage(QWidget):
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
 
-        # Roadmap item 73 (P4) — every real Actions widget built this
-        # render, so its true widest sizeHint() can size the ACTIONS
-        # column for real below (a per-group extra button — see
-        # _build_duplicate_group_actions — means this isn't always the
-        # same width for every group).
+        # Every real Actions widget built this render, so its true
+        # widest sizeHint() can size the ACTIONS column for real below
+        # (a per-group extra button — see _build_duplicate_group_actions
+        # — means this isn't always the same width for every group)
+        # (HISTORY §73).
         action_widgets: list[QWidget] = []
 
         row = 0
@@ -679,11 +663,11 @@ class DuplicatesPage(QWidget):
             self._duplicate_button_groups.append(button_group)
             group_first_row = row
 
-            # Roadmap item R2.2 — this group's stable key (its own
-            # member file ids) and whatever was selected for it before
-            # the last rebuild, if anything. Recorded back into the map
-            # on every real toggle, not just read once here — the user
-            # can change their mind more than once before Delete.
+            # This group's stable key (its own member file ids) and
+            # whatever was selected for it before the last rebuild, if
+            # anything. Recorded back into the map on every real
+            # toggle, not just read once here — the user can change
+            # their mind more than once before Delete (HISTORY §86).
             group_key = frozenset(
                 f.local_file.id for f in group.files
                 if f.local_file.id is not None
@@ -708,14 +692,13 @@ class DuplicatesPage(QWidget):
                     row, _DuplicatesColumn.GROUP,
                     QTableWidgetItem(str(group_index)),
                 )
-                # Location + full relative path (roadmap item 56 Phase
-                # 6.3) — "the same file in two folders" is a judgement
-                # the user needs the real path to make, not just a
-                # bare filename. Resolved PER FILE (roadmap item 68,
-                # Phase 7.2) rather than from one outer variable — a
-                # pooled, cross-location folder-scope result can put
-                # files from two different real locations in the same
-                # group.
+                # Location + full relative path — "the same file in two
+                # folders" is a judgement the user needs the real path
+                # to make, not just a bare filename (HISTORY §56 Phase
+                # 6.3). Resolved PER FILE rather than from one outer
+                # variable — a pooled, cross-location folder-scope
+                # result can put files from two different real
+                # locations in the same group (HISTORY §68).
                 file_location = self._duplicates_locations_by_id.get(
                     local_file.location_id
                 )
@@ -749,10 +732,10 @@ class DuplicatesPage(QWidget):
 
                 keep_radio = QRadioButton()
                 keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
-                # Roadmap item R2.2 — restore the user's own prior
-                # selection for this group when there is one; only fall
-                # back to the "best quality first" default when nothing
-                # was ever chosen for it.
+                # Restore the user's own prior selection for this group
+                # when there is one; only fall back to the "best
+                # quality first" default when nothing was ever chosen
+                # for it (HISTORY §86).
                 keep_radio.setChecked(
                     local_file.id == previously_selected_id
                     if previously_selected_id is not None
@@ -768,21 +751,20 @@ class DuplicatesPage(QWidget):
 
                 row += 1
 
-            # Roadmap item 77 (P7, 5th report) -- setSpan() BEFORE
-            # setCellWidget() for the group's first row, so the real
-            # widget's geometry is computed against the final spanned
-            # rect, not a single-cell rect that a later setSpan() call
-            # then silently changes underneath it. And no widget of any
-            # kind (blank or otherwise) goes on the covered rows: a
-            # blank QWidget() there used to get resolved by Qt's own
-            # span geometry to the EXACT SAME rect as the real widget
-            # (visualRect() resolves every cell inside a span to the
-            # whole span's rect) and, being added to the viewport
-            # later, painted over it -- confirmed live via
-            # childAt(center of the Actions cell) returning the blank
-            # widget, not the real one, before this fix. The span
+            # setSpan() BEFORE setCellWidget() for the group's first
+            # row, so the real widget's geometry is computed against
+            # the final spanned rect, not a single-cell rect that a
+            # later setSpan() call then silently changes underneath it.
+            # And no widget of any kind (blank or otherwise) goes on
+            # the covered rows: a blank QWidget() there used to get
+            # resolved by Qt's own span geometry to the EXACT SAME rect
+            # as the real widget (visualRect() resolves every cell
+            # inside a span to the whole span's rect) and, being added
+            # to the viewport later, painted over it — confirmed live
+            # via childAt(center of the Actions cell) returning the
+            # blank widget, not the real one, before this fix. The span
             # itself is what makes the covered rows read as blank; no
-            # cell widget is needed there at all.
+            # cell widget is needed there at all (HISTORY §77).
             self.duplicates_table.setSpan(
                 group_first_row, _DuplicatesColumn.ACTIONS,
                 len(group.files), 1,
@@ -799,21 +781,21 @@ class DuplicatesPage(QWidget):
         self._size_duplicates_columns(action_widgets)
 
     def _configure_duplicates_columns(self) -> None:
-        """Roadmap item 73 (P4) — a real, live-measured floor for the
-        Actions column, closing the actual reported bug: at the app's
-        real 960x640 minimum window size, against real production
-        duplicate groups, this widget's own visibleRegion() was
-        confirmed (0,0,0,0) — fully invisible, not merely clipped —
-        because NOTHING in this app ever set a column width, so
-        Actions (column 7 of 8) got whatever tiny sliver
-        setStretchLastSection's leftover-space math happened to leave
-        it. Fixed mode + an explicit width DERIVED from the real
-        widget's own sizeHint() (never a magic number) makes this
-        column immune to that squeeze regardless of window width.
+        """A real, live-measured floor for the Actions column, closing
+        the actual reported bug: at the app's real 960x640 minimum
+        window size, against real production duplicate groups, this
+        widget's own visibleRegion() was confirmed (0,0,0,0) — fully
+        invisible, not merely clipped — because NOTHING in this app
+        ever set a column width, so Actions (column 7 of 8) got
+        whatever tiny sliver setStretchLastSection's leftover-space
+        math happened to leave it. Fixed mode + an explicit width
+        DERIVED from the real widget's own sizeHint() (never a magic
+        number) makes this column immune to that squeeze regardless of
+        window width (HISTORY §73).
 
-        Roadmap item E2 (round 7) — split off from `_size_duplicates_
-        columns` so an empty table gets this layout at construction,
-        not only on its first populated render.
+        Split off from `_size_duplicates_columns` so an empty table
+        gets this layout at construction, not only on its first
+        populated render (HISTORY §114).
         """
         theme.configure_columns(self.duplicates_table, _DUPLICATES_COLUMNS)
 
@@ -830,15 +812,16 @@ class DuplicatesPage(QWidget):
             button_group: QButtonGroup,
             previously_selected_id: int | None,
     ) -> QWidget:
-        # Roadmap item 56 Phase 6.3 — "the same file living in several
-        # folders is sometimes deliberate." An additional button in the
-        # group's EXISTING QButtonGroup (a sentinel id, not a separate
-        # control/group) so the "selecting one deselects the others"
-        # behavior is preserved and simply extended, not reimplemented.
+        # "The same file living in several folders is sometimes
+        # deliberate." An additional button in the group's EXISTING
+        # QButtonGroup (a sentinel id, not a separate control/group) so
+        # the "selecting one deselects the others" behavior is
+        # preserved and simply extended, not reimplemented (HISTORY §56
+        # Phase 6.3).
         keep_all_radio = QRadioButton("Keep all")
         keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
-        # Roadmap item R2.2 — same preserved-selection treatment as the
-        # per-file keep radios above.
+        # Same preserved-selection treatment as the per-file keep radios
+        # above (HISTORY §86).
         keep_all_radio.setChecked(
             previously_selected_id == KEEP_ALL_DUPLICATES_ID
         )
@@ -909,13 +892,13 @@ class DuplicatesPage(QWidget):
             and duplicate_file.local_file.id != keep_id
         ]
 
-        # Roadmap item 68 (Phase 7.2) — resolved PER FILE via
-        # local_file.location_id rather than one "current location":
-        # a pooled, cross-location folder-scope group can hold files
-        # from more than one real registered location.
-        # Roadmap item 56 Phase 6.3 — deleting real user files warrants
+        # Resolved PER FILE via local_file.location_id rather than one
+        # "current location": a pooled, cross-location folder-scope
+        # group can hold files from more than one real registered
+        # location (HISTORY §68). Deleting real user files warrants
         # naming them: the exact full paths about to be deleted, not
-        # just a bare count, in a second, explicit confirmation.
+        # just a bare count, in a second, explicit confirmation
+        # (HISTORY §56 Phase 6.3).
         paths_to_delete = [
             str(
                 Path(
@@ -975,16 +958,16 @@ class DuplicatesPage(QWidget):
     ) -> None:
         # Deliberately NOT a find_duplicate_groups() re-fetch after every
         # single-group resolution. That call recomputes the ENTIRE
-        # location's clustering from scratch every time, by design (item
-        # 39 — never persisted, so a moved/rescanned file can't leave a
+        # location's clustering from scratch every time, by design
+        # (never persisted, so a moved/rescanned file can't leave a
         # stale group behind) — real, live-verified cost against a real
-        # ~3,100-file/344-group library was ~10 minutes (see
-        # docs/HISTORY.md item 39). Re-running that after every single
-        # group would make resolving a real library's worth of
-        # duplicates one at a time completely impractical (344 groups x
-        # ~10 minutes each). Instead, drop just the resolved group from
-        # the in-memory list this tab already holds and re-render from
-        # that — no backend call at all.
+        # ~3,100-file/344-group library was ~10 minutes (HISTORY §39).
+        # Re-running that after every single group would make resolving
+        # a real library's worth of duplicates one at a time completely
+        # impractical (344 groups x ~10 minutes each). Instead, drop
+        # just the resolved group from the in-memory list this tab
+        # already holds and re-render from that — no backend call at
+        # all.
         message = f"Deleted: {result['deleted']}, Failed: {result['failed']}."
 
         if result["failed"] > 0:
@@ -1014,14 +997,14 @@ class DuplicatesPage(QWidget):
     def _build_group_resolution_plan(
             self, group: DuplicateGroup, keep_id: int,
     ) -> tuple[GroupResolutionPlan, str, list[str]] | None:
-        """Roadmap item R3.2 — the same per-group plan (real per-file
-        location resolution, real absolute paths) `_on_delete_
-        duplicates_clicked` builds for a single group, factored out so
-        "Resolve all groups" can build the identical plan for every
-        group without a second, drifting copy. `None` when there's
-        nothing to delete or the keep selection doesn't resolve to a
-        real file in this group (shouldn't happen for a real render,
-        but never trusted blindly for a batch that deletes real files).
+        """The same per-group plan (real per-file location resolution,
+        real absolute paths) `_on_delete_duplicates_clicked` builds for
+        a single group, factored out so "Resolve all groups" can build
+        the identical plan for every group without a second, drifting
+        copy (HISTORY §88). `None` when there's nothing to delete or the
+        keep selection doesn't resolve to a real file in this group
+        (shouldn't happen for a real render, but never trusted blindly
+        for a batch that deletes real files).
         """
         delete_ids = [
             duplicate_file.local_file.id
@@ -1078,9 +1061,9 @@ class DuplicatesPage(QWidget):
         return plan, keep_path, delete_paths
 
     def _on_resolve_all_duplicates_clicked(self) -> None:
-        # Roadmap item R3.2/R3.3 — built fresh from what's actually on
-        # screen right now (the current groups AND the current keep
-        # selections), never a stale plan from an earlier click.
+        # Built fresh from what's actually on screen right now (the
+        # current groups AND the current keep selections), never a
+        # stale plan from an earlier click (HISTORY §76, §88).
         groups = self._current_duplicate_groups
 
         plans_with_labels: list[
