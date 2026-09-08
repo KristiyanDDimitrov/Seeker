@@ -60,7 +60,6 @@ from seeker.library.duplicate_service import (
     DuplicateGroup,
     GroupResolutionPlan,
 )
-from seeker.library.metadata_service import RenamePlan
 from seeker.models.active_download import ActiveDownload
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
@@ -91,7 +90,14 @@ from seeker.ui.dialogs import (
     BulkReplaceUpgradesDialog,
     BulkResolveDuplicatesDialog,
     DestinationDialog,
-    RenamePreviewDialog,
+    # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
+    # (RenamePreviewDialog moved to tagging_panel.py with the rest of
+    # the Tagging panel), but test_ui_smoke.py imports it from THIS
+    # module's own namespace (`from seeker.ui.main_window import
+    # RenamePreviewDialog`), not from seeker.ui.dialogs directly. Kept
+    # as a deliberate re-export until the test-split session repoints
+    # that import (S11, §9.3.4) — dropped alongside it, not before.
+    RenamePreviewDialog,  # noqa: F401
 )
 from seeker.ui.download_eta import DownloadEtaTracker
 from seeker.ui.flow_layout import FlowLayout
@@ -103,6 +109,7 @@ from seeker.ui.pages.history_page import HistoryPage
 from seeker.ui.pages.search_page import SearchPage
 from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.pages.static_pages import HelpPage, SupportPage
+from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
 from seeker.ui.settings_window import (
     SETTINGS_TAB_CONNECTION,
     SETTINGS_TAB_LOCATIONS,
@@ -885,8 +892,9 @@ class MainWindow(QMainWindow):
         # Roadmap item 9.2 (round 8, Phase 6 prep) — the seam a migrated
         # page gets instead of reaching past it to MainWindow directly.
         # See PageContext's own docstring for why run_busy_worker/
-        # update_nav_badge/is_hidden_to_tray are here despite not being
-        # in the brief's original four-field sketch.
+        # update_nav_badge/is_hidden_to_tray/render_activity_strip are
+        # here despite not being in the brief's original four-field
+        # sketch.
         page_context = PageContext(
             application=self.application,
             thread_pool=self.thread_pool,
@@ -895,10 +903,13 @@ class MainWindow(QMainWindow):
             run_busy_worker=self._run_busy_worker,
             update_nav_badge=self._update_nav_badge,
             is_hidden_to_tray=lambda: self._hidden_to_tray,
+            render_activity_strip=self._render_activity_strip,
         )
 
         self._page_indices: dict[str, int] = {}
-        self._register_page("dashboard", self._build_dashboard_page())
+        self._register_page(
+            "dashboard", self._build_dashboard_page(page_context)
+        )
         self._search_page = SearchPage(page_context)
         self._register_page("search", self._search_page)
         self._downloads_page = DownloadsPage(page_context)
@@ -1084,6 +1095,54 @@ class MainWindow(QMainWindow):
     @property
     def _active_downloads_count(self) -> int:
         return self._downloads_page.active_downloads_count
+
+    # Same temporary-delegation pattern for every TaggingPanel
+    # attribute test_ui_smoke.py touches by name. TaggingPanel is a
+    # sub-widget of the (still-unmigrated) Dashboard page rather than
+    # its own registered page, but the delegation itself is identical.
+    @property
+    def analyze_audio_checkbox(self) -> QCheckBox:
+        return self._tagging_panel.analyze_audio_checkbox
+
+    @property
+    def bpm_min_edit(self) -> QLineEdit:
+        return self._tagging_panel.bpm_min_edit
+
+    @property
+    def bpm_max_edit(self) -> QLineEdit:
+        return self._tagging_panel.bpm_max_edit
+
+    @property
+    def force_retag_checkbox(self) -> QCheckBox:
+        return self._tagging_panel.force_retag_checkbox
+
+    @property
+    def tag_selected_button(self) -> QPushButton:
+        return self._tagging_panel.tag_selected_button
+
+    @property
+    def tag_playlist_button(self) -> QPushButton:
+        return self._tagging_panel.tag_playlist_button
+
+    @property
+    def fix_missing_art_button(self) -> QPushButton:
+        return self._tagging_panel.fix_missing_art_button
+
+    @property
+    def fill_missing_art_urls_button(self) -> QPushButton:
+        return self._tagging_panel.fill_missing_art_urls_button
+
+    @property
+    def rename_files_button(self) -> QPushButton:
+        return self._tagging_panel.rename_files_button
+
+    @property
+    def tagging_results(self) -> QPlainTextEdit:
+        return self._tagging_panel.tagging_results
+
+    @property
+    def tagging_controls_layout(self) -> FlowLayout:
+        return self._tagging_panel.tagging_controls_layout
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1479,7 +1538,7 @@ class MainWindow(QMainWindow):
         row.addStretch()
         return row
 
-    def _build_dashboard_page(self) -> QWidget:
+    def _build_dashboard_page(self, page_context: PageContext) -> QWidget:
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -1567,18 +1626,26 @@ class MainWindow(QMainWindow):
         self.track_area_stack.addWidget(self._track_empty_panel)
         right.addWidget(self.track_area_stack)
 
-        self.tagging_controls_layout = self._build_tagging_controls()
-        right.addLayout(self.tagging_controls_layout)
-
-        self.tagging_results = QPlainTextEdit()
-        self.tagging_results.setReadOnly(True)
-        self.tagging_results.setMaximumHeight(120)
-        self.tagging_results.setPlaceholderText(
-            "Tagging results will appear here."
-        )
-        right.addWidget(self.tagging_results)
-
+        # Roadmap item 9.3 (round 8, Phase 6) — created here, ahead of
+        # its original position below `tagging_results`, purely
+        # because TaggingPanel (constructed next) needs the real
+        # QLabel instance up front, via TaggingPanelHost. Still added
+        # to `right` in its original visual position — construction
+        # order and layout order are independent in Qt.
         self.status_label = QLabel("")
+
+        self._tagging_panel = TaggingPanel(
+            page_context,
+            TaggingPanelHost(
+                status_label=self.status_label,
+                dashboard_notice=self.dashboard_notice,
+                get_selected_playlist=lambda: self.selected_playlist,
+                get_selected_track_ids=self._selected_track_ids,
+                refresh_track_table=self._poll_selected_playlist,
+            ),
+        )
+        right.addWidget(self._tagging_panel)
+
         right.addWidget(self.status_label)
 
         layout.addLayout(right, 3)
@@ -1657,201 +1724,6 @@ class MainWindow(QMainWindow):
             f"Couldn't check for updates: {message}",
         )
 
-    def _build_tagging_controls(self) -> FlowLayout:
-        # Shared by all three triggers (per-track, "Tag selected",
-        # "Tag playlist") — one set of options, not three independently
-        # configurable copies. --bpm-range requiring --analyze-audio
-        # (the CLI's own validation) is enforced structurally here by
-        # hiding the range fields entirely while the checkbox is
-        # unchecked, rather than validating the combination after the
-        # fact the way the CLI has to.
-        #
-        # Roadmap item 72 (P1) — a plain QHBoxLayout's minimum width is
-        # the SUM of its children's minimum widths, which made this
-        # 9-widget row impose a ~900-1000px floor on the whole
-        # dashboard page, squeezing the playlist panel next to it down
-        # to almost nothing. FlowLayout fixes both halves at once: it
-        # reflows 1-row -> 2-row -> 3-row purely from available width,
-        # and its own minimumSize() is just the widest single item.
-        # Roadmap item 79 (P11) — bare FlowLayout() leaves h_spacing/
-        # v_spacing at -1, which falls through to _smart_spacing()'s
-        # PM_LayoutHorizontalSpacing style query — approximately zero
-        # under this app's Fusion styling, so the buttons touched.
-        # These are deliberate, chosen values, not style-derived ones.
-        controls = FlowLayout(
-            h_spacing=theme.SPACING_SM, v_spacing=theme.SPACING_SM,
-        )
-
-        self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
-        self.analyze_audio_checkbox.setToolTip(
-            help_text.TOOLTIP_ANALYZE_AUDIO_CHECKBOX
-        )
-        self.analyze_audio_checkbox.toggled.connect(
-            self._on_analyze_audio_toggled
-        )
-        controls.addWidget(self.analyze_audio_checkbox)
-
-        self.bpm_min_edit = QLineEdit()
-        self.bpm_min_edit.setPlaceholderText("Min BPM")
-        self.bpm_min_edit.setToolTip(help_text.TOOLTIP_BPM_MIN)
-        self.bpm_min_edit.hide()
-        controls.addWidget(self.bpm_min_edit)
-
-        self.bpm_max_edit = QLineEdit()
-        self.bpm_max_edit.setPlaceholderText("Max BPM")
-        self.bpm_max_edit.setToolTip(help_text.TOOLTIP_BPM_MAX)
-        self.bpm_max_edit.hide()
-        controls.addWidget(self.bpm_max_edit)
-
-        self.force_retag_checkbox = QCheckBox("Re-tag already tagged files")
-        self.force_retag_checkbox.setToolTip(
-            help_text.TOOLTIP_FORCE_RETAG_CHECKBOX
-        )
-        controls.addWidget(self.force_retag_checkbox)
-
-        self.tag_selected_button = QPushButton("Tag selected")
-        self.tag_selected_button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
-        self.tag_selected_button.clicked.connect(
-            self._on_tag_selected_clicked
-        )
-        controls.addWidget(self.tag_selected_button)
-
-        self.tag_playlist_button = QPushButton("Tag playlist")
-        self.tag_playlist_button.setToolTip(help_text.TOOLTIP_TAG_PLAYLIST)
-        self.tag_playlist_button.clicked.connect(
-            self._on_tag_playlist_clicked
-        )
-        controls.addWidget(self.tag_playlist_button)
-
-        # Roadmap item 66 (Phase 5.2) — a narrower, safer repair than
-        # forcing a full re-tag: re-embeds art only, never text tags.
-        self.fix_missing_art_button = QPushButton("Fix missing cover art")
-        self.fix_missing_art_button.setToolTip(
-            help_text.TOOLTIP_FIX_MISSING_ART
-        )
-        self.fix_missing_art_button.clicked.connect(
-            self._on_fix_missing_art_clicked
-        )
-        controls.addWidget(self.fix_missing_art_button)
-
-        # Roadmap item 66 (Phase 5.3) — the one-click fix for the
-        # "no_url" case: a real sync-tracks call, honest about being a
-        # real Spotify API call.
-        self.fill_missing_art_urls_button = QPushButton(
-            "Fill missing art URLs"
-        )
-        self.fill_missing_art_urls_button.setToolTip(
-            help_text.TOOLTIP_FILL_MISSING_ART_URLS
-        )
-        self.fill_missing_art_urls_button.clicked.connect(
-            self._on_fill_missing_art_urls_clicked
-        )
-        controls.addWidget(self.fill_missing_art_urls_button)
-
-        # Roadmap item 67 (Phase 6.4) — always a preview first (item
-        # 27's "no gate for tag-writing" precedent does NOT extend
-        # here: this moves/replaces a real file).
-        self.rename_files_button = QPushButton(
-                "Rename files to match metadata"
-        )
-        self.rename_files_button.setToolTip(help_text.TOOLTIP_RENAME_FILES)
-        self.rename_files_button.clicked.connect(
-            self._on_rename_files_clicked
-        )
-        controls.addWidget(self.rename_files_button)
-
-        return controls
-
-    def _on_analyze_audio_toggled(self, checked: bool) -> None:
-        self.bpm_min_edit.setVisible(checked)
-        self.bpm_max_edit.setVisible(checked)
-
-    def _resolve_tag_options(
-            self,
-    ) -> tuple[bool, tuple[float, float] | None, bool]:
-        force = self.force_retag_checkbox.isChecked()
-        analyze_audio = self.analyze_audio_checkbox.isChecked()
-
-        if not analyze_audio:
-            return False, None, force
-
-        min_text = self.bpm_min_edit.text().strip()
-        max_text = self.bpm_max_edit.text().strip()
-
-        if not min_text and not max_text:
-            # A range is optional even with analysis on — matches the
-            # CLI, where --analyze-audio alone (no --bpm-range) is
-            # perfectly valid.
-            return True, None, force
-
-        if not min_text or not max_text:
-            raise ValueError(
-                "Enter both a min and max BPM, or leave both blank."
-            )
-
-        try:
-            return True, (float(min_text), float(max_text)), force
-        except ValueError as error:
-            raise ValueError("BPM range must be numeric.") from error
-
-    def _render_tag_result(self, result: dict[str, Any]) -> None:
-        self.status_label.setText("")
-
-        lines = [
-            f"Tagged: {result['tagged']} "
-            f"({result['tagged_without_art']} without cover art, "
-            f"{result['tagged_art_rarely_supported_format']} with art "
-            f"in a rarely-supported format), "
-            f"Skipped (no match): {result['skipped_no_match']}, "
-            f"Skipped (unsupported format): "
-            f"{result['skipped_format_unsupported']}, "
-            f"Skipped (already tagged): "
-            f"{result['skipped_already_tagged']}, "
-            f"Skipped (already analyzed): "
-            f"{result['skipped_already_analyzed']}, "
-            f"Failed: {result['failed']}."
-        ]
-
-        for detail in result["details"]:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
-
-        # Roadmap item 56 Phase 4.2 — the UI must never show a bare
-        # "success" when any part of it wasn't: routed through
-        # InlineNotice (item 47), not status_label, so it survives the
-        # next 2s poll tick; per-track detail is already reachable in
-        # the persistent tagging_results panel above, itself unaffected
-        # by that same clearing bug (a real QPlainTextEdit, never wired
-        # into status_label's plumbing at all).
-        self._show_tag_result_notice(result)
-
-    def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
-        # Roadmap item 66 (Phase 5.1) — the real gap found in Phase 0.4:
-        # this early return is still correct (nothing was even in
-        # scope), but every real outcome AFTER it — including "every
-        # selected track was already tagged" — now gets a message via
-        # help_text.format_tag_result_notice, not just tagged/without_
-        # art/failed.
-        if result["tagged"] == 0 and not result["details"]:
-            return
-
-        message, kind = help_text.format_tag_result_notice(result)
-
-        # Roadmap item 75 (P6, 6.2) — any track this run skipped as
-        # already-tagged had its cover art never even looked at (see
-        # format_tag_result_notice's own docstring); offer the real
-        # next action right on the notice rather than leaving the user
-        # to find "Fix missing cover art" on their own.
-        if result.get("skipped_already_tagged", 0) > 0:
-            self.dashboard_notice.show_message(
-                message, kind=kind,
-                action_text="Fix missing cover art",
-                on_action=self._on_fix_missing_art_clicked,
-            )
-        else:
-            self.dashboard_notice.show_message(message, kind=kind)
-
     def _selected_track_ids(self) -> list[str]:
         rows = sorted(
             {index.row() for index in self.track_table.selectionModel().selectedRows()}
@@ -1872,7 +1744,9 @@ class MainWindow(QMainWindow):
             tag_button = QPushButton("Tag")
             tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
             tag_button.clicked.connect(
-                lambda: self._on_tag_track_clicked(track_id, tag_button)
+                lambda: self._tagging_panel._on_tag_track_clicked(
+                    track_id, tag_button,
+                )
             )
             return theme.cell_widget(tag_button)
 
@@ -1899,269 +1773,22 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         retag_action = QAction("Re-tag", self)
         retag_action.triggered.connect(
-            lambda: self._on_retag_track_clicked(status.track.id)
+            lambda: self._tagging_panel._on_retag_track_clicked(
+                status.track.id
+            )
         )
         menu.addAction(retag_action)
         menu.exec(self.track_table.viewport().mapToGlobal(position))
 
-    def _on_tag_track_clicked(
-            self,
-            track_id: str,
-            button: QPushButton,
-    ) -> None:
-        try:
-            analyze_audio, bpm_range, force = self._resolve_tag_options()
-        except ValueError as error:
-            self.dashboard_notice.show_message(str(error), kind="error")
-            return
-
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.metadata_service.tag_tracks(
-                [track_id],
-                analyze_audio=analyze_audio,
-                expected_bpm_range=bpm_range,
-                force=force,
-            ),
-            button=button,
-            status_label=self.status_label,
-            on_finished=self._render_tag_result,
-        )
+    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
+    # methods for TaggingPanel's own _render_tag_result/
+    # _on_retag_track_clicked, called directly on a fresh MainWindow
+    # instance by test_ui_smoke.py.
+    def _render_tag_result(self, result: dict[str, Any]) -> None:
+        self._tagging_panel._render_tag_result(result)
 
     def _on_retag_track_clicked(self, track_id: str) -> None:
-        # The context menu's "Re-tag" always forces, independent of the
-        # tagging panel's own checkbox — right-clicking a specific
-        # already-tagged row and choosing "Re-tag" is an explicit,
-        # unambiguous request to redo exactly this one file, the same
-        # way the CLI's --force does for a whole playlist.
-        try:
-            analyze_audio, bpm_range, _ = self._resolve_tag_options()
-        except ValueError as error:
-            self.dashboard_notice.show_message(str(error), kind="error")
-            return
-
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.metadata_service.tag_tracks(
-                [track_id],
-                analyze_audio=analyze_audio,
-                expected_bpm_range=bpm_range,
-                force=True,
-            ),
-            status_label=self.status_label,
-            on_finished=self._render_tag_result,
-        )
-
-    def _on_tag_selected_clicked(self) -> None:
-        track_ids = self._selected_track_ids()
-
-        if not track_ids:
-            self.dashboard_notice.show_message(
-                "Select at least one track first.", kind="warning",
-            )
-            return
-
-        try:
-            analyze_audio, bpm_range, force = self._resolve_tag_options()
-        except ValueError as error:
-            self.dashboard_notice.show_message(str(error), kind="error")
-            return
-
-        self._run_busy_worker(
-            "tag_selected", self.tag_selected_button,
-            lambda: self.application.metadata_service.tag_tracks(
-                track_ids,
-                analyze_audio=analyze_audio,
-                expected_bpm_range=bpm_range,
-                force=force,
-            ),
-            status_label=self.status_label,
-            on_finished=self._render_tag_result,
-        )
-        # Analysis in particular does real, potentially slow per-track
-        # work — an in-progress note beyond just the disabled button,
-        # for anything wider than a single track.
-        self.status_label.setText(
-                f"Tagging {len(track_ids)} selected track(s)..."
-        )
-
-    def _on_tag_playlist_clicked(self) -> None:
-        if self.selected_playlist is None:
-            self.dashboard_notice.show_message(
-                "Select a playlist first.", kind="warning",
-            )
-            return
-
-        try:
-            analyze_audio, bpm_range, force = self._resolve_tag_options()
-        except ValueError as error:
-            self.dashboard_notice.show_message(str(error), kind="error")
-            return
-
-        playlist_name = self.selected_playlist.name
-
-        self._run_busy_worker(
-            "tag_playlist", self.tag_playlist_button,
-            lambda: self.application.metadata_service.tag_playlist(
-                playlist_name,
-                analyze_audio=analyze_audio,
-                expected_bpm_range=bpm_range,
-                force=force,
-            ),
-            status_label=self.status_label,
-            on_finished=self._render_tag_result,
-        )
-        self.status_label.setText(f"Tagging playlist '{playlist_name}'...")
-
-    def _on_fix_missing_art_clicked(self) -> None:
-        if self.selected_playlist is None:
-            self.dashboard_notice.show_message(
-                "Select a playlist first.", kind="warning",
-            )
-            return
-
-        playlist_name = self.selected_playlist.name
-
-        self._run_busy_worker(
-            "fix_missing_art", self.fix_missing_art_button,
-            lambda: self.application.metadata_service
-            .fix_missing_art_for_playlist(playlist_name),
-            status_label=self.status_label,
-            on_finished=self._render_fix_art_result,
-        )
-        self.status_label.setText(
-            f"Fixing cover art for '{playlist_name}'..."
-        )
-
-    def _render_fix_art_result(self, result: dict[str, Any]) -> None:
-        self.status_label.setText("")
-
-        lines = [
-            f"Fixed: {result['fixed']}, "
-            f"Fixed (rarely-supported format): "
-            f"{result['fixed_wav_rarely_supported']}, "
-            f"Already correct: {result['already_correct']}, "
-            f"No art URL: {result['no_url']}, "
-            f"Download failed: {result['download_failed']}, "
-            f"Embed failed: {result['embed_failed']}, "
-            f"Unsupported format: {result['format_unsupported']}, "
-            f"Skipped (no match): {result['skipped_no_match']}, "
-            f"Failed: {result['failed']}."
-        ]
-
-        for detail in result["details"]:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
-
-        message, kind = help_text.format_fix_art_result_message(result)
-        self.dashboard_notice.show_message(message, kind=kind)
-
-    def _on_fill_missing_art_urls_clicked(self) -> None:
-        if self.selected_playlist is None:
-            self.dashboard_notice.show_message(
-                "Select a playlist first.", kind="warning",
-            )
-            return
-
-        playlist = self.selected_playlist
-
-        self._run_busy_worker(
-            "fill_missing_art_urls", self.fill_missing_art_urls_button,
-            lambda: self.application.sync_service.sync_playlist_tracks(
-                playlist
-            ),
-            status_label=self.status_label,
-            on_finished=self._on_fill_missing_art_urls_finished,
-        )
-        self.status_label.setText(
-            f"Refreshing '{playlist.name}' from Spotify..."
-        )
-
-    def _on_fill_missing_art_urls_finished(self, art_urls_filled: int) -> None:
-        self._poll_selected_playlist()
-
-        if art_urls_filled:
-            plural = "s" if art_urls_filled != 1 else ""
-            self.dashboard_notice.show_message(
-                f"Filled in {art_urls_filled} missing album art "
-                f"URL{plural}.",
-                kind="success",
-            )
-        else:
-            self.dashboard_notice.show_message(
-                "No missing album art URLs found.", kind="info",
-            )
-
-    def _on_rename_files_clicked(self) -> None:
-        if self.selected_playlist is None:
-            self.dashboard_notice.show_message(
-                "Select a playlist first.", kind="warning",
-            )
-            return
-
-        playlist_name = self.selected_playlist.name
-
-        self._run_busy_worker(
-            "rename_files", self.rename_files_button,
-            lambda: self.application.metadata_service.plan_renames(
-                playlist_name=playlist_name,
-            ),
-            status_label=self.status_label,
-            on_finished=lambda plans: self._open_rename_preview_dialog(
-                playlist_name, plans,
-            ),
-        )
-
-    def _open_rename_preview_dialog(
-            self, playlist_name: str, plans: list[RenamePlan],
-    ) -> None:
-        dialog = RenamePreviewDialog(self, playlist_name, plans)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        self.busy_actions.begin(
-            "rename_files", self.rename_files_button, "Renaming…",
-        )
-        self._render_activity_strip()
-
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.metadata_service.apply_renames(plans),
-            status_label=self.status_label,
-            on_finished=self._on_rename_files_finished,
-            on_error=lambda _message: self._reset_rename_files_button(),
-        )
-
-    def _reset_rename_files_button(self) -> None:
-        self.busy_actions.end("rename_files")
-        self._render_activity_strip()
-
-    def _on_rename_files_finished(self, result: Any) -> None:
-        self._reset_rename_files_button()
-        self._poll_selected_playlist()
-
-        counts = {
-            "renamed": result.renamed,
-            "collisions": result.collisions,
-            "failed": result.failed,
-        }
-        lines = [
-            f"Renamed: {result.renamed} ({result.collisions} with a "
-            f"numbered suffix), Already correct: {result.already_correct}, "
-            f"Not auto-matched: {result.skipped_not_auto_matched}, "
-            f"No local file: {result.skipped_no_local_file}, "
-            f"Failed: {result.failed}."
-        ]
-
-        for detail in result.details:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
-
-        message, kind = help_text.format_rename_result_message(counts)
-        self.dashboard_notice.show_message(message, kind=kind)
+        self._tagging_panel._on_retag_track_clicked(track_id)
 
     def _build_review_content(self) -> QWidget:
         # Two independent sections, per item 26: SoulSeek needs-review
@@ -3685,7 +3312,7 @@ class MainWindow(QMainWindow):
         elif action == "download":
             self._on_download_clicked()
         elif action == "tag_playlist":
-            self._on_tag_playlist_clicked()
+            self._tagging_panel._on_tag_playlist_clicked()
 
     # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating method
     # for DownloadsPage's own `_render_active_downloads`, called

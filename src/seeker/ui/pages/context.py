@@ -57,6 +57,14 @@ class PageContext:
     same reason: a page reaches the shell through one narrow named
     callable, never by importing MainWindow or reaching past this
     object.
+
+    `render_activity_strip` (same S7 session, found extracting the
+    Tagging panel) is the persistent activity strip's own re-render —
+    genuinely shell chrome (visible above every page, not owned by
+    any one of them), needed by a call site that begins a busy action
+    by hand (`busy_actions.begin(...)` directly) rather than through
+    `run_busy_worker`, so the render has to be triggered the same way
+    the hand-rolled begin() was.
     """
     application: Application
     thread_pool: QThreadPool
@@ -65,6 +73,7 @@ class PageContext:
     run_busy_worker: Callable[..., None]
     update_nav_badge: Callable[[str, int], None]
     is_hidden_to_tray: Callable[[], bool]
+    render_activity_strip: Callable[[], None]
 
 
 def build_subtitle_label(text: str) -> QLabel:
