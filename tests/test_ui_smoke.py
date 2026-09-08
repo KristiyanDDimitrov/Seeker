@@ -7297,6 +7297,16 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
     # so this is genuinely "immediately after construction," the exact
     # moment E2's fix (`_configure_*_columns`, called from each table's
     # own `_build_*`) must already hold.
+    #
+    # Roadmap item 8.1.2 (round 8, Phase 5) — strengthened alongside the
+    # ColumnLayout refactor (§8.1.1): a table can have a real Stretch
+    # column while still leaving its OTHER columns at Qt's raw default
+    # width, if nothing ever derived a width for them either. Every
+    # table built through `theme.configure_columns` derives every
+    # non-stretch column's width from its own header label (or a real
+    # Actions widget) via `apply_column_floors`/`size_action_column` —
+    # so for those tables, no non-stretch column may still equal
+    # `header.defaultSectionSize()`.
     from PySide6.QtWidgets import QHeaderView, QTableWidget
 
     application = FakeApplication()
@@ -7305,6 +7315,19 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
 
     tables = window.findChildren(QTableWidget)
     assert tables, "expected at least one QTableWidget in the window"
+
+    # Roadmap item 8.1.3 — these three genuinely have no ColumnLayout:
+    # no Actions column, no per-column resize mode at all, just
+    # stretchLastSection for their one flex column (see the comments
+    # beside their construction in main_window.py). Excluded from the
+    # stronger per-column check below only — the `has_stretch` check
+    # above still runs on them, which is the actual E2 invariant this
+    # test exists to guard; their non-flex columns were never claimed
+    # to be derived and are not the bug class E2 fixed.
+    _no_column_layout = {
+        window.downloads_table, window.history_table,
+        window.sharing_uploads_table,
+    }
 
     for table in tables:
         header = table.horizontalHeader()
@@ -7319,6 +7342,27 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
             f"empty render of this table will sit at Qt's default "
             f"100px-per-column layout"
         )
+
+        if table in _no_column_layout:
+            continue
+
+        last_column = table.columnCount() - 1
+        for column in range(table.columnCount()):
+            if header.stretchLastSection() and column == last_column:
+                continue
+            if (
+                header.sectionResizeMode(column)
+                == QHeaderView.ResizeMode.Stretch
+            ):
+                continue
+            assert (
+                header.sectionSize(column) != header.defaultSectionSize()
+            ), (
+                f"{table.objectName() or table!r} column {column} is "
+                f"still at Qt's raw default width immediately after "
+                f"construction — ColumnLayout should have derived a "
+                f"real width for it"
+            )
 
 
 def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
