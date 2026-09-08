@@ -8,21 +8,15 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `186442c` — "S11.7: repoint Tray tests at the page widget,
-  drop delegating properties" (S11.7's two-commit mechanism landed;
-  this session's tick/handoff commit goes on top)
-- **Working tree:** clean except this rewrite. `origin/main`: not
-  re-checked this session — ask before pushing regardless.
-- **pytest:** a clean run is 1149 passed, 1 skipped — identical to
-  S10–S11.6's own numbers, confirmed with two consecutive clean runs
-  after S11.7's second commit. The tracked fullscreen-close flake pair
-  fired 3 times across this session's earlier runs (once each on
-  `test_application_active_is_a_near_no_op_when_already_visible` — see
-  "Real gap" below, a genuine bug caught by the suite, NOT this flake
-  pair — and twice on the two tracked tests), always green in
-  isolation — see "Known flakes" below.
+- **HEAD:** this session's tick/handoff commit, on top of `da31263` —
+  "S12: comment triage — audio_analysis.py" (S12's six per-file commits
+  land before it).
+- **Working tree:** clean. `origin/main`: not re-checked this session —
+  ask before pushing regardless.
+- **pytest:** 1149 passed, 1 skipped — identical to every S10–S11.7
+  number, confirmed after all six S12 commits.
 - **mypy --strict src/:** clean, 99 files. **ruff check src tests: 0
-  findings — this must stay at 0.**
+  findings.**
 
 ## Where we are in the plan
 
@@ -30,63 +24,60 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done:** Phase 0–4, S1–S10, S11, S11.1–S11.6 (test-split, dialogs
-  through Duplicates), **S11.7** (Tray, mirrors S11's own tray
-  extraction). **Phase 6 (`MainWindow` decomposition + its test-split,
-  §9.1–§9.3) is now fully complete** — zero `@property` delegating
-  stubs remain on `MainWindow` (confirmed: `grep -c "^    @property"
-  src/seeker/ui/main_window.py` → 0).
-- **Next: S12** (Comment triage, pass 1 — §10.1, small files:
-  `audio_formats`, `docker_setup`, `matching`, `config_store`,
-  `quality`, `audio_analysis`). This starts Phase 7, a genuinely new
-  phase — read §10 of the main brief fresh, the §9 Phase-6 summary in
-  SESSION-PLAN.md no longer applies.
+- **Done:** Phase 0–6 (through S11.7), and now **S12** (Phase 7,
+  comment triage pass 1 — §10.1's six small files: `audio_formats.py`,
+  `docker_setup.py`, `matching.py`, `config_store.py`,
+  `soulseek/quality.py`, `audio_analysis.py`).
+- **Next: S13** (Comment triage, pass 2 — §10.1, `soulseek/
+  download_service.py` plus the new `ui/pages/*` modules). Read §10 of
+  the main brief fresh if you didn't just do S12 — the four-category
+  method (KEEP / KEEP-COMPRESSED / MOVE / DELETE) is short, re-read it
+  rather than relying on this summary.
 
-## S11.7 — what landed (§9.3.4 test-split: Tray)
+## S12 report (§10.1.7)
 
-Two commits (`d03666e`, `186442c`). 16 tests moved verbatim into
-`tests/pages/test_tray.py`. Eight tests stayed cross-cutting in
-test_ui_smoke.py — closeEvent/hide-to-tray-verification tests
-(round 7's E1) that trigger a `TrayController` action along the way
-(`_on_tray_open_seeker`, `_on_tray_icon_activated`,
-`_on_tray_check_now`, `_on_tray_quit` from fullscreen,
-`_on_application_state_changed`) but assert on MainWindow's own
-`_hidden_to_tray`/`isVisible`/`_pre_fullscreen_geometry`/
-`_app_state_connected`/poll-timer state, not on anything
-`TrayController` owns — repointed to `window._tray.<attr>` in place.
+Comment lines before -> after per file (bare `#` lines; docstring lines
+counted separately since some `#` blocks became docstrings under
+§10.1.4's public-seam rule):
 
-`_on_application_state_changed` and `cleanup_before_quit` are **not**
-temporary delegating stubs and were never deleted — the former is the
-real QObject-bound slot `applicationStateChanged` is connected to (a
-plain `TrayController` method can't hold that connection safely, per
-`tray.py`'s own module docstring — Gotcha #1 from the S11-split note),
-the latter owns real window-side teardown beyond hiding the tray icon.
+| File | `#` before -> after | docstring before -> after |
+|---|---|---|
+| `audio_formats.py` | 37 -> 14 | 8 -> 7 |
+| `docker_setup.py` | 143 -> 67 | 50 -> 43 |
+| `matching.py` | 82 -> 80 | 17 -> 17 |
+| `config_store.py` | 69 -> 48 | 0 -> 0 |
+| `soulseek/quality.py` | 112 -> 108 | 24 -> 21 |
+| `audio_analysis.py` | 50 -> 43 | 10 -> 10 |
 
-One real internal (non-test) caller needed repointing —
-`MainWindow.__init__`'s own gate on whether to connect
-`applicationStateChanged` read `self._tray_icon` directly; now
-`self._tray._tray_icon`.
+One commit per file (`7a0b0b3`, `c5556d4`, `946f188`, `1b9bedc`,
+`9a6dc85`, `da31263`). `matching.py`/`audio_analysis.py` moved least —
+both were already close to house style (real measured numbers,
+`confirmed live`/`untuned` markers), matching the brief's own
+prediction that those markers are the valuable comments.
 
-**Real gap, worse than S11.6's own reported one:** grepping for
-`window._on_tray_open_seeker(` (a call) missed
-`test_application_active_is_a_near_no_op_when_already_visible`, which
-referenced the identifier as a **string** —
-`monkeypatch.setattr(window, "_on_tray_open_seeker", ...)`. Commit 1
-(pure move) passed clean; commit 2's delegating-property deletion broke
-it with a real `AttributeError`, caught by the full-suite run, not by
-grep. **Grepping for `\b<name>\b` (not just `<name>(`) still isn't
-enough if the identifier can appear as a bare monkeypatch string** —
-grep for the plain identifier AND its quoted forms
-(`"<name>"`/`'<name>'`) both, next time this pattern comes up anywhere
-else in the codebase.
+**Examples, from actual work:** KEEP verbatim — `matching.py`'s
+`FS_SUBSTITUTION_RE`/`DOT_RE`/`FEAT_CLAUSE_RE` comments, each citing a
+real BMTH track and a measured ratio. KEEP-COMPRESSED —
+`audio_formats.py`'s `.aifc`-excluded-from-`LOSSLESS_EXTENSIONS`
+reasoning: kept the mutagen-COMM-chunk fact + `confirmed live` marker,
+dropped the "Roadmap item R1" framing (HISTORY §85 link added). MOVE —
+`audio_formats.py`'s `DOWNLOADABLE_EXTENSIONS` comment had a `.ogg`/
+`format_unsupported` anecdote **not yet in HISTORY**; added to §94
+first, then deleted from source (§10.1.6's "add before delete," not
+skipped). DELETE — `docker_setup.py::compose_file_path()`'s "Same
+reasoning/home as `slskd_data_dir()`" preamble restated what the
+function below already shows; trimmed to one clause.
 
-## Known flakes — not regressions, reproduce on a clean tree
+**Real gaps found, not just comment moves:** `docker_setup.py::
+KICKED_LOG_PATTERNS` cited "docs/HISTORY.md item 8" — real entry is
+**§52**, fixed. `matching.py::evaluate_match` cited "CLAUDE.md item
+56" — CLAUDE.md has no numbered items; real entry is **HISTORY §56**.
+Two vague "see CLAUDE.md" pointers replaced with real HISTORY links
+(§5, §11).
 
-`test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
-`test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2, always green in isolation. Fired twice across this session's
-several full runs (consistent with S11.2–S11.6's already-elevated
-reports). Someone should instrument this rather than re-reporting it.
+All six commits pass `ruff`/`mypy --strict` individually; full suite
+re-run once at the end (numbers above), since none of this touches
+behavior.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -113,15 +104,17 @@ phase you aren't doing.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
   S9's skip-count mismatch (29 vs. everyone else's 1) — same status.
 - **Three round-8 flakes in CLAUDE.md's Open Issues, plus the
-  fullscreen-close pair above (firing noticeably more often across
+  fullscreen-close pair (firing noticeably more often across
   S11.2–S11.7)** — diagnose any recurrence directly, never
   `pytest-rerunfailures`.
-- **S12's own comment-triage pass (§10.1) now includes `ui/pages/*`
-  and `ui/tray.py`/`ui/dialogs.py` for the first time** — these files
-  didn't exist as separate modules before Phase 6; the brief's own
-  file list for §10.1 predates the split and may need light
-  reinterpretation (touch the pages named in S12/S13's own rows, not
-  the pre-split `main_window.py` locations the brief still names).
+- **S12 found two wrong HISTORY citations** in comments (a plain
+  number-typo, and "CLAUDE.md item N" where CLAUDE.md has no numbered
+  items). S13 should spot-check a few `item \d+`/`§` references against
+  the real HISTORY.md section rather than assume every citation in the
+  files it touches is correct.
+- **`soulseek/download_service.py`/`ui/pages/*` didn't exist as
+  separate modules when the brief's §10.1.5 file list was written** —
+  treat that list as a pointer to "the pages," not a literal path list.
 
 ## How to end your session
 
