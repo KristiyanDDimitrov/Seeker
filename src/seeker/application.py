@@ -160,6 +160,35 @@ class Application:
         self._sharing_service: SharingService | None = None
 
     @property
+    def settings(self) -> SeekerConfig:
+        """Read-only view of the persisted config store — the public
+        surface presentation-layer code reads instead of reaching into
+        `self.application._config_store` directly (round 8 §7.1).
+        """
+        return self._config_store
+
+    def update_settings(self, **changes: object) -> SeekerConfig:
+        """Persist arbitrary `SeekerConfig` field changes and refresh
+        the in-memory config store — the generic counterpart to the
+        domain-specific setters below (persist_default_destination,
+        set_notification_preference, etc.) for presentation-layer code
+        saving fields that don't need their own single-purpose method
+        (round 8 §7.1 — replaces a direct
+        `self.application._config_store = updated` write from
+        settings_window.py, which bypassed this class entirely). A
+        change that also requires cache invalidation (a client_id or
+        SoulSeek credential change) still goes through
+        connect_spotify/persist_soulseek_config, not this.
+        """
+        config_path = resolve_config_path()
+        current = load_config(config_path)
+        updated = replace(current, **changes)  # type: ignore[arg-type]
+        save_config(updated, config_path)
+        self._config_store = updated
+
+        return updated
+
+    @property
     def _spotify_client_id(self) -> str | None:
         # Config store value takes precedence — env is only a fallback
         # for a setup that hasn't gone through migration (or is
