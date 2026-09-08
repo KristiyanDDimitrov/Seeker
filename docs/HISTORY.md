@@ -14075,6 +14075,23 @@ selection), found the same way `PageContext`'s own extra fields were:
 by grepping every method being moved for what it actually touches
 before assuming a clean lift.
 
+**`ui/pages/review_page.py` — the hardest page moved (S9), and a fourth
+seam (`ReviewHost`).** Hosts three independent decision queues sharing
+one poll cycle and one tray-badge/notification path: SoulSeek
+needs-review candidates, Phase 2 upgrade replacements, and local-file
+matches. `ReviewHost` carries `status_label` (the same shared
+Dashboard-owned widget TaggingPanel already reaches through its own
+Host), `refresh_track_table` (Dashboard's `_poll_selected_playlist`,
+called after a local-match confirm/reject changes what's IN_LIBRARY),
+and `check_for_needs_decision_notification` (stays shell-owned because
+it also reads `_tray_icon`/`application.settings`, neither of which
+belongs on a page). `_pending_review_focus_track_id`/
+`_focus_pending_review_row` moved here too, even though `_show_page`
+(still on `MainWindow`) is what sets/triggers them — the same "reach a
+moved page's private state directly, from the one shell method that
+legitimately needs to" precedent `_invalidate_after_leaving_settings`
+already uses calling `self._dashboard_page._poll_next_step()`.
+
 **`ui/pages/dashboard_page.py` — the biggest single page moved, and a
 third seam beyond `PageContext` (S8).** New `DashboardHost` carries the
 handful of actions that live on `MainWindow` because they're shared

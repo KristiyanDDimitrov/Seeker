@@ -1,20 +1,17 @@
-"""The Review page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py. ~25 methods per §9.1's table (26 counting the
-constructor's own former `_build_review_content`) — the hardest page
-moved so far per the plan's own ordering rationale, since it hosts
-three independent decision queues sharing one poll cycle and one
+"""The Review page (HISTORY §119) — the hardest page moved, since it
+hosts three independent decision queues sharing one poll cycle and one
 tray-badge/notification path back to the shell: SoulSeek needs-review
 candidates, Phase 2 upgrade replacements, and local-file matches.
 
 Beyond PageContext, this page needs a second, narrower seam —
 `ReviewHost` — for `status_label` (the same shared Dashboard-owned
-widget TaggingPanel already reaches through its own Host, per
-TaggingPanelHost's own docstring), `refresh_track_table` (Dashboard's
-`_poll_selected_playlist`, called after a local-match confirm/reject
-changes what's IN_LIBRARY), and `check_for_needs_decision_notification`
-(real MainWindow/tray logic — R7.5's de-duplicated notification — that
-stays shell-owned because it also reads `_tray_icon`/
-`application.settings`, neither of which belongs on a page).
+widget TaggingPanel already reaches through its own Host),
+`refresh_track_table` (Dashboard's `_poll_selected_playlist`, called
+after a local-match confirm/reject changes what's IN_LIBRARY), and
+`check_for_needs_decision_notification` (real MainWindow/tray logic —
+a de-duplicated notification — that stays shell-owned because it also
+reads `_tray_icon`/`application.settings`, neither of which belongs on
+a page).
 
 `_pending_review_focus_track_id`/`_focus_pending_review_row` move here
 too — both are genuinely Review-owned state/logic, just previously
@@ -75,9 +72,8 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 
 @dataclass(frozen=True)
 class ReviewHost:
-    """What Review needs from the shell beyond PageContext. Same
-    "grep every method being moved for what it actually touches before
-    assuming a clean lift" approach as DashboardHost/TaggingPanelHost.
+    """What Review needs from the shell beyond PageContext (HISTORY
+    §119).
     """
     status_label: QLabel
     refresh_track_table: Callable[[], None]
@@ -90,25 +86,24 @@ class ReviewPage(QWidget):
         self._context = context
         self._host = host
 
-        # R7.3 — the tray menu's own "Review (N)"/"Upgrades (N)"
-        # counts, read by the shell via the MainWindow delegating
-        # properties of the same private names.
+        # The tray menu's own "Review (N)"/"Upgrades (N)" counts, read
+        # by the shell via the MainWindow delegating properties of the
+        # same private names (HISTORY §90).
         self._needs_review_count = 0
         self._pending_upgrades_count = 0
         # Set by a Dashboard double-click on a NEEDS_REVIEW/AWAITING_
-        # REVIEW row (roadmap item 56 §2.4); consumed once by
+        # REVIEW row (HISTORY §56 §2.4); consumed once by
         # _focus_pending_review_row the next time this page's data
         # actually loads.
         self._pending_review_focus_track_id: str | None = None
 
-        # Two independent sections, per item 26: SoulSeek needs-review
-        # candidates (item 17's tier, gaining its first real
-        # confirm/reject action here) and Phase 2 upgrade confirmations
-        # (item 8's ready_for_review flow, previously CLI-only via
-        # `seeker downloads review`). Both are driven by DownloadService
-        # methods that were built explicit-decision and input()-free
-        # specifically so a UI could call them directly — see CLAUDE.md
-        # item 26 §0/§1.
+        # Two independent sections: SoulSeek needs-review candidates
+        # (HISTORY §17's tier, gaining its first real confirm/reject
+        # action here) and Phase 2 upgrade confirmations (HISTORY §8's
+        # ready_for_review flow, previously CLI-only via `seeker
+        # downloads review`). Both are driven by DownloadService methods
+        # that were built explicit-decision and input()-free
+        # specifically so a UI could call them directly (HISTORY §26).
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -128,9 +123,9 @@ class ReviewPage(QWidget):
             QLabel("Downloaded upgrades ready for review")
         )
         upgrades_header_row.addStretch()
-        # Roadmap item R3.1 — "Replace all". Real count set/refreshed
-        # in _render_pending_upgrades, so it's never stale against
-        # what's actually in the table.
+        # "Replace all" (HISTORY §88). Real count set/refreshed in
+        # _render_pending_upgrades, so it's never stale against what's
+        # actually in the table.
         self.replace_all_upgrades_button = QPushButton("Replace all")
         self.replace_all_upgrades_button.setToolTip(
             help_text.TOOLTIP_REPLACE_ALL_UPGRADES
@@ -150,7 +145,7 @@ class ReviewPage(QWidget):
         layout.addWidget(theme.make_card(self.review_upgrades_table))
         self._configure_review_upgrades_columns()
 
-        # Third section — roadmap item 56 Phase 2, closing item 7's
+        # Third section (HISTORY §56 Phase 2), closing HISTORY §7's
         # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
         # from the SoulSeek candidates table above) never had a
         # confirm/reject UI at all before this.
@@ -164,12 +159,11 @@ class ReviewPage(QWidget):
         layout.addWidget(theme.make_card(self.review_local_table))
         self._configure_review_local_columns()
 
-        # Roadmap item R2.1 — the 2s poll_timer rebuilds this table's
-        # checkboxes from scratch every tick (see poll_timer's own
-        # comment on why); nothing carried the checked state across
-        # that rebuild before. Keyed by the stable
+        # The 2s poll_timer rebuilds this table's checkboxes from
+        # scratch every tick; nothing carried the checked state across
+        # that rebuild before this fix. Keyed by the stable
         # UpgradeReviewDetails.request_id, never row index — pruned to
-        # only rows still present on every render (R2.3).
+        # only rows still present on every render (HISTORY §86).
         self._upgrade_delete_checked: set[int] = set()
         self._current_pending_upgrades: PendingUpgrades = []
 
@@ -215,12 +209,12 @@ class ReviewPage(QWidget):
         candidates, upgrades, local_matches = data
         total = len(candidates) + len(upgrades) + len(local_matches)
         self._context.update_nav_badge("review", total)
-        # Roadmap item R7.3 — the tray menu's own "Review (N)"/
-        # "Upgrades (N)" counts, built from this same fetch (never a
-        # third source of truth). "Review" covers everything needing a
-        # confirm/reject decision; "Upgrades" is its own real Phase 2
-        # concept (replace/decline), kept distinct in the menu the same
-        # way the two are already distinct sections on this page.
+        # The tray menu's own "Review (N)"/"Upgrades (N)" counts, built
+        # from this same fetch (never a third source of truth).
+        # "Review" covers everything needing a confirm/reject decision;
+        # "Upgrades" is its own real Phase 2 concept (replace/decline),
+        # kept distinct in the menu the same way the two are already
+        # distinct sections on this page (HISTORY §90).
         self._needs_review_count = len(candidates) + len(local_matches)
         self._pending_upgrades_count = len(upgrades)
         self._host.check_for_needs_decision_notification(total)
@@ -233,9 +227,9 @@ class ReviewPage(QWidget):
             self,
             candidates: NeedsReviewCandidates,
     ) -> None:
-        # Roadmap item R7.6 — counts/notifications are already computed
-        # by the caller (_render_review_items) before this runs; the
-        # table rebuild itself is pure waste while hidden.
+        # Counts/notifications are already computed by the caller
+        # (_render_review_items) before this runs; the table rebuild
+        # itself is pure waste while hidden (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
 
@@ -320,17 +314,17 @@ class ReviewPage(QWidget):
         )
 
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
-        # Roadmap item R3.1 — the real list "Replace all" acts on,
-        # recomputed fresh every render so a click always sees exactly
-        # what's on screen right now (item 76's own "recompute at click
-        # time" lesson, R3.3). Kept unconditional (not behind the R7.6
+        # The real list "Replace all" acts on, recomputed fresh every
+        # render so a click always sees exactly what's on screen right
+        # now (HISTORY §76's "recompute at click time" lesson, applied
+        # again in §88). Kept unconditional (not behind the
         # hidden-window gate below) — the underlying poll keeps
         # fetching fresh data while hidden, so this stays correct the
         # instant the window is shown again.
         self._current_pending_upgrades = upgrades
 
-        # Roadmap item R7.6 — the table rebuild itself is pure waste
-        # while hidden.
+        # The table rebuild itself is pure waste while hidden
+        # (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
 
@@ -340,8 +334,8 @@ class ReviewPage(QWidget):
             f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
         )
 
-        # Roadmap item R2.3 — prune keys for rows that no longer exist,
-        # so this can't grow unbounded across a long session.
+        # Prune keys for rows that no longer exist, so this can't grow
+        # unbounded across a long session (HISTORY §86).
         live_request_ids = {details.request_id for details in upgrades}
         self._upgrade_delete_checked &= live_request_ids
 
@@ -400,11 +394,11 @@ class ReviewPage(QWidget):
             delete_checkbox.setToolTip(
                 help_text.TOOLTIP_DELETE_OLD_FILE_CHECKBOX
             )
-            # Roadmap item R2.1 — restore whatever this row's checkbox
-            # was set to before the last rebuild, and keep the state
-            # map updated as the user toggles it, keyed by the stable
-            # request_id (never row index, which shifts as rows are
-            # added/removed).
+            # Restore whatever this row's checkbox was set to before
+            # the last rebuild, and keep the state map updated as the
+            # user toggles it, keyed by the stable request_id (never
+            # row index, which shifts as rows are added/removed)
+            # (HISTORY §86).
             request_id = details.request_id
             delete_checkbox.setChecked(
                 request_id in self._upgrade_delete_checked
@@ -464,8 +458,8 @@ class ReviewPage(QWidget):
         self._poll_review_items()
 
     def _on_replace_all_upgrades_clicked(self) -> None:
-        # Roadmap item R3.1/R3.3 — built fresh from what's actually on
-        # screen right now, never a stale plan from an earlier click.
+        # Built fresh from what's actually on screen right now, never a
+        # stale plan from an earlier click (HISTORY §76, §88).
         upgrades = self._current_pending_upgrades
 
         if not upgrades:
@@ -506,8 +500,8 @@ class ReviewPage(QWidget):
             self,
             matches: list[NeedsReviewMatch],
     ) -> None:
-        # Roadmap item R7.6 — the table rebuild itself is pure waste
-        # while hidden.
+        # The table rebuild itself is pure waste while hidden
+        # (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
 
@@ -566,8 +560,9 @@ class ReviewPage(QWidget):
             button: QPushButton,
     ) -> None:
         # No file on disk is touched by confirm_match() — no double-
-        # confirm gate, matching item 27's precedent that this project's
-        # confirmation gate is for file replacement, not DB state.
+        # confirm gate, matching this project's precedent that its
+        # confirmation gate is for file replacement, not DB state
+        # (HISTORY §27).
         run_worker(
             self._context.thread_pool,
             lambda: self._context.application.library_service
@@ -602,9 +597,9 @@ class ReviewPage(QWidget):
             local_matches: list[NeedsReviewMatch],
     ) -> None:
         # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
-        # Dashboard cell (roadmap item 56 Phase 2 §2.4, extended by item
-        # 66 Phase 4.1 to cover REVIEW_CANDIDATE too) sets
-        # _pending_review_focus_track_id and switches to this page; once
+        # Dashboard cell (HISTORY §56 §2.4, extended by §66 to cover
+        # REVIEW_CANDIDATE too) sets _pending_review_focus_track_id and
+        # switches to this page; once
         # the real data has actually loaded, this scrolls to and selects
         # the matching row — a track that turns out to have nothing here
         # yet (e.g. a locked/shortlisted RETRYING row, not yet
