@@ -1,6 +1,4 @@
-"""The Downloads page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py.
-"""
+"""The Downloads page (HISTORY §119)."""
 
 from datetime import UTC, datetime
 
@@ -35,39 +33,37 @@ _DOWNLOAD_STATUS_LABELS = {
     "ready_for_review": "Ready for review",
     "completed": "Completed",
     "failed": "Failed",
-    # Roadmap item 66 (Phase 4.3) — exhausted its retry budget against
-    # this specific peer; distinct from "Failed" so it reads as "we gave
-    # up chasing this one," not "something errored."
+    # Exhausted its retry budget against this specific peer; distinct
+    # from "Failed" so it reads as "we gave up chasing this one," not
+    # "something errored" (HISTORY §66).
     "unavailable": "Unavailable (gave up retrying)",
 }
 
 # Statuses where a progress bar means anything at all — a locked/
 # shortlisted row has no real, current transfer to show progress for
-# (see CLAUDE.md: a rejection leaves bytes_transferred/total_bytes
-# unset by design, not zeroed). "failed" is deliberately absent too —
-# it gets its own terminal branch below, not this one.
+# (a rejection leaves bytes_transferred/total_bytes unset by design,
+# not zeroed). "failed" is deliberately absent too — it gets its own
+# terminal branch below, not this one.
 _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
 
-# Roadmap item 56 Phase 5.4 — a row in any of these will never report
-# new progress again. Branched on BEFORE ever consulting the ETA
-# tracker, which is the actual fix for "a finished download reads as
-# Stalled": the tracker has no concept of "this row is done," so
-# feeding it more identical-bytes samples from a completed/failed/
-# ready_for_review row eventually looks exactly like a genuinely stuck
-# in-progress download (STALL_SAMPLE_COUNT identical samples) to it.
-# 'unavailable' (item 66 Phase 4.3) is the same kind of terminal state
-# as 'failed'.
+# A row in any of these will never report new progress again. Branched
+# on BEFORE ever consulting the ETA tracker, which is the actual fix
+# for "a finished download reads as Stalled" (HISTORY §56 Phase 5.4):
+# the tracker has no concept of "this row is done," so feeding it more
+# identical-bytes samples from a completed/failed/ready_for_review row
+# eventually looks exactly like a genuinely stuck in-progress download
+# to it. 'unavailable' is the same kind of terminal state as 'failed'.
 _DOWNLOAD_TERMINAL_STATUSES = {
     "completed", "failed", "ready_for_review", "unavailable",
 }
 
 
 def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
-    # Roadmap item 56 Phase 5.4 — a fixed label, never the ETA tracker,
-    # for a row that will never report new progress again. 'unavailable'
-    # (item 66 Phase 4.3) gets the same blank treatment as 'failed' — a
-    # full bar would misleadingly read as "completed" for something that
-    # never actually succeeded.
+    # A fixed label, never the ETA tracker, for a row that will never
+    # report new progress again (HISTORY §56 Phase 5.4). 'unavailable'
+    # gets the same blank treatment as 'failed' — a full bar would
+    # misleadingly read as "completed" for something that never
+    # actually succeeded.
     if request.status in ("failed", "unavailable"):
         return QWidget()  # blank, not a misleading full/empty bar
 
@@ -78,8 +74,8 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
         bar.setValue(request.bytes_transferred)
     else:
         # A completed/ready_for_review row should always have real
-        # bytes (item 20's standing rule), but render a full bar rather
-        # than crash/guess if a real one somehow doesn't.
+        # bytes (HISTORY §20), but render a full bar rather than
+        # crash/guess if a real one somehow doesn't.
         bar.setRange(0, 1)
         bar.setValue(1)
 
@@ -107,11 +103,11 @@ def _build_progress_widget(
     if not (request.total_bytes and request.bytes_transferred is not None):
         # No bytes reported yet — indeterminate ("busy") rather than a
         # 0%-forever bar that looks identical to actually being stuck.
-        # No ETA either (Task 2): there's nothing determinate to
-        # estimate against. Roadmap item 96 (B4.1) — wrapped in the
-        # same container shape as the determinate branch below, not
-        # returned bare: a bare bar gets clamped to the top of the cell
-        # (see theme.wrap_progress_bar's own docstring for why).
+        # No ETA either: there's nothing determinate to estimate
+        # against. Wrapped in the same container shape as the
+        # determinate branch below, not returned bare: a bare bar gets
+        # clamped to the top of the cell (HISTORY §96; see
+        # theme.wrap_progress_bar's own docstring for why).
         bar.setRange(0, 0)
         return theme.wrap_progress_bar(bar, None)
 
@@ -119,8 +115,7 @@ def _build_progress_widget(
     bar.setValue(request.bytes_transferred)
     theme.style_determinate_progress_bar(bar)
 
-    # ETA only ever shown once the bar is determinate, per Task 2's own
-    # scoping.
+    # ETA only ever shown once the bar is determinate (HISTORY §20).
     return theme.wrap_progress_bar(bar, eta_text or "Calculating…")
 
 
@@ -129,25 +124,25 @@ class DownloadsPage(QWidget):
         super().__init__()
         self._context = context
 
-        # Task 2 — speed/ETA estimation for the Downloads tab. Purely
-        # in-memory, scoped to this window's lifetime — see
+        # Speed/ETA estimation for the Downloads tab (HISTORY §20).
+        # Purely in-memory, scoped to this window's lifetime — see
         # ui/download_eta.py's own docstring for the sampling contract.
         self._eta_tracker = DownloadEtaTracker()
-        # Roadmap item R7 — menu-bar background operation. Counts the
-        # tray menu's own status line, built from this same fetch
-        # (never a third source of truth) — read by MainWindow via a
-        # delegating property, same as every other tray count.
+        # Counts the tray menu's own status line, built from this same
+        # fetch (never a third source of truth) — read by MainWindow
+        # via a delegating property, same as every other tray count
+        # (HISTORY §90).
         self.active_downloads_count = 0
 
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Task 9's aggregate remaining-time header — text only, empty
-        # (no reserved-but-blank strip) whenever there's nothing active
-        # to summarize; see _render_aggregate_eta.
+        # Aggregate remaining-time header (HISTORY §53) — text only,
+        # empty (no reserved-but-blank strip) whenever there's nothing
+        # active to summarize; see _render_aggregate_eta.
         self.downloads_eta_label = QLabel("")
-        # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
+        # QLabel[badge="muted"] in theme.py.
         self.downloads_eta_label.setProperty("badge", "muted")
         layout.addWidget(self.downloads_eta_label)
 
@@ -155,22 +150,21 @@ class DownloadsPage(QWidget):
         self.downloads_table.setHorizontalHeaderLabels(
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
-        # Roadmap item 8.1.3 (round 8, Phase 5) — checked against
-        # ColumnLayout and left alone: this table (and History's,
-        # Sharing's uploads table) has no Actions column and no
-        # explicit per-column resize mode at all, relying entirely on
-        # setStretchLastSection for its one flexible column. There is
-        # no `fit_content`/`stretch`/`actions` shape here for a
-        # ColumnLayout to declare — folding it in would mean adding a
-        # setStretchLastSection(False) call that actively fights the
-        # one line this table already uses correctly.
+        # Checked against ColumnLayout and left alone (HISTORY §118):
+        # this table (and History's, Sharing's uploads table) has no
+        # Actions column and no explicit per-column resize mode at all,
+        # relying entirely on setStretchLastSection for its one flexible
+        # column. There is no `fit_content`/`stretch`/`actions` shape
+        # here for a ColumnLayout to declare — folding it in would mean
+        # adding a setStretchLastSection(False) call that actively
+        # fights the one line this table already uses correctly.
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.downloads_table)
-        # Roadmap item D3 (round 6) — this table never sets a per-column
-        # resize mode of its own (relies on setStretchLastSection above
-        # for Progress), so the floor call belongs right here, once, at
-        # construction; `apply_column_floors` skips the stretched last
-        # column on its own.
+        # This table never sets a per-column resize mode of its own
+        # (relies on setStretchLastSection above for Progress), so the
+        # floor call belongs right here, once, at construction;
+        # `apply_column_floors` skips the stretched last column on its
+        # own (HISTORY §110).
         theme.apply_column_floors(self.downloads_table)
         layout.addWidget(theme.make_card(self.downloads_table))
 
@@ -197,21 +191,21 @@ class DownloadsPage(QWidget):
             self,
             downloads: list[ActiveDownload],
     ) -> None:
-        # Roadmap item R7.3 — the tray menu's own status line, built
-        # from this same fetch. Counted here (not deferred behind the
-        # R7.6 hidden-window gate below) since the whole point of the
-        # tray is a live status while nothing else is visible.
+        # The tray menu's own status line, built from this same fetch.
+        # Counted here (not deferred behind the hidden-window gate
+        # below) since the whole point of the tray is a live status
+        # while nothing else is visible (HISTORY §90).
         self.active_downloads_count = sum(
             1 for download in downloads
             if download.request.status == "downloading"
         )
 
-        # Roadmap item R7.6 — re-rendering the table (and the nav
-        # badge/ETA header, both visual-only) is pure waste while
-        # nobody can see the window; the real backend poll that feeds
-        # this data keeps running regardless (see MainWindow's own
-        # _trigger_backend_poll, untouched by this check — it lives on
-        # a separate timer).
+        # Re-rendering the table (and the nav badge/ETA header, both
+        # visual-only) is pure waste while nobody can see the window;
+        # the real backend poll that feeds this data keeps running
+        # regardless (see MainWindow's own _trigger_backend_poll,
+        # untouched by this check — it lives on a separate timer)
+        # (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
 
@@ -238,10 +232,10 @@ class DownloadsPage(QWidget):
             is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
 
             if is_terminal:
-                # Roadmap item 56 Phase 5.4 — evicted the moment a
-                # terminal status is seen, not left to evict_except()'s
-                # once-per-poll sweep; the ETA tracker is never
-                # consulted for this row at all below.
+                # Evicted the moment a terminal status is seen, not
+                # left to evict_except()'s once-per-poll sweep; the ETA
+                # tracker is never consulted for this row at all below
+                # (HISTORY §56 Phase 5.4).
                 if request.id is not None:
                     self._eta_tracker.evict(request.id)
                 eta_text = None
@@ -258,10 +252,10 @@ class DownloadsPage(QWidget):
                 row, 4, _build_progress_widget(download, eta_text),
             )
 
-        # Roadmap item R5 (5b.2) — this table's progress-bar cell
-        # widgets are real per-row content, same treatment as every
-        # table with an Actions column even though this one has none
-        # (item 80's own deliberate scoping — see _build_progress_widget/
+        # This table's progress-bar cell widgets are real per-row
+        # content, same treatment as every table with an Actions column
+        # even though this one has none (HISTORY §87, §80's own
+        # deliberate scoping — see _build_progress_widget/
         # _build_terminal_progress_widget's bespoke stretch factor).
         self.downloads_table.resizeRowsToContents()
 
@@ -269,18 +263,18 @@ class DownloadsPage(QWidget):
         # No reserved-but-blank strip when there's nothing active — the
         # empty string collapses the label to zero height, matching
         # this project's "blank, not a misleading control" precedent
-        # (item 27) rather than showing "0 transferring" forever.
+        # (HISTORY §27) rather than showing "0 transferring" forever.
         if not downloads:
             self.downloads_eta_label.setText("")
             self.downloads_eta_label.setToolTip("")
             return
 
-        # Roadmap item 56 Phase 5.4 — a terminal row (completed/failed/
-        # ready_for_review, still visible for
-        # RECENTLY_FINISHED_WINDOW_SECONDS) has nothing left to
-        # estimate; counting it here previously folded it into the
+        # A terminal row (completed/failed/ready_for_review, still
+        # visible for RECENTLY_FINISHED_WINDOW_SECONDS) has nothing left
+        # to estimate; counting it here previously folded it into the
         # header's "queued (no estimate)" figure, which reads as
-        # actively waiting rather than already finished.
+        # actively waiting rather than already finished (HISTORY §56
+        # Phase 5.4).
         pairs = [
             (download.request.id, download.request.total_bytes)
             for download in downloads
@@ -292,7 +286,7 @@ class DownloadsPage(QWidget):
         self.downloads_eta_label.setToolTip(AGGREGATE_ETA_TOOLTIP)
 
     def _sample_download_progress(self) -> None:
-        # Task 2 — feeds DownloadEtaTracker exactly once per real
+        # Feeds DownloadEtaTracker exactly once per real
         # poll_downloads() cycle (this method is only ever called from
         # MainWindow's own _trigger_backend_poll on_finished callback),
         # never from the 2s display-refresh tick — sampling there would

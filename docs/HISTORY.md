@@ -14065,6 +14065,16 @@ shell-side implementation to bind it to (`InlineNotice` instances are
 built per-page, not through one shared `MainWindow` method). Add it,
 wired to something real, when a page that needs it moves.
 
+**`ui/pages/tagging_panel.py` needed a second, narrower seam beyond
+`PageContext` (S7).** The Tagging panel isn't a top-level page on the
+shell's `QStackedWidget` — it's a sub-widget embedded inside the
+still-unmigrated Dashboard page. New `TaggingPanelHost` carries exactly
+the pieces of Dashboard state it reaches into (selected-playlist, its
+own status_label/notice widgets, resolving the track table's current
+selection), found the same way `PageContext`'s own extra fields were:
+by grepping every method being moved for what it actually touches
+before assuming a clean lift.
+
 **S11's two gotchas, confirmed live, relevant to every later page's
 delegating-stub removal (S11.1-S11.7), not just tray's own (S11.7):**
 (1) a signal connected directly to a bound method of a non-`QObject`
