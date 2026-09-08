@@ -52,7 +52,7 @@ named split point rather than pushing through.
 | # | Session | Executes | Est. |
 |---|---|---|---|
 | ☑ S1 | Close-out + shrink CLAUDE.md | §S1 below, then §11.2 (8a only) | ~90 K |
-| ☐ S2 | Layering: private access | §7.1 | ~70 K |
+| ☑ S2 | Layering: private access | §7.1 | ~70 K |
 | ☐ S3 | Layering: logging | §7.2 | ~120 K |
 | ☐ S4 | Deduplication | §8.1, §8.2 | ~110 K |
 | ☐ S5 | Phase 6 prep + dialogs + static pages | §9.2, §9.3.1 (dialogs, History, Help/Support) | ~110 K |
