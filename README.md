@@ -1,4 +1,4 @@
-# seeker
+# Seeker
 
 A personal DJ music library management assistant. `seeker` keeps a local
 cache of your Spotify playlists, matches those tracks against the files you
