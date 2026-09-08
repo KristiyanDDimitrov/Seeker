@@ -895,11 +895,17 @@ def test_support_page_shows_honest_framing_and_non_financial_help(qtbot):
 def test_support_page_renders_a_button_for_every_real_support_link(
         qtbot, monkeypatch,
 ):
-    from seeker.ui import main_window as main_window_module
+    # build_support_links_row() (round 8 §9.3.1) lives in seeker.ui.dialogs
+    # now, shared from there by both AboutDialog and the Support page —
+    # patch the module that actually calls webbrowser.open, not
+    # main_window (webbrowser is a stdlib singleton module either way,
+    # so this patches the same real object regardless of which name
+    # reaches it).
+    from seeker.ui import dialogs as dialogs_module
 
     opened: list[str] = []
     monkeypatch.setattr(
-        main_window_module.webbrowser, "open", opened.append
+        dialogs_module.webbrowser, "open", opened.append
     )
 
     application = FakeApplication()
@@ -2653,11 +2659,14 @@ def test_about_dialog_renders_a_button_for_every_real_support_link(
     # itself is covered separately below, via a synthetic placeholder,
     # so this guard stays exercised even though production data no
     # longer has a real one to filter).
-    from seeker.ui import main_window as main_window_module
+    # build_support_links_row() (round 8 §9.3.1) lives in seeker.ui.dialogs
+    # now — see the identical note on the Support-page version of this
+    # test above.
+    from seeker.ui import dialogs as dialogs_module
 
     opened: list[str] = []
     monkeypatch.setattr(
-        main_window_module.webbrowser, "open", opened.append
+        dialogs_module.webbrowser, "open", opened.append
     )
 
     assert all(
