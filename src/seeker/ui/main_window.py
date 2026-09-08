@@ -29,11 +29,9 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QStackedWidget,
@@ -45,7 +43,6 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.library.duplicate_service import DuplicateGroup
-from seeker.models.active_download import ActiveDownload
 from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -74,8 +71,6 @@ from seeker.ui.dialogs import (
     DestinationDialog,
     RenamePreviewDialog,  # noqa: F401
 )
-from seeker.ui.download_eta import DownloadEtaTracker
-from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.dashboard_page import (
@@ -364,8 +359,9 @@ class MainWindow(QMainWindow):
         # `selected_playlist`/`_current_track_statuses`/the next-step
         # dismissal keys all moved to page modules with the rest of
         # their own pages the same way. The downloading count itself
-        # lives on DownloadsPage; read via the `_active_downloads_count`
-        # delegating property below.
+        # lives on DownloadsPage; read via `self._downloads_page.
+        # active_downloads_count` directly (its own delegating property
+        # was deleted at the test-split session, S11.3, §9.3.4).
         # R7.1 — set once the window is genuinely hidden-to-tray
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
@@ -600,7 +596,9 @@ class MainWindow(QMainWindow):
             clear_pre_fullscreen_geometry=self._clear_pre_fullscreen_geometry,
             needs_review_count=lambda: self._needs_review_count,
             pending_upgrades_count=lambda: self._pending_upgrades_count,
-            active_downloads_count=lambda: self._active_downloads_count,
+            active_downloads_count=(
+                lambda: self._downloads_page.active_downloads_count
+            ),
         ))
 
     def _build_ui(self) -> None:
@@ -762,30 +760,9 @@ class MainWindow(QMainWindow):
     # were deleted at the test-split session (S11.1, §9.3.4) — its
     # tests now address self._history_page directly. Search's and
     # Sharing's own delegating properties/methods were deleted the same
-    # way at S11.2 — their tests now address self._search_page/
-    # self._sharing_page directly.
-
-    # Same temporary-delegation pattern for every DownloadsPage
-    # attribute test_ui_smoke.py touches by name, plus `_eta_tracker`/
-    # `_active_downloads_count` — neither is a widget, but both are
-    # read directly off a fresh MainWindow instance by existing tests
-    # (window._eta_tracker.record(...), window._active_downloads_count),
-    # same as History/Search/Sharing's own private-attribute reads.
-    @property
-    def downloads_table(self) -> QTableWidget:
-        return self._downloads_page.downloads_table
-
-    @property
-    def downloads_eta_label(self) -> QLabel:
-        return self._downloads_page.downloads_eta_label
-
-    @property
-    def _eta_tracker(self) -> DownloadEtaTracker:
-        return self._downloads_page._eta_tracker
-
-    @property
-    def _active_downloads_count(self) -> int:
-        return self._downloads_page.active_downloads_count
+    # way at S11.2, and Downloads' and TaggingPanel's own at S11.3 —
+    # their tests now address self._search_page/self._sharing_page/
+    # self._downloads_page/self._dashboard_page._tagging_panel directly.
 
     # Same temporary-delegation pattern for every DashboardPage
     # attribute test_ui_smoke.py touches by name, plus `selected_
@@ -856,55 +833,6 @@ class MainWindow(QMainWindow):
     @selected_playlist.setter
     def selected_playlist(self, value: Playlist | None) -> None:
         self._dashboard_page.selected_playlist = value
-
-    # Same temporary-delegation pattern for every TaggingPanel
-    # attribute test_ui_smoke.py touches by name. TaggingPanel is a
-    # sub-widget of DashboardPage rather than its own registered page,
-    # so the delegation is two hops (MainWindow -> DashboardPage ->
-    # TaggingPanel) rather than one.
-    @property
-    def analyze_audio_checkbox(self) -> QCheckBox:
-        return self._dashboard_page._tagging_panel.analyze_audio_checkbox
-
-    @property
-    def bpm_min_edit(self) -> QLineEdit:
-        return self._dashboard_page._tagging_panel.bpm_min_edit
-
-    @property
-    def bpm_max_edit(self) -> QLineEdit:
-        return self._dashboard_page._tagging_panel.bpm_max_edit
-
-    @property
-    def force_retag_checkbox(self) -> QCheckBox:
-        return self._dashboard_page._tagging_panel.force_retag_checkbox
-
-    @property
-    def tag_selected_button(self) -> QPushButton:
-        return self._dashboard_page._tagging_panel.tag_selected_button
-
-    @property
-    def tag_playlist_button(self) -> QPushButton:
-        return self._dashboard_page._tagging_panel.tag_playlist_button
-
-    @property
-    def fix_missing_art_button(self) -> QPushButton:
-        return self._dashboard_page._tagging_panel.fix_missing_art_button
-
-    @property
-    def fill_missing_art_urls_button(self) -> QPushButton:
-        return self._dashboard_page._tagging_panel.fill_missing_art_urls_button
-
-    @property
-    def rename_files_button(self) -> QPushButton:
-        return self._dashboard_page._tagging_panel.rename_files_button
-
-    @property
-    def tagging_results(self) -> QPlainTextEdit:
-        return self._dashboard_page._tagging_panel.tagging_results
-
-    @property
-    def tagging_controls_layout(self) -> FlowLayout:
-        return self._dashboard_page._tagging_panel.tagging_controls_layout
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1509,18 +1437,6 @@ class MainWindow(QMainWindow):
     def _on_next_step_action(self, action: str) -> None:
         self._dashboard_page._on_next_step_action(action)
 
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating method
-    # for DownloadsPage's own `_render_active_downloads`, called
-    # directly on a fresh MainWindow instance by test_ui_smoke.py
-    # (window._render_active_downloads(...)). Deleted, alongside
-    # repointing those tests at the page widget directly, at the
-    # test-split session (S11, §9.3.4) — not before.
-    def _render_active_downloads(
-            self,
-            downloads: list[ActiveDownload],
-    ) -> None:
-        self._downloads_page._render_active_downloads(downloads)
-
     # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
     # methods for ReviewPage's own attributes/methods
     # test_ui_smoke.py touches directly on a fresh MainWindow instance
@@ -1657,12 +1573,6 @@ class MainWindow(QMainWindow):
             on_finished=on_poll_finished,
             on_error=on_poll_error,
         )
-
-    # Same temporary-delegation pattern as _render_active_downloads
-    # above, for DownloadsPage's own `_record_eta_samples`
-    # (window._record_eta_samples(...) in test_ui_smoke.py).
-    def _record_eta_samples(self, downloads: list[ActiveDownload]) -> None:
-        self._downloads_page._record_eta_samples(downloads)
 
     def _run_busy_worker(
             self,

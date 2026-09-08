@@ -779,7 +779,7 @@ def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
     assert window._nav_buttons["downloads"].text() == "Downloads"
     assert window._nav_buttons["review"].text() == "Review"
 
-    window._render_active_downloads(
+    window._downloads_page._render_active_downloads(
         [_make_active_download(track_id="d1"), _make_active_download(track_id="d2")]
     )
     assert window._nav_buttons["downloads"].text() == "Downloads  (2)"
@@ -790,7 +790,7 @@ def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
     assert window._nav_buttons["review"].text() == "Review  (1)"
 
     # Back to zero must drop the badge entirely, not show "(0)".
-    window._render_active_downloads([])
+    window._downloads_page._render_active_downloads([])
     assert window._nav_buttons["downloads"].text() == "Downloads"
 
 
@@ -3192,7 +3192,10 @@ def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
     window._render_track_statuses(statuses)
     # The panel-wide force checkbox is deliberately left unchecked —
     # Re-tag via the context menu must force regardless of it.
-    assert window.force_retag_checkbox.isChecked() is False
+    assert (
+        window._dashboard_page._tagging_panel.force_retag_checkbox.isChecked()
+        is False
+    )
 
     window._on_retag_track_clicked("t5")
 
@@ -3241,7 +3244,7 @@ def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
     qtbot.addWidget(window)
 
     window._render_track_statuses(statuses)
-    window.force_retag_checkbox.setChecked(True)
+    window._dashboard_page._tagging_panel.force_retag_checkbox.setChecked(True)
 
     actions = window.track_table.cellWidget(0, 3)
     tag_button = actions.findChildren(QPushButton)[0] if actions.findChildren(
@@ -3259,7 +3262,7 @@ def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
         QItemSelectionModel.SelectionFlag.Select
         | QItemSelectionModel.SelectionFlag.Rows,
     )
-    window.tag_selected_button.click()
+    window._dashboard_page._tagging_panel.tag_selected_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
@@ -3271,7 +3274,7 @@ def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
 
     qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
     window.playlist_list.setCurrentRow(0)
-    window.tag_playlist_button.click()
+    window._dashboard_page._tagging_panel.tag_playlist_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_playlist_calls != [],
@@ -3312,18 +3315,18 @@ def test_bpm_range_fields_hidden_until_analyze_audio_checked(qtbot):
     # explicit hide/show state regardless of ancestor visibility, which
     # is what this test actually cares about, so window.show() isn't
     # needed here.
-    assert window.bpm_min_edit.isHidden()
-    assert window.bpm_max_edit.isHidden()
+    assert window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
+    assert window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
 
-    window.analyze_audio_checkbox.setChecked(True)
+    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(True)
 
-    assert not window.bpm_min_edit.isHidden()
-    assert not window.bpm_max_edit.isHidden()
+    assert not window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
+    assert not window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
 
-    window.analyze_audio_checkbox.setChecked(False)
+    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(False)
 
-    assert window.bpm_min_edit.isHidden()
-    assert window.bpm_max_edit.isHidden()
+    assert window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
+    assert window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
 
 
 def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
@@ -3334,9 +3337,9 @@ def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
 
     window._render_track_statuses(statuses)
 
-    window.analyze_audio_checkbox.setChecked(True)
-    window.bpm_min_edit.setText("160")
-    window.bpm_max_edit.setText("180")
+    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(True)
+    window._dashboard_page._tagging_panel.bpm_min_edit.setText("160")
+    window._dashboard_page._tagging_panel.bpm_max_edit.setText("180")
 
     actions = window.track_table.cellWidget(0, 3)
     actions.findChildren(QPushButton)[0].click()
@@ -3358,8 +3361,8 @@ def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
 
     window._render_track_statuses(statuses)
 
-    window.analyze_audio_checkbox.setChecked(True)
-    window.bpm_min_edit.setText("160")
+    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(True)
+    window._dashboard_page._tagging_panel.bpm_min_edit.setText("160")
     # bpm_max_edit deliberately left blank.
 
     actions = window.track_table.cellWidget(0, 3)
@@ -3420,7 +3423,7 @@ def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
             | QItemSelectionModel.SelectionFlag.Rows,
         )
 
-    window.tag_selected_button.click()
+    window._dashboard_page._tagging_panel.tag_selected_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
@@ -3442,7 +3445,7 @@ def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
     qtbot.addWidget(window)
 
     window._render_track_statuses(statuses)
-    window.tag_selected_button.click()
+    window._dashboard_page._tagging_panel.tag_selected_button.click()
 
     assert application.metadata_service.tag_tracks_calls == []
     assert "select" in window.dashboard_notice.text().lower()
@@ -3457,7 +3460,7 @@ def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
     qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
     window.playlist_list.setCurrentRow(0)
 
-    window.tag_playlist_button.click()
+    window._dashboard_page._tagging_panel.tag_playlist_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_playlist_calls != [],
@@ -3473,7 +3476,7 @@ def test_tag_playlist_without_selection_shows_message_and_makes_no_call(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.tag_playlist_button.click()
+    window._dashboard_page._tagging_panel.tag_playlist_button.click()
 
     assert application.metadata_service.tag_playlist_calls == []
     assert "playlist" in window.dashboard_notice.text().lower()
@@ -3509,7 +3512,7 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
 
     window._render_tag_result(result)
 
-    text = window.tagging_results.toPlainText()
+    text = window._dashboard_page._tagging_panel.tagging_results.toPlainText()
     assert "Tagged: 2" in text
     assert "Failed: 1" in text
     assert "[skipped_no_match] Artist A - Title A: no matched local file" in text
@@ -3708,7 +3711,7 @@ def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.fix_missing_art_button.click()
+    window._dashboard_page._tagging_panel.fix_missing_art_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service
@@ -3734,7 +3737,7 @@ def test_fix_missing_art_button_requires_a_selected_playlist(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.fix_missing_art_button.click()
+    window._dashboard_page._tagging_panel.fix_missing_art_button.click()
 
     assert not window.dashboard_notice.isHidden()
     assert "playlist" in window.dashboard_notice.text().lower()
@@ -3748,7 +3751,7 @@ def test_fill_missing_art_urls_button_reports_the_real_count(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.fill_missing_art_urls_button.click()
+    window._dashboard_page._tagging_panel.fill_missing_art_urls_button.click()
 
     qtbot.waitUntil(
         lambda: application.sync_service.sync_playlist_tracks_calls != [],
@@ -3769,7 +3772,7 @@ def test_fill_missing_art_urls_button_reports_zero_found(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.fill_missing_art_urls_button.click()
+    window._dashboard_page._tagging_panel.fill_missing_art_urls_button.click()
 
     qtbot.waitUntil(
         lambda: not window.dashboard_notice.isHidden()
@@ -3834,7 +3837,7 @@ def test_rename_files_button_requires_a_selected_playlist(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.rename_files_button.click()
+    window._dashboard_page._tagging_panel.rename_files_button.click()
 
     assert not window.dashboard_notice.isHidden()
     assert "playlist" in window.dashboard_notice.text().lower()
@@ -3855,7 +3858,7 @@ def test_rename_files_button_plans_then_opens_dialog_and_cancels(
         RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Rejected,
     )
 
-    window.rename_files_button.click()
+    window._dashboard_page._tagging_panel.rename_files_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.plan_renames_calls != [],
@@ -3883,7 +3886,7 @@ def test_rename_files_button_confirmed_calls_apply_and_shows_result(
         RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Accepted,
     )
 
-    window.rename_files_button.click()
+    window._dashboard_page._tagging_panel.rename_files_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.apply_renames_calls != [],
@@ -3917,7 +3920,7 @@ def test_rename_result_notice_names_files_whose_written_name_differed(
         RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Accepted,
     )
 
-    window.rename_files_button.click()
+    window._dashboard_page._tagging_panel.rename_files_button.click()
 
     qtbot.waitUntil(
         lambda: not window.dashboard_notice.isHidden()
@@ -4107,7 +4110,6 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
     table_and_list_attrs = [
         "playlist_list",
         "track_table",
-        "downloads_table",
         "review_needs_table",
         "review_upgrades_table",
         "review_local_table",
@@ -4122,8 +4124,9 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
             f"{attr}'s parent is {parent!r}, not routed through make_card()"
         )
 
-    # History/Search/Sharing have no delegating properties (S11.1/S11.2,
-    # §9.3.4) — same check, against their own page widgets directly.
+    # History/Search/Sharing/Downloads have no delegating properties
+    # (S11.1/S11.2/S11.3, §9.3.4) — same check, against their own page
+    # widgets directly.
     page_owned_tables = [
         ("history_table", window._history_page.history_table),
         ("search_results_table", window._search_page.search_results_table),
@@ -4132,6 +4135,7 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
             window._sharing_page.sharing_locations_table,
         ),
         ("sharing_uploads_table", window._sharing_page.sharing_uploads_table),
+        ("downloads_table", window._downloads_page.downloads_table),
     ]
     for name, widget in page_owned_tables:
         parent = widget.parentWidget()
@@ -5783,7 +5787,7 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
     # test exists to guard; their non-flex columns were never claimed
     # to be derived and are not the bug class E2 fixed.
     _no_column_layout = {
-        window.downloads_table, window._history_page.history_table,
+        window._downloads_page.downloads_table, window._history_page.history_table,
         window._sharing_page.sharing_uploads_table,
     }
 
@@ -5910,7 +5914,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
         _make_track_status(track_id="t2", state=IN_LIBRARY, tagged_at=None),
     ])
     window._show_page("downloads")
-    window._render_active_downloads([
+    window._downloads_page._render_active_downloads([
         _make_active_download(
             track_id="t3", status="downloading",
             bytes_transferred=500, total_bytes=1_000,
@@ -6787,7 +6791,7 @@ def test_tray_menu_status_shows_idle_with_nothing_active(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([])
+    window._downloads_page._render_active_downloads([])
     window._render_tray_menu()
 
     assert window._tray_status_action.text() == "Idle"
@@ -6810,7 +6814,7 @@ def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
             playlist_name="Test",
         ),
     ]
-    window._render_active_downloads(downloads)
+    window._downloads_page._render_active_downloads(downloads)
     window._render_tray_menu()
 
     assert window._tray_status_action.text() == "1 downloading"

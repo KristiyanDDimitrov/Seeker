@@ -33,14 +33,15 @@ def test_downloads_tab_renders_rows_across_playlists(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads(downloads)
+    window._downloads_page._render_active_downloads(downloads)
 
-    assert window.downloads_table.rowCount() == 2
-    assert window.downloads_table.item(0, 1).text() == "Playlist A"
-    assert window.downloads_table.item(1, 1).text() == "Playlist B"
+    table = window._downloads_page.downloads_table
+    assert table.rowCount() == 2
+    assert table.item(0, 1).text() == "Playlist A"
+    assert table.item(1, 1).text() == "Playlist B"
     # A raw "locked" status gets a plain-language note, not the raw
     # state string.
-    assert window.downloads_table.item(1, 3).text() == "Retrying (locked)"
+    assert table.item(1, 3).text() == "Retrying (locked)"
 
 
 # --- Downloads aggregate remaining-time header (Task 9) --------------------
@@ -50,10 +51,10 @@ def test_downloads_aggregate_header_blank_with_no_active_downloads(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([])
+    window._downloads_page._render_active_downloads([])
 
-    assert window.downloads_eta_label.text() == ""
-    assert window.downloads_eta_label.toolTip() == ""
+    assert window._downloads_page.downloads_eta_label.text() == ""
+    assert window._downloads_page.downloads_eta_label.toolTip() == ""
 
 
 def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(
@@ -79,22 +80,22 @@ def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(
     # aggregate() reads from _eta_tracker's own recorded samples, not
     # from the ActiveDownload snapshot itself — feed it two directly,
     # the same way _record_eta_samples does on a real 20s backend poll.
-    window._eta_tracker.record(
+    window._downloads_page._eta_tracker.record(
             1,
             200,
             datetime(2026, 1, 1, tzinfo=UTC),
     )
-    window._eta_tracker.record(
+    window._downloads_page._eta_tracker.record(
             1,
             500,
             datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
     )
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    assert "remaining" in window.downloads_eta_label.text()
-    assert "1 transferring" in window.downloads_eta_label.text()
-    assert window.downloads_eta_label.toolTip() != ""
+    assert "remaining" in window._downloads_page.downloads_eta_label.text()
+    assert "1 transferring" in window._downloads_page.downloads_eta_label.text()
+    assert window._downloads_page.downloads_eta_label.toolTip() != ""
 
 
 def test_downloads_aggregate_header_reports_waiting_with_no_samples(qtbot):
@@ -106,9 +107,9 @@ def test_downloads_aggregate_header_reports_waiting_with_no_samples(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    assert window.downloads_eta_label.text() == (
+    assert window._downloads_page.downloads_eta_label.text() == (
         "Waiting for transfers to start · 0 transferring · "
         "1 queued (no estimate)"
     )
@@ -122,7 +123,7 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
     # Roadmap item 96 (B4) — wrapped in the same QHBoxLayout container
     # shape as every other exit of _build_progress_widget/
@@ -133,7 +134,7 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     # it (the real reported bug — a queued row's bar visibly sat above
     # center while a downloading row's own bar, already wrapped, sat
     # centered).
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     assert not isinstance(container, QProgressBar)
     bar = container.findChild(QProgressBar)
     assert bar is not None
@@ -165,9 +166,9 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     bar = container.findChild(QProgressBar)
     assert bar is not None
     assert bar.maximum() == 1_000
@@ -203,16 +204,16 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
     window.show()
     window._show_page("downloads")
 
-    window._render_active_downloads(downloads)
+    window._downloads_page._render_active_downloads(downloads)
     qtbot.wait(20)
 
-    viewport = window.downloads_table.viewport()
+    viewport = window._downloads_page.downloads_table.viewport()
 
     for row in (0, 1):
-        row_rect = window.downloads_table.visualRect(
-            window.downloads_table.model().index(row, 4)
+        row_rect = window._downloads_page.downloads_table.visualRect(
+            window._downloads_page.downloads_table.model().index(row, 4)
         )
-        widget = window.downloads_table.cellWidget(row, 4)
+        widget = window._downloads_page.downloads_table.cellWidget(row, 4)
         assert widget is not None
         bar = widget.findChild(QProgressBar)
         assert bar is not None
@@ -246,8 +247,8 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
     dpr = image.width() / window.width()
 
     for row in (0, 1):
-        row_rect = window.downloads_table.visualRect(
-            window.downloads_table.model().index(row, 4)
+        row_rect = window._downloads_page.downloads_table.visualRect(
+            window._downloads_page.downloads_table.model().index(row, 4)
         )
         x = round((top_left.x() + row_rect.left() + 10) * dpr)
         y0 = round((top_left.y() + row_rect.top()) * dpr)
@@ -290,10 +291,10 @@ def test_downloads_header_shows_a_real_divider_between_columns(qtbot):
     qtbot.addWidget(window)
     window.show()
     window._show_page("downloads")
-    window._render_active_downloads(downloads)
+    window._downloads_page._render_active_downloads(downloads)
     qtbot.wait(100)
 
-    table = window.downloads_table
+    table = window._downloads_page.downloads_table
     header = table.horizontalHeader()
     image = window.grab().toImage()
     header_top_left = header.mapTo(window, header.rect().topLeft())
@@ -349,9 +350,9 @@ def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    bar = window.downloads_table.cellWidget(0, 4)
+    bar = window._downloads_page.downloads_table.cellWidget(0, 4)
     assert not isinstance(bar, QProgressBar)
 
 
@@ -376,11 +377,13 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
 
     now = datetime(2026, 1, 1, tzinfo=UTC)
     for i in range(3):
-        window._eta_tracker.record(1, 1_000, now + timedelta(seconds=i * 20))
+        window._downloads_page._eta_tracker.record(
+            1, 1_000, now + timedelta(seconds=i * 20),
+        )
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     label_texts = [
         child.text() for child in container.findChildren(QLabel)
     ]
@@ -388,7 +391,7 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
     assert "Stalled" not in label_texts
     # Evicted immediately, not left for the row to eventually drop out
     # of get_active_downloads() on its own.
-    assert 1 not in window._eta_tracker._history
+    assert 1 not in window._downloads_page._eta_tracker._history
 
 
 def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
@@ -399,9 +402,9 @@ def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     bar = container.findChild(QProgressBar)
     assert bar is not None
     assert bar.value() == bar.maximum()
@@ -416,9 +419,9 @@ def test_terminal_progress_widget_shows_ready_for_review_label(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     label_texts = [
         child.text() for child in container.findChildren(QLabel)
     ]
@@ -433,9 +436,9 @@ def test_terminal_progress_widget_for_failed_is_blank_not_a_bar(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    widget = window.downloads_table.cellWidget(0, 4)
+    widget = window._downloads_page.downloads_table.cellWidget(0, 4)
     assert not isinstance(widget, QProgressBar)
     assert widget.findChild(QProgressBar) is None
 
@@ -457,9 +460,9 @@ def test_aggregate_header_excludes_terminal_rows_from_queued_count(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([completed, queued])
+    window._downloads_page._render_active_downloads([completed, queued])
 
-    assert window.downloads_eta_label.text() == (
+    assert window._downloads_page.downloads_eta_label.text() == (
         "Waiting for transfers to start · 0 transferring · "
         "1 queued (no estimate)"
     )
@@ -474,9 +477,9 @@ def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     label = container.findChild(QLabel)
     assert label.text() == "Calculating…"
 
@@ -493,12 +496,12 @@ def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
     now = datetime.now(UTC)
     # 400 bytes/second over the last interval, 400 bytes remaining ->
     # a clean 1s ETA, easy to assert on exactly.
-    window._eta_tracker.record(1, 200, now - timedelta(seconds=1))
-    window._eta_tracker.record(1, 600, now)
+    window._downloads_page._eta_tracker.record(1, 200, now - timedelta(seconds=1))
+    window._downloads_page._eta_tracker.record(1, 600, now)
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     label = container.findChild(QLabel)
     assert label.text() == "1s"
 
@@ -514,11 +517,13 @@ def test_downloads_tab_eta_shows_stalled_after_flat_samples(qtbot):
 
     now = datetime.now(UTC)
     for offset in (2, 1, 0):
-        window._eta_tracker.record(1, 600, now - timedelta(seconds=offset))
+        window._downloads_page._eta_tracker.record(
+            1, 600, now - timedelta(seconds=offset),
+        )
 
-    window._render_active_downloads([download])
+    window._downloads_page._render_active_downloads([download])
 
-    container = window.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 4)
     label = container.findChild(QLabel)
     assert label.text() == "Stalled"
 
@@ -529,16 +534,16 @@ def test_record_eta_samples_evicts_ids_no_longer_active(qtbot):
     qtbot.addWidget(window)
 
     now = datetime.now(UTC)
-    window._eta_tracker.record(1, 100, now)
-    window._eta_tracker.record(1, 200, now)
+    window._downloads_page._eta_tracker.record(1, 100, now)
+    window._downloads_page._eta_tracker.record(1, 200, now)
 
     # request id 1 has since disappeared from get_active_downloads() —
     # completed, failed, or superseded — so a fresh sampling pass with
     # no row for it must drop its history rather than keep it forever
     # (Task 2's own explicit leak-prevention requirement).
-    window._record_eta_samples([])
+    window._downloads_page._record_eta_samples([])
 
-    assert window._eta_tracker.describe(1, 1_000) == "Calculating…"
+    assert window._downloads_page._eta_tracker.describe(1, 1_000) == "Calculating…"
 
 
 def test_trigger_backend_poll_samples_eta_after_poll_succeeds(qtbot):
@@ -553,7 +558,9 @@ def test_trigger_backend_poll_samples_eta_after_poll_succeeds(qtbot):
 
     window._trigger_backend_poll()
 
-    qtbot.waitUntil(lambda: 7 in window._eta_tracker._history, timeout=2000)
+    qtbot.waitUntil(
+        lambda: 7 in window._downloads_page._eta_tracker._history, timeout=2000,
+    )
 
 
 def test_downloads_paged_render_skips_table_population_while_hidden(
@@ -577,9 +584,9 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
             playlist_name="Test",
         ),
     ]
-    window._render_active_downloads(downloads)
+    window._downloads_page._render_active_downloads(downloads)
 
     # The count used by the tray IS still updated...
-    assert window._active_downloads_count == 1
+    assert window._downloads_page.active_downloads_count == 1
     # ...but the actual table was never touched.
-    assert window.downloads_table.rowCount() == 0
+    assert window._downloads_page.downloads_table.rowCount() == 0

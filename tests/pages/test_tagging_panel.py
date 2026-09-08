@@ -24,7 +24,7 @@ def test_tagging_controls_row_reflows_to_multiple_rows_when_narrow(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    layout = window.tagging_controls_layout
+    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
     single_row_height = max(
         layout.itemAt(i).sizeHint().height() for i in range(layout.count())
     )
@@ -43,7 +43,7 @@ def test_tagging_controls_row_minimum_size_is_the_widest_item_not_the_sum(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    layout = window.tagging_controls_layout
+    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
     widths = [
             layout.itemAt(i).sizeHint().width() for i in range(layout.count())
     ]
@@ -87,7 +87,7 @@ def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    layout = window.tagging_controls_layout
+    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
 
     for width in (1600, 320):
         layout.setGeometry(QRect(0, 0, width, layout.heightForWidth(width)))
@@ -121,7 +121,9 @@ def test_tagging_controls_checkboxes_get_their_full_label_width(qtbot):
     qtbot.addWidget(window)
     window.show()
 
+    tagging_panel = window._dashboard_page._tagging_panel
     for checkbox in (
-            window.analyze_audio_checkbox, window.force_retag_checkbox,
+            tagging_panel.analyze_audio_checkbox,
+            tagging_panel.force_retag_checkbox,
     ):
         assert checkbox.width() >= checkbox.sizeHint().width()
