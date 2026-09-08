@@ -2505,6 +2505,15 @@ class MainWindow(QMainWindow):
         self.downloads_table.setHorizontalHeaderLabels(
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
+        # Roadmap item 8.1.3 (round 8, Phase 5) — checked against
+        # ColumnLayout and left alone: this table (and History's,
+        # Sharing's uploads table) has no Actions column and no
+        # explicit per-column resize mode at all, relying entirely on
+        # setStretchLastSection for its one flexible column. There is
+        # no `fit_content`/`stretch`/`actions` shape here for a
+        # ColumnLayout to declare — folding it in would mean adding a
+        # setStretchLastSection(False) call that actively fights the
+        # one line this table already uses correctly.
         self.downloads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.downloads_table)
         # Roadmap item D3 (round 6) — this table never sets a per-column
@@ -2563,6 +2572,8 @@ class MainWindow(QMainWindow):
         self.history_table.setHorizontalHeaderLabels(
             ["When", "What", "Track", "Detail"]
         )
+        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
+        # the same note on `downloads_table` above.
         self.history_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.history_table)
         theme.apply_column_floors(self.history_table)
@@ -2674,6 +2685,8 @@ class MainWindow(QMainWindow):
             ["Peer", "File", "State", "Progress"]
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
+        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
+        # the same note on `downloads_table` above.
         self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.sharing_uploads_table)
         theme.apply_column_floors(self.sharing_uploads_table)
