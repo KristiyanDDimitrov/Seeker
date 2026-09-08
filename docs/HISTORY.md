@@ -13912,3 +13912,9 @@ ever produced. Result: `17 failed, 1099 passed, 32 skipped`.
   against the actual runner (no interactive access to a GitHub-hosted
   macOS runner to confirm). Recorded honestly as open rather than
   patched speculatively; see CLAUDE.md's Open issues.
+
+**Chromaprint fix confirmed by a second real run.** Pushing the
+`brew install chromaprint` fix triggered run `34207444009`:
+`3 failed, 1116 passed, 29 skipped` — exactly the 3
+`test_callback_server.py` timeouts and nothing else, confirming the
+chromaprint gap really was the entire cause of the other 14.

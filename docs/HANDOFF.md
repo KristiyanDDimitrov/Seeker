@@ -18,13 +18,14 @@ is the log.
   `SEEKER_RUN_STRESS_TEST=1` — real infra, never runs normally)
 - **mypy --strict:** clean, 86 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
-- **CI:** completed a real run for the first time this session (the
-  earlier billing block cleared mid-session). Found 17 failures, both
-  categories environmental: 14 from a missing `chromaprint` system
-  library (fixed — `brew install chromaprint` added to `ci.yml`,
-  **not yet re-verified by a real run**), 3 from an unexplained
-  `httpx.ConnectTimeout` in `test_callback_server.py` on the runner
-  only (left open, see below). [HISTORY §117](HISTORY.md#117)
+- **CI:** completed real runs for the first time this session (the
+  earlier billing block cleared mid-session). First run: 17 failures.
+  Fixed the 14 caused by a missing `chromaprint` system library
+  (`brew install chromaprint` added to `ci.yml`) and **confirmed by a
+  second real run** — down to exactly 3 failures now, all
+  `test_callback_server.py`, `httpx.ConnectTimeout` on the runner only
+  (passes locally). Root cause still open — see below.
+  [HISTORY §117](HISTORY.md#117)
 
 ## Where we are in the plan
 
