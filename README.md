@@ -6,7 +6,25 @@ already have on disk, and — for whatever's missing — searches SoulSeek
 (via a self-hosted [`slskd`](https://github.com/slskd/slskd) daemon) to
 find and download the highest-quality available copy of each track.
 
-## Why this exists
+![Python 3.13](https://img.shields.io/badge/python-3.13-blue)
+![Tests](https://img.shields.io/badge/tests-1%2C150-brightgreen)
+![mypy: strict](https://img.shields.io/badge/mypy--strict-clean-brightgreen)
+![ruff](https://img.shields.io/badge/ruff-clean-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
+## Screenshots
+
+Dashboard, Review and Duplicates, plus the dark/light theme pair. All
+captured against invented data (`FakeApplication`, the same test double
+`tests/test_ui_smoke.py` uses) — no real playlist names, library paths or
+SoulSeek usernames.
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard-dark.png) Dashboard (dark) | ![Dashboard, light theme](docs/screenshots/dashboard-light.png) Dashboard (light) |
+| ![Review](docs/screenshots/review.png) Review | ![Duplicates](docs/screenshots/duplicates.png) Duplicates |
+
+## What it does
 
 Building a DJ library by hand from Spotify playlists is repetitive and
 easy to get subtly wrong: which tracks are already on disk? which ones
@@ -17,8 +35,6 @@ download, tag — while keeping every step auditable and reversible.
 
 It's also a portfolio project, so code quality, structure, and test
 coverage are treated as first-class goals here, not just "make it work."
-
-## How it works
 
 ```
 Spotify  ──sync──>  local SQLite cache  ──match──>  scanned local library
@@ -52,7 +68,7 @@ Spotify  ──sync──>  local SQLite cache  ──match──>  scanned loca
    and optionally analyzed locally for BPM and (Camelot-notation) musical
    key.
 
-## Two interfaces, one service layer
+### Two interfaces, one service layer
 
 `seeker` ships both a CLI (`seeker`) and a desktop GUI (`seeker-ui`,
 built with [PySide6](https://doc.qt.io/qtforpython/)) — they're two
@@ -150,12 +166,14 @@ src/seeker/
 │   ├── connection.py
 │   ├── schema.py
 │   └── repositories/{playlist,track,track_match,local_file,
-│                      library_location,download_request}_repository.py
+│                      library_location,download_request,
+│                      duplicate_cleanup,soulseek_review_candidate}
+│                      _repository.py
 ├── spotify/
 │   ├── auth.py, auth_manager.py, token.py, token_store.py
 │   ├── callback_server.py
-│   ├── client.py           # raw Spotify Web API calls
-│   ├── sync.py, sync_service.py
+│   ├── client.py            # raw Spotify Web API calls
+│   └── sync_service.py
 ├── soulseek/
 │   ├── client.py            # slskd REST wrapper — search, request_download,
 │   │                        #   get_download_status
@@ -166,28 +184,40 @@ src/seeker/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
 │                             #   + group-resolution delete action
-├── ui/                        # the seeker-ui GUI (PySide6)
-│   ├── main_window.py         # sidebar (Dashboard/Downloads/Review/
-│   │                          #   Duplicates/Sharing/History/Help/Settings) + pages
-│   ├── wizard.py               # onboarding: Spotify, library, SoulSeek
-│   ├── settings_window.py      # locations, destinations, connection, thresholds —
-│   │                            #   an in-window sidebar page, not a separate window
+├── ui/                         # the seeker-ui GUI (PySide6)
+│   ├── main_window.py          # shell only: sidebar nav, timers, tray
+│   │                          #   wiring (6,882 -> 1,842 lines post-split)
+│   ├── pages/                   # one QWidget subclass per screen, built
+│   │                          #   from a small PageContext seam —
+│   │                          #   dashboard_page.py, tagging_panel.py,
+│   │                          #   search_page.py, downloads_page.py,
+│   │                          #   review_page.py, duplicates_page.py,
+│   │                          #   sharing_page.py, history_page.py,
+│   │                          #   static_pages.py (Help + Support)
+│   ├── dialogs.py                # About, Destination, RenamePreview,
+│   │                          #   BulkReplaceUpgrades, BulkResolveDuplicates
+│   ├── tray.py                    # tray icon, menu, notifications
+│   ├── wizard.py                   # onboarding: Spotify, library, SoulSeek
+│   ├── settings_window.py          # locations, destinations, connection,
+│   │                          #   thresholds — an in-window sidebar page
 │   ├── library_location_picker.py  # shared folder-picker (wizard + Settings)
-│   ├── download_eta.py         # per-download speed/ETA tracker + aggregate header
-│   ├── upload_eta.py           # per-upload speed tracker, keyed by (username, filename)
-│   ├── formatting.py           # shared timestamp/file-size/speed/duration formatting
-│   ├── theme.py                # dark theme tokens + apply_theme()
-│   ├── notice.py               # InlineNotice — persistent dismissible banner
-│   ├── help_text.py            # centralized tooltips/subtitles/About/support-link copy
-│   └── workers.py              # QThreadPool worker wrapper every screen uses
+│   ├── download_eta.py             # per-download speed/ETA tracker
+│   ├── upload_eta.py               # per-upload speed tracker
+│   ├── formatting.py               # shared timestamp/size/speed formatting
+│   ├── theme.py                    # dark/light theme tokens + apply_theme()
+│   ├── notice.py                   # InlineNotice — dismissible banner
+│   ├── help_text.py                # centralized tooltips/subtitles/copy
+│   └── workers.py                  # QThreadPool worker wrapper every screen uses
 ├── models/{playlist,track,track_match,local_file,library_location,
 │           soulseek_file,download_request,soulseek_review_candidate,
 │           active_download,track_status,upgrade_review,history_event,
-│           data_locations}.py
+│           data_locations,duplicate_cleanup,needs_review_match}.py
 ├── audio_formats.py          # AUDIO_EXTENSIONS, shared by scanner + quality
 ├── matching.py                # shared fuzzy artist/title matching, used by
 │                              #   BOTH library/matcher.py and soulseek/quality.py
 ├── metadata.py                # mutagen tag read/write, per audio format
+├── destination_resolution.py  # resolve_playlist_destination(), shared by
+│                              #   metadata_service.py and download_service.py
 ├── audio_analysis.py          # BPM + Camelot key detection (librosa)
 ├── audio_fingerprint.py       # libchromaprint ctypes binding (+ an ffmpeg
 │                              #   subprocess fallback for files soundfile
@@ -209,6 +239,47 @@ src/seeker/
 ├── main.py                    # `seeker` entry point
 └── main_ui.py                 # `seeker-ui` entry point
 ```
+
+## Tech stack
+
+- **Language:** Python 3.13, managed with [`uv`](https://docs.astral.sh/uv/)
+  (not pip/poetry).
+- **GUI:** [PySide6](https://doc.qt.io/qtforpython/) (Qt for Python) —
+  Fusion style, a hand-rolled dark/light QSS theme, `QThreadPool` for
+  background work.
+- **HTTP:** [`httpx`](https://www.python-httpx.org/), synchronous, for
+  both the Spotify Web API client and the `slskd` REST client — same
+  pattern, same testing approach, on purpose.
+- **Data:** SQLite via the standard library `sqlite3`, raw SQL through a
+  repository-per-table pattern — no ORM.
+- **Matching:** [`rapidfuzz`](https://github.com/rapidfuzz/RapidFuzz) for
+  fuzzy artist/title matching.
+- **Audio:** [`mutagen`](https://mutagen.readthedocs.io/) for tag
+  read/write, [`librosa`](https://librosa.org/) for BPM/key analysis, a
+  project-owned `ctypes` binding to `libchromaprint` for audio
+  fingerprinting (duplicate detection).
+- **SoulSeek:** [`slskd`](https://github.com/slskd/slskd), a self-hosted
+  daemon with a REST API, run via Docker — not a raw protocol
+  implementation.
+- **Packaging:** [PyInstaller](https://pyinstaller.org/) (one-folder
+  builds), [`dmgbuild`](https://dmgbuild.readthedocs.io/) for the macOS
+  `.dmg`, [Inno Setup](https://jrsoftware.org/isinfo.php) for the Windows
+  installer.
+
+## Quality
+
+- **1,150 tests** (`pytest` + [`pytest-qt`](https://pytest-qt.readthedocs.io/),
+  real Qt widgets, headless under `QT_QPA_PLATFORM=offscreen` — no display
+  required, in CI or locally), **`mypy --strict` clean** across all 99
+  source files, **`ruff check` clean**.
+- CI runs `ruff check` → `mypy --strict` → the full suite on every push,
+  on real macOS runners — the one platform this app's own live-
+  verification history is against.
+- A handful of tests skip cleanly rather than run when their hardware
+  isn't present: real audio round-trips against an external drive this
+  repo's own CI runner doesn't have, and one opt-in stress test at
+  production library scale (~3,100 files). Not disabled — genuinely
+  conditional on hardware that varies by machine.
 
 ## Setup
 
