@@ -18,8 +18,13 @@ is the log.
   `SEEKER_RUN_STRESS_TEST=1` — real infra, never runs normally)
 - **mypy --strict:** clean, 86 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
-- **CI:** still never completed a real run — a GitHub billing block on
-  Kris's account (not a code defect). See Open questions below.
+- **CI:** completed a real run for the first time this session (the
+  earlier billing block cleared mid-session). Found 17 failures, both
+  categories environmental: 14 from a missing `chromaprint` system
+  library (fixed — `brew install chromaprint` added to `ci.yml`,
+  **not yet re-verified by a real run**), 3 from an unexplained
+  `httpx.ConnectTimeout` in `test_callback_server.py` on the runner
+  only (left open, see below). [HISTORY §117](HISTORY.md#117)
 
 ## Where we are in the plan
 
@@ -71,11 +76,6 @@ Rules, in force for every session:
 
 ## Waiting on Kris — real-world actions Code cannot do
 
-- [ ] **Resolve the GitHub billing block** (Settings → Billing & plans
-      on the account behind `github.com/KristiyanDDimitrov/Seeker`).
-      Until this clears, CI has never actually run a single check —
-      confirm the next push produces a real pass/fail, not another
-      10s failure. [HISTORY §117](HISTORY.md#117)
 - [ ] Physically click the Dock icon (both after a normal close and
       after a fullscreen close) and confirm the window returns.
 - [ ] Reopen via Spotlight.

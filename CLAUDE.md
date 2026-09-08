@@ -390,12 +390,17 @@ Genuinely open only — no "done" items, no flakes that resolved.
   `add_location_from_path` only check exact path-string uniqueness, no
   containment check exists. A real user decision, deliberately left
   open. [HISTORY §93](docs/HISTORY.md#93)
-- **CI has never completed a real run — a GitHub billing block on
-  Kris's account, not a code defect.** Both runs on record failed
-  before any check executed: one cancelled after 6h, one failed in 10s
-  with "recent account payments have failed or your spending limit
-  needs to be increased." Needs Kris to resolve billing in GitHub's own
-  settings; nothing in the repo can fix this. [HISTORY §117](docs/HISTORY.md#117)
+- **`test_callback_server.py`: 3 real tests (`test_wait_for_callback_
+  parses_code_and_state_from_real_request`,
+  `..._captures_error_param`, `..._returns_404_but_keeps_waiting...`)
+  fail on CI (`macos-latest`) with `httpx.ConnectTimeout` connecting to
+  the test's own local `HTTPServer`, root cause unconfirmed.** Pass
+  reliably locally. A thread-startup race was checked and ruled out (a
+  too-early connection is refused instantly, not timed out at 5s).
+  Leading hypothesis — UNVERIFIED, no access to a live runner to
+  confirm — is macOS's Local Network permission prompt silently
+  blocking an unsigned process's loopback listener in a non-interactive
+  session. [HISTORY §117](docs/HISTORY.md#117)
 
 ## Roadmap
 

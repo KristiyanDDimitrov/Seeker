@@ -13878,3 +13878,37 @@ than a hung job. This is a GitHub billing/account issue on Kris's own
 account — not something fixable from the repo, and not Phase 1's CI
 config being broken. Surfaced to Kris directly rather than guessed at
 or worked around.
+
+**Update, same session: the billing block cleared mid-session, and CI
+completed a real run for the first time ever — 17 failures, both
+categories environmental, not code defects.** Pushing this session's
+own close-out commit triggered run `34206885872`, which queued and
+actually ran `uv sync`, `ruff`, `mypy`, and the full `pytest` suite
+(177.81s) rather than failing in 10s — first real signal `ci.yml` has
+ever produced. Result: `17 failed, 1099 passed, 32 skipped`.
+
+- **14 failures, `test_duplicate_service.py`** —
+  `FingerprintingUnavailableError: libchromaprint isn't installed or
+  couldn't be found`. Confirmed root cause directly from the error
+  text: `ci.yml` never installed the system `chromaprint` library
+  item 38 already documented as a real macOS prerequisite (`brew
+  install chromaprint`) — `uv sync` only installs the Python
+  dependency graph, never a system library. Fixed: added
+  `brew install chromaprint` as its own step, before `uv sync`, to
+  `.github/workflows/ci.yml` (`macos-latest` runners ship Homebrew
+  preinstalled).
+- **3 failures, `test_callback_server.py`** —
+  `httpx.ConnectTimeout: timed out` connecting to a real
+  `HTTPServer(("127.0.0.1", port), ...)` the test itself starts on a
+  background thread. **Not fixed — genuinely unexplained, left open.**
+  A thread-startup race was considered and rejected: a client hitting
+  a socket before the server binds gets an immediate connection
+  *refused* (RST), not a 5-second timeout — the symptom is a dropped
+  SYN, not "too early." The leading hypothesis, **UNVERIFIED** per this
+  file's own working-agreement #4 (no confident platform claim without
+  a real observation) — macOS's per-app Local Network permission
+  prompt (Sonoma+) silently blocking an unsigned test-runner process's
+  loopback listener in a non-interactive CI session — was not checked
+  against the actual runner (no interactive access to a GitHub-hosted
+  macOS runner to confirm). Recorded honestly as open rather than
+  patched speculatively; see CLAUDE.md's Open issues.

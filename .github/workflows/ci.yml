@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: brew install chromaprint
       - run: uv sync --all-extras --dev
       - run: uv run ruff check src tests
       - run: uv run mypy --strict src/
