@@ -10,19 +10,18 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `9e29e82` — "9.3.2/9.3.3: Phase 6 — extract tray/
-  notifications into ui/tray.py" (S11, pending this commit's own
-  tick/handoff commit on top)
+- **HEAD:** `b2ef2fa` — "S11.1: repoint History/Help/Support tests at
+  their page widgets, drop delegating properties" (S11.1's own two-
+  commit mechanism landed; this session's own tick/handoff commit goes
+  on top)
 - **Working tree:** clean except this rewrite
 - **`origin/main`:** not re-checked this session — ask before pushing
   regardless.
-- **pytest:** 1149 passed, 1 skipped, 0 real failures this run —
-  identical to S10's own numbers. Confirmed stable across four
-  repeated full runs this session (needed — see "Two real bugs"
-  below); the only non-deterministic failures seen were the two
-  already-documented flakes below, never anything new.
-- **mypy --strict src/:** clean, 99 source files (was 98 — `ui/tray.py`
-  is new)
+- **pytest:** 1149 passed, 1 skipped, 0 real failures — identical to
+  S10/S11's own numbers. Confirmed stable across two repeated full runs
+  this session.
+- **mypy --strict src/:** clean, 99 source files (unchanged count —
+  this session only touched tests + main_window.py)
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
 ## Where we are in the plan
@@ -32,67 +31,57 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/round8/SESSION-PLAN.md`. **Read the session plan, not the full
 brief** — the brief is 115 KB, you only need your own session's slice.
 
-- **Done:** Phase 0–4, S1–S10, **S11** (§9.3.2 tray extraction to
-  `ui/tray.py`, §9.3.3 `__init__` shrink via a new
-  `_build_tray_controller()` builder).
-- **S11's own §9.3.4 (test-file split) did NOT land this session** —
-  found mid-session to be comparable in size to the entire S5–S10 arc
-  (307 tests, ~121 delegating properties/stubs still on `MainWindow`:
-  73 properties + 48 stub methods). SESSION-PLAN.md now splits it into
-  **S11.1–S11.7**, one per already-extracted page/group, same order
-  S5–S10 used (dialogs+History+Help/Support, Search+Sharing,
-  Downloads+Tagging, Dashboard, Review, Duplicates, Tray). **Next
-  session: S11.1.** Read SESSION-PLAN.md's own new "S11 split" note
-  first — it names two real, confirmed-live gotchas any future page's
-  stub removal could hit again (see below), plus the concrete first
-  step (grep the page's own delegating identifiers in
-  `test_ui_smoke.py`, apply §9.3's step-4 mechanism: move verbatim,
-  confirm green, THEN a separate commit repointing + deleting stubs —
-  step 4 has never actually been exercised yet; S5–S11 all stopped
-  after step 3).
+- **Done:** Phase 0–4, S1–S10, S11, **S11.1** (§9.3.4 test-split for
+  dialogs + History + Help/Support, mirroring S5's own extraction
+  order).
+- **Next session: S11.2** (Search + Sharing, mirrors S6). Same
+  mechanism, same two-commit split — see "What S11.1 found" below
+  before starting; it changes what "step 4" actually means in
+  practice, which S11.2–S11.7 all still need to apply.
 
-## S11 — what landed (§9.3.2 tray extraction, §9.3.3 init shrink)
+## S11.1 — what landed (§9.3.4 test-split: dialogs, History, Help/Support)
 
-One commit (`9e29e82`). `ui/tray.py`'s `TrayController` (+ `TrayHost`
-seam, same Host-dataclass shape as `DashboardHost`/`ReviewHost`/
-`TaggingPanelHost`) now owns the ~20-method tray/notification group.
-`closeEvent` and the hide-to-tray verification (`_confirm_hidden_to_
-tray`/`_is_exposed_at_platform_level`/`_check_hidden_to_tray`/
-`_hide_request_id`, plus the dock-icon-policy-after-fullscreen-close
-pair) stayed on `MainWindow` per §9.3.2's own exception — round 7's
-E1, genuinely subtle, about the window rather than the tray.
-`__init__`'s tray state (`_tray_icon`, `_last_notified_*`) moved to
-`TrayController`; the verbose `TrayHost` construction moved into a new
-`_build_tray_controller()` builder, matching `_build_ui()`'s own shape.
+Two commits (`fd228f0`, `b2ef2fa`) — the first time §9.3's own step-4
+"repoint + delete delegating members" has actually been exercised (S5–
+S11 all stopped after step 3). 24 tests moved out of test_ui_smoke.py
+into `tests/pages/test_dialogs.py` (8 — About/Destination only;
+RenamePreviewDialog/BulkReplaceUpgradesDialog/
+BulkResolveDuplicatesDialog are each constructed by one specific
+already-extracted page, not MainWindow, so their tests wait for that
+page's own session — S11.3/S11.5/S11.6), `test_history_page.py` (5),
+and `test_static_pages.py` (11, Help+Support).
 
-**Two real bugs found and fixed, both confirmed live — relevant to
-EVERY future page's stub removal, not just Tray's:**
+**What "step 4" actually means in practice, found live this session —
+read before S11.2–S11.7:**
 
-1. A signal (`applicationStateChanged`) connected directly to a bound
-   method of `TrayController` (a plain Python object, not a
-   `QObject`) loses Qt's automatic disconnect-on-receiver-destruction
-   — a real, reproduced `RuntimeError: libshiboken: ... already
-   deleted` on later delivery, non-deterministic, order-dependent.
-   Fix: connect through a `QObject` (page/MainWindow) method instead.
-2. `test_reopen_restores_the_dock_icon_before_showing` monkeypatches
-   `main_window_module._set_dock_icon_visible` — only intercepts a
-   bare-name call resolved in THAT module's own globals. Moving the
-   call site to `tray.py` broke it deterministically. Fix: a
-   `TrayHost.set_dock_icon_visible` callable bound to a `MainWindow`
-   method, so the bare-name call still executes in `main_window.py`'s
-   namespace.
-
-Zero test edits this session — S11.1–S11.7 are where they're
-authorized (step 4). The `_resolve_tray_icon_path` re-export (same
-shape as `BulkReplaceUpgradesDialog` before it) stays until S11.7.
+1. **"Address the page widget directly" = `window._history_page.
+   <attr>`, not constructing the page standalone.** Pages are exercised
+   through real `MainWindow` navigation (`window._show_page(...)`), and
+   some tests assert MainWindow-owned call counts (e.g. the silent
+   `_seed_notification_cutoff` fetch) — building `HistoryPage(context)`
+   in isolation would lose that. One precedent already existed
+   (`window._help_page`) — followed it everywhere.
+2. **Cross-page structural sweep tests can silently depend on a
+   property you're about to delete.** Two tests that check every page's
+   tables at once (not owned by any one page's file) still referenced
+   `window.history_table` by name and broke when it was deleted. **Grep
+   the attribute name across the WHOLE test file before deleting a
+   MainWindow property** — a moved test isn't the only consumer.
+3. **No shared fixtures module exists yet.** `FakeApplication` lives in
+   test_ui_smoke.py; new page test files import it with a plain
+   cross-file `from test_ui_smoke import FakeApplication` — reliable
+   because `tests/conftest.py` puts `tests/` on `sys.path` before any
+   test file imports, regardless of collection order. Fine at 3 files;
+   revisit if it gets unwieldy.
+4. Dialogs split into "shell-owned" (About/Destination — test imports
+   repointed `main_window` → `seeker.ui.dialogs`, their real module) vs.
+   "page-owned" (the other three — left alone, deferred).
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2. Both fired at least once across this session's repeated
-runs; same pytest-qt teardown / Qt deferred-deletion cause already
-documented.
+since S2, not seen this session's two runs but don't assume fixed.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 

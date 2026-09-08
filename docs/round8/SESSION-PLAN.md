@@ -62,7 +62,7 @@ named split point rather than pushing through.
 | ☑ S9 | Review page | §9.3.1 | ~120 K |
 | ☑ S10 | Duplicates page | §9.3.1 | ~120 K |
 | ☑ S11 | Tray extraction + `MainWindow` close-out | §9.3.2, §9.3.3 | ~110 K |
-| ☐ S11.1 | Test-split: dialogs + History + Help/Support | §9.3.4 (mirrors S5) | ~90 K |
+| ☑ S11.1 | Test-split: dialogs + History + Help/Support | §9.3.4 (mirrors S5) | ~90 K |
 | ☐ S11.2 | Test-split: Search + Sharing | §9.3.4 (mirrors S6) | ~90 K |
 | ☐ S11.3 | Test-split: Downloads + Tagging panel | §9.3.4 (mirrors S7) | ~100 K |
 | ☐ S11.4 | Test-split: Dashboard | §9.3.4 (mirrors S8) | ~100 K |
