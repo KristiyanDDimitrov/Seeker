@@ -425,8 +425,10 @@ Genuinely open only — no "done" items, no flakes that resolved.
     test's `applicationStateChanged`) via an autouse fixture, confirmed
     closed with a weakref/gc probe — but the flake recurred at least
     once **after** that fix, cause still unknown. Worth instrumenting
-    `_run_busy_worker`/`QThreadPool` timing directly next time.
-    [HISTORY §116](docs/HISTORY.md#116)
+    `_run_busy_worker`/`QThreadPool` timing directly next time. One of
+    the post-fix recurrences is a real, inspectable CI run
+    (`34207858803`, 2026-09-08) — a live example if this needs
+    instrumenting for real. [HISTORY §116](docs/HISTORY.md#116)
   - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
     once during S13 (round 8, comment-triage-only session — nothing in
     that session touched close/fullscreen logic, so not a regression
@@ -445,10 +447,27 @@ Genuinely open only — no "done" items, no flakes that resolved.
   the test's own local `HTTPServer`, root cause unconfirmed.** Pass
   reliably locally. A thread-startup race was checked and ruled out (a
   too-early connection is refused instantly, not timed out at 5s).
-  Leading hypothesis — UNVERIFIED, no access to a live runner to
-  confirm — is macOS's Local Network permission prompt silently
-  blocking an unsigned process's loopback listener in a non-interactive
-  session. [HISTORY §117](docs/HISTORY.md#117)
+  **S14 update: CI is not billing-blocked any more (see below) and
+  `gh run view` now IS a live runner to check against** — all three
+  runs inspected (`34207858803`, `34207444009`, `34206885872`,
+  2026-09-08) reproduce exactly these 3 failures, consistently, nothing
+  else related. Leading hypothesis on *why* — still UNVERIFIED, `gh`
+  can't inspect macOS's own permission-prompt state — is macOS's Local
+  Network permission prompt silently blocking an unsigned process's
+  loopback listener in a non-interactive session.
+  [HISTORY §117](docs/HISTORY.md#117)
+- **CI is real and running (not billing-blocked) as of 2026-09-08 —
+  the S1.1/§117 "never completed a real run" finding is superseded.**
+  Confirmed live via `gh run list`/`gh run view`: three consecutive
+  completed runs on `origin/main`, ruff/mypy clean on all three, pytest
+  failing on exactly the two known issues above (never anything new).
+  The 29-vs-1 skipped-test mismatch an earlier round left as an open
+  question is now explained, not just observed: 29 = 28
+  `@requires_x9_pro`-gated tests (no such drive on a GitHub runner) + 1
+  `@requires_stress_opt_in` test (opt-in only) — exact arithmetic
+  match. The 1 skip everywhere else is real-hardware machines running
+  the x9_pro-gated tests for real and skipping only the opt-in stress
+  test.
 
 ## Roadmap
 
