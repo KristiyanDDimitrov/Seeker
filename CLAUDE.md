@@ -37,61 +37,71 @@ multiple repositories directly.
 
 ## Current layout
 
-**Stale note (round 8): not yet regenerated from the real tree — deferred
-to session S14, once Phase 6 (`ui/pages/*`) exists to fold in.** One known
-inaccuracy already fixed below (`spotify/sync.py` doesn't exist, only
-`sync_service.py`); treat anything else here as approximate until S14.
+Regenerated against the real tree (S14) — Phase 6 (`ui/pages/*`) folded in.
 
 ```
 src/seeker/
-├── database/            # connection.py, schema.py,
-│                         #   repositories/{playlist,track,track_match,
-│                         #   local_file,library_location,
-│                         #   download_request}_repository.py
-├── spotify/              # auth*.py, token*.py, callback_server.py,
-│                         #   client.py (raw Web API calls), sync_service.py
-├── soulseek/              # client.py (slskd REST wrapper), quality.py
-│                         #   (candidate filtering/selection),
-│                         #   download_service.py (destinations,
-│                         #   download_playlist, poll_downloads)
-├── library/                # scanner.py, matcher.py, service.py,
-│                         #   metadata_service.py (writes Spotify tags/art),
-│                         #   duplicate_service.py (fingerprint clustering)
-├── ui/                    # seeker-ui (PySide6) — main_window.py (sidebar +
-│                         #   QStackedWidget pages, tray icon), pages built
-│                         #   from settings_window.py/wizard.py plus
-│                         #   theme.py, notice.py, flow_layout.py,
-│                         #   busy_actions.py, workers.py (run_worker()),
-│                         #   help_text.py, formatting.py, download_eta.py,
-│                         #   library_location_picker.py
-├── models/                # dataclasses — playlist, track, track_match,
-│                         #   local_file, library_location, soulseek_file,
-│                         #   download_request, soulseek_review_candidate,
-│                         #   active_download, track_status, upgrade_review,
-│                         #   history_event, data_locations
-├── matching.py            # shared fuzzy artist/title matching — used by
-│                         #   BOTH library/matcher.py and soulseek/
-│                         #   quality.py, neither has its own copy
-├── metadata.py             # write_text_tags/embed_album_art/
-│                         #   write_analysis_tags — format dispatch
-│                         #   (ID3/FLAC/MP4), used by metadata_service.py
-├── audio_analysis.py       # analyze_audio (librosa BPM + Krumhansl-
-│                         #   Schmuckler key estimate)
-├── audio_fingerprint.py    # project-owned libchromaprint ctypes binding
-├── audio_formats.py        # AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
+├── database/                 # connection.py, schema.py,
+│                              #   repositories/{playlist,track,track_match,
+│                              #   local_file,library_location,download_request,
+│                              #   duplicate_cleanup,soulseek_review_candidate}
+│                              #   _repository.py
+├── spotify/                   # auth*.py, token*.py, callback_server.py,
+│                              #   client.py (raw Web API calls), sync_service.py
+├── soulseek/                   # client.py (slskd REST wrapper), quality.py
+│                              #   (candidate filtering/selection),
+│                              #   download_service.py (destinations,
+│                              #   download_playlist, poll_downloads)
+├── library/                     # scanner.py, matcher.py, service.py,
+│                              #   metadata_service.py (writes Spotify tags/art),
+│                              #   duplicate_service.py (fingerprint clustering)
+├── ui/                          # seeker-ui (PySide6)
+│   ├── main_window.py           #   shell only, post-Phase-6: sidebar nav,
+│   │                          #   timers, tray wiring (6,882 -> 1,842 lines)
+│   ├── pages/                    #   PageContext (context.py) is the seam —
+│   │                          #   dashboard_page.py, tagging_panel.py,
+│   │                          #   search_page.py, downloads_page.py,
+│   │                          #   review_page.py, duplicates_page.py,
+│   │                          #   sharing_page.py, history_page.py,
+│   │                          #   static_pages.py (Help + Support)
+│   ├── dialogs.py                 #   About, Destination, RenamePreview,
+│   │                          #   BulkReplaceUpgrades, BulkResolveDuplicates
+│   ├── tray.py                     #   tray icon, menu, notifications
+│   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
+│       busy_actions.py, workers.py (run_worker()), help_text.py,
+│       formatting.py, download_eta.py, upload_eta.py,
+│       library_location_picker.py
+├── models/                     # dataclasses — playlist, track, track_match,
+│                              #   local_file, library_location, soulseek_file,
+│                              #   download_request, soulseek_review_candidate,
+│                              #   active_download, track_status, upgrade_review,
+│                              #   history_event, data_locations,
+│                              #   duplicate_cleanup, needs_review_match
+├── matching.py                 # shared fuzzy artist/title matching — used by
+│                              #   BOTH library/matcher.py and soulseek/
+│                              #   quality.py, neither has its own copy
+├── metadata.py                  # write_text_tags/embed_album_art/
+│                              #   write_analysis_tags — format dispatch
+│                              #   (ID3/FLAC/MP4), used by metadata_service.py
+├── destination_resolution.py    # resolve_playlist_destination — shared by
+│                              #   metadata_service.py and download_service.py
+├── audio_analysis.py            # analyze_audio (librosa BPM + Krumhansl-
+│                              #   Schmuckler key estimate)
+├── audio_fingerprint.py         # project-owned libchromaprint ctypes binding
+├── audio_formats.py             # AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 ├── dashboard_service.py, history_service.py, sharing_service.py
-├── config_store.py         # SeekerConfig — the UI-editable JSON store;
-│                         #   .env/config.py is the fallback when unset
-├── docker_setup.py         # Docker/slskd detection, bring-up, health
-│                         #   checks — shared by wizard.py/settings_window.py
+├── config_store.py              # SeekerConfig — the UI-editable JSON store;
+│                              #   .env/config.py is the fallback when unset
+├── docker_setup.py              # Docker/slskd detection, bring-up, health
+│                              #   checks — shared by wizard.py/settings_window.py
 ├── download_dedup.py, file_deletion.py, filename_sanitize.py,
 │   filename_format.py, update_check.py, album_art_cache.py
-├── atomic_file.py          # write_text_locked() — 0600 + atomic writes
-│                         #   for any credential/token file
-├── config.py                # .env-sourced fallback values
+├── atomic_file.py               # write_text_locked() — 0600 + atomic writes
+│                              #   for any credential/token file
+├── config.py                     # .env-sourced fallback values
 ├── application.py, cli.py
-├── main.py                  # `seeker` entry point
-└── main_ui.py                # `seeker-ui` entry point
+├── main.py                       # `seeker` entry point
+└── main_ui.py                     # `seeker-ui` entry point
 ```
 
 ## Conventions
@@ -160,6 +170,38 @@ src/seeker/
   (this app has no client secret at all); the one field that could have
   been secret was always the literal placeholder `your_…`. Decision: no
   history rewrite.
+- **A comment earns its place by telling the next person something the
+  code cannot.** One that tells them what *happened* belongs in
+  `docs/HISTORY.md` instead. Test is shelf life, not length: is this
+  still true and load-bearing next year, or a record of a decision?
+  Applied across S12/S13's comment triage — see [HISTORY
+  §119](docs/HISTORY.md#119) for the largest single example, the whole
+  Phase 6 extraction story moved out of the page modules' docstrings.
+- **Services use `logging`, never `print` — `print` is the CLI's own
+  output channel, nothing else's.** Each service module gets its own
+  `logger = logging.getLogger(__name__)`; handlers are configured in
+  exactly two places, `main.py` (a `StreamHandler`) and `main_ui.py` (a
+  `RotatingFileHandler` under `platformdirs.user_log_dir("Seeker")`) —
+  never in library code. Where a message is both user-facing and
+  diagnostic, the service logs and returns a structured result, and
+  `cli.py` does the printing from that result. A `print` call
+  surviving in a service (`soulseek/download_service.py`'s two) is
+  either opt-in debug output gated on an env var, or genuinely
+  CLI-only code that happens to live there — check the call site
+  before assuming it is a leftover.
+- **`ui/` never reads or writes `Application`'s private
+  (underscore-prefixed) attributes** — go through a public method
+  (`application.settings`, `application.update_settings(...)`, a
+  service) instead, so `Application` can invalidate whatever depends on
+  the change. `test_no_private_application_attribute_access_in_ui`
+  (`tests/test_ui_smoke.py`) is an AST sweep enforcing this — it fails
+  the build, not just the convention.
+- **Page widgets live in `ui/pages/`, one `QWidget` subclass per page,
+  never a `MainWindow` mixin.** Each takes a `PageContext`
+  (`ui/pages/context.py` — application, thread pool, busy-action
+  registry, `navigate`, `notify`) and never reaches back into
+  `MainWindow`; `MainWindow` itself is the shell (nav, timers, tray).
+  [HISTORY §119](docs/HISTORY.md#119)
 
 ## Commands
 
