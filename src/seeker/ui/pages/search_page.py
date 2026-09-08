@@ -1,6 +1,4 @@
-"""The Search page — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py.
-"""
+"""The Search page (HISTORY §119)."""
 
 from enum import IntEnum
 
@@ -25,8 +23,8 @@ from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.workers import run_worker
 
 
-# Roadmap item 82 (P13.5) — same "resolve by real header text, not a
-# shared literal" precedent as the other tables' own column enums.
+# Same "resolve by real header text, not a shared literal" precedent
+# as the other tables' own column enums (HISTORY §82).
 class _SearchColumn(IntEnum):
     USERNAME = 0
     FILENAME = 1
@@ -59,12 +57,11 @@ class SearchPage(QWidget):
         super().__init__()
         self._context = context
 
-        # Roadmap item 82 (P13.4) — a dedicated page between Dashboard
-        # (already the most crowded page — item 51) and Downloads (a
-        # status view, not a search/results one). search_manual()/
-        # download_manual() reuse the EXACT SAME search + quality-
-        # ranking logic download_playlist uses; nothing new is ranked
-        # or scored here.
+        # A dedicated page between Dashboard (already the most crowded
+        # page — HISTORY §51) and Downloads (a status view, not a
+        # search/results one). search_manual()/download_manual() reuse
+        # the exact same search + quality-ranking logic download_playlist
+        # uses; nothing new is ranked or scored here (HISTORY §82).
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -235,9 +232,9 @@ class SearchPage(QWidget):
         return theme.cell_widget(download_button)
 
     def _on_download_best_clicked(self) -> None:
-        # Roadmap item 82 (P13.5) — the headline action, so it gets the
-        # shared busy_actions/activity-strip treatment like every other
-        # persistent-button action on this page (Search included).
+        # The headline action, so it gets the shared busy_actions/
+        # activity-strip treatment like every other persistent-button
+        # action on this page.
         if not self._search_files:
             return
 
