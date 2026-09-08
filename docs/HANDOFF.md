@@ -8,16 +8,19 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `a95d0f4` — "S11.6: repoint Duplicates tests at the page
-  widget, drop delegating properties" (S11.6's two-commit mechanism
-  landed; this session's tick/handoff commit goes on top)
+- **HEAD:** `186442c` — "S11.7: repoint Tray tests at the page widget,
+  drop delegating properties" (S11.7's two-commit mechanism landed;
+  this session's tick/handoff commit goes on top)
 - **Working tree:** clean except this rewrite. `origin/main`: not
   re-checked this session — ask before pushing regardless.
 - **pytest:** a clean run is 1149 passed, 1 skipped — identical to
-  S10–S11.5's own numbers. The tracked fullscreen-close flake pair
-  fired on most runs this session too (same elevated rate S11.2–S11.5
-  reported, one or the other test failing on a given run), always
-  green in isolation — see "Known flakes" below.
+  S10–S11.6's own numbers, confirmed with two consecutive clean runs
+  after S11.7's second commit. The tracked fullscreen-close flake pair
+  fired 3 times across this session's earlier runs (once each on
+  `test_application_active_is_a_near_no_op_when_already_visible` — see
+  "Real gap" below, a genuine bug caught by the suite, NOT this flake
+  pair — and twice on the two tracked tests), always green in
+  isolation — see "Known flakes" below.
 - **mypy --strict src/:** clean, 99 files. **ruff check src tests: 0
   findings — this must stay at 0.**
 
@@ -27,45 +30,63 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done:** Phase 0–4, S1–S10, S11, S11.1–S11.5 (test-split, dialogs
-  through Review), **S11.6** (Duplicates, mirrors S10).
-- **Next: S11.7** (Tray, mirrors S11's own tray extraction). Read
-  "S11.6 — what landed" below first — same mechanism, two known
-  gotchas already flagged in SESSION-PLAN.md's own S11-split note.
+- **Done:** Phase 0–4, S1–S10, S11, S11.1–S11.6 (test-split, dialogs
+  through Duplicates), **S11.7** (Tray, mirrors S11's own tray
+  extraction). **Phase 6 (`MainWindow` decomposition + its test-split,
+  §9.1–§9.3) is now fully complete** — zero `@property` delegating
+  stubs remain on `MainWindow` (confirmed: `grep -c "^    @property"
+  src/seeker/ui/main_window.py` → 0).
+- **Next: S12** (Comment triage, pass 1 — §10.1, small files:
+  `audio_formats`, `docker_setup`, `matching`, `config_store`,
+  `quality`, `audio_analysis`). This starts Phase 7, a genuinely new
+  phase — read §10 of the main brief fresh, the §9 Phase-6 summary in
+  SESSION-PLAN.md no longer applies.
 
-## S11.6 — what landed (§9.3.4 test-split: Duplicates)
+## S11.7 — what landed (§9.3.4 test-split: Tray)
 
-Two commits (`2e399c9`, `a95d0f4`). 44 tests moved verbatim into
-`tests/pages/test_duplicates_page.py`. Four tests stayed cross-cutting
-in test_ui_smoke.py (the activity-strip progress test, the every-
-table/make_card sweep, and two structural sweeps that render a
-duplicate group alongside every page's own state) — all four
-repointed to `window._duplicates_page.<attr>` in place.
+Two commits (`d03666e`, `186442c`). 16 tests moved verbatim into
+`tests/pages/test_tray.py`. Eight tests stayed cross-cutting in
+test_ui_smoke.py — closeEvent/hide-to-tray-verification tests
+(round 7's E1) that trigger a `TrayController` action along the way
+(`_on_tray_open_seeker`, `_on_tray_icon_activated`,
+`_on_tray_check_now`, `_on_tray_quit` from fullscreen,
+`_on_application_state_changed`) but assert on MainWindow's own
+`_hidden_to_tray`/`isVisible`/`_pre_fullscreen_geometry`/
+`_app_state_connected`/poll-timer state, not on anything
+`TrayController` owns — repointed to `window._tray.<attr>` in place.
 
-**Real gap, worth expecting at S11.7 too:** building the move list by
-grepping test *names* containing "duplicat" missed three cross-cutting
-tests that call `window._render_duplicate_groups(...)`/
-`compute_fingerprints_button` without "duplicat" in their own name.
-Commit 1 (pure move, delegating properties still live) passed clean
-regardless — the gap only surfaced when commit 2 deleted the
-delegating properties and the full suite broke with `AttributeError`.
-**Grep the whole file for the page's own delegating attribute/method
-names, not just tests whose name mentions the page**, before treating
-the move list as complete.
+`_on_application_state_changed` and `cleanup_before_quit` are **not**
+temporary delegating stubs and were never deleted — the former is the
+real QObject-bound slot `applicationStateChanged` is connected to (a
+plain `TrayController` method can't hold that connection safely, per
+`tray.py`'s own module docstring — Gotcha #1 from the S11-split note),
+the latter owns real window-side teardown beyond hiding the tray icon.
 
-No non-test internal callers needed repointing (unlike Review's
-tray-controller lambdas at S11.5) — `_on_page_changed` already called
-`self._duplicates_page`'s own methods directly.
-`BulkResolveDuplicatesDialog`'s re-export from `main_window.py` is now
-dropped — Tray has no equivalent re-export to worry about at S11.7.
+One real internal (non-test) caller needed repointing —
+`MainWindow.__init__`'s own gate on whether to connect
+`applicationStateChanged` read `self._tray_icon` directly; now
+`self._tray._tray_icon`.
+
+**Real gap, worse than S11.6's own reported one:** grepping for
+`window._on_tray_open_seeker(` (a call) missed
+`test_application_active_is_a_near_no_op_when_already_visible`, which
+referenced the identifier as a **string** —
+`monkeypatch.setattr(window, "_on_tray_open_seeker", ...)`. Commit 1
+(pure move) passed clean; commit 2's delegating-property deletion broke
+it with a real `AttributeError`, caught by the full-suite run, not by
+grep. **Grepping for `\b<name>\b` (not just `<name>(`) still isn't
+enough if the identifier can appear as a bare monkeypatch string** —
+grep for the plain identifier AND its quoted forms
+(`"<name>"`/`'<name>'`) both, next time this pattern comes up anywhere
+else in the codebase.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2, always green in isolation. Fired on most full runs again this
-session (consistent with S11.2–S11.5's already-elevated reports).
-Someone should instrument this rather than re-reporting it.
+since S2, always green in isolation. Fired twice across this session's
+several full runs (consistent with S11.2–S11.6's already-elevated
+reports). Someone should instrument this rather than re-reporting it.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -93,16 +114,14 @@ phase you aren't doing.
   S9's skip-count mismatch (29 vs. everyone else's 1) — same status.
 - **Three round-8 flakes in CLAUDE.md's Open Issues, plus the
   fullscreen-close pair above (firing noticeably more often across
-  S11.2–S11.6)** — diagnose any recurrence directly, never
+  S11.2–S11.7)** — diagnose any recurrence directly, never
   `pytest-rerunfailures`.
-- **S11.7 (Tray) scope** — the two gotchas already documented in
-  `docs/round8/SESSION-PLAN.md`'s S11-split note (a signal connected
-  to a non-`QObject` controller loses Qt's auto-disconnect; a test
-  monkeypatching a module-qualified name only intercepts a bare-name
-  call resolved in that module's own globals) are real and specific to
-  Tray — read them before starting. Also grep the **whole** file for
-  Tray's delegating names before declaring the move list complete
-  (see S11.6's own gap above).
+- **S12's own comment-triage pass (§10.1) now includes `ui/pages/*`
+  and `ui/tray.py`/`ui/dialogs.py` for the first time** — these files
+  didn't exist as separate modules before Phase 6; the brief's own
+  file list for §10.1 predates the split and may need light
+  reinterpretation (touch the pages named in S12/S13's own rows, not
+  the pre-split `main_window.py` locations the brief still names).
 
 ## How to end your session
 
