@@ -63,10 +63,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
-from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
-from seeker.models.track import Track
 from seeker.models.track_status import TrackStatus
-from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.sharing_service import LocationShareState, UploadStatus
 from seeker.soulseek.download_service import (
     BulkUpgradeReplaceResult,
@@ -75,16 +72,18 @@ from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
-    BulkReplaceUpgradesDialog,
+    # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
+    # (BulkReplaceUpgradesDialog moved to review_page.py with the rest
+    # of Review; RenamePreviewDialog moved to tagging_panel.py with the
+    # rest of Tagging), but test_ui_smoke.py imports both from THIS
+    # module's own namespace (`from seeker.ui.main_window import
+    # BulkReplaceUpgradesDialog`), not from seeker.ui.dialogs directly.
+    # Kept as deliberate re-exports until the test-split session
+    # repoints those imports (S11, §9.3.4) — dropped alongside it, not
+    # before.
+    BulkReplaceUpgradesDialog,  # noqa: F401
     BulkResolveDuplicatesDialog,
     DestinationDialog,
-    # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
-    # (RenamePreviewDialog moved to tagging_panel.py with the rest of
-    # the Tagging panel), but test_ui_smoke.py imports it from THIS
-    # module's own namespace (`from seeker.ui.main_window import
-    # RenamePreviewDialog`), not from seeker.ui.dialogs directly. Kept
-    # as a deliberate re-export until the test-split session repoints
-    # that import (S11, §9.3.4) — dropped alongside it, not before.
     RenamePreviewDialog,  # noqa: F401
 )
 from seeker.ui.download_eta import DownloadEtaTracker
@@ -106,15 +105,18 @@ from seeker.ui.pages.dashboard_page import (
 )
 from seeker.ui.pages.downloads_page import DownloadsPage
 from seeker.ui.pages.history_page import HistoryPage
+from seeker.ui.pages.review_page import (
+    NeedsReviewCandidates,
+    PendingUpgrades,
+    ReviewHost,
+    ReviewPage,
+)
 from seeker.ui.pages.search_page import SearchPage
 from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.pages.static_pages import HelpPage, SupportPage
 from seeker.ui.settings_window import SettingsPage
 from seeker.ui.workers import run_worker
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
-
-NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
-PendingUpgrades = list[UpgradeReviewDetails]
 
 logger = logging.getLogger(__name__)
 
@@ -188,21 +190,6 @@ _DUPLICATES_COLUMNS = theme.ColumnLayout(
     actions=_DuplicatesColumn.ACTIONS,
 )
 
-
-# The remaining three tables (Review's three tabs) never grew a column
-# IntEnum of their own — their layouts are declared the same way, just
-# against plain column indices. (The Track table's own _TRACK_COLUMNS
-# moved to dashboard_page.py with the rest of the Dashboard page —
-# round 8 Phase 6.)
-_REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
-    stretch=(0,), fit_content=(1, 2), actions=3,
-)
-_REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
-    stretch=(0,), fit_content=(1, 2), actions=3,
-)
-_REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
-    stretch=(0, 1), fit_content=(2, 3), actions=4,
-)
 
 # Untuned constant — a fixed sidebar width narrow enough to leave real
 # room for content, wide enough that "Duplicates" (the longest nav
@@ -507,23 +494,18 @@ class MainWindow(QMainWindow):
         # is the first real producer.
         self._activity_progress: dict[str, tuple[str, int, int]] = {}
         self._backend_poll_in_progress = False
-        # Set by a Dashboard double-click on a NEEDS_REVIEW/AWAITING_
-        # REVIEW row (roadmap item 56 §2.4); consumed once by
-        # _focus_pending_review_row the next time the Review page's data
-        # actually loads. `selected_playlist`/`_current_track_statuses`/
-        # the next-step dismissal keys all moved to DashboardPage with
-        # the rest of the Dashboard page (round 8 Phase 6).
-        self._pending_review_focus_track_id: str | None = None
-
-        # Roadmap item R7 — menu-bar background operation.
-        # Counts the tray menu's own status line and "Review (N)"/
-        # "Upgrades (N)" items read — built from data the existing
-        # poll methods already fetch, never a third source of truth
-        # (R7.3's own explicit instruction). The downloading count
-        # itself lives on DownloadsPage now (round 8 Phase 6); read via
-        # the `_active_downloads_count` delegating property below.
-        self._needs_review_count = 0
-        self._pending_upgrades_count = 0
+        # Roadmap item R7 — menu-bar background operation. The tray
+        # menu's own status line and "Review (N)"/"Upgrades (N)" items
+        # read the `_needs_review_count`/`_pending_upgrades_count`
+        # delegating properties below — real ReviewPage state
+        # (round 8 Phase 6), built from data its own poll already
+        # fetches, never a third source of truth (R7.3's own explicit
+        # instruction). `_pending_review_focus_track_id`/
+        # `selected_playlist`/`_current_track_statuses`/the next-step
+        # dismissal keys all moved to page modules with the rest of
+        # their own pages the same way. The downloading count itself
+        # lives on DownloadsPage; read via the `_active_downloads_count`
+        # delegating property below.
         # R7.1 — set once the window is genuinely hidden-to-tray
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
@@ -639,7 +621,7 @@ class MainWindow(QMainWindow):
         self._dashboard_page._render_no_playlist_selected()
         self._dashboard_page._load_playlists()
         self._downloads_page._poll_active_downloads()
-        self._poll_review_items()
+        self._review_page._poll_review_items()
         self._dashboard_page._poll_next_step()
         self._seed_notification_cutoff()
 
@@ -671,7 +653,7 @@ class MainWindow(QMainWindow):
         self.poll_timer.timeout.connect(
             self._downloads_page._poll_active_downloads
         )
-        self.poll_timer.timeout.connect(self._poll_review_items)
+        self.poll_timer.timeout.connect(self._review_page._poll_review_items)
         self.poll_timer.timeout.connect(self._dashboard_page._poll_next_step)
         # Roadmap item 65 (Phase 2.2) — a periodic safety-net refresh on
         # top of the explicit begin()/end()-adjacent calls already made
@@ -768,10 +750,17 @@ class MainWindow(QMainWindow):
         self._register_page("search", self._search_page)
         self._downloads_page = DownloadsPage(page_context)
         self._register_page("downloads", self._downloads_page)
-        self._register_page("review", build_page(
-            "Review", help_text.REVIEW_TAB_SUBTITLE,
-            self._build_review_content(),
-        ))
+        self._review_page = ReviewPage(
+            page_context,
+            ReviewHost(
+                status_label=self.status_label,
+                refresh_track_table=self._dashboard_page._poll_selected_playlist,
+                check_for_needs_decision_notification=(
+                    self._check_for_needs_decision_notification
+                ),
+            ),
+        )
+        self._register_page("review", self._review_page)
         self._register_page("duplicates", build_page(
             "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
             self._build_duplicates_content(),
@@ -1090,12 +1079,12 @@ class MainWindow(QMainWindow):
             button.setChecked(True)
 
         if key == "review" and focus_track_id is not None:
-            self._pending_review_focus_track_id = focus_track_id
+            self._review_page._pending_review_focus_track_id = focus_track_id
             # The Review tables are already on the standing 2s
             # poll_timer regardless of which page is visible (item 48's
             # pattern) — this explicit call just avoids making the user
             # wait up to 2s to see the row get selected.
-            self._poll_review_items()
+            self._review_page._poll_review_items()
 
     def _on_settings_back_clicked(self) -> None:
         self._show_page(self._previous_page_key)
@@ -1411,7 +1400,7 @@ class MainWindow(QMainWindow):
         # up to a 2s wait.
         self._poll_selected_playlist()
         self._downloads_page._poll_active_downloads()
-        self._poll_review_items()
+        self._review_page._poll_review_items()
         self._render_activity_strip()
 
     def _update_nav_badge(self, key: str, count: int) -> None:
@@ -1498,81 +1487,6 @@ class MainWindow(QMainWindow):
 
     def _on_retag_track_clicked(self, track_id: str) -> None:
         self._dashboard_page._on_retag_track_clicked(track_id)
-
-    def _build_review_content(self) -> QWidget:
-        # Two independent sections, per item 26: SoulSeek needs-review
-        # candidates (item 17's tier, gaining its first real
-        # confirm/reject action here) and Phase 2 upgrade confirmations
-        # (item 8's ready_for_review flow, previously CLI-only via
-        # `seeker downloads review`). Both are driven by DownloadService
-        # methods that were built explicit-decision and input()-free
-        # specifically so a UI could call them directly — see CLAUDE.md
-        # item 26 §0/§1.
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
-
-        self.review_needs_table = QTableWidget(0, 4)
-        self.review_needs_table.setHorizontalHeaderLabels(
-            ["Track", "Score", "Candidate", "Actions"]
-        )
-        theme.apply_table_defaults(self.review_needs_table)
-        layout.addWidget(theme.make_card(self.review_needs_table))
-        self._configure_review_needs_columns()
-
-        upgrades_header_row = QHBoxLayout()
-        upgrades_header_row.addWidget(
-            QLabel("Downloaded upgrades ready for review")
-        )
-        upgrades_header_row.addStretch()
-        # Roadmap item R3.1 — "Replace all". Real count set/refreshed
-        # in _render_pending_upgrades, so it's never stale against
-        # what's actually in the table.
-        self.replace_all_upgrades_button = QPushButton("Replace all")
-        self.replace_all_upgrades_button.setToolTip(
-            help_text.TOOLTIP_REPLACE_ALL_UPGRADES
-        )
-        self.replace_all_upgrades_button.setEnabled(False)
-        self.replace_all_upgrades_button.clicked.connect(
-            self._on_replace_all_upgrades_clicked
-        )
-        upgrades_header_row.addWidget(self.replace_all_upgrades_button)
-        layout.addLayout(upgrades_header_row)
-
-        self.review_upgrades_table = QTableWidget(0, 4)
-        self.review_upgrades_table.setHorizontalHeaderLabels(
-            ["Track", "Current", "New quality", "Actions"]
-        )
-        theme.apply_table_defaults(self.review_upgrades_table)
-        layout.addWidget(theme.make_card(self.review_upgrades_table))
-        self._configure_review_upgrades_columns()
-
-        # Third section — roadmap item 56 Phase 2, closing item 7's
-        # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
-        # from the SoulSeek candidates table above) never had a
-        # confirm/reject UI at all before this.
-        layout.addWidget(QLabel("Local library matches needing confirmation"))
-
-        self.review_local_table = QTableWidget(0, 5)
-        self.review_local_table.setHorizontalHeaderLabels(
-            ["Track", "Matched file", "Location", "Score", "Actions"]
-        )
-        theme.apply_table_defaults(self.review_local_table)
-        layout.addWidget(theme.make_card(self.review_local_table))
-        self._configure_review_local_columns()
-
-        # Roadmap item R2.1 — the 2s poll_timer rebuilds this table's
-        # checkboxes from scratch every tick (see poll_timer's own
-        # comment on why); nothing carried the checked state across
-        # that rebuild before. Keyed by the stable
-        # UpgradeReviewDetails.request_id, never row index — pruned to
-        # only rows still present on every render (R2.3).
-        self._upgrade_delete_checked: set[int] = set()
-        self._current_pending_upgrades: PendingUpgrades = []
-
-        return tab
 
     def _build_duplicates_content(self) -> QWidget:
         # Fingerprint computation + clustering/scoring were built and
@@ -2696,30 +2610,12 @@ class MainWindow(QMainWindow):
     ) -> None:
         self._downloads_page._render_active_downloads(downloads)
 
-    def _poll_review_items(self) -> None:
-        # All three halves are cheap, local-DB-only reads (like
-        # get_active_downloads above) — no real slskd network calls, so
-        # this belongs on the 2s display-refresh timer, not the 20s
-        # backend-poll one. Bundled into one worker call rather than
-        # three so every table updates from the same consistent DB
-        # snapshot.
-        def fetch() -> tuple[
-                NeedsReviewCandidates, PendingUpgrades,
-                list[NeedsReviewMatch],
-        ]:
-            service = self.application.download_service
-            return (
-                service.get_review_candidates(),
-                service.get_pending_upgrade_reviews(),
-                self.application.library_service.get_needs_review_matches(),
-            )
-
-        run_worker(
-            self.thread_pool,
-            fetch,
-            on_finished=self._render_review_items,
-        )
-
+    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
+    # methods for ReviewPage's own attributes/methods
+    # test_ui_smoke.py touches directly on a fresh MainWindow instance
+    # (window._render_review_items(...), etc.). Deleted, alongside
+    # repointing those tests at the page widget directly, at the
+    # test-split session (S11, §9.3.4) — not before.
     def _render_review_items(
             self,
             data: tuple[
@@ -2727,439 +2623,55 @@ class MainWindow(QMainWindow):
                 list[NeedsReviewMatch],
             ],
     ) -> None:
-        candidates, upgrades, local_matches = data
-        total = len(candidates) + len(upgrades) + len(local_matches)
-        self._update_nav_badge("review", total)
-        # Roadmap item R7.3 — the tray menu's own "Review (N)"/
-        # "Upgrades (N)" counts, built from this same fetch (never a
-        # third source of truth). "Review" covers everything needing a
-        # confirm/reject decision; "Upgrades" is its own real Phase 2
-        # concept (replace/decline), kept distinct in the menu the same
-        # way the two are already distinct sections on this page.
-        self._needs_review_count = len(candidates) + len(local_matches)
-        self._pending_upgrades_count = len(upgrades)
-        self._check_for_needs_decision_notification(total)
-        self._render_needs_review_candidates(candidates)
-        self._render_pending_upgrades(upgrades)
-        self._render_local_needs_review_matches(local_matches)
-        self._focus_pending_review_row(candidates, upgrades, local_matches)
+        self._review_page._render_review_items(data)
 
     def _render_needs_review_candidates(
             self,
             candidates: NeedsReviewCandidates,
     ) -> None:
-        # Roadmap item R7.6 — counts/notifications are already computed
-        # by the caller (_render_review_items) before this runs; the
-        # table rebuild itself is pure waste while hidden.
-        if self._hidden_to_tray:
-            return
-
-        self.review_needs_table.setRowCount(len(candidates))
-        action_widgets: list[QWidget] = []
-
-        for row, (track, candidate) in enumerate(candidates):
-            label = f"{track.artist} - {track.title}"
-            self.review_needs_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_needs_table.setItem(
-                row, 1, QTableWidgetItem(f"{candidate.score:.1f}"),
-            )
-
-            candidate_text = (
-                    f"{candidate.quality_descriptor} — {candidate.username}"
-            )
-            self.review_needs_table.setItem(
-                row, 2, QTableWidgetItem(candidate_text),
-            )
-
-            needs_review_actions = self._build_needs_review_actions(track.id)
-            action_widgets.append(needs_review_actions)
-            self.review_needs_table.setCellWidget(row, 3, needs_review_actions)
-
-        self._size_review_needs_columns(action_widgets)
-
-    def _configure_review_needs_columns(self) -> None:
-        theme.configure_columns(self.review_needs_table, _REVIEW_NEEDS_COLUMNS)
-
-    def _size_review_needs_columns(
-            self,
-            action_widgets: list[QWidget],
-    ) -> None:
-        theme.size_columns(
-            self.review_needs_table, _REVIEW_NEEDS_COLUMNS, action_widgets,
-        )
-
-    def _build_needs_review_actions(self, track_id: str) -> QWidget:
-        confirm_button = QPushButton("Confirm")
-        confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_REVIEW_CANDIDATE)
-        reject_button = QPushButton("Reject")
-        reject_button.setToolTip(help_text.TOOLTIP_REJECT_REVIEW_CANDIDATE)
-
-        confirm_button.clicked.connect(
-            lambda: self._on_confirm_review_candidate(track_id, confirm_button)
-        )
-        reject_button.clicked.connect(
-            lambda: self._on_reject_review_candidate(track_id, reject_button)
-        )
-
-        return theme.cell_widget(confirm_button, reject_button)
-
-    def _on_confirm_review_candidate(
-            self,
-            track_id: str,
-            button: QPushButton,
-    ) -> None:
-        # confirm_review_candidate makes a real request_download() call
-        # (network) — routed through the worker pool like every other
-        # long-running action, never called directly on the main thread.
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service.confirm_review_candidate(
-                track_id
-            ),
-            button=button,
-            status_label=self.status_label,
-            on_finished=lambda _: self._poll_review_items(),
-        )
-
-    def _on_reject_review_candidate(
-            self,
-            track_id: str,
-            button: QPushButton,
-    ) -> None:
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service.reject_review_candidate(
-                track_id
-            ),
-            button=button,
-            status_label=self.status_label,
-            on_finished=lambda _: self._poll_review_items(),
-        )
+        self._review_page._render_needs_review_candidates(candidates)
 
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
-        # Roadmap item R3.1 — the real list "Replace all" acts on,
-        # recomputed fresh every render so a click always sees exactly
-        # what's on screen right now (item 76's own "recompute at click
-        # time" lesson, R3.3). Kept unconditional (not behind the R7.6
-        # hidden-window gate below) — the underlying poll keeps
-        # fetching fresh data while hidden, so this stays correct the
-        # instant the window is shown again.
-        self._current_pending_upgrades = upgrades
-
-        # Roadmap item R7.6 — the table rebuild itself is pure waste
-        # while hidden.
-        if self._hidden_to_tray:
-            return
-
-        self.review_upgrades_table.setRowCount(len(upgrades))
-        self.replace_all_upgrades_button.setEnabled(len(upgrades) > 0)
-        self.replace_all_upgrades_button.setText(
-            f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
-        )
-
-        # Roadmap item R2.3 — prune keys for rows that no longer exist,
-        # so this can't grow unbounded across a long session.
-        live_request_ids = {details.request_id for details in upgrades}
-        self._upgrade_delete_checked &= live_request_ids
-
-        action_widgets: list[QWidget] = []
-
-        for row, details in enumerate(upgrades):
-            label = f"{details.track.artist} - {details.track.title}"
-            self.review_upgrades_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_upgrades_table.setItem(
-                row, 1, QTableWidgetItem(details.current_description),
-            )
-            self.review_upgrades_table.setItem(
-                row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
-            )
-            upgrade_actions = self._build_upgrade_actions(details)
-            action_widgets.append(upgrade_actions)
-            self.review_upgrades_table.setCellWidget(row, 3, upgrade_actions)
-
-        self._size_review_upgrades_columns(action_widgets)
-
-    def _configure_review_upgrades_columns(self) -> None:
-        theme.configure_columns(
-            self.review_upgrades_table, _REVIEW_UPGRADES_COLUMNS,
-        )
-
-    def _size_review_upgrades_columns(
-            self,
-            action_widgets: list[QWidget],
-    ) -> None:
-        theme.size_columns(
-            self.review_upgrades_table, _REVIEW_UPGRADES_COLUMNS, action_widgets,
-        )
-
-    def _on_upgrade_delete_checkbox_toggled(
-            self, request_id: int, checked: bool,
-    ) -> None:
-        if checked:
-            self._upgrade_delete_checked.add(request_id)
-        else:
-            self._upgrade_delete_checked.discard(request_id)
-
-    def _build_upgrade_actions(self, details: UpgradeReviewDetails) -> QWidget:
-        replace_button = QPushButton("Replace")
-        replace_button.setToolTip(help_text.TOOLTIP_REPLACE_UPGRADE)
-        decline_button = QPushButton("Decline")
-        decline_button.setToolTip(help_text.TOOLTIP_DECLINE_UPGRADE)
-
-        # The "delete old file?" control only ever appears when there's
-        # a real old file to delete — mirrors the CLI's own guard around
-        # its second input() prompt (get_upgrade_review_details leaves
-        # old_file_path unset when there's nothing to replace).
-        widgets: list[QWidget] = []
-        delete_checkbox: QCheckBox | None = None
-        if details.old_file_path is not None:
-            delete_checkbox = QCheckBox("Delete old file")
-            delete_checkbox.setToolTip(
-                help_text.TOOLTIP_DELETE_OLD_FILE_CHECKBOX
-            )
-            # Roadmap item R2.1 — restore whatever this row's checkbox
-            # was set to before the last rebuild, and keep the state
-            # map updated as the user toggles it, keyed by the stable
-            # request_id (never row index, which shifts as rows are
-            # added/removed).
-            request_id = details.request_id
-            delete_checkbox.setChecked(
-                request_id in self._upgrade_delete_checked
-            )
-            delete_checkbox.toggled.connect(
-                lambda checked, request_id=request_id: (
-                    self._on_upgrade_delete_checkbox_toggled(
-                        request_id, checked,
-                    )
-                )
-            )
-            widgets.append(delete_checkbox)
-
-        def on_replace() -> None:
-            delete_old = delete_checkbox is not None and delete_checkbox.isChecked()
-            self._on_apply_upgrade_decision(
-                details.request_id, True, delete_old, replace_button,
-            )
-
-        def on_decline() -> None:
-            # A true no-op per apply_upgrade_decision's own contract —
-            # the row stays ready_for_review and is offered again next
-            # poll, identical to declining the CLI's prompt.
-            self._on_apply_upgrade_decision(
-                details.request_id, False, False, decline_button,
-            )
-
-        replace_button.clicked.connect(on_replace)
-        decline_button.clicked.connect(on_decline)
-
-        widgets.extend((replace_button, decline_button))
-        return theme.cell_widget(*widgets)
-
-    def _on_apply_upgrade_decision(
-            self,
-            request_id: int,
-            replace: bool,
-            delete_old: bool,
-            button: QPushButton,
-    ) -> None:
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service.apply_upgrade_decision(
-                request_id, replace, delete_old,
-            ),
-            button=button,
-            on_finished=self._on_upgrade_decision_finished,
-        )
-
-    def _on_upgrade_decision_finished(self, message: str | None) -> None:
-        # apply_upgrade_decision returns None for a decline (no-op, no
-        # message needed) and a short status string for a real replace —
-        # run_worker's own status_label wiring only fires on error, so
-        # the success message is surfaced here instead.
-        if message is not None:
-            self.status_label.setText(message)
-
-        self._poll_review_items()
-
-    def _on_replace_all_upgrades_clicked(self) -> None:
-        # Roadmap item R3.1/R3.3 — built fresh from what's actually on
-        # screen right now, never a stale plan from an earlier click.
-        upgrades = self._current_pending_upgrades
-
-        if not upgrades:
-            return
-
-        dialog = BulkReplaceUpgradesDialog(self, upgrades)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        delete_old = dialog.delete_old_checkbox.isChecked()
-        request_ids = [details.request_id for details in upgrades]
-
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service
-            .apply_upgrade_decisions_batch(request_ids, delete_old),
-            button=self.replace_all_upgrades_button,
-            status_label=self.status_label,
-            on_finished=self._on_bulk_replace_upgrades_finished,
-        )
-
-    def _on_bulk_replace_upgrades_finished(
-            self, result: BulkUpgradeReplaceResult,
-    ) -> None:
-        QMessageBox.information(
-            self,
-            help_text.BULK_REPLACE_UPGRADES_DIALOG_TITLE,
-            help_text.format_bulk_replace_upgrades_result(result),
-        )
-        # A partial failure's rows stay ready_for_review (apply_upgrade_
-        # decision's own contract — see apply_upgrade_decisions_batch's
-        # docstring) and are simply offered again by this same refresh,
-        # never dropped.
-        self._poll_review_items()
+        self._review_page._render_pending_upgrades(upgrades)
 
     def _render_local_needs_review_matches(
             self,
             matches: list[NeedsReviewMatch],
     ) -> None:
-        # Roadmap item R7.6 — the table rebuild itself is pure waste
-        # while hidden.
-        if self._hidden_to_tray:
-            return
+        self._review_page._render_local_needs_review_matches(matches)
 
-        self.review_local_table.setRowCount(len(matches))
-        action_widgets: list[QWidget] = []
-
-        for row, match in enumerate(matches):
-            label = f"{match.track_artist} - {match.track_title}"
-            self.review_local_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_local_table.setItem(
-                row, 1, QTableWidgetItem(match.local_file_path),
-            )
-            self.review_local_table.setItem(
-                row, 2, QTableWidgetItem(match.location_name),
-            )
-            self.review_local_table.setItem(
-                row, 3, QTableWidgetItem(f"{match.score:.1f}"),
-            )
-            local_review_actions = self._build_local_review_actions(
-                match.track_id,
-            )
-            action_widgets.append(local_review_actions)
-            self.review_local_table.setCellWidget(row, 4, local_review_actions)
-
-        self._size_review_local_columns(action_widgets)
-
-    def _configure_review_local_columns(self) -> None:
-        theme.configure_columns(self.review_local_table, _REVIEW_LOCAL_COLUMNS)
-
-    def _size_review_local_columns(
-            self,
-            action_widgets: list[QWidget],
+    def _on_bulk_replace_upgrades_finished(
+            self, result: BulkUpgradeReplaceResult,
     ) -> None:
-        theme.size_columns(
-            self.review_local_table, _REVIEW_LOCAL_COLUMNS, action_widgets,
-        )
+        self._review_page._on_bulk_replace_upgrades_finished(result)
 
-    def _build_local_review_actions(self, track_id: str) -> QWidget:
-        confirm_button = QPushButton("Confirm")
-        confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_LOCAL_MATCH)
-        reject_button = QPushButton("Reject")
-        reject_button.setToolTip(help_text.TOOLTIP_REJECT_LOCAL_MATCH)
+    @property
+    def review_needs_table(self) -> QTableWidget:
+        return self._review_page.review_needs_table
 
-        confirm_button.clicked.connect(
-            lambda: self._on_confirm_local_match(track_id, confirm_button)
-        )
-        reject_button.clicked.connect(
-            lambda: self._on_reject_local_match(track_id, reject_button)
-        )
+    @property
+    def review_upgrades_table(self) -> QTableWidget:
+        return self._review_page.review_upgrades_table
 
-        return theme.cell_widget(confirm_button, reject_button)
+    @property
+    def review_local_table(self) -> QTableWidget:
+        return self._review_page.review_local_table
 
-    def _on_confirm_local_match(
-            self,
-            track_id: str,
-            button: QPushButton,
-    ) -> None:
-        # No file on disk is touched by confirm_match() — no double-
-        # confirm gate, matching item 27's precedent that this project's
-        # confirmation gate is for file replacement, not DB state.
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.library_service.confirm_match(
-                track_id
-            ),
-            button=button,
-            status_label=self.status_label,
-            on_finished=self._on_local_review_decision_finished,
-        )
+    @property
+    def replace_all_upgrades_button(self) -> QPushButton:
+        return self._review_page.replace_all_upgrades_button
 
-    def _on_reject_local_match(
-            self,
-            track_id: str,
-            button: QPushButton,
-    ) -> None:
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.library_service.reject_match(
-                track_id
-            ),
-            button=button,
-            status_label=self.status_label,
-            on_finished=self._on_local_review_decision_finished,
-        )
+    @property
+    def _upgrade_delete_checked(self) -> set[int]:
+        return self._review_page._upgrade_delete_checked
 
-    def _on_local_review_decision_finished(self, _result: None) -> None:
-        self._poll_review_items()
-        self._poll_selected_playlist()
+    @property
+    def _needs_review_count(self) -> int:
+        return self._review_page._needs_review_count
 
-    def _focus_pending_review_row(
-            self,
-            candidates: NeedsReviewCandidates,
-            upgrades: PendingUpgrades,
-            local_matches: list[NeedsReviewMatch],
-    ) -> None:
-        # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
-        # Dashboard cell (roadmap item 56 Phase 2 §2.4, extended by item
-        # 66 Phase 4.1 to cover REVIEW_CANDIDATE too) sets
-        # _pending_review_focus_track_id and switches to this page; once
-        # the real data has actually loaded, this scrolls to and selects
-        # the matching row — a track that turns out to have nothing here
-        # yet (e.g. a locked/shortlisted RETRYING row, not yet
-        # ready_for_review) just lands on the page with nothing
-        # selected, rather than erroring.
-        track_id = self._pending_review_focus_track_id
-
-        if track_id is None:
-            return
-
-        self._pending_review_focus_track_id = None
-
-        for row, (track, _candidate) in enumerate(candidates):
-            if track.id == track_id:
-                self.review_needs_table.selectRow(row)
-                needs_item = self.review_needs_table.item(row, 0)
-                if needs_item is not None:
-                    self.review_needs_table.scrollToItem(needs_item)
-                return
-
-        for row, details in enumerate(upgrades):
-            if details.track.id == track_id:
-                self.review_upgrades_table.selectRow(row)
-                item = self.review_upgrades_table.item(row, 0)
-                if item is not None:
-                    self.review_upgrades_table.scrollToItem(item)
-                return
-
-        for row, match in enumerate(local_matches):
-            if match.track_id == track_id:
-                self.review_local_table.selectRow(row)
-                local_item = self.review_local_table.item(row, 0)
-                if local_item is not None:
-                    self.review_local_table.scrollToItem(local_item)
-                return
+    @property
+    def _pending_upgrades_count(self) -> int:
+        return self._review_page._pending_upgrades_count
 
     def _trigger_backend_poll(self) -> None:
         if self._backend_poll_in_progress:
@@ -3668,7 +3180,7 @@ class MainWindow(QMainWindow):
         # the window is visible again.
         self._poll_selected_playlist()
         self._downloads_page._poll_active_downloads()
-        self._poll_review_items()
+        self._review_page._poll_review_items()
         self._dashboard_page._poll_next_step()
         self._render_activity_strip()
 
