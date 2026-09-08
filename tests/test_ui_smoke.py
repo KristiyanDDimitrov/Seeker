@@ -630,13 +630,12 @@ class FakeApplication:
         # §connection tabs) — mirrored here rather than adding a
         # second, fake-only access pattern.
         self._config_store = SeekerConfig()
-        # Roadmap item 116 (round 8, §6.6.1) — settings_window.py's
-        # connection tab reads this at construction time now (the new
-        # remote-slskd-over-http warning); mirrors the real
-        # Application's own `_config_store.slskd_base_url or
-        # config.SLSKD_BASE_URL` fallback, always None here since no
-        # smoke test needs a configured slskd URL.
-        self._slskd_base_url: str | None = None
+        # Round 8 §7.1 — public names, mirroring the real Application's
+        # own `settings`/`slskd_base_url`/`slskd_api_key` (the latter
+        # two fold in the real class's env-var fallback; always None/
+        # unset here since no smoke test needs a configured slskd URL).
+        self.slskd_base_url: str | None = None
+        self.slskd_api_key: str | None = None
         self.persist_default_destination_calls: list[tuple[int, bool]] = []
         # Roadmap item R7.4/R7.1/R7.5 — mirrors the real Application's
         # own methods, same shape as persist_default_destination above.
@@ -644,6 +643,17 @@ class FakeApplication:
         self.mark_tray_hide_notice_shown_calls = 0
         self.set_notification_preference_calls: list[tuple[str, bool]] = []
         self.set_theme_mode_calls: list[str] = []
+        self.update_settings_calls: list[dict] = []
+
+    @property
+    def settings(self) -> SeekerConfig:
+        return self._config_store
+
+    def update_settings(self, **changes) -> SeekerConfig:
+        self.update_settings_calls.append(changes)
+        self._config_store = replace(self._config_store, **changes)
+
+        return self._config_store
 
     def persist_default_destination(
             self, location_id: int, subfolder_per_playlist: bool,

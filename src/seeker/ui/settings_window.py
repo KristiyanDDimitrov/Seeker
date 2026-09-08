@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import UTC, datetime
 
 from PySide6.QtCore import QThreadPool
@@ -26,7 +25,6 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
-from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
@@ -509,7 +507,7 @@ class SettingsPage(QWidget):
         for location, _ in locations:
             self.default_location_combo.addItem(location.name, location.id)
 
-        config = self.application._config_store
+        config = self.application.settings
         if config.default_download_location_id is not None:
             index = self.default_location_combo.findData(
                 config.default_download_location_id
@@ -740,7 +738,7 @@ class SettingsPage(QWidget):
         return tab
 
     def _refresh_connection_display(self) -> None:
-        config = self.application._config_store
+        config = self.application.settings
 
         self.spotify_client_id_field.setText(config.spotify_client_id or "")
 
@@ -765,8 +763,8 @@ class SettingsPage(QWidget):
         (not reset to None) until the new result lands, so the display
         doesn't flicker to "checking" on every tab re-open.
         """
-        config = self.application._config_store
-        base_url = self.application._slskd_base_url
+        config = self.application.settings
+        base_url = self.application.slskd_base_url
 
         if (
                 not base_url
@@ -795,7 +793,7 @@ class SettingsPage(QWidget):
         self._render_web_password_display()
 
     def _render_web_password_display(self) -> None:
-        config = self.application._config_store
+        config = self.application.settings
 
         if not config.slskd_web_username or not config.slskd_web_password:
             self.slskd_web_username_display.setText("Not configured")
@@ -847,7 +845,7 @@ class SettingsPage(QWidget):
         self._render_web_password_display()
 
     def _render_slskd_remote_warning(self) -> None:
-        base_url = self.application._slskd_base_url
+        base_url = self.application.slskd_base_url
 
         if base_url and is_non_loopback_http_url(base_url):
             self.slskd_remote_warning_notice.show_message(
@@ -861,7 +859,7 @@ class SettingsPage(QWidget):
             self.slskd_remote_warning_notice.dismiss()
 
     def _render_api_key_display(self) -> None:
-        config = self.application._config_store
+        config = self.application.settings
 
         if not config.slskd_api_key:
             self.soulseek_api_key_display.setText("Not configured")
@@ -901,8 +899,8 @@ class SettingsPage(QWidget):
         )
 
     def _on_test_connection_clicked(self) -> None:
-        base_url = self.application._slskd_base_url
-        api_key = self.application._slskd_api_key
+        base_url = self.application.slskd_base_url
+        api_key = self.application.slskd_api_key
 
         if not base_url or not api_key:
             self.test_connection_status_label.setText(
@@ -1185,7 +1183,7 @@ class SettingsPage(QWidget):
         return tab
 
     def _load_threshold_fields(self) -> None:
-        config = self.application._config_store
+        config = self.application.settings
 
         auto_threshold = config.auto_match_threshold or AUTO_MATCH_THRESHOLD
         needs_review_threshold = (
@@ -1232,15 +1230,10 @@ class SettingsPage(QWidget):
             )
             return
 
-        config_path = resolve_config_path()
-        current = load_config(config_path)
-        updated = replace(
-            current,
+        self.application.update_settings(
             auto_match_threshold=auto_threshold,
             needs_review_threshold=needs_review_threshold,
         )
-        save_config(updated, config_path)
-        self.application._config_store = updated
 
         self.thresholds_status_label.setText(
             "Saved. Takes effect on the next match/download run."

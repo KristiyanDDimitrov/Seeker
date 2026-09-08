@@ -494,18 +494,21 @@ class Application:
         return self._track_matcher
 
     @property
-    def _slskd_base_url(self) -> str | None:
+    def slskd_base_url(self) -> str | None:
         # Config store value takes precedence — env is only a fallback
         # for a setup that hasn't gone through migration (or is
-        # env-only by choice). See config_store.py.
+        # env-only by choice). See config_store.py. Public (round 8
+        # §7.1): includes the env fallback `settings.slskd_base_url`
+        # alone doesn't, so presentation-layer code that needs the
+        # actually-resolved value reads this instead.
         return self._config_store.slskd_base_url or config.SLSKD_BASE_URL
 
     @property
-    def _slskd_api_key(self) -> str | None:
+    def slskd_api_key(self) -> str | None:
         return self._config_store.slskd_api_key or config.SLSKD_API_KEY
 
     @property
-    def _slskd_download_dir(self) -> str | None:
+    def slskd_download_dir(self) -> str | None:
         return (
             self._config_store.slskd_download_dir
             or config.SLSKD_DOWNLOAD_DIR
@@ -519,20 +522,20 @@ class Application:
         # up at all (see config.py). CLI code checks this before calling
         # anything that would otherwise force soulseek_client into
         # existence just to read already-persisted review candidates.
-        return bool(self._slskd_base_url and self._slskd_api_key)
+        return bool(self.slskd_base_url and self.slskd_api_key)
 
     @property
     def soulseek_client(self) -> SoulseekClient:
         if self._soulseek_client is None:
-            if not self._slskd_base_url:
+            if not self.slskd_base_url:
                 raise RuntimeError("SLSKD_BASE_URL is not configured.")
 
-            if not self._slskd_api_key:
+            if not self.slskd_api_key:
                 raise RuntimeError("SLSKD_API_KEY is not configured.")
 
             self._soulseek_client = SoulseekClient(
-                self._slskd_base_url,
-                self._slskd_api_key,
+                self.slskd_base_url,
+                self.slskd_api_key,
             )
 
         return self._soulseek_client
@@ -562,7 +565,7 @@ class Application:
                 TrackMatchRepository(self.database),
                 LocalFileRepository(self.database),
                 SoulseekReviewCandidateRepository(self.database),
-                self._slskd_download_dir,
+                self.slskd_download_dir,
                 get_config=lambda: self._config_store,
             )
 

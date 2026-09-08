@@ -390,9 +390,9 @@ def test_application_soulseek_config_prefers_store_value_over_env(
     app = Application()
 
     assert app.soulseek_configured is True
-    assert app._slskd_base_url == "http://current-store-value:5030"
-    assert app._slskd_api_key == "current-store-key"
-    assert app._slskd_download_dir == "/current/store/dir"
+    assert app.slskd_base_url == "http://current-store-value:5030"
+    assert app.slskd_api_key == "current-store-key"
+    assert app.slskd_download_dir == "/current/store/dir"
     assert app.download_service.slskd_download_dir == "/current/store/dir"
     assert app.soulseek_client.base_url == "http://current-store-value:5030"
 
@@ -433,9 +433,9 @@ def test_application_soulseek_config_falls_back_to_env_when_store_empty(
     # End-to-end: startup migration copies the env values into the
     # (empty) store, and resolution reflects them correctly either way.
     assert app.soulseek_configured is True
-    assert app._slskd_base_url == "http://env-value:5030"
-    assert app._slskd_api_key == "env-key"
-    assert app._slskd_download_dir is None
+    assert app.slskd_base_url == "http://env-value:5030"
+    assert app.slskd_api_key == "env-key"
+    assert app.slskd_download_dir is None
 
     # Isolate the property-level fallback itself, independent of
     # migration having already copied the values into the store — force
@@ -443,9 +443,9 @@ def test_application_soulseek_config_falls_back_to_env_when_store_empty(
     app._config_store = SeekerConfig()
 
     assert app.soulseek_configured is True
-    assert app._slskd_base_url == "http://env-value:5030"
-    assert app._slskd_api_key == "env-key"
-    assert app._slskd_download_dir is None
+    assert app.slskd_base_url == "http://env-value:5030"
+    assert app.slskd_api_key == "env-key"
+    assert app.slskd_download_dir is None
 
 
 def test_application_spotify_config_prefers_store_value_over_env(

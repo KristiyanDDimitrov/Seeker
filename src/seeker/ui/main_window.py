@@ -6093,7 +6093,7 @@ class MainWindow(QMainWindow):
         else:
             prefill_subfolder = None
             default_location_id = (
-                self.application._config_store.default_download_location_id
+                self.application.settings.default_download_location_id
             )
 
         dialog = DestinationDialog(
@@ -6601,7 +6601,7 @@ class MainWindow(QMainWindow):
         # behavior" shape this project's own CLAUDE.md already warns
         # about (item 104/C3's Dashboard-vs-Downloads progress bar).
         assert self._tray_icon is not None
-        if self.application._config_store.tray_hide_notice_shown:
+        if self.application.settings.tray_hide_notice_shown:
             return
         self._tray_icon.showMessage(
             "Seeker",
@@ -6792,7 +6792,7 @@ class MainWindow(QMainWindow):
         if self._tray_icon is None:
             return
 
-        if not self.application._config_store.notify_downloads_finished:
+        if not self.application.settings.notify_downloads_finished:
             return
 
         if self._last_notified_download_at is None:
@@ -6845,7 +6845,7 @@ class MainWindow(QMainWindow):
         # as anything sits unreviewed).
         if (
                 self._tray_icon is not None
-                and self.application._config_store.notify_needs_decision
+                and self.application.settings.notify_needs_decision
                 and total > self._last_notified_review_count
         ):
             plural = "s" if total != 1 else ""
@@ -6864,7 +6864,7 @@ class MainWindow(QMainWindow):
         if self._tray_icon is None:
             return
 
-        if not self.application._config_store.notify_errors:
+        if not self.application.settings.notify_errors:
             return
 
         now = time.monotonic()
