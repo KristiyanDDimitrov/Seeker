@@ -10,99 +10,98 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `4823ad1` — "docs: HISTORY §118 for round 8 S4
-  (deduplication)" (S4 close-out, pending this commit's own tick/handoff
-  commit on top)
+- **HEAD:** `2058c2d` — "9.2/9.3.1: Phase 6 prep (PageContext) +
+  History/Help/Support pages" (S5 close-out, pending this commit's own
+  tick/handoff commit on top)
 - **Working tree:** clean except this rewrite + the SESSION-PLAN.md tick
-- **`origin/main`:** was 5 commits ahead as of S3's handoff, not
+- **`origin/main`:** was 15 commits ahead as of S4's handoff, not
   re-checked this session — ask before pushing regardless.
-- **pytest:** 1149 passed, 1 skipped, 0 failures this run (the two
+- **pytest:** 1147 passed, 1 skipped, 0 failures this run (the two
   tracked fullscreen-close flakes did not fire — see "Known flakes")
-- **mypy --strict:** clean, 86 source files
+- **mypy --strict:** clean, 91 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
 ## Where we are in the plan
 
-Round 8 is a nine-phase refactor/security/docs pass. The full plan is
-`docs/BRIEF-2026-09-08-refactor.md`; the session-by-session map is
+Round 8 is a nine-phase refactor/security/docs pass. Full plan:
+`docs/BRIEF-2026-09-08-refactor.md`. Session map:
 `docs/round8/SESSION-PLAN.md`. **Read the session plan, not the full
-brief** — the full brief is 115 KB and you only need your own session's
-slice of it.
+brief** — the brief is 115 KB, you only need your own session's slice.
 
 - **Done:** Phase 0 (baseline), Phase 1 (toolchain, ruff config, CI),
   Phase 3 (security §6.1–§6.6), Phase 3B (§14 Dock icon), S1 (CLAUDE.md
-  shrunk to 25,260 chars), S2 (§7.1 — private-attribute layering), S3
-  (§7.2 — logging), **S4** (§8.1, §8.2 — deduplication).
-- **Next session: S5 — Phase 6 prep + dialogs + static pages** (§9.2,
-  §9.3.1: dialogs, History, Help/Support). This is the start of the
-  `MainWindow` decomposition — read `docs/round8/SESSION-PLAN.md`'s own
-  "Phase 6 — the part that needs the most care" section before starting,
-  not just your row.
+  shrunk), S2 (§7.1), S3 (§7.2 — logging), S4 (§8.1, §8.2 —
+  deduplication), **S5** (§9.2, §9.3.1 — Phase 6 prep + dialogs +
+  History/Help/Support pages).
+- **Next session: S6 — Search + Sharing pages** (§9.3.1). Read
+  `docs/round8/SESSION-PLAN.md`'s own "Phase 6 — the part that needs the
+  most care" section before starting, not just your row — and read the
+  "Phase 6 mechanics, refined by S5" section below, since S5 found real
+  gaps in that section as originally written.
 
-## S4 — what landed (§8.1, §8.2)
+## S5 — what landed (§9.2, §9.3.1: dialogs, History, Help/Support)
 
-Six commits, full detail in [HISTORY §118](docs/HISTORY.md#118):
+Two commits, full detail in the commit messages (`112c74a`, `2058c2d`):
 
-- **§8.1.1** — the seven tables' `_configure_*_columns`/
-  `_size_*_columns` pairs (14 methods, ~214 lines) collapsed into
-  `theme.ColumnLayout` + `theme.configure_columns()`/`size_columns()`,
-  one `ColumnLayout` constant per table. Zero test edits — full suite
-  green proved the move behaviour-neutral before any test could mask a
-  regression.
-- **§8.1.3** — found and fixed a real (if minor) E2-class gap along the
-  way: `settings_window.py`'s `locations_table` never got round 7's E2
-  fix (its Actions column wasn't derived at construction, because its
-  real render is an async callback, not synchronous like every
-  MainWindow table E2 was written against). Fixed as its own behaviour
-  commit, *then* folded into `ColumnLayout` as a separate pure-refactor
-  commit. `downloads_table`/`history_table`/`sharing_uploads_table`
-  checked and left alone with an explaining comment — genuinely no
-  `ColumnLayout` shape (no Actions column, `setStretchLastSection` only).
-- **§8.1.2** — strengthened the E2.4 structural test to also assert no
-  non-stretch column sits at Qt's raw `defaultSectionSize()` after
-  construction. Verified the strengthening actually catches something
-  via two throwaway sabotages (both reverted before committing).
-- **§8.2.1** — surveyed ~10 `_render_*` table-loop methods; **no
-  extraction made**. They diverge in column count, per-cell formatting,
-  pre-loop guards, and post-loop side effects enough that a shared
-  helper would be the "bad abstraction over eleven slightly-different
-  loops" the brief warned against. This is a reported measurement, not
-  a skipped task — see HISTORY §118 for the specific methods compared.
-- **§8.2.2** — **not attempted**, per the brief's own instruction: it
-  explicitly says to do the `_hidden_to_tray` guard dedup as part of
-  Phase 6's poll-fan-out restructuring, not before it.
-- **§8.2.3** — `build_stylesheet`'s 467-line/one-f-string QSS blob split
-  into 11 per-concern functions. Verified stricter than a pixel diff: a
-  script mechanically sliced every character from the original file
-  (never retyped) and confirmed byte-for-byte identical output for both
-  palettes before/after. One real bug caught while writing that script
-  — naive per-function f-strings each contributed their own leading
-  newline, corrupting the composed output with extra blank lines; fixed
-  via the `f"""\` backslash-continuation opener. See HISTORY §118 for
-  the mechanism.
+- **Dialogs** (`112c74a`) — the five `QDialog` subclasses plus
+  `build_support_links_row()` moved verbatim to new `ui/dialogs.py`.
+  `main_window.py` re-exports the names, so test imports didn't need to
+  change yet — pointing them at `seeker.ui.dialogs` directly is
+  deferred to S11 (§9.3.4).
+- **Phase 6 prep + first three pages** (`2058c2d`) — `ui/pages/context.py`
+  (`PageContext`, the seam, plus `build_page`/`build_subtitle_label`
+  relocated verbatim so every future page can reach them without a
+  circular import). `ui/pages/history_page.py` (`HistoryPage`) and
+  `ui/pages/static_pages.py` (`HelpPage`, `SupportPage`) — the three
+  easiest pages per §9.3.1's ordering. `MainWindow` keeps temporary
+  delegating properties for `HistoryPage`'s four tested attributes;
+  Help/Support needed none.
+- Visually verified, not just test-green: a throwaway offscreen-QPA
+  script (real theme stack, `FakeApplication`) grabbed all three pages
+  in both themes and matched the Phase 0.3 baselines
+  (`~/seeker-baselines/2026-09-08/`) structurally — layout/chrome/
+  spacing/colors identical, content differs only because it's
+  synthetic. Not committed; worth a real version if this recurs S6–S10.
+
+## Phase 6 mechanics, refined by S5 — read before S6
+
+Two real gaps in SESSION-PLAN.md's 5-step mechanism, found on the first
+pages moved:
+
+1. **`PageContext` needed a fifth field the brief's own sketch didn't
+   have: `run_busy_worker`**, bound from `MainWindow._run_busy_worker` —
+   any page with a background action needs it. `notify` was left OUT
+   (no real implementation to bind it to yet). See the dataclass's own
+   docstring.
+2. **"Zero test edits" only covers `window.<attr>`-style widget access
+   — not a page's private module-level helper patched by dotted path,
+   and not a MainWindow builder method called directly for a fresh
+   instance.** Three tests needed real (narrow, documented) fixes this
+   session: `_open_in_file_manager` and `webbrowser.open` were both
+   patched via `main_window_module.<name>`, which stopped resolving
+   once the real code moved modules; `window._build_help_page()` was
+   called directly for a throwaway instance, which no longer exists
+   (now `window._help_page`, the real registered one). **Before
+   assuming a page is a clean zero-edit move**, grep the page's test
+   block for `monkeypatch.setattr(main_window_module,` and
+   `window._build_<page>` — Search/Sharing are the next candidates.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
-`test_fullscreen_close_policy_check_ignores_a_stale_request`
-(`test_ui_smoke.py`) — tracked since S2, confirmed pre-existing via
-`git stash -u` against a clean tree. Fired intermittently in S3 (0-2 per
-run); did not fire in this session's final full-suite run. Same likely
-cause as CLAUDE.md's other tracked flakes (pytest-qt teardown / Qt
-deferred-deletion timing). Not diagnosed further — out of scope for S4.
+`test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
+since S2. Fired once in the full suite this session, passed 2/2 in
+isolation right after. Same pytest-qt teardown / Qt deferred-deletion
+cause already documented. Not diagnosed further.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
-1. **Never read `docs/HISTORY.md` in full.** `grep -n` it, read the
-   range.
-2. **Never read `main_window.py` or `test_ui_smoke.py` in full.**
-   `grep -n` for the symbol, read a range around it.
-3. **`uv run pytest -q`**, report only the summary line plus named
-   failures.
-4. **`git diff --stat`** by default; full `git diff` only for the one
-   file under review.
-5. **Do not re-read a file you just edited to confirm the edit.**
-6. **Do not read a brief for a phase you are not doing.**
+Never read `docs/HISTORY.md`, `main_window.py`, or `test_ui_smoke.py`
+in full — `grep -n` the symbol/section, read that range. `uv run
+pytest -q`: report only the summary line plus named failures. `git
+diff --stat` by default, full diff only for the file under review.
+Don't re-read a file you just edited. Don't read a brief for a phase
+you aren't doing.
 
 ## Waiting on Kris — real-world actions Code cannot do
 
