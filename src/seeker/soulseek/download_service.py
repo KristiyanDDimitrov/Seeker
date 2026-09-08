@@ -57,24 +57,19 @@ logger = logging.getLogger(__name__)
 
 
 def _debug_poll(message: str) -> None:
-    # Roadmap item 66 (Phase 4.3) — item 63's temporary, unconditional
-    # print() converted to a gated log, per that item's own explicit
-    # instruction to keep the diagnostic capability without the console
-    # noise: the root cause of the real production retry-frequency storm
-    # is still unknown, and with Phase 4.3's backoff now in place, a
-    # recurrence would show up as a violated next_retry_at — a much
-    # sharper signal than raw call timing — so this stays available for
-    # that, opt-in via SEEKER_DEBUG_POLL=1, rather than deleted outright.
+    # Diagnostic only, opt-in via SEEKER_DEBUG_POLL=1 — kept for the
+    # still-open retry-storm investigation (HISTORY §63/§66): a
+    # violated next_retry_at is now a sharper signal than raw call
+    # timing, so this stays available rather than being deleted.
     if os.environ.get("SEEKER_DEBUG_POLL") == "1":
         print(message)
 
 
-# Roadmap item 66 (Phase 4.3) — bounds the previously-unbounded locked
-# retry loop (items 13/14/25/63; item 63's own real production storm:
-# 300+ retries of one row in ~18 minutes, root cause still unknown but
-# now structurally capped regardless). All three untuned — real numbers
-# to revisit once real usage data exists, same convention as every other
-# threshold in this codebase.
+# Bounds the locked retry loop (HISTORY §63/§66 — a real production
+# storm retried one row 300+ times in ~18 minutes, root cause still
+# unknown but now structurally capped regardless). All three untuned —
+# real numbers to revisit once real usage data exists, same convention
+# as every other threshold in this codebase.
 LOCKED_RETRY_BASE_SECONDS = 60
 LOCKED_RETRY_MAX_SECONDS = 3600
 LOCKED_RETRY_MAX_ATTEMPTS = 8
@@ -91,7 +86,6 @@ FAILED_STATE_MARKERS = (
 )
 
 
-
 class PlaylistNotFoundError(RuntimeError):
     pass
 
@@ -101,13 +95,11 @@ class NoDestinationConfiguredError(RuntimeError):
 
 
 class UnsupportedDownloadFormatError(RuntimeError):
-    """Roadmap item 94 (B5.4) — an explicit per-row 'Download this one'
-    pick (download_manual's chosen=) bypasses select_downloads'
-    ranking/threshold entirely (item 82), which is also where the
-    DOWNLOADABLE_EXTENSIONS gate normally lives — so this is the final
-    guard at request time. A refused click must say so loudly, not do
-    nothing: same "explicit action, honest outcome" standard as item 56
-    Phase 4.2."""
+    """An explicit per-row 'Download this one' pick (download_manual's
+    chosen=) bypasses select_downloads' ranking/threshold entirely —
+    including the DOWNLOADABLE_EXTENSIONS gate that normally lives
+    there — so this is the final guard at request time. A refused
+    click must say so loudly, not do nothing (HISTORY §94)."""
 
     def __init__(self, extension: str):
         # Fixed, readable order (mp3/flac/wav/aiff/aif/m4a) rather than
@@ -133,10 +125,9 @@ class ReviewCandidateMissingSizeError(RuntimeError):
 
 @dataclass
 class BulkUpgradeReplaceResult:
-    """Roadmap item R3.1 — the real per-row outcome of a "Replace all"
-    batch, same honest-reporting shape as `format_rename_result_message`
-    (item 67/76): a count for the UI's headline, plus one detail line
-    per row so a partial failure is never just a bare number."""
+    """The real per-row outcome of a "Replace all" batch: a count for
+    the UI's headline, plus one detail line per row so a partial
+    failure is never just a bare number (HISTORY §88)."""
     replaced: int
     failed: int
     details: list[str]
@@ -150,10 +141,9 @@ def _build_search_query(artist: str, title: str) -> str:
     # the first name risks not matching filenames that don't happen to
     # have that exact comma placement.
     #
-    # Roadmap item 82 (P13.3) — takes plain artist/title strings now,
-    # not a Track, so a manual (not-from-Spotify) search shares this
-    # EXACT construction with download_playlist rather than a second,
-    # drifting copy.
+    # Takes plain artist/title strings, not a Track, so a manual
+    # (not-from-Spotify) search shares this exact construction with
+    # download_playlist rather than a second, drifting copy.
     artist_query = artist.replace(",", " ")
 
     return " ".join(f"{artist_query} {title}".split())
@@ -184,9 +174,9 @@ class DownloadService:
         get_config: Callable[[], SeekerConfig] | None = None,
     ):
         self.database = database
-        # None only when SoulSeek genuinely isn't configured — Step 8's
-        # Settings screen needs to construct a real, usable
-        # DownloadService for set_destination()/get_review_candidates()/
+        # None only when SoulSeek genuinely isn't configured — Settings
+        # needs to construct a real, usable DownloadService for
+        # set_destination()/get_review_candidates()/
         # get_pending_upgrade_reviews() (none of which ever touch
         # SoulSeek at all) without a working slskd connection. A method
         # that DOES need it (download_playlist, poll_downloads, ...)
@@ -262,14 +252,13 @@ class DownloadService:
             playlist_name: str,
     ) -> tuple[LibraryLocation, str | None] | None:
         """Read-only — the UI's own check before ever calling
-        download_playlist() (roadmap item 6 §3): resolvable now (a
-        playlist-specific destination, or the configured default) means
-        proceed straight to the real download; None means show the
-        "set a destination" dialog first rather than letting
-        download_playlist() raise NoDestinationConfiguredError and dead-
-        end the user. Shares _resolve_destination with the real move
-        step, so this is never a second, drifting notion of
-        "resolvable."
+        download_playlist(): resolvable now (a playlist-specific
+        destination, or the configured default) means proceed straight
+        to the real download; None means show the "set a destination"
+        dialog first rather than letting download_playlist() raise
+        NoDestinationConfiguredError and dead-end the user. Shares
+        _resolve_destination with the real move step, so this is never
+        a second, drifting notion of "resolvable."
         """
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
@@ -294,14 +283,14 @@ class DownloadService:
 
             if self._resolve_destination(playlist) is None:
                 # Interface-neutral wording, deliberately — this
-                # exception is shared by both the CLI and the UI
-                # (roadmap item 6 §2: a GUI-facing message must never
-                # tell someone to run a shell command). The CLI's own
-                # handler appends its own command-line guidance when it
-                # catches this; the UI instead proactively resolves the
-                # destination via a real dialog before ever calling
-                # download_playlist() with none configured (§3), so it
-                # should only ever see this in a genuine race.
+                # exception is shared by both the CLI and the UI (a
+                # GUI-facing message must never tell someone to run a
+                # shell command). The CLI's own handler appends its own
+                # command-line guidance when it catches this; the UI
+                # instead proactively resolves the destination via a
+                # real dialog before ever calling download_playlist()
+                # with none configured, so it should only ever see this
+                # in a genuine race.
                 raise NoDestinationConfiguredError(
                     f"'{playlist_name}' has no download destination "
                     f"configured yet."
@@ -328,17 +317,16 @@ class DownloadService:
         requested = 0
         skipped = 0
         failed = 0
-        # Roadmap item 56 Phase 5.1 — distinct from the generic
-        # `skipped` count so the UI can tell "already downloading/
-        # downloaded" apart from "no real candidate found" (the two
-        # skip reasons below are otherwise indistinguishable from the
-        # return value alone).
+        # Distinct from the generic `skipped` count so the UI can tell
+        # "already downloading/downloaded" apart from "no real
+        # candidate found" (the two skip reasons below are otherwise
+        # indistinguishable from the return value alone).
         already_in_progress: list[str] = []
-        # Roadmap item 66 (Phase 4.2) — same reasoning, for a THIRD
-        # skip reason folded into the same generic `skipped` counter:
-        # "sent to Review" (a real needs-review candidate was found and
-        # recorded) reads identically to "no candidate found at all"
-        # without this. `skipped` itself is left as their combined total
+        # Same reasoning, for a third skip reason folded into the same
+        # generic `skipped` counter: "sent to Review" (a real
+        # needs-review candidate was found and recorded) reads
+        # identically to "no candidate found at all" without this.
+        # `skipped` itself is left as their combined total
         # (backward-compatible with any existing consumer summing it),
         # this list is what lets a caller subtract the two apart honestly.
         needs_review_tracks: list[str] = []
@@ -366,13 +354,8 @@ class DownloadService:
                     # re-running download_playlist must not pile on a
                     # duplicate, otherwise-identical row for the same
                     # candidate, and must not re-download a track
-                    # that's already sitting in the library. Confirmed
-                    # live, both cases: two runs against a still-
-                    # 'locked' upgrade created two rows before the
-                    # original (narrower) guard existed (item 16); two
-                    # differently-named files landed for the same real
-                    # track (Kamäleon - Quadrat) because a completed
-                    # row wasn't "active" under that narrower guard.
+                    # that's already sitting in the library
+                    # (HISTORY §16, §45).
                     statuses = ", ".join(
                         sorted({request.status for request in blocking})
                     )
@@ -472,13 +455,13 @@ class DownloadService:
         }
 
     def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
-        """Roadmap item 82 (P13.3) — a real SoulSeek search for a track
-        that isn't in any Spotify playlist, using the EXACT SAME query
-        construction download_playlist uses (_build_search_query) —
-        never a second, drifting copy. Read-only: no track row, no
-        download_requests row, nothing persisted. A real search takes
-        20-45s (client.py's own documented real-world timing) — the
-        caller (UI/CLI) is responsible for showing that it's busy.
+        """A real SoulSeek search for a track that isn't in any Spotify
+        playlist, using the exact same query construction
+        download_playlist uses (_build_search_query) — never a second,
+        drifting copy. Read-only: no track row, no download_requests
+        row, nothing persisted. A real search takes 20-45s (client.py's
+        own documented real-world timing) — the caller (UI/CLI) is
+        responsible for showing that it's busy.
         """
         return self.soulseek.search(_build_search_query(artist, title))
 
@@ -489,21 +472,20 @@ class DownloadService:
             chosen: SoulseekFile | None = None,
             files: list[SoulseekFile] | None = None,
     ) -> dict[str, Any]:
-        """Roadmap item 82 (P13.1/13.3) — search for and download a
-        track that isn't in any Spotify playlist, reusing the same
-        "best quality available, fall back until something actually
-        downloads" behavior as a playlist download (select_downloads),
-        no new ranking logic. Creates a real `tracks` row (id
-        `manual:<uuid4>`, album="", duration_ms=0 — see
-        _index_and_match_settled_download's own comment on why a
+        """Search for and download a track that isn't in any Spotify
+        playlist, reusing the same "best quality available, fall back
+        until something actually downloads" behavior as a playlist
+        download (select_downloads), no new ranking logic. Creates a
+        real `tracks` row (id `manual:<uuid4>`, album="", duration_ms=0
+        — see _index_and_match_settled_download's own comment on why a
         placeholder duration doesn't affect the immediate post-download
         match) belonging to no playlist.
 
         `chosen`, when given (an explicit per-row "Download this one"
-        pick — P13.5), bypasses select_downloads' ranking/threshold
-        entirely and requests exactly that file as role='settled': the
-        user's own explicit choice is a stronger signal than any
-        threshold, the same reasoning item 26 already applies to a
+        pick), bypasses select_downloads' ranking/threshold entirely
+        and requests exactly that file as role='settled': the user's
+        own explicit choice is a stronger signal than any threshold,
+        the same reasoning HISTORY §26 already applies to a
         human-confirmed needs-review candidate.
 
         `files`, when given, skips a second real 20-45s network search
@@ -514,7 +496,7 @@ class DownloadService:
         fresh.
         """
         if self._resolve_destination(None) is None:
-            # Checked BEFORE creating a track row or running a real
+            # Checked before creating a track row or running a real
             # 20-45s search — same "no destination configured" contract
             # as download_playlist (the CLI appends its own guidance;
             # the UI reuses this exact exception to route to Settings).
@@ -525,13 +507,9 @@ class DownloadService:
         if chosen is not None and not is_downloadable_extension(
                 chosen.extension,
         ):
-            # Roadmap item 94 (B5.3/B5.4) — chosen bypasses
-            # select_downloads (and its own DOWNLOADABLE_EXTENSIONS
-            # gate) entirely, so this is the final check at request
-            # time — checked here, before a track row is even created,
-            # matching the destination check just above. A refused
-            # explicit click gets a real, readable error, not a silent
-            # no-op — same standard as item 56 Phase 4.2.
+            # chosen bypasses select_downloads (and its own
+            # DOWNLOADABLE_EXTENSIONS gate) entirely, so this is the
+            # final check at request time (see UnsupportedDownloadFormatError).
             raise UnsupportedDownloadFormatError(chosen.extension)
 
         track = Track(
@@ -729,10 +707,7 @@ class DownloadService:
     ) -> list[tuple[Track, SoulseekReviewCandidate]]:
         # Read-only listing — the actual confirm/reject actions are
         # confirm_review_candidate()/reject_review_candidate() below
-        # (item 26, the Review screen), not here. Originally this
-        # method's own docstring deferred that entirely to "a future UI,
-        # not another CLI prompt loop" (mirroring the local matcher's
-        # identical open item) — that future UI is what item 26 builds.
+        # (HISTORY §26, the Review screen).
         with self.database.transaction() as connection:
             candidates = self.soulseek_review_candidates.get_all(connection)
 
@@ -758,18 +733,16 @@ class DownloadService:
         return results
 
     def confirm_review_candidate(self, track_id: str) -> None:
-        # Item 26 — the Review screen's SoulSeek-candidate confirm
-        # action. role='settled', deliberately: a human just manually
-        # confirmed this specific candidate is correct, a stronger
-        # signal than an algorithmic top-rank pick, so it auto-moves
-        # into the library on success rather than demanding a SECOND
-        # confirmation via ready_for_review. This required a real,
-        # audited change to poll_downloads()'s rejection handling (see
-        # CLAUDE.md item 26) — find_best_needs_review_candidate never
+        # The Review screen's SoulSeek-candidate confirm action.
+        # role='settled', deliberately: a human just manually confirmed
+        # this specific candidate is correct, a stronger signal than an
+        # algorithmic top-rank pick, so it auto-moves into the library
+        # on success rather than demanding a second confirmation via
+        # ready_for_review. find_best_needs_review_candidate never
         # filters on lock status, so this candidate genuinely can be
-        # locked, and a locked settled-role request now correctly
-        # retries via the same Phase 3 cascade an upgrade would, rather
-        # than failing permanently the moment it's requested.
+        # locked — poll_downloads()'s rejection handling classifies
+        # locked-vs-failed regardless of role for exactly this reason
+        # (HISTORY §26).
         with self.database.transaction() as connection:
             candidate = self.soulseek_review_candidates.get_by_track_id(
                 track_id, connection,
@@ -783,13 +756,10 @@ class DownloadService:
 
         if candidate.size is None:
             # A legacy row persisted before `size` existed on this
-            # table (item 26) — can't call request_download without it.
+            # table — can't call request_download without it.
             # Downloading the track's playlist again refreshes this row
             # with a real size the normal way, rather than this method
-            # guessing or defaulting one. UI-first wording (roadmap
-            # item 6 §2) — this reaches the GUI directly via the
-            # Review tab's Confirm action, so it must describe the fix
-            # in UI terms, not a CLI command.
+            # guessing or defaulting one.
             raise ReviewCandidateMissingSizeError(
                 f"Review candidate for track {track_id} predates size "
                 f"tracking — download its playlist again (Dashboard → "
@@ -818,10 +788,10 @@ class DownloadService:
             )
 
         # Cleared immediately once the request is made, not once it
-        # completes — the exact same clearing trigger item 17 already
-        # established ("something real now exists for this track"), so
-        # `seeker check` never surfaces this candidate as still awaiting
-        # a decision once a decision has, in fact, been made.
+        # completes — the same clearing trigger used elsewhere ("something
+        # real now exists for this track"), so `seeker check` never
+        # surfaces this candidate as still awaiting a decision once a
+        # decision has, in fact, been made.
         self._clear_review_candidate(track_id)
 
     def reject_review_candidate(self, track_id: str) -> None:
@@ -833,25 +803,20 @@ class DownloadService:
         self._clear_review_candidate(track_id)
 
     def poll_downloads(self) -> dict[str, int]:
-        # Diagnostic (roadmap item 63/66) — a real, timestamped call-
-        # frequency log for the still-open locked-retry burst
-        # investigation, gated behind SEEKER_DEBUG_POLL=1 (Phase 4.3
-        # converted this from an unconditional print — see _debug_poll's
-        # own docstring for why it stays rather than being deleted
-        # outright). `_trigger_backend_poll`'s own overlap guard should
-        # make this fire at most once per real 20s BACKEND_POLL_INTERVAL_MS
-        # tick; a real attended run once showed a genuinely bursty
-        # pattern no isolated repro has reproduced since (see
-        # docs/HISTORY.md item 63).
+        # Diagnostic — a real, timestamped call-frequency log for the
+        # still-open locked-retry burst investigation (HISTORY §63),
+        # gated behind SEEKER_DEBUG_POLL=1 (see _debug_poll's own
+        # docstring for why it stays rather than being deleted
+        # outright).
         _debug_poll(
             f"[poll_downloads] {datetime.now(UTC).isoformat()} "
             f"called"
         )
 
-        # Roadmap item R7.4 — checked here, not just in the UI's own
-        # timer, so pausing is authoritative regardless of caller: no
-        # real slskd network call (status poll, locked-retry, upgrade
-        # cascade) happens at all while paused. Read fresh via
+        # Checked here, not just in the UI's own timer, so pausing is
+        # authoritative regardless of caller: no real slskd network
+        # call (status poll, locked-retry, upgrade cascade) happens at
+        # all while paused (HISTORY §90). Read fresh via
         # self._get_config() (the same not-a-snapshot discipline every
         # other config read in this class already uses), never cached,
         # so a resume takes effect on the very next call.
@@ -906,33 +871,20 @@ class DownloadService:
                 if any(marker in state for marker in FAILED_STATE_MARKERS):
                     # A rejection isn't progress — progress fields stay
                     # unset here rather than zeroed, whether or not any
-                    # bytes happened to move before the rejection (real,
-                    # confirmed data: a rejected-before-any-bytes-moved
-                    # transfer reports bytesTransferred=0, but recording
-                    # that would misleadingly imply a real 0%-complete
-                    # attempt rather than "never really started").
+                    # bytes happened to move before the rejection (a
+                    # rejected-before-any-bytes-moved transfer reports
+                    # bytesTransferred=0, but recording that would
+                    # misleadingly imply a real 0%-complete attempt
+                    # rather than "never really started").
                     #
                     # Lock-pattern classification applies regardless of
-                    # role (item 26 correction — see CLAUDE.md item 13's
-                    # updated note): this used to be scoped to
-                    # role=='upgrade' only, on the premise that
-                    # select_downloads() never assigns a locked candidate
-                    # to 'settled', so a settled-role rejection was
-                    # "never expected to be lock-related". That premise
-                    # was already only ever approximately true even for
-                    # the ordinary search pipeline (a candidate confirmed
-                    # unlocked at search time can go offline by the time
-                    # the real request lands), and confirm_review_candidate
-                    # (item 26) makes it concretely false: a needs-review
-                    # candidate is never filtered on lock status at all,
-                    # so a human-confirmed one can be a genuinely locked
-                    # file requested as role='settled'. Retry-worthiness
-                    # is a property of the REJECTION, not of why the
-                    # download was requested, so the classification
-                    # itself is now unconditional; only the Phase 4
-                    # cascade below stays role-specific, since the
-                    # shortlist/cascade mechanism is an upgrade-only
-                    # concept.
+                    # role: retry-worthiness is a property of the
+                    # REJECTION, not of why the download was requested
+                    # — a needs-review candidate confirmed as
+                    # role='settled' can still be a genuinely locked
+                    # file (HISTORY §26). Only the Phase 4 cascade below
+                    # stays role-specific, since the shortlist/cascade
+                    # mechanism is an upgrade-only concept.
                     status = self._resolve_rejection_status(
                         state, request.username, request.transfer_id,
                     )
@@ -942,19 +894,18 @@ class DownloadService:
                         counts["failed"] += 1
 
                     if request.role == "upgrade":
-                        # Phase 4 cascade: try the next shortlisted
-                        # candidate for this track immediately, in this
-                        # same run, regardless of why this one was
-                        # rejected (locked-pattern or otherwise) — the
-                        # exact same candidate has already failed either
-                        # way, so there's no reason to wait a day before
-                        # trying the next best one. Scoped to
-                        # role=='upgrade' only — 'settled' has no
-                        # shortlist concept, and get_next_shortlisted()
-                        # isn't itself role-scoped, so calling this for a
-                        # 'settled' rejection could incorrectly activate
-                        # an unrelated upgrade-role shortlist entry for
-                        # the same track.
+                        # Try the next shortlisted candidate for this
+                        # track immediately, in this same run, regardless
+                        # of why this one was rejected — the exact same
+                        # candidate has already failed either way, so
+                        # there's no reason to wait a day before trying
+                        # the next best one. Scoped to role=='upgrade'
+                        # only — 'settled' has no shortlist concept, and
+                        # get_next_shortlisted() isn't itself
+                        # role-scoped, so calling this for a 'settled'
+                        # rejection could incorrectly activate an
+                        # unrelated upgrade-role shortlist entry for the
+                        # same track.
                         self._cascade_upgrade(request.track_id, counts)
 
                     continue
@@ -994,13 +945,11 @@ class DownloadService:
                     continue
 
                 if self._track_already_has_a_matched_file(request.track_id):
-                    # Roadmap item 56 Phase 5.3 — a real safety net,
-                    # not a hypothetical: this is what closes the gap
-                    # 5.2's dedup guard alone couldn't (a candidate
-                    # requested before that guard existed, or matched
-                    # by some other path in the meantime). By
-                    # definition this settled download is now an
-                    # upgrade candidate.
+                    # A real safety net (HISTORY §56 Phase 5.3): closes
+                    # the gap the dedup guard alone can't (a candidate
+                    # requested before that guard existed, or matched by
+                    # some other path in the meantime). By definition
+                    # this settled download is now an upgrade candidate.
                     self._update_status(request.id, "ready_for_review")
                     self._supersede_others_for_track(
                         request.track_id, request.id,
@@ -1023,13 +972,12 @@ class DownloadService:
                     "Failed to poll '%s': %s", request.filename, error,
                 )
 
-        # Phase 3 retry, now covering the whole shortlist rather than a
-        # single row per track: re-issue request_download for every
-        # request that was ALREADY 'locked' before this run started (not
-        # ones that just became locked above, or via the cascade below —
-        # those wait for the next run, matching the "daily cadence"
-        # design). Same exact username+filename each time — retrying
-        # access to the same candidate, not a fresh search.
+        # Re-issue request_download for every request that was already
+        # 'locked' before this run started (not ones that just became
+        # locked above, or via the cascade below — those wait for the
+        # next run, matching the "daily cadence" design). Same exact
+        # username+filename each time — retrying access to the same
+        # candidate, not a fresh search.
         for request in locked:
             # Same principle as above — one bad retry must not stop the
             # rest of the locked shortlist from being retried this run.
@@ -1068,11 +1016,11 @@ class DownloadService:
     def _cascade_upgrade(self, track_id: str, counts: dict[str, int]) -> None:
         # Sequential, not simultaneous: try one candidate, and only move
         # to the next once this one is confirmed unavailable — never
-        # multiple in-flight requests for the same track at once. See
-        # CLAUDE.md for why (the Soulseek protocol doesn't swarm-download
-        # the way BitTorrent does, and firing every shortlisted candidate
-        # at once would just be needless load on multiple peers for a
-        # track that only needs one to succeed).
+        # multiple in-flight requests for the same track at once. The
+        # Soulseek protocol doesn't swarm-download the way BitTorrent
+        # does, so firing every shortlisted candidate at once would just
+        # be needless load on multiple peers for a track that only needs
+        # one to succeed (HISTORY §14).
         while True:
             with self.database.transaction() as connection:
                 next_entry = self.download_requests.get_next_shortlisted(
@@ -1103,10 +1051,10 @@ class DownloadService:
                 return
 
     def _activate_shortlisted_entry(self, request: DownloadRequest) -> str:
-        # Phase 4 cascade — submit a fresh request_download for a NEW
-        # candidate (never tried before), so a rejection's reason still
-        # matters: it gets properly classified locked-vs-failed, exactly
-        # like a first-time request in the main poll_downloads loop.
+        # Submit a fresh request_download for a NEW candidate (never
+        # tried before), so a rejection's reason still matters: it gets
+        # properly classified locked-vs-failed, exactly like a
+        # first-time request in the main poll_downloads loop.
         #
         # Both loaded from the DB by every real caller (_cascade_upgrade
         # fetches via get_next_shortlisted, which only returns persisted
@@ -1122,23 +1070,23 @@ class DownloadService:
                 request.size,
             )
         except SoulseekDownloadError as error:
-            # request_download itself now raises this for BOTH
-            # rejection shapes — the synchronous one (e.g. peer
-            # offline, a 404 straight off the enqueue POST) as well as
-            # the asynchronous one (e.g. file not shared, which instead
-            # raises nothing here and only shows up via the status
-            # check below) — see client.py's RECOGNIZED_REJECTION_PATTERNS.
+            # request_download raises this for both rejection shapes —
+            # the synchronous one (e.g. peer offline, a 404 straight off
+            # the enqueue POST) as well as the asynchronous one (e.g.
+            # file not shared, which instead raises nothing here and
+            # only shows up via the status check below) — see client.py's
+            # RECOGNIZED_REJECTION_PATTERNS.
             status = (
                 "locked" if is_recognized_rejection(str(error)) else "failed"
             )
             self._update_status(request.id, status)
             return status
 
-        # An ASYNC-shape rejection doesn't raise from request_download
+        # An async-shape rejection doesn't raise from request_download
         # itself (confirmed live, 2026-08-27) — it shows up almost
         # immediately via the status endpoint instead, so check right
         # away rather than waiting a full poll cycle to find out it
-        # failed again. A SYNC-shape rejection (peer offline) never
+        # failed again. A sync-shape rejection (peer offline) never
         # reaches this point at all — it's already handled above.
         state = self.soulseek.get_download_status(
             request.username, transfer_id,
@@ -1171,18 +1119,17 @@ class DownloadService:
             )
 
     def _track_already_has_a_matched_file(self, track_id: str) -> bool:
-        """Roadmap item 56 Phase 5.3 — a safety net for the same class
-        of bug 5.2 targets: before an automatic completion moves a
-        settled download into place, check whether track_matches
-        already points at a real local file for this track. By
-        definition, a settled download landing after that is now an
-        upgrade candidate, not a first arrival — §8's own design
-        already says an upgrade is never auto-moved, so this reuses
-        that same rule for a settled download that turns out to be
-        redundant. Deliberately NOT applied to apply_upgrade_decision's
-        own replace action — a human explicitly clicking "Replace" is
-        the one place overwriting an existing match is exactly the
-        point, not a bug to prevent.
+        """A safety net (HISTORY §56 Phase 5.3): before an automatic
+        completion moves a settled download into place, check whether
+        track_matches already points at a real local file for this
+        track. By definition, a settled download landing after that is
+        now an upgrade candidate, not a first arrival — an upgrade is
+        never auto-moved, so this reuses that same rule for a settled
+        download that turns out to be redundant. Deliberately NOT
+        applied to apply_upgrade_decision's own replace action — a
+        human explicitly clicking "Replace" is the one place
+        overwriting an existing match is exactly the point, not a bug
+        to prevent.
         """
         with self.database.transaction() as connection:
             existing_match = self.track_matches.get_by_track_id(
@@ -1197,7 +1144,7 @@ class DownloadService:
     def _retry_locked_request(
             self, request: DownloadRequest, counts: dict[str, int],
     ) -> None:
-        # Phase 3 retry — reactivate an ALREADY-'locked' request. Unlike
+        # Reactivate an already-'locked' request. Unlike
         # _activate_shortlisted_entry above, a rejection's specific
         # reason doesn't matter here: this candidate is already
         # confirmed locked, so ANY rejection on the retry (any reason)
@@ -1227,13 +1174,10 @@ class DownloadService:
             # duplicate against the same real peer.
             return
 
-        # Roadmap item 66 (Phase 4.3) — the retry cadence is now
-        # independent of the poll cadence: a row isn't due for another
-        # real attempt until its own next_retry_at (exponential backoff)
-        # has passed, however often poll_downloads() itself runs. This
-        # is the actual fix for item 63's storm regardless of whatever
-        # its real trigger turns out to be — a violated next_retry_at
-        # would now be a visible, checkable signal if it recurs.
+        # The retry cadence is independent of the poll cadence: a row
+        # isn't due for another real attempt until its own
+        # next_retry_at (exponential backoff) has passed, however often
+        # poll_downloads() itself runs (HISTORY §63, §66).
         now = datetime.now(UTC)
         if current.next_retry_at is not None:
             next_retry_at = datetime.fromisoformat(current.next_retry_at)
@@ -1268,18 +1212,14 @@ class DownloadService:
             self._advance_locked_retry(request, current.retry_count)
             return  # Rejected again at the batch level — stays locked.
         except Exception:
-            # Roadmap item 66 (Phase 4.3) — live-caught, not
-            # theoretical: an UNRECOGNIZED error (client.py's own
-            # request_download deliberately re-raises anything that
-            # isn't a known rejection pattern "loud," as its own comment
-            # says — confirmed live 2026-09-02 against real production
-            # slskd, a genuine `500 Internal Server Error` on
-            # /api/v0/transfers/downloads/batches, the exact endpoint/
-            # error text item 63's storm investigation already flagged
-            # as its one concrete lead) must STILL advance the retry
-            # budget — otherwise this exact failure shape retries
-            # forever with no bound, which is precisely the bug this
-            # phase exists to close, regardless of the failure's cause.
+            # Live-caught, not theoretical: an unrecognized error
+            # (client.py's own request_download deliberately re-raises
+            # anything that isn't a known rejection pattern "loud")
+            # must still advance the retry budget — otherwise this
+            # exact failure shape retries forever with no bound.
+            # Confirmed live 2026-09-02 against real production slskd,
+            # a genuine `500 Internal Server Error` on
+            # /api/v0/transfers/downloads/batches (HISTORY §66).
             # Re-raised unchanged so poll_downloads()'s own outer
             # per-request try/except still prints its diagnostic; this
             # is additive bookkeeping, not a change to what's reported.
@@ -1307,7 +1247,7 @@ class DownloadService:
             # only reachable here at all via a human-confirmed
             # needs-review candidate that turned out to be locked
             # (find_best_needs_review_candidate never filters on lock
-            # status — item 26) — that candidate was ALREADY
+            # status — HISTORY §26) — that candidate was already
             # human-confirmed once, so it auto-moves into the library
             # like an ordinary settled success, not a second
             # confirmation via ready_for_review.
@@ -1319,11 +1259,11 @@ class DownloadService:
                 status == "completed"
                 and self._track_already_has_a_matched_file(request.track_id)
         ):
-            # Roadmap item 56 Phase 5.3 — same safety net as the main
-            # poll_downloads() loop: even a role='settled' row that's
-            # already human-confirmed once (item 26's own reasoning
-            # just above) must not silently create a second file for a
-            # track something else already matched in the meantime.
+            # Same safety net as the main poll_downloads() loop
+            # (HISTORY §56 Phase 5.3): even a role='settled' row that's
+            # already human-confirmed once must not silently create a
+            # second file for a track something else already matched in
+            # the meantime.
             status = "ready_for_review"
         elif status == "completed":
             # Mirror poll_downloads()'s own main-loop pattern: only
@@ -1340,9 +1280,8 @@ class DownloadService:
                 # Same indexing gap as poll_downloads()'s main loop
                 # (see _index_and_match_settled_download's own
                 # docstring) — this branch reaches 'completed' for a
-                # role='settled' row too (a human-confirmed needs-review
-                # candidate that turned out to be locked), so it needs
-                # the identical fix, not a second copy of it.
+                # role='settled' row too, so it needs the identical fix,
+                # not a second copy of it.
                 self._index_and_match_settled_download(
                     request, move_result, counts,
                 )
@@ -1367,13 +1306,13 @@ class DownloadService:
     def _advance_locked_retry(
             self, request: DownloadRequest, current_retry_count: int,
     ) -> None:
-        # Roadmap item 66 (Phase 4.3) — called once per real retry
-        # attempt that ends up staying 'locked' (whether rejected at the
-        # batch level or via the async status check), regardless of
-        # which of the two call sites made the attempt. current_retry_count
-        # is the count BEFORE this attempt — used as the exponent so the
-        # first attempt (0) backs off LOCKED_RETRY_BASE_SECONDS, matching
-        # the brief's own worked example (60s, then 120s, then 240s).
+        # Called once per real retry attempt that ends up staying
+        # 'locked' (whether rejected at the batch level or via the
+        # async status check), regardless of which of the two call
+        # sites made the attempt. current_retry_count is the count
+        # BEFORE this attempt — used as the exponent so the first
+        # attempt (0) backs off LOCKED_RETRY_BASE_SECONDS (60s, then
+        # 120s, then 240s, ...).
         assert request.id is not None
 
         new_retry_count = current_retry_count + 1
@@ -1391,35 +1330,26 @@ class DownloadService:
             )
 
     def _supersede_stale_duplicates(self, request: DownloadRequest) -> bool:
-        # item 16's creation-time dedup guard (get_active_for_track,
-        # checked inside download_playlist()) only prevents NEW
-        # duplicate rows going forward — it does nothing for rows
-        # already created before it was fully effective. Confirmed live
-        # (2026-08-28): get_locked() has no per-track/per-candidate
-        # collapsing by its own documented design, so without this
-        # check the retry loop below would re-issue a real
-        # request_download for every stale duplicate independently,
-        # every poll cycle, against the same real peer — real, ongoing,
-        # low-value network traffic against a live third party.
-        #
-        # Mirrors seeker.download_dedup.most_recent_per_candidate's
-        # exact grouping/tiebreak rule rather than reinventing one — the
-        # same rule DashboardService.get_active_downloads() already
-        # uses on the read side, so display and mutation never drift
-        # onto two different notions of "duplicate" (the same
-        # consolidation reasoning already applied to matching.py and
-        # AUDIO_EXTENSIONS elsewhere in this codebase).
-        #
-        # Returns True if `request` itself lost to a more recent sibling
-        # (and was just marked 'superseded' — the caller must not retry
-        # it). Returns False if `request` IS the most recent (or the
-        # only) row for its candidate — in which case every OTHER
-        # sibling in the group gets marked 'superseded' here, so a
-        # group of duplicates converges to one survivor within a single
-        # poll_downloads() run regardless of which row this method
-        # happens to be called for first (get_by_id-guarded siblings
-        # already marked 'superseded' on an earlier call this same run
-        # simply won't be in the group query's result on a later one).
+        """Collapses stale duplicate rows for the same candidate before
+        a retry re-issues a real request_download against the same
+        peer — without this, the retry loop would hit slskd
+        independently, every poll cycle, for every stale duplicate of
+        the same candidate (confirmed live, 2026-08-28: get_locked()
+        has no per-track/per-candidate collapsing of its own). Mirrors
+        `download_dedup.most_recent_per_candidate`'s exact
+        grouping/tiebreak rule rather than reinventing one — the same
+        rule DashboardService.get_active_downloads() already uses on
+        the read side, so display and mutation never drift onto two
+        different notions of "duplicate."
+
+        Returns True if `request` itself lost to a more recent sibling
+        (already marked 'superseded' — the caller must not retry it).
+        Returns False if `request` IS the most recent (or the only) row
+        for its candidate — every OTHER sibling in the group gets
+        marked 'superseded' here, so a group converges to one survivor
+        within a single poll_downloads() run regardless of which row
+        this method happens to be called for first.
+        """
         assert request.id is not None
 
         with self.database.transaction() as connection:
@@ -1494,27 +1424,27 @@ class DownloadService:
     ) -> tuple[LibraryLocation, str | None] | None:
         """A playlist-specific download_location_id/download_subfolder
         always wins when set. Otherwise falls back to the configured
-        default destination (roadmap item 6) — resolved through
-        _get_config(), not a snapshot, so a Settings-driven change
-        takes effect on the very next call, matching this project's
-        standing rule for every other config-backed threshold. The
-        playlist's own name becomes the subfolder (sanitized — a real
-        playlist name, "240KM/H", contains a literal path separator)
-        only when default_download_subfolder_per_playlist is on.
-        Returns None when neither resolves to a real, still-registered
-        location — the caller's job to report that clearly.
+        default destination, resolved through _get_config(), not a
+        snapshot, so a Settings-driven change takes effect on the very
+        next call, matching this project's standing rule for every
+        other config-backed threshold. The playlist's own name becomes
+        the subfolder (sanitized — a real playlist name, "240KM/H",
+        contains a literal path separator) only when
+        default_download_subfolder_per_playlist is on. Returns None
+        when neither resolves to a real, still-registered location —
+        the caller's job to report that clearly.
 
-        Roadmap item 82 (P13.2) — `playlist=None` is a manual (not-
-        from-Spotify) search-and-download track, which has no playlist
-        at all: always resolves via the configured default (never a
-        playlist-specific override, since there's no playlist), with a
-        fixed "Manual" subfolder — never the per-playlist subfolder
-        rule, which has no meaning here.
+        `playlist=None` is a manual (not-from-Spotify) search-and-
+        download track, which has no playlist at all: always resolves
+        via the configured default (never a playlist-specific override,
+        since there's no playlist), with a fixed "Manual" subfolder —
+        never the per-playlist subfolder rule, which has no meaning
+        here.
 
         The actual precedence logic lives in destination_resolution.py
-        (roadmap item 93/B3.4) — shared with MetadataService's rename
-        preview, which needs to know a track's configured destination
-        without a second, drifting copy of this rule.
+        — shared with MetadataService's rename preview, which needs to
+        know a track's configured destination without a second,
+        drifting copy of this rule.
         """
         with self.database.transaction() as connection:
             return resolve_playlist_destination(
@@ -1547,16 +1477,15 @@ class DownloadService:
                 break
 
         if not playlists:
-            # Roadmap item 82 (P13.2) — a manual (not-from-Spotify)
-            # track belongs to no playlist at all, so the loop above
-            # never runs and `resolved` would otherwise stay None
-            # unconditionally, leaving every completed manual download
-            # stuck in slskd's own download dir forever. Falls back to
-            # the same default-destination resolution _resolve_
-            # destination(None) now supports. Deliberately scoped to
-            # "genuinely no playlist" only — an ordinary playlist track
-            # with no resolvable destination keeps its existing,
-            # unchanged "leave it in place" behavior.
+            # A manual (not-from-Spotify) track belongs to no playlist
+            # at all, so the loop above never runs and `resolved` would
+            # otherwise stay None unconditionally, leaving every
+            # completed manual download stuck in slskd's own download
+            # dir forever. Falls back to the same default-destination
+            # resolution _resolve_destination(None) now supports.
+            # Deliberately scoped to "genuinely no playlist" only — an
+            # ordinary playlist track with no resolvable destination
+            # keeps its existing, unchanged "leave it in place" behavior.
             resolved = self._resolve_destination(None)
 
         if resolved is None:
@@ -1610,32 +1539,18 @@ class DownloadService:
             move_result: tuple[LibraryLocation, str],
             counts: dict[str, int],
     ) -> None:
-        # An ordinary settled download previously left the file moved
-        # into place but otherwise invisible to the rest of the app:
-        # index_single_file() only ever ran on the confirmed-upgrade
-        # path (apply_upgrade_decision, below), never here. So the file
-        # never got a local_files row, never got a track_matches row,
-        # and the track stayed NOT_FOUND on the Dashboard forever —
-        # DashboardService._compute_status requires BOTH an 'auto'
-        # track_matches row AND a resolvable local_file_id for
-        # IN_LIBRARY — with no ordinary Match run able to fix it either,
-        # since match_all() only ever considers local_files rows that
-        # already exist. It also left get_unmatched_for_playlist()
-        # (which filters on track_matches.match_method IS NULL)
-        # thinking the track was still unmatched, so a second
-        # `download`/Download-click run would genuinely re-search and
-        # re-request a file already sitting on disk — get_active_for_
-        # track's creation-time dedup guard only covers ACTIVE requests
-        # (excludes 'completed'), so it did nothing to prevent this.
+        # Indexes and matches an ordinary settled download once it's
+        # moved into place — without this, the file was invisible to
+        # the rest of the app (no local_files row, no track_matches
+        # row), and a second download run could re-search and
+        # re-request a file already sitting on disk (HISTORY §45).
         #
-        # Fixed by mirroring apply_upgrade_decision's own index+match
-        # tail. match_method='auto' is set unconditionally, regardless
-        # of the computed fuzzy score: this exact file was searched,
-        # filtered by quality.py, and downloaded FOR this exact track —
-        # that provenance is a stronger signal than filename fuzzy-
-        # matching, the same reasoning item 26 used when a human-
-        # confirmed needs-review candidate is requested as
-        # role='settled'. Unlike apply_upgrade_decision's hardcoded
+        # Mirrors apply_upgrade_decision's own index+match tail.
+        # match_method='auto' is set unconditionally, regardless of the
+        # computed fuzzy score: this exact file was searched, filtered
+        # by quality.py, and downloaded FOR this exact track — that
+        # provenance is a stronger signal than filename fuzzy-matching
+        # (HISTORY §26). Unlike apply_upgrade_decision's hardcoded
         # score=100.0 sentinel, the real find_best_match() score is
         # computed and stored here so a genuinely bad pairing stays
         # visible in the data instead of being hidden behind a fake
@@ -1662,22 +1577,20 @@ class DownloadService:
                     if match is not None:
                         score = match[1]
 
-                    # Roadmap item 82 (P13.1) — a manual (not-from-
-                    # Spotify) track is created with a placeholder
-                    # duration_ms=0 (there's no real Spotify duration
-                    # to record). find_best_match() above never reads
-                    # duration at all (matching.py's scoring is
-                    # artist+title only), so this doesn't affect THIS
-                    # match — but a LATER match_all() re-run applies
-                    # its own duration pre-filter (DURATION_TOLERANCE_MS,
-                    # matcher.py) against every candidate local file,
-                    # which a real duration_ms=0 would fail against
-                    # almost any real file and could demote this match
-                    # back to unmatched (item 45's own documented
-                    # demotion-risk class). Backfilled here, once, from
-                    # the real just-downloaded file's own read duration
-                    # — never touches a real Spotify track's authoritative
-                    # duration_ms.
+                    # A manual (not-from-Spotify) track is created with
+                    # a placeholder duration_ms=0 (there's no real
+                    # Spotify duration to record). find_best_match()
+                    # above never reads duration at all (matching.py's
+                    # scoring is artist+title only), so this doesn't
+                    # affect THIS match — but a LATER match_all() re-run
+                    # applies its own duration pre-filter
+                    # (DURATION_TOLERANCE_MS, matcher.py) against every
+                    # candidate local file, which a real duration_ms=0
+                    # would fail against almost any real file and could
+                    # demote this match back to unmatched. Backfilled
+                    # here, once, from the real just-downloaded file's
+                    # own read duration — never touches a real Spotify
+                    # track's authoritative duration_ms (HISTORY §82).
                     if (
                             is_manual_track_id(track.id)
                             and local_file.duration_ms is not None
@@ -1715,8 +1628,7 @@ class DownloadService:
         # Read-only — no input() anywhere, so both the CLI's interactive
         # loop and the Review screen's UI can build their prompts/labels
         # from the identical resolved info. None only when the request
-        # or its track can no longer be found (matches the CLI's own
-        # original early-return-on-missing-track guard).
+        # or its track can no longer be found.
         with self.database.transaction() as connection:
             request = self.download_requests.get_by_id(request_id, connection)
 
@@ -1771,11 +1683,10 @@ class DownloadService:
         # section — same read-only resolution get_upgrade_review_details
         # already does per-row, just fetching every ready_for_review row
         # up front rather than requiring the caller to already know a
-        # request_id (mirrors get_review_candidates()'s own shape for
-        # the needs-review section). A row whose details can no longer
-        # be resolved (track deleted, etc.) is silently skipped rather
-        # than surfaced as a broken row — the same "None means gone"
-        # contract get_upgrade_review_details already documents.
+        # request_id. A row whose details can no longer be resolved
+        # (track deleted, etc.) is silently skipped rather than surfaced
+        # as a broken row — the same "None means gone" contract
+        # get_upgrade_review_details already documents.
         requests = self._get_ready_for_review()
 
         results = []
@@ -1795,8 +1706,8 @@ class DownloadService:
             replace: bool,
             delete_old: bool = False,
     ) -> str | None:
-        """Explicit-decision version of the Phase 2 replace/delete-old-
-        file action — pure mutation, no input() anywhere, so the CLI's
+        """Explicit-decision version of the replace/delete-old-file
+        action — pure mutation, no input() anywhere, so the CLI's
         interactive loop and a UI can call the identical logic with
         already-resolved booleans instead of blocking on stdin. Returns
         a short, human-readable status message (the exact text
@@ -1894,23 +1805,13 @@ class DownloadService:
             request_ids: list[int],
             delete_old: bool,
     ) -> BulkUpgradeReplaceResult:
-        """Roadmap item R3.1 — "Replace all" pending upgrades. Applies
-        `apply_upgrade_decision(request_id, True, delete_old)` per row
-        through the exact same explicit-decision method the CLI and
-        the single-row UI action already use — no second mutation
-        path. Per-row try/except (CLAUDE.md's standing batch-loop
-        pattern, item 15) so one bad row can't abort the rest.
-
-        Success is checked by re-reading the request's own status
-        AFTER the call, not by parsing the returned message string —
-        `apply_upgrade_decision`'s own contract only advances a
-        request to `"completed"` on a real success; every failure path
-        (not found, file not locatable) returns early with the status
-        untouched, so a failed row is naturally still
-        `ready_for_review` afterward and will be offered again on the
-        next Review poll (the brief's own "partial failure must leave
-        failed rows visible and pending" requirement, satisfied
-        structurally rather than by extra bookkeeping here).
+        """"Replace all" pending upgrades — see HISTORY §88 for the
+        full design. Applies `apply_upgrade_decision(request_id, True,
+        delete_old)` per row through the exact same explicit-decision
+        method the CLI and single-row UI action already use. Per-row
+        try/except so one bad row can't abort the rest; success is
+        checked by re-reading the request's own status afterward, not
+        by parsing the returned message string.
         """
         replaced = 0
         failed = 0
@@ -1956,8 +1857,8 @@ class DownloadService:
 
     def _confirm_upgrade(self, request: DownloadRequest) -> None:
         # Thin, interactive wrapper over the two explicit-decision
-        # methods above — CLI-only input() sequencing lives here now;
-        # the actual mutation is identical to what apply_upgrade_decision
+        # methods above — CLI-only input() sequencing lives here; the
+        # actual mutation is identical to what apply_upgrade_decision
         # does for the UI. Always called over rows from
         # get_ready_for_review(), so .id is set.
         assert request.id is not None
