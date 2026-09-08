@@ -659,13 +659,10 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     return palette
 
 
-def build_stylesheet(palette: Palette) -> str:
-    """The global QSS stylesheet, parameterized by palette — the
-    C5 replacement for the old module-level `STYLESHEET` f-string
-    (which baked in whatever DARK-derived module globals happened
-    to hold at IMPORT time, with no way to re-evaluate for a
-    different palette). Called by `apply_theme()`/`on_theme_
-    changed()` on every theme (re-)application.
+def _base_qss(palette: Palette) -> str:
+    """Base/typography — generic widget backgrounds, dialogs, and
+    every QLabel variant (badges, page/section headers, wordmark),
+    plus the sidebar panel and activity strip chrome.
     """
     return f"""
 QWidget {{
@@ -736,6 +733,12 @@ QLabel#wordmark {{
     border-bottom: 1px solid {palette.BORDER};
 }}
 
+"""
+
+
+def _notice_qss(palette: Palette) -> str:
+    """InlineNotice and its four variant borders."""
+    return f"""\
 /* Roadmap item 47 (P3)/C5.3 — InlineNotice's border color used to be
 computed in Python per `kind` and baked into a per-instance
 setStyleSheet() call in show_message() (dead on a theme switch, same
@@ -768,6 +771,12 @@ InlineNotice[variant="error"] {{
     border-left: 3px solid {palette.DANGER};
 }}
 
+"""
+
+
+def _button_qss(palette: Palette) -> str:
+    """QPushButton — default, primary, danger, and sidebar nav-item variants."""
+    return f"""\
 QPushButton {{
     background-color: {palette.BG_SURFACE_2};
     border: 1px solid {palette.BORDER};
@@ -844,6 +853,12 @@ QPushButton[navItem="true"]:checked {{
     font-weight: 600;
 }}
 
+"""
+
+
+def _input_qss(palette: Palette) -> str:
+    """Text/combo/spin inputs, including their focus and dropdown states."""
+    return f"""\
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit {{
     background-color: {palette.BG_SURFACE};
     border: 1px solid {palette.BORDER};
@@ -868,6 +883,12 @@ QComboBox QAbstractItemView {{
     selection-color: {palette.TEXT};
 }}
 
+"""
+
+
+def _table_qss(palette: Palette) -> str:
+    """The QTableWidget/QListWidget container itself."""
+    return f"""\
 QTableWidget, QListWidget {{
     background-color: {palette.BG_SURFACE};
     border: 1px solid {palette.BORDER};
@@ -878,6 +899,14 @@ QTableWidget, QListWidget {{
     alternate-background-color: {palette.BG_SURFACE_2};
 }}
 
+"""
+
+
+def _card_qss(palette: Palette) -> str:
+    """QFrame#card and the E3 selector-scoping fixes for its inner
+    widgets (cardInner, cellWidgetContainer, themeToggleButton).
+    """
+    return f"""\
 /* Roadmap item 80 (P10.1) — the real rounded border for a table/list
 routed through make_card(); the inner QTableWidget/QListWidget itself
 gets border:none/border-radius:0 per-instance (see make_card's own
@@ -923,6 +952,16 @@ a source-level sweep can assert none of these exist anywhere in ui/. */
     background: transparent;
 }}
 
+"""
+
+
+def _table_header_qss(palette: Palette) -> str:
+    """QListWidget::item plus every QHeaderView/QTableCornerButton
+    rule — split from `_table_qss` above only because `_card_qss`'s
+    rules sit between them in the original file; both are still
+    "tables" in concern.
+    """
+    return f"""\
 QListWidget::item {{
     padding: 4px;
 }}
@@ -995,6 +1034,14 @@ QTableCornerButton::section {{
     border: none;
 }}
 
+"""
+
+
+def _progress_qss(palette: Palette) -> str:
+    """QProgressBar's container box (deliberately no ::chunk rule —
+    see the comment below).
+    """
+    return f"""\
 QProgressBar {{
     background-color: {palette.BG_SURFACE_2};
     border: 1px solid {palette.BORDER};
@@ -1031,6 +1078,12 @@ accent fill for a genuinely DETERMINATE bar is applied locally, per
 instance, via `style_determinate_progress_bar()` below — never here,
 never globally. */
 
+"""
+
+
+def _form_control_qss(palette: Palette) -> str:
+    """QCheckBox/QRadioButton indicators."""
+    return f"""\
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
@@ -1051,6 +1104,12 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     border-color: {palette.ACCENT};
 }}
 
+"""
+
+
+def _misc_qss(palette: Palette) -> str:
+    """QScrollBar and QToolTip."""
+    return f"""\
 QScrollBar:vertical {{
     background: transparent;
     width: 10px;
@@ -1091,6 +1150,12 @@ QToolTip {{
     padding: 4px 6px;
 }}
 
+"""
+
+
+def _menu_tab_qss(palette: Palette) -> str:
+    """QMenuBar/QMenu and QTabWidget/QTabBar."""
+    return f"""\
 QMenuBar {{
     background-color: {palette.BG_SIDEBAR};
     color: {palette.TEXT};
@@ -1126,3 +1191,32 @@ QTabBar::tab:selected {{
     border-bottom: 2px solid {palette.ACCENT};
 }}
 """
+
+
+def build_stylesheet(palette: Palette) -> str:
+    """The global QSS stylesheet, parameterized by palette — the
+    C5 replacement for the old module-level `STYLESHEET` f-string
+    (which baked in whatever DARK-derived module globals happened
+    to hold at IMPORT time, with no way to re-evaluate for a
+    different palette). Called by `apply_theme()`/`on_theme_
+    changed()` on every theme (re-)application.
+
+    Roadmap item 8.2.3 (round 8, Phase 5) — split by concern into
+    the functions above (467 lines/one f-string, before this).
+    Split-only: every character of the generated stylesheet is
+    unchanged, verified by a byte-for-byte diff against the
+    pre-split output for both palettes (see HISTORY).
+    """
+    return (
+        _base_qss(palette)
+        + _notice_qss(palette)
+        + _button_qss(palette)
+        + _input_qss(palette)
+        + _table_qss(palette)
+        + _card_qss(palette)
+        + _table_header_qss(palette)
+        + _progress_qss(palette)
+        + _form_control_qss(palette)
+        + _misc_qss(palette)
+        + _menu_tab_qss(palette)
+    )
