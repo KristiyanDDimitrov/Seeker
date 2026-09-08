@@ -368,7 +368,7 @@ Genuinely open only — no "done" items, no flakes that resolved.
   symptom, trigger, and mechanism. Real Spotify sync duration and/or
   real DB size/content are the untested suspects.
   [HISTORY §70](docs/HISTORY.md#70)
-- **Three unconfirmed round-8 test flakes.** Diagnose any recurrence
+- **Four unconfirmed round-8 test flakes.** Diagnose any recurrence
   directly — never reach for `pytest-rerunfailures`.
   - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
     once across ~12 full-suite runs, clean since. Round 8 §14
@@ -385,6 +385,12 @@ Genuinely open only — no "done" items, no flakes that resolved.
     once **after** that fix, cause still unknown. Worth instrumenting
     `_run_busy_worker`/`QThreadPool` timing directly next time.
     [HISTORY §116](docs/HISTORY.md#116)
+  - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
+    once during S13 (round 8, comment-triage-only session — nothing in
+    that session touched close/fullscreen logic, so not a regression
+    from it). Passed cleanly when re-run alone immediately after.
+    Consistent with fullscreen-close instability informally noted
+    across S11.2-S11.7 but never before named here specifically.
 - **Three registered library locations nest inside each other and
   double-index ~3,450 real files** — `add_location`/
   `add_location_from_path` only check exact path-string uniqueness, no

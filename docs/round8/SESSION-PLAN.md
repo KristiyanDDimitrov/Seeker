@@ -70,7 +70,7 @@ named split point rather than pushing through.
 | ☑ S11.6 | Test-split: Duplicates | §9.3.4 (mirrors S10) | ~110 K |
 | ☑ S11.7 | Test-split: Tray | §9.3.4 (mirrors S11) | ~90 K |
 | ☑ S12 | Comment triage, pass 1 | §10.1 (small files: `audio_formats`, `docker_setup`, `matching`, `config_store`, `quality`, `audio_analysis`) | ~100 K |
-| ☐ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
+| ☑ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
 | ☐ S14 | CLAUDE.md 8b + README | §11.2.4, §11.2.5, §11.3 | ~90 K |
 | ☐ S15 | UX Group A — **only if Kris approves** | §12.1–§12.5 | ~120 K |
 

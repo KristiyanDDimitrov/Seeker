@@ -8,14 +8,20 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** this session's tick/handoff commit, on top of `da31263` —
-  "S12: comment triage — audio_analysis.py" (S12's six per-file commits
-  land before it).
+- **HEAD:** this session's tick/handoff commit, on top of `9f08957` —
+  "S13: comment triage — ui/pages/duplicates_page.py" (S13's ten other
+  per-file commits land before it).
 - **Working tree:** clean. `origin/main`: not re-checked this session —
   ask before pushing regardless.
-- **pytest:** 1149 passed, 1 skipped — identical to every S10–S11.7
-  number, confirmed after all six S12 commits.
-- **mypy --strict src/:** clean, 99 files. **ruff check src tests: 0
+- **pytest:** 1149 passed, 1 skipped after every individual per-file
+  commit this session. The final whole-suite run hit
+  `test_fullscreen_close_policy_check_ignores_a_stale_request` failing
+  once (1148 passed, 1 failed, 1 skipped) — re-ran that one test alone
+  immediately after and it passed. Not one of CLAUDE.md's previously
+  named three round-8 flakes — added as a fourth entry there this
+  session (comment-only session, so not a regression from this
+  session's own work).
+- **mypy --strict src/: clean, 99 files. ruff check src tests: 0
   findings.**
 
 ## Where we are in the plan
@@ -24,62 +30,61 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done:** Phase 0–6 (through S11.7), and now **S12** (Phase 7,
-  comment triage pass 1 — §10.1's six small files: `audio_formats.py`,
-  `docker_setup.py`, `matching.py`, `config_store.py`,
-  `soulseek/quality.py`, `audio_analysis.py`).
-- **Next: S13** (Comment triage, pass 2 — §10.1, `soulseek/
-  download_service.py` plus the new `ui/pages/*` modules). Read §10 of
-  the main brief fresh if you didn't just do S12 — the four-category
-  method (KEEP / KEEP-COMPRESSED / MOVE / DELETE) is short, re-read it
-  rather than relying on this summary.
+- **Done:** Phase 0-6 (through S11.7), **S12** (Phase 7 pass 1: six
+  small files), and now **S13** (Phase 7 pass 2: `soulseek/
+  download_service.py` plus all ten `ui/pages/*` modules —
+  `context.py`, `history_page.py`, `static_pages.py`, `search_page.py`,
+  `sharing_page.py`, `downloads_page.py`, `tagging_panel.py`,
+  `dashboard_page.py`, `review_page.py`, `duplicates_page.py`).
+- **Next: S14** (CLAUDE.md 8b + README — §11.2.4, §11.2.5, §11.3). Read
+  §11 of the main brief fresh — the deferred-from-S1 pieces are the new
+  conventions (depend on Phases 4-7, now all landed) and the
+  regenerated layout tree (depends on Phase 6's `ui/pages/*`, now
+  real).
 
-## S12 report (§10.1.7)
+## S13 report (§10.1.7)
 
-Comment lines before -> after per file (bare `#` lines; docstring lines
-counted separately since some `#` blocks became docstrings under
-§10.1.4's public-seam rule):
+One commit per file, eleven total. `download_service.py`: 516 -> 414
+`#` lines. The ten page modules together: roughly 950 -> 780 `#`/
+docstring lines (exact per-file numbers are in each commit's own
+message — not re-tallied here since the real finding is qualitative,
+below).
 
-| File | `#` before -> after | docstring before -> after |
-|---|---|---|
-| `audio_formats.py` | 37 -> 14 | 8 -> 7 |
-| `docker_setup.py` | 143 -> 67 | 50 -> 43 |
-| `matching.py` | 82 -> 80 | 17 -> 17 |
-| `config_store.py` | 69 -> 48 | 0 -> 0 |
-| `soulseek/quality.py` | 112 -> 108 | 24 -> 21 |
-| `audio_analysis.py` | 50 -> 43 | 10 -> 10 |
+**The real finding: round 8's own Phase 6 (`MainWindow` decomposition,
+S5-S11.7 — the biggest arc in the round) had never been written up in
+`docs/HISTORY.md` at all.** Every page module's docstring carried its
+own extraction story inline (`PageContext`'s field-by-field growth,
+`TaggingPanelHost`/`DashboardHost`/`ReviewHost`'s own discovery,
+Duplicates needing no second seam, S11's two Qt gotchas) with nowhere
+else for that provenance to live. Per §10.1.6 ("anything you MOVE must
+land in HISTORY first"), wrote it up as new **HISTORY §119** before
+compressing any of those docstrings — one section, built incrementally
+as each page's comments were triaged, rather than speculatively
+up front.
 
-One commit per file (`7a0b0b3`, `c5556d4`, `946f188`, `1b9bedc`,
-`9a6dc85`, `da31263`). `matching.py`/`audio_analysis.py` moved least —
-both were already close to house style (real measured numbers,
-`confirmed live`/`untuned` markers), matching the brief's own
-prediction that those markers are the valuable comments.
+**A second wrong citation found, same class as S12's two**: `sharing_
+page.py` cited "roadmap item 62 (Phase 7)" throughout — item 62 has no
+standalone HISTORY section at all; the real investigation lives under
+**§56 Phase 7** (Sharing & Uploads). Fixed everywhere it appeared, same
+treatment as S12's `matching.py`/`docker_setup.py` fixes. The
+"R2.x"/"R3.x"/"R5"/"R7.x" style short-codes used throughout the page
+files (Review/Duplicates checkbox-survives-poll-rebuild, bulk
+replace/resolve, tray background operation) all resolved cleanly to
+real sections (§86, §88, §90) — no further wrong citations found
+there, but every one was checked against the source text before
+citing it, not assumed correct from the label alone.
 
-**Examples, from actual work:** KEEP verbatim — `matching.py`'s
-`FS_SUBSTITUTION_RE`/`DOT_RE`/`FEAT_CLAUSE_RE` comments, each citing a
-real BMTH track and a measured ratio. KEEP-COMPRESSED —
-`audio_formats.py`'s `.aifc`-excluded-from-`LOSSLESS_EXTENSIONS`
-reasoning: kept the mutagen-COMM-chunk fact + `confirmed live` marker,
-dropped the "Roadmap item R1" framing (HISTORY §85 link added). MOVE —
-`audio_formats.py`'s `DOWNLOADABLE_EXTENSIONS` comment had a `.ogg`/
-`format_unsupported` anecdote **not yet in HISTORY**; added to §94
-first, then deleted from source (§10.1.6's "add before delete," not
-skipped). DELETE — `docker_setup.py::compose_file_path()`'s "Same
-reasoning/home as `slskd_data_dir()`" preamble restated what the
-function below already shows; trimmed to one clause.
+**Examples, from actual work:** KEEP verbatim — `download_service.py`'s
+`FAILED_STATE_MARKERS` comment (Soulseek's `[Flags]` enum, comma-joined
+string, no provenance attached, still 100% load-bearing). KEEP-
+COMPRESSED — `_supersede_stale_duplicates`'s docstring (a real,
+non-obvious return-value contract) kept in full, its "Confirmed live
+2026-08-28" narrative trimmed to the fact plus a §63/§66-style link.
+MOVE — the entire Phase 6 extraction story, now §119 (see above). DELETE
+— `download_service.py`'s `get_review_candidates` comment referencing
+its own now-irrelevant "originally deferred to a future UI" framing.
 
-**Real gaps found, not just comment moves:** `docker_setup.py::
-KICKED_LOG_PATTERNS` cited "docs/HISTORY.md item 8" — real entry is
-**§52**, fixed. `matching.py::evaluate_match` cited "CLAUDE.md item
-56" — CLAUDE.md has no numbered items; real entry is **HISTORY §56**.
-Two vague "see CLAUDE.md" pointers replaced with real HISTORY links
-(§5, §11).
-
-All six commits pass `ruff`/`mypy --strict` individually; full suite
-re-run once at the end (numbers above), since none of this touches
-behavior.
-
-## Read discipline — this is why sessions were costing 300–700 K tokens
+## Read discipline — this is why sessions were costing 300-700 K tokens
 
 Never read `docs/HISTORY.md`, `main_window.py`, or `test_ui_smoke.py`
 whole — `grep -n` the symbol/section, read that range. `pytest -q`:
@@ -103,18 +108,19 @@ phase you aren't doing.
   means-"no releases" assumption only holds once the repo is public.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
   S9's skip-count mismatch (29 vs. everyone else's 1) — same status.
-- **Three round-8 flakes in CLAUDE.md's Open Issues, plus the
-  fullscreen-close pair (firing noticeably more often across
-  S11.2–S11.7)** — diagnose any recurrence directly, never
+- **Four round-8 flakes now in CLAUDE.md's Open Issues** (the fourth,
+  `test_fullscreen_close_policy_check_ignores_a_stale_request`, added
+  this session) — diagnose any recurrence directly, never
   `pytest-rerunfailures`.
-- **S12 found two wrong HISTORY citations** in comments (a plain
-  number-typo, and "CLAUDE.md item N" where CLAUDE.md has no numbered
-  items). S13 should spot-check a few `item \d+`/`§` references against
-  the real HISTORY.md section rather than assume every citation in the
-  files it touches is correct.
-- **`soulseek/download_service.py`/`ui/pages/*` didn't exist as
-  separate modules when the brief's §10.1.5 file list was written** —
-  treat that list as a pointer to "the pages," not a literal path list.
+- **S14 should spot-check citations too, same discipline as S12/S13**:
+  two wrong "item N"/"CLAUDE.md item N" citations in S12, one wrong
+  "roadmap item 62" (should be §56 Phase 7) throughout `sharing_page.py`
+  in S13 — a real, recurring class of error in this codebase's own
+  comments, not a one-off. Don't assume a citation is correct because
+  it looks plausible.
+- **`docs/HISTORY.md` is now ~14,100 lines** — still never read whole,
+  per the standing rule; §119 (Phase 6 decomposition) is the newest
+  section, at the very end of the file.
 
 ## How to end your session
 
