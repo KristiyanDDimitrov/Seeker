@@ -234,6 +234,11 @@ Each links to the HISTORY.md item where the full investigation lives.
   (`127.0.0.1:5030:5030`/`5031:5031`); `50300` must stay published on
   every interface for real incoming Soulseek peer connections.
   `SLSKD_REMOTE_CONFIGURATION=false`. [HISTORY §116](docs/HISTORY.md#116)
+- §6.1's original HIGH severity assumed a vendor-default `slskd`/`slskd`
+  web UI login; Kris's own machine had already changed it, so his real
+  exposure was lower than assessed — but the fix stays correct and
+  necessary, since a fresh install by anyone else lands on that
+  default. [HISTORY §116](docs/HISTORY.md#116)
 
 ### Qt, threading, and UI
 
@@ -422,8 +427,8 @@ Hard-won, all five stay.
    leaves this file.
 2. **Checking whether a test failure is "pre-existing": always `git
    stash -u`, never a bare `git stash`.** A bare stash doesn't stash
-   untracked files, so it can't see a defect living in one (e.g. a real
-   local packaging build's gitignored `_build_info_generated.py`).
+   untracked files, so it can't see a defect living in one (e.g. a
+   gitignored `_build_info_generated.py` from a real local build).
 3. **The pre-existing-failure count is a tracked number, not a label.**
    Report the actual `pytest` summary line and name every failing test,
    every time — never a paraphrase like "green with N pre-existing
