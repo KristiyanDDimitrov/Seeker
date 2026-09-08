@@ -1,13 +1,10 @@
-"""The Tagging panel — round 8 Phase 6 (§9.3.1), moved verbatim out of
-main_window.py. Unlike every other module in this package, this is not
-a top-level page registered on the shell's QStackedWidget — it is a
-sub-widget embedded inside the (still-unmigrated) Dashboard page, so it
-needs a second, narrower seam beyond PageContext: `TaggingPanelHost`,
-exactly the pieces of Dashboard state (its selected-playlist, its own
-status_label/notice widgets, resolving the track table's current
-selection) this panel reaches into. Found necessary the same way
-PageContext's own extra fields were: by grepping every method being
-moved for what it actually touches before assuming a clean lift.
+"""The Tagging panel (HISTORY §119). Unlike every other module in this
+package, this is not a top-level page registered on the shell's
+QStackedWidget — it is a sub-widget embedded inside the (still-
+unmigrated) Dashboard page, so it needs a second, narrower seam beyond
+PageContext: `TaggingPanelHost`, exactly the pieces of Dashboard state
+(its selected-playlist, its own status_label/notice widgets, resolving
+the track table's current selection) this panel reaches into.
 """
 
 from collections.abc import Callable
@@ -79,18 +76,18 @@ class TaggingPanel(QWidget):
         # unchecked, rather than validating the combination after the
         # fact the way the CLI has to.
         #
-        # Roadmap item 72 (P1) — a plain QHBoxLayout's minimum width is
-        # the SUM of its children's minimum widths, which made this
-        # 9-widget row impose a ~900-1000px floor on the whole
-        # dashboard page, squeezing the playlist panel next to it down
-        # to almost nothing. FlowLayout fixes both halves at once: it
-        # reflows 1-row -> 2-row -> 3-row purely from available width,
-        # and its own minimumSize() is just the widest single item.
-        # Roadmap item 79 (P11) — bare FlowLayout() leaves h_spacing/
-        # v_spacing at -1, which falls through to _smart_spacing()'s
-        # PM_LayoutHorizontalSpacing style query — approximately zero
-        # under this app's Fusion styling, so the buttons touched.
-        # These are deliberate, chosen values, not style-derived ones.
+        # A plain QHBoxLayout's minimum width is the SUM of its
+        # children's minimum widths, which made this 9-widget row
+        # impose a ~900-1000px floor on the whole dashboard page,
+        # squeezing the playlist panel next to it down to almost
+        # nothing. FlowLayout fixes both halves at once: it reflows
+        # 1-row -> 2-row -> 3-row purely from available width, and its
+        # own minimumSize() is just the widest single item (HISTORY §72).
+        # Bare FlowLayout() leaves h_spacing/v_spacing at -1, which
+        # falls through to _smart_spacing()'s PM_LayoutHorizontalSpacing
+        # style query — approximately zero under this app's Fusion
+        # styling, so the buttons touched. These are deliberate, chosen
+        # values, not style-derived ones (HISTORY §79).
         controls = FlowLayout(
             h_spacing=theme.SPACING_SM, v_spacing=theme.SPACING_SM,
         )
@@ -136,8 +133,8 @@ class TaggingPanel(QWidget):
         )
         controls.addWidget(self.tag_playlist_button)
 
-        # Roadmap item 66 (Phase 5.2) — a narrower, safer repair than
-        # forcing a full re-tag: re-embeds art only, never text tags.
+        # A narrower, safer repair than forcing a full re-tag: re-embeds
+        # art only, never text tags (HISTORY §66).
         self.fix_missing_art_button = QPushButton("Fix missing cover art")
         self.fix_missing_art_button.setToolTip(
             help_text.TOOLTIP_FIX_MISSING_ART
@@ -147,9 +144,8 @@ class TaggingPanel(QWidget):
         )
         controls.addWidget(self.fix_missing_art_button)
 
-        # Roadmap item 66 (Phase 5.3) — the one-click fix for the
-        # "no_url" case: a real sync-tracks call, honest about being a
-        # real Spotify API call.
+        # The one-click fix for the "no_url" case: a real sync-tracks
+        # call, honest about being a real Spotify API call (HISTORY §66).
         self.fill_missing_art_urls_button = QPushButton(
             "Fill missing art URLs"
         )
@@ -161,9 +157,9 @@ class TaggingPanel(QWidget):
         )
         controls.addWidget(self.fill_missing_art_urls_button)
 
-        # Roadmap item 67 (Phase 6.4) — always a preview first (item
-        # 27's "no gate for tag-writing" precedent does NOT extend
-        # here: this moves/replaces a real file).
+        # Always a preview first (HISTORY §67) — HISTORY §27's "no gate
+        # for tag-writing" precedent does NOT extend here: this
+        # moves/replaces a real file.
         self.rename_files_button = QPushButton(
                 "Rename files to match metadata"
         )
@@ -230,32 +226,31 @@ class TaggingPanel(QWidget):
 
         self.tagging_results.setPlainText("\n".join(lines))
 
-        # Roadmap item 56 Phase 4.2 — the UI must never show a bare
-        # "success" when any part of it wasn't: routed through
-        # InlineNotice (item 47), not status_label, so it survives the
-        # next 2s poll tick; per-track detail is already reachable in
-        # the persistent tagging_results panel above, itself unaffected
-        # by that same clearing bug (a real QPlainTextEdit, never wired
-        # into status_label's plumbing at all).
+        # The UI must never show a bare "success" when any part of it
+        # wasn't: routed through InlineNotice (HISTORY §47), not
+        # status_label, so it survives the next 2s poll tick; per-track
+        # detail is already reachable in the persistent tagging_results
+        # panel above, itself unaffected by that same clearing bug (a
+        # real QPlainTextEdit, never wired into status_label's plumbing
+        # at all) (HISTORY §56 Phase 4.2).
         self._show_tag_result_notice(result)
 
     def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
-        # Roadmap item 66 (Phase 5.1) — the real gap found in Phase 0.4:
-        # this early return is still correct (nothing was even in
+        # This early return is still correct (nothing was even in
         # scope), but every real outcome AFTER it — including "every
         # selected track was already tagged" — now gets a message via
         # help_text.format_tag_result_notice, not just tagged/without_
-        # art/failed.
+        # art/failed (HISTORY §75).
         if result["tagged"] == 0 and not result["details"]:
             return
 
         message, kind = help_text.format_tag_result_notice(result)
 
-        # Roadmap item 75 (P6, 6.2) — any track this run skipped as
-        # already-tagged had its cover art never even looked at (see
-        # format_tag_result_notice's own docstring); offer the real
-        # next action right on the notice rather than leaving the user
-        # to find "Fix missing cover art" on their own.
+        # Any track this run skipped as already-tagged had its cover
+        # art never even looked at (see format_tag_result_notice's own
+        # docstring); offer the real next action right on the notice
+        # rather than leaving the user to find "Fix missing cover art"
+        # on their own (HISTORY §75).
         if result.get("skipped_already_tagged", 0) > 0:
             self._host.dashboard_notice.show_message(
                 message, kind=kind,
