@@ -13526,6 +13526,26 @@ passed all 1098 tests with no test needing a real display — the
 brief's own speculative `@pytest.mark.desktop` split was not needed and
 was not added.
 
+#### §4.8.1 — the hanging-indent convention, verified by sampling rather than assumed from one example
+
+CLAUDE.md's own indent convention (8 spaces for a compound statement
+header that wraps — `def`/`if`/`elif`/`while`/`for`/`with`/`class`,
+anything ending in `:` with an indented body next; 4 spaces for
+everything else — plain calls, `return`/`raise`/`assert`, assignments,
+comprehensions, literals, imports) was written from a single example
+before this round and never checked against the real codebase. Sampled
+336 real multi-line calls: 336/336 use 4 spaces. Sampled 74 real
+compound headers: 71/74 use 8 spaces (3 pre-existing exceptions, not
+themselves followed as precedent). The reason holds up once seen: a
+compound header's own body is already indented +4 from the header, so
+the header's continuation uses +8 to stay visually distinct from that
+body; a plain statement has no following body to stay distinct from,
+so ordinary +4 is unambiguous. A round-8 line-wrap pass (§4.3) got this
+wrong — applied 8-space hang uniformly, including to plain calls —
+before this sampling pass existed to catch it; corrected in this
+pass's own edits, but the pre-existing 4.3 diff itself was not swept
+for the same mistake (open question, not resolved this round).
+
 #### §4.8.9 — reconciling 837 → 662 (a real arithmetic error, checked
 by re-measuring at each commit rather than trusting the original
 narrative)
