@@ -188,6 +188,16 @@ class SettingsPage(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        # Roadmap item 8.1.3 (round 8, Phase 5) — this table never got
+        # round 7's E2 fix: every other Actions-column table derives
+        # this column's width at construction too (from an empty
+        # widget list), so an empty/still-loading table's Actions
+        # column isn't left at Qt's plain default width. This table's
+        # own load is async (`_render_locations` runs as an
+        # `on_finished` worker callback, not synchronously here), so
+        # the gap was real, just harder to notice than the fully
+        # synchronous MainWindow tables E2 was written against.
+        theme.size_action_column(self.locations_table, 3, [])
         # Roadmap item D3 (round 6) — after resize modes, not before;
         # see `theme.apply_column_floors`'s own docstring.
         theme.apply_column_floors(self.locations_table)
