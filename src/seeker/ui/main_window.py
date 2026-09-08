@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
-    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -83,16 +82,10 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.sharing_service import (
-    LocationShareState,
-    ShareStatus,
-    SharingApplyResult,
-    UploadStatus,
-)
+from seeker.sharing_service import LocationShareState, UploadStatus
 from seeker.soulseek.download_service import (
     BulkUpgradeReplaceResult,
 )
-from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
@@ -112,13 +105,14 @@ from seeker.ui.formatting import format_file_size, format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.history_page import HistoryPage
+from seeker.ui.pages.search_page import SearchPage
+from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.pages.static_pages import HelpPage, SupportPage
 from seeker.ui.settings_window import (
     SETTINGS_TAB_CONNECTION,
     SETTINGS_TAB_LOCATIONS,
     SettingsPage,
 )
-from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 
@@ -252,40 +246,9 @@ _DUPLICATES_COLUMNS = theme.ColumnLayout(
 )
 
 
-# Roadmap item 82 (P13.5) — same "resolve by real header text, not a
-# shared literal" precedent as _DuplicatesColumn above.
-class _SearchColumn(IntEnum):
-    USERNAME = 0
-    FILENAME = 1
-    FORMAT = 2
-    BITRATE = 3
-    SIZE = 4
-    LOCKED = 5
-    SCORE = 6
-    ACTIONS = 7
-
-
-_SEARCH_COLUMN_HEADERS = [
-    "Username", "Filename", "Format", "Bitrate", "Size", "Locked",
-    "Score", "Actions",
-]
-
-_SEARCH_COLUMNS = theme.ColumnLayout(
-    stretch=(_SearchColumn.FILENAME,),
-    fit_content=(
-        _SearchColumn.USERNAME, _SearchColumn.FORMAT,
-        _SearchColumn.BITRATE, _SearchColumn.SIZE,
-        _SearchColumn.LOCKED, _SearchColumn.SCORE,
-    ),
-    actions=_SearchColumn.ACTIONS,
-)
-
-# The remaining five tables (Sharing locations, Track, Review's three
-# tabs) never grew a column IntEnum of their own — their layouts are
-# declared the same way, just against plain column indices.
-_SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
-    stretch=(2,), fit_content=(0, 1, 3), actions=4,
-)
+# The remaining four tables (Track, Review's three tabs) never grew a
+# column IntEnum of their own — their layouts are declared the same
+# way, just against plain column indices.
 _TRACK_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
 )
@@ -563,20 +526,6 @@ def _build_nav_button(label: str) -> QPushButton:
     button.setProperty("navItem", True)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
-
-
-@dataclass
-class _SharingSnapshot:
-    """Everything the Sharing page (roadmap item 62, Phase 7) needs to
-    render one background-thread fetch — bundled the same way
-    _NextStepFacts bundles the Dashboard CTA's facts, so run_worker's
-    single-callable contract only needs one round trip per refresh
-    instead of four (status/self-managed/reconciliation/uploads)."""
-    configured: bool
-    status: ShareStatus | None
-    self_managed: bool
-    reconciliation: list[LocationShareState]
-    uploads: list[UploadStatus]
 
 
 @dataclass
@@ -1023,7 +972,9 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer = QTimer(self)
         self.backend_poll_timer.setInterval(BACKEND_POLL_INTERVAL_MS)
         self.backend_poll_timer.timeout.connect(self._trigger_backend_poll)
-        self.backend_poll_timer.timeout.connect(self._trigger_sharing_poll)
+        self.backend_poll_timer.timeout.connect(
+            self._sharing_page._trigger_sharing_poll
+        )
         self.backend_poll_timer.start()
 
     def _build_ui(self) -> None:
@@ -1056,20 +1007,6 @@ class MainWindow(QMainWindow):
 
         shell_layout.addWidget(content_column, 1)
 
-        self._page_indices: dict[str, int] = {}
-        self._register_page("dashboard", self._build_dashboard_page())
-        self._register_page("search", self._build_search_page())
-        self._register_page("downloads", self._build_downloads_page())
-        self._register_page("review", build_page(
-            "Review", help_text.REVIEW_TAB_SUBTITLE,
-            self._build_review_content(),
-        ))
-        self._register_page("duplicates", build_page(
-            "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
-            self._build_duplicates_content(),
-        ))
-        self._register_page("sharing", self._build_sharing_page())
-
         # Roadmap item 9.2 (round 8, Phase 6 prep) — the seam a migrated
         # page gets instead of reaching past it to MainWindow directly.
         # See PageContext's own docstring for why run_busy_worker is
@@ -1082,6 +1019,23 @@ class MainWindow(QMainWindow):
             navigate=self._show_page,
             run_busy_worker=self._run_busy_worker,
         )
+
+        self._page_indices: dict[str, int] = {}
+        self._register_page("dashboard", self._build_dashboard_page())
+        self._search_page = SearchPage(page_context)
+        self._register_page("search", self._search_page)
+        self._register_page("downloads", self._build_downloads_page())
+        self._register_page("review", build_page(
+            "Review", help_text.REVIEW_TAB_SUBTITLE,
+            self._build_review_content(),
+        ))
+        self._register_page("duplicates", build_page(
+            "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE,
+            self._build_duplicates_content(),
+        ))
+        self._sharing_page = SharingPage(page_context)
+        self._register_page("sharing", self._sharing_page)
+
         self._history_page = HistoryPage(page_context)
         self._register_page("history", self._history_page)
         self._help_page = HelpPage(page_context)
@@ -1127,11 +1081,11 @@ class MainWindow(QMainWindow):
         # deadlock), but ALSO joins the standing 20s backend_poll_timer
         # once visited, same shape as Downloads' own real-slskd-call
         # poll — sharing status/uploads are live external state, not a
-        # one-shot local read like Duplicates/History.
+        # one-shot local read like Duplicates/History. The visited/
+        # in-progress flags and the ETA tracker live on SharingPage
+        # itself now (round 8 Phase 6); only the page index stays here,
+        # for _on_page_changed's dispatch.
         self._sharing_page_index = self._page_indices["sharing"]
-        self._sharing_page_visited = False
-        self._sharing_poll_in_progress = False
-        self._upload_eta_tracker = UploadEtaTracker()
         # Same lazy-load-on-first-real-visit reasoning as Duplicates
         # above — a plain, cheap local-DB read, but there's no reason
         # to pay it on every MainWindow construction when a real user
@@ -1176,6 +1130,60 @@ class MainWindow(QMainWindow):
     @property
     def history_status_label(self) -> QLabel:
         return self._history_page.history_status_label
+
+    # Same temporary-delegation pattern as History above, for every
+    # SearchPage attribute/method test_ui_smoke.py touches by name.
+    @property
+    def search_artist_edit(self) -> QLineEdit:
+        return self._search_page.search_artist_edit
+
+    @property
+    def search_title_edit(self) -> QLineEdit:
+        return self._search_page.search_title_edit
+
+    @property
+    def search_status_label(self) -> QLabel:
+        return self._search_page.search_status_label
+
+    @property
+    def search_results_table(self) -> QTableWidget:
+        return self._search_page.search_results_table
+
+    @property
+    def download_best_button(self) -> QPushButton:
+        return self._search_page.download_best_button
+
+    def _on_search_clicked(self) -> None:
+        self._search_page._on_search_clicked()
+
+    def _render_search_results(
+            self, artist: str, title: str, files: list[SoulseekFile],
+    ) -> None:
+        self._search_page._render_search_results(artist, title, files)
+
+    # Same temporary-delegation pattern for every SharingPage attribute/
+    # method test_ui_smoke.py touches by name.
+    @property
+    def sharing_summary_label(self) -> QLabel:
+        return self._sharing_page.sharing_summary_label
+
+    @property
+    def sharing_locations_table(self) -> QTableWidget:
+        return self._sharing_page.sharing_locations_table
+
+    @property
+    def sharing_uploads_table(self) -> QTableWidget:
+        return self._sharing_page.sharing_uploads_table
+
+    def _render_sharing_locations_table(
+            self, reconciliation: list[LocationShareState],
+    ) -> None:
+        self._sharing_page._render_sharing_locations_table(reconciliation)
+
+    def _render_sharing_uploads_table(
+            self, uploads: list[UploadStatus],
+    ) -> None:
+        self._sharing_page._render_sharing_uploads_table(uploads)
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1679,230 +1687,6 @@ class MainWindow(QMainWindow):
             "Dashboard", help_text.DASHBOARD_TAB_SUBTITLE, content,
         )
 
-    def _build_search_page(self) -> QWidget:
-        # Roadmap item 82 (P13.4) — a dedicated page between Dashboard
-        # (already the most crowded page — item 51) and Downloads (a
-        # status view, not a search/results one). search_manual()/
-        # download_manual() reuse the EXACT SAME search + quality-
-        # ranking logic download_playlist uses; nothing new is ranked
-        # or scored here.
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SPACING_MD)
-
-        form = QFormLayout()
-
-        self.search_artist_edit = QLineEdit()
-        self.search_artist_edit.setToolTip(help_text.TOOLTIP_SEARCH_ARTIST)
-        self.search_artist_edit.setPlaceholderText("Artist")
-        form.addRow("Artist:", self.search_artist_edit)
-
-        self.search_title_edit = QLineEdit()
-        self.search_title_edit.setToolTip(help_text.TOOLTIP_SEARCH_TITLE)
-        self.search_title_edit.setPlaceholderText("Title")
-        form.addRow("Title:", self.search_title_edit)
-
-        layout.addLayout(form)
-
-        controls = QHBoxLayout()
-
-        self.search_button = QPushButton("Search")
-        self.search_button.setProperty("variant", "primary")
-        self.search_button.setToolTip(help_text.TOOLTIP_SEARCH_BUTTON)
-        self.search_button.clicked.connect(self._on_search_clicked)
-        controls.addWidget(self.search_button)
-
-        self.download_best_button = QPushButton("Download best")
-        self.download_best_button.setToolTip(help_text.TOOLTIP_DOWNLOAD_BEST)
-        self.download_best_button.setEnabled(False)
-        self.download_best_button.clicked.connect(
-            self._on_download_best_clicked
-        )
-        controls.addWidget(self.download_best_button)
-
-        controls.addStretch()
-        layout.addLayout(controls)
-
-        self.search_status_label = QLabel("")
-        layout.addWidget(self.search_status_label)
-
-        self.search_results_table = QTableWidget(
-            0, len(_SEARCH_COLUMN_HEADERS),
-        )
-        self.search_results_table.setHorizontalHeaderLabels(
-            _SEARCH_COLUMN_HEADERS
-        )
-        theme.apply_table_defaults(self.search_results_table)
-        layout.addWidget(theme.make_card(self.search_results_table))
-        self._configure_search_columns()
-
-        self._search_artist = ""
-        self._search_title = ""
-        self._search_files: list[SoulseekFile] = []
-
-        return build_page("Search", help_text.SEARCH_TAB_SUBTITLE, content)
-
-    def _on_search_clicked(self) -> None:
-        artist = self.search_artist_edit.text().strip()
-        title = self.search_title_edit.text().strip()
-
-        if not artist or not title:
-            self.search_status_label.setText(
-                help_text.SEARCH_EMPTY_FIELDS_MESSAGE
-            )
-            return
-
-        self.download_best_button.setEnabled(False)
-        self.search_status_label.setText(
-            f"Searching for '{artist} - {title}'…"
-        )
-
-        self._run_busy_worker(
-            "search_manual", self.search_button,
-            lambda: (
-                self.application.download_service
-                .search_manual(artist, title)
-            ),
-            status_label=self.search_status_label,
-            on_finished=lambda files: self._render_search_results(
-                artist, title, files,
-            ),
-        )
-
-    def _render_search_results(
-            self,
-            artist: str,
-            title: str,
-            files: list[SoulseekFile],
-    ) -> None:
-        self._search_artist = artist
-        self._search_title = title
-        self._search_files = files
-
-        self.download_best_button.setEnabled(bool(files))
-        self.search_status_label.setText(
-            help_text.format_search_result_count(len(files))
-            if files else help_text.SEARCH_NO_RESULTS_MESSAGE
-        )
-
-        ranked = rank_candidates(files)
-        self.search_results_table.setRowCount(len(ranked))
-
-        # Purely for the per-row score display — never persisted, never
-        # passed to select_downloads (which scores against the SAME
-        # inputs internally). See quality.score_candidate's own
-        # docstring.
-        scoring_track = Track(
-            id="", title=title, artist=artist, album="", duration_ms=0,
-        )
-        action_widgets: list[QWidget] = []
-
-        for row, file in enumerate(ranked):
-            self.search_results_table.setItem(
-                row, _SearchColumn.USERNAME, QTableWidgetItem(file.username),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.FILENAME, QTableWidgetItem(file.filename),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.FORMAT, QTableWidgetItem(file.extension),
-            )
-            bitrate_text = (
-                f"{file.bit_rate} kbps" if file.bit_rate else "—"
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.BITRATE, QTableWidgetItem(bitrate_text),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.SIZE,
-                QTableWidgetItem(format_file_size(file.size)),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.LOCKED,
-                QTableWidgetItem("Yes" if file.locked else "No"),
-            )
-            score = score_candidate(scoring_track, file)
-            score_text = f"{score:.1f}" if score is not None else "—"
-            self.search_results_table.setItem(
-                row, _SearchColumn.SCORE, QTableWidgetItem(score_text),
-            )
-
-            action_widget = self._build_search_result_actions(file)
-            action_widgets.append(action_widget)
-            self.search_results_table.setCellWidget(
-                row, _SearchColumn.ACTIONS, action_widget,
-            )
-
-        self._size_search_columns(action_widgets)
-
-    def _configure_search_columns(self) -> None:
-        theme.configure_columns(self.search_results_table, _SEARCH_COLUMNS)
-
-    def _size_search_columns(self, action_widgets: list[QWidget]) -> None:
-        theme.size_columns(
-            self.search_results_table, _SEARCH_COLUMNS, action_widgets,
-        )
-
-    def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
-        download_button = QPushButton("Download this one")
-        download_button.setToolTip(help_text.TOOLTIP_DOWNLOAD_THIS_ONE)
-        download_button.clicked.connect(
-            lambda: self._on_download_this_one_clicked(file, download_button)
-        )
-        return theme.cell_widget(download_button)
-
-    def _on_download_best_clicked(self) -> None:
-        # Roadmap item 82 (P13.5) — the headline action, so it gets the
-        # shared busy_actions/activity-strip treatment like every other
-        # persistent-button action on this page (Search included).
-        if not self._search_files:
-            return
-
-        artist, title, files = (
-            self._search_artist, self._search_title, self._search_files,
-        )
-        self._run_busy_worker(
-            "download_manual", self.download_best_button,
-            lambda: self.application.download_service.download_manual(
-                artist, title, files=files,
-            ),
-            status_label=self.search_status_label,
-            on_finished=lambda result: self.search_status_label.setText(
-                help_text.format_search_download_result(result)
-            ),
-            on_error=self._on_manual_download_error,
-        )
-
-    def _on_download_this_one_clicked(
-            self, file: SoulseekFile, button: QPushButton,
-    ) -> None:
-        # A per-row action on an ephemeral, per-render button — managed
-        # directly via run_worker's own button= disable/re-enable, the
-        # same pattern _on_confirm_review_candidate uses, rather than
-        # the shared "download_manual" busy_actions key (which
-        # "Download best" above already owns, and which only tracks
-        # ONE persistent button per key).
-        artist, title = self._search_artist, self._search_title
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service.download_manual(
-                artist, title, chosen=file,
-            ),
-            button=button,
-            status_label=self.search_status_label,
-            on_finished=lambda result: self.search_status_label.setText(
-                help_text.format_search_download_result(result)
-            ),
-            on_error=self._on_manual_download_error,
-        )
-
-    def _on_manual_download_error(self, message: str) -> None:
-        if "destination" in message.lower():
-            self.search_status_label.setText(
-                f"{message} Set a default download location in Settings."
-            )
-
     def _build_downloads_page(self) -> QWidget:
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -1942,311 +1726,6 @@ class MainWindow(QMainWindow):
         return build_page(
             "Downloads", help_text.DOWNLOADS_TAB_SUBTITLE, content,
         )
-
-    def _build_sharing_page(self) -> QWidget:
-        # Roadmap item 62 (Phase 7) — what Seeker is giving back to the
-        # SoulSeek network it downloads from. See help_text.py's
-        # SHARING_FRAMING_BODY for why this page frames things honestly
-        # rather than as a persuasive pitch.
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(theme.SPACING_LG)
-
-        framing_label = QLabel(help_text.SHARING_FRAMING_BODY)
-        framing_label.setTextFormat(Qt.TextFormat.RichText)
-        framing_label.setWordWrap(True)
-        layout.addWidget(framing_label)
-
-        controls = QHBoxLayout()
-        self.sharing_summary_label = QLabel("")
-        controls.addWidget(self.sharing_summary_label, 1)
-
-        self.sharing_refresh_button = QPushButton("Refresh")
-        self.sharing_refresh_button.setToolTip(help_text.TOOLTIP_SHARING_REFRESH)
-        self.sharing_refresh_button.clicked.connect(self._refresh_sharing)
-        controls.addWidget(self.sharing_refresh_button)
-        layout.addLayout(controls)
-
-        self.sharing_status_label = QLabel("")
-        layout.addWidget(self.sharing_status_label)
-
-        self.sharing_locations_table = QTableWidget(0, 5)
-        self.sharing_locations_table.setHorizontalHeaderLabels(
-            ["Location", "Shared", "Container Path", "Files", "Action"]
-        )
-        theme.apply_table_defaults(self.sharing_locations_table)
-        layout.addWidget(theme.make_card(self.sharing_locations_table))
-        self._configure_sharing_locations_columns()
-
-        uploads_label = QLabel("Currently uploading")
-        # Roadmap item C5.3 — QLabel#sectionHeaderLabel in theme.py.
-        uploads_label.setObjectName("sectionHeaderLabel")
-        layout.addWidget(uploads_label)
-
-        self.sharing_uploads_table = QTableWidget(0, 4)
-        self.sharing_uploads_table.setHorizontalHeaderLabels(
-            ["Peer", "File", "State", "Progress"]
-        )
-        self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
-        # Roadmap item 8.1.3 — no ColumnLayout shape here either; see
-        # the same note on `downloads_table` above.
-        self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
-        theme.apply_table_defaults(self.sharing_uploads_table)
-        theme.apply_column_floors(self.sharing_uploads_table)
-        layout.addWidget(theme.make_card(self.sharing_uploads_table))
-
-        self._current_sharing_reconciliation: list[LocationShareState] = []
-        self._current_sharing_self_managed = False
-
-        return build_page("Sharing", help_text.SHARING_TAB_SUBTITLE, content)
-
-    def _gather_sharing_snapshot(self) -> _SharingSnapshot:
-        if not self.application.soulseek_configured:
-            return _SharingSnapshot(
-                configured=False, status=None, self_managed=False,
-                reconciliation=[], uploads=[],
-            )
-
-        service = self.application.sharing_service
-
-        return _SharingSnapshot(
-            configured=True,
-            status=service.get_status(),
-            self_managed=service.is_self_managed(),
-            reconciliation=service.get_reconciliation(),
-            uploads=service.get_uploads(),
-        )
-
-    def _refresh_sharing(self) -> None:
-        self._run_busy_worker(
-            "sharing_refresh", self.sharing_refresh_button,
-            self._gather_sharing_snapshot,
-            status_label=self.sharing_status_label,
-            on_finished=self._render_sharing,
-        )
-
-    def _trigger_sharing_poll(self) -> None:
-        if not self._sharing_page_visited:
-            return
-
-        if self._sharing_poll_in_progress:
-            return
-
-        if not self.application.soulseek_configured:
-            return
-
-        self._sharing_poll_in_progress = True
-
-        def on_finished(snapshot: _SharingSnapshot) -> None:
-            self._sharing_poll_in_progress = False
-            self._render_sharing(snapshot)
-
-        def on_error(_: str) -> None:
-            self._sharing_poll_in_progress = False
-
-        run_worker(
-            self.thread_pool,
-            self._gather_sharing_snapshot,
-            on_finished=on_finished,
-            on_error=on_error,
-        )
-
-    def _render_sharing(self, snapshot: _SharingSnapshot) -> None:
-        self._current_sharing_reconciliation = snapshot.reconciliation
-        self._current_sharing_self_managed = snapshot.self_managed
-
-        if not snapshot.configured:
-            self.sharing_summary_label.setText(
-                help_text.SHARING_UNCONFIGURED_NOTICE
-            )
-            self.sharing_locations_table.setRowCount(0)
-            self.sharing_uploads_table.setRowCount(0)
-            return
-
-        status = snapshot.status
-        assert status is not None
-
-        managed_note = (
-            "Managed by Seeker." if snapshot.self_managed
-            else "Not managed by Seeker — sharing changes need manual steps."
-        )
-        self.sharing_summary_label.setText(
-            f"{status.directories} directories, {status.files} files "
-            f"shared. {managed_note}"
-        )
-
-        self._render_sharing_locations_table(snapshot.reconciliation)
-        self._render_sharing_uploads_table(snapshot.uploads)
-
-    def _render_sharing_locations_table(
-            self, reconciliation: list[LocationShareState],
-    ) -> None:
-        table = self.sharing_locations_table
-        table.setRowCount(len(reconciliation))
-        action_widgets: list[QWidget] = []
-
-        for row, state in enumerate(reconciliation):
-            table.setItem(row, 0, QTableWidgetItem(state.location.name))
-            table.setItem(
-                row, 1, QTableWidgetItem("Yes" if state.shared else "No"),
-            )
-            table.setItem(
-                row, 2,
-                QTableWidgetItem(
-                    state.share.local_path if state.share else ""
-                ),
-            )
-            table.setItem(
-                row, 3,
-                QTableWidgetItem(
-                    str(state.share.files) if state.share
-                    and state.share.files is not None else ""
-                ),
-            )
-
-            if state.shared:
-                shared_widget = theme.cell_widget(QLabel("Shared"))
-                action_widgets.append(shared_widget)
-                table.setCellWidget(row, 4, shared_widget)
-                continue
-
-            button = QPushButton("Add to my SoulSeek share")
-            button.setToolTip(help_text.TOOLTIP_ADD_LOCATION_TO_SHARE)
-            button.clicked.connect(
-                lambda _checked=False, location=state.location:
-                self._on_add_location_to_share_clicked(location)
-            )
-            # Roadmap item 80 (P10.3) — the brief's own named example:
-            # a bare setCellWidget(button) gets literally resized to
-            # fill the whole cell rect (setCellWidget positions its
-            # widget directly, bypassing normal layout sizing), reading
-            # as a filled cell rather than a button. cell_widget()'s
-            # trailing stretch absorbs the leftover width instead.
-            button_widget = theme.cell_widget(button)
-            action_widgets.append(button_widget)
-            table.setCellWidget(row, 4, button_widget)
-
-        self._size_sharing_locations_columns(action_widgets)
-
-    def _configure_sharing_locations_columns(self) -> None:
-        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
-        # empty table gets this layout at construction.
-        theme.configure_columns(
-            self.sharing_locations_table, _SHARING_LOCATIONS_COLUMNS,
-        )
-
-    def _size_sharing_locations_columns(
-            self, action_widgets: list[QWidget],
-    ) -> None:
-        theme.size_columns(
-            self.sharing_locations_table,
-            _SHARING_LOCATIONS_COLUMNS,
-            action_widgets,
-        )
-
-    def _render_sharing_uploads_table(
-            self, uploads: list[UploadStatus],
-    ) -> None:
-        table = self.sharing_uploads_table
-        # Roadmap item 73 (P4 audit) — the SAME stale-span bug class as
-        # the duplicates table, found live during that fix's own
-        # "audit every other table" step: this table's empty-state
-        # branch below sets a 4-column span at row 0; setRowCount()
-        # doesn't clear it, so a transition from empty -> a real upload
-        # left that span active, visually swallowing the new row's
-        # filename/state/progress cells into column 0 even though their
-        # real QTableWidgetItem data was set correctly underneath.
-        table.clearSpans()
-        table.setRowCount(len(uploads))
-
-        active_keys: set[tuple[str, str]] = set()
-        now = datetime.now(UTC)
-
-        for row, upload in enumerate(uploads):
-            table.setItem(
-                row, 0, QTableWidgetItem(upload.username or "")
-            )
-            table.setItem(
-                row, 1, QTableWidgetItem(upload.filename or "")
-            )
-            table.setItem(row, 2, QTableWidgetItem(upload.state or ""))
-
-            progress_text = ""
-
-            if (
-                    upload.username is not None
-                    and upload.filename is not None
-                    and upload.bytes_transferred is not None
-            ):
-                key = (upload.username, upload.filename)
-                active_keys.add(key)
-                self._upload_eta_tracker.record(
-                    key, upload.bytes_transferred, now,
-                )
-                progress_text = self._upload_eta_tracker.describe(
-                    key, upload.size,
-                )
-
-            table.setItem(row, 3, QTableWidgetItem(progress_text))
-
-        self._upload_eta_tracker.evict_except(active_keys)
-
-        if not uploads:
-            table.setRowCount(1)
-            table.setSpan(0, 0, 1, 4)
-            table.setItem(0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL))
-
-    def _on_add_location_to_share_clicked(
-            self, location: LibraryLocation,
-    ) -> None:
-        service = self.application.sharing_service
-        plan = service.preview_add_location(location)
-
-        if not self._current_sharing_self_managed:
-            QMessageBox.information(
-                self,
-                help_text.SHARING_ADD_CONFIRM_TITLE,
-                help_text.SHARING_NOT_SELF_MANAGED_NOTICE
-                + "\n\n"
-                + plan.compose_volume_line.strip()
-                + "\n"
-                + plan.slskd_share_directory_line.strip(),
-            )
-            return
-
-        confirmed = QMessageBox.question(
-            self,
-            help_text.SHARING_ADD_CONFIRM_TITLE,
-            help_text.format_add_to_share_confirm_body(
-                location.name, location.path, plan.container_path,
-            ),
-        )
-
-        if confirmed != QMessageBox.StandardButton.Yes:
-            return
-
-        run_worker(
-            self.thread_pool,
-            lambda: service.add_location_to_share(location, confirm=True),
-            status_label=self.sharing_status_label,
-            on_finished=self._on_add_location_to_share_finished,
-        )
-
-    def _on_add_location_to_share_finished(
-            self, result: SharingApplyResult,
-    ) -> None:
-        ready_note = (
-                "" if result.became_ready else " Still finishing the scan."
-        )
-        self.sharing_status_label.setText(
-            f"'{result.location.name}' shared — "
-            f"{result.directories_after} directories, "
-            f"{result.files_after} files "
-            f"(was {result.directories_before}/{result.files_before})."
-            + ready_note
-        )
-        self._refresh_sharing()
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()
@@ -3093,8 +2572,8 @@ class MainWindow(QMainWindow):
             self._refresh_duplicates_milestone()
 
         if index == self._sharing_page_index:
-            self._sharing_page_visited = True
-            self._refresh_sharing()
+            self._sharing_page._sharing_page_visited = True
+            self._sharing_page._refresh_sharing()
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True
