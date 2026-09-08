@@ -10,15 +10,15 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `67dff93` — "9.3.1: Phase 6 — extract Tagging panel" (S7
+- **HEAD:** `8e3665e` — "9.3.1: Phase 6 — extract Dashboard page" (S8
   close-out, pending this commit's own tick/handoff commit on top)
 - **Working tree:** clean except this rewrite
 - **`origin/main`:** not re-checked this session — ask before pushing
   regardless.
-- **pytest:** 1147 passed, 1 skipped, 0 real failures this run (the two
-  tracked fullscreen-close flakes fired in the full run, passed 2/2 in
+- **pytest:** 1120 passed, 29 skipped, 0 real failures this run (one
+  tracked fullscreen-close flake fired in the full run, passed 2/2 in
   isolation right after — see "Known flakes")
-- **mypy --strict:** clean, 95 source files
+- **mypy --strict:** clean, 96 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
 ## Where we are in the plan
@@ -33,61 +33,105 @@ brief** — the brief is 115 KB, you only need your own session's slice.
   shrunk), S2 (§7.1), S3 (§7.2 — logging), S4 (§8.1, §8.2 —
   deduplication), S5 (§9.2, §9.3.1 — Phase 6 prep + dialogs +
   History/Help/Support pages), S6 (§9.3.1 — Search + Sharing pages),
-  **S7** (§9.3.1 — Downloads + Tagging panel).
-- **Next session: S8 — Dashboard page** (§9.3.1, ~22 methods per §9.1's
-  table — the biggest single page moved so far). Read
-  `docs/round8/SESSION-PLAN.md`'s own "Phase 6 — the part that needs the
-  most care" section before starting, not just your row — and read
-  "Phase 6 mechanics, refined by S5/S6/S7" below.
-  **The Tagging panel already lives inside Dashboard as a sub-widget**
-  (`self._tagging_panel = TaggingPanel(page_context, TaggingPanelHost(...))`,
-  built in `_build_dashboard_page` and added to `right`) — that
-  construction call, and the `TaggingPanelHost` it binds, moves along
-  with Dashboard verbatim; nothing about TaggingPanel itself changes.
+  S7 (§9.3.1 — Downloads + Tagging panel), **S8** (§9.3.1 — Dashboard
+  page, the biggest single page so far).
+- **Next session: S9 — Review page** (§9.3.1, ~25 methods per §9.1's
+  table — the hardest page per the plan's own ordering rationale).
+  Read `docs/round8/SESSION-PLAN.md`'s own "Phase 6 — the part that
+  needs the most care" section before starting, not just your row —
+  and read "Phase 6 mechanics, refined by S5–S8" below.
+  **`_pending_review_focus_track_id` and `_focus_pending_review_row`
+  are Review-owned state/logic that already exist on MainWindow
+  (unmoved)** — set by Dashboard's `DashboardHost.navigate_to_review`
+  seam (a lambda closing over `self._show_page("review",
+  focus_track_id=...)`), consumed by `_focus_pending_review_row` once
+  Review's own data loads. Both move to `review_page.py` as part of
+  this session; the `navigate_to_review` seam on DashboardHost does
+  NOT change (it stays bound to `self._show_page`, a real shell
+  method, not to anything Review-specific).
 
-## S7 — what landed (§9.3.1: Downloads page, Tagging panel)
+## S8 — what landed (§9.3.1: Dashboard page)
 
-Two commits (`916a00f`, `67dff93`), full detail in each commit message.
-`ui/pages/downloads_page.py` (`DownloadsPage`) and
-`ui/pages/tagging_panel.py` (`TaggingPanel`, a Dashboard *sub-widget*,
-not a registered page) moved verbatim, both with temporary delegating
-properties/methods on MainWindow for everything test_ui_smoke.py
-touches. Full suite green, zero test edits. Visually verified
-(offscreen QPA, both themes) — not committed.
+One commit (`8e3665e`), full detail in the commit message.
+`ui/pages/dashboard_page.py` (`DashboardPage`) moved verbatim,
+including the module-level `_NextStepFacts`/`_NextStep`/
+`_decide_next_step` (pure "next step" CTA logic) and `_STATE_LABELS`/
+`_TRACK_COLUMNS`. TaggingPanel — already its own module since S7 — is
+now constructed inside DashboardPage instead of MainWindow; nothing
+about TaggingPanel itself changed.
 
-## Phase 6 mechanics, refined by S5/S6/S7 — read before S8
+**A new, second seam was needed beyond PageContext: `DashboardHost`**
+(dashboard_page.py's own docstring has the full rationale) — for
+Sync/Scan/Match/"Load tracks" (shared plumbing, stay on MainWindow) and
+for two actions PageContext's one-`str`-argument `navigate` can't carry
+(`open_settings(tab)`, `navigate_to_review(track_id)`). Same shape as
+S7's `TaggingPanelHost`, just at the MainWindow level instead of
+Dashboard-hosting-a-sub-widget.
+
+**A test file other than test_ui_smoke.py imports a private symbol
+from main_window's own namespace** — `tests/test_next_step.py` imports
+`_decide_next_step`/`_NextStepFacts` directly. Same re-export treatment
+as `RenamePreviewDialog` (S7): both kept as `from
+seeker.ui.pages.dashboard_page import ... _decide_next_step  # noqa:
+F401`. **Checked for S9**: grepped every test file for `from
+seeker.ui.main_window import` — only `test_ui_smoke.py` and
+`test_next_step.py` import anything beyond bare `MainWindow` (the
+`_stress_*`/`test_stress_e2e.py` files only import `MainWindow`
+itself, unaffected by any page move).
+
+`selected_playlist` needed a real property **with a setter**, not just
+a getter — it's a plain mutable attribute (not a widget), and
+test_ui_smoke.py assigns it directly on a fresh MainWindow instance.
+
+Full suite green, zero test edits. Visually verified (offscreen QPA,
+both themes) — not committed.
+
+## Phase 6 mechanics, refined by S5–S8 — read before S9
 
 1. **`PageContext` grows fields one at a time, as a page moved turns
    out to need one**: `run_busy_worker` (S5), `update_nav_badge`/
    `is_hidden_to_tray` (S7/Downloads), `render_activity_strip`
-   (S7/Tagging — a call site that begins a busy action by hand).
-   Always bound to the real MainWindow method, never reimplemented.
-2. **A sub-widget of a not-yet-migrated page needs a SECOND, narrower
-   seam** beyond PageContext — S7 added `TaggingPanelHost` for Tagging
-   (inside Dashboard). Expect the same shape for any other sub-widget
-   pulled out ahead of its host page.
-3. **"Zero test edits" covers three gotchas, not one** — check all
-   per page: `window.<attr>` widget access; a MainWindow method/
-   module-level helper called or dotted-path-patched on a fresh
-   instance (S5/S6); and **a class the test file imports FROM
-   main_window.py's own namespace** rather than its real module (S7:
-   `RenamePreviewDialog`, kept re-exported with `noqa: F401`) — grep
-   the test file's own import block for the name, not just its usage.
+   (S7/Tagging). Always bound to the real MainWindow method, never
+   reimplemented.
+2. **A page that hosts a sub-widget, or that several not-yet-migrated
+   MainWindow methods still reach into, needs a SECOND, narrower
+   seam** beyond PageContext — S7 added `TaggingPanelHost`, S8 added
+   `DashboardHost`. Judge the shape per case: callables for live
+   reads/actions, plain widget references only for things that never
+   get reassigned.
+3. **"Zero test edits" covers at least four gotchas** — check all per
+   page: `window.<attr>` widget access; a MainWindow method/module-
+   level helper called or dotted-path-patched on a fresh instance;
+   a class/function the test file imports FROM main_window.py's own
+   namespace rather than its real module (grep the test file's own
+   import block for the name, not just its usage) — **and check EVERY
+   test file that imports from main_window, not just
+   test_ui_smoke.py** (S8: test_next_step.py); and a plain mutable
+   attribute (not a widget) that a test assigns directly — needs a
+   property **setter**, not just a getter (S8: `selected_playlist`).
 4. **A helper shared by the page moving AND a page that hasn't moved
    yet** needs a home both can import without a circular dependency —
-   S7 used `theme.py` for `wrap_progress_bar`; judge the right home
-   per case, don't default to either `theme.py` or `context.py`.
+   judge the right home per case (S7 used `theme.py` for
+   `wrap_progress_bar`).
+5. **Not every moved method needs a MainWindow delegating stub** — only
+   ones a test calls directly by name on a fresh instance. For the
+   rest, redirect their MainWindow call sites straight to
+   `self._<page>_page._method()` (S7's `_poll_active_downloads`, S8's
+   `_load_playlists`/`_poll_next_step`/`_render_no_playlist_selected`).
+   Grep every call site of a moved method before deciding — a method
+   called from many still-unmoved shared-plumbing methods (S8's
+   `_poll_next_step`, ~5 call sites) is easy to undercount.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2. Fired in the full suite again this session (S7), passed 2/2
-in isolation immediately after, same as every prior session. Same
-pytest-qt teardown / Qt deferred-deletion cause already documented. Not
-diagnosed further — worth real instrumentation if a session has spare
-budget (see CLAUDE.md's "history_refresh_button" flake entry for the
-kind of probe that would help).
+since S2. The latter fired in the full suite again this session (S8),
+passed 2/2 in isolation immediately after, same as every prior session.
+Same pytest-qt teardown / Qt deferred-deletion cause already
+documented. Not diagnosed further — worth real instrumentation if a
+session has spare budget (see CLAUDE.md's "history_refresh_button"
+flake entry for the kind of probe that would help).
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
