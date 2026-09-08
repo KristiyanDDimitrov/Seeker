@@ -6493,12 +6493,28 @@ class MainWindow(QMainWindow):
         self._tray_pause_action.setChecked(self.application.downloads_paused)
         self._tray_pause_action.blockSignals(False)
 
-    # Roadmap item E1.4 (round 7, corrected after a second review) —
-    # untuned: the real AppKit exit-fullscreen-then-close animation
-    # measures somewhere in the 0.5-1s range (per this item's own
-    # diagnosis, still not measured against real hardware from this
-    # session), so this is a round number comfortably above that, not a
-    # verified figure.
+    # Roadmap item 116 (round 8, §14.5) — corrected: the previous
+    # comment here claimed "400ms is comfortably above" a stated
+    # 0.5-1s fullscreen-animation range, which is backwards (400 is
+    # below all of it) and was itself never measured. This item DID
+    # measure the ORDINARY (non-fullscreen) close path for real on a
+    # real Mac (a real AXCloseButton click to the Dock icon actually
+    # disappearing, confirmed via `lsappinfo`): ~530ms including real
+    # AppleScript/process-launch overhead around this delay, consistent
+    # with 400ms not being a bad value for THAT path. The
+    # fullscreen-exit-animation duration this constant's old comment
+    # was actually trying to describe is UNVERIFIED — the real macOS
+    # fullscreen-close affordance hides its close button from the
+    # accessibility tree while fullscreen (confirmed: `window 1`
+    # exposes only an `AXRaise` action, no close action, while
+    # AXFullScreen is true), so it couldn't be triggered
+    # programmatically to time it in this session. Left at 400ms
+    # (untuned) rather than replaced with an unmeasured guess either
+    # way — this constant only governs the ORDINARY hide path in
+    # practice, since the fullscreen branch (closeEvent, below) arms no
+    # verification timer of its own; see
+    # _schedule_dock_icon_policy_check_after_fullscreen_close for that
+    # path's own, separately-reasoned reuse of this same delay.
     _HIDE_TO_TRAY_VERIFY_DELAY_MS = 400
 
     def closeEvent(self, event: QCloseEvent) -> None:
