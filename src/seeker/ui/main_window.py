@@ -41,7 +41,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -237,6 +236,19 @@ _DUPLICATES_COLUMN_HEADERS = [
     "Keep", "Actions",
 ]
 
+# Roadmap item 8.1 (round 8, Phase 5) — the declarative layout each
+# table used to write out by hand across a `_configure_*_columns`/
+# `_size_*_columns` pair; see `theme.ColumnLayout`.
+_DUPLICATES_COLUMNS = theme.ColumnLayout(
+    stretch=(_DuplicatesColumn.PATH,),
+    fit_content=(
+        _DuplicatesColumn.GROUP, _DuplicatesColumn.LOCATION,
+        _DuplicatesColumn.FORMAT, _DuplicatesColumn.BITRATE,
+        _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.KEEP,
+    ),
+    actions=_DuplicatesColumn.ACTIONS,
+)
+
 
 # Roadmap item 82 (P13.5) — same "resolve by real header text, not a
 # shared literal" precedent as _DuplicatesColumn above.
@@ -255,6 +267,35 @@ _SEARCH_COLUMN_HEADERS = [
     "Username", "Filename", "Format", "Bitrate", "Size", "Locked",
     "Score", "Actions",
 ]
+
+_SEARCH_COLUMNS = theme.ColumnLayout(
+    stretch=(_SearchColumn.FILENAME,),
+    fit_content=(
+        _SearchColumn.USERNAME, _SearchColumn.FORMAT,
+        _SearchColumn.BITRATE, _SearchColumn.SIZE,
+        _SearchColumn.LOCKED, _SearchColumn.SCORE,
+    ),
+    actions=_SearchColumn.ACTIONS,
+)
+
+# The remaining five tables (Sharing locations, Track, Review's three
+# tabs) never grew a column IntEnum of their own — their layouts are
+# declared the same way, just against plain column indices.
+_SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
+    stretch=(2,), fit_content=(0, 1, 3), actions=4,
+)
+_TRACK_COLUMNS = theme.ColumnLayout(
+    stretch=(0,), fit_content=(1, 2), actions=3,
+)
+_REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
+    stretch=(0,), fit_content=(1, 2), actions=3,
+)
+_REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
+    stretch=(0,), fit_content=(1, 2), actions=3,
+)
+_REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
+    stretch=(0, 1), fit_content=(2, 3), actions=4,
+)
 
 _HISTORY_EVENT_LABELS = {
     DOWNLOADED: "Downloaded",
@@ -2381,47 +2422,12 @@ class MainWindow(QMainWindow):
         self._size_search_columns(action_widgets)
 
     def _configure_search_columns(self) -> None:
-        # Roadmap item E2 (round 7) — split off from `_size_search_
-        # columns` so a brand-new, still-empty table gets a real column
-        # layout at construction, not only on its first populated
-        # render (which never runs while the table has zero rows —
-        # exactly the gap that left an empty Search table sitting at
-        # Qt's default 100px columns with no Actions divider). Called
-        # again, harmlessly, at the top of `_size_search_columns` below.
-        header = self.search_results_table.horizontalHeader()
-        header.setMinimumSectionSize(40)
-        header.setStretchLastSection(False)
-
-        content_fit_columns = (
-            _SearchColumn.USERNAME, _SearchColumn.FORMAT,
-            _SearchColumn.BITRATE, _SearchColumn.SIZE,
-            _SearchColumn.LOCKED, _SearchColumn.SCORE,
-        )
-        for column in content_fit_columns:
-            header.setSectionResizeMode(
-                column, QHeaderView.ResizeMode.ResizeToContents,
-            )
-
-        header.setSectionResizeMode(
-            _SearchColumn.FILENAME, QHeaderView.ResizeMode.Stretch,
-        )
-
-        theme.size_action_column(
-            self.search_results_table, _SearchColumn.ACTIONS, [],
-        )
-        theme.apply_column_floors(self.search_results_table)
+        theme.configure_columns(self.search_results_table, _SEARCH_COLUMNS)
 
     def _size_search_columns(self, action_widgets: list[QWidget]) -> None:
-        # Roadmap item 82 (P13.5) — the exact P4/item 73 lesson applied
-        # to a brand-new table from day one, rather than repeating the
-        # "nothing ever sets a column width" mistake.
-        self._configure_search_columns()
-        theme.size_action_column(
-            self.search_results_table, _SearchColumn.ACTIONS, action_widgets,
+        theme.size_columns(
+            self.search_results_table, _SEARCH_COLUMNS, action_widgets,
         )
-        # Roadmap item D3 (round 6) — after every resize mode above is
-        # set, not at construction; see `theme.apply_column_floors`.
-        theme.apply_column_floors(self.search_results_table)
 
     def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
         download_button = QPushButton("Download this one")
@@ -2809,25 +2815,18 @@ class MainWindow(QMainWindow):
     def _configure_sharing_locations_columns(self) -> None:
         # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
         # empty table gets this layout at construction.
-        header = self.sharing_locations_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        theme.size_action_column(self.sharing_locations_table, 4, [])
-        theme.apply_column_floors(self.sharing_locations_table)
+        theme.configure_columns(
+            self.sharing_locations_table, _SHARING_LOCATIONS_COLUMNS,
+        )
 
     def _size_sharing_locations_columns(
             self, action_widgets: list[QWidget],
     ) -> None:
-        self._configure_sharing_locations_columns()
-        theme.size_action_column(
-                self.sharing_locations_table,
-                4,
-                action_widgets,
+        theme.size_columns(
+            self.sharing_locations_table,
+            _SHARING_LOCATIONS_COLUMNS,
+            action_widgets,
         )
-        theme.apply_column_floors(self.sharing_locations_table)
 
     def _render_sharing_uploads_table(
             self, uploads: list[UploadStatus],
@@ -4493,49 +4492,14 @@ class MainWindow(QMainWindow):
         columns` so an empty table gets this layout at construction,
         not only on its first populated render.
         """
-        header = self.duplicates_table.horizontalHeader()
-        # A floor no column can be silently squeezed below (item 4.3) —
-        # untuned, a reasonable "still shows something" minimum.
-        header.setMinimumSectionSize(40)
-        # Roadmap item 73 (P4) — stretching the LAST section (whichever
-        # column that happens to be) is exactly the mechanism that let
-        # Actions collapse to a sliver in the first place; every column
-        # now gets its own explicit, derived resize mode instead.
-        header.setStretchLastSection(False)
-
-        content_fit_columns = (
-            _DuplicatesColumn.GROUP, _DuplicatesColumn.LOCATION,
-            _DuplicatesColumn.FORMAT, _DuplicatesColumn.BITRATE,
-            _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.KEEP,
-        )
-        for column in content_fit_columns:
-            header.setSectionResizeMode(
-                column, QHeaderView.ResizeMode.ResizeToContents,
-            )
-
-        # PATH holds a full relative path (item 4.2's own "own
-        # usability problem" callout) — stretches to hold the long
-        # value rather than sitting at Qt's 100px column default.
-        header.setSectionResizeMode(
-            _DuplicatesColumn.PATH, QHeaderView.ResizeMode.Stretch,
-        )
-
-        theme.size_action_column(
-            self.duplicates_table, _DuplicatesColumn.ACTIONS, [],
-        )
-        theme.apply_column_floors(self.duplicates_table)
+        theme.configure_columns(self.duplicates_table, _DUPLICATES_COLUMNS)
 
     def _size_duplicates_columns(
             self, action_widgets: list[QWidget],
     ) -> None:
-        self._configure_duplicates_columns()
-        # Roadmap item R5 (5b.1) — extracted into the shared
-        # theme.size_action_column, now also used by Search/Track/
-        # Sharing/Review's Actions columns instead of a tenth copy.
-        theme.size_action_column(
-            self.duplicates_table, _DuplicatesColumn.ACTIONS, action_widgets,
+        theme.size_columns(
+            self.duplicates_table, _DUPLICATES_COLUMNS, action_widgets,
         )
-        theme.apply_column_floors(self.duplicates_table)
 
     def _build_duplicate_group_actions(
             self,
@@ -5071,23 +5035,10 @@ class MainWindow(QMainWindow):
         self._size_track_columns(action_widgets)
 
     def _configure_track_columns(self) -> None:
-        # Roadmap item R5 (5b.1) — same shape as
-        # _size_duplicates_columns/_size_search_columns, via the new
-        # shared theme.size_action_column.
-        # Roadmap item E2 (round 7) — split off so the table has this
-        # layout from construction, not only its first populated render.
-        header = self.track_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        theme.size_action_column(self.track_table, 3, [])
-        theme.apply_column_floors(self.track_table)
+        theme.configure_columns(self.track_table, _TRACK_COLUMNS)
 
     def _size_track_columns(self, action_widgets: list[QWidget]) -> None:
-        self._configure_track_columns()
-        theme.size_action_column(self.track_table, 3, action_widgets)
-        theme.apply_column_floors(self.track_table)
+        theme.size_columns(self.track_table, _TRACK_COLUMNS, action_widgets)
 
     def _on_track_table_cell_double_clicked(
             self, row: int, _column: int,
@@ -5448,23 +5399,15 @@ class MainWindow(QMainWindow):
         self._size_review_needs_columns(action_widgets)
 
     def _configure_review_needs_columns(self) -> None:
-        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
-        # empty table gets this layout at construction.
-        header = self.review_needs_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        theme.size_action_column(self.review_needs_table, 3, [])
-        theme.apply_column_floors(self.review_needs_table)
+        theme.configure_columns(self.review_needs_table, _REVIEW_NEEDS_COLUMNS)
 
     def _size_review_needs_columns(
             self,
             action_widgets: list[QWidget],
     ) -> None:
-        self._configure_review_needs_columns()
-        theme.size_action_column(self.review_needs_table, 3, action_widgets)
-        theme.apply_column_floors(self.review_needs_table)
+        theme.size_columns(
+            self.review_needs_table, _REVIEW_NEEDS_COLUMNS, action_widgets,
+        )
 
     def _build_needs_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")
@@ -5558,23 +5501,17 @@ class MainWindow(QMainWindow):
         self._size_review_upgrades_columns(action_widgets)
 
     def _configure_review_upgrades_columns(self) -> None:
-        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
-        # empty table gets this layout at construction.
-        header = self.review_upgrades_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        theme.size_action_column(self.review_upgrades_table, 3, [])
-        theme.apply_column_floors(self.review_upgrades_table)
+        theme.configure_columns(
+            self.review_upgrades_table, _REVIEW_UPGRADES_COLUMNS,
+        )
 
     def _size_review_upgrades_columns(
             self,
             action_widgets: list[QWidget],
     ) -> None:
-        self._configure_review_upgrades_columns()
-        theme.size_action_column(self.review_upgrades_table, 3, action_widgets)
-        theme.apply_column_floors(self.review_upgrades_table)
+        theme.size_columns(
+            self.review_upgrades_table, _REVIEW_UPGRADES_COLUMNS, action_widgets,
+        )
 
     def _on_upgrade_delete_checkbox_toggled(
             self, request_id: int, checked: bool,
@@ -5737,24 +5674,15 @@ class MainWindow(QMainWindow):
         self._size_review_local_columns(action_widgets)
 
     def _configure_review_local_columns(self) -> None:
-        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
-        # empty table gets this layout at construction.
-        header = self.review_local_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        theme.size_action_column(self.review_local_table, 4, [])
-        theme.apply_column_floors(self.review_local_table)
+        theme.configure_columns(self.review_local_table, _REVIEW_LOCAL_COLUMNS)
 
     def _size_review_local_columns(
             self,
             action_widgets: list[QWidget],
     ) -> None:
-        self._configure_review_local_columns()
-        theme.size_action_column(self.review_local_table, 4, action_widgets)
-        theme.apply_column_floors(self.review_local_table)
+        theme.size_columns(
+            self.review_local_table, _REVIEW_LOCAL_COLUMNS, action_widgets,
+        )
 
     def _build_local_review_actions(self, track_id: str) -> QWidget:
         confirm_button = QPushButton("Confirm")

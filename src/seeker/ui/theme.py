@@ -520,6 +520,57 @@ def size_action_column(
     table.resizeRowsToContents()
 
 
+@dataclass(frozen=True)
+class ColumnLayout:
+    """Roadmap item 8.1 (round 8, Phase 5) — the declarative form of
+    what every table's own `_configure_*_columns`/`_size_*_columns`
+    pair used to write out by hand: which columns stretch, which fit
+    their content, and which (if any) is the Actions column. Fourteen
+    near-identical methods collapse to seven of these plus
+    `configure_columns`/`size_columns` below.
+    """
+    stretch: tuple[int, ...]
+    fit_content: tuple[int, ...]
+    actions: int | None = None
+    minimum_section: int = 40
+
+
+def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
+    """The construction-time half of a table's column layout — see
+    `size_columns` below for the render-time half. Roadmap item E2
+    (round 7)'s contract is unchanged: this must be safe to call on a
+    still-empty table, and `size_columns` calls it again, harmlessly,
+    at the top of every populated render.
+    """
+    header = table.horizontalHeader()
+    header.setMinimumSectionSize(layout.minimum_section)
+    header.setStretchLastSection(False)
+    for column in layout.fit_content:
+        header.setSectionResizeMode(
+            column, QHeaderView.ResizeMode.ResizeToContents,
+        )
+    for column in layout.stretch:
+        header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+    if layout.actions is not None:
+        size_action_column(table, layout.actions, [])
+    apply_column_floors(table)
+
+
+def size_columns(
+        table: QTableWidget,
+        layout: ColumnLayout,
+        action_widgets: list[QWidget],
+) -> None:
+    """The render-time half — re-runs `configure_columns` (item E2's
+    contract), then re-derives the Actions column width from this
+    render's own real widgets rather than the empty placeholder list.
+    """
+    configure_columns(table, layout)
+    if layout.actions is not None:
+        size_action_column(table, layout.actions, action_widgets)
+    apply_column_floors(table)
+
+
 def build_qpalette(palette: Palette) -> QPalette:
     """The native `QPalette` counterpart to `build_stylesheet` — so
     anything Qt draws natively (native dialogs, menus opened via the
