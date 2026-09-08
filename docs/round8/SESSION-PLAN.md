@@ -60,7 +60,7 @@ named split point rather than pushing through.
 | ☑ S7 | Downloads + Tagging panel | §9.3.1 | ~120 K |
 | ☑ S8 | Dashboard page | §9.3.1 | ~110 K |
 | ☑ S9 | Review page | §9.3.1 | ~120 K |
-| ☐ S10 | Duplicates page | §9.3.1 | ~120 K |
+| ☑ S10 | Duplicates page | §9.3.1 | ~120 K |
 | ☐ S11 | Tray extraction + `MainWindow` close-out | §9.3.2, §9.3.3, §9.3.4 | ~110 K |
 | ☐ S12 | Comment triage, pass 1 | §10.1 (small files: `audio_formats`, `docker_setup`, `matching`, `config_store`, `quality`, `audio_analysis`) | ~100 K |
 | ☐ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |

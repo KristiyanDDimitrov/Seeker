@@ -10,13 +10,19 @@ is the log.
 
 ## Current state
 
-- **HEAD:** `dfa1437` — "9.3.1: Phase 6 — extract Review page" (S9,
+- **HEAD:** `af9be85` — "9.3.1: Phase 6 — extract Duplicates page" (S10,
   pending this commit's own tick/handoff commit on top)
 - **Working tree:** clean except this rewrite
 - **`origin/main`:** not re-checked this session — ask before pushing
   regardless.
-- **pytest:** 1121 passed, 29 skipped, 0 real failures this run
-- **mypy --strict:** clean, 97 source files
+- **pytest:** 1149 passed, 1 skipped, 0 real failures this run — note
+  this differs from S9's recorded "1121 passed, 29 skipped"; confirmed
+  via `git stash -u` that the CLEAN pre-S10 tree (`45e7ad7`) also
+  produces 1149/1 in THIS environment, so the S9 number was
+  environment-dependent (unclear which environment), not a regression
+  introduced here. Numbers otherwise identical before/after this
+  session's change.
+- **mypy --strict:** clean, 98 source files
 - **ruff check src tests:** **0 findings — this must stay at 0**
 
 ## Where we are in the plan
@@ -30,86 +36,112 @@ brief** — the brief is 115 KB, you only need your own session's slice.
   Phase 3 (security §6.1–§6.6), Phase 3B (§14 Dock icon), S1 (CLAUDE.md
   shrunk), S2 (§7.1), S3 (§7.2 — logging), S4 (§8.1, §8.2 —
   deduplication), S5 (§9.2, §9.3.1 — Phase 6 prep + dialogs +
-  History/Help/Support pages), S6 (§9.3.1 — Search + Sharing pages),
-  S7 (§9.3.1 — Downloads + Tagging panel), S8 (§9.3.1 — Dashboard
-  page), **S9** (§9.3.1 — Review page, ~25 methods, the hardest page
-  per the plan's own ordering rationale).
-- **Next session: S10 — Duplicates page** (§9.3.1, ~21 methods — the
-  last of the nine pages). Read `docs/round8/SESSION-PLAN.md`'s own
+  History/Help/Support pages), S6 (Search + Sharing), S7 (Downloads +
+  Tagging panel), S8 (Dashboard page), S9 (Review page), **S10**
+  (§9.3.1 — Duplicates page, ~23 methods — the last of the nine pages).
+- **Next session: S11 — Tray extraction + `MainWindow` close-out**
+  (§9.3.2, §9.3.3, §9.3.4). Read `docs/round8/SESSION-PLAN.md`'s own
   "Phase 6 — the part that needs the most care" section before
-  starting, not just your row — and read "Phase 6 mechanics, refined
-  by S5–S9" below. Duplicates' content-builder is
-  `_build_duplicates_content` (grep for it); its methods sit
-  contiguously right after where Review's used to be. No known
-  Duplicates-specific stranded state has been spotted yet the way
-  Review's `_pending_review_focus_track_id` was — but grep for
-  `self.duplicates_status_label`/`_duplicates_keep_selection` and every
-  method touching them before assuming a clean lift, same as every
-  prior page.
+  starting, and "Phase 6 mechanics, refined by S5–S10" below. §9.3.2
+  extracts the ~20 tray/notification methods into `ui/tray.py` —
+  **except** `closeEvent`/hide-to-tray verification, which stays on
+  `MainWindow` per the brief. §9.3.3 shrinks `__init__` to shell state
+  only. §9.3.4 splits `test_ui_smoke.py` to match the new `ui/pages/*`
+  layout — this is also where EVERY page's delegating stub/property
+  block (S5 through S10, all still marked "deleted at S11, not before")
+  finally gets removed, alongside repointing each test file at its page
+  widget directly. Expect this to be the largest single session in the
+  plan; the brief's own hard-stop condition (§9.3.5) applies in full —
+  stop and report if any page can't go green without editing a test.
 
-## S9 — what landed (§9.3.1: Review page)
+## S10 — what landed (§9.3.1: Duplicates page)
 
-One commit (`dfa1437`). `ui/pages/review_page.py` (`ReviewPage`) moved
-verbatim — three sections (SoulSeek needs-review candidates, Phase 2
-upgrade replacements, local-file needs-review matches) sharing one
-poll cycle. Second seam `ReviewHost` covers `status_label` (shared
-Dashboard-owned widget, same as TaggingPanelHost), `refresh_track_table`
-(`self._dashboard_page._poll_selected_playlist`), and
-`check_for_needs_decision_notification` (real MainWindow/tray R7.5
-logic, bound through the Host since it also reads
-`_tray_icon`/`application.settings`).
+One commit (`af9be85`). `ui/pages/duplicates_page.py`
+(`DuplicatesPage`) moved verbatim — folder/location scoping, fingerprint
+computation, group render, single-group delete, and bulk "Resolve all
+groups". No Host seam needed (unlike Review/Tagging/Dashboard):
+Duplicates owns its own `duplicates_status_label` rather than sharing
+the Dashboard's, so every method reaches only `PageContext`
+(`application`/`thread_pool`/`run_busy_worker`) plus its own widgets.
 
-`_pending_review_focus_track_id`/`_focus_pending_review_row` moved
-here as flagged in the prior handoff — `_show_page` sets/calls them on
-`self._review_page` now. `_needs_review_count`/`_pending_upgrades_count`
-moved onto the page too, read by the shell via delegating properties
-of the same private names (same shape as `_active_downloads_count`).
+The module-level `_DuplicatesColumn`/`_DUPLICATES_COLUMN_HEADERS`/
+`_DUPLICATES_COLUMNS`/`KEEP_ALL_DUPLICATES_ID` constants moved with it
+(no test imports them from `main_window`, confirmed by grep — unlike
+`BulkResolveDuplicatesDialog`, which tests still import from
+`seeker.ui.main_window`'s own namespace, so it stays re-exported there
+with `# noqa: F401`, same shape as `BulkReplaceUpgradesDialog`/
+`RenamePreviewDialog`).
 
-`_poll_review_items` got **no** MainWindow stub (no test calls it by
-name) — every internal call site redirects to
-`self._review_page._poll_review_items()` directly, same as S7's
-`_poll_active_downloads`. The four `_render_*`/
-`_on_bulk_replace_upgrades_finished` methods DO have stubs —
-test_ui_smoke.py calls each by name.
+`_on_page_changed` stays on `MainWindow` (shared shell dispatch across
+Duplicates/Sharing/History) — its two Duplicates-branch calls now read
+`self._duplicates_page._refresh_duplicates_locations()`/
+`._refresh_duplicates_milestone()`. One other stray internal call site
+found by grep and redirected the same way:
+`_invalidate_after_leaving_settings`'s own Settings-exit refresh.
 
-Full suite green, zero test edits. Visually verified (offscreen QPA,
-both themes) — not committed.
+8 methods got MainWindow delegating stubs (called directly by name in
+test_ui_smoke.py): `_render_duplicates_milestone`,
+`_render_duplicates_locations`, `_selected_duplicates_location`,
+`_on_find_duplicates_clicked`, `_on_compute_fingerprints_clicked`,
+`_render_duplicate_groups`, `_on_delete_duplicates_clicked`,
+`_on_remove_duplicates_folder_clicked` — the last two (compute-
+fingerprints and remove-folder) aren't obvious from their names alone;
+found only by grepping every `window._on_*`/`window._render_*` call in
+the test file, not by pattern-matching on "duplicate" in the name
+(`_on_compute_fingerprints_clicked` doesn't contain that substring —
+worth remembering for any future page with a similarly-named side
+action). Two attributes needed setter properties, not just getters:
+`_duplicates_folder_paths` and `_current_duplicates_location_name` (both
+directly assigned by tests, not just read).
 
-## Phase 6 mechanics, refined by S5–S9 — read before S10
+Full suite green, zero test edits. Visually verified via a throwaway
+offscreen-QPA script (both themes) — layout matches the Phase 0
+baseline's structure (milestone label, location combo, folder-scope
+checkbox, two buttons, status row, 8-column table); not a pixel-exact
+diff against the baseline PNGs (different synthetic fixture data), and
+not committed.
+
+## Phase 6 mechanics, refined by S5–S10 — read before S11
 
 1. **`PageContext` grows fields one at a time, as a page moved turns
    out to need one**: `run_busy_worker` (S5), `update_nav_badge`/
-   `is_hidden_to_tray` (S7), `render_activity_strip` (S7).
+   `is_hidden_to_tray` (S7), `render_activity_strip` (S7). No new field
+   needed for Duplicates (S10) — it's the first page confirmed to need
+   nothing beyond the original four-plus-`run_busy_worker` set.
 2. **A page hosting a sub-widget, or reached by several
    not-yet-migrated methods, needs a SECOND, narrower seam** beyond
    PageContext — `TaggingPanelHost` (S7), `DashboardHost` (S8),
-   `ReviewHost` (S9). Callables for live reads/shell-owned logic the
-   page must trigger but not own; plain widget refs for things never
-   reassigned.
+   `ReviewHost` (S9). Duplicates (S10) needed none — confirm this by
+   checking whether the page owns all its own widgets/state before
+   assuming a Host is required.
 3. **"Zero test edits" gotchas to check per page**: `window.<attr>`
    widget access; a method/helper called or dotted-path-patched on a
-   fresh instance; a class/function/**type alias** the test file
-   imports FROM main_window.py's own namespace rather than its real
-   module (S9: `NeedsReviewCandidates`/`PendingUpgrades` re-imported
-   back into main_window.py for stub annotations, same shape as
-   `_NextStepFacts`); a plain mutable attribute a test assigns
-   directly — needs a property setter, not just a getter.
+   fresh instance; a class/function/type alias the test file imports
+   FROM main_window.py's own namespace rather than its real module; a
+   plain mutable attribute a test assigns directly — needs a property
+   setter, not just a getter (S10: `_duplicates_folder_paths`,
+   `_current_duplicates_location_name`). **New for S10:** a shell
+   method that stays on MainWindow (`_on_page_changed`) can still call
+   INTO the moved page's now-private methods — don't just stub the
+   methods tests call directly; grep the whole file for every other
+   internal call site too (`_invalidate_after_leaving_settings` was
+   found this way, not from the test grep).
 4. **A helper shared by the page moving AND a page that hasn't moved
    yet** needs a home both can import without a circular dependency.
 5. **Not every moved method needs a MainWindow delegating stub** — only
    ones a test calls directly by name. For the rest, redirect internal
    call sites straight to `self._<page>_page._method()`. Grep every
-   call site before deciding — S9's `_poll_review_items` had 5, all
-   redirected, none kept as a stub.
+   call site before deciding, and don't pattern-match the method name
+   against the page's own name (see S10's `_on_compute_fingerprints_
+   clicked` note above) — grep the exact identifier list a test file
+   actually calls on `window`.
 
 ## Known flakes — not regressions, reproduce on a clean tree
 
 `test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
 `test_fullscreen_close_policy_check_ignores_a_stale_request` — tracked
-since S2. Neither fired this session (S9); same pytest-qt teardown /
-Qt deferred-deletion cause already documented when they do. Not
-diagnosed further — worth real instrumentation if a session has spare
-budget.
+since S2. Neither fired this session (S10); same pytest-qt teardown /
+Qt deferred-deletion cause already documented when they do.
 
 ## Read discipline — this is why sessions were costing 300–700 K tokens
 
@@ -141,6 +173,12 @@ you aren't doing.
 - **Three round-8 flakes already in CLAUDE.md's Open Issues, plus the
   fullscreen-close pair above** — diagnose any recurrence directly,
   never `pytest-rerunfailures`.
+- **S9's recorded pytest skip count (29) doesn't match this session's
+  clean-tree baseline (1)** — see "Current state" above. Not
+  investigated further this session (no regression to chase, since
+  both before/after THIS session's diff agree); worth a real look if a
+  future session has spare budget, since it means at least one of the
+  two numbers was measured in a materially different environment.
 
 ## How to end your session
 
