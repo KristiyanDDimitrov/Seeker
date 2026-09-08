@@ -18,22 +18,14 @@ class SeekerConfig:
     slskd_download_dir: str | None = None
     spotify_client_id: str | None = None
     spotify_redirect_uri: str | None = None
-    # SoulSeek network login — plain text in this file (same 0600
-    # chmod as every other field here; see save_config). Added for
-    # Settings (Step 8) to have something real to display/re-collect
-    # for "Update SoulSeek credentials" — item 19 deliberately left
-    # these out of scope when the store was first built, pending
-    # exactly this real consumer.
+    # SoulSeek NETWORK login — plain text in this file (0600, see
+    # save_config).
     slskd_username: str | None = None
     slskd_password: str | None = None
-    # Roadmap item 116 (round 8, §6.1.2) — the slskd WEB UI login,
-    # distinct from slskd_username/slskd_password just above (which,
-    # despite the name, hold the SOULSEEK NETWORK login —
-    # docker_setup.py's own comment records this exact naming trap).
-    # Never set by Seeker before this item; the web UI was left at
-    # slskd's vendor default ("slskd"/"slskd"). Generated once by
-    # Application.ensure_slskd_web_credentials() and never rotated
-    # silently afterward.
+    # The slskd WEB UI login — distinct from slskd_username/password
+    # above, despite the name (docker_setup.py documents this naming
+    # trap). Generated once by Application.ensure_slskd_web_credentials()
+    # and never rotated silently afterward. HISTORY §23, §116.
     slskd_web_username: str | None = None
     slskd_web_password: str | None = None
     # None means "use matching.py's hardcoded default" — same
@@ -42,35 +34,27 @@ class SeekerConfig:
     # TrackMatcher/DownloadService, never cached at import time.
     auto_match_threshold: float | None = None
     needs_review_threshold: float | None = None
-    # Roadmap item 6 (the "no configured destination" dead end): a
-    # playlist-specific download_location_id/download_subfolder still
+    # A playlist-specific download_location_id/download_subfolder still
     # wins when set — this is only the fallback once neither is. None
-    # means "no default configured yet," the same unset-means-nothing
-    # convention as every other optional field here.
+    # means "no default configured yet."
     default_download_location_id: int | None = None
     default_download_subfolder_per_playlist: bool = True
-    # Roadmap item R7.4 — a real service-level flag, checked inside
-    # DownloadService.poll_downloads() itself (not just the UI's own
-    # timer), so pausing is authoritative regardless of caller (the
-    # menu-bar toggle, the main window's own mirrored control, or a
-    # future automated caller). Persisted so a paused session doesn't
-    # silently resume on restart.
+    # Checked inside DownloadService.poll_downloads() itself (not just
+    # the UI's own timer), so pausing is authoritative regardless of
+    # caller. Persisted so a paused session doesn't silently resume on
+    # restart.
     downloads_paused: bool = False
-    # Roadmap item R7.1 — shown at most once, ever: the first time the
-    # window is hidden to the menu bar instead of closed, per the
-    # brief's own "a window that vanishes with no explanation is the
-    # single most common complaint about this pattern."
+    # Shown at most once, ever: the first time the window is hidden to
+    # the menu bar instead of closed.
     tray_hide_notice_shown: bool = False
-    # Roadmap item R7.5 — per-category notification toggles, all
-    # defaulting on per the brief's own instruction.
+    # Per-category notification toggles, all defaulting on.
     notify_downloads_finished: bool = True
     notify_needs_decision: bool = True
     notify_errors: bool = True
-    # Roadmap item C5 (round 5) — "system" (default), "light", or
-    # "dark". Same guarded-default discipline as every other field
-    # here: an unrecognized value (a garbage/future-version string)
-    # falls back to "system" at LOAD time (see load_config below)
-    # rather than raising or propagating a bad value into theme.py.
+    # "system" (default), "light", or "dark". An unrecognized value (a
+    # garbage/future-version string) falls back to "system" at LOAD
+    # time (see _resolve_theme_mode below) rather than raising or
+    # propagating a bad value into theme.py.
     theme_mode: str = "system"
 
 
@@ -101,11 +85,9 @@ def load_config(path: Path) -> SeekerConfig:
     if not isinstance(data, dict):
         return SeekerConfig()
 
-    # Roadmap item 100 (B7) — a config.json written by an earlier
-    # version of the app may still hold a "write_cover_jpg_sidecars"
-    # key (R4.2's own opt-in, reversed here). Deliberately not read: an
-    # unknown key here is simply ignored, not an error, so no
-    # migration/tolerance code is needed for it.
+    # Unknown keys (e.g. a field a later version removed) are ignored,
+    # not an error — no migration/tolerance code is needed when a field
+    # goes away. HISTORY §100.
     return SeekerConfig(
         slskd_base_url=data.get("slskd_base_url"),
         slskd_api_key=data.get("slskd_api_key"),
@@ -135,16 +117,13 @@ def save_config(seeker_config: SeekerConfig, path: Path) -> None:
     # This file holds real SoulSeek/Spotify credentials — write_text_
     # locked() both locks it down (0600, a no-op on Windows) and makes
     # the write atomic, so a crash mid-write can't leave truncated JSON
-    # in its place (roadmap item 6.2.2).
+    # in its place.
     write_text_locked(path, json.dumps(asdict(seeker_config), indent=2) + "\n")
 
 
 # Field name -> the legacy .env var it was previously read from. Covers
-# both SLSKD_* (Task 1) and SPOTIFY_* (this task's onboarding wizard) —
-# one resolution chain for every field the store owns, not a second
-# mechanism per field group. Renamed from the SLSKD-only
-# migrate_legacy_slskd_env_config now that its scope has genuinely
-# broadened, same discipline as RECOGNIZED_REJECTION_PATTERNS's rename.
+# both SLSKD_* and SPOTIFY_* — one resolution chain for every field the
+# store owns, not a second mechanism per field group.
 _ENV_VAR_BY_FIELD = {
     "slskd_base_url": "SLSKD_BASE_URL",
     "slskd_api_key": "SLSKD_API_KEY",
