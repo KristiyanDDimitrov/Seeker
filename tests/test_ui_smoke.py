@@ -807,7 +807,7 @@ def test_activity_strip_shows_label_for_a_single_running_action(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.busy_actions.begin("scan", window.scan_button, "Scanning…")
+    window.busy_actions.begin("scan", window._dashboard_page.scan_button, "Scanning…")
     window._render_activity_strip()
 
     assert not window.activity_strip.isHidden()
@@ -828,8 +828,8 @@ def test_activity_strip_shows_a_count_for_multiple_running_actions(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.busy_actions.begin("scan", window.scan_button)
-    window.busy_actions.begin("sync", window.sync_button)
+    window.busy_actions.begin("scan", window._dashboard_page.scan_button)
+    window.busy_actions.begin("sync", window._dashboard_page.sync_button)
     window._render_activity_strip()
 
     assert not window.activity_strip.isHidden()
@@ -899,10 +899,10 @@ def test_main_window_global_action_buttons_have_tooltips(qtbot):
     qtbot.addWidget(window)
 
     for button in (
-            window.sync_button,
-            window.scan_button,
-            window.match_button,
-            window.download_button,
+            window._dashboard_page.sync_button,
+            window._dashboard_page.scan_button,
+            window._dashboard_page.match_button,
+            window._dashboard_page.download_button,
             window.settings_button,
     ):
         assert button.toolTip() != ""
@@ -916,12 +916,12 @@ def test_next_step_action_button_opens_settings_on_the_connection_tab(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window.next_step_notice.isHidden(), timeout=2000,
+        lambda: not window._dashboard_page.next_step_notice.isHidden(), timeout=2000,
     )
     # Drive the dispatch method directly — exercising the exact click
     # path a real InlineNotice action button takes without needing to
     # locate/click the dynamically-built button widget itself.
-    window._on_next_step_action("settings_connection")
+    window._dashboard_page._on_next_step_action("settings_connection")
 
     # Roadmap item 56 Phase 3 — Settings is now a persistent page, not a
     # per-open window, so the assertion is against the real navigation
@@ -1034,8 +1034,8 @@ def test_scan_button_click_calls_scan_and_match_not_scan_all(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    qtbot.waitUntil(window.scan_button.isEnabled, timeout=2000)
-    window.scan_button.click()
+    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=2000)
+    window._dashboard_page.scan_button.click()
 
     qtbot.waitUntil(
         lambda: application.library_service.scan_and_match_calls == 1,
@@ -1045,14 +1045,16 @@ def test_scan_button_click_calls_scan_and_match_not_scan_all(qtbot):
 
 
 def _select_first_playlist(window, qtbot) -> None:
-    qtbot.waitUntil(lambda: window.playlist_list.count() == 1, timeout=2000)
-    window.playlist_list.setCurrentRow(0)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
     # Selecting also kicks off the "next step" facts fetch
     # (_poll_next_step), which independently enables/disables
     # download_button — wait for it to actually land rather than
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
-    qtbot.waitUntil(window.download_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window._dashboard_page.download_button.isEnabled, timeout=2000)
 
 
 def test_download_with_no_selection_shows_a_warning_notice(qtbot):
@@ -1060,10 +1062,10 @@ def test_download_with_no_selection_shows_a_warning_notice(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
-    assert "playlist" in window.dashboard_notice.text().lower()
-    assert not window.dashboard_notice.isHidden()
+    assert "playlist" in window._dashboard_page.dashboard_notice.text().lower()
+    assert not window._dashboard_page.dashboard_notice.isHidden()
 
 
 def test_download_with_its_own_destination_skips_the_dialog(qtbot):
@@ -1088,7 +1090,7 @@ def test_download_with_its_own_destination_skips_the_dialog(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
@@ -1127,7 +1129,7 @@ def test_download_with_a_resolvable_default_still_prompts_once(
         lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
     )
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
     dialog = opened_dialogs[0]
@@ -1157,22 +1159,25 @@ def test_download_button_shows_starting_immediately_on_click(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     # Synchronous, main-thread state set at click time — true
     # immediately, not just eventually once some worker lands.
-    assert window.download_button.text() == "Starting download…"
-    assert not window.download_button.isEnabled()
+    assert window._dashboard_page.download_button.text() == "Starting download…"
+    assert not window._dashboard_page.download_button.isEnabled()
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
         timeout=2000,
     )
     qtbot.waitUntil(
-        lambda: window.download_button.text() == "Download selected playlist",
+        lambda: (
+            window._dashboard_page.download_button.text()
+            == "Download selected playlist"
+        ),
         timeout=2000,
     )
-    assert window.download_button.isEnabled()
+    assert window._dashboard_page.download_button.isEnabled()
 
 
 def test_download_button_resets_when_dialog_is_cancelled(qtbot, monkeypatch):
@@ -1193,13 +1198,16 @@ def test_download_button_resets_when_dialog_is_cancelled(qtbot, monkeypatch):
         DestinationDialog, "exec", lambda self: QDialog.DialogCode.Rejected,
     )
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
-        lambda: window.download_button.text() == "Download selected playlist",
+        lambda: (
+            window._dashboard_page.download_button.text()
+            == "Download selected playlist"
+        ),
         timeout=2000,
     )
-    assert window.download_button.isEnabled()
+    assert window._dashboard_page.download_button.isEnabled()
     assert application.download_service.download_playlist_calls == []
 
 
@@ -1229,14 +1237,17 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.dashboard_notice.isHidden()
-        and "Requested 2" in window.dashboard_notice.text(),
+        lambda: not window._dashboard_page.dashboard_notice.isHidden()
+        and "Requested 2" in window._dashboard_page.dashboard_notice.text(),
         timeout=2000,
     )
-    assert "3 already downloading/downloaded" in window.dashboard_notice.text()
+    assert (
+        "3 already downloading/downloaded"
+        in window._dashboard_page.dashboard_notice.text()
+    )
 
 
 def test_download_result_notice_reports_needs_review_separately_from_skipped(
@@ -1268,14 +1279,14 @@ def test_download_result_notice_reports_needs_review_separately_from_skipped(
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.dashboard_notice.isHidden()
-        and "Requested 4" in window.dashboard_notice.text(),
+        lambda: not window._dashboard_page.dashboard_notice.isHidden()
+        and "Requested 4" in window._dashboard_page.dashboard_notice.text(),
         timeout=2000,
     )
-    text = window.dashboard_notice.text()
+    text = window._dashboard_page.dashboard_notice.text()
     assert "2 sent to Review" in text
     # 6 skipped total - 0 already-in-progress - 2 needs-review = 4 with
     # genuinely no candidate at all.
@@ -1305,7 +1316,7 @@ def test_download_with_no_destination_opens_dialog_prefilled_with_playlist_name(
         lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
     )
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
     dialog = opened_dialogs[0]
@@ -1347,7 +1358,7 @@ def test_download_dialog_prefills_the_configured_default_location(
         lambda self: opened_dialogs.append(self) or QDialog.DialogCode.Rejected,
     )
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
     assert opened_dialogs[0].selected_location_id() == 2
@@ -1374,7 +1385,7 @@ def test_download_dialog_confirmed_with_remember_calls_set_destination_then_down
         lambda self: QDialog.DialogCode.Accepted,
     )
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
@@ -1409,7 +1420,7 @@ def test_download_dialog_confirmed_without_remember_persists_the_default(
 
     monkeypatch.setattr(DestinationDialog, "exec", fake_exec)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
@@ -1431,12 +1442,12 @@ def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window.download_button.click()
+    window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.dashboard_notice.isHidden(), timeout=2000,
+        lambda: not window._dashboard_page.dashboard_notice.isHidden(), timeout=2000,
     )
-    assert "location" in window.dashboard_notice.text().lower()
+    assert "location" in window._dashboard_page.dashboard_notice.text().lower()
 
 
 def test_main_window_has_help_menu_with_about_action(qtbot):
@@ -2051,7 +2062,7 @@ def test_backend_poll_refreshes_selected_playlist_track_table(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window.selected_playlist = Playlist(
+    window._dashboard_page.selected_playlist = Playlist(
         id="p1", name="Test Playlist", track_count=1,
     )
     dashboard_service = application.dashboard_service
@@ -2261,7 +2272,7 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
         == [(42, True, True)],
         timeout=2000,
     )
-    assert window.status_label.text() == "Replaced with /new/path"
+    assert window._dashboard_page.status_label.text() == "Replaced with /new/path"
 
 
 def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
@@ -2335,7 +2346,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     )
     # A decline returns None from apply_upgrade_decision — no status
     # message should be surfaced, unlike a real replace.
-    assert window.status_label.text() == ""
+    assert window._dashboard_page.status_label.text() == ""
 
 
 # --- Roadmap item R3.1: "Replace all" upgrades -----------------------------
@@ -2573,8 +2584,10 @@ def test_double_clicking_needs_review_row_navigates_to_review_and_selects_it(
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    qtbot.waitUntil(lambda: window.track_table.rowCount() == 1, timeout=2000)
-    window._on_track_table_cell_double_clicked(0, 1)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=2000,
+    )
+    window._dashboard_page._on_track_table_cell_double_clicked(0, 1)
 
     assert (
         window.stacked_widget.currentIndex()
@@ -2600,8 +2613,10 @@ def test_double_clicking_in_library_row_is_a_no_op(qtbot):
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    qtbot.waitUntil(lambda: window.track_table.rowCount() == 1, timeout=2000)
-    window._on_track_table_cell_double_clicked(0, 1)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=2000,
+    )
+    window._dashboard_page._on_track_table_cell_double_clicked(0, 1)
 
     assert (
         window.stacked_widget.currentIndex()
@@ -2786,8 +2801,6 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
     qtbot.addWidget(window)
 
     table_and_list_attrs = [
-        "playlist_list",
-        "track_table",
         "review_needs_table",
         "review_upgrades_table",
         "review_local_table",
@@ -2802,9 +2815,9 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
             f"{attr}'s parent is {parent!r}, not routed through make_card()"
         )
 
-    # History/Search/Sharing/Downloads have no delegating properties
-    # (S11.1/S11.2/S11.3, §9.3.4) — same check, against their own page
-    # widgets directly.
+    # History/Search/Sharing/Downloads/Dashboard have no delegating
+    # properties (S11.1/S11.2/S11.3/S11.4, §9.3.4) — same check, against
+    # their own page widgets directly.
     page_owned_tables = [
         ("history_table", window._history_page.history_table),
         ("search_results_table", window._search_page.search_results_table),
@@ -2814,6 +2827,8 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
         ),
         ("sharing_uploads_table", window._sharing_page.sharing_uploads_table),
         ("downloads_table", window._downloads_page.downloads_table),
+        ("playlist_list", window._dashboard_page.playlist_list),
+        ("track_table", window._dashboard_page.track_table),
     ]
     for name, widget in page_owned_tables:
         parent = widget.parentWidget()
@@ -4166,7 +4181,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._render_track_statuses(
+    window._dashboard_page._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
     window._render_needs_review_candidates(
@@ -4187,7 +4202,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
     )
 
     tables_and_columns = [
-        (window.track_table, 3),
+        (window._dashboard_page.track_table, 3),
         (window.review_needs_table, 3),
         (window.review_upgrades_table, 3),
         (window.review_local_table, 4),
@@ -4298,7 +4313,7 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    window._render_track_statuses(
+    window._dashboard_page._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
     window._render_needs_review_candidates(
@@ -4385,7 +4400,7 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
         qtbot.wait(20)
         _assert_no_dead_band_at_stretch_columns(window, qtbot)
 
-    window._render_track_statuses(
+    window._dashboard_page._render_track_statuses(
         [_make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None)]
     )
     window._search_page._render_search_results(
@@ -4524,7 +4539,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
     qtbot.addWidget(window)
     window.show()
 
-    window._render_track_statuses([
+    window._dashboard_page._render_track_statuses([
         TrackStatus(
             track=_make_track("t1"), state=DOWNLOADING,
             bytes_transferred=500, total_bytes=1_000,

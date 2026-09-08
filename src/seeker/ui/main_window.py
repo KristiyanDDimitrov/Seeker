@@ -46,8 +46,6 @@ from seeker.library.duplicate_service import DuplicateGroup
 from seeker.models.history_event import HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.needs_review_match import NeedsReviewMatch
-from seeker.models.playlist import Playlist
-from seeker.models.track_status import TrackStatus
 from seeker.soulseek.download_service import (
     BulkUpgradeReplaceResult,
 )
@@ -57,33 +55,33 @@ from seeker.ui.dialogs import (
     AboutDialog,
     # Roadmap item 9.3 (round 8, Phase 6) — no longer constructed here
     # (BulkReplaceUpgradesDialog moved to review_page.py with the rest
-    # of Review; RenamePreviewDialog moved to tagging_panel.py with the
-    # rest of Tagging; BulkResolveDuplicatesDialog moved to
-    # duplicates_page.py with the rest of Duplicates), but
-    # test_ui_smoke.py imports all three from THIS module's own
-    # namespace (`from seeker.ui.main_window import
-    # BulkReplaceUpgradesDialog`), not from seeker.ui.dialogs directly.
-    # Kept as deliberate re-exports until the test-split session
-    # repoints those imports (S11, §9.3.4) — dropped alongside it, not
-    # before.
+    # of Review; BulkResolveDuplicatesDialog moved to duplicates_page.py
+    # with the rest of Duplicates), but test_ui_smoke.py imports both
+    # from THIS module's own namespace (`from seeker.ui.main_window
+    # import BulkReplaceUpgradesDialog`), not from seeker.ui.dialogs
+    # directly. Kept as deliberate re-exports until each page's own
+    # test-split session repoints those imports (Review: S11.5,
+    # Duplicates: S11.6) — dropped alongside it, not before.
+    # RenamePreviewDialog's own re-export dropped at S11.4, once the
+    # tests using it (moved to tagging_panel.py at S11.3) finally moved
+    # out of test_ui_smoke.py too.
     BulkReplaceUpgradesDialog,  # noqa: F401
     BulkResolveDuplicatesDialog,  # noqa: F401
     DestinationDialog,
-    RenamePreviewDialog,  # noqa: F401
 )
-from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.dashboard_page import (
     DashboardHost,
     DashboardPage,
-    # Roadmap item 9.3 (round 8, Phase 6) — _decide_next_step moved to
+    # Roadmap item 9.3 (round 8, Phase 6) — both moved to
     # dashboard_page.py with the rest of Dashboard, but
-    # tests/test_next_step.py imports it from THIS module's own
-    # namespace (same re-export shape as RenamePreviewDialog above).
-    # _NextStepFacts is genuinely used below (the delegating
-    # _render_next_step stub's type annotation), so it needs no noqa.
+    # tests/test_next_step.py imports both from THIS module's own
+    # namespace (same re-export shape as the Bulk*Dialogs above) —
+    # neither is used directly below any more since S11.4 deleted the
+    # delegating _render_next_step stub that used to need the type
+    # annotation.
     _decide_next_step,  # noqa: F401
-    _NextStepFacts,
+    _NextStepFacts,  # noqa: F401
 )
 from seeker.ui.pages.downloads_page import DownloadsPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
@@ -514,7 +512,7 @@ class MainWindow(QMainWindow):
         # treatment.
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
-        self.poll_timer.timeout.connect(self._poll_selected_playlist)
+        self.poll_timer.timeout.connect(self._dashboard_page._poll_selected_playlist)
         self.poll_timer.timeout.connect(
             self._downloads_page._poll_active_downloads
         )
@@ -571,7 +569,6 @@ class MainWindow(QMainWindow):
             render_activity_strip=self._render_activity_strip,
             set_dock_icon_visible=self._set_dock_icon_visible_policy,
             trigger_backend_poll=self._trigger_backend_poll,
-            poll_selected_playlist=self._poll_selected_playlist,
             # Deliberately still lambdas, not bound-method references:
             # `_downloads_page`/`_review_page`/`_dashboard_page` don't
             # exist yet at this point (they're built by _build_ui(),
@@ -580,6 +577,9 @@ class MainWindow(QMainWindow):
             # raise immediately, so these stay real lambdas for
             # genuinely deferred attribute lookup, not an unnecessary
             # wrap ruff's PLW0108 would otherwise flag.
+            poll_selected_playlist=(
+                lambda: self._dashboard_page._poll_selected_playlist()  # noqa: PLW0108
+            ),
             poll_active_downloads=(
                 lambda: self._downloads_page._poll_active_downloads()  # noqa: PLW0108
             ),
@@ -671,7 +671,7 @@ class MainWindow(QMainWindow):
         self._review_page = ReviewPage(
             page_context,
             ReviewHost(
-                status_label=self.status_label,
+                status_label=self._dashboard_page.status_label,
                 refresh_track_table=self._dashboard_page._poll_selected_playlist,
                 check_for_needs_decision_notification=(
                     self._tray.check_for_needs_decision_notification
@@ -760,79 +760,10 @@ class MainWindow(QMainWindow):
     # were deleted at the test-split session (S11.1, §9.3.4) — its
     # tests now address self._history_page directly. Search's and
     # Sharing's own delegating properties/methods were deleted the same
-    # way at S11.2, and Downloads' and TaggingPanel's own at S11.3 —
-    # their tests now address self._search_page/self._sharing_page/
-    # self._downloads_page/self._dashboard_page._tagging_panel directly.
-
-    # Same temporary-delegation pattern for every DashboardPage
-    # attribute test_ui_smoke.py touches by name, plus `selected_
-    # playlist` (a real read/write attribute, not a widget — needs a
-    # setter too, since existing tests assign it directly on a fresh
-    # MainWindow instance) and `_track_empty_panel` (a private widget
-    # reference a couple of tests compare identity against).
-    @property
-    def next_step_notice(self) -> InlineNotice:
-        return self._dashboard_page.next_step_notice
-
-    @property
-    def dashboard_notice(self) -> InlineNotice:
-        return self._dashboard_page.dashboard_notice
-
-    @property
-    def playlist_list(self) -> QListWidget:
-        return self._dashboard_page.playlist_list
-
-    @property
-    def track_table(self) -> QTableWidget:
-        return self._dashboard_page.track_table
-
-    @property
-    def track_table_card(self) -> QWidget:
-        return self._dashboard_page.track_table_card
-
-    @property
-    def track_area_stack(self) -> QStackedWidget:
-        return self._dashboard_page.track_area_stack
-
-    @property
-    def _track_empty_panel(self) -> QWidget:
-        return self._dashboard_page._track_empty_panel
-
-    @property
-    def track_empty_label(self) -> QLabel:
-        return self._dashboard_page.track_empty_label
-
-    @property
-    def sync_tracks_button(self) -> QPushButton:
-        return self._dashboard_page.sync_tracks_button
-
-    @property
-    def status_label(self) -> QLabel:
-        return self._dashboard_page.status_label
-
-    @property
-    def download_button(self) -> QPushButton:
-        return self._dashboard_page.download_button
-
-    @property
-    def sync_button(self) -> QPushButton:
-        return self._dashboard_page.sync_button
-
-    @property
-    def scan_button(self) -> QPushButton:
-        return self._dashboard_page.scan_button
-
-    @property
-    def match_button(self) -> QPushButton:
-        return self._dashboard_page.match_button
-
-    @property
-    def selected_playlist(self) -> Playlist | None:
-        return self._dashboard_page.selected_playlist
-
-    @selected_playlist.setter
-    def selected_playlist(self, value: Playlist | None) -> None:
-        self._dashboard_page.selected_playlist = value
+    # way at S11.2, Downloads' and TaggingPanel's own at S11.3, and
+    # Dashboard's own at S11.4 — their tests now address
+    # self._search_page/self._sharing_page/self._downloads_page/
+    # self._dashboard_page(._tagging_panel) directly.
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1174,7 +1105,7 @@ class MainWindow(QMainWindow):
         # regularly (self-healing within ~2s) — but re-running them
         # here too means the switch is correct IMMEDIATELY, not after
         # up to a 2s wait.
-        self._poll_selected_playlist()
+        self._dashboard_page._poll_selected_playlist()
         self._downloads_page._poll_active_downloads()
         self._review_page._poll_review_items()
         self._render_activity_strip()
@@ -1253,16 +1184,6 @@ class MainWindow(QMainWindow):
             self, help_text.UPDATE_CHECK_DIALOG_TITLE,
             f"Couldn't check for updates: {message}",
         )
-
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
-    # methods for DashboardPage's own _render_tag_result/
-    # _on_retag_track_clicked (themselves delegating to TaggingPanel),
-    # called directly on a fresh MainWindow instance by test_ui_smoke.py.
-    def _render_tag_result(self, result: dict[str, Any]) -> None:
-        self._dashboard_page._render_tag_result(result)
-
-    def _on_retag_track_clicked(self, track_id: str) -> None:
-        self._dashboard_page._on_retag_track_clicked(track_id)
 
     def _on_page_changed(self, index: int) -> None:
         # Roadmap item 56 Phase 6.1 — was gated by
@@ -1412,32 +1333,6 @@ class MainWindow(QMainWindow):
         self._duplicates_page._duplicates_folder_paths = value
 
     # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
-    # methods for DashboardPage's own attributes/methods
-    # test_ui_smoke.py touches directly on a fresh MainWindow instance
-    # (window._poll_selected_playlist(...), etc.). Deleted, alongside
-    # repointing those tests at the page widget directly, at the
-    # test-split session (S11, §9.3.4) — not before.
-    def _poll_selected_playlist(self) -> None:
-        self._dashboard_page._poll_selected_playlist()
-
-    def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
-        self._dashboard_page._render_track_statuses(statuses)
-
-    def _on_track_table_cell_double_clicked(
-            self, row: int, column: int,
-    ) -> None:
-        self._dashboard_page._on_track_table_cell_double_clicked(row, column)
-
-    def _on_track_table_context_menu(self, position: Any) -> None:
-        self._dashboard_page._on_track_table_context_menu(position)
-
-    def _render_next_step(self, facts: _NextStepFacts) -> None:
-        self._dashboard_page._render_next_step(facts)
-
-    def _on_next_step_action(self, action: str) -> None:
-        self._dashboard_page._on_next_step_action(action)
-
-    # Roadmap item 9.3 (round 8, Phase 6) — temporary delegating
     # methods for ReviewPage's own attributes/methods
     # test_ui_smoke.py touches directly on a fresh MainWindow instance
     # (window._render_review_items(...), etc.). Deleted, alongside
@@ -1555,7 +1450,7 @@ class MainWindow(QMainWindow):
             # refresh the selected playlist's own track table right now
             # rather than waiting up to POLL_INTERVAL_MS for the next
             # 2s display tick to happen to catch it.
-            self._poll_selected_playlist()
+            self._dashboard_page._poll_selected_playlist()
             # Roadmap item R7.5 — checked on the same real 20s cycle
             # that can actually produce a newly-completed download, not
             # a new timer of its own.
@@ -1623,9 +1518,9 @@ class MainWindow(QMainWindow):
 
     def _on_sync_clicked(self) -> None:
         self._run_busy_worker(
-            "sync", self.sync_button,
+            "sync", self._dashboard_page.sync_button,
             self.application.sync_service.sync_playlists,
-            status_label=self.status_label,
+            status_label=self._dashboard_page.status_label,
             on_finished=lambda _: self._dashboard_page._load_playlists(),
         )
 
@@ -1641,30 +1536,32 @@ class MainWindow(QMainWindow):
         # instead, replaced by the real combined result once the whole
         # call finishes.
         self._run_busy_worker(
-            "scan", self.scan_button,
+            "scan", self._dashboard_page.scan_button,
             self.application.library_service.scan_and_match,
             busy_text="Scanning…",
-            status_label=self.status_label,
+            status_label=self._dashboard_page.status_label,
             on_finished=self._on_scan_and_match_finished,
         )
-        self.status_label.setText("Scanning library, then matching tracks…")
+        self._dashboard_page.status_label.setText(
+            "Scanning library, then matching tracks…"
+        )
 
     def _on_scan_and_match_finished(self, result: dict[str, int]) -> None:
-        self.status_label.setText(
+        self._dashboard_page.status_label.setText(
             f"Scanned: {result['added']} added, {result['updated']} "
             f"updated, {result['removed']} removed. "
             f"Matched: {result['auto']} auto, "
             f"{result['needs_review']} needs review, "
             f"{result['unmatched']} unmatched."
         )
-        self._poll_selected_playlist()
+        self._dashboard_page._poll_selected_playlist()
 
     def _on_match_clicked(self) -> None:
         self._run_busy_worker(
-            "match", self.match_button,
+            "match", self._dashboard_page.match_button,
             self.application.track_matcher.match_all,
-            status_label=self.status_label,
-            on_finished=lambda _: self._poll_selected_playlist(),
+            status_label=self._dashboard_page.status_label,
+            on_finished=lambda _: self._dashboard_page._poll_selected_playlist(),
         )
 
     def _set_download_button_busy(self) -> None:
@@ -1672,7 +1569,7 @@ class MainWindow(QMainWindow):
         # running) — safe to call again at every hop of the download
         # chain below, matching this method's own pre-registry behavior.
         self.busy_actions.begin(
-            "download", self.download_button, "Starting download…",
+            "download", self._dashboard_page.download_button, "Starting download…",
         )
         self._render_activity_strip()
 
@@ -1681,13 +1578,13 @@ class MainWindow(QMainWindow):
         self._render_activity_strip()
 
     def _on_download_clicked(self) -> None:
-        if self.selected_playlist is None:
-            self.dashboard_notice.show_message(
+        if self._dashboard_page.selected_playlist is None:
+            self._dashboard_page.dashboard_notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
 
-        playlist = self.selected_playlist
+        playlist = self._dashboard_page.selected_playlist
         playlist_name = playlist.name
 
         # Roadmap item 56 Phase 5.1 — the button previously gave no
@@ -1742,7 +1639,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         if not locations:
             self._reset_download_button()
-            self.dashboard_notice.show_message(
+            self._dashboard_page.dashboard_notice.show_message(
                 help_text.NO_LOCATIONS_FOR_DESTINATION_DIALOG,
                 kind="warning",
             )
@@ -1822,14 +1719,14 @@ class MainWindow(QMainWindow):
             lambda: self.application.download_service.download_playlist(
                 playlist_name
             ),
-            status_label=self.status_label,
+            status_label=self._dashboard_page.status_label,
             on_finished=self._on_download_finished,
             on_error=lambda _message: self._reset_download_button(),
         )
 
     def _on_download_finished(self, result: dict[str, Any]) -> None:
         self._reset_download_button()
-        self._poll_selected_playlist()
+        self._dashboard_page._poll_selected_playlist()
 
         # Roadmap item 66 (Phase 4.2) — the real fix for "Requested 16,
         # skipped 12 (no candidates found)" when several of those 12 had
@@ -1838,21 +1735,21 @@ class MainWindow(QMainWindow):
         # them into one generic figure.
         message = help_text.format_download_result_message(result)
         kind = "success" if result["requested"] else "info"
-        self.dashboard_notice.show_message(message, kind=kind)
+        self._dashboard_page.dashboard_notice.show_message(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:
-        if self.selected_playlist is None:
+        if self._dashboard_page.selected_playlist is None:
             return
 
-        playlist = self.selected_playlist
+        playlist = self._dashboard_page.selected_playlist
 
         def do_sync() -> Any:
             self.application.sync_service.sync_playlist_tracks(playlist)
 
         self._run_busy_worker(
-            "sync_tracks", self.sync_tracks_button, do_sync,
-            status_label=self.status_label,
-            on_finished=lambda _: self._poll_selected_playlist(),
+            "sync_tracks", self._dashboard_page.sync_tracks_button, do_sync,
+            status_label=self._dashboard_page.status_label,
+            on_finished=lambda _: self._dashboard_page._poll_selected_playlist(),
         )
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
