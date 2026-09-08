@@ -24,7 +24,7 @@ from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.active_download import ActiveDownload
 from seeker.models.data_locations import DataLocations
 from seeker.models.download_request import DownloadRequest
-from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
+from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -43,7 +43,6 @@ from seeker.ui import help_text, theme
 from seeker.ui import workers as workers_module
 from seeker.ui.main_window import (
     _THEME_MODE_CYCLE,
-    AboutDialog,
     BulkReplaceUpgradesDialog,
     BulkResolveDuplicatesDialog,
     DestinationDialog,
@@ -797,164 +796,6 @@ def test_downloads_and_review_nav_badges_show_live_counts(qtbot):
     assert window._nav_buttons["downloads"].text() == "Downloads"
 
 
-def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    history_page = window.stacked_widget.widget(
-            window._page_indices["history"]
-    )
-    history_labels = [w.text() for w in history_page.findChildren(QLabel)]
-    assert help_text.HISTORY_PAGE_SUBTITLE in history_labels
-
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    help_labels = [w.text() for w in help_page.findChildren(QLabel)]
-    assert help_text.HELP_PAGE_SUBTITLE in help_labels
-
-
-# --- Help page (roadmap Phase 11 §Help) -------------------------------------
-
-def test_help_page_shows_walkthrough_and_troubleshooting(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    labels_html = "\n".join(w.text() for w in help_page.findChildren(QLabel))
-
-    assert "How Seeker works" in labels_html
-    assert "Troubleshooting" in labels_html
-    assert "Sync" in labels_html and "Match" in labels_html
-
-
-def test_help_page_shows_the_real_resolved_data_paths(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    labels_text = [w.text() for w in help_page.findChildren(QLabel)]
-
-    locations = application.data_locations
-    assert str(locations.database_path) in labels_text
-    assert str(locations.config_path) in labels_text
-    assert str(locations.spotify_token_path) in labels_text
-    assert str(locations.slskd_data_dir) in labels_text
-    assert str(locations.log_dir) in labels_text
-
-
-# --- Support page (roadmap item 64) -----------------------------------
-
-def test_support_page_exists_directly_below_help_in_the_sidebar(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    assert "support" in window._page_indices
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
-    labels = [w.text() for w in support_page.findChildren(QLabel)]
-    assert help_text.SUPPORT_TAB_SUBTITLE in labels
-
-    # Directly below Help — both individually-built (not part of the
-    # generic _NAV_PAGES loop), so this checks real sidebar layout order
-    # rather than just dict/insertion order.
-    sidebar = window._nav_buttons["help"].parentWidget()
-    assert sidebar is window._nav_buttons["support"].parentWidget()
-    layout = sidebar.layout()
-    assert layout is not None
-    indices = [
-        layout.indexOf(window._nav_buttons[key]) for key in ("help", "support")
-    ]
-    assert indices[1] == indices[0] + 1
-
-
-def test_support_page_shows_honest_framing_and_non_financial_help(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
-    labels_html = "\n".join(
-            w.text() for w in support_page.findChildren(QLabel)
-    )
-
-    assert "no telemetry" in labels_html
-    assert "no paid tier" in labels_html
-    assert "thank-you, not a purchase" in labels_html
-    assert "Report a bug" in labels_html
-    assert "github.com/KristiyanDDimitrov/Seeker/issues" in labels_html
-    assert "Share your library back on SoulSeek" in labels_html
-    assert "Kristiyan Dimitrov" in labels_html  # ABOUT_DIALOG_AUTHOR_LINE, reused
-
-
-def test_support_page_renders_a_button_for_every_real_support_link(
-        qtbot, monkeypatch,
-):
-    # build_support_links_row() (round 8 §9.3.1) lives in seeker.ui.dialogs
-    # now, shared from there by both AboutDialog and the Support page —
-    # patch the module that actually calls webbrowser.open, not
-    # main_window (webbrowser is a stdlib singleton module either way,
-    # so this patches the same real object regardless of which name
-    # reaches it).
-    from seeker.ui import dialogs as dialogs_module
-
-    opened: list[str] = []
-    monkeypatch.setattr(
-        dialogs_module.webbrowser, "open", opened.append
-    )
-
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
-    buttons = [
-        widget
-        for widget in support_page.findChildren(QPushButton)
-        if widget.text().startswith("Support on")
-    ]
-    assert len(buttons) == len(help_text.SUPPORT_LINKS)
-    assert {button.text() for button in buttons} == {
-        f"Support on {name}" for name in help_text.SUPPORT_LINKS
-    }
-
-    for button in buttons:
-        button.click()
-
-    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
-
-
-def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("support")
-    assert window.stacked_widget.currentIndex() == window._page_indices[
-            "support"
-    ]
-
-    support_page = window.stacked_widget.widget(
-            window._page_indices["support"]
-    )
-    go_button = next(
-        widget for widget in support_page.findChildren(QPushButton)
-        if widget.text() == help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
-    )
-    go_button.click()
-
-    assert window.stacked_widget.currentIndex() == window._page_indices[
-            "sharing"
-    ]
-
-
 # --- Busy-action registry / activity strip (roadmap item 65, Phase 2) -----
 
 def test_render_next_step_does_not_reenable_a_button_whose_action_is_running(
@@ -1099,87 +940,11 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
     assert window.activity_strip_bar.value() == 40
 
 
-def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
-    # _open_in_file_manager (round 8 §9.3.1) now lives in
-    # seeker.ui.pages.static_pages, alongside the Help page that's its
-    # only caller.
-    from seeker.ui.pages.static_pages import _open_in_file_manager
-
-    calls: list[tuple[list[str], dict]] = []
-    monkeypatch.setattr(
-        "seeker.ui.pages.static_pages.subprocess.run",
-        lambda args, **kwargs: calls.append((args, kwargs)),
-    )
-    target = tmp_path / "does" / "not" / "exist" / "yet"
-
-    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "darwin")
-    _open_in_file_manager(target)
-    assert calls[-1] == (["open", str(target)], {"check": False})
-    assert target.is_dir()  # created on demand, per the docstring
-
-    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "win32")
-    _open_in_file_manager(target)
-    assert calls[-1] == (["explorer", str(target)], {"check": False})
-
-    monkeypatch.setattr("seeker.ui.pages.static_pages.sys.platform", "linux")
-    _open_in_file_manager(target)
-    assert calls[-1] == (["xdg-open", str(target)], {"check": False})
-
-
-def test_open_data_folder_button_calls_the_file_manager_opener(
-        qtbot, monkeypatch,
-):
-    # HelpPage's click handler resolves _open_in_file_manager from its
-    # own module's globals (seeker.ui.pages.static_pages), not
-    # main_window's — see the identical note above.
-    from seeker.ui.pages import static_pages as static_pages_module
-
-    opened: list = []
-    monkeypatch.setattr(
-        static_pages_module, "_open_in_file_manager",
-        opened.append,
-    )
-
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    button = next(
-        widget for widget in help_page.findChildren(QPushButton)
-        if widget.text() == help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
-    )
-    button.click()
-
-    assert opened == [application.data_locations.base_dir]
-
-
-def test_open_log_folder_button_calls_the_file_manager_opener(
-        qtbot, monkeypatch,
-):
-    from seeker.ui.pages import static_pages as static_pages_module
-
-    opened: list = []
-    monkeypatch.setattr(
-        static_pages_module, "_open_in_file_manager",
-        opened.append,
-    )
-
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    help_page = window.stacked_widget.widget(window._page_indices["help"])
-    button = next(
-        widget for widget in help_page.findChildren(QPushButton)
-        if widget.text() == help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
-    )
-    button.click()
-
-    assert opened == [application.data_locations.log_dir]
-
-
 # --- History page (roadmap Phase 10) ----------------------------------------
+#
+# The page's own tests moved to tests/pages/test_history_page.py (round 8,
+# §9.3.4, session S11.1). _make_history_event stays here — Tray's own
+# download-notification tests (below, staying until S11.7) use it too.
 
 def _make_history_event(
         event_type: str = DOWNLOADED,
@@ -1193,114 +958,6 @@ def _make_history_event(
         occurred_at=occurred_at, event_type=event_type,
         track_artist=track_artist, track_title=track_title,
         playlist_name=playlist_name, detail=detail,
-    )
-
-
-def test_history_page_has_the_right_table_columns(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    labels = [
-        window.history_table.horizontalHeaderItem(i).text()
-        for i in range(window.history_table.columnCount())
-    ]
-    assert labels == ["When", "What", "Track", "Detail"]
-
-
-def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
-    events = [
-        _make_history_event(),
-        _make_history_event(
-            event_type=TAGGED, occurred_at="2026-01-01T00:00:00+00:00",
-            track_artist="Kamäleon", track_title="Quadrat",
-            playlist_name="Test", detail="Tagged with Spotify metadata",
-        ),
-    ]
-    application = FakeApplication(history_events=events)
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("history")
-
-    qtbot.waitUntil(
-        lambda: window.history_table.rowCount() == 2, timeout=2000,
-    )
-    # Roadmap item R7.5 — MainWindow's own construction already makes
-    # one real get_recent_events(limit=1) call to silently seed the
-    # download-notification cutoff (see _seed_notification_cutoff), so
-    # the History page's own first real fetch is real call #2, not #1.
-    assert application.history_service.get_recent_events_calls == 2
-    assert window.history_table.item(0, 1).text() == "Downloaded"
-    assert "ZENEA - INFINITE" in window.history_table.item(0, 2).text()
-    assert window.history_table.item(1, 1).text() == "Tagged"
-
-    # Lazy-load-once, same precedent as Duplicates — switching away and
-    # back must not refetch.
-    window._show_page("dashboard")
-    window._show_page("history")
-    assert application.history_service.get_recent_events_calls == 2
-
-
-def test_history_page_empty_state_message(qtbot):
-    application = FakeApplication(history_events=[])
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("history")
-
-    qtbot.waitUntil(
-        lambda: "no downloaded or tagged" in
-        window.history_status_label.text().lower(),
-        timeout=2000,
-    )
-    assert window.history_table.rowCount() == 0
-
-
-def test_history_filter_combo_filters_by_event_type(qtbot):
-    events = [
-        _make_history_event(event_type=DOWNLOADED),
-        _make_history_event(event_type=TAGGED),
-    ]
-    application = FakeApplication(history_events=events)
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("history")
-    qtbot.waitUntil(
-        lambda: window.history_table.rowCount() == 2, timeout=2000,
-    )
-
-    downloaded_index = window.history_filter_combo.findData(DOWNLOADED)
-    window.history_filter_combo.setCurrentIndex(downloaded_index)
-
-    assert window.history_table.rowCount() == 1
-    assert window.history_table.item(0, 1).text() == "Downloaded"
-
-    all_index = window.history_filter_combo.findData(None)
-    window.history_filter_combo.setCurrentIndex(all_index)
-    assert window.history_table.rowCount() == 2
-
-
-def test_history_refresh_button_refetches(qtbot):
-    application = FakeApplication(history_events=[_make_history_event()])
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("history")
-    # Roadmap item R7.5 — call #1 is MainWindow construction's own
-    # silent notification-cutoff seed (see _seed_notification_cutoff);
-    # this page visit is real call #2.
-    qtbot.waitUntil(
-        lambda: application.history_service.get_recent_events_calls == 2,
-        timeout=2000,
-    )
-
-    window.history_refresh_button.click()
-
-    qtbot.waitUntil(
-        lambda: application.history_service.get_recent_events_calls == 3,
-        timeout=2000,
     )
 
 
@@ -2317,79 +1974,6 @@ def test_download_dialog_confirmed_without_remember_persists_the_default(
     assert application.download_service.download_playlist_calls == ["Test"]
 
 
-def test_destination_dialog_preview_shows_new_folder_when_it_does_not_exist(
-        qtbot, tmp_path,
-):
-    location = LibraryLocation(
-        id=1, name="Main", path=str(tmp_path),
-        added_at="2026-01-01T00:00:00+00:00",
-    )
-    dialog = DestinationDialog(
-        None, "Test", [location], default_location_id=1,
-        initial_subfolder="Does Not Exist Yet",
-    )
-    qtbot.addWidget(dialog)
-
-    text = dialog.location_path_preview.text()
-    assert str(tmp_path / "Does Not Exist Yet") in text
-    assert "new folder" in text
-
-
-def test_destination_dialog_preview_counts_real_audio_files(qtbot, tmp_path):
-    subfolder = tmp_path / "Test"
-    subfolder.mkdir()
-    (subfolder / "a.mp3").write_bytes(b"\x00")
-    (subfolder / "b.flac").write_bytes(b"\x00")
-    (subfolder / "notes.txt").write_bytes(b"\x00")  # not audio -- excluded
-
-    location = LibraryLocation(
-        id=1, name="Main", path=str(tmp_path),
-        added_at="2026-01-01T00:00:00+00:00",
-    )
-    dialog = DestinationDialog(
-        None, "Test", [location], default_location_id=1,
-        initial_subfolder="Test",
-    )
-    qtbot.addWidget(dialog)
-
-    text = dialog.location_path_preview.text()
-    assert str(subfolder) in text
-    assert "already exists" in text
-    assert "2 audio files" in text
-
-
-def test_destination_dialog_preview_updates_live_as_fields_change(
-        qtbot, tmp_path,
-):
-    location_a = LibraryLocation(
-        id=1, name="A", path=str(tmp_path / "a"),
-        added_at="2026-01-01T00:00:00+00:00",
-    )
-    location_b = LibraryLocation(
-        id=2, name="B", path=str(tmp_path / "b"),
-        added_at="2026-01-01T00:00:00+00:00",
-    )
-    dialog = DestinationDialog(
-        None, "Test", [location_a, location_b], default_location_id=1,
-        initial_subfolder="Sub",
-    )
-    qtbot.addWidget(dialog)
-
-    assert str(
-            Path(location_a.path) / "Sub"
-    ) in dialog.location_path_preview.text()
-
-    dialog.location_combo.setCurrentIndex(1)
-    assert str(
-            Path(location_b.path) / "Sub"
-    ) in dialog.location_path_preview.text()
-
-    dialog.subfolder_field.setText("Other")
-    assert str(
-            Path(location_b.path) / "Other"
-    ) in dialog.location_path_preview.text()
-
-
 def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(
         qtbot,
 ):
@@ -2581,17 +2165,6 @@ def test_check_for_updates_action_disabled_while_running_and_reenabled(
     )
 
 
-def test_about_dialog_opens_without_crashing(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    dialog = AboutDialog(window)
-    qtbot.addWidget(dialog)
-
-    assert dialog.windowTitle() == help_text.ABOUT_DIALOG_TITLE
-
-
 def test_format_build_identity_labels_dev_explicitly():
     assert "dev" in help_text.format_build_identity("dev", "dev", "dev")
     assert "not a packaged build" in help_text.format_build_identity(
@@ -2605,129 +2178,6 @@ def test_format_build_identity_shows_real_sha_and_timestamp():
     )
     assert "v0.1.0-3-ga1b2c3d" in text
     assert "2026-09-03T12:00:00+00:00" in text
-
-
-def test_about_dialog_shows_build_identity(qtbot):
-    # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
-    # fallback. Reliable regardless of real local build state (RR1.2 —
-    # see conftest.py's autouse fixture and test_main_window_
-    # constructs_without_crashing's own identical comment).
-    dialog = AboutDialog()
-    qtbot.addWidget(dialog)
-
-    labels_html = [widget.text() for widget in dialog.findChildren(QLabel)]
-    combined = "\n".join(labels_html)
-
-    assert "Build:" in combined
-    assert "dev" in combined
-
-
-def test_help_page_shows_build_identity_and_per_account_note(qtbot):
-    # Roadmap item 81 (0.1/0.2)
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    # HelpPage (round 8 §9.3.1) is now a real, independently-constructed
-    # QWidget already registered under window's own stacked_widget — no
-    # need to build a second, separate instance.
-    help_page = window._help_page
-
-    combined = "\n".join(
-        widget.text() for widget in help_page.findChildren(QLabel)
-    )
-
-    assert "Build:" in combined
-    assert "per macOS user account" in combined
-
-
-def test_about_dialog_shows_author_license_and_notices(qtbot):
-    dialog = AboutDialog()
-    qtbot.addWidget(dialog)
-
-    labels_html = [
-        widget.text() for widget in dialog.findChildren(QLabel)
-    ]
-    combined = "\n".join(labels_html)
-
-    assert "Kristiyan Dimitrov" in combined
-    assert "mailto:kristiyanddimitrov@gmail.com" in combined
-    assert "github.com/KristiyanDDimitrov/Seeker" in combined
-    assert "MIT License" in combined
-    assert "Third-party notices" in combined
-    assert "PySide6" in combined
-
-
-def test_about_dialog_renders_a_button_for_every_real_support_link(
-        qtbot, monkeypatch,
-):
-    # Both Revolut and PayPal are real links as of 2026-09-01 — every
-    # entry in the real SUPPORT_LINKS dict should render a working
-    # button (the "at least one still-placeholder" filtering behavior
-    # itself is covered separately below, via a synthetic placeholder,
-    # so this guard stays exercised even though production data no
-    # longer has a real one to filter).
-    # build_support_links_row() (round 8 §9.3.1) lives in seeker.ui.dialogs
-    # now — see the identical note on the Support-page version of this
-    # test above.
-    from seeker.ui import dialogs as dialogs_module
-
-    opened: list[str] = []
-    monkeypatch.setattr(
-        dialogs_module.webbrowser, "open", opened.append
-    )
-
-    assert all(
-        help_text.is_real_support_link(url)
-        for url in help_text.SUPPORT_LINKS.values()
-    ), "expected every current SUPPORT_LINKS entry to be a real link"
-
-    dialog = AboutDialog()
-    qtbot.addWidget(dialog)
-
-    buttons = [
-        widget
-        for widget in dialog.findChildren(QPushButton)
-        if widget.text().startswith("Support on")
-    ]
-    assert len(buttons) == len(help_text.SUPPORT_LINKS)
-    assert {button.text() for button in buttons} == {
-        f"Support on {name}" for name in help_text.SUPPORT_LINKS
-    }
-
-    for button in buttons:
-        button.click()
-
-    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
-
-
-def test_about_dialog_filters_out_a_placeholder_support_link(
-        qtbot, monkeypatch,
-):
-    # Regression guard for is_real_support_link() itself: since the real
-    # SUPPORT_LINKS no longer has a TODO entry to filter (PayPal went
-    # live), inject a synthetic one here so a dead, non-URL button is
-    # still proven to never render, rather than this guard silently
-    # stopping being exercised.
-    from seeker.ui import main_window as main_window_module
-
-    monkeypatch.setattr(
-        main_window_module.help_text, "SUPPORT_LINKS",
-        {
-            "Revolut": "https://revolut.me/kddimitrov",
-            "Ko-fi": "TODO: paste real Ko-fi link",
-        },
-    )
-
-    dialog = AboutDialog()
-    qtbot.addWidget(dialog)
-
-    buttons = [
-        widget
-        for widget in dialog.findChildren(QPushButton)
-        if widget.text().startswith("Support on")
-    ]
-    assert [button.text() for button in buttons] == ["Support on Revolut"]
 
 
 def test_dashboard_downloads_review_pages_have_persistent_subtitles(qtbot):
