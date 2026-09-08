@@ -5183,6 +5183,45 @@ def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
     )
 
 
+def test_no_private_application_attribute_access_in_ui():
+    # Round 8 §7.1.3 — CLAUDE.md's layering rule ("every Qt widget goes
+    # through Application, never past it") held in letter (no repository
+    # imports in ui/) but not in spirit: sixteen read sites and one WRITE
+    # reached straight into self.application._config_store/
+    # _slskd_base_url/_slskd_api_key, bypassing update_settings()'s
+    # persistence/cache-invalidation entirely (§7.1.1/§7.1.2 added the
+    # public settings/update_settings/slskd_base_url/slskd_api_key
+    # surface and replaced every one of those sixteen). Checked
+    # structurally via ast, not by re-reading call sites by eye, so a
+    # future one added anywhere in ui/ (including ui/pages/* once Phase
+    # 6 lands) is caught automatically.
+    import ast
+
+    import seeker.ui as ui_package
+
+    ui_dir = Path(ui_package.__file__).parent
+    violations = []
+    for path in sorted(ui_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Attribute)
+                and node.attr.startswith("_")
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "application"
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "self"
+            ):
+                continue
+            violations.append(f"{path.name}:{node.lineno}: {node.attr}")
+
+    assert violations == [], (
+        "private Application attribute access found (presentation-layer "
+        "code must go through a public Application property/method, "
+        "never self.application._*):\n" + "\n".join(violations)
+    )
+
+
 def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
     # Roadmap item 79 (P12) — a bare "&" in a QPushButton/QLabel string
     # literal is a real Qt keyboard-mnemonic marker (consumed, renders
