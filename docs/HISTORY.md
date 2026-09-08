@@ -11755,9 +11755,20 @@ the CLI's raw results — had no gate before this), and
 so it needed its own gate — new `UnsupportedDownloadFormatError`,
 refuses loudly rather than a silent no-op). Judgement calls, stated
 directly in the module comment: `.m4a` is in but bare `.mp4` is out
-(video-file collision risk); `.aac`/`.aifc`/`.ogg`/etc. are all out.
-The one real `.ogg` file already present in the user's library is
-untouched by this — indexing and playback don't go through this gate.
+(video-file collision risk, and `.m4a` is what Rekordbox/Serato
+actually expect); `.aac` is out (no reliable tag container, zero real
+instances in this project's 3,400+-file library); `.aifc` is out
+(matches `AUDIO_EXTENSIONS`' own untrusted-bitrate reasoning, item 85);
+`.ogg`/`.opus`/`.wma`/`.ape`/`.wv` are out (DJ software rarely reads
+them — a scoping call, not a hard technical limit). The exclusion list
+was motivated by a real, measured consequence, not picked in the
+abstract: the one real `.ogg` file already present in the user's
+library had previously been reported as a stuck
+`format_unsupported: album art isn't supported for this file format`
+download-pipeline failure — indexing and playback don't go through
+this gate, so that file itself is untouched by this change; the gate
+only stops a *new* `.ogg` from ever being downloaded and landing in
+the same stuck state.
 
 ### 95 — B1: Enter submits on wizard/Settings forms
 
