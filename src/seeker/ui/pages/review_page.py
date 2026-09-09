@@ -62,7 +62,7 @@ PendingUpgrades = list[UpgradeReviewDetails]
 # stayed on main_window.py; the Track table's own _TRACK_COLUMNS moved
 # to dashboard_page.py — round 8 Phase 6.)
 _REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
-    stretch=(0,), fit_content=(1, 2), actions=3,
+    stretch=(0,), fit_content=(1, 2, 3), actions=4,
 )
 _REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
@@ -112,9 +112,9 @@ class ReviewPage(QWidget):
 
         layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
 
-        self.review_needs_table = QTableWidget(0, 4)
+        self.review_needs_table = QTableWidget(0, 5)
         self.review_needs_table.setHorizontalHeaderLabels(
-            ["Track", "Score", "Candidate", "Actions"]
+            ["Track", "Score", "Candidate", "Runner-up", "Actions"]
         )
         theme.apply_table_defaults(self.review_needs_table)
         layout.addWidget(theme.make_card(self.review_needs_table))
@@ -264,12 +264,30 @@ class ReviewPage(QWidget):
                     row, 2, QTableWidgetItem(candidate_text),
                 )
 
+                # Round 8 §12.10 — the second-best-scoring candidate in
+                # the same needs_review band, when one was found
+                # (quality.py's find_best_needs_review_candidate) —
+                # what the winner beat, not just its own score in
+                # isolation. "—" when only one real candidate existed.
+                if candidate.runner_up_username is not None:
+                    runner_up_item = SortKeyItem(
+                        f"{candidate.runner_up_username} "
+                        f"({candidate.runner_up_score:.1f})",
+                        candidate.runner_up_score,
+                    )
+                    runner_up_item.setToolTip(
+                        candidate.runner_up_filename or ""
+                    )
+                else:
+                    runner_up_item = SortKeyItem("—", -1.0)
+                self.review_needs_table.setItem(row, 3, runner_up_item)
+
                 needs_review_actions = self._build_needs_review_actions(
                     track.id,
                 )
                 action_widgets.append(needs_review_actions)
                 self.review_needs_table.setCellWidget(
-                    row, 3, needs_review_actions,
+                    row, 4, needs_review_actions,
                 )
 
         self._size_review_needs_columns(action_widgets)

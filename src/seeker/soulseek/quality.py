@@ -87,17 +87,20 @@ def find_best_needs_review_candidate(
         files: list[SoulseekFile],
         needs_review_threshold: float = NEEDS_REVIEW_THRESHOLD,
         auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
-) -> tuple[SoulseekFile, float] | None:
+) -> tuple[SoulseekFile, float, tuple[SoulseekFile, float] | None] | None:
     # The Soulseek equivalent of library/matcher.py's needs_review tier:
     # a real, artist-matching candidate that's plausible but not
     # confident enough to auto-download (70 <= score < 90 by default).
     # Purely informational — nothing in this tier is ever requested from
     # slskd by select_downloads/download_playlist; it's surfaced
     # read-only via `seeker check` for a human to go find and grab
-    # manually. Returns only the single best-scoring candidate across
-    # ALL files (not just the auto-tier-filtered ones), since a track
-    # with zero auto-tier candidates would otherwise have nothing left
-    # to search here.
+    # manually. Returns the best-scoring candidate across ALL files
+    # (not just the auto-tier-filtered ones), since a track with zero
+    # auto-tier candidates would otherwise have nothing left to search
+    # here, plus the runner-up — the second-best-scoring candidate
+    # still within the same band, round 8 §12.10 — so a human deciding
+    # whether to confirm the winner can see what it beat, not just its
+    # own score in isolation. None when only one real candidate exists.
     #
     # Both thresholds are plain optional parameters, not read from
     # config here — this module stays as decoupled from config/
@@ -105,6 +108,7 @@ def find_best_needs_review_candidate(
     # one real caller, resolves config-or-default once per
     # download_playlist() run and passes the numbers in explicitly.
     best: tuple[SoulseekFile, float] | None = None
+    runner_up: tuple[SoulseekFile, float] | None = None
 
     for file in files:
         score = _score_candidate(track, file)
@@ -116,9 +120,15 @@ def find_best_needs_review_candidate(
             continue
 
         if best is None or score > best[1]:
+            runner_up = best
             best = (file, score)
+        elif runner_up is None or score > runner_up[1]:
+            runner_up = (file, score)
 
-    return best
+    if best is None:
+        return None
+
+    return (best[0], best[1], runner_up)
 
 
 def quality_tier_for_format(extension: str) -> int:
@@ -218,7 +228,7 @@ def select_downloads(
 ) -> tuple[
     SoulseekFile | None,
     list[SoulseekFile],
-    tuple[SoulseekFile, float] | None,
+    tuple[SoulseekFile, float, tuple[SoulseekFile, float] | None] | None,
 ]:
     # needs_review is computed independently of the auto-tier logic below
     # and included unchanged in every return point — the settled/upgrade

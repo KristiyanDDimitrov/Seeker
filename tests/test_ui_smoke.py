@@ -2126,6 +2126,9 @@ def _make_track(track_id: str = "t1") -> Track:
 def _make_review_candidate(
         track_id: str = "t1",
         score: float = 73.2,
+        runner_up_username: str | None = None,
+        runner_up_filename: str | None = None,
+        runner_up_score: float | None = None,
 ) -> SoulseekReviewCandidate:
     return SoulseekReviewCandidate(
         track_id=track_id,
@@ -2135,6 +2138,9 @@ def _make_review_candidate(
         quality_descriptor="flac",
         found_at="2026-01-01T00:00:00+00:00",
         size=1_000_000,
+        runner_up_username=runner_up_username,
+        runner_up_filename=runner_up_filename,
+        runner_up_score=runner_up_score,
     )
 
 
@@ -2604,7 +2610,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
 
     tables_and_columns = [
         (window._dashboard_page.track_table, 3),
-        (window._review_page.review_needs_table, 3),
+        (window._review_page.review_needs_table, 4),
         (window._review_page.review_upgrades_table, 3),
         (window._review_page.review_local_table, 4),
         (window._sharing_page.sharing_locations_table, 4),

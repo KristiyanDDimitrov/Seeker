@@ -77,10 +77,36 @@ def test_review_tab_renders_needs_review_candidates(qtbot):
     assert window._review_page.review_needs_table.item(0, 0).text() == "Artist - Title"
     assert window._review_page.review_needs_table.item(0, 1).text() == "73.2"
     assert "peer1" in window._review_page.review_needs_table.item(0, 2).text()
+    # No runner-up on this candidate (round 8 §12.10).
+    assert window._review_page.review_needs_table.item(0, 3).text() == "—"
 
-    actions = window._review_page.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 4)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     assert set(buttons) == {"Confirm", "Reject"}
+
+
+def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
+    # Round 8 §12.10 — the score alone doesn't tell a human what it
+    # beat; the runner-up column shows the competing candidate inline.
+    candidates = [
+        (
+            _make_track(),
+            _make_review_candidate(
+                runner_up_username="peer2",
+                runner_up_filename="Artist - Title (alt).mp3",
+                runner_up_score=68.5,
+            ),
+        ),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._review_page._render_needs_review_candidates(candidates)
+
+    runner_up_item = window._review_page.review_needs_table.item(0, 3)
+    assert runner_up_item.text() == "peer2 (68.5)"
+    assert runner_up_item.toolTip() == "Artist - Title (alt).mp3"
 
 
 def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
@@ -93,7 +119,7 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
 
     window._review_page._render_needs_review_candidates(candidates)
 
-    actions = window._review_page.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 4)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Confirm"].click()
 
@@ -114,7 +140,7 @@ def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
 
     window._review_page._render_needs_review_candidates(candidates)
 
-    actions = window._review_page.review_needs_table.cellWidget(0, 3)
+    actions = window._review_page.review_needs_table.cellWidget(0, 4)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Reject"].click()
 

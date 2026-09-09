@@ -926,6 +926,46 @@ def seed_review_candidate(
         )
 
 
+def test_review_candidate_runner_up_fields_round_trip_through_the_database(
+        tmp_path,
+):
+    # Round 8 §12.10 — the runner-up columns are new; confirms they
+    # actually persist and read back through the real repository/
+    # sqlite path, not just in the in-memory dataclass.
+    service = make_service(tmp_path, states={})
+
+    with service.database.transaction() as connection:
+        service.tracks.save(
+            Track(
+                id="t1", title="ONE MORE NIGHT", artist="Prdk",
+                album="Album", duration_ms=200_000,
+            ),
+            connection,
+        )
+        service.soulseek_review_candidates.upsert(
+            SoulseekReviewCandidate(
+                track_id="t1",
+                username="winner_seeder",
+                filename="Prdk - One More Night.mp3",
+                score=85.0,
+                quality_descriptor="mp3",
+                found_at="2026-01-01T00:00:00+00:00",
+                size=2_000_000,
+                runner_up_username="runner_up_seeder",
+                runner_up_filename="Prdk - One More Night (alt).mp3",
+                runner_up_score=78.5,
+            ),
+            connection,
+        )
+
+    review_candidates = service.get_review_candidates()
+    assert len(review_candidates) == 1
+    _track, candidate = review_candidates[0]
+    assert candidate.runner_up_username == "runner_up_seeder"
+    assert candidate.runner_up_filename == "Prdk - One More Night (alt).mp3"
+    assert candidate.runner_up_score == 78.5
+
+
 def test_confirm_review_candidate_requests_settled_download_and_clears_row(
         tmp_path,
 ):

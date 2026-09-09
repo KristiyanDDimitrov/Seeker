@@ -425,9 +425,10 @@ def test_find_best_needs_review_candidate_classifies_real_prdk_data():
     result = find_best_needs_review_candidate(track, [REAL_PRDK_CANDIDATE])
 
     assert result is not None
-    file, score = result
+    file, score, runner_up = result
     assert file is REAL_PRDK_CANDIDATE
     assert 70.0 <= score < 90.0
+    assert runner_up is None
 
     settled, upgrade_shortlist, needs_review = select_downloads(
         track, [REAL_PRDK_CANDIDATE]
@@ -449,9 +450,10 @@ def test_find_best_needs_review_candidate_classifies_real_zigi_sc_data():
     )
 
     assert result is not None
-    file, score = result
+    file, score, runner_up = result
     assert file is REAL_ZIGI_SC_CANDIDATE
     assert 70.0 <= score < 90.0
+    assert runner_up is None
 
     settled, upgrade_shortlist, needs_review = select_downloads(
         track, [REAL_ZIGI_SC_CANDIDATE]
@@ -512,6 +514,66 @@ def test_find_best_needs_review_candidate_respects_narrowed_band():
     )
 
     assert result is None
+
+
+def test_find_best_needs_review_candidate_also_returns_the_runner_up(
+        monkeypatch,
+):
+    # Round 8 §12.10 — two real candidates both landing in the
+    # needs_review band: the higher-scoring one wins, the other is
+    # returned as the runner-up rather than silently discarded.
+    # Scores forced via monkeypatch — real fuzzy-title scoring is
+    # exercised by the REAL_PRDK/ZIGI_SC tests above; this test is only
+    # about find_best_needs_review_candidate's own best/runner-up
+    # bookkeeping.
+    import seeker.soulseek.quality as quality_module
+
+    track = make_track()
+    best_file = make_file(username="best_seeder")
+    runner_up_file = make_file(username="runner_up_seeder")
+    too_low_file = make_file(username="too_low_seeder")
+
+    scores = {
+        id(best_file): 85.0,
+        id(runner_up_file): 78.0,
+        id(too_low_file): 50.0,
+    }
+    monkeypatch.setattr(
+        quality_module, "_score_candidate",
+        lambda track, file: scores[id(file)],
+    )
+
+    result = find_best_needs_review_candidate(
+        track, [too_low_file, runner_up_file, best_file],
+    )
+
+    assert result is not None
+    file, score, runner_up = result
+    assert file is best_file
+    assert score == 85.0
+    assert runner_up is not None
+    runner_up_file_result, runner_up_score = runner_up
+    assert runner_up_file_result is runner_up_file
+    assert runner_up_score == 78.0
+
+
+def test_find_best_needs_review_candidate_runner_up_is_none_with_one_match(
+        monkeypatch,
+):
+    import seeker.soulseek.quality as quality_module
+
+    track = make_track()
+    only_file = make_file()
+
+    monkeypatch.setattr(
+        quality_module, "_score_candidate", lambda track, file: 80.0,
+    )
+
+    result = find_best_needs_review_candidate(track, [only_file])
+
+    assert result is not None
+    _file, _score, runner_up = result
+    assert runner_up is None
 
 
 def test_select_downloads_real_prdk_data_settles_with_lowered_threshold():

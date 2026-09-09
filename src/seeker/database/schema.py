@@ -232,6 +232,14 @@ CREATE TABLE IF NOT EXISTS download_requests (
 -- finds something better (a real auto-tier candidate, settled or
 -- upgrade-shortlisted) for the same track, so a stale row can never
 -- outlive the state it described.
+-- runner_up_* (round 8 §12.10): the second-best-scoring candidate in
+-- the same needs_review band, when one exists — quality.py's
+-- find_best_needs_review_candidate already compares every candidate's
+-- score to find the winner, so recording the runner-up it was
+-- compared against costs nothing extra to compute, just to keep. NULL
+-- when only one real candidate was found. Surfaced read-only on the
+-- Review page so a human deciding whether to confirm the winner can
+-- see what it beat, not just its own score in isolation.
 CREATE TABLE IF NOT EXISTS soulseek_review_candidates (
     track_id TEXT NOT NULL PRIMARY KEY,
     username TEXT NOT NULL,
@@ -240,6 +248,9 @@ CREATE TABLE IF NOT EXISTS soulseek_review_candidates (
     quality_descriptor TEXT,
     found_at TEXT NOT NULL,
     size INTEGER,
+    runner_up_username TEXT,
+    runner_up_filename TEXT,
+    runner_up_score REAL,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 

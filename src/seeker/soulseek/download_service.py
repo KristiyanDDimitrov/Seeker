@@ -411,9 +411,9 @@ class DownloadService:
                         # `seeker check` to surface, rather than letting
                         # it silently vanish. Never requested from slskd
                         # on its own; a human confirms manually.
-                        review_file, review_score = needs_review
+                        review_file, review_score, runner_up = needs_review
                         self._record_review_candidate(
-                            track, review_file, review_score
+                            track, review_file, review_score, runner_up,
                         )
                         logger.info(
                             "No auto-match candidate — needs-review "
@@ -682,7 +682,11 @@ class DownloadService:
             track: Track,
             file: SoulseekFile,
             score: float,
+            runner_up: tuple[SoulseekFile, float] | None = None,
     ) -> None:
+        runner_up_file, runner_up_score = (
+            runner_up if runner_up is not None else (None, None)
+        )
         with self.database.transaction() as connection:
             self.soulseek_review_candidates.upsert(
                 SoulseekReviewCandidate(
@@ -693,6 +697,15 @@ class DownloadService:
                     quality_descriptor=_quality_descriptor(file),
                     found_at=datetime.now(UTC).isoformat(),
                     size=file.size,
+                    runner_up_username=(
+                        runner_up_file.username
+                        if runner_up_file is not None else None
+                    ),
+                    runner_up_filename=(
+                        runner_up_file.filename
+                        if runner_up_file is not None else None
+                    ),
+                    runner_up_score=runner_up_score,
                 ),
                 connection,
             )

@@ -22,16 +22,22 @@ class SoulseekReviewCandidateRepository:
                 score,
                 quality_descriptor,
                 found_at,
-                size
+                size,
+                runner_up_username,
+                runner_up_filename,
+                runner_up_score
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(track_id) DO UPDATE SET
                 username = excluded.username,
                 filename = excluded.filename,
                 score = excluded.score,
                 quality_descriptor = excluded.quality_descriptor,
                 found_at = excluded.found_at,
-                size = excluded.size
+                size = excluded.size,
+                runner_up_username = excluded.runner_up_username,
+                runner_up_filename = excluded.runner_up_filename,
+                runner_up_score = excluded.runner_up_score
             """,
             (
                 candidate.track_id,
@@ -41,6 +47,9 @@ class SoulseekReviewCandidateRepository:
                 candidate.quality_descriptor,
                 candidate.found_at,
                 candidate.size,
+                candidate.runner_up_username,
+                candidate.runner_up_filename,
+                candidate.runner_up_score,
             ),
         )
 
@@ -58,7 +67,10 @@ class SoulseekReviewCandidateRepository:
                 score,
                 quality_descriptor,
                 found_at,
-                size
+                size,
+                runner_up_username,
+                runner_up_filename,
+                runner_up_score
             FROM soulseek_review_candidates
             WHERE track_id = ?
             """,
@@ -93,7 +105,10 @@ class SoulseekReviewCandidateRepository:
                 score,
                 quality_descriptor,
                 found_at,
-                size
+                size,
+                runner_up_username,
+                runner_up_filename,
+                runner_up_score
             FROM soulseek_review_candidates
             ORDER BY found_at
             """
@@ -111,4 +126,7 @@ def _row_to_candidate(row: sqlite3.Row) -> SoulseekReviewCandidate:
         quality_descriptor=row["quality_descriptor"],
         found_at=row["found_at"],
         size=row["size"],
+        runner_up_username=row["runner_up_username"],
+        runner_up_filename=row["runner_up_filename"],
+        runner_up_score=row["runner_up_score"],
     )

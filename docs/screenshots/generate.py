@@ -98,6 +98,10 @@ review_candidates = [
             filename="Odile Kessler - Undertow (Club Mix).flac",
             score=0.91, quality_descriptor="FLAC, 1050kbps",
             found_at="2026-09-01T12:00:00", size=42_000_000,
+            # Round 8 §12.10 — a real runner-up shown inline.
+            runner_up_username="demo_peer_2",
+            runner_up_filename="Odile Kessler - Undertow (Radio Edit).mp3",
+            runner_up_score=0.76,
         ),
     ),
 ]
