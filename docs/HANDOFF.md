@@ -8,12 +8,13 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `80fb0e3` — "Round 8 §12.10: show the needs-review
-  runner-up inline". Working tree clean except this handoff rewrite +
-  the session-plan tick, about to be committed.
-- **`origin/main`**: was in sync with local HEAD at S15 close-out
-  (`6f1ea0b`); this session's 5 commits (`d5cc2f0`..`80fb0e3`) are
-  **unpushed. Ask before pushing.**
+- **HEAD:** `2b83554` — "S16 close-out: tick session-plan, rewrite
+  handoff". Working tree clean.
+- **`origin/main`: pushed and in sync**, confirmed
+  (`6f1ea0b..2b83554`, fast-forward). CI triggered on push
+  (`gh run list`) — check its result before assuming green; the
+  pre-existing `test_callback_server.py` trio (see Open issues below)
+  is expected to still fail there, nothing else should.
 - **pytest:** `1174 passed, 1 skipped in 94.37s` — the two long-
   standing fullscreen-close flakes (`test_fullscreen_close_policy_
   check_ignores_a_stale_request`, `test_reopening_after_a_fullscreen_
@@ -103,12 +104,12 @@ default. Don't read a brief for a phase you aren't doing.
 
 ## Waiting on Kris — real-world actions Code cannot do
 
-- [ ] Push this session's 5 unpushed commits to `origin/main` (or say
-      go ahead) — local HEAD `80fb0e3`, `origin/main` last confirmed at
-      `6f1ea0b`.
 - [ ] Click through the new Library page and the Dashboard's status
       filter on a real Mac window — verified via offscreen Qt this
-      session, not a live human on a real display.
+      session, not a live human on a real display. Also worth a real
+      look: Library's tagging results panel (collapsed details, the
+      Retry button on a real failure) and the Review page's new
+      Runner-up column.
 - [ ] The pre-S16 "waiting on Kris" items (Dock icon reopen, LAN port
       check, window geometry position round-trip) are still open if
       not yet done — see prior handoff history for detail if needed.
