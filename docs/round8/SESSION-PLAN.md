@@ -72,11 +72,20 @@ named split point rather than pushing through.
 | ☑ S12 | Comment triage, pass 1 | §10.1 (small files: `audio_formats`, `docker_setup`, `matching`, `config_store`, `quality`, `audio_analysis`) | ~100 K |
 | ☑ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
 | ☑ S14 | CLAUDE.md 8b + README | §11.2.4, §11.2.5, §11.3 | ~90 K |
-| ☐ S15 | UX Group A — **only if Kris approves** | §12.1–§12.5 | ~120 K |
+| ☑\* S15 | UX Group A — **only if Kris approves** | §12.1–§12.5 | ~120 K |
 
 §12.6–§12.10 (UX Group B) are product decisions for Kris and are not
 scheduled. §9.4 (the other long functions) is optional; fold individual
 items into a session that finishes early, or skip and say so.
+
+**\*S15 — Kris approved a subset, not all of §12.1–§12.5.** Approved
+and shipped: §12.1 (window geometry/last-page persistence), §12.2
+(sortable tables), §12.3 (keyboard shortcuts), §12.5 (View/Window
+menus). **§12.4 (accessible names) was explicitly not selected** —
+still open, not scheduled without a further yes. See `docs/HANDOFF.md`
+for the sortable-tables correctness work this pulled in (row-position
+anchors, chronological/numeric sort keys) that wasn't in the brief's
+original one-line description.
 
 **S11 split, discovered mid-session:** the original row bundled §9.3.2
 (tray extraction), §9.3.3 (`__init__` shrink), and §9.3.4 (the

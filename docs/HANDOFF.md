@@ -8,22 +8,18 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `c564d13` — "S14 close-out: tick session-plan box". Working
-  tree clean.
-- **`origin/main`: at `711f87c` ("S14: README §11.3.4 — title case
-  fix") — 3 commits behind local HEAD.** A push happened mid-session up
-  through `711f87c` (confirmed via `gh run list` — a real triggered CI
-  run exists for it); the two commits after it (README reorder +
-  screenshots) were never pushed. **Ask before pushing** — don't assume
-  the earlier push means blanket permission for the rest.
-- **pytest:** `2 failed, 1119 passed, 29 skipped in 86.11s` — both
-  failures are already-tracked flakes
-  (`test_fullscreen_close_policy_check_ignores_a_stale_request` and,
-  new this session, `test_reopening_after_a_fullscreen_close_restores_
-  prior_geometry` — see CLAUDE.md Open issues), both pass individually.
-  29 skipped is now a fully-explained number, not a mystery — see
-  below.
-- **`mypy --strict src/`: clean, 99 files. `ruff check src tests`: 0
+- **HEAD:** `7dadb17` — "S15 §12.2: sortable tables". Working tree
+  clean except this handoff rewrite + the session-plan tick, about to
+  be committed.
+- **`origin/main`: at `ccafc61`, 2 commits behind local HEAD** (the two
+  S15 commits below). **Ask before pushing.**
+- **pytest:** `2 failed, 1160 passed, 1 skipped in 99.27s` — both
+  failures are the same already-tracked fullscreen-close flakes
+  (`test_fullscreen_close_policy_check_ignores_a_stale_request`,
+  `test_reopening_after_a_fullscreen_close_restores_prior_geometry`),
+  confirmed passing individually again this session. 1 skipped is the
+  real-hardware number.
+- **`mypy --strict src/`: clean, 100 files. `ruff check src tests`: 0
   findings.**
 
 ## Where we are in the plan
@@ -32,60 +28,62 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done: Phase 0-7 (through S13), and now S14** (CLAUDE.md 8b +
-  README — §11.2.4, §11.2.5, §11.3).
-- **Next: S15 — UX Group A, only if Kris approves** (§12.1-§12.5).
-  Nothing is scheduled without that explicit yes; if it hasn't been
-  given, there is no round-8 row left to run and the round is
-  effectively done pending that product decision.
+- **Done: Phase 0-7 (through S13), S14, and now S15 (a subset).**
+- **Next: nothing scheduled.** Kris approved §12.1/§12.2/§12.3/§12.5 of
+  S15's Group A this session; **§12.4 (accessible names) was
+  explicitly NOT selected** — open, no further yes given. Group B
+  (§12.6-§12.10) remains a product decision, not scheduled.
 
-## S14 report
+## S15 report (two commits: `9856bc3`, `7dadb17`)
 
-**§11.2.4/§11.2.2 (CLAUDE.md):** layout tree regenerated against the
-real `src/seeker` tree (`ui/pages/*` folded in, `main_window.py`
-6,882 -> 1,842 lines, two new repositories/models, `destination_
-resolution.py`). Four conventions §11.2.4 named were missing and are
-now in: the comment shelf-life test, logging-over-print in services,
-the AST sweep barring `ui/` from `Application`'s private attributes,
-page widgets taking a `PageContext`. §11.2.5 (items 63/70 in Open
-issues) was already done in S1 — confirmed, nothing to redo.
-CLAUDE.md: 25,260 -> 29,448 chars (growth is the conventions this
-session was explicitly deferred to add).
+**§12.1:** `SeekerConfig.window_geometry`/`last_open_page`
+(config_store.py), round-tripped via `saveGeometry()`/
+`restoreGeometry()` base64-encoded at real quit
+(`cleanup_before_quit` -> `_persist_window_geometry`) and on
+construction (`_restore_window_geometry`). Closing while on Settings
+persists the page underneath it, not the transient "settings" key. A
+corrupt/foreign stored value is tolerated silently.
 
-**Real finding, not in the plan: CI is running for real, not billing-
-blocked.** `gh run list`/`gh run view` show real completed runs;
-ruff/mypy clean every time, pytest failing only on the pre-existing
-`test_callback_server.py` trio (real evidence now, not just a local
-hypothesis — see CLAUDE.md Open issues). This also fully explains the
-long-standing "29 vs. 1 skipped" mismatch: 28 `@requires_x9_pro` tests
-(no such drive on a GitHub runner) + 1 `@requires_stress_opt_in` test
-= 29, exact arithmetic match; real hardware with the drive mounted
-sees only 1. Both written into CLAUDE.md's Open issues.
+**§12.3/§12.5:** new View menu (⌘1-⌘7 nav pages, ⌘R refresh, ⌘F focus
+search, ⌘, Settings, Toggle Theme) and Window menu (Minimize/Zoom).
+Menu bar previously held only Help.
 
-**§11.3 (README):** title fixed (`# seeker` -> `# Seeker`); reordered
-to name+description -> badges -> Screenshots -> What it does ->
-Architecture (tree regenerated same as CLAUDE.md's) -> Tech stack ->
-Quality -> everything else unchanged. Badges are **static** (shields.io
-tests/mypy/ruff/python/license badges), not a live GitHub Actions
-badge — deliberate: CI is real but currently red on the documented
-`test_callback_server.py` timeouts, and a live red badge on the
-portfolio front door would misrepresent code quality with an
-environment quirk. Screenshots (§11.3.1, the brief's own "highest-
-value single change"): `docs/screenshots/generate.py` builds a real
-`MainWindow` against `FakeApplication` (same test double `tests/
-test_ui_smoke.py` uses) with invented playlists/tracks/a duplicate
-group/a review candidate, drives it under `QT_QPA_PLATFORM=offscreen`,
-and grabs real widget pixels in both themes — no real playlist names,
-paths or usernames, and reproducible by anyone. Committed: `dashboard-
-dark.png`, `dashboard-light.png`, `review.png`, `duplicates.png`, plus
-the generator script.
+**§12.2 (sortable tables) — pulled in real correctness work beyond the
+brief's one-line description, caught by the test suite itself, not
+just reasoned about:**
+- `QHeaderView` defaults `sortIndicatorSection` to `0`, not "no
+  column" — `setSortingEnabled(True)` alone silently auto-sorted every
+  table by column 0 ascending on first populate. Caught two real
+  existing tests failing on exactly this (Search's "best quality
+  first" ranking, Sharing's reconciliation order, both alphabetized).
+  Fixed via `setSortIndicator(-1, ...)` in `apply_table_defaults`.
+- Every table rebuilds via `setRowCount()` + `setItem()` addressed by
+  loop index; live sorting mid-loop desyncs those indices. Every
+  rebuild now runs inside `with preserving_sort_order(table):` (new
+  `ui/table_sort.py`).
+- Three call sites (Dashboard's double-click/context-menu/bulk-select,
+  Review's dashboard-double-click focus-and-select) resolved a row via
+  a parallel Python list's insertion-order index — wrong the moment a
+  user sorts. Fixed by anchoring each row's real id via
+  `Qt.ItemDataRole.UserRole`. `_focus_pending_review_row`'s signature
+  simplified (dropped the now-unused list params) accordingly.
+- History's "When", Search's Bitrate/Size/Score, Review's Score,
+  Sharing's file count display formatted text that sorts wrong against
+  its real meaning (date by month name; "128"/"320"/"96" kbps as
+  text). `SortKeyItem` (`ui/table_sort.py`) carries the real sort key
+  separately from the displayed text.
+- Duplicates' table stays explicitly NOT sortable — rows are grouped
+  per cluster via `setSpan()`, which sorting would visually corrupt.
+- 14 new regression tests: 11 for §12.1/§12.3/§12.5, 3 targeting the
+  sort-safety bugs above (sorted-then-double-click, chronological
+  History sort, sorted-then-focus in Review).
 
-**Process note:** a background `fork` first tasked with this screenshot
-capture ran ~14 min/246K tokens, produced nothing (`docs/screenshots/`
-didn't exist afterward), and returned a confusing final message. It
-wasn't spawned with `isolation: "worktree"`. Re-attempted directly and
-finished in a handful of iterations by hand. Try `isolation:
-"worktree"` first if delegating offscreen-Qt work to a subagent again.
+**Verification note (CLAUDE.md's platform-claim rule):** verified via
+`qtbot`/offscreen Qt, not a live human on a real Mac window (no display
+here). One gap found directly: `saveGeometry()`/`restoreGeometry()`'s
+SIZE round-trips exactly under offscreen; X/Y POSITION does not —
+plausibly an offscreen-only artifact (standard Qt idiom otherwise), but
+genuinely UNVERIFIED on real hardware.
 
 ## Read discipline — this is why sessions were costing 300-700 K tokens
 
@@ -100,9 +98,15 @@ default. Don't read a brief for a phase you aren't doing.
       close; confirm the window returns. Reopen via Spotlight too.
 - [ ] From a second device, confirm `http://<mac-lan-ip>:5030` no
       longer answers.
-- [ ] Push the 2 unpushed commits to `origin/main` (or say go ahead) —
-      `origin/main` is currently at `711f87c`, 3 behind local HEAD.
-- [ ] Decide S15 (UX Group A, brief §12.1-§12.5) — approve or skip.
+- [ ] Push the 2 unpushed S15 commits to `origin/main` (or say go
+      ahead) — `origin/main` is currently at `ccafc61`, 2 behind local
+      HEAD.
+- [ ] **New this session:** quit the real app after resizing/moving the
+      window, relaunch, confirm it reopens at the same size AND
+      position — position is unverified under offscreen testing (S15
+      report above).
+- [ ] Decide §12.4 (accessible names) and/or Group B (§12.6-§12.10) —
+      approve or skip; nothing scheduled without a yes.
 
 ## Open questions
 
@@ -110,15 +114,13 @@ default. Don't read a brief for a phase you aren't doing.
   Seeker/actions` 404s anonymously — if so, `update_check.py`'s 404-
   means-"no releases" assumption only holds once the repo is public.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
-  S9's skip-count mismatch is now RESOLVED (see above) — this one
-  remains open.
-- **Round-8 flakes now in CLAUDE.md's Open Issues (five total)** —
+- **Round-8 flakes (five total, in CLAUDE.md's Open Issues)** —
   diagnose any recurrence directly, never `pytest-rerunfailures`. The
-  two fullscreen-close ones fired together again this session (comment/
-  docs-only — not a regression from this session's own work); two
-  same-area tests failing together only under the full suite is
-  stronger evidence of a real ordering/state-leak bug than either
-  alone, worth a dedicated diagnosis session if it recurs a third time.
+  two fullscreen-close ones fired together again this session (S15
+  never touched that code — not a regression); two same-area tests
+  failing together only under the full suite is stronger evidence of a
+  real bug than either alone, worth a dedicated session if it recurs
+  again.
 - **`docs/HISTORY.md` is ~14,100+ lines** — still never read whole, per
   the standing rule.
 
