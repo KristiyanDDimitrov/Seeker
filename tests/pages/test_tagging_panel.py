@@ -4,10 +4,10 @@ S11.4) — the mirror of §9.3.1's own Tagging panel extraction (S7).
 
 Only the tests that touch nothing but TaggingPanel's own delegated
 attributes/dialogs live here — most of the panel's own tests also drive
-Dashboard's own track_table/playlist_list/dashboard_notice to set up a
-selection, so those moved to test_dashboard_page.py instead (S11.4,
-which also decided where the remaining S11.3-deferred cross-cutting
-tests belong — see that file's own docstring).
+Dashboard's own track_table/playlist_list to set up a selection, so
+those live in test_library_page.py instead (round 8 §12.6 moved
+TaggingPanel itself onto its own Library page — see that file's own
+docstring).
 """
 
 from itertools import pairwise
@@ -42,7 +42,7 @@ def test_tagging_controls_row_reflows_to_multiple_rows_when_narrow(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
+    layout = window._library_page._tagging_panel.tagging_controls_layout
     single_row_height = max(
         layout.itemAt(i).sizeHint().height() for i in range(layout.count())
     )
@@ -61,7 +61,7 @@ def test_tagging_controls_row_minimum_size_is_the_widest_item_not_the_sum(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
+    layout = window._library_page._tagging_panel.tagging_controls_layout
     widths = [
             layout.itemAt(i).sizeHint().width() for i in range(layout.count())
     ]
@@ -105,7 +105,7 @@ def test_tagging_controls_row_has_real_spacing_between_items(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    layout = window._dashboard_page._tagging_panel.tagging_controls_layout
+    layout = window._library_page._tagging_panel.tagging_controls_layout
 
     for width in (1600, 320):
         layout.setGeometry(QRect(0, 0, width, layout.heightForWidth(width)))
@@ -139,7 +139,7 @@ def test_tagging_controls_checkboxes_get_their_full_label_width(qtbot):
     qtbot.addWidget(window)
     window.show()
 
-    tagging_panel = window._dashboard_page._tagging_panel
+    tagging_panel = window._library_page._tagging_panel
     for checkbox in (
             tagging_panel.analyze_audio_checkbox,
             tagging_panel.force_retag_checkbox,
@@ -156,18 +156,18 @@ def test_bpm_range_fields_hidden_until_analyze_audio_checked(qtbot):
     # explicit hide/show state regardless of ancestor visibility, which
     # is what this test actually cares about, so window.show() isn't
     # needed here.
-    assert window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
-    assert window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
+    assert window._library_page._tagging_panel.bpm_min_edit.isHidden()
+    assert window._library_page._tagging_panel.bpm_max_edit.isHidden()
 
-    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(True)
+    window._library_page._tagging_panel.analyze_audio_checkbox.setChecked(True)
 
-    assert not window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
-    assert not window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
+    assert not window._library_page._tagging_panel.bpm_min_edit.isHidden()
+    assert not window._library_page._tagging_panel.bpm_max_edit.isHidden()
 
-    window._dashboard_page._tagging_panel.analyze_audio_checkbox.setChecked(False)
+    window._library_page._tagging_panel.analyze_audio_checkbox.setChecked(False)
 
-    assert window._dashboard_page._tagging_panel.bpm_min_edit.isHidden()
-    assert window._dashboard_page._tagging_panel.bpm_max_edit.isHidden()
+    assert window._library_page._tagging_panel.bpm_min_edit.isHidden()
+    assert window._library_page._tagging_panel.bpm_max_edit.isHidden()
 
 
 def test_rename_preview_dialog_groups_plans_by_action(qtbot):

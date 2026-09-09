@@ -1,12 +1,16 @@
 """The Dashboard page (HISTORY §119) — the biggest single page moved:
-playlist list, track table, next-step CTA, plus the Tagging panel it
-hosts as a sub-widget (unchanged by this move — see tagging_panel.py's
-own docstring).
+playlist list, track table, next-step CTA. Round 8 §12.6 split the
+Tagging panel it used to host as a sub-widget out to its own page
+(library_page.py); Dashboard now just picks a playlist and shows its
+tracks, routing the track table's own Tag/Re-tag row actions through
+`DashboardHost` to the Library page instead of owning TaggingPanel
+directly.
 
 Beyond PageContext, this page needs a second, narrower seam —
 `DashboardHost` — for the handful of actions that live on MainWindow
 because they're shared across several not-yet-migrated pages (Sync/
-Scan/Match/Download/Settings-navigation) or because they need a second
+Scan/Match/Download/Settings-navigation), because they reach the
+Library page's own TaggingPanel, or because they need a second
 argument PageContext.navigate's `Callable[[str], None]` shape can't
 carry (jumping to Review with a specific track focused).
 """
@@ -48,7 +52,6 @@ from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
-from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
 from seeker.ui.table_sort import preserving_sort_order
 from seeker.ui.workers import run_worker
@@ -200,15 +203,17 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
 class DashboardHost:
     """What the Dashboard needs from the shell beyond PageContext.
     Sync/Scan/Match/Download/"Load tracks" stay MainWindow methods —
-    they're shared plumbing, not Dashboard-owned, so Dashboard reaches
-    them the same read-through-a-seam way TaggingPanel reaches
-    Dashboard's own state (HISTORY §119). `open_settings` and
+    they're shared plumbing, not Dashboard-owned. `open_settings` and
     `navigate_to_review` both need a second argument PageContext's
     `navigate: Callable[[str], None]` can't carry (an initial tab, a
     track id to focus) — real MainWindow methods
     (`_on_settings_clicked`/`_show_page`) already have that extra
     parameter, this just binds to them directly instead of routing
-    through the one-argument shell seam.
+    through the one-argument shell seam. The three `on_tag_*`/
+    `on_retag_*` callables reach the Library page's own TaggingPanel
+    (round 8 §12.6 — Dashboard no longer owns TaggingPanel directly),
+    the same read-through-a-seam pattern this dataclass already uses
+    for everything else.
     """
     on_download_clicked: Callable[[], None]
     on_sync_clicked: Callable[[], None]
@@ -217,6 +222,9 @@ class DashboardHost:
     on_sync_tracks_clicked: Callable[[], None]
     open_settings: Callable[[str], None]
     navigate_to_review: Callable[[str], None]
+    on_tag_track_clicked: Callable[[str, QPushButton], None]
+    on_retag_track_clicked: Callable[[str], None]
+    on_tag_playlist_clicked: Callable[[], None]
 
 
 class DashboardPage(QWidget):
@@ -335,26 +343,7 @@ class DashboardPage(QWidget):
         self.track_area_stack.addWidget(self._track_empty_panel)
         right.addWidget(self.track_area_stack)
 
-        # Created here, ahead of its original position below
-        # `tagging_results`, purely because TaggingPanel (constructed
-        # next) needs the real QLabel instance up front, via
-        # TaggingPanelHost. Still added to `right` in its original
-        # visual position — construction order and layout order are
-        # independent in Qt (HISTORY §119).
         self.status_label = QLabel("")
-
-        self._tagging_panel = TaggingPanel(
-            context,
-            TaggingPanelHost(
-                status_label=self.status_label,
-                dashboard_notice=self.dashboard_notice,
-                get_selected_playlist=lambda: self.selected_playlist,
-                get_selected_track_ids=self._selected_track_ids,
-                refresh_track_table=self._poll_selected_playlist,
-            ),
-        )
-        right.addWidget(self._tagging_panel)
-
         right.addWidget(self.status_label)
 
         layout.addLayout(right, 3)
@@ -439,7 +428,7 @@ class DashboardPage(QWidget):
             tag_button = QPushButton("Tag")
             tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
             tag_button.clicked.connect(
-                lambda: self._tagging_panel._on_tag_track_clicked(
+                lambda: self._host.on_tag_track_clicked(
                     track_id, tag_button,
                 )
             )
@@ -467,22 +456,10 @@ class DashboardPage(QWidget):
         menu = QMenu(self)
         retag_action = QAction("Re-tag", self)
         retag_action.triggered.connect(
-            lambda: self._tagging_panel._on_retag_track_clicked(
-                status.track.id
-            )
+            lambda: self._host.on_retag_track_clicked(status.track.id)
         )
         menu.addAction(retag_action)
         menu.exec(self.track_table.viewport().mapToGlobal(position))
-
-    # Temporary delegating methods for TaggingPanel's own
-    # _render_tag_result/_on_retag_track_clicked, called directly on a
-    # fresh MainWindow instance by test_ui_smoke.py (via MainWindow's
-    # own further delegation to this page) (HISTORY §119).
-    def _render_tag_result(self, result: dict[str, Any]) -> None:
-        self._tagging_panel._render_tag_result(result)
-
-    def _on_retag_track_clicked(self, track_id: str) -> None:
-        self._tagging_panel._on_retag_track_clicked(track_id)
 
     def _load_playlists(self) -> None:
         run_worker(
@@ -883,4 +860,4 @@ class DashboardPage(QWidget):
         elif action == "download":
             self._host.on_download_clicked()
         elif action == "tag_playlist":
-            self._tagging_panel._on_tag_playlist_clicked()
+            self._host.on_tag_playlist_clicked()

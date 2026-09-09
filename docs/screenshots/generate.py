@@ -158,6 +158,10 @@ window._dashboard_page.playlist_list.setCurrentRow(0)
 pump(1.0)
 window.grab().save(os.path.join(out_dir, "dashboard-dark.png"))
 
+window._show_page("library")
+pump(1.0)
+window.grab().save(os.path.join(out_dir, "library-dark.png"))
+
 window._show_page("review")
 pump(1.0)
 window.grab().save(os.path.join(out_dir, "review.png"))

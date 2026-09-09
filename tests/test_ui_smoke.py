@@ -746,15 +746,16 @@ def test_nav_buttons_are_mutually_exclusive_including_settings(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    # Every real page (Dashboard/Search/Downloads/Review/Duplicates/
-    # History) plus Help, Support, and Settings share one exclusive
-    # QButtonGroup — roadmap item 56 Phase 3 reversed item 48's
-    # "Settings stays a separate dialog" decision, so it's now a real,
-    # checkable nav-group member like every other page; item 64 added
-    # Support the same way, item 82 added Search the same way.
+    # Every real page (Dashboard/Library/Search/Downloads/Review/
+    # Duplicates/Sharing/History) plus Help, Support, and Settings share
+    # one exclusive QButtonGroup — roadmap item 56 Phase 3 reversed item
+    # 48's "Settings stays a separate dialog" decision, so it's now a
+    # real, checkable nav-group member like every other page; item 64
+    # added Support the same way, item 82 added Search the same way,
+    # round 8 §12.6 added Library the same way.
     assert set(window._nav_buttons) == {
-        "dashboard", "search", "downloads", "review", "duplicates",
-        "sharing", "history", "help", "support", "settings",
+        "dashboard", "library", "search", "downloads", "review",
+        "duplicates", "sharing", "history", "help", "support", "settings",
     }
     assert window._nav_group.exclusive()
     for key in window._nav_buttons:
@@ -4085,12 +4086,12 @@ def test_view_menu_has_nav_shortcuts_and_actions(qtbot):
     }
 
     assert set(actions_by_text) == {
-        "Dashboard", "Search", "Downloads", "Review", "Duplicates",
-        "Sharing", "History", "Refresh", "Focus Search", "Toggle Theme",
-        "Settings…",
+        "Dashboard", "Library", "Search", "Downloads", "Review",
+        "Duplicates", "Sharing", "History", "Refresh", "Focus Search",
+        "Toggle Theme", "Settings…",
     }
     assert actions_by_text["Dashboard"].shortcut().toString() == "Ctrl+1"
-    assert actions_by_text["History"].shortcut().toString() == "Ctrl+7"
+    assert actions_by_text["History"].shortcut().toString() == "Ctrl+8"
     assert actions_by_text["Refresh"].shortcut().toString() == "Ctrl+R"
     assert (
         actions_by_text["Focus Search"].shortcut().toString() == "Ctrl+F"

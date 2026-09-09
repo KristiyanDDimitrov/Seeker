@@ -64,6 +64,7 @@ from seeker.ui.pages.dashboard_page import (
 from seeker.ui.pages.downloads_page import DownloadsPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.history_page import HistoryPage
+from seeker.ui.pages.library_page import LibraryHost, LibraryPage
 from seeker.ui.pages.review_page import (
     ReviewHost,
     ReviewPage,
@@ -106,6 +107,7 @@ SIDEBAR_WIDTH = 200
 # them to (none do yet).
 _NAV_PAGES = (
     ("dashboard", "Dashboard"),
+    ("library", "Library"),
     ("search", "Search"),
     ("downloads", "Downloads"),
     ("review", "Review"),
@@ -640,9 +642,21 @@ class MainWindow(QMainWindow):
                 navigate_to_review=lambda track_id: self._show_page(
                     "review", focus_track_id=track_id,
                 ),
+                on_tag_track_clicked=self._on_tag_track_clicked,
+                on_retag_track_clicked=self._on_retag_track_clicked,
+                on_tag_playlist_clicked=self._on_tag_playlist_clicked,
             ),
         )
         self._register_page("dashboard", self._dashboard_page)
+        self._library_page = LibraryPage(
+            page_context,
+            LibraryHost(
+                get_selected_playlist=lambda: self._dashboard_page.selected_playlist,
+                get_selected_track_ids=self._dashboard_page._selected_track_ids,
+                refresh_track_table=self._dashboard_page._poll_selected_playlist,
+            ),
+        )
+        self._register_page("library", self._library_page)
         self._search_page = SearchPage(page_context)
         self._register_page("search", self._search_page)
         self._downloads_page = DownloadsPage(page_context)
@@ -790,7 +804,9 @@ class MainWindow(QMainWindow):
     # way at S11.2, Downloads' and TaggingPanel's own at S11.3, and
     # Dashboard's own at S11.4 — their tests now address
     # self._search_page/self._sharing_page/self._downloads_page/
-    # self._dashboard_page(._tagging_panel) directly.
+    # self._dashboard_page directly. TaggingPanel itself moved again
+    # (round 8 §12.6, Library split) — tests now address
+    # self._library_page(._tagging_panel) instead.
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — every navigation path in this app
@@ -1625,6 +1641,24 @@ class MainWindow(QMainWindow):
             status_label=self._dashboard_page.status_label,
             on_finished=lambda _: self._dashboard_page._poll_selected_playlist(),
         )
+
+    # Round 8 §12.6 — Dashboard's own track-table row actions (a Tag
+    # button, the context menu's Re-tag) and its "next step" CTA's own
+    # tag_playlist action all reach TaggingPanel through DashboardHost,
+    # now that it lives on the Library page rather than on Dashboard
+    # itself. Thin bound-method wrappers, not lambdas passed directly
+    # at DashboardHost construction time, because self._library_page
+    # doesn't exist yet at that point (ruff PLW0108 flags the
+    # equivalent lambda as an unnecessary wrapper around a call that
+    # LOOKS resolvable now but isn't).
+    def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
+        self._library_page._tagging_panel._on_tag_track_clicked(track_id, button)
+
+    def _on_retag_track_clicked(self, track_id: str) -> None:
+        self._library_page._tagging_panel._on_retag_track_clicked(track_id)
+
+    def _on_tag_playlist_clicked(self) -> None:
+        self._library_page._tagging_panel._on_tag_playlist_clicked()
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — self.settings_page is a single,

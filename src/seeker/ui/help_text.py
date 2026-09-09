@@ -19,8 +19,13 @@ from typing import Any
 # the README and goes straight into the app.
 
 DASHBOARD_TAB_SUBTITLE = (
-    "Pick a playlist on the left to see each track's status, then tag "
-    "or download what's missing."
+    "Pick a playlist on the left to see each track's status, and "
+    "download what's missing."
+)
+LIBRARY_TAB_SUBTITLE = (
+    "Tag downloaded tracks with Spotify's metadata, fix missing cover "
+    "art, and rename files to match — operating on whatever playlist "
+    "and track selection is current on the Dashboard."
 )
 SEARCH_TAB_SUBTITLE = (
     "Find and download a track that isn't in any Spotify playlist — "
@@ -76,7 +81,7 @@ HELP_WALKTHROUGH_BODY = (
     "<p><b>5. Review + tag</b> — uncertain SoulSeek matches and quality "
     "upgrades wait on the Review page for a decision; matched tracks "
     "can be tagged with Spotify's canonical metadata from the "
-    "Dashboard.</p>"
+    "Library page.</p>"
 )
 
 HELP_TROUBLESHOOTING_BODY = (
@@ -253,7 +258,7 @@ TOOLTIP_SYNC_TRACKS = (
     "automatically, to keep API calls intentional."
 )
 
-# --- Dashboard: tagging controls ------------------------------------------
+# --- Library: tagging controls ---------------------------------------------
 
 TOOLTIP_ANALYZE_AUDIO_CHECKBOX = (
     "Also detect BPM and musical key locally and write them to the "

@@ -1,10 +1,11 @@
-"""The Tagging panel (HISTORY §119). Unlike every other module in this
-package, this is not a top-level page registered on the shell's
-QStackedWidget — it is a sub-widget embedded inside the (still-
-unmigrated) Dashboard page, so it needs a second, narrower seam beyond
-PageContext: `TaggingPanelHost`, exactly the pieces of Dashboard state
-(its selected-playlist, its own status_label/notice widgets, resolving
-the track table's current selection) this panel reaches into.
+"""The Tagging panel (HISTORY §119). Not itself a top-level page
+registered on the shell's QStackedWidget — it is the sole content of
+`library_page.py` (round 8 §12.6), which owns its own status_label/
+notice widgets; the playlist/track selection it operates on still
+lives on the Dashboard page, so it needs a second, narrower seam
+beyond PageContext: `TaggingPanelHost`, reaching into Dashboard's live
+selection state the same way `LibraryHost` (library_page.py) reaches
+into Dashboard for the same reason.
 """
 
 from collections.abc import Callable
@@ -34,14 +35,15 @@ from seeker.ui.workers import run_worker
 
 @dataclass(frozen=True)
 class TaggingPanelHost:
-    """What the Tagging panel needs from the Dashboard that hosts it.
-    `status_label`/`dashboard_notice` are real widget references (like
-    PageContext's own `thread_pool`/`busy_actions` — they never get
-    reassigned, so a direct reference is enough); the rest are live
-    reads/actions on Dashboard's own mutable state, so they have to be
-    callables, not values captured once at construction time."""
+    """What the Tagging panel needs beyond PageContext: its own
+    `status_label`/`notice` (real widget references, like PageContext's
+    own `thread_pool`/`busy_actions` — they never get reassigned, so a
+    direct reference is enough, and they're LibraryPage's own widgets,
+    not Dashboard's), plus live reads/actions on Dashboard's own
+    selection state, which have to be callables, not values captured
+    once at construction time."""
     status_label: QLabel
-    dashboard_notice: InlineNotice
+    notice: InlineNotice
     get_selected_playlist: Callable[[], Playlist | None]
     get_selected_track_ids: Callable[[], list[str]]
     refresh_track_table: Callable[[], None]
@@ -252,13 +254,13 @@ class TaggingPanel(QWidget):
         # rather than leaving the user to find "Fix missing cover art"
         # on their own (HISTORY §75).
         if result.get("skipped_already_tagged", 0) > 0:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 message, kind=kind,
                 action_text="Fix missing cover art",
                 on_action=self._on_fix_missing_art_clicked,
             )
         else:
-            self._host.dashboard_notice.show_message(message, kind=kind)
+            self._host.notice.show_message(message, kind=kind)
 
     # Called directly by the Dashboard's own track_table row
     # Actions-column button (`_build_track_actions`, still in
@@ -274,7 +276,7 @@ class TaggingPanel(QWidget):
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self._host.dashboard_notice.show_message(str(error), kind="error")
+            self._host.notice.show_message(str(error), kind="error")
             return
 
         run_worker(
@@ -302,7 +304,7 @@ class TaggingPanel(QWidget):
         try:
             analyze_audio, bpm_range, _ = self._resolve_tag_options()
         except ValueError as error:
-            self._host.dashboard_notice.show_message(str(error), kind="error")
+            self._host.notice.show_message(str(error), kind="error")
             return
 
         run_worker(
@@ -321,7 +323,7 @@ class TaggingPanel(QWidget):
         track_ids = self._host.get_selected_track_ids()
 
         if not track_ids:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "Select at least one track first.", kind="warning",
             )
             return
@@ -329,7 +331,7 @@ class TaggingPanel(QWidget):
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self._host.dashboard_notice.show_message(str(error), kind="error")
+            self._host.notice.show_message(str(error), kind="error")
             return
 
         self._context.run_busy_worker(
@@ -354,7 +356,7 @@ class TaggingPanel(QWidget):
         playlist = self._host.get_selected_playlist()
 
         if playlist is None:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -362,7 +364,7 @@ class TaggingPanel(QWidget):
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self._host.dashboard_notice.show_message(str(error), kind="error")
+            self._host.notice.show_message(str(error), kind="error")
             return
 
         playlist_name = playlist.name
@@ -386,7 +388,7 @@ class TaggingPanel(QWidget):
         playlist = self._host.get_selected_playlist()
 
         if playlist is None:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -426,13 +428,13 @@ class TaggingPanel(QWidget):
         self.tagging_results.setPlainText("\n".join(lines))
 
         message, kind = help_text.format_fix_art_result_message(result)
-        self._host.dashboard_notice.show_message(message, kind=kind)
+        self._host.notice.show_message(message, kind=kind)
 
     def _on_fill_missing_art_urls_clicked(self) -> None:
         playlist = self._host.get_selected_playlist()
 
         if playlist is None:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -453,13 +455,13 @@ class TaggingPanel(QWidget):
 
         if art_urls_filled:
             plural = "s" if art_urls_filled != 1 else ""
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 f"Filled in {art_urls_filled} missing album art "
                 f"URL{plural}.",
                 kind="success",
             )
         else:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "No missing album art URLs found.", kind="info",
             )
 
@@ -467,7 +469,7 @@ class TaggingPanel(QWidget):
         playlist = self._host.get_selected_playlist()
 
         if playlist is None:
-            self._host.dashboard_notice.show_message(
+            self._host.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -535,4 +537,4 @@ class TaggingPanel(QWidget):
         self.tagging_results.setPlainText("\n".join(lines))
 
         message, kind = help_text.format_rename_result_message(counts)
-        self._host.dashboard_notice.show_message(message, kind=kind)
+        self._host.notice.show_message(message, kind=kind)
