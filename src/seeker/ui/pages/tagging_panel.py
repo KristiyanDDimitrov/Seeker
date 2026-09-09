@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -30,6 +29,12 @@ from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext
+from seeker.ui.tag_result_panel import (
+    TagResultPanel,
+    summarize_fix_art_result,
+    summarize_rename_result,
+    summarize_tag_result,
+)
 from seeker.ui.workers import run_worker
 
 
@@ -61,13 +66,13 @@ class TaggingPanel(QWidget):
         self.tagging_controls_layout = self._build_tagging_controls()
         layout.addLayout(self.tagging_controls_layout)
 
-        self.tagging_results = QPlainTextEdit()
-        self.tagging_results.setReadOnly(True)
-        self.tagging_results.setMaximumHeight(120)
-        self.tagging_results.setPlaceholderText(
-            "Tagging results will appear here."
+        # Round 8 §12.7 — retry only makes a real tag_tracks([track_id])
+        # call for tag-result failures (see TagResultPanel's own
+        # docstring for why fix-art/rename results don't get one).
+        self.results_panel = TagResultPanel(
+            on_retry_track=self._on_retag_track_clicked,
         )
-        layout.addWidget(self.tagging_results)
+        layout.addWidget(self.results_panel)
 
     def _build_tagging_controls(self) -> FlowLayout:
         # Shared by all three triggers (per-track, "Tag selected",
@@ -208,33 +213,18 @@ class TaggingPanel(QWidget):
     def _render_tag_result(self, result: dict[str, Any]) -> None:
         self._host.status_label.setText("")
 
-        lines = [
-            f"Tagged: {result['tagged']} "
-            f"({result['tagged_without_art']} without cover art, "
-            f"{result['tagged_art_rarely_supported_format']} with art "
-            f"in a rarely-supported format), "
-            f"Skipped (no match): {result['skipped_no_match']}, "
-            f"Skipped (unsupported format): "
-            f"{result['skipped_format_unsupported']}, "
-            f"Skipped (already tagged): "
-            f"{result['skipped_already_tagged']}, "
-            f"Skipped (already analyzed): "
-            f"{result['skipped_already_analyzed']}, "
-            f"Failed: {result['failed']}."
-        ]
-
-        for detail in result["details"]:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
+        self.results_panel.set_result(
+            summarize_tag_result(result), result["details"],
+            retryable_reason="failed",
+        )
 
         # The UI must never show a bare "success" when any part of it
         # wasn't: routed through InlineNotice (HISTORY §47), not
         # status_label, so it survives the next 2s poll tick; per-track
-        # detail is already reachable in the persistent tagging_results
-        # panel above, itself unaffected by that same clearing bug (a
-        # real QPlainTextEdit, never wired into status_label's plumbing
-        # at all) (HISTORY §56 Phase 4.2).
+        # detail is already reachable in the persistent results_panel
+        # above, itself unaffected by that same clearing bug (a real
+        # widget, never wired into status_label's plumbing at all)
+        # (HISTORY §56 Phase 4.2).
         self._show_tag_result_notice(result)
 
     def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
@@ -409,23 +399,9 @@ class TaggingPanel(QWidget):
     def _render_fix_art_result(self, result: dict[str, Any]) -> None:
         self._host.status_label.setText("")
 
-        lines = [
-            f"Fixed: {result['fixed']}, "
-            f"Fixed (rarely-supported format): "
-            f"{result['fixed_wav_rarely_supported']}, "
-            f"Already correct: {result['already_correct']}, "
-            f"No art URL: {result['no_url']}, "
-            f"Download failed: {result['download_failed']}, "
-            f"Embed failed: {result['embed_failed']}, "
-            f"Unsupported format: {result['format_unsupported']}, "
-            f"Skipped (no match): {result['skipped_no_match']}, "
-            f"Failed: {result['failed']}."
-        ]
-
-        for detail in result["details"]:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
+        self.results_panel.set_result(
+            summarize_fix_art_result(result), result["details"],
+        )
 
         message, kind = help_text.format_fix_art_result_message(result)
         self._host.notice.show_message(message, kind=kind)
@@ -523,18 +499,16 @@ class TaggingPanel(QWidget):
             "collisions": result.collisions,
             "failed": result.failed,
         }
-        lines = [
-            f"Renamed: {result.renamed} ({result.collisions} with a "
-            f"numbered suffix), Already correct: {result.already_correct}, "
-            f"Not auto-matched: {result.skipped_not_auto_matched}, "
-            f"No local file: {result.skipped_no_local_file}, "
-            f"Failed: {result.failed}."
-        ]
-
-        for detail in result.details:
-            lines.append(f"  [{detail['reason']}] {detail['message']}")
-
-        self.tagging_results.setPlainText("\n".join(lines))
+        self.results_panel.set_result(
+            summarize_rename_result({
+                "renamed": result.renamed,
+                "already_correct": result.already_correct,
+                "skipped_not_auto_matched": result.skipped_not_auto_matched,
+                "skipped_no_local_file": result.skipped_no_local_file,
+                "failed": result.failed,
+            }),
+            result.details,
+        )
 
         message, kind = help_text.format_rename_result_message(counts)
         self._host.notice.show_message(message, kind=kind)

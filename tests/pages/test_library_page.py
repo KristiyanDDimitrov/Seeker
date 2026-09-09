@@ -17,7 +17,7 @@ Dashboard state stay in test_tagging_panel.py.
 from pathlib import Path
 
 from PySide6.QtCore import QItemSelectionModel
-from PySide6.QtWidgets import QDialog, QPushButton
+from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
@@ -292,7 +292,9 @@ def test_tag_playlist_without_selection_shows_message_and_makes_no_call(qtbot):
     assert "playlist" in window._library_page.notice.text().lower()
 
 
-def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
+def test_results_panel_renders_summary_and_expandable_details(qtbot):
+    # Round 8 §12.7 — replaced the old scrolling QPlainTextEdit dump
+    # with a one-line summary plus a collapsed-by-default details list.
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -322,11 +324,100 @@ def test_results_panel_renders_breakdown_and_per_item_reasons(qtbot):
 
     window._library_page._tagging_panel._render_tag_result(result)
 
-    text = window._library_page._tagging_panel.tagging_results.toPlainText()
-    assert "Tagged: 2" in text
-    assert "Failed: 1" in text
-    assert "[skipped_no_match] Artist A - Title A: no matched local file" in text
-    assert "[failed] Artist B - Title B: disk read error" in text
+    results_panel = window._library_page._tagging_panel.results_panel
+    assert results_panel.summary_label.text() == "Tagged 2 of 5 — 1 failed"
+    # Collapsed by default — the CARD wrapper, not the inner list
+    # itself, carries the real shown/hidden state (theme.make_card).
+    assert results_panel._details_card.isHidden()
+
+    results_panel.details_toggle.setChecked(True)
+    assert not results_panel._details_card.isHidden()
+    assert results_panel.details_list.count() == 2
+    row_texts = [
+        results_panel.details_list.itemWidget(
+            results_panel.details_list.item(i)
+        ).findChild(QLabel).text()
+        for i in range(2)
+    ]
+    assert row_texts == [
+        "[skipped_no_match] Artist A - Title A: no matched local file",
+        "[failed] Artist B - Title B: disk read error",
+    ]
+
+
+def test_results_panel_failed_tag_row_offers_a_retry_that_re_tags(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    result = {
+        "tagged": 0,
+        "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
+        "skipped_no_match": 0,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 0,
+        "skipped_already_analyzed": 0,
+        "failed": 1,
+        "details": [
+            {
+                "track_id": "t2",
+                "reason": "failed",
+                "message": "Artist B - Title B: disk read error",
+            },
+        ],
+    }
+    window._library_page._tagging_panel._render_tag_result(result)
+
+    results_panel = window._library_page._tagging_panel.results_panel
+    results_panel.details_toggle.setChecked(True)
+    row = results_panel.details_list.itemWidget(results_panel.details_list.item(0))
+    retry_button = row.findChild(QPushButton)
+    assert retry_button is not None
+    assert retry_button.text() == "Retry"
+
+    retry_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    # _on_retag_track_clicked always forces, regardless of the panel's
+    # own checkbox — same "guaranteed real retry" semantics as the row-
+    # level context menu's own Re-tag action.
+    assert application.metadata_service.tag_tracks_calls == [
+        (["t2"], False, None, True),
+    ]
+
+
+def test_results_panel_non_failed_detail_has_no_retry_button(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    result = {
+        "tagged": 0,
+        "tagged_without_art": 0,
+        "tagged_art_rarely_supported_format": 0,
+        "skipped_no_match": 1,
+        "skipped_format_unsupported": 0,
+        "skipped_already_tagged": 0,
+        "skipped_already_analyzed": 0,
+        "failed": 0,
+        "details": [
+            {
+                "track_id": "t1",
+                "reason": "skipped_no_match",
+                "message": "Artist A - Title A: no matched local file",
+            },
+        ],
+    }
+    window._library_page._tagging_panel._render_tag_result(result)
+
+    results_panel = window._library_page._tagging_panel.results_panel
+    results_panel.details_toggle.setChecked(True)
+    row = results_panel.details_list.itemWidget(results_panel.details_list.item(0))
+    assert row.findChild(QPushButton) is None
 
 
 def test_tag_result_notice_reports_tracks_without_art(qtbot):

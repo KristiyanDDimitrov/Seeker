@@ -160,6 +160,22 @@ window.grab().save(os.path.join(out_dir, "dashboard-dark.png"))
 
 window._show_page("library")
 pump(1.0)
+# Round 8 §12.7 — show the results panel with a real result rendered
+# and expanded, not just its empty placeholder state.
+window._library_page._tagging_panel._render_tag_result({
+    "tagged": 3, "tagged_without_art": 0,
+    "tagged_art_rarely_supported_format": 0, "skipped_no_match": 0,
+    "skipped_format_unsupported": 0, "skipped_already_tagged": 0,
+    "skipped_already_analyzed": 0, "failed": 1,
+    "details": [
+        {
+            "track_id": "t9", "reason": "failed",
+            "message": "Rutger Solheim - Static Bloom: disk read error",
+        },
+    ],
+})
+window._library_page._tagging_panel.results_panel.details_toggle.setChecked(True)
+pump(0.5)
 window.grab().save(os.path.join(out_dir, "library-dark.png"))
 
 window._show_page("review")
