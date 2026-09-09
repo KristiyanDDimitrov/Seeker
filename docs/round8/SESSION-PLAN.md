@@ -73,10 +73,17 @@ named split point rather than pushing through.
 | ☑ S13 | Comment triage, pass 2 | §10.1 (`download_service`, the new `ui/pages/*`) | ~120 K |
 | ☑ S14 | CLAUDE.md 8b + README | §11.2.4, §11.2.5, §11.3 | ~90 K |
 | ☑\* S15 | UX Group A — **only if Kris approves** | §12.1–§12.5 | ~120 K |
+| ☑ S16 | UX Group B — Kris approved all five | §12.6–§12.10 | ~300 K |
 
-§12.6–§12.10 (UX Group B) are product decisions for Kris and are not
-scheduled. §9.4 (the other long functions) is optional; fold individual
-items into a session that finishes early, or skip and say so.
+§9.4 (the other long functions) is optional; fold individual items
+into a session that finishes early, or skip and say so.
+
+**S16 — Kris approved all of §12.6–§12.10 in one go**, a deliberate
+exception to this file's own one-item-per-session pacing (explicit
+user instruction: "execute all of these"). Five commits, one per
+item, each independently verified (pytest/mypy/ruff + screenshots).
+See `docs/HANDOFF.md` for what shipped and the real bug §12.9's audit
+found. `docs/HISTORY.md` §120 has the full investigation.
 
 **\*S15 — Kris approved a subset, not all of §12.1–§12.5.** Approved
 and shipped: §12.1 (window geometry/last-page persistence), §12.2

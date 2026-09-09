@@ -8,18 +8,20 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `7dadb17` — "S15 §12.2: sortable tables". Working tree
-  clean except this handoff rewrite + the session-plan tick, about to
-  be committed.
-- **`origin/main`: at `ccafc61`, 2 commits behind local HEAD** (the two
-  S15 commits below). **Ask before pushing.**
-- **pytest:** `2 failed, 1160 passed, 1 skipped in 99.27s` — both
-  failures are the same already-tracked fullscreen-close flakes
-  (`test_fullscreen_close_policy_check_ignores_a_stale_request`,
-  `test_reopening_after_a_fullscreen_close_restores_prior_geometry`),
-  confirmed passing individually again this session. 1 skipped is the
-  real-hardware number.
-- **`mypy --strict src/`: clean, 100 files. `ruff check src tests`: 0
+- **HEAD:** `80fb0e3` — "Round 8 §12.10: show the needs-review
+  runner-up inline". Working tree clean except this handoff rewrite +
+  the session-plan tick, about to be committed.
+- **`origin/main`**: was in sync with local HEAD at S15 close-out
+  (`6f1ea0b`); this session's 5 commits (`d5cc2f0`..`80fb0e3`) are
+  **unpushed. Ask before pushing.**
+- **pytest:** `1174 passed, 1 skipped in 94.37s` — the two long-
+  standing fullscreen-close flakes (`test_fullscreen_close_policy_
+  check_ignores_a_stale_request`, `test_reopening_after_a_fullscreen_
+  close_restores_prior_geometry`) each fired at least once across this
+  session's several full-suite runs, always in different combinations,
+  always passing individually — same pre-existing pattern CLAUDE.md's
+  Open issues already tracks, not a new regression.
+- **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings.**
 
 ## Where we are in the plan
@@ -28,62 +30,69 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done: Phase 0-7 (through S13), S14, and now S15 (a subset).**
-- **Next: nothing scheduled.** Kris approved §12.1/§12.2/§12.3/§12.5 of
-  S15's Group A this session; **§12.4 (accessible names) was
-  explicitly NOT selected** — open, no further yes given. Group B
-  (§12.6-§12.10) remains a product decision, not scheduled.
+- **Done: Phase 0-7 (through S13), S14, S15 (Group A subset), and now
+  S16 (Group B, all five items).**
+- **Next: nothing scheduled.** §9.4 (long functions beyond
+  `MainWindow`'s own decomposition) is the only item left in the brief,
+  explicitly optional — fold into a session that finishes early, or
+  skip and say so. Round 8 is otherwise complete.
 
-## S15 report (two commits: `9856bc3`, `7dadb17`)
+## S16 report (five commits, one per item: `d5cc2f0`, `2ecb748`,
+`1c16441`, `ceaf482`, `80fb0e3`)
 
-**§12.1:** `SeekerConfig.window_geometry`/`last_open_page`
-(config_store.py), round-tripped via `saveGeometry()`/
-`restoreGeometry()` base64-encoded at real quit
-(`cleanup_before_quit` -> `_persist_window_geometry`) and on
-construction (`_restore_window_geometry`). Closing while on Settings
-persists the page underneath it, not the transient "settings" key. A
-corrupt/foreign stored value is tolerated silently.
+Kris approved all of §12.6–§12.10 in one go ("execute all of these"),
+a deliberate exception to the one-item-per-session pacing this file
+normally enforces — five commits, each independently verified.
 
-**§12.3/§12.5:** new View menu (⌘1-⌘7 nav pages, ⌘R refresh, ⌘F focus
-search, ⌘, Settings, Toggle Theme) and Window menu (Minimize/Zoom).
-Menu bar previously held only Help.
+**§12.6:** TaggingPanel (already its own widget class) moved from being
+a Dashboard sub-widget to its own top-level **Library** page (new
+`ui/pages/library_page.py`, `LibraryHost`). Dashboard's `DashboardHost`
+gained three callables (`on_tag_track_clicked`/`on_retag_track_
+clicked`/`on_tag_playlist_clicked`) reaching Library's TaggingPanel for
+the track table's own row actions. 8th nav entry — History's shortcut
+is now Ctrl+8, not Ctrl+7.
 
-**§12.2 (sortable tables) — pulled in real correctness work beyond the
-brief's one-line description, caught by the test suite itself, not
-just reasoned about:**
-- `QHeaderView` defaults `sortIndicatorSection` to `0`, not "no
-  column" — `setSortingEnabled(True)` alone silently auto-sorted every
-  table by column 0 ascending on first populate. Caught two real
-  existing tests failing on exactly this (Search's "best quality
-  first" ranking, Sharing's reconciliation order, both alphabetized).
-  Fixed via `setSortIndicator(-1, ...)` in `apply_table_defaults`.
-- Every table rebuilds via `setRowCount()` + `setItem()` addressed by
-  loop index; live sorting mid-loop desyncs those indices. Every
-  rebuild now runs inside `with preserving_sort_order(table):` (new
-  `ui/table_sort.py`).
-- Three call sites (Dashboard's double-click/context-menu/bulk-select,
-  Review's dashboard-double-click focus-and-select) resolved a row via
-  a parallel Python list's insertion-order index — wrong the moment a
-  user sorts. Fixed by anchoring each row's real id via
-  `Qt.ItemDataRole.UserRole`. `_focus_pending_review_row`'s signature
-  simplified (dropped the now-unused list params) accordingly.
-- History's "When", Search's Bitrate/Size/Score, Review's Score,
-  Sharing's file count display formatted text that sorts wrong against
-  its real meaning (date by month name; "128"/"320"/"96" kbps as
-  text). `SortKeyItem` (`ui/table_sort.py`) carries the real sort key
-  separately from the displayed text.
-- Duplicates' table stays explicitly NOT sortable — rows are grouped
-  per cluster via `setSpan()`, which sorting would visually corrupt.
-- 14 new regression tests: 11 for §12.1/§12.3/§12.5, 3 targeting the
-  sort-safety bugs above (sorted-then-double-click, chronological
-  History sort, sorted-then-focus in Review).
+**§12.7:** the old scrolling `tagging_results` QPlainTextEdit replaced
+with `TagResultPanel` (new `ui/tag_result_panel.py`) — one-line summary
+("Tagged 3 of 4 — 1 failed") + a details list collapsed by default.
+Failed tag_tracks items get a real "Retry" button (re-runs
+`tag_tracks([track_id])`, same call the row-level Re-tag context menu
+makes); fix-art/rename results have no single-track retry endpoint, so
+their rows stay read-only.
 
-**Verification note (CLAUDE.md's platform-claim rule):** verified via
-`qtbot`/offscreen Qt, not a live human on a real Mac window (no display
-here). One gap found directly: `saveGeometry()`/`restoreGeometry()`'s
-SIZE round-trips exactly under offscreen; X/Y POSITION does not —
-plausibly an offscreen-only artifact (standard Qt idiom otherwise), but
-genuinely UNVERIFIED on real hardware.
+**§12.8:** segmented All/Missing/Needs review/Untagged filter on the
+Dashboard track table (new `[variant="segment"]:checked` QSS,
+`_apply_track_filter_and_render` split out of `_render_track_
+statuses`). A filter with zero matches gets its own empty state,
+distinct from "tracks haven't loaded yet."
+
+**§12.9:** wrote the five-channel rule into CLAUDE.md's Conventions
+(activity strip/next_step_notice/InlineNotice/status_label/tray, each
+with exactly one job — full investigation in HISTORY §120). Audited
+every page against it and found one real bug:
+`sharing_page.py`'s add-to-share confirmation was written to
+`sharing_status_label`, then immediately wiped by the same handler's
+own `_refresh_sharing()` call (`run_worker` clears its target
+`status_label` unconditionally at the start of every call) — the
+confirmation was never actually readable. Fixed with a new
+`sharing_notice` (InlineNotice), same pattern Dashboard/Library
+already use.
+
+**§12.10:** the Review page showed a candidate's score but not what it
+beat. `quality.py`'s `find_best_needs_review_candidate` now returns
+`(file, score, runner_up)` instead of `(file, score)` — runner_up is
+the second-best-scoring candidate in the same band, or `None`. New
+`runner_up_username`/`runner_up_filename`/`runner_up_score` columns on
+`soulseek_review_candidates` (migration via the existing
+`_add_column_if_missing` pattern). Review's needs-review table gained
+a sortable "Runner-up" column.
+
+**Screenshots:** dashboard-dark/light, library-dark, review all
+regenerated and eyeballed in both themes — Library page, the segmented
+filter, the results panel with a real failed retry row, and the
+Runner-up column all render correctly. `docs/screenshots/generate.py`
+updated to produce all of these plus a populated (not just empty-
+state) Library screenshot.
 
 ## Read discipline — this is why sessions were costing 300-700 K tokens
 
@@ -94,19 +103,15 @@ default. Don't read a brief for a phase you aren't doing.
 
 ## Waiting on Kris — real-world actions Code cannot do
 
-- [ ] Click the Dock icon after a normal close and after a fullscreen
-      close; confirm the window returns. Reopen via Spotlight too.
-- [ ] From a second device, confirm `http://<mac-lan-ip>:5030` no
-      longer answers.
-- [ ] Push the 2 unpushed S15 commits to `origin/main` (or say go
-      ahead) — `origin/main` is currently at `ccafc61`, 2 behind local
-      HEAD.
-- [ ] **New this session:** quit the real app after resizing/moving the
-      window, relaunch, confirm it reopens at the same size AND
-      position — position is unverified under offscreen testing (S15
-      report above).
-- [ ] Decide §12.4 (accessible names) and/or Group B (§12.6-§12.10) —
-      approve or skip; nothing scheduled without a yes.
+- [ ] Push this session's 5 unpushed commits to `origin/main` (or say
+      go ahead) — local HEAD `80fb0e3`, `origin/main` last confirmed at
+      `6f1ea0b`.
+- [ ] Click through the new Library page and the Dashboard's status
+      filter on a real Mac window — verified via offscreen Qt this
+      session, not a live human on a real display.
+- [ ] The pre-S16 "waiting on Kris" items (Dock icon reopen, LAN port
+      check, window geometry position round-trip) are still open if
+      not yet done — see prior handoff history for detail if needed.
 
 ## Open questions
 
@@ -116,13 +121,16 @@ default. Don't read a brief for a phase you aren't doing.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
 - **Round-8 flakes (five total, in CLAUDE.md's Open Issues)** —
   diagnose any recurrence directly, never `pytest-rerunfailures`. The
-  two fullscreen-close ones fired together again this session (S15
-  never touched that code — not a regression); two same-area tests
-  failing together only under the full suite is stronger evidence of a
-  real bug than either alone, worth a dedicated session if it recurs
-  again.
-- **`docs/HISTORY.md` is ~14,100+ lines** — still never read whole, per
+  two fullscreen-close ones fired again this session, in different
+  combinations across different full-suite runs (S16 never touched
+  that code) — consistent with the existing pattern, not a new lead.
+- **`docs/HISTORY.md` is ~14,180+ lines** — still never read whole, per
   the standing rule.
+- **CLAUDE.md is ~32 KB**, up from S14's ~29 KB target — S16 added one
+  real Conventions entry (the five-channel rule). Still well under the
+  pre-S1 148 KB, not urgent, but a future session could fold this
+  handoff's own "S16 report" section into HISTORY once it's no longer
+  the most recent work, per the two-tier docs rule.
 
 ## How to end your session
 

@@ -512,8 +512,6 @@ Forward-looking only — see `docs/HISTORY.md` for everything shipped.
   secret and no proxy server. If picked up: bring-your-own-credentials
   (Settings, like the existing Spotify field), source toggle top-right
   of the Dashboard. No code/schema/stubs exist yet.
-- **UX proposals needing Kris's explicit yes** (brief §12.6–§12.10) —
-  product decisions, not scheduled without approval.
 - **The brief's §9.4** (long functions beyond `MainWindow`'s own
   decomposition) — optional; fold into a session that finishes early,
   or skip and say so.
