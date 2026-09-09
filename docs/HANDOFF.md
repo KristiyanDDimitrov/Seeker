@@ -8,22 +8,30 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `2b83554` — "S16 close-out: tick session-plan, rewrite
-  handoff". Working tree clean.
-- **`origin/main`: pushed and in sync**, confirmed
-  (`6f1ea0b..2b83554`, fast-forward). CI triggered on push
-  (`gh run list`) — check its result before assuming green; the
-  pre-existing `test_callback_server.py` trio (see Open issues below)
-  is expected to still fail there, nothing else should.
-- **pytest:** `1174 passed, 1 skipped in 94.37s` — the two long-
-  standing fullscreen-close flakes (`test_fullscreen_close_policy_
-  check_ignores_a_stale_request`, `test_reopening_after_a_fullscreen_
-  close_restores_prior_geometry`) each fired at least once across this
-  session's several full-suite runs, always in different combinations,
-  always passing individually — same pre-existing pattern CLAUDE.md's
-  Open issues already tracks, not a new regression.
+- **HEAD:** `6e0ed9d` — a tiny post-push HANDOFF.md correction on top of
+  `2b83554` ("S16 close-out"). Working tree clean except this rewrite.
+  **`6e0ed9d` itself is one commit ahead of `origin/main` (`2b83554`)
+  — ask before pushing.**
+- **Local pytest (offscreen Qt, this machine):** `1174 passed, 1
+  skipped in 94.37s` — the two long-standing fullscreen-close flakes
+  each fired at least once across this session's several full-suite
+  runs, always passing individually. Same pattern CLAUDE.md's Open
+  issues already tracks.
+- **Real CI (`gh run view 34346738383`, the push of `2b83554`):
+  ruff/mypy clean, pytest `5 failed, 1141 passed, 29 skipped`.** All 5
+  failures are pre-existing, tracked, confirmed NOT caused by this
+  session (see CLAUDE.md Open issues, "Five unconfirmed round-8 test
+  flakes" + the `test_callback_server.py` trio) — 3 are the known
+  `test_callback_server.py` ConnectTimeout trio, 1 is the already-
+  tracked `test_history_refresh_button_refetches` ~1-in-8 flake, and 1
+  (`test_view_menu_focus_search_navigates_and_focuses_the_search_field`)
+  is a newly-confirmed-on-CI flake — verified NOT a regression by
+  checking the immediately-prior CI run (`34340583368`, S15's own
+  close-out push, before any S16 work existed) which fails the exact
+  same way. CLAUDE.md updated with the finding and a corrected "never
+  anything new" claim that turned out stale.
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
-  findings.**
+  findings** (both local and on CI).
 
 ## Where we are in the plan
 

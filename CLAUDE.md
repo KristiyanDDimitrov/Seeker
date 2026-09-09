@@ -425,7 +425,7 @@ Genuinely open only — no "done" items, no flakes that resolved.
   symptom, trigger, and mechanism. Real Spotify sync duration and/or
   real DB size/content are the untested suspects.
   [HISTORY §70](docs/HISTORY.md#70)
-- **Four unconfirmed round-8 test flakes.** Diagnose any recurrence
+- **Five unconfirmed round-8 test flakes.** Diagnose any recurrence
   directly — never reach for `pytest-rerunfailures`.
   - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
     once across ~12 full-suite runs, clean since. Round 8 §14
@@ -460,6 +460,18 @@ Genuinely open only — no "done" items, no flakes that resolved.
     evidence of a real ordering/state-leak bug in that area than either
     single occurrence was; worth a dedicated diagnosis session if it
     recurs a third time.
+  - `test_view_menu_focus_search_navigates_and_focuses_the_search_field`
+    (added S15, §12.3/§12.5) — fails on real CI (`macos-latest`) with
+    `assert False` on `search_artist_edit.hasFocus()`, confirmed on TWO
+    consecutive real runs (`34340583368` at S15's own close-out commit
+    `6f1ea0b`, before any S16 work existed; `34346738383` at S16's
+    close-out `2b83554`) — not a regression from S16, and 2-for-2 on CI
+    is stronger than a one-off. Passes reliably locally every time
+    (confirmed across many full-suite runs this session). Consistent
+    with a real focus-doesn't-land-without-a-real-window-manager gap
+    under CI's headless/offscreen platform — plausible but UNVERIFIED;
+    `QApplication.setActiveWindow`/a real `activateWindow()` call before
+    the assertion is the next thing to try if it recurs.
 - **Three registered library locations nest inside each other and
   double-index ~3,450 real files** — `add_location`/
   `add_location_from_path` only check exact path-string uniqueness, no
@@ -483,9 +495,16 @@ Genuinely open only — no "done" items, no flakes that resolved.
   [HISTORY §117](docs/HISTORY.md#117)
 - **CI is real and running (not billing-blocked) as of 2026-09-08 —
   the S1.1/§117 "never completed a real run" finding is superseded.**
-  Confirmed live via `gh run list`/`gh run view`: three consecutive
-  completed runs on `origin/main`, ruff/mypy clean on all three, pytest
-  failing on exactly the two known issues above (never anything new).
+  Confirmed live via `gh run list`/`gh run view`: ruff/mypy clean on
+  every run inspected so far. **S16 update, correcting the "never
+  anything new" claim this bullet used to make:** two more real,
+  CI-only pytest failures confirmed live since — the focus-search flake
+  above, and `test_history_refresh_button_refetches` (already tracked
+  above as a ~1-in-8 to 1-in-10 flake; this was one of those
+  recurrences, not a new defect). Both are known/tracked, neither is a
+  surprise, but "never anything new" was never re-verified after S14
+  wrote it and turned out false the moment it was actually checked
+  again — don't repeat an unverified claim as if re-confirmed.
   The 29-vs-1 skipped-test mismatch an earlier round left as an open
   question is now explained, not just observed: 29 = 28
   `@requires_x9_pro`-gated tests (no such drive on a GitHub runner) + 1
