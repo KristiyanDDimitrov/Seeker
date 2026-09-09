@@ -1,3 +1,4 @@
+import base64
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -3920,3 +3921,170 @@ def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):
 
     assert not window.poll_timer.isActive()
     assert not window.backend_poll_timer.isActive()
+
+
+# --- Window geometry/last-page persistence (round 8 §12.1) -----------------
+
+def test_cleanup_before_quit_persists_window_geometry_and_last_page(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("history")
+
+    window.cleanup_before_quit()
+
+    assert application.settings.window_geometry
+    assert application.settings.last_open_page == "history"
+
+
+def test_cleanup_before_quit_persists_the_page_before_settings_was_opened(
+        qtbot,
+):
+    # _show_page's own settings-transition tracking (_previous_page_key)
+    # is what a real "closed while on Settings" quit should persist,
+    # not the transient "settings" key itself — reopening straight into
+    # Settings would strand the user with no page to go "back" to.
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("search")
+    window._on_settings_clicked()
+
+    window.cleanup_before_quit()
+
+    assert application.settings.last_open_page == "search"
+
+
+def test_restore_window_geometry_decodes_and_calls_restore_geometry(
+        qtbot, monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(
+        MainWindow, "restoreGeometry",
+        lambda self, data: (calls.append(bytes(data.data())), True)[1],
+    )
+    application = FakeApplication()
+    application._config_store = replace(
+        application._config_store,
+        window_geometry=base64.b64encode(b"fake-geometry-blob").decode(
+            "ascii",
+        ),
+    )
+
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert calls == [b"fake-geometry-blob"]
+
+
+def test_restore_window_geometry_tolerates_a_corrupt_stored_value(qtbot):
+    application = FakeApplication()
+    application._config_store = replace(
+        application._config_store, window_geometry="not valid base64!!",
+    )
+
+    # Must not raise — a hand-edited or future-format config.json is
+    # exactly the case _restore_window_geometry's own docstring guards.
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+
+def test_last_open_page_restored_on_construction(qtbot):
+    application = FakeApplication()
+    application._config_store = replace(
+        application._config_store, last_open_page="review",
+    )
+
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._current_page_key == "review"
+
+
+def test_last_open_page_falls_back_to_dashboard_for_an_unrecognized_key(
+        qtbot,
+):
+    application = FakeApplication()
+    application._config_store = replace(
+        application._config_store, last_open_page="not-a-real-page",
+    )
+
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._current_page_key == "dashboard"
+
+
+# --- Menu bar: View/Window (round 8 §12.3/§12.5) ----------------------------
+
+def test_view_menu_has_nav_shortcuts_and_actions(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    menu_bar = window.menuBar()
+    view_menu = next(
+        menu for menu in menu_bar.findChildren(QMenu) if "View" in menu.title()
+    )
+    actions_by_text = {
+        action.text(): action
+        for action in view_menu.actions() if not action.isSeparator()
+    }
+
+    assert set(actions_by_text) == {
+        "Dashboard", "Search", "Downloads", "Review", "Duplicates",
+        "Sharing", "History", "Refresh", "Focus Search", "Toggle Theme",
+        "Settings…",
+    }
+    assert actions_by_text["Dashboard"].shortcut().toString() == "Ctrl+1"
+    assert actions_by_text["History"].shortcut().toString() == "Ctrl+7"
+    assert actions_by_text["Refresh"].shortcut().toString() == "Ctrl+R"
+    assert (
+        actions_by_text["Focus Search"].shortcut().toString() == "Ctrl+F"
+    )
+
+
+def test_view_menu_nav_action_navigates_to_its_page(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    menu_bar = window.menuBar()
+    view_menu = next(
+        menu for menu in menu_bar.findChildren(QMenu) if "View" in menu.title()
+    )
+    search_action = next(
+        action for action in view_menu.actions() if action.text() == "Search"
+    )
+    search_action.trigger()
+
+    assert window._current_page_key == "search"
+
+
+def test_view_menu_focus_search_navigates_and_focuses_the_search_field(
+        qtbot,
+):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    window._on_focus_search_clicked()
+
+    assert window._current_page_key == "search"
+    assert window._search_page.search_artist_edit.hasFocus()
+
+
+def test_window_menu_has_minimize_and_zoom_actions(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    menu_bar = window.menuBar()
+    window_menu = next(
+        menu for menu in menu_bar.findChildren(QMenu)
+        if "Window" in menu.title()
+    )
+    action_texts = [action.text() for action in window_menu.actions()]
+
+    assert action_texts == ["Minimize", "Zoom"]

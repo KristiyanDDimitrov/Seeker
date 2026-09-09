@@ -56,6 +56,18 @@ class SeekerConfig:
     # time (see _resolve_theme_mode below) rather than raising or
     # propagating a bad value into theme.py.
     theme_mode: str = "system"
+    # Round 8 §12.1 — base64 of QMainWindow.saveGeometry()'s QByteArray
+    # (size, position, maximized/fullscreen state). Written once, at
+    # real quit (MainWindow.cleanup_before_quit), never on every
+    # resize/move — restoreGeometry() tolerates a missing/corrupt value
+    # by leaving the window at its hardcoded default, so no validation
+    # is needed here.
+    window_geometry: str | None = None
+    # The nav sidebar key (e.g. "dashboard") shown when the window was
+    # last closed. An unrecognized value (a key a later version removed)
+    # is ignored at restore time the same way theme_mode's own garbage
+    # value is — falls back to the hardcoded "dashboard" default.
+    last_open_page: str | None = None
 
 
 def resolve_config_path() -> Path:
@@ -110,6 +122,8 @@ def load_config(path: Path) -> SeekerConfig:
         notify_needs_decision=data.get("notify_needs_decision", True),
         notify_errors=data.get("notify_errors", True),
         theme_mode=_resolve_theme_mode(data.get("theme_mode")),
+        window_geometry=data.get("window_geometry"),
+        last_open_page=data.get("last_open_page"),
     )
 
 

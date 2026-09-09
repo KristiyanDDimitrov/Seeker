@@ -1,3 +1,4 @@
+import base64
 import logging
 import math
 import sys
@@ -5,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import (
+    QByteArray,
     QPointF,
     QRect,
     QRectF,
@@ -17,6 +19,7 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QGuiApplication,
+    QKeySequence,
     QPainter,
     QPainterPath,
     QPaintEvent,
@@ -439,6 +442,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Seeker")
         self.resize(1180, 760)
         self.setMinimumSize(960, 640)
+        # Round 8 §12.1 — restoreGeometry() silently no-ops on a
+        # missing/corrupt value, leaving the resize() default above in
+        # place, so there's nothing to validate here beyond the base64
+        # decode itself.
+        self._restore_window_geometry()
 
         self._build_ui()
         # Roadmap item C5.6 — subscribes to the OS's own appearance
@@ -571,6 +579,8 @@ class MainWindow(QMainWindow):
         ))
 
     def _build_ui(self) -> None:
+        self._build_view_menu()
+        self._build_window_menu()
         self._build_help_menu()
 
         shell = QWidget()
@@ -720,10 +730,58 @@ class MainWindow(QMainWindow):
         self.stacked_widget.currentChanged.connect(self._on_page_changed)
 
         self.setCentralWidget(shell)
-        self._show_page("dashboard")
+        # Round 8 §12.1 — restore the last-open page; an unrecognized/
+        # missing key (a fresh install, or a page a later version
+        # removed) falls back to the hardcoded "dashboard" default.
+        restored_page = self.application.settings.last_open_page
+        self._show_page(
+            restored_page if restored_page in self._page_indices
+            else "dashboard"
+        )
 
     def _register_page(self, key: str, widget: QWidget) -> None:
         self._page_indices[key] = self.stacked_widget.addWidget(widget)
+
+    def _restore_window_geometry(self) -> None:
+        # Round 8 §12.1 — a corrupt/foreign base64 blob (a hand-edited
+        # config.json, or a value from some future format this version
+        # doesn't understand) must never raise; restoreGeometry()
+        # itself already reports success/failure via its return value
+        # rather than throwing, so a bad value is just left as the
+        # resize() default from the caller above.
+        encoded = self.application.settings.window_geometry
+        if not encoded:
+            return
+
+        try:
+            raw = base64.b64decode(encoded)
+        except (ValueError, TypeError):
+            return
+
+        self.restoreGeometry(QByteArray(raw))
+
+    def _persist_window_geometry(self) -> None:
+        # Round 8 §12.1 — called from cleanup_before_quit, the one real
+        # cleanup path for every quit route (see that method's own
+        # comment); hiding to the tray does not destroy this window, so
+        # there is nothing to lose on that path and no reason to persist
+        # on every resize/move.
+        encoded = base64.b64encode(
+            self.saveGeometry().data()
+        ).decode("ascii")
+        # Settings is reached FROM a nav page rather than being one
+        # itself (_show_page's own settings-transition tracking already
+        # treats it this way, via _previous_page_key) — persisting the
+        # page the user was actually on before that detour reopens on
+        # the page they meant to return to, not a transient stop.
+        page_key = (
+            self._previous_page_key
+            if self._current_page_key == "settings"
+            else self._current_page_key
+        )
+        self.application.update_settings(
+            window_geometry=encoded, last_open_page=page_key,
+        )
 
     # History's own delegating properties (window.history_table, etc.)
     # were deleted at the test-split session (S11.1, §9.3.4) — its
@@ -1083,6 +1141,74 @@ class MainWindow(QMainWindow):
         label = dict(_NAV_PAGES).get(key) or key.capitalize()
         button = self._nav_buttons[key]
         button.setText(f"{label}  ({count})" if count > 0 else label)
+
+    def _build_view_menu(self) -> None:
+        # Round 8 §12.3/§12.5 — ⌘1-⌘7 for the nav pages, plus ⌘R
+        # refresh, ⌘F focus search and ⌘, Settings, all surfaced here
+        # for discoverability rather than left as invisible shortcuts.
+        view_menu = self.menuBar().addMenu("&View")
+
+        for index, (key, label) in enumerate(_NAV_PAGES, start=1):
+            action = QAction(label, self)
+            action.setShortcut(QKeySequence(f"Ctrl+{index}"))
+            action.triggered.connect(
+                lambda _checked=False, key=key: self._show_page(key)
+            )
+            view_menu.addAction(action)
+
+        view_menu.addSeparator()
+
+        refresh_action = QAction("Refresh", self)
+        refresh_action.setShortcut(QKeySequence("Ctrl+R"))
+        refresh_action.triggered.connect(self._on_sync_clicked)
+        view_menu.addAction(refresh_action)
+
+        focus_search_action = QAction("Focus Search", self)
+        focus_search_action.setShortcut(QKeySequence("Ctrl+F"))
+        focus_search_action.triggered.connect(self._on_focus_search_clicked)
+        view_menu.addAction(focus_search_action)
+
+        view_menu.addSeparator()
+
+        toggle_theme_action = QAction("Toggle Theme", self)
+        toggle_theme_action.triggered.connect(self._on_theme_toggle_clicked)
+        view_menu.addAction(toggle_theme_action)
+
+        # triggered emits a bool — _on_settings_clicked's first real
+        # parameter is initial_tab, not a checked flag (same reasoning
+        # as settings_button's own connection in _build_sidebar).
+        settings_action = QAction("Settings…", self)
+        settings_action.setShortcut(
+            QKeySequence(QKeySequence.StandardKey.Preferences)
+        )
+        settings_action.triggered.connect(
+            lambda: self._on_settings_clicked()  # noqa: PLW0108
+        )
+        view_menu.addAction(settings_action)
+
+    def _on_focus_search_clicked(self) -> None:
+        self._show_page("search")
+        self._search_page.search_artist_edit.setFocus()
+
+    def _build_window_menu(self) -> None:
+        # Round 8 §12.5 — the standard macOS Window-menu pair; Qt
+        # supplies the rest of the app's window management for free.
+        window_menu = self.menuBar().addMenu("&Window")
+
+        minimize_action = QAction("Minimize", self)
+        minimize_action.setShortcut(QKeySequence("Ctrl+M"))
+        minimize_action.triggered.connect(self.showMinimized)
+        window_menu.addAction(minimize_action)
+
+        zoom_action = QAction("Zoom", self)
+        zoom_action.triggered.connect(self._on_zoom_clicked)
+        window_menu.addAction(zoom_action)
+
+    def _on_zoom_clicked(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
 
     def _build_help_menu(self) -> None:
         menu_bar = self.menuBar()
@@ -1557,6 +1683,8 @@ class MainWindow(QMainWindow):
         # fingerprinting internals at all.
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
+
+        self._persist_window_geometry()
 
         # Roadmap item C5.6 — a real Qt signal connection to a
         # GLOBAL object (QGuiApplication.styleHints(), not this
