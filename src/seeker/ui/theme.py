@@ -865,6 +865,18 @@ QPushButton[variant="danger"]:hover {{
     color: {palette.ON_ACCENT};
 }}
 
+/* Round 8 §12.8 — a horizontal segmented filter row (Dashboard's
+track-status filter): plain default QPushButton look unchecked, an
+ACCENT fill once checked — a pill-row variant of [variant="primary"]
+rather than the sidebar's own [navItem="true"] left-border treatment,
+which assumes a vertical list. */
+QPushButton[variant="segment"]:checked {{
+    background-color: {palette.ACCENT};
+    border: 1px solid {palette.ACCENT};
+    color: {palette.ON_ACCENT};
+    font-weight: 600;
+}}
+
 /* Sidebar nav items — transparent by default (deliberately NOT the
 ordinary QPushButton surface/border look above; a flat text-only
 button reads better in a list of nav items than a row of boxed

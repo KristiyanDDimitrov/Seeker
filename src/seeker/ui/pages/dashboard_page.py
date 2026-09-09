@@ -23,6 +23,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -242,6 +243,10 @@ class DashboardPage(QWidget):
         # row-position handler reads instead.
         self._current_track_statuses: list[TrackStatus] = []
         self._track_status_by_id: dict[str, TrackStatus] = {}
+        # Round 8 §12.8 — which segment of _build_track_filter_row is
+        # active; "all" shows every status, matching the table's
+        # original unfiltered behavior.
+        self._track_filter: str = "all"
         # The "next step" notice is re-rendered unconditionally on
         # every 2s poll tick (see _render_next_step), so dismissing it
         # needs its own memory: the key of whatever step was on screen
@@ -331,6 +336,7 @@ class DashboardPage(QWidget):
             self._on_track_table_cell_double_clicked
         )
         self._configure_track_columns()
+        right.addLayout(self._build_track_filter_row())
         self.track_area_stack = QStackedWidget()
         # The CARD, not the bare table, is the stack's real page;
         # setCurrentWidget() calls below target this card.
@@ -479,6 +485,67 @@ class DashboardPage(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, playlist)
             self.playlist_list.addItem(item)
 
+    # Round 8 §12.8 — filter key -> (label, predicate). "all" has no
+    # predicate (always matches); order here is the row's own left-
+    # to-right button order.
+    _TRACK_FILTERS: tuple[tuple[str, str], ...] = (
+        ("all", "All"),
+        ("missing", "Missing"),
+        ("needs_review", "Needs review"),
+        ("untagged", "Untagged"),
+    )
+
+    def _build_track_filter_row(self) -> QHBoxLayout:
+        # A segmented filter over the same TrackStatus.state values
+        # _decide_next_step already counts (missing_count/
+        # untagged_count above) — "Missing" and "Untagged" read
+        # identically to those two; "Needs review" is the two review-
+        # bound states _decide_next_step deliberately excludes from
+        # missing_count (an active download_requests row already
+        # exists for them).
+        row = QHBoxLayout()
+        row.setSpacing(theme.SPACING_XS)
+
+        self._track_filter_group = QButtonGroup(self)
+        self._track_filter_group.setExclusive(True)
+        self._track_filter_buttons: dict[str, QPushButton] = {}
+
+        for key, label in self._TRACK_FILTERS:
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setProperty("variant", "segment")
+            button.setChecked(key == self._track_filter)
+            button.toggled.connect(
+                lambda checked, key=key: (
+                    self._on_track_filter_toggled(key, checked)
+                )
+            )
+            self._track_filter_group.addButton(button)
+            self._track_filter_buttons[key] = button
+            row.addWidget(button)
+
+        row.addStretch()
+        return row
+
+    def _on_track_filter_toggled(self, key: str, checked: bool) -> None:
+        if not checked:
+            # Only the newly-checked button's own signal acts — the
+            # QButtonGroup emits toggled(False) on the outgoing button
+            # too, which would otherwise re-render twice per click.
+            return
+
+        self._track_filter = key
+        self._apply_track_filter_and_render()
+
+    def _status_matches_track_filter(self, status: TrackStatus) -> bool:
+        if self._track_filter == "missing":
+            return status.state in (NOT_FOUND, REVIEW_CANDIDATE)
+        if self._track_filter == "needs_review":
+            return status.state in (NEEDS_REVIEW, AWAITING_REVIEW)
+        if self._track_filter == "untagged":
+            return status.state == IN_LIBRARY and status.tagged_at is None
+        return True
+
     def _build_track_empty_panel(self) -> QWidget:
         # "No playlist selected, or an empty table, renders a small
         # centred panel with one line of copy and the relevant button —
@@ -570,6 +637,13 @@ class DashboardPage(QWidget):
         self._track_status_by_id = {
             status.track.id: status for status in statuses
         }
+        self._apply_track_filter_and_render()
+
+    def _apply_track_filter_and_render(self) -> None:
+        # Round 8 §12.8 — split out of _render_track_statuses so a
+        # filter-button click can re-render from the already-cached
+        # _current_track_statuses without a fresh backend poll.
+        statuses = self._current_track_statuses
 
         if not statuses:
             self.track_table.setRowCount(0)
@@ -589,16 +663,33 @@ class DashboardPage(QWidget):
             self.track_area_stack.setCurrentWidget(self._track_empty_panel)
             return
 
+        visible = [
+            status for status in statuses
+            if self._status_matches_track_filter(status)
+        ]
+
+        if not visible:
+            # A real, distinct empty state from "tracks haven't been
+            # loaded yet" above — tracks exist, none match the current
+            # filter, so no Load-tracks button belongs here.
+            self.track_table.setRowCount(0)
+            self.track_empty_label.setText(
+                "No tracks match this filter."
+            )
+            self.sync_tracks_button.hide()
+            self.track_area_stack.setCurrentWidget(self._track_empty_panel)
+            return
+
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
         # Round 8 §12.2 — sorting is live on this table; disabled for
         # the body of this rebuild (see preserving_sort_order's own
         # docstring for why) and restored afterward.
         with preserving_sort_order(self.track_table):
-            self.track_table.setRowCount(len(statuses))
+            self.track_table.setRowCount(len(visible))
             action_widgets: list[QWidget] = []
 
-            for row, status in enumerate(statuses):
+            for row, status in enumerate(visible):
                 label = f"{status.track.artist} - {status.track.title}"
                 label_item = QTableWidgetItem(label)
                 # Round 8 §12.2 — the row's own anchor back to its real

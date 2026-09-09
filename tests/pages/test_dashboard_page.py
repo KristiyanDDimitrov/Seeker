@@ -20,15 +20,18 @@ as their assertion target — same precedent as the activity-strip and
 structural-sweep tests that also stayed.
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.track_status import (
+    AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
     NEEDS_REVIEW,
     NOT_FOUND,
+    REVIEW_CANDIDATE,
     TrackStatus,
 )
 from seeker.ui import theme
@@ -731,4 +734,119 @@ def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
     painted_center = (painted_ys[0] + painted_ys[-1]) / 2 / dpr
     row_center = top_left.y() + row_rect.center().y()
     assert abs(painted_center - row_center) <= 2
+
+
+# --- Track status filter (round 8 §12.8) ------------------------------------
+
+
+def _visible_track_ids(window) -> set[str]:
+    # Reads each row's own UserRole anchor (see _render_track_statuses),
+    # not the displayed label — every track in these tests shares the
+    # same "Artist - Title" text (test_ui_smoke.py's _make_track), so
+    # only the id actually distinguishes rows.
+    table = window._dashboard_page.track_table
+    return {
+        table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        for row in range(table.rowCount())
+    }
+
+
+def test_track_filter_defaults_to_all_and_shows_every_status(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=IN_LIBRARY),
+        _make_track_status(track_id="t2", state=NOT_FOUND),
+        _make_track_status(track_id="t3", state=NEEDS_REVIEW),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert (
+        window._dashboard_page._track_filter_buttons["all"].isChecked()
+    )
+    window._dashboard_page._render_track_statuses(statuses)
+
+    assert window._dashboard_page.track_table.rowCount() == 3
+
+
+def test_track_filter_missing_shows_not_found_and_review_candidate_only(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=IN_LIBRARY),
+        _make_track_status(track_id="t2", state=NOT_FOUND),
+        _make_track_status(track_id="t3", state=REVIEW_CANDIDATE),
+        _make_track_status(track_id="t4", state=NEEDS_REVIEW),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page._render_track_statuses(statuses)
+    window._dashboard_page._track_filter_buttons["missing"].click()
+
+    assert window._dashboard_page.track_table.rowCount() == 2
+    assert _visible_track_ids(window) == {"t2", "t3"}
+
+
+def test_track_filter_needs_review_shows_needs_and_awaiting_review_only(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=NEEDS_REVIEW),
+        _make_track_status(track_id="t2", state=AWAITING_REVIEW),
+        _make_track_status(track_id="t3", state=NOT_FOUND),
+        _make_track_status(track_id="t4", state=IN_LIBRARY),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page._render_track_statuses(statuses)
+    window._dashboard_page._track_filter_buttons["needs_review"].click()
+
+    assert window._dashboard_page.track_table.rowCount() == 2
+    assert _visible_track_ids(window) == {"t1", "t2"}
+
+
+def test_track_filter_untagged_shows_untagged_in_library_tracks_only(qtbot):
+    statuses = [
+        _make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
+        _make_track_status(
+            track_id="t2", state=IN_LIBRARY,
+            tagged_at="2026-08-30T12:00:00+00:00",
+        ),
+        _make_track_status(track_id="t3", state=NOT_FOUND),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page._render_track_statuses(statuses)
+    window._dashboard_page._track_filter_buttons["untagged"].click()
+
+    assert window._dashboard_page.track_table.rowCount() == 1
+    assert _visible_track_ids(window) == {"t1"}
+
+
+def test_track_filter_with_no_matches_shows_empty_state_without_load_button(
+        qtbot,
+):
+    statuses = [_make_track_status(track_id="t1", state=IN_LIBRARY)]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page._render_track_statuses(statuses)
+    window._dashboard_page._track_filter_buttons["missing"].click()
+
+    assert window._dashboard_page.track_table.rowCount() == 0
+    assert (
+        window._dashboard_page.track_area_stack.currentWidget()
+        is window._dashboard_page._track_empty_panel
+    )
+    assert "filter" in window._dashboard_page.track_empty_label.text().lower()
+    # Distinct from the "tracks haven't been loaded yet" empty state —
+    # there's nothing to load here, so no button.
+    assert window._dashboard_page.sync_tracks_button.isHidden()
+
+    # Switching back to "All" restores the real row.
+    window._dashboard_page._track_filter_buttons["all"].click()
+    assert window._dashboard_page.track_table.rowCount() == 1
 
