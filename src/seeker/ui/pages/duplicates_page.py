@@ -226,6 +226,13 @@ class DuplicatesPage(QWidget):
             _DUPLICATES_COLUMN_HEADERS
         )
         theme.apply_table_defaults(self.duplicates_table)
+        # Round 8 §12.2 — this table's rows are grouped per duplicate
+        # cluster via setSpan() (see _render_duplicate_groups below);
+        # Qt's own sort reorders rows independent of that grouping,
+        # which would visually merge/split unrelated clusters. Opted
+        # back out of the sorting apply_table_defaults enables for
+        # every other table.
+        self.duplicates_table.setSortingEnabled(False)
         layout.addWidget(theme.make_card(self.duplicates_table))
         self._configure_duplicates_columns()
 

@@ -18,6 +18,7 @@ from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 
 # Plain-language labels for HistoryEvent.event_type — see
 # models/history_event.py for the two real values.
@@ -124,23 +125,34 @@ class HistoryPage(QWidget):
         else:
             self.history_status_label.setText("")
 
-        self.history_table.setRowCount(len(events))
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.history_table):
+            self.history_table.setRowCount(len(events))
 
-        for row, event in enumerate(events):
-            self.history_table.setItem(
-                row, 0, QTableWidgetItem(format_timestamp(event.occurred_at)),
-            )
-            self.history_table.setItem(
-                row, 1,
-                QTableWidgetItem(_HISTORY_EVENT_LABELS[event.event_type]),
-            )
-            self.history_table.setItem(
-                row, 2,
-                QTableWidgetItem(
-                    f"{event.track_artist} - {event.track_title} "
-                    f"({event.playlist_name})"
-                ),
-            )
-            self.history_table.setItem(
-                row, 3, QTableWidgetItem(event.detail),
-            )
+            for row, event in enumerate(events):
+                # Round 8 §12.2 — occurred_at is a real ISO 8601 string
+                # (sorts chronologically as plain text); the DISPLAYED
+                # "Feb 03, 2026" label would sort by month name instead
+                # if used as the sort key directly (see SortKeyItem).
+                self.history_table.setItem(
+                    row, 0,
+                    SortKeyItem(
+                        format_timestamp(event.occurred_at), event.occurred_at,
+                    ),
+                )
+                self.history_table.setItem(
+                    row, 1,
+                    QTableWidgetItem(_HISTORY_EVENT_LABELS[event.event_type]),
+                )
+                self.history_table.setItem(
+                    row, 2,
+                    QTableWidgetItem(
+                        f"{event.track_artist} - {event.track_title} "
+                        f"({event.playlist_name})"
+                    ),
+                )
+                self.history_table.setItem(
+                    row, 3, QTableWidgetItem(event.detail),
+                )

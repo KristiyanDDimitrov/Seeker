@@ -50,6 +50,7 @@ from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
+from seeker.ui.table_sort import preserving_sort_order
 from seeker.ui.workers import run_worker
 
 _STATE_LABELS = {
@@ -225,10 +226,14 @@ class DashboardPage(QWidget):
         self._host = host
 
         self.selected_playlist: Playlist | None = None
-        # Maps track_table row -> TrackStatus, rebuilt on every render —
-        # needed to resolve a multi-selection back to real track ids for
-        # "Tag selected" (Step 7).
+        # The full statuses list for the currently-selected playlist,
+        # rebuilt on every render. Round 8 §12.2 — no longer used to
+        # resolve a table row back to its TrackStatus (the table is now
+        # sortable, so a row's visual position no longer matches this
+        # list's order); _track_status_by_id below is what every
+        # row-position handler reads instead.
         self._current_track_statuses: list[TrackStatus] = []
+        self._track_status_by_id: dict[str, TrackStatus] = {}
         # The "next step" notice is re-rendered unconditionally on
         # every 2s poll tick (see _render_next_step), so dismissing it
         # needs its own memory: the key of whatever step was on screen
@@ -408,7 +413,17 @@ class DashboardPage(QWidget):
         rows = sorted(
             {index.row() for index in self.track_table.selectionModel().selectedRows()}
         )
-        return [self._current_track_statuses[row].track.id for row in rows]
+        # Reads each row's own UserRole anchor (see _render_track_
+        # statuses) rather than indexing _current_track_statuses by
+        # row — sort-safe regardless of the table's current order.
+        track_ids = []
+
+        for row in rows:
+            item = self.track_table.item(row, 0)
+            if item is not None:
+                track_ids.append(item.data(Qt.ItemDataRole.UserRole))
+
+        return track_ids
 
     def _build_track_actions(self, status: TrackStatus) -> QWidget:
         # No button at all outside IN_LIBRARY — tag_tracks would just
@@ -437,11 +452,10 @@ class DashboardPage(QWidget):
 
     def _on_track_table_context_menu(self, position: Any) -> None:
         row = self.track_table.rowAt(position.y())
+        status = self._track_status_at_row(row)
 
-        if row < 0 or row >= len(self._current_track_statuses):
+        if status is None:
             return
-
-        status = self._current_track_statuses[row]
 
         if status.state != IN_LIBRARY or status.tagged_at is None:
             # Nothing this menu offers applies to an untagged or
@@ -558,6 +572,7 @@ class DashboardPage(QWidget):
 
     def _render_no_playlist_selected(self) -> None:
         self._current_track_statuses = []
+        self._track_status_by_id = {}
         self.track_table.setRowCount(0)
         self.track_empty_label.setText(
             "Pick a playlist on the left to see its tracks."
@@ -567,6 +582,17 @@ class DashboardPage(QWidget):
 
     def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
         self._current_track_statuses = statuses
+        # Round 8 §12.2 — sorting is now enabled on this table, which
+        # moves each row's QTableWidgetItems (and their attached
+        # UserRole data) but never touches this plain Python list, so
+        # any row-position lookup keyed off `_current_track_statuses`
+        # directly (as opposed to reading a row's own UserRole track
+        # id back and looking it up here) goes stale the moment a user
+        # sorts. See _selected_track_ids/_on_track_table_context_menu/
+        # _on_track_table_cell_double_clicked.
+        self._track_status_by_id = {
+            status.track.id: status for status in statuses
+        }
 
         if not statuses:
             self.track_table.setRowCount(0)
@@ -588,73 +614,86 @@ class DashboardPage(QWidget):
 
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
-        self.track_table.setRowCount(len(statuses))
-        action_widgets: list[QWidget] = []
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.track_table):
+            self.track_table.setRowCount(len(statuses))
+            action_widgets: list[QWidget] = []
 
-        for row, status in enumerate(statuses):
-            label = f"{status.track.artist} - {status.track.title}"
-            self.track_table.setItem(row, 0, QTableWidgetItem(label))
+            for row, status in enumerate(statuses):
+                label = f"{status.track.artist} - {status.track.title}"
+                label_item = QTableWidgetItem(label)
+                # Round 8 §12.2 — the row's own anchor back to its real
+                # data, read by every row-position handler below instead of
+                # indexing _current_track_statuses by row (see this
+                # method's own comment above).
+                label_item.setData(Qt.ItemDataRole.UserRole, status.track.id)
+                self.track_table.setItem(row, 0, label_item)
 
-            state_text = _STATE_LABELS[status.state]
-            # Only meaningful for NEEDS_REVIEW now: REVIEW_CANDIDATE's
-            # own label already says "Candidate to review," so
-            # appending this here would just repeat itself
-            # (dashboard_service.py's own _compute_status never sets
-            # soulseek_candidate on any other state — see its
-            # docstring) (HISTORY §66).
-            if status.state == NEEDS_REVIEW and status.soulseek_candidate is not None:
-                state_text += " (SoulSeek candidate found)"
-            status_item = QTableWidgetItem(state_text)
+                state_text = _STATE_LABELS[status.state]
+                # Only meaningful for NEEDS_REVIEW now: REVIEW_CANDIDATE's
+                # own label already says "Candidate to review," so
+                # appending this here would just repeat itself
+                # (dashboard_service.py's own _compute_status never sets
+                # soulseek_candidate on any other state — see its
+                # docstring) (HISTORY §66).
+                if (
+                        status.state == NEEDS_REVIEW
+                        and status.soulseek_candidate is not None
+                ):
+                    state_text += " (SoulSeek candidate found)"
+                status_item = QTableWidgetItem(state_text)
 
-            # Only these states have anything to jump to on the Review
-            # page; every other status is a genuine no-op on
-            # double-click, so only these get the affordance rather than
-            # a misleading cue on every row (HISTORY §56 §2.4, §66).
-            if status.state in (
-                    NEEDS_REVIEW,
-                    AWAITING_REVIEW,
-                    REVIEW_CANDIDATE,
-            ):
-                status_item.setToolTip(
-                    help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
-                )
-                font = status_item.font()
-                font.setUnderline(True)
-                status_item.setFont(font)
-                status_item.setForeground(QColor(theme.ACCENT))
+                # Only these states have anything to jump to on the Review
+                # page; every other status is a genuine no-op on
+                # double-click, so only these get the affordance rather than
+                # a misleading cue on every row (HISTORY §56 §2.4, §66).
+                if status.state in (
+                        NEEDS_REVIEW,
+                        AWAITING_REVIEW,
+                        REVIEW_CANDIDATE,
+                ):
+                    status_item.setToolTip(
+                        help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
+                    )
+                    font = status_item.font()
+                    font.setUnderline(True)
+                    status_item.setFont(font)
+                    status_item.setForeground(QColor(theme.ACCENT))
 
-            self.track_table.setItem(row, 1, status_item)
+                self.track_table.setItem(row, 1, status_item)
 
-            if (
-                    status.state == DOWNLOADING
-                    and status.total_bytes
-                    and status.bytes_transferred is not None
-            ):
-                progress = QProgressBar()
-                progress.setMaximum(status.total_bytes)
-                progress.setValue(status.bytes_transferred)
-                theme.style_determinate_progress_bar(progress)
-                # A bare QProgressBar handed to setCellWidget gets
-                # resized to the whole (tall) cell rect, then the global
-                # `QProgressBar { max-height: 14px; }` rule clamps it to
-                # the TOP instead of centering it — the identical bug
-                # HISTORY §96 fixed on the Downloads page, in this
-                # Dashboard-only builder that fix never touched
-                # (HISTORY §105). `theme.wrap_progress_bar` is the one
-                # shared container both pages now go through (moved out
-                # of main_window.py alongside the Downloads page itself,
-                # the moment a second caller needed it — HISTORY §119);
-                # the Dashboard deliberately passes no label (`None`) —
-                # no ETA is tracked per-track here, unlike Downloads.
-                self.track_table.setCellWidget(
-                    row, 2, theme.wrap_progress_bar(progress, None),
-                )
-            else:
-                self.track_table.setCellWidget(row, 2, QWidget())
+                if (
+                        status.state == DOWNLOADING
+                        and status.total_bytes
+                        and status.bytes_transferred is not None
+                ):
+                    progress = QProgressBar()
+                    progress.setMaximum(status.total_bytes)
+                    progress.setValue(status.bytes_transferred)
+                    theme.style_determinate_progress_bar(progress)
+                    # A bare QProgressBar handed to setCellWidget gets
+                    # resized to the whole (tall) cell rect, then the global
+                    # `QProgressBar { max-height: 14px; }` rule clamps it to
+                    # the TOP instead of centering it — the identical bug
+                    # HISTORY §96 fixed on the Downloads page, in this
+                    # Dashboard-only builder that fix never touched
+                    # (HISTORY §105). `theme.wrap_progress_bar` is the one
+                    # shared container both pages now go through (moved out
+                    # of main_window.py alongside the Downloads page itself,
+                    # the moment a second caller needed it — HISTORY §119);
+                    # the Dashboard deliberately passes no label (`None`) —
+                    # no ETA is tracked per-track here, unlike Downloads.
+                    self.track_table.setCellWidget(
+                        row, 2, theme.wrap_progress_bar(progress, None),
+                    )
+                else:
+                    self.track_table.setCellWidget(row, 2, QWidget())
 
-            track_actions = self._build_track_actions(status)
-            action_widgets.append(track_actions)
-            self.track_table.setCellWidget(row, 3, track_actions)
+                track_actions = self._build_track_actions(status)
+                action_widgets.append(track_actions)
+                self.track_table.setCellWidget(row, 3, track_actions)
 
         self._size_track_columns(action_widgets)
 
@@ -664,13 +703,28 @@ class DashboardPage(QWidget):
     def _size_track_columns(self, action_widgets: list[QWidget]) -> None:
         theme.size_columns(self.track_table, _TRACK_COLUMNS, action_widgets)
 
+    def _track_status_at_row(self, row: int) -> TrackStatus | None:
+        # Round 8 §12.2 — reads the row's own UserRole anchor (see
+        # _render_track_statuses) rather than indexing
+        # _current_track_statuses by row — sort-safe regardless of the
+        # table's current order.
+        if row < 0:
+            return None
+
+        item = self.track_table.item(row, 0)
+
+        if item is None:
+            return None
+
+        return self._track_status_by_id.get(item.data(Qt.ItemDataRole.UserRole))
+
     def _on_track_table_cell_double_clicked(
             self, row: int, _column: int,
     ) -> None:
-        if row < 0 or row >= len(self._current_track_statuses):
-            return
+        status = self._track_status_at_row(row)
 
-        status = self._current_track_statuses[row]
+        if status is None:
+            return
 
         if status.state not in (
                 NEEDS_REVIEW,

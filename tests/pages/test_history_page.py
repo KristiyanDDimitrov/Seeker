@@ -8,9 +8,35 @@ until S11.7) use it too, and there is no shared fixtures module yet for
 a factory two future test files both need. Imported from there below.
 """
 
+from PySide6.QtCore import Qt
+
 from seeker.models.history_event import DOWNLOADED, TAGGED
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import FakeApplication, _make_history_event
+
+
+def test_history_table_sorts_the_when_column_chronologically(qtbot):
+    # Round 8 §12.2 — "When" displays a formatted "Feb 01, 2026" label,
+    # which sorts "Feb" before "Jan" as plain text (alphabetically
+    # wrong — January is chronologically first). SortKeyItem's real
+    # ISO occurred_at sort key is what must actually drive the sort.
+    events = [
+        _make_history_event(occurred_at="2026-02-01T00:00:00+00:00"),
+        _make_history_event(occurred_at="2026-01-15T00:00:00+00:00"),
+    ]
+    application = FakeApplication(history_events=events)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("history")
+
+    qtbot.waitUntil(
+        lambda: window._history_page.history_table.rowCount() == 2, timeout=2000,
+    )
+
+    window._history_page.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
+
+    assert "Jan 15" in window._history_page.history_table.item(0, 0).text()
+    assert "Feb 1," in window._history_page.history_table.item(1, 0).text()
 
 
 def test_history_page_has_the_right_table_columns(qtbot):

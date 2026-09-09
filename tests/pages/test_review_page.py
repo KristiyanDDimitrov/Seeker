@@ -14,6 +14,7 @@ here, not re-exported from seeker.ui.main_window — that re-export only
 existed for this file's own prior residence in test_ui_smoke.py.
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QMessageBox, QPushButton
 
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
@@ -25,6 +26,43 @@ from test_ui_smoke import (
     _make_track,
     _make_upgrade_details,
 )
+
+
+def test_focus_pending_review_row_selects_the_correct_row_after_sorting(qtbot):
+    # Round 8 §12.2 — the needs-review table is now sortable;
+    # _focus_pending_review_row must resolve by the row's own UserRole
+    # track-id anchor, not by re-deriving a row index from the
+    # candidates list's insertion order (which no longer matches the
+    # table's row order once a user has sorted it).
+    candidates = [
+        (
+            _make_track(track_id="t1"),
+            _make_review_candidate(track_id="t1", score=10.0),
+        ),
+        (
+            _make_track(track_id="t2"),
+            _make_review_candidate(track_id="t2", score=90.0),
+        ),
+    ]
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._review_page._render_needs_review_candidates(candidates)
+    window._review_page.review_needs_table.sortItems(
+        1, Qt.SortOrder.DescendingOrder,
+    )
+    # t2 (score 90) now sits at row 0, t1 (score 10) at row 1 — the
+    # reverse of insertion order.
+    assert (
+        window._review_page.review_needs_table.item(0, 0)
+        .data(Qt.ItemDataRole.UserRole) == "t2"
+    )
+
+    window._review_page._pending_review_focus_track_id = "t1"
+    window._review_page._focus_pending_review_row()
+
+    assert window._review_page.review_needs_table.currentRow() == 1
 
 
 def test_review_tab_renders_needs_review_candidates(qtbot):

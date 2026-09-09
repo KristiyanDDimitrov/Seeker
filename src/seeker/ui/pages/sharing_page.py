@@ -24,6 +24,7 @@ from seeker.sharing_service import (
 )
 from seeker.ui import help_text, theme
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
 
@@ -206,49 +207,62 @@ class SharingPage(QWidget):
             self, reconciliation: list[LocationShareState],
     ) -> None:
         table = self.sharing_locations_table
-        table.setRowCount(len(reconciliation))
         action_widgets: list[QWidget] = []
 
-        for row, state in enumerate(reconciliation):
-            table.setItem(row, 0, QTableWidgetItem(state.location.name))
-            table.setItem(
-                row, 1, QTableWidgetItem("Yes" if state.shared else "No"),
-            )
-            table.setItem(
-                row, 2,
-                QTableWidgetItem(
-                    state.share.local_path if state.share else ""
-                ),
-            )
-            table.setItem(
-                row, 3,
-                QTableWidgetItem(
-                    str(state.share.files) if state.share
-                    and state.share.files is not None else ""
-                ),
-            )
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(table):
+            table.setRowCount(len(reconciliation))
 
-            if state.shared:
-                shared_widget = theme.cell_widget(QLabel("Shared"))
-                action_widgets.append(shared_widget)
-                table.setCellWidget(row, 4, shared_widget)
-                continue
+            for row, state in enumerate(reconciliation):
+                table.setItem(row, 0, QTableWidgetItem(state.location.name))
+                table.setItem(
+                    row, 1, QTableWidgetItem("Yes" if state.shared else "No"),
+                )
+                table.setItem(
+                    row, 2,
+                    QTableWidgetItem(
+                        state.share.local_path if state.share else ""
+                    ),
+                )
+                files = (
+                    state.share.files
+                    if state.share and state.share.files is not None
+                    else None
+                )
+                # Round 8 §12.2 — a real file count sorts numerically;
+                # the displayed text would otherwise sort "10" before
+                # "9" (see SortKeyItem).
+                table.setItem(
+                    row, 3,
+                    SortKeyItem(
+                        str(files) if files is not None else "",
+                        files if files is not None else -1,
+                    ),
+                )
 
-            button = QPushButton("Add to my SoulSeek share")
-            button.setToolTip(help_text.TOOLTIP_ADD_LOCATION_TO_SHARE)
-            button.clicked.connect(
-                lambda _checked=False, location=state.location:
-                self._on_add_location_to_share_clicked(location)
-            )
-            # A bare setCellWidget(button) gets literally resized to
-            # fill the whole cell rect (setCellWidget positions its
-            # widget directly, bypassing normal layout sizing), reading
-            # as a filled cell rather than a button. cell_widget()'s
-            # trailing stretch absorbs the leftover width instead
-            # (HISTORY §80).
-            button_widget = theme.cell_widget(button)
-            action_widgets.append(button_widget)
-            table.setCellWidget(row, 4, button_widget)
+                if state.shared:
+                    shared_widget = theme.cell_widget(QLabel("Shared"))
+                    action_widgets.append(shared_widget)
+                    table.setCellWidget(row, 4, shared_widget)
+                    continue
+
+                button = QPushButton("Add to my SoulSeek share")
+                button.setToolTip(help_text.TOOLTIP_ADD_LOCATION_TO_SHARE)
+                button.clicked.connect(
+                    lambda _checked=False, location=state.location:
+                    self._on_add_location_to_share_clicked(location)
+                )
+                # A bare setCellWidget(button) gets literally resized to
+                # fill the whole cell rect (setCellWidget positions its
+                # widget directly, bypassing normal layout sizing), reading
+                # as a filled cell rather than a button. cell_widget()'s
+                # trailing stretch absorbs the leftover width instead
+                # (HISTORY §80).
+                button_widget = theme.cell_widget(button)
+                action_widgets.append(button_widget)
+                table.setCellWidget(row, 4, button_widget)
 
         self._size_sharing_locations_columns(action_widgets)
 
@@ -272,53 +286,59 @@ class SharingPage(QWidget):
             self, uploads: list[UploadStatus],
     ) -> None:
         table = self.sharing_uploads_table
-        # Roadmap item 73 (P4 audit) — the SAME stale-span bug class as
-        # the duplicates table, found live during that fix's own
-        # "audit every other table" step: this table's empty-state
-        # branch sets a 4-column span at row 0; setRowCount() doesn't
-        # clear it, so a transition from empty -> a real upload left
-        # that span active, visually swallowing the new row's
-        # filename/state/progress cells into column 0 even though their
-        # real QTableWidgetItem data was set correctly underneath.
-        table.clearSpans()
-        table.setRowCount(len(uploads))
-
         active_keys: set[tuple[str, str]] = set()
         now = datetime.now(UTC)
 
-        for row, upload in enumerate(uploads):
-            table.setItem(
-                row, 0, QTableWidgetItem(upload.username or "")
-            )
-            table.setItem(
-                row, 1, QTableWidgetItem(upload.filename or "")
-            )
-            table.setItem(row, 2, QTableWidgetItem(upload.state or ""))
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(table):
+            # Roadmap item 73 (P4 audit) — the SAME stale-span bug class as
+            # the duplicates table, found live during that fix's own
+            # "audit every other table" step: this table's empty-state
+            # branch sets a 4-column span at row 0; setRowCount() doesn't
+            # clear it, so a transition from empty -> a real upload left
+            # that span active, visually swallowing the new row's
+            # filename/state/progress cells into column 0 even though their
+            # real QTableWidgetItem data was set correctly underneath.
+            table.clearSpans()
+            table.setRowCount(len(uploads))
 
-            progress_text = ""
-
-            if (
-                    upload.username is not None
-                    and upload.filename is not None
-                    and upload.bytes_transferred is not None
-            ):
-                key = (upload.username, upload.filename)
-                active_keys.add(key)
-                self._upload_eta_tracker.record(
-                    key, upload.bytes_transferred, now,
+            for row, upload in enumerate(uploads):
+                table.setItem(
+                    row, 0, QTableWidgetItem(upload.username or "")
                 )
-                progress_text = self._upload_eta_tracker.describe(
-                    key, upload.size,
+                table.setItem(
+                    row, 1, QTableWidgetItem(upload.filename or "")
                 )
+                table.setItem(row, 2, QTableWidgetItem(upload.state or ""))
 
-            table.setItem(row, 3, QTableWidgetItem(progress_text))
+                progress_text = ""
+
+                if (
+                        upload.username is not None
+                        and upload.filename is not None
+                        and upload.bytes_transferred is not None
+                ):
+                    key = (upload.username, upload.filename)
+                    active_keys.add(key)
+                    self._upload_eta_tracker.record(
+                        key, upload.bytes_transferred, now,
+                    )
+                    progress_text = self._upload_eta_tracker.describe(
+                        key, upload.size,
+                    )
+
+                table.setItem(row, 3, QTableWidgetItem(progress_text))
+
+            if not uploads:
+                table.setRowCount(1)
+                table.setSpan(0, 0, 1, 4)
+                table.setItem(
+                    0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL),
+                )
 
         self._upload_eta_tracker.evict_except(active_keys)
-
-        if not uploads:
-            table.setRowCount(1)
-            table.setSpan(0, 0, 1, 4)
-            table.setItem(0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL))
 
     def _on_add_location_to_share_clicked(
             self, location: LibraryLocation,

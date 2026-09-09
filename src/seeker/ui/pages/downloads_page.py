@@ -20,6 +20,7 @@ from seeker.ui.download_eta import (
     format_aggregate_header,
 )
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.table_sort import preserving_sort_order
 from seeker.ui.workers import run_worker
 
 # Plain-language notes for statuses that aren't self-explanatory as raw
@@ -210,54 +211,62 @@ class DownloadsPage(QWidget):
             return
 
         self._context.update_nav_badge("downloads", len(downloads))
-        self.downloads_table.setRowCount(len(downloads))
         self._render_aggregate_eta(downloads)
 
-        for row, download in enumerate(downloads):
-            track = download.track
-            label = f"{track.artist} - {track.title}"
-            self.downloads_table.setItem(row, 0, QTableWidgetItem(label))
-            self.downloads_table.setItem(
-                row, 1, QTableWidgetItem(download.playlist_name),
-            )
-            self.downloads_table.setItem(
-                row, 2, QTableWidgetItem(download.request.role.capitalize()),
-            )
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.downloads_table):
+            self.downloads_table.setRowCount(len(downloads))
 
-            status = download.request.status
-            status_text = _DOWNLOAD_STATUS_LABELS.get(status, status)
-            self.downloads_table.setItem(row, 3, QTableWidgetItem(status_text))
-
-            request = download.request
-            is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
-
-            if is_terminal:
-                # Evicted the moment a terminal status is seen, not
-                # left to evict_except()'s once-per-poll sweep; the ETA
-                # tracker is never consulted for this row at all below
-                # (HISTORY §56 Phase 5.4).
-                if request.id is not None:
-                    self._eta_tracker.evict(request.id)
-                eta_text = None
-            else:
-                eta_text = (
-                    self._eta_tracker.describe(
-                        request.id, request.total_bytes,
-                    )
-                    if request.id is not None and request.total_bytes
-                    else None
+            for row, download in enumerate(downloads):
+                track = download.track
+                label = f"{track.artist} - {track.title}"
+                self.downloads_table.setItem(row, 0, QTableWidgetItem(label))
+                self.downloads_table.setItem(
+                    row, 1, QTableWidgetItem(download.playlist_name),
+                )
+                self.downloads_table.setItem(
+                    row, 2,
+                    QTableWidgetItem(download.request.role.capitalize()),
                 )
 
-            self.downloads_table.setCellWidget(
-                row, 4, _build_progress_widget(download, eta_text),
-            )
+                status = download.request.status
+                status_text = _DOWNLOAD_STATUS_LABELS.get(status, status)
+                self.downloads_table.setItem(
+                    row, 3, QTableWidgetItem(status_text),
+                )
 
-        # This table's progress-bar cell widgets are real per-row
-        # content, same treatment as every table with an Actions column
-        # even though this one has none (HISTORY §87, §80's own
-        # deliberate scoping — see _build_progress_widget/
-        # _build_terminal_progress_widget's bespoke stretch factor).
-        self.downloads_table.resizeRowsToContents()
+                request = download.request
+                is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
+
+                if is_terminal:
+                    # Evicted the moment a terminal status is seen, not
+                    # left to evict_except()'s once-per-poll sweep; the ETA
+                    # tracker is never consulted for this row at all below
+                    # (HISTORY §56 Phase 5.4).
+                    if request.id is not None:
+                        self._eta_tracker.evict(request.id)
+                    eta_text = None
+                else:
+                    eta_text = (
+                        self._eta_tracker.describe(
+                            request.id, request.total_bytes,
+                        )
+                        if request.id is not None and request.total_bytes
+                        else None
+                    )
+
+                self.downloads_table.setCellWidget(
+                    row, 4, _build_progress_widget(download, eta_text),
+                )
+
+            # This table's progress-bar cell widgets are real per-row
+            # content, same treatment as every table with an Actions column
+            # even though this one has none (HISTORY §87, §80's own
+            # deliberate scoping — see _build_progress_widget/
+            # _build_terminal_progress_widget's bespoke stretch factor).
+            self.downloads_table.resizeRowsToContents()
 
     def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:
         # No reserved-but-blank strip when there's nothing active — the

@@ -20,6 +20,7 @@ from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_file_size
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
 
@@ -166,7 +167,6 @@ class SearchPage(QWidget):
         )
 
         ranked = rank_candidates(files)
-        self.search_results_table.setRowCount(len(ranked))
 
         # Purely for the per-row score display — never persisted, never
         # passed to select_downloads (which scores against the SAME
@@ -177,41 +177,54 @@ class SearchPage(QWidget):
         )
         action_widgets: list[QWidget] = []
 
-        for row, file in enumerate(ranked):
-            self.search_results_table.setItem(
-                row, _SearchColumn.USERNAME, QTableWidgetItem(file.username),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.FILENAME, QTableWidgetItem(file.filename),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.FORMAT, QTableWidgetItem(file.extension),
-            )
-            bitrate_text = (
-                f"{file.bit_rate} kbps" if file.bit_rate else "—"
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.BITRATE, QTableWidgetItem(bitrate_text),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.SIZE,
-                QTableWidgetItem(format_file_size(file.size)),
-            )
-            self.search_results_table.setItem(
-                row, _SearchColumn.LOCKED,
-                QTableWidgetItem("Yes" if file.locked else "No"),
-            )
-            score = score_candidate(scoring_track, file)
-            score_text = f"{score:.1f}" if score is not None else "—"
-            self.search_results_table.setItem(
-                row, _SearchColumn.SCORE, QTableWidgetItem(score_text),
-            )
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.search_results_table):
+            self.search_results_table.setRowCount(len(ranked))
 
-            action_widget = self._build_search_result_actions(file)
-            action_widgets.append(action_widget)
-            self.search_results_table.setCellWidget(
-                row, _SearchColumn.ACTIONS, action_widget,
-            )
+            for row, file in enumerate(ranked):
+                self.search_results_table.setItem(
+                    row, _SearchColumn.USERNAME,
+                    QTableWidgetItem(file.username),
+                )
+                self.search_results_table.setItem(
+                    row, _SearchColumn.FILENAME,
+                    QTableWidgetItem(file.filename),
+                )
+                self.search_results_table.setItem(
+                    row, _SearchColumn.FORMAT, QTableWidgetItem(file.extension),
+                )
+                bitrate_text = (
+                    f"{file.bit_rate} kbps" if file.bit_rate else "—"
+                )
+                # Round 8 §12.2 — file.bit_rate sorts numerically; the
+                # displayed "kbps" text would otherwise sort "128 kbps"
+                # before "320 kbps" before "96 kbps" (see SortKeyItem).
+                self.search_results_table.setItem(
+                    row, _SearchColumn.BITRATE,
+                    SortKeyItem(bitrate_text, file.bit_rate or -1),
+                )
+                self.search_results_table.setItem(
+                    row, _SearchColumn.SIZE,
+                    SortKeyItem(format_file_size(file.size), file.size),
+                )
+                self.search_results_table.setItem(
+                    row, _SearchColumn.LOCKED,
+                    QTableWidgetItem("Yes" if file.locked else "No"),
+                )
+                score = score_candidate(scoring_track, file)
+                score_text = f"{score:.1f}" if score is not None else "—"
+                self.search_results_table.setItem(
+                    row, _SearchColumn.SCORE,
+                    SortKeyItem(score_text, score if score is not None else -1),
+                )
+
+                action_widget = self._build_search_result_actions(file)
+                action_widgets.append(action_widget)
+                self.search_results_table.setCellWidget(
+                    row, _SearchColumn.ACTIONS, action_widget,
+                )
 
         self._size_search_columns(action_widgets)
 

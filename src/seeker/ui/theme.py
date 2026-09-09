@@ -433,9 +433,27 @@ def apply_table_defaults(table: QTableWidget) -> None:
     Applied via the vertical header's `setMinimumSectionSize` (a real
     floor `resizeRowsToContents()` can't shrink below), not
     `setDefaultSectionSize` (only affects brand-new rows, not a floor).
+
+    Round 8 §12.2: also enables click-to-sort. Every table populated by
+    a `with preserving_sort_order(table):` rebuild (ui/table_sort.py)
+    is safe under this; the one table that is NOT — Duplicates, whose
+    rows are grouped via `setSpan()` and would visually corrupt under
+    an arbitrary per-row sort — turns it back off right after this call
+    (see duplicates_page.py's own comment at construction).
     """
     table.verticalHeader().setVisible(False)
     table.horizontalHeader().setMinimumSectionSize(40)
+    table.setSortingEnabled(True)
+    # QHeaderView defaults sortIndicatorSection to 0 (not "no column"),
+    # so setSortingEnabled(True) alone silently auto-sorts every table
+    # by its first column ascending the moment it's first populated —
+    # confirmed live: it reordered Search results away from
+    # rank_candidates()'s own best-first order, and Sharing's locations
+    # away from the service's own order, on first render, before any
+    # real user click. -1 is a genuine "no column" state Qt accepts
+    # here; preserving_sort_order (ui/table_sort.py) already checks for
+    # it, so this defers the first real sort to the user's own click.
+    table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
     representative_row_height = cell_widget(
         QPushButton("Sample")

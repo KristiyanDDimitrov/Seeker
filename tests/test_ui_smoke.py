@@ -2236,6 +2236,59 @@ def test_double_clicking_in_library_row_is_a_no_op(qtbot):
     )
 
 
+def test_double_click_after_sorting_the_track_table_navigates_to_the_right_row(
+        qtbot,
+):
+    # Round 8 §12.2 — the track table is now sortable; a row-position
+    # lookup into _current_track_statuses (this table's insertion-order
+    # list) would resolve the WRONG track the moment a user sorts.
+    # track_table's own row-anchor (UserRole data set in
+    # _render_track_statuses) is what must be read instead.
+    status_a = TrackStatus(
+        track=Track(
+            id="ta", title="Zzz Last", artist="Zzz Artist", album="Album",
+            duration_ms=200_000,
+        ),
+        state=IN_LIBRARY,
+    )
+    status_b = TrackStatus(
+        track=Track(
+            id="tb", title="Aaa First", artist="Aaa Artist", album="Album",
+            duration_ms=200_000,
+        ),
+        state=NEEDS_REVIEW,
+    )
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=2)],
+        statuses=[status_a, status_b],
+        needs_review_matches=[_make_needs_review_match(track_id="tb")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.track_table.rowCount() == 2, timeout=2000,
+    )
+    # Sort ascending by the Track column — "Aaa Artist..." (status_b,
+    # inserted second) now sits at row 0.
+    window._dashboard_page.track_table.sortItems(0, Qt.SortOrder.AscendingOrder)
+    assert (
+        window._dashboard_page.track_table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+        == "tb"
+    )
+
+    window._dashboard_page._on_track_table_cell_double_clicked(0, 1)
+
+    assert (
+        window.stacked_widget.currentIndex()
+        == window._page_indices["review"]
+    )
+    qtbot.waitUntil(
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+    )
+
+
 def _make_track_status(
         track_id: str = "t1",
         state: str = IN_LIBRARY,

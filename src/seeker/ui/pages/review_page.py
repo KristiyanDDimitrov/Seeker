@@ -28,6 +28,7 @@ leaving_settings` calling `self._dashboard_page._poll_next_step()`.
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -49,6 +50,7 @@ from seeker.soulseek.download_service import BulkUpgradeReplaceResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
@@ -221,7 +223,7 @@ class ReviewPage(QWidget):
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
         self._render_local_needs_review_matches(local_matches)
-        self._focus_pending_review_row(candidates, upgrades, local_matches)
+        self._focus_pending_review_row()
 
     def _render_needs_review_candidates(
             self,
@@ -233,26 +235,42 @@ class ReviewPage(QWidget):
         if self._context.is_hidden_to_tray():
             return
 
-        self.review_needs_table.setRowCount(len(candidates))
         action_widgets: list[QWidget] = []
 
-        for row, (track, candidate) in enumerate(candidates):
-            label = f"{track.artist} - {track.title}"
-            self.review_needs_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_needs_table.setItem(
-                row, 1, QTableWidgetItem(f"{candidate.score:.1f}"),
-            )
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.review_needs_table):
+            self.review_needs_table.setRowCount(len(candidates))
 
-            candidate_text = (
-                    f"{candidate.quality_descriptor} — {candidate.username}"
-            )
-            self.review_needs_table.setItem(
-                row, 2, QTableWidgetItem(candidate_text),
-            )
+            for row, (track, candidate) in enumerate(candidates):
+                label = f"{track.artist} - {track.title}"
+                label_item = QTableWidgetItem(label)
+                # Round 8 §12.2 — the row's own anchor back to its real
+                # track id, read by _focus_pending_review_row instead
+                # of assuming this loop's row position still matches
+                # the table's (possibly sorted) row order.
+                label_item.setData(Qt.ItemDataRole.UserRole, track.id)
+                self.review_needs_table.setItem(row, 0, label_item)
+                self.review_needs_table.setItem(
+                    row, 1,
+                    SortKeyItem(f"{candidate.score:.1f}", candidate.score),
+                )
 
-            needs_review_actions = self._build_needs_review_actions(track.id)
-            action_widgets.append(needs_review_actions)
-            self.review_needs_table.setCellWidget(row, 3, needs_review_actions)
+                candidate_text = (
+                        f"{candidate.quality_descriptor} — {candidate.username}"
+                )
+                self.review_needs_table.setItem(
+                    row, 2, QTableWidgetItem(candidate_text),
+                )
+
+                needs_review_actions = self._build_needs_review_actions(
+                    track.id,
+                )
+                action_widgets.append(needs_review_actions)
+                self.review_needs_table.setCellWidget(
+                    row, 3, needs_review_actions,
+                )
 
         self._size_review_needs_columns(action_widgets)
 
@@ -328,7 +346,6 @@ class ReviewPage(QWidget):
         if self._context.is_hidden_to_tray():
             return
 
-        self.review_upgrades_table.setRowCount(len(upgrades))
         self.replace_all_upgrades_button.setEnabled(len(upgrades) > 0)
         self.replace_all_upgrades_button.setText(
             f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
@@ -341,18 +358,32 @@ class ReviewPage(QWidget):
 
         action_widgets: list[QWidget] = []
 
-        for row, details in enumerate(upgrades):
-            label = f"{details.track.artist} - {details.track.title}"
-            self.review_upgrades_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_upgrades_table.setItem(
-                row, 1, QTableWidgetItem(details.current_description),
-            )
-            self.review_upgrades_table.setItem(
-                row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
-            )
-            upgrade_actions = self._build_upgrade_actions(details)
-            action_widgets.append(upgrade_actions)
-            self.review_upgrades_table.setCellWidget(row, 3, upgrade_actions)
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.review_upgrades_table):
+            self.review_upgrades_table.setRowCount(len(upgrades))
+
+            for row, details in enumerate(upgrades):
+                label = f"{details.track.artist} - {details.track.title}"
+                label_item = QTableWidgetItem(label)
+                # Round 8 §12.2 — the row's own anchor back to its real
+                # track id, read by _focus_pending_review_row instead
+                # of assuming this loop's row position still matches
+                # the table's (possibly sorted) row order.
+                label_item.setData(Qt.ItemDataRole.UserRole, details.track.id)
+                self.review_upgrades_table.setItem(row, 0, label_item)
+                self.review_upgrades_table.setItem(
+                    row, 1, QTableWidgetItem(details.current_description),
+                )
+                self.review_upgrades_table.setItem(
+                    row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
+                )
+                upgrade_actions = self._build_upgrade_actions(details)
+                action_widgets.append(upgrade_actions)
+                self.review_upgrades_table.setCellWidget(
+                    row, 3, upgrade_actions,
+                )
 
         self._size_review_upgrades_columns(action_widgets)
 
@@ -505,26 +536,39 @@ class ReviewPage(QWidget):
         if self._context.is_hidden_to_tray():
             return
 
-        self.review_local_table.setRowCount(len(matches))
         action_widgets: list[QWidget] = []
 
-        for row, match in enumerate(matches):
-            label = f"{match.track_artist} - {match.track_title}"
-            self.review_local_table.setItem(row, 0, QTableWidgetItem(label))
-            self.review_local_table.setItem(
-                row, 1, QTableWidgetItem(match.local_file_path),
-            )
-            self.review_local_table.setItem(
-                row, 2, QTableWidgetItem(match.location_name),
-            )
-            self.review_local_table.setItem(
-                row, 3, QTableWidgetItem(f"{match.score:.1f}"),
-            )
-            local_review_actions = self._build_local_review_actions(
-                match.track_id,
-            )
-            action_widgets.append(local_review_actions)
-            self.review_local_table.setCellWidget(row, 4, local_review_actions)
+        # Round 8 §12.2 — sorting is live on this table; disabled for
+        # the body of this rebuild (see preserving_sort_order's own
+        # docstring for why) and restored afterward.
+        with preserving_sort_order(self.review_local_table):
+            self.review_local_table.setRowCount(len(matches))
+
+            for row, match in enumerate(matches):
+                label = f"{match.track_artist} - {match.track_title}"
+                label_item = QTableWidgetItem(label)
+                # Round 8 §12.2 — the row's own anchor back to its real
+                # track id, read by _focus_pending_review_row instead
+                # of assuming this loop's row position still matches
+                # the table's (possibly sorted) row order.
+                label_item.setData(Qt.ItemDataRole.UserRole, match.track_id)
+                self.review_local_table.setItem(row, 0, label_item)
+                self.review_local_table.setItem(
+                    row, 1, QTableWidgetItem(match.local_file_path),
+                )
+                self.review_local_table.setItem(
+                    row, 2, QTableWidgetItem(match.location_name),
+                )
+                self.review_local_table.setItem(
+                    row, 3, SortKeyItem(f"{match.score:.1f}", match.score),
+                )
+                local_review_actions = self._build_local_review_actions(
+                    match.track_id,
+                )
+                action_widgets.append(local_review_actions)
+                self.review_local_table.setCellWidget(
+                    row, 4, local_review_actions,
+                )
 
         self._size_review_local_columns(action_widgets)
 
@@ -590,12 +634,7 @@ class ReviewPage(QWidget):
         self._poll_review_items()
         self._host.refresh_track_table()
 
-    def _focus_pending_review_row(
-            self,
-            candidates: NeedsReviewCandidates,
-            upgrades: PendingUpgrades,
-            local_matches: list[NeedsReviewMatch],
-    ) -> None:
+    def _focus_pending_review_row(self) -> None:
         # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
         # Dashboard cell (HISTORY §56 §2.4, extended by §66 to cover
         # REVIEW_CANDIDATE too) sets _pending_review_focus_track_id and
@@ -612,26 +651,29 @@ class ReviewPage(QWidget):
 
         self._pending_review_focus_track_id = None
 
-        for row, (track, _candidate) in enumerate(candidates):
-            if track.id == track_id:
-                self.review_needs_table.selectRow(row)
-                needs_item = self.review_needs_table.item(row, 0)
-                if needs_item is not None:
-                    self.review_needs_table.scrollToItem(needs_item)
+        for table in (
+                self.review_needs_table,
+                self.review_upgrades_table,
+                self.review_local_table,
+        ):
+            if self._select_row_by_track_id(table, track_id):
                 return
 
-        for row, details in enumerate(upgrades):
-            if details.track.id == track_id:
-                self.review_upgrades_table.selectRow(row)
-                item = self.review_upgrades_table.item(row, 0)
-                if item is not None:
-                    self.review_upgrades_table.scrollToItem(item)
-                return
+    def _select_row_by_track_id(
+            self, table: QTableWidget, track_id: str,
+    ) -> bool:
+        # Round 8 §12.2 — scans the table's own UserRole anchors (set
+        # by each _render_* method above) rather than a parallel
+        # list's insertion order, which no longer matches row position
+        # once the table has been sorted.
+        for row in range(table.rowCount()):
+            item = table.item(row, 0)
+            if (
+                    item is not None
+                    and item.data(Qt.ItemDataRole.UserRole) == track_id
+            ):
+                table.selectRow(row)
+                table.scrollToItem(item)
+                return True
 
-        for row, match in enumerate(local_matches):
-            if match.track_id == track_id:
-                self.review_local_table.selectRow(row)
-                local_item = self.review_local_table.item(row, 0)
-                if local_item is not None:
-                    self.review_local_table.scrollToItem(local_item)
-                return
+        return False
