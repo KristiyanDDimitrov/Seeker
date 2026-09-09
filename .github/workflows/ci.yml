@@ -8,12 +8,18 @@ jobs:
     # including all 292 Qt widget tests, passes headless under
     # QT_QPA_PLATFORM=offscreen on a real Mac — no test needs a real
     # display, so nothing here is deselected.
-    runs-on: macos-latest
+    #
+    # Pinned to the concrete image (not macos-latest) for the S1.2-
+    # S1.4 macOS-specific CI diagnosis in docs/BRIEF-2026-09-09-round9.md
+    # — macos-latest resolved to macos-26-arm64 on 2026-09-09 (confirmed
+    # via `gh run view`'s "Runner Image" section). Revert to
+    # macos-latest once that diagnosis is closed out.
+    runs-on: macos-26
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
       - run: brew install chromaprint
       - run: uv sync --all-extras --dev
       - run: uv run ruff check src tests
