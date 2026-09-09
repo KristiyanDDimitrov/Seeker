@@ -1,3 +1,4 @@
+import socketserver
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -84,19 +85,70 @@ def _build_handler_class(
     return _Handler
 
 
-def wait_for_callback(
-        port: int = CALLBACK_PORT,
-        timeout_seconds: float = CALLBACK_TIMEOUT_SECONDS,
-) -> tuple[str | None, str | None, str | None, bool]:
-    """Blocks until the real /callback request lands or `timeout_seconds`
-    elapses. Returns (code, state, error, timed_out) — `timed_out` is
-    the "distinct outcome" §6.3.1 asks for, so a caller can tell "the
-    user abandoned the consent screen" apart from every other failure
-    shape and show something actionable instead of hanging forever.
+class _LoopbackHTTPServer(HTTPServer):
+    """HTTPServer that skips the reverse-DNS lookup its own server_bind()
+    would otherwise do (round 9 §1.2).
+
+    Stdlib `http.server.HTTPServer.server_bind()` calls
+    `socket.getfqdn(host)` to populate `server_name`, and
+    `socketserver.TCPServer.__init__` runs that *before*
+    `server_activate()` calls `listen()` — so on a machine with slow or
+    absent reverse DNS, the socket sits bound-but-not-listening for the
+    whole lookup. That widens the real race in `auth_manager._authorize()`
+    (the browser can already be redirecting back before the callback
+    server is accepting connections) from microseconds to potentially
+    seconds. Skipping it is safe: nothing here ever reads `server_name`
+    — the redirect URI's host is the literal `127.0.0.1` baked into
+    `DEFAULT_REDIRECT_URI`, never anything `server_bind()` would derive.
+    """
+
+    def __init__(
+            self,
+            server_address: tuple[str, int],
+            handler_class: type[BaseHTTPRequestHandler],
+            callback_result: _CallbackResult,
+    ) -> None:
+        self.callback_result = callback_result
+        super().__init__(server_address, handler_class)
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        # server_address[0] is typed str | bytes | bytearray upstream
+        # (AF_UNIX sockets use bytes); this class only ever binds
+        # "127.0.0.1", always a str.
+        self.server_name = str(self.server_address[0])
+        self.server_port = self.server_address[1]
+
+
+def create_callback_server(port: int = CALLBACK_PORT) -> HTTPServer:
+    """Binds (and starts listening on) the local callback socket and
+    returns it, without serving any request yet — the caller decides
+    when to start serving via `serve_until_callback()`. Splitting this
+    out of the old single `wait_for_callback()` is what lets
+    `auth_manager._authorize()` bind the socket *before* opening the
+    browser, instead of after (round 9 §1.2).
     """
     result = _CallbackResult()
     handler_class = _build_handler_class(result)
-    server = HTTPServer(("127.0.0.1", port), handler_class)
+    return _LoopbackHTTPServer(("127.0.0.1", port), handler_class, result)
+
+
+def serve_until_callback(
+        server: HTTPServer,
+        timeout_seconds: float = CALLBACK_TIMEOUT_SECONDS,
+) -> tuple[str | None, str | None, str | None, bool]:
+    """Blocks until the real /callback request lands on `server` or
+    `timeout_seconds` elapses. Returns (code, state, error, timed_out) —
+    `timed_out` is the "distinct outcome" §6.3.1 asks for, so a caller
+    can tell "the user abandoned the consent screen" apart from every
+    other failure shape and show something actionable instead of
+    hanging forever.
+    """
+    assert isinstance(server, _LoopbackHTTPServer), (
+        "serve_until_callback() only accepts a server built by "
+        "create_callback_server()"
+    )
+    result = server.callback_result
 
     deadline = time.monotonic() + timeout_seconds
     try:
@@ -124,3 +176,15 @@ def wait_for_callback(
         result.error,
         False,
     )
+
+
+def wait_for_callback(
+        port: int = CALLBACK_PORT,
+        timeout_seconds: float = CALLBACK_TIMEOUT_SECONDS,
+) -> tuple[str | None, str | None, str | None, bool]:
+    """Thin `create_callback_server()` + `serve_until_callback()`
+    wrapper kept for any caller that doesn't need the bind/serve split
+    (round 9 §1.2) — `auth_manager._authorize()` calls the two halves
+    directly instead, so it can open the browser in between.
+    """
+    return serve_until_callback(create_callback_server(port), timeout_seconds)

@@ -1,24 +1,32 @@
 import threading
+from http.server import HTTPServer
 from queue import Queue
 
 import httpx
 
-from seeker.spotify.callback_server import wait_for_callback
+from seeker.spotify.callback_server import (
+    create_callback_server,
+    serve_until_callback,
+    wait_for_callback,
+)
 
 
-def _run_server_in_background(
-        port: int, result_queue: Queue, timeout_seconds: float = 5.0,
+def _serve_in_background(
+        server: HTTPServer, result_queue: Queue, timeout_seconds: float = 5.0,
 ) -> None:
-    result_queue.put(
-        wait_for_callback(port=port, timeout_seconds=timeout_seconds)
-    )
+    result_queue.put(serve_until_callback(server, timeout_seconds))
 
 
 def test_wait_for_callback_parses_code_and_state_from_real_request():
-    port = 18881
+    # Round 9 §1.2: the server is created (bound + listening) on this
+    # thread, so it is provably ready before any client connects —
+    # only serve_until_callback() itself runs in the background. Port 0
+    # picks a real ephemeral port, read back from server_address.
+    server = create_callback_server(port=0)
+    port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
-        target=_run_server_in_background, args=(port, result_queue)
+        target=_serve_in_background, args=(server, result_queue)
     )
     thread.start()
 
@@ -40,10 +48,11 @@ def test_wait_for_callback_parses_code_and_state_from_real_request():
 
 
 def test_wait_for_callback_captures_error_param():
-    port = 18882
+    server = create_callback_server(port=0)
+    port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
-        target=_run_server_in_background, args=(port, result_queue)
+        target=_serve_in_background, args=(server, result_queue)
     )
     thread.start()
 
@@ -66,10 +75,11 @@ def test_callback_handler_returns_404_but_keeps_waiting_for_the_real_callback():
     # WITHOUT consuming wait_for_callback()'s one chance to see the real
     # authorization — the old behavior treated any request as "the"
     # request and returned empty-handed from here on.
-    port = 18883
+    server = create_callback_server(port=0)
+    port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
-        target=_run_server_in_background, args=(port, result_queue)
+        target=_serve_in_background, args=(server, result_queue)
     )
     thread.start()
 
@@ -101,11 +111,10 @@ def test_wait_for_callback_times_out_when_nothing_ever_arrives():
     # Round 8 §6.3.1: the old code called handle_request() with no
     # timeout at all and blocked forever on an abandoned/closed
     # authorization tab. A real (short, test-scoped) timeout must
-    # return a distinct outcome rather than hang.
-    port = 18884
-
+    # return a distinct outcome rather than hang. No client ever
+    # connects, so the thin wait_for_callback() wrapper is fine here.
     code, state, error, timed_out = wait_for_callback(
-        port=port, timeout_seconds=0.2,
+        port=0, timeout_seconds=0.2,
     )
 
     assert code is None
@@ -118,17 +127,18 @@ def test_two_consecutive_runs_do_not_leak_state_between_them():
     # Round 8 §6.3.2: the old SpotifyCallbackHandler stored
     # authorization_code/returned_state/error on the CLASS, so a failed
     # attempt's stale `error` was still visible to the very next
-    # attempt in the same process. Each wait_for_callback() call must
-    # get genuinely fresh state.
-    port = 18885
-
+    # attempt in the same process. Each create_callback_server() call
+    # must get genuinely fresh state — two separate ephemeral-port
+    # servers stand in for two separate real authorize attempts.
+    first_server = create_callback_server(port=0)
+    first_port = first_server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
-        target=_run_server_in_background, args=(port, result_queue)
+        target=_serve_in_background, args=(first_server, result_queue)
     )
     thread.start()
     httpx.get(
-        f"http://127.0.0.1:{port}/callback",
+        f"http://127.0.0.1:{first_port}/callback",
         params={"error": "access_denied"},
         timeout=5.0,
     )
@@ -136,13 +146,15 @@ def test_two_consecutive_runs_do_not_leak_state_between_them():
     first_error = result_queue.get(timeout=1.0)[2]
     assert first_error == "access_denied"
 
+    second_server = create_callback_server(port=0)
+    second_port = second_server.server_address[1]
     result_queue = Queue()
     thread = threading.Thread(
-        target=_run_server_in_background, args=(port, result_queue)
+        target=_serve_in_background, args=(second_server, result_queue)
     )
     thread.start()
     httpx.get(
-        f"http://127.0.0.1:{port}/callback",
+        f"http://127.0.0.1:{second_port}/callback",
         params={"code": "auth-code-3", "state": "state-3"},
         timeout=5.0,
     )
