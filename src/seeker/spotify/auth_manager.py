@@ -13,7 +13,10 @@ from seeker.spotify.auth import (
     generate_state,
     refresh_access_token,
 )
-from seeker.spotify.callback_server import wait_for_callback
+from seeker.spotify.callback_server import (
+    create_callback_server,
+    serve_until_callback,
+)
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 
@@ -92,10 +95,21 @@ class SpotifyAuthManager:
             code_challenge=code_challenge,
         )
 
+        # Round 9 §1.2: bind the callback socket BEFORE opening the
+        # browser, not after — a user who already granted access on a
+        # previous run gets redirected straight back with no consent
+        # screen to slow it down, and the callback can otherwise land
+        # before anything is listening for it.
+        server = create_callback_server()
+
         logger.info("Opening Spotify authorization page...")
         webbrowser.open(authorization_url)
 
-        code, returned_state, error, timed_out = wait_for_callback()
+        # serve_until_callback() closes `server` itself in its own
+        # finally, whether this returns normally or raises.
+        code, returned_state, error, timed_out = serve_until_callback(
+            server
+        )
 
         if timed_out:
             raise RuntimeError("Authorization timed out — try again.")

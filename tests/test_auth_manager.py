@@ -141,8 +141,11 @@ def test_authorize_raises_actionable_error_on_callback_timeout(
     # generic failure or hanging.
     manager = make_manager(tmp_path)
     monkeypatch.setattr(
-        "seeker.spotify.auth_manager.wait_for_callback",
-        lambda: (None, None, None, True),
+        "seeker.spotify.auth_manager.create_callback_server", object,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.serve_until_callback",
+        lambda server: (None, None, None, True),
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.webbrowser.open", lambda url: None,
@@ -174,20 +177,36 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
         "seeker.spotify.auth_manager.generate_state",
         lambda: "fixed-state",
     )
+    # Round 9 §1.2: one shared call_order list, not separate counters,
+    # so this test can also assert the fix's actual ordering — the
+    # callback server must be created BEFORE the browser opens, not
+    # after.
+    call_order: list[str] = []
     webbrowser_open_calls: list[str] = []
-    monkeypatch.setattr(
-        "seeker.spotify.auth_manager.webbrowser.open",
-        webbrowser_open_calls.append,
-    )
-    wait_for_callback_calls = []
 
-    def fake_wait_for_callback():
-        wait_for_callback_calls.append(True)
+    def fake_webbrowser_open(url):
+        call_order.append("open")
+        webbrowser_open_calls.append(url)
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open", fake_webbrowser_open,
+    )
+
+    def fake_create_callback_server():
+        call_order.append("create")
+        return object()
+
+    def fake_serve_until_callback(server):
+        call_order.append("serve")
         return ("real-code", "fixed-state", None, False)
 
     monkeypatch.setattr(
-        "seeker.spotify.auth_manager.wait_for_callback",
-        fake_wait_for_callback,
+        "seeker.spotify.auth_manager.create_callback_server",
+        fake_create_callback_server,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.serve_until_callback",
+        fake_serve_until_callback,
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.exchange_code_for_token",
@@ -203,7 +222,11 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
     assert len(webbrowser_open_calls) == 1
     assert "client_id=client-id" in webbrowser_open_calls[0]
     assert "state=fixed-state" in webbrowser_open_calls[0]
-    assert len(wait_for_callback_calls) == 1
+    assert call_order == ["create", "open", "serve"], (
+        "the callback socket must be bound before the browser opens, "
+        "not after — a returning user's redirect-with-no-consent-"
+        "screen can otherwise land before anything is listening"
+    )
     assert TokenStore(manager.token_path).load() is not None
 
     second_token = manager.get_valid_token()
@@ -212,7 +235,7 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
         "a second get_valid_token() call must reuse the just-persisted "
         "token, not re-run the browser/callback authorization flow"
     )
-    assert len(wait_for_callback_calls) == 1
+    assert call_order.count("serve") == 1
     assert second_token.access_token == first_token.access_token
 
 
