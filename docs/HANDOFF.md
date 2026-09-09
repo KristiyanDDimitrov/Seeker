@@ -8,20 +8,22 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** this session's tick/handoff commit, on top of `9f08957` —
-  "S13: comment triage — ui/pages/duplicates_page.py" (S13's ten other
-  per-file commits land before it).
-- **Working tree:** clean. `origin/main`: not re-checked this session —
-  ask before pushing regardless.
-- **pytest:** 1149 passed, 1 skipped after every individual per-file
-  commit this session. The final whole-suite run hit
-  `test_fullscreen_close_policy_check_ignores_a_stale_request` failing
-  once (1148 passed, 1 failed, 1 skipped) — re-ran that one test alone
-  immediately after and it passed. Not one of CLAUDE.md's previously
-  named three round-8 flakes — added as a fourth entry there this
-  session (comment-only session, so not a regression from this
-  session's own work).
-- **mypy --strict src/: clean, 99 files. ruff check src tests: 0
+- **HEAD:** `c564d13` — "S14 close-out: tick session-plan box". Working
+  tree clean.
+- **`origin/main`: at `711f87c` ("S14: README §11.3.4 — title case
+  fix") — 3 commits behind local HEAD.** A push happened mid-session up
+  through `711f87c` (confirmed via `gh run list` — a real triggered CI
+  run exists for it); the two commits after it (README reorder +
+  screenshots) were never pushed. **Ask before pushing** — don't assume
+  the earlier push means blanket permission for the rest.
+- **pytest:** `2 failed, 1119 passed, 29 skipped in 86.11s` — both
+  failures are already-tracked flakes
+  (`test_fullscreen_close_policy_check_ignores_a_stale_request` and,
+  new this session, `test_reopening_after_a_fullscreen_close_restores_
+  prior_geometry` — see CLAUDE.md Open issues), both pass individually.
+  29 skipped is now a fully-explained number, not a mystery — see
+  below.
+- **`mypy --strict src/`: clean, 99 files. `ruff check src tests`: 0
   findings.**
 
 ## Where we are in the plan
@@ -30,67 +32,67 @@ Round 8 is a nine-phase refactor/security/docs pass. Full plan:
 `docs/BRIEF-2026-09-08-refactor.md`. Session map: `docs/round8/
 SESSION-PLAN.md` — **read that, not the full 115 KB brief.**
 
-- **Done:** Phase 0-6 (through S11.7), **S12** (Phase 7 pass 1: six
-  small files), and now **S13** (Phase 7 pass 2: `soulseek/
-  download_service.py` plus all ten `ui/pages/*` modules —
-  `context.py`, `history_page.py`, `static_pages.py`, `search_page.py`,
-  `sharing_page.py`, `downloads_page.py`, `tagging_panel.py`,
-  `dashboard_page.py`, `review_page.py`, `duplicates_page.py`).
-- **Next: S14** (CLAUDE.md 8b + README — §11.2.4, §11.2.5, §11.3). Read
-  §11 of the main brief fresh — the deferred-from-S1 pieces are the new
-  conventions (depend on Phases 4-7, now all landed) and the
-  regenerated layout tree (depends on Phase 6's `ui/pages/*`, now
-  real).
+- **Done: Phase 0-7 (through S13), and now S14** (CLAUDE.md 8b +
+  README — §11.2.4, §11.2.5, §11.3).
+- **Next: S15 — UX Group A, only if Kris approves** (§12.1-§12.5).
+  Nothing is scheduled without that explicit yes; if it hasn't been
+  given, there is no round-8 row left to run and the round is
+  effectively done pending that product decision.
 
-## S13 report (§10.1.7)
+## S14 report
 
-One commit per file, eleven total. `download_service.py`: 516 -> 414
-`#` lines. The ten page modules together: roughly 950 -> 780 `#`/
-docstring lines (exact per-file numbers are in each commit's own
-message — not re-tallied here since the real finding is qualitative,
-below).
+**§11.2.4/§11.2.2 (CLAUDE.md):** layout tree regenerated against the
+real `src/seeker` tree (`ui/pages/*` folded in, `main_window.py`
+6,882 -> 1,842 lines, two new repositories/models, `destination_
+resolution.py`). Four conventions §11.2.4 named were missing and are
+now in: the comment shelf-life test, logging-over-print in services,
+the AST sweep barring `ui/` from `Application`'s private attributes,
+page widgets taking a `PageContext`. §11.2.5 (items 63/70 in Open
+issues) was already done in S1 — confirmed, nothing to redo.
+CLAUDE.md: 25,260 -> 29,448 chars (growth is the conventions this
+session was explicitly deferred to add).
 
-**The real finding: round 8's own Phase 6 (`MainWindow` decomposition,
-S5-S11.7 — the biggest arc in the round) had never been written up in
-`docs/HISTORY.md` at all.** Every page module's docstring carried its
-own extraction story inline (`PageContext`'s field-by-field growth,
-`TaggingPanelHost`/`DashboardHost`/`ReviewHost`'s own discovery,
-Duplicates needing no second seam, S11's two Qt gotchas) with nowhere
-else for that provenance to live. Per §10.1.6 ("anything you MOVE must
-land in HISTORY first"), wrote it up as new **HISTORY §119** before
-compressing any of those docstrings — one section, built incrementally
-as each page's comments were triaged, rather than speculatively
-up front.
+**Real finding, not in the plan: CI is running for real, not billing-
+blocked.** `gh run list`/`gh run view` show real completed runs;
+ruff/mypy clean every time, pytest failing only on the pre-existing
+`test_callback_server.py` trio (real evidence now, not just a local
+hypothesis — see CLAUDE.md Open issues). This also fully explains the
+long-standing "29 vs. 1 skipped" mismatch: 28 `@requires_x9_pro` tests
+(no such drive on a GitHub runner) + 1 `@requires_stress_opt_in` test
+= 29, exact arithmetic match; real hardware with the drive mounted
+sees only 1. Both written into CLAUDE.md's Open issues.
 
-**A second wrong citation found, same class as S12's two**: `sharing_
-page.py` cited "roadmap item 62 (Phase 7)" throughout — item 62 has no
-standalone HISTORY section at all; the real investigation lives under
-**§56 Phase 7** (Sharing & Uploads). Fixed everywhere it appeared, same
-treatment as S12's `matching.py`/`docker_setup.py` fixes. The
-"R2.x"/"R3.x"/"R5"/"R7.x" style short-codes used throughout the page
-files (Review/Duplicates checkbox-survives-poll-rebuild, bulk
-replace/resolve, tray background operation) all resolved cleanly to
-real sections (§86, §88, §90) — no further wrong citations found
-there, but every one was checked against the source text before
-citing it, not assumed correct from the label alone.
+**§11.3 (README):** title fixed (`# seeker` -> `# Seeker`); reordered
+to name+description -> badges -> Screenshots -> What it does ->
+Architecture (tree regenerated same as CLAUDE.md's) -> Tech stack ->
+Quality -> everything else unchanged. Badges are **static** (shields.io
+tests/mypy/ruff/python/license badges), not a live GitHub Actions
+badge — deliberate: CI is real but currently red on the documented
+`test_callback_server.py` timeouts, and a live red badge on the
+portfolio front door would misrepresent code quality with an
+environment quirk. Screenshots (§11.3.1, the brief's own "highest-
+value single change"): `docs/screenshots/generate.py` builds a real
+`MainWindow` against `FakeApplication` (same test double `tests/
+test_ui_smoke.py` uses) with invented playlists/tracks/a duplicate
+group/a review candidate, drives it under `QT_QPA_PLATFORM=offscreen`,
+and grabs real widget pixels in both themes — no real playlist names,
+paths or usernames, and reproducible by anyone. Committed: `dashboard-
+dark.png`, `dashboard-light.png`, `review.png`, `duplicates.png`, plus
+the generator script.
 
-**Examples, from actual work:** KEEP verbatim — `download_service.py`'s
-`FAILED_STATE_MARKERS` comment (Soulseek's `[Flags]` enum, comma-joined
-string, no provenance attached, still 100% load-bearing). KEEP-
-COMPRESSED — `_supersede_stale_duplicates`'s docstring (a real,
-non-obvious return-value contract) kept in full, its "Confirmed live
-2026-08-28" narrative trimmed to the fact plus a §63/§66-style link.
-MOVE — the entire Phase 6 extraction story, now §119 (see above). DELETE
-— `download_service.py`'s `get_review_candidates` comment referencing
-its own now-irrelevant "originally deferred to a future UI" framing.
+**Process note:** a background `fork` first tasked with this screenshot
+capture ran ~14 min/246K tokens, produced nothing (`docs/screenshots/`
+didn't exist afterward), and returned a confusing final message. It
+wasn't spawned with `isolation: "worktree"`. Re-attempted directly and
+finished in a handful of iterations by hand. Try `isolation:
+"worktree"` first if delegating offscreen-Qt work to a subagent again.
 
 ## Read discipline — this is why sessions were costing 300-700 K tokens
 
 Never read `docs/HISTORY.md`, `main_window.py`, or `test_ui_smoke.py`
 whole — `grep -n` the symbol/section, read that range. `pytest -q`:
 report only the summary line plus named failures. `git diff --stat` by
-default. Don't re-read a file you just edited. Don't read a brief for a
-phase you aren't doing.
+default. Don't read a brief for a phase you aren't doing.
 
 ## Waiting on Kris — real-world actions Code cannot do
 
@@ -98,8 +100,9 @@ phase you aren't doing.
       close; confirm the window returns. Reopen via Spotlight too.
 - [ ] From a second device, confirm `http://<mac-lan-ip>:5030` no
       longer answers.
-- [ ] Push the unpushed commits to `origin/main` (or say go ahead) —
-      check `git log origin/main..HEAD` fresh, not re-verified now.
+- [ ] Push the 2 unpushed commits to `origin/main` (or say go ahead) —
+      `origin/main` is currently at `711f87c`, 3 behind local HEAD.
+- [ ] Decide S15 (UX Group A, brief §12.1-§12.5) — approve or skip.
 
 ## Open questions
 
@@ -107,20 +110,17 @@ phase you aren't doing.
   Seeker/actions` 404s anonymously — if so, `update_check.py`'s 404-
   means-"no releases" assumption only holds once the repo is public.
 - **`open -a Seeker` focus artifact** (§14, observed once, unconfirmed).
-  S9's skip-count mismatch (29 vs. everyone else's 1) — same status.
-- **Four round-8 flakes now in CLAUDE.md's Open Issues** (the fourth,
-  `test_fullscreen_close_policy_check_ignores_a_stale_request`, added
-  this session) — diagnose any recurrence directly, never
-  `pytest-rerunfailures`.
-- **S14 should spot-check citations too, same discipline as S12/S13**:
-  two wrong "item N"/"CLAUDE.md item N" citations in S12, one wrong
-  "roadmap item 62" (should be §56 Phase 7) throughout `sharing_page.py`
-  in S13 — a real, recurring class of error in this codebase's own
-  comments, not a one-off. Don't assume a citation is correct because
-  it looks plausible.
-- **`docs/HISTORY.md` is now ~14,100 lines** — still never read whole,
-  per the standing rule; §119 (Phase 6 decomposition) is the newest
-  section, at the very end of the file.
+  S9's skip-count mismatch is now RESOLVED (see above) — this one
+  remains open.
+- **Round-8 flakes now in CLAUDE.md's Open Issues (five total)** —
+  diagnose any recurrence directly, never `pytest-rerunfailures`. The
+  two fullscreen-close ones fired together again this session (comment/
+  docs-only — not a regression from this session's own work); two
+  same-area tests failing together only under the full suite is
+  stronger evidence of a real ordering/state-leak bug than either
+  alone, worth a dedicated diagnosis session if it recurs a third time.
+- **`docs/HISTORY.md` is ~14,100+ lines** — still never read whole, per
+  the standing rule.
 
 ## How to end your session
 
