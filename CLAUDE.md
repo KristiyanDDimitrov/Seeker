@@ -202,6 +202,21 @@ src/seeker/
   registry, `navigate`, `notify`) and never reaches back into
   `MainWindow`; `MainWindow` itself is the shell (nav, timers, tray).
   [HISTORY §119](docs/HISTORY.md#119)
+- **Five UI feedback channels, each with exactly one job — never blur
+  them.** Activity strip (top): GLOBAL, cross-page, whatever
+  `busy_actions` reports running anywhere, auto-hides when idle.
+  `next_step_notice`: Dashboard-only persistent proactive guidance.
+  `InlineNotice` (`dashboard_notice`/Library's `notice`/a page's own):
+  persistent, dismissible — errors/warnings/results/confirmations,
+  anything the user needs to still read a few seconds later. Page-local
+  `status_label`: ephemeral, disposable progress text only — wiped
+  unconditionally at the start of every `run_worker`/`run_busy_worker`
+  call, so nothing worth re-reading belongs there. Tray notifications:
+  background-attention, real OS popups independent of which page (if
+  any) is focused. A new page's confirmation/result message goes on its
+  own `InlineNotice`, never on its `status_label` — a real bug this
+  round (`sharing_page.py`'s confirmation was wiped before it could be
+  read) was exactly that mistake. [HISTORY §120](docs/HISTORY.md#120)
 
 ## Commands
 

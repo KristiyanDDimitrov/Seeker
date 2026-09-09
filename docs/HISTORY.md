@@ -14119,3 +14119,54 @@ module-qualified name (`main_window_module._set_dock_icon_visible`)
 only intercepts a bare-name call resolved in THAT module's own
 globals — a moved call site executing in the new module's namespace
 silently stops being patched.
+
+### 120 — Round 8 §12.9: the five UI feedback channels, named and audited
+
+Brief's own framing: the activity strip (top), `next_step_notice`,
+`dashboard_notice`/`InlineNotice`, `status_label` (bottom), and tray
+notifications compete for attention with no written rule for which
+carries what. Investigated each rather than assuming — every channel
+turned out to have a real, distinct job already (nothing to delete),
+but the audit surfaced one genuine bug the same shape `notice.py`'s
+own docstring already documents for Dashboard.
+
+**The rule** (now CLAUDE.md's Conventions): activity strip —
+GLOBAL, cross-page, whatever `busy_actions` reports running anywhere,
+auto-hides when idle. `next_step_notice` — Dashboard-only, persistent
+proactive guidance ("what to do next"), dismissible per-step.
+`InlineNotice` (`dashboard_notice`/Library's `notice`/others) —
+persistent, dismissible: errors, warnings, results, confirmations —
+anything the user needs to still read a few seconds later. Page-local
+`status_label` — ephemeral, disposable progress text only
+("Syncing…"), plus `run_worker`'s own generic exception fallback; wiped
+unconditionally at the start of every `run_worker`/`run_busy_worker`
+call, by design (`workers.py`'s own docstring: "an error clears to the
+status line rather than a modal dialog"). Tray notifications —
+background-attention: real OS-level popups for events a user might
+miss regardless of which page (if any) is focused; independently
+rate-limited/dedup'd per notification type, not gated on the window
+being hidden.
+
+**The real bug, found tracing the rule through every page, not just
+Dashboard/Library (which already got `InlineNotice` in Phase 6):**
+`sharing_page.py`'s `_on_add_location_to_share_finished` wrote a real
+confirmation ("'X' shared — N directories, M files") to
+`sharing_status_label`, then immediately called `self._refresh_sharing()`
+— which itself calls `run_worker(..., status_label=self.
+sharing_status_label, ...)`, and `run_worker` clears its target
+`status_label` to `""` unconditionally at the very start of every call
+(`workers.py` line ~497-498). The confirmation was wiped before the
+user could ever read it — not eventually, on the very next line.
+Sharing also joins the standing 20s `backend_poll_timer` once visited
+(`_trigger_sharing_poll`), so even a lucky read would have had a second
+independent wipe waiting. Fixed the same way Dashboard was: a new
+`self.sharing_notice = InlineNotice()`, the confirmation routed there
+instead of the poll-cleared label.
+
+**Every other page's `status_label` usage was audited and found
+already correct** — Search/Duplicates/History/Review's status-label
+writes are genuinely ephemeral progress text with no equivalent
+immediate-self-wipe pattern (their terminal result callbacks don't
+themselves trigger a further `status_label`-writing `run_worker` call
+the way Sharing's did). Not rewritten; a channel already doing its one
+real job doesn't need touching just to look busy.

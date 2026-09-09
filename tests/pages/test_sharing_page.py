@@ -148,6 +148,63 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
     assert confirm is True
 
 
+def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
+        qtbot, monkeypatch,
+):
+    # Round 8 §12.9 regression test — real bug found tracing the "five
+    # feedback channels" rule through every page: the confirmation used
+    # to go to sharing_status_label, which _on_add_location_to_share_
+    # finished's own _refresh_sharing() call wipes via run_worker's
+    # status_label.setText("") at the top of every call, before the
+    # user could ever read it. Now on sharing_notice (InlineNotice),
+    # outside run_worker's status_label plumbing entirely.
+    from seeker.sharing_service import LocationShareState, ShareStatus
+
+    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    sharing_service = FakeSharingService(
+        status=ShareStatus(
+            ready=True, scanning=False, scan_pending=False,
+            faulted=False, directories=0, files=0, shares=[],
+        ),
+        self_managed=True,
+        reconciliation=[
+            LocationShareState(location=location, shared=False, share=None),
+        ],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _confirm_yes(monkeypatch)
+
+    window._show_page("sharing")
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+
+    assert window._sharing_page.sharing_notice.isHidden()
+
+    button = locations_table.cellWidget(0, 4).findChild(QPushButton)
+    button.click()
+
+    qtbot.waitUntil(
+        lambda: not window._sharing_page.sharing_notice.isHidden(),
+        timeout=2000,
+    )
+    text = window._sharing_page.sharing_notice.text()
+    assert "'Other' shared" in text
+    assert "1 directories" in text
+    assert "1 files" in text
+
+    # The immediate _refresh_sharing() call this same handler triggers
+    # must not wipe it — wait for that refresh to actually settle
+    # (locations_table repopulated) and confirm the notice is still
+    # showing the same text, not blanked.
+    qtbot.wait(200)
+    assert not window._sharing_page.sharing_notice.isHidden()
+    assert window._sharing_page.sharing_notice.text() == text
+
+
 def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
         qtbot, monkeypatch,
 ):

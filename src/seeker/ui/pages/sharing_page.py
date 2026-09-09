@@ -23,6 +23,7 @@ from seeker.sharing_service import (
     UploadStatus,
 )
 from seeker.ui import help_text, theme
+from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.upload_eta import UploadEtaTracker
@@ -68,6 +69,17 @@ class SharingPage(QWidget):
         framing_label.setTextFormat(Qt.TextFormat.RichText)
         framing_label.setWordWrap(True)
         layout.addWidget(framing_label)
+
+        # Round 8 §12.9 — a real confirmation ("'X' shared — N
+        # directories, M files") used to go to sharing_status_label,
+        # which _refresh_sharing() (called right after, to pick up the
+        # new state) wipes via run_worker's own status_label.setText("")
+        # at the top of every call — the confirmation was never actually
+        # readable. Same fix notice.py's own docstring describes for
+        # Dashboard: persistent, dismissible content belongs on an
+        # InlineNotice, not the poll-cleared status label.
+        self.sharing_notice = InlineNotice()
+        layout.addWidget(self.sharing_notice)
 
         controls = QHBoxLayout()
         self.sharing_summary_label = QLabel("")
@@ -382,11 +394,12 @@ class SharingPage(QWidget):
         ready_note = (
                 "" if result.became_ready else " Still finishing the scan."
         )
-        self.sharing_status_label.setText(
+        self.sharing_notice.show_message(
             f"'{result.location.name}' shared — "
             f"{result.directories_after} directories, "
             f"{result.files_after} files "
             f"(was {result.directories_before}/{result.files_before})."
-            + ready_note
+            + ready_note,
+            kind="success",
         )
         self._refresh_sharing()
