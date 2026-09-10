@@ -8,26 +8,24 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `664a9a9`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `b729468`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine):** `1183 passed, 1
-  skipped` clean once (see below), but the full suite also produced
-  `2 failed, 1183 passed, 1 skipped in 102.16s` on a separate run —
-  see "Discovered this session" below, not a regression from this
-  session's own diff (confirmed via `git stash -u`).
+- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1188
+  passed, 1 skipped`** clean, or `1 failed` when the already-documented
+  `test_fullscreen_close_policy_check_ignores_a_stale_request` flake
+  fires (CLAUDE.md Open issues) — confirmed pre-existing via
+  `git stash -u` when it appeared mid-session. Neither is this
+  session's own regression.
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings.**
-- **CI on this session's push (`664a9a9`): run `34461031345`, `2
-  failed, 1155 passed, 29 skipped in 201.51s`. ruff/mypy both clean.
-  The 2 failures are the SAME two already-tracked S4 flakes**
-  (`test_history_refresh_button_refetches`,
+- **CI on `b729468` (this session's final push): run `34481602292`,
+  `2 failed`. ruff/mypy both clean.** The 2 failures are the SAME two
+  already-tracked S4 flakes (`test_history_refresh_button_refetches`,
   `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`)
-  — not new, not caused by this session's diff (S5 touched
-  `main_window.py`/`tray.py`/tests only, none of which are in either
-  flake's own path). Both are already fully documented in CLAUDE.md's
-  Open issues as past their "dedicated diagnosis session" bar; not
-  re-litigated here.
+  — not new, not caused by this session's diff. **This session's own
+  §3.1 test is green on this run** — see "S6 follow-up" below for the
+  three-round diagnosis that got it there.
 
 ## Where we are in the plan
 
@@ -35,70 +33,72 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1-S5.**
-- **Next: S6** — Window geometry + wizard support page + update-check
-  honesty (§3.1, §4.1, §4.2a). Split point: after §3.1.
-- Two of round 9's own approval gates are still waiting on Kris
-  (unchanged — see `docs/round9/SESSION-PLAN.md`'s "Waiting on Kris"):
-  §4.2b (cut a real release / auto-update opt-in) and §3.2
-  (`SMAppService` for start-at-login). §4.2a in S6 does NOT need
-  either gate — check the brief's own text for what's actually scoped
-  there before assuming it's blocked.
+- **Done: S1-S6.**
+- **Next: S7** — Start at login (§3.2). Split point: after the
+  mechanism decision is written down. **This row is gated —
+  `docs/round9/SESSION-PLAN.md`'s "Waiting on Kris" needs a yes on
+  `SMAppService` vs. a `LaunchAgent` plist before real work starts**;
+  the brief's own recommendation is `SMAppService`, [ASK KRIS] only if
+  a different conclusion is reached or the new dependency
+  (`pyobjc-framework-ServiceManagement`) is contentious.
 
-## S5 report — §2.3, the quit hang
+## S6 report — §3.1, §4.1, §4.2a
 
-**Reproduction: not achieved live, and said so rather than closing
-this as a one-off**, per the brief's own explicit instruction for this
-exact outcome. Judged a full real-GUI repro (real background job, a
-real tray-menu click via System Events, watching for an actual hang)
-out of this session's budget against three candidate mechanisms the
-brief itself ranks by likelihood.
+**§3.1 — window geometry didn't reopen at its saved size, confirmed by
+Kris on a real Mac.** Two independent bugs:
+- **Save path:** `_persist_window_geometry()` only ran from
+  `cleanup_before_quit`, by which point the window is already hidden to
+  the tray in Kris's real flow — `saveGeometry()` against a
+  non-visible window isn't trustworthy. Now persisted in `closeEvent`,
+  immediately before hiding (both branches), while still visible.
+  `cleanup_before_quit`'s own call is now a backstop for the
+  quit-without-closing route, gated on `_hidden_to_tray`.
+- **Restore path:** moved `_restore_window_geometry()` to after
+  `_build_ui()`, AND re-applied it once more from a new `showEvent()`
+  override (guarded to the first real show only) — see below for why
+  the second half was needed.
 
-**Instead, mechanically confirmed candidate mechanism 1** (`QThreadPool`
-blocking at exit) in isolation: a throwaway probe submitted one 4s
-`QRunnable` to a per-instance `QThreadPool` (the same shape
-`MainWindow.thread_pool` is) and timed teardown — `quit()` always
-returns instantly, but the enclosing scope took +4.011s to actually
-finish vs. +0.012s with no task running. This is real, live evidence
-of the reported shape (event loop gone, process still alive, blocked
-in native code) — not yet confirmed as Kris's specific cause.
+**S6 follow-up — a real, three-round CI diagnosis, resolved.** CI
+(macos-26) caught something this machine (Darwin 25.6.0) never
+reproduced despite real effort across many full-suite and isolated
+runs: a fresh window's restored width came back clamped to exactly the
+configured minimum (960, not the requested 1000). Three
+independently-reasoned production fixes were tried in sequence —
+restore-after-`_build_ui()` alone, a `QEvent::LayoutRequest` flush
+before the restore, then a `showEvent()`-based re-apply (Qt activates a
+widget's layout before delivering `QShowEvent`, so this should be
+provably the last write) — and **all three produced the identical
+wrong CI result**, strong evidence this is a genuine Qt/offscreen-QPA
+version difference in engine behavior, not a defect in call ordering.
+Round 3's actual fix was to the **test**, not more production-code
+guessing: followed this codebase's own established pattern
+(`test_restore_window_geometry_decodes_and_calls_restore_geometry`) of
+mocking `restoreGeometry()` and asserting the exact bytes/call-timing
+wiring, rather than trusting the real engine to apply pixel values
+identically under offscreen QPA. **This is what made CI go green on
+`b729468`.** The `showEvent()` production fix stays (sound regardless
+of whether it's THE fix for CI's specific quirk) — full narrative
+belongs in `docs/HISTORY.md` if this is picked up as a HISTORY entry
+next session; not written there yet.
+- **Still needs a real-Mac confirmation from Kris** — already tracked
+  in `docs/round9/SESSION-PLAN.md`'s "Waiting on Kris". This matters
+  more than usual given the CI diagnosis above: the real pixel-exact
+  restore behavior was never actually verified by any automated test
+  in the end, by design.
 
-**Landed regardless, per the brief's own fallback:**
-1. **§2.3.3's latent bug, fixed.** `WA_DeleteOnClose` is now decided in
-   exactly one place (`TrayController._build_tray_icon()`, both
-   branches explicit) instead of split between it and
-   `MainWindow.__init__`.
-2. **Instrumentation.** `cleanup_before_quit` now logs the real
-   per-window thread pool's active/max count at entry and elapsed time
-   at exit — designed so a real recurrence is diagnosable from
-   `seeker.log` alone next time, without needing a deliberate repro.
-3. Two new tests (`testAttribute` on both tray branches) plus one
-   logging test (`caplog`, shape-only assertion — see HISTORY §125 for
-   why an exact `active=0` count was tried first and had to be
-   loosened: a freshly-built window can have its own real worker still
-   running).
+**§4.1 — removed the support-the-creator row from the wizard's done
+page.** Sidebar Support page and `AboutDialog`'s own support row
+untouched. `DONE_PAGE_SUPPORT_PROMPT` deleted (unused). Two stale
+"URLs aren't ready yet" comments corrected. `tests/test_wizard.py`'s
+buttons-exist assertion inverted to assert their absence.
 
-**Deliberately not done:** no `waitForDone()` (bare or timed) added
-anywhere — the brief warns a bare one is the same hang with a
-different stack, and a timed one needs a confirmed live repro to pick
-a real value for. Full method/reasoning: HISTORY §125; condensed
-facts: CLAUDE.md Standing facts (Qt/threading) and Open issues
-(Item 125, still genuinely open).
+**§4.2a — the "no releases published" update-check branch is now
+honest.** Split `UpdateStatus.UNAVAILABLE` into a new
+`NO_RELEASES_PUBLISHED` (Information icon, plain reason text) vs.
+`UNAVAILABLE` (Warning icon, "Couldn't check for updates:" prefix) for
+genuine failures.
 
-## Discovered this session, out of S5's own scope
-
-**The fullscreen-close test pair now has its third recurrence** —
-`test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
-`test_fullscreen_close_policy_check_ignores_a_stale_request` failed
-together under the full suite (`uv run pytest -q`), confirmed
-pre-existing via `git stash -u` (both fail identically on unmodified
-`HEAD`, both pass individually / under a narrower `-k` selection every
-time — not caused by this session's `WA_DeleteOnClose`/
-`cleanup_before_quit` diff). CLAUDE.md's own prior note named "a third
-time" as the bar for a dedicated diagnosis session — that bar is now
-cleared. Not diagnosed this session (S5 was scoped to §2.3 only); a
-good candidate for a future session, though not itself a scheduled row
-in `docs/round9/SESSION-PLAN.md` yet.
+**§4.2b was NOT touched** — both decisions `[ASK KRIS]`, unchanged.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -110,27 +110,23 @@ default. Don't read a brief section your row doesn't point at.
 ## Waiting on Kris
 
 Unchanged from `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris"
-section — see that file, not here (approval gates on
-§4.2b/§3.2/§1.2-fallback/§8.1-§8.5, and the real-desktop checks Code
-cannot do). S5 adds one real-desktop item to that list, already
-present there: **if the §2.3 hang recurs before a dedicated diagnosis
-session, capture it live** — `sample Seeker 10 -f
-/tmp/seeker-hang.txt` while it's stuck, plus `seeker.log` around the
-same timestamp (now carries the two new `cleanup_before_quit` lines).
-That one real capture is worth more than another session of guessing.
+section — see that file, not here. This session adds one item there:
+**§3.1's real-Mac confirmation** (resize → close to menu bar → quit →
+reopen restores the size) — see the S6 follow-up note above for why
+this is now the ONLY real verification of the pixel-exact behavior.
 
 ## Open questions
 
-- **Item 125 (the §2.3 quit hang) is still open** — mechanism
-  confirmed mechanically, Kris's specific case not reproduced. See
-  CLAUDE.md Open issues and HISTORY §125 for what a live attempt
-  should watch for.
-- **The two history-refresh/review-tab-replace flakes from S4 are
-  unchanged** — still ready for a dedicated diagnosis session, see
-  CLAUDE.md's Open issues. Neither fired this session (this session's
-  only CI run was still in progress at handoff time).
-- **The fullscreen-close pair now has a real third recurrence** (see
-  above) — also ready for a dedicated diagnosis session.
+- **§3.1's real applied-pixel behavior is unverified by any automated
+  test** (see S6 follow-up above) — a deliberate trade after three
+  failed attempts to make it deterministic under offscreen QPA across
+  environments. Worth revisiting if Kris's real-Mac check finds it
+  still broken; the production fix (showEvent-based re-apply) would
+  then need actual real-hardware iteration, not more offscreen guessing.
+- **Item 125 (the §2.3 quit hang), the two S4 flakes, and the
+  fullscreen-close pair's recurrences are all unchanged from S5** —
+  none newly fired beyond the known pattern. Tracked in CLAUDE.md's
+  Open issues; not re-litigated here.
 - Carried, unconfirmed: `test_callback_server.py`'s trio and the
   focus-search CI-only flake in CLAUDE.md's Open issues — neither
   fired this session.

@@ -36,7 +36,7 @@ point, commit, and say precisely where you stopped.
 | ☒ S3 | Table sorting correctness | §5.1, §5.2, §5.3 | ~120 K | After §5.2; the audit can stand alone |
 | ☒ S4 | Quit semantics + confirmation dialog | §2.1, §2.2 | ~110 K | After §2.1 — the finding alone is worth a commit |
 | ☒ S5 | The quit hang | §2.3 | ~120 K | Reproduction attempt is the box; report either way |
-| ☐ S6 | Window geometry + wizard support page + update-check honesty | §3.1, §4.1, §4.2a | ~130 K | After §3.1 |
+| ☒ S6 | Window geometry + wizard support page + update-check honesty | §3.1, §4.1, §4.2a | ~130 K | After §3.1 |
 | ☐ S7 | Start at login | §3.2 | ~120 K | After the mechanism decision is written down |
 | ☐ S8 | Review page — resizable panes | §6 | ~110 K | After the splitter works, before persistence |
 | ☐ S9 | Library — lift the selection seam (pure refactor) | §7.1 | ~110 K | Hard stop: no visible change in this row |
