@@ -18,9 +18,16 @@ a log (`docs/HISTORY.md` is the log).
   session's own diff (confirmed via `git stash -u`).
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings.**
-- **CI on this session's push (`664a9a9`): pushed, run queued at
-  session close — result not yet known. Check `gh run list --limit 3`
-  next session before assuming green or red.**
+- **CI on this session's push (`664a9a9`): run `34461031345`, `2
+  failed, 1155 passed, 29 skipped in 201.51s`. ruff/mypy both clean.
+  The 2 failures are the SAME two already-tracked S4 flakes**
+  (`test_history_refresh_button_refetches`,
+  `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`)
+  — not new, not caused by this session's diff (S5 touched
+  `main_window.py`/`tray.py`/tests only, none of which are in either
+  flake's own path). Both are already fully documented in CLAUDE.md's
+  Open issues as past their "dedicated diagnosis session" bar; not
+  re-litigated here.
 
 ## Where we are in the plan
 
