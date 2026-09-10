@@ -4132,7 +4132,11 @@ def test_view_menu_focus_search_navigates_and_focuses_the_search_field(
     window._on_focus_search_clicked()
 
     assert window._current_page_key == "search"
-    assert window._search_page.search_artist_edit.hasFocus()
+    # hasFocus() also requires the window to be the active window, which
+    # never happens under the offscreen QPA platform CI runs under
+    # (there is no window manager to activate anything) — assert the
+    # property the feature actually promises instead.
+    assert window.focusWidget() is window._search_page.search_artist_edit
 
 
 def test_window_menu_has_minimize_and_zoom_actions(qtbot):
