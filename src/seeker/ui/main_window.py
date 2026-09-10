@@ -8,6 +8,7 @@ from typing import Any
 
 from PySide6.QtCore import (
     QByteArray,
+    QCoreApplication,
     QEvent,
     QObject,
     QPointF,
@@ -476,10 +477,21 @@ class MainWindow(QMainWindow):
         # for QWidget::restoreGeometry() describe it as reproducing a
         # window's size/position as previously saved; nothing in that
         # contract survives a layout that hasn't been installed yet
-        # deciding the size afterward. restoreGeometry() itself still
-        # silently no-ops on a missing/corrupt value, leaving whatever
-        # _build_ui() left in place, so there's nothing to validate here
-        # beyond the base64 decode itself.
+        # deciding the size afterward.
+        #
+        # _build_ui() installing the central widget's layout posts a
+        # QEvent::LayoutRequest rather than activating synchronously —
+        # left pending, that request is still in the queue when this
+        # window is later shown, and processing it THEN would apply the
+        # layout's own size hint on top of whatever restoreGeometry()
+        # just set, the exact same class of bug moved one step later.
+        # Flushing it here, synchronously, before restoreGeometry() runs
+        # closes that: the layout settles against the resize() default
+        # above, and restoreGeometry()'s own resize is the last word.
+        QCoreApplication.sendPostedEvents(self, QEvent.Type.LayoutRequest)
+        # restoreGeometry() itself still silently no-ops on a missing/
+        # corrupt value, leaving whatever's in place, so there's nothing
+        # to validate here beyond the base64 decode itself.
         self._restore_window_geometry()
 
         # Roadmap item C5.6 — subscribes to the OS's own appearance

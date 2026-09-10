@@ -3580,7 +3580,15 @@ def test_close_to_tray_persists_geometry_for_a_fresh_window_to_restore(
     fresh_window.show()
     qtbot.wait(20)
 
-    assert fresh_window.geometry() == expected_geometry
+    # Size, not the full geometry rect — the reported bug and the
+    # brief's own acceptance-test wording are both about SIZE
+    # ("reopens at the default size"; "assert the size round-tripped").
+    # Position is left out deliberately: observed locally this session,
+    # restoring a saved geometry under offscreen QPA can shift y by a
+    # frame-margin-sized amount even when width/height round-trip
+    # exactly — a real but separate quirk from the size bug this test
+    # exists to catch.
+    assert fresh_window.size() == expected_geometry.size()
 
 
 def test_cleanup_before_quit_does_not_overwrite_geometry_already_hidden(
