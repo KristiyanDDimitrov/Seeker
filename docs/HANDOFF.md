@@ -8,38 +8,39 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** pushed (this handoff's own close-out commit, made after
-  `85ce139`, folds in the third-recurrence CLAUDE.md update below).
-  Tree clean (aside from an untracked `Claude outputs/` directory that
-  predates this session — not part of the repo, left alone).
+- **HEAD:** `4ef99fa`, pushed. Tree clean (aside from an untracked
+  `Claude outputs/` directory that predates this session — not part of
+  the repo, left alone).
 - **Local pytest (offscreen Qt, this machine, X9 Pro mounted so the
   `@requires_x9_pro` tests ran for real too):** `1183 passed, 1
-  skipped in 106.01s` — fully clean, no flakes fired locally. The
-  review-tab replace-button test specifically re-ran 5/5 green locally
-  right after its own CI failure (see below).
-- **Real CI: ruff/mypy clean on all three runs this session. pytest
-  failed on all three** — not a regression from this session's own
-  work (two of the three pushes were docs-only), **two DIFFERENT
-  already-tracked flakes, each now hitting its own stated
-  "dedicated diagnosis session" threshold:**
-  - `34452686991` (commit `44109aa`, the *previous* session's own
-    close-out push, never checked before this session started) and
-    `34457258960` (this session's `b07287c`):
-    `test_history_refresh_button_refetches` timed out both times with
-    an **identical** debug-snapshot signature (`active_threads=0
-    max_threads=3`, `no tasks in flight`) — two matching recurrences,
-    clears its own stated bar.
-  - `34457820512` (commit `85ce139`, a pure docs-only push):
-    `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
-    failed (`assert '' == 'Replaced with /new/path'`) — its **third**
-    real CI recurrence, clears the "third time" bar CLAUDE.md already
-    named for it. Passed 5/5 re-run locally immediately after, same as
-    both prior occurrences.
-  - Both flakes' evidence is recorded in CLAUDE.md's Open issues.
-    **Either is a legitimate next pickup** — ahead of or alongside S5,
-    if a session has room. Neither is caused by S4's own diff (ruff/
-    mypy clean throughout; ruff/mypy are the only gates S4's own code
-    changes could affect).
+  skipped in 106.01s` — fully clean, no flakes fired locally. Both
+  flakes named below re-ran green locally immediately after their own
+  CI failures (5/5 for the review-tab one specifically).
+- **Real CI: ruff/mypy clean on all four runs this session. pytest
+  failed on all four** — not a regression from this session's own work
+  (three of the four pushes were docs-only), **two DIFFERENT
+  already-tracked flakes, each now past its own stated "dedicated
+  diagnosis session" threshold, both firing at real frequency right
+  now:**
+  - `test_history_refresh_button_refetches`: `34452686991` (commit
+    `44109aa`, the *previous* session's own close-out push, never
+    checked before this session started), `34457258960` (this
+    session's `b07287c`), and `34458223276` (this session's final
+    push, `4ef99fa` — see below) — **three** hits now, not two;
+    earlier two had an identical debug-snapshot signature
+    (`active_threads=0 max_threads=3`, `no tasks in flight`).
+  - `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`:
+    `34457820512` (commit `85ce139`, docs-only) and `34458223276`
+    (`4ef99fa`, docs-only) — **fourth** real recurrence overall now.
+  - The final run, `34458223276` (`4ef99fa`, this handoff's own
+    close-out push): `2 failed, 1153 passed, 29 skipped` — **both
+    flakes fired together in the same run.** Both are documented with
+    full evidence in CLAUDE.md's Open issues; **do not keep re-pushing
+    to chase a green run** — that's confirmed to not be a useful
+    signal right now. **Either flake is a legitimate next pickup**
+    ahead of or alongside S5. Neither is caused by S4's own diff (ruff/
+    mypy clean on every single run; those are the only gates S4's own
+    code changes could affect).
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings.**
 

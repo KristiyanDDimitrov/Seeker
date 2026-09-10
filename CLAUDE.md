@@ -495,7 +495,10 @@ Genuinely open only — no "done" items, no flakes that resolved.
     passed 5/5 re-run locally immediately after, same as both prior
     occurrences. Three real CI recurrences, zero local repros, now
     clears this item's own previously-stated "third time" bar — worth
-    a dedicated diagnosis session.
+    a dedicated diagnosis session. **A fourth followed immediately**
+    (`gh run 34458223276`, same commit range, same assertion shape) —
+    fired in the SAME run as `test_history_refresh_button_refetches`
+    below, both together; still zero local repros across all four.
   - `test_history_refresh_button_refetches` — timed out roughly 1-in-8
     to 1-in-10 full-suite runs. A real cause was found and fixed
     (pytest-qt's own teardown doesn't flush Qt's deferred deletion,
@@ -526,8 +529,10 @@ Genuinely open only — no "done" items, no flakes that resolved.
     or already finished before the snapshot without its result ever
     reaching `get_recent_events_calls`. Two matching real recurrences
     now clears this item's own "diagnose from that output the next
-    time it fires for real" bar — worth a dedicated diagnosis session,
-    not a third data point.
+    time it fires for real" bar — worth a dedicated diagnosis session.
+    **A third followed immediately** (`gh run 34458223276`, same
+    commit range) — fired in the SAME run as the review-tab flake
+    above, both together, same `no tasks in flight` signature.
   - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
     once during S13 (round 8, comment-triage-only session — nothing in
     that session touched close/fullscreen logic, so not a regression
