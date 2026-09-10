@@ -452,7 +452,17 @@ Genuinely open only — no "done" items, no flakes that resolved.
     subsequently modified `closeEvent` directly — check that first if
     it recurs.
   - `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
-    — fired once after a `docker-compose.yml`-only commit, clean since.
+    — fired once after a `docker-compose.yml`-only commit, clean since
+    that first occurrence. **Round 9 §5, second real recurrence**
+    (`gh run 34452031576`, `AssertionError: assert '' ==
+    'Replaced with /new/path'` on `status_label.text()`) — this
+    session's own commit touched only `dashboard_page.py` (Progress
+    sort key), `downloads_page.py` (same), and `theme.py` (the Actions
+    sort veto), none of which touch this test's replace-button/
+    status-label path; passed 5/5 re-run locally immediately after.
+    Two real CI recurrences with no local repro either time is
+    stronger evidence of a genuine timing race than "fired once" was —
+    worth a dedicated diagnosis session if it recurs a third time.
   - `test_history_refresh_button_refetches` — timed out roughly 1-in-8
     to 1-in-10 full-suite runs. A real cause was found and fixed
     (pytest-qt's own teardown doesn't flush Qt's deferred deletion,
