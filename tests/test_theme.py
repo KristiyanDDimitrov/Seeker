@@ -1,5 +1,13 @@
 import pytest
-from PySide6.QtWidgets import QFrame, QLabel, QListWidget, QPushButton, QTableWidget
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from seeker.ui import theme
 
@@ -94,6 +102,39 @@ def test_cell_widget_single_label_matches_existing_shared_state_pattern(qtbot):
     qtbot.addWidget(container)
 
     assert label.parentWidget() is container
+
+
+def test_actions_column_click_never_sorts_and_shows_no_indicator(qtbot):
+    # §5.2 — a click on an Actions column header must neither sort by
+    # it nor leave the indicator sitting on it; a real click, not a
+    # manually emitted signal, since Qt's own indicator flip + re-sort
+    # happens inside header mouse handling itself, before
+    # sectionClicked is even emitted.
+    table = QTableWidget(3, 2)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["Name", "Actions"])
+    table.setItem(0, 0, QTableWidgetItem("b"))
+    table.setItem(1, 0, QTableWidgetItem("a"))
+    table.setItem(2, 0, QTableWidgetItem("c"))
+    theme.apply_table_defaults(table)
+    theme.configure_columns(
+        table, theme.ColumnLayout(stretch=(0,), fit_content=(), actions=1),
+    )
+    table.show()
+
+    header = table.horizontalHeader()
+    header.setSortIndicator(0, Qt.SortOrder.AscendingOrder)
+    assert table.item(0, 0).text() == "a"
+
+    section_center = QPoint(
+        header.sectionViewportPosition(1) + header.sectionSize(1) // 2,
+        header.height() // 2,
+    )
+    qtbot.mouseClick(header, Qt.MouseButton.LeftButton, pos=section_center)
+
+    assert header.sortIndicatorSection() == 0
+    assert header.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+    assert table.item(0, 0).text() == "a"
 
 
 def test_header_section_has_a_right_hand_divider():

@@ -574,6 +574,52 @@ class ColumnLayout:
     minimum_section: int = 40
 
 
+_ACTIONS_SORT_VETO_WIRED = "_seeker_actions_sort_veto_wired"
+
+
+def _veto_actions_column_sort(table: QTableWidget, actions_column: int) -> None:
+    """§5.2 — an Actions column holds buttons, not data; sorting by it
+    is meaningless, so a click on its header must neither sort nor
+    keep the sort indicator it would otherwise pick up. Every table
+    with a `ColumnLayout.actions` gets this from `configure_columns`
+    itself, not as a per-page special case (HISTORY: round 9 §5.2).
+
+    `configure_columns` is re-run on every populated render (item E2's
+    contract), so this wiring is guarded to happen exactly once per
+    table via a dynamic Qt property — connecting again on every render
+    would both leak connections and fire the revert multiple times per
+    click.
+    """
+    header = table.horizontalHeader()
+    if header.property(_ACTIONS_SORT_VETO_WIRED):
+        return
+    header.setProperty(_ACTIONS_SORT_VETO_WIRED, True)
+
+    # The last real (non-actions) sort state, seeded from whatever
+    # apply_table_defaults already set (-1/Ascending on a fresh
+    # table). A plain closure, not a Qt property — no QVariant
+    # round-trip needed for values only this closure reads.
+    last_good_section = header.sortIndicatorSection()
+    last_good_order = header.sortIndicatorOrder()
+
+    def _track_real_sort(section: int, order: Qt.SortOrder) -> None:
+        nonlocal last_good_section, last_good_order
+        if section != actions_column:
+            last_good_section = section
+            last_good_order = order
+
+    def _veto_click(section: int) -> None:
+        # Qt has already flipped the indicator (and the connected
+        # QTableView has already re-sorted) by the time sectionClicked
+        # reaches us; restoring the prior indicator here re-sorts back
+        # to it within the same call, so nothing paints in between.
+        if section == actions_column:
+            header.setSortIndicator(last_good_section, last_good_order)
+
+    header.sortIndicatorChanged.connect(_track_real_sort)
+    header.sectionClicked.connect(_veto_click)
+
+
 def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
     """The construction-time half of a table's column layout — see
     `size_columns` below for the render-time half. Roadmap item E2
@@ -592,6 +638,7 @@ def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
         header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
     if layout.actions is not None:
         size_action_column(table, layout.actions, [])
+        _veto_actions_column_sort(table, layout.actions)
     apply_column_floors(table)
 
 
