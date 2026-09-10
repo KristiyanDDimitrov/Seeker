@@ -8,7 +8,6 @@ from typing import Any
 
 from PySide6.QtCore import (
     QByteArray,
-    QCoreApplication,
     QEvent,
     QObject,
     QPointF,
@@ -27,6 +26,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPaintEvent,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -340,6 +340,11 @@ class MainWindow(QMainWindow):
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
         self._hidden_to_tray = False
+        # Round 9 §3.1 follow-up — guards `showEvent()`'s own re-apply
+        # of the restored geometry (see that method) to exactly the
+        # FIRST real show, never a later one (reopening from the tray
+        # must not stomp on a size the user has since resized to).
+        self._window_geometry_restored_after_first_show = False
         # Roadmap item E1 (round 7) — captured in `closeEvent` before a
         # fullscreen window is allowed to close for real, so `_on_tray_
         # open_seeker` can restore the pre-fullscreen size/position
@@ -473,25 +478,14 @@ class MainWindow(QMainWindow):
         # discarding the restored geometry and landing the user back on
         # something close to the resize() default above — confirmed
         # live as the actual cause of the round-9 report ("reopens at
-        # default size, not the size it was closed at"). Qt's own docs
-        # for QWidget::restoreGeometry() describe it as reproducing a
-        # window's size/position as previously saved; nothing in that
-        # contract survives a layout that hasn't been installed yet
-        # deciding the size afterward.
-        #
-        # _build_ui() installing the central widget's layout posts a
-        # QEvent::LayoutRequest rather than activating synchronously —
-        # left pending, that request is still in the queue when this
-        # window is later shown, and processing it THEN would apply the
-        # layout's own size hint on top of whatever restoreGeometry()
-        # just set, the exact same class of bug moved one step later.
-        # Flushing it here, synchronously, before restoreGeometry() runs
-        # closes that: the layout settles against the resize() default
-        # above, and restoreGeometry()'s own resize is the last word.
-        QCoreApplication.sendPostedEvents(self, QEvent.Type.LayoutRequest)
-        # restoreGeometry() itself still silently no-ops on a missing/
-        # corrupt value, leaving whatever's in place, so there's nothing
-        # to validate here beyond the base64 decode itself.
+        # default size, not the size it was closed at"). This call is a
+        # best-effort default so the window doesn't flash at the
+        # resize() default above before it's ever shown; `showEvent()`
+        # below is what actually wins the race on real hardware — see
+        # its own comment. restoreGeometry() itself still silently
+        # no-ops on a missing/corrupt value, leaving whatever's in
+        # place, so there's nothing to validate here beyond the base64
+        # decode itself.
         self._restore_window_geometry()
 
         # Roadmap item C5.6 — subscribes to the OS's own appearance
@@ -1926,6 +1920,34 @@ class MainWindow(QMainWindow):
     # _schedule_dock_icon_policy_check_after_fullscreen_close for that
     # path's own, separately-reasoned reuse of this same delay.
     _HIDE_TO_TRAY_VERIFY_DELAY_MS = 400
+
+    def showEvent(self, event: QShowEvent) -> None:
+        # Round 9 §3.1 follow-up — a real CI-only failure (macos-26,
+        # run 34479709317) that this machine's offscreen suite never
+        # reproduced despite real effort: even called after _build_ui()
+        # (see that call's own comment), the __init__-time
+        # restoreGeometry() lost to the central widget's own first
+        # layout activation on that runner, coming back clamped to
+        # exactly this window's configured minimum width — the same
+        # symptom class as the original bug, just later, and a
+        # QEvent::LayoutRequest flush between _build_ui() and the
+        # restore (tried first) did not fix it either, so something
+        # about restoreGeometry()'s OWN resize re-triggers layout
+        # activation rather than only the initial one.
+        #
+        # Re-applying the restore here, once, wins unconditionally
+        # instead of relying on event-queue ordering: Qt activates a
+        # widget's layout as part of its own show handling before
+        # delivering the QShowEvent, so by the time this method runs,
+        # first activation has already happened — restoreGeometry()
+        # here is provably the last write, not a guess about timing.
+        # Guarded to the first real show only: a later show (reopening
+        # from the tray) must not stomp a size the user has since
+        # resized to.
+        super().showEvent(event)
+        if not self._window_geometry_restored_after_first_show:
+            self._window_geometry_restored_after_first_show = True
+            self._restore_window_geometry()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Roadmap item R7.1/R7.2 — hides to the menu bar instead of
