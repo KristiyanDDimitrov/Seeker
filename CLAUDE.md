@@ -256,6 +256,17 @@ Each links to the HISTORY.md item where the full investigation lives.
 
 ### SoulSeek / slskd
 
+- **Quitting Seeker mid-download does not stop the transfer — only the
+  reconciliation.** slskd runs the transfer in its own Docker
+  container, independent of Seeker's process; Seeker only enqueues via
+  slskd's REST API and later reconciles via
+  `DownloadService.poll_downloads()`. Confirmed live (round 9 §2.1,
+  not just architecture): a real download kept transferring to
+  completion with zero `seeker` process running at all, then was
+  correctly picked up and moved into the library on the next
+  `poll_downloads()` call. Nothing is lost on quit; the finished file
+  just waits in slskd's own directory until Seeker is next opened.
+  [HISTORY §123](docs/HISTORY.md#123)
 - Two distinct credential pairs exist and are easy to confuse:
   `SLSKD_SLSK_USERNAME`/`PASSWORD` is the **Soulseek network** login;
   `SLSKD_USERNAME`/`PASSWORD` is the **web UI** login. Confirmed live

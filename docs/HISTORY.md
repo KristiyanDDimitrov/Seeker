@@ -14312,3 +14312,69 @@ has a genuine sort key, and every Actions column in the app — present
 and future, since the fix lives in the shared `ColumnLayout`/
 `configure_columns` seam rather than any one page — can no longer
 advertise a sort it cannot perform.
+
+### 123 — Round 9 §2.1: live-verified what happens to a transfer when Seeker quits mid-download
+
+Kris asked what happens to an in-flight SoulSeek download when Seeker
+is quit. The architecture's expected answer — slskd owns the transfer
+in its own container, independent of Seeker's process — was confirmed
+**live**, not assumed, per the brief's own explicit instruction not to
+write §2.2's dialog copy until this was verified against real
+behaviour.
+
+**Method.** Real production stack, not a disposable substitute (Kris's
+own call after being asked): Docker Desktop started fresh, the real
+`docker-compose.yml` slskd container (real `slskd-data`, real
+`/Volumes/X9 Pro/Music` share — the drive had to be physically
+reconnected first, it wasn't mounted at session start). Rather than
+drive the real Qt GUI (no automation available for it), used the fact
+that the `seeker` CLI is itself a clean proxy for "Seeker's process
+isn't running": each CLI invocation enqueues/polls and then exits —
+there is no persistent process between commands, exactly the state
+that matters for this question (the GUI's live worker/timer lifecycle
+is a §2.3 concern, not this one). `default_download_location_id` was
+temporarily pointed at the existing `/Volumes/X9 Pro/Music/Test`
+library location (id 4, already reserved for exactly this kind of
+manual test) so `seeker search --download` had a destination; reverted
+to `None` afterward.
+
+**Result — confirmed exactly as expected:**
+
+1. `seeker search "Amen Brother" "The Winstons" --download` requested
+   a real 27.8 MB file from a real peer (`amuse3`) and the CLI process
+   exited immediately after the request succeeded.
+2. Polled slskd's own `GET /api/v0/transfers/downloads` directly
+   (`X-API-Key` from the real `config.json`) with **no `seeker` process
+   running at all**: the transfer was `InProgress` at 31% after ~10s,
+   then `Completed, Succeeded` (100%, 27,808,192/27,808,192 bytes) 15s
+   later — slskd drove the whole transfer to completion by itself.
+3. The finished file sat untouched in slskd's own
+   `slskd-data/downloads/` — Seeker's post-download pipeline (move into
+   library, tag, review-candidate handling) had not run, because
+   nothing had asked it to.
+4. Running `seeker downloads status` afterward (the CLI's
+   `poll_downloads()` entry point, standing in for "Seeker reopened")
+   immediately reconciled it: `Moved '1 03 - The Winstons - Amen
+   Brother.wav' to /Volumes/X9 Pro/Music/Test/Manual`, `Completed: 1`.
+
+So the expected answer is now a confirmed one, not an inference: quitting
+Seeker stops **reconciliation**, not the **transfer**. slskd keeps
+downloading to completion regardless of whether Seeker is running;
+nothing is lost; the only effect of Seeker being closed is that the
+finished file waits in slskd's incomplete/complete directory until
+Seeker is next opened and `poll_downloads()` runs. No divergent case
+was found — `docker-compose` does not go down with the app, and
+nothing in slskd's own config stops it on client disconnect (it isn't
+a client in that sense at all; Seeker only talks to it over its REST
+API).
+
+**Cleanup, since this ran against real prod:** the test file and its
+`._`-prefixed AppleDouble sibling were deleted, the resulting
+`download_requests` row (a manual/test entry, not tied to any real
+playlist) was removed, `default_download_location_id` was reverted to
+`None`, and the slskd container was brought back down
+(`docker compose down`) — the stack was not running when the session
+started and was left the same way.
+
+See CLAUDE.md's Standing facts (SoulSeek / slskd) for the condensed,
+present-tense version of this result.
