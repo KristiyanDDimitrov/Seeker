@@ -8,23 +8,29 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `32713ce`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `aa32fb3`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine):** `1147 passed, 29
-  skipped in 88.69s` — clean, no flakes fired locally this session.
-- **Real CI (`gh run view 34452439345`, the push of this session's
-  final commit `32713ce`): ruff/mypy clean, pytest fully green.** The
-  prior push in this session (`34452031576`, commit `d1701bf`) DID
-  fail pytest — one real failure,
-  `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`,
-  already a tracked round-8 flake in CLAUDE.md's Open issues. Passed
-  5/5 re-run locally immediately after; this session's own diff
-  doesn't touch that test's code path. Recorded as a second real
-  recurrence in CLAUDE.md rather than silently re-pushing past it —
-  see that file's Open issues section.
+- **Local pytest (offscreen Qt, this machine, X9 Pro mounted so the
+  `@requires_x9_pro` tests ran for real too):** `1183 passed, 1
+  skipped in 106.01s` — fully clean, no flakes fired locally.
+- **Real CI:** ruff/mypy clean on every run this session. **pytest
+  failed on BOTH real CI runs this session** — not a regression from
+  this session's own work (see below), a known tracked flake:
+  - `34452686991` (commit `44109aa`, the *previous* session's own
+    close-out push — never checked before this session started):
+    `1 failed, 1146 passed, 29 skipped`.
+  - `34457258960` (commit `b07287c`, this session's own §2.2 push):
+    `1 failed, 1154 passed, 29 skipped`.
+  - Both: `test_history_refresh_button_refetches` timed out, with an
+    **identical** debug-snapshot signature (`active_threads=0
+    max_threads=3`, `no tasks in flight`) — recorded in CLAUDE.md's
+    Open issues with the new evidence (commit `aa32fb3`). Two real
+    matching recurrences now clears that item's own stated bar for a
+    dedicated diagnosis session — **worth picking up directly next**,
+    ahead of or alongside S5, if a session has room for it.
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
-  findings** (both local and on CI).
+  findings.**
 
 ## Where we are in the plan
 
@@ -32,53 +38,62 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1, S2** (see prior handoffs / HISTORY §115-§121).
-- **Done: S3** — Table sorting correctness (§5.1, §5.2, §5.3), five
-  commits: `39f54f5` (§5.1), `9157a93` (§5.2), `d1701bf` (§5.3),
-  `10650b6` (CI flake recorded), `32713ce` (session-plan tick).
-- **Next: S4** — Quit semantics + confirmation dialog (§2.1, §2.2).
+- **Done: S1, S2, S3** (see prior handoffs / HISTORY §115-§122).
+- **Done: S4** — Quit semantics + confirmation dialog (§2.1, §2.2),
+  three commits: `7598240` (§2.1, live verification), `b07287c`
+  (§2.2, the dialog + the `QEvent.Type.Quit` mechanism), `aa32fb3`
+  (CI-flake evidence, opportunistic, not part of S4's own scope).
+- **Next: S5** — the quit hang (§2.3). **Consider the history-refresh
+  flake diagnosis as an alternative/companion pickup** — see above.
 
-## S3 report
+## S4 report
 
-**§5.1.** Dashboard's and Downloads' Progress columns were
-`setCellWidget`-only, no `QTableWidgetItem` — click-to-sort compared
-nothing and was a silent no-op. Added a `SortKeyItem` (already
-existed in `ui/table_sort.py`) alongside each progress widget, keyed
-on fraction complete (not raw bytes) so same-percentage rows sort
-together regardless of file size. `-1.0` sentinel for "nothing real
-to show" rows (never `None`).
+**§2.1 — live-verified, not assumed.** Brought up the real
+production stack (Docker Desktop + the real `docker-compose.yml`
+slskd container; the X9 Pro drive had to be physically reconnected
+first — wasn't mounted at session start). Used the fact that the
+`seeker` CLI is itself a clean "Seeker not running" proxy (each
+invocation enqueues/polls then exits, no persistent process) rather
+than trying to automate the real Qt GUI. Requested a real download via
+`seeker search ... --download`, watched slskd's own API directly with
+zero `seeker` process running — it finished the transfer completely on
+its own — then confirmed `seeker downloads status` reconciled it into
+the library on the next "open." **Confirmed: quitting Seeker stops
+reconciliation, not the transfer.** Nothing is lost. Cleaned up every
+trace of the test against real prod (file, DB row, config, container)
+afterward. Full method/result: HISTORY §123; condensed fact: CLAUDE.md
+Standing facts (SoulSeek/slskd).
 
-**§5.2 — the round's real seam work.** Same root cause hit every
-Actions column app-wide. Fixed once in `theme.configure_columns`,
-keyed off `ColumnLayout.actions` (already existed, no new field
-needed — the brief's own bet paid off). Mechanism:
-`sortIndicatorChanged` continuously tracks the last real (non-Actions)
-sort state; `sectionClicked` on the Actions column restores it. Two
-signals are required, not one — by the time `sectionClicked` fires,
-Qt's own mouse handling has already flipped the indicator and
-re-sorted, so reading `sortIndicatorSection()` inside that handler
-would read the wrong (new) value. Verified with a **real**
-`qtbot.mouseClick` on header coordinates (`tests/test_theme.py`) — a
-manually emitted `sectionClicked` signal would skip the exact Qt code
-path the fix depends on and pass for the wrong reason.
+**§2.2 — the single seam, found by live experiment.** The brief asked
+to find the one seam both real quit routes (tray Quit, ⌘Q/Dock "Quit
+Seeker") pass through, since `cleanup_before_quit`'s `aboutToQuit`
+hook fires too late to cancel anything. Built a throwaway probe app on
+this real Mac, drove it via `osascript`/System Events (a synthetic
+Cmd+Q keystroke did NOT reach the handler — clicking the actual native
+Quit menu item did), and confirmed **both routes deliver
+`QEvent.Type.Quit` to the `QApplication` instance itself, before
+`aboutToQuit`.** Ruled out a reentrant "cancel-then-repost-quit()"
+design by testing it directly — it exits the process silently with no
+`aboutToQuit` at all, skipping cleanup. The working mechanism needs no
+repost: `MainWindow` installs itself as an event filter on the
+`QApplication`; on that one event it decides synchronously (via
+`DashboardService.get_active_downloads()`, filtered to
+`status == "downloading"`, matching `downloads_page`'s own existing
+definition) and returns `False` to let the same event proceed or
+`True` to cancel it. Zero active downloads: no dialog at all. Copy
+follows §2.1's confirmed truth — no "lose." "Keep Seeker Open" is the
+real default button. 8 new tests in `test_ui_smoke.py`, both the
+decision method and the `eventFilter` boundary itself (a real
+`QEvent(QEvent.Type.Quit)`, not a stand-in). Full mechanism/method:
+HISTORY §124; condensed fact: CLAUDE.md Standing facts
+(Qt/threading) — **likely reusable for any future "confirm before a
+real quit" need.**
 
-**§5.3.** Audited all 13 real `.setCellWidget(` call sites (7 files —
-the brief's own count of "ten" was an undercount, corrected in
-HISTORY). Full table in HISTORY §122. Duplicates' two sites remain
-correctly excluded (`setSortingEnabled(False)`, grouped via
-`setSpan()`). Every other site now either has a real sort key or is
-covered by §5.2's generic veto.
-
-**A real CI-only flake fired** on this session's own push (see
-above) — not a regression, already tracked, recorded with the new
-evidence rather than ignored.
-
-**Skills used:** `improve-codebase-architecture` was the row's
-assigned bundle — the actual available skill list this session (see
-`docs/round9/SESSION-PLAN.md`'s own resolve-at-start step) had no
-exact match by that name; proceeded directly per the brief's own very
-explicit mechanism instructions, same divergence pattern S1/S2 already
-noted.
+**Real production infra was used deliberately, with Kris's explicit
+sign-off each time it mattered** (running against real prod vs. a
+disposable substitute; physically reconnecting the X9 Pro drive) —
+see this session's own transcript for the specific asks, not repeated
+here.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -90,28 +105,26 @@ default. Don't read a brief section your row doesn't point at.
 ## Waiting on Kris
 
 Unchanged from `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris"
-section — see that file, not here, for the current list (approval
-gates on §4.2b/§3.2/§1.2-fallback/§8.1-§8.5, and the real-desktop
-checks Code cannot do). Nothing in S3 added a new one.
+section — see that file, not here (approval gates on
+§4.2b/§3.2/§1.2-fallback/§8.1-§8.5, and the real-desktop checks Code
+cannot do). S4 resolved **§2.1's own real-desktop check itself** (that
+item wasn't formally listed in the "Waiting on Kris" table, but it
+required Kris's live participation the same way — done now, no action
+needed). Nothing else in S4 added a new one.
 
 ## Open questions
 
-- **`test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
-  fired a second time, on real CI, this session** (`gh run
-  34452031576`) — see CLAUDE.md's Open issues, updated with this
-  recurrence's detail. Two real CI failures with zero local repro
-  either time is stronger evidence of a genuine race than the
-  single round-8 occurrence was. Worth a dedicated diagnosis session
-  if it recurs a third time; not diagnosed this session (out of S3's
-  scope, and the brief's own row didn't point at it).
-- **`test_history_refresh_button_refetches` is still an open flake**
-  (carried from S2) — instrumentation in place (HISTORY §121), no
-  real natural-recurrence snapshot captured yet.
-- Carried, unconfirmed: the fullscreen-close pattern and
-  `test_callback_server.py` trio in CLAUDE.md's Open issues — neither
-  fired this session (2 full-suite runs total), not evidence they're
-  gone.
-- `docs/HISTORY.md` is now ~850 KB — still never read whole.
+- **`test_history_refresh_button_refetches` now has two matching real
+  CI recurrences with debug-snapshot evidence** (see "Current state"
+  above and CLAUDE.md's Open issues, commit `aa32fb3`) — ready for a
+  dedicated diagnosis session; the "no active threads, no tasks in
+  flight" signature rules out the stuck-worker hypothesis, points
+  toward a missed signal delivery or a race between the click and the
+  snapshot instead.
+- Carried, unconfirmed: `test_review_tab_replace_button_...`, the
+  fullscreen-close pattern, and `test_callback_server.py`'s trio in
+  CLAUDE.md's Open issues — none fired this session.
+- `docs/HISTORY.md` is now ~880 KB — still never read whole.
 
 ## How to end your session
 
