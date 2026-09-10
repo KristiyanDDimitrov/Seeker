@@ -20,7 +20,7 @@ from seeker.ui.download_eta import (
     format_aggregate_header,
 )
 from seeker.ui.pages.context import PageContext, build_page
-from seeker.ui.table_sort import preserving_sort_order
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
 # Plain-language notes for statuses that aren't self-explanatory as raw
@@ -85,6 +85,27 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     label_text = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
 
     return theme.wrap_progress_bar(bar, label_text)
+
+
+def _progress_sort_key(request: DownloadRequest) -> float:
+    # §5.1 — mirrors _build_progress_widget's own branching so the
+    # sort order matches what the bar actually shows.
+    if request.status in ("failed", "unavailable"):
+        # No real transfer to rank — same "sorts below everything
+        # real" sentinel as a Dashboard row with no active transfer.
+        return -1.0
+
+    if request.total_bytes and request.bytes_transferred is not None:
+        return request.bytes_transferred / request.total_bytes
+
+    if request.status in _DOWNLOAD_TERMINAL_STATUSES:
+        # completed/ready_for_review with no real bytes recorded
+        # (HISTORY §20 says this shouldn't happen) — rendered as a
+        # full bar, so it sorts as done.
+        return 1.0
+
+    # queued/downloading with no bytes reported yet — indeterminate.
+    return 0.0
 
 
 def _build_progress_widget(
@@ -259,6 +280,10 @@ class DownloadsPage(QWidget):
 
                 self.downloads_table.setCellWidget(
                     row, 4, _build_progress_widget(download, eta_text),
+                )
+                self.downloads_table.setItem(
+                    row, 4,
+                    SortKeyItem("", _progress_sort_key(request)),
                 )
 
             # This table's progress-bar cell widgets are real per-row

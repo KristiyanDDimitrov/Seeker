@@ -54,7 +54,7 @@ from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
-from seeker.ui.table_sort import preserving_sort_order
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
 _STATE_LABELS = {
@@ -756,8 +756,18 @@ class DashboardPage(QWidget):
                     self.track_table.setCellWidget(
                         row, 2, theme.wrap_progress_bar(progress, None),
                     )
+                    fraction = status.bytes_transferred / status.total_bytes
+                    self.track_table.setItem(
+                        row, 2, SortKeyItem("", fraction),
+                    )
                 else:
                     self.track_table.setCellWidget(row, 2, QWidget())
+                    # No active transfer — sorts below every real
+                    # fraction-complete value (§5.1; SortKeyItem forbids
+                    # None as a sort key).
+                    self.track_table.setItem(
+                        row, 2, SortKeyItem("", -1.0),
+                    )
 
                 track_actions = self._build_track_actions(status)
                 action_widgets.append(track_actions)
