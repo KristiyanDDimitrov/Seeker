@@ -1311,6 +1311,13 @@ class MainWindow(QMainWindow):
                         f"View the release</a>"
                 box.setTextFormat(Qt.TextFormat.RichText)
             box.setText(text)
+        elif result.status == UpdateStatus.NO_RELEASES_PUBLISHED:
+            # Round 9 §4.2a — a repo with nothing published yet isn't a
+            # fault, so this gets its own honest, un-alarming rendering
+            # rather than falling into the UNAVAILABLE branch's Warning
+            # icon and "Couldn't check for updates:" framing.
+            box.setIcon(QMessageBox.Icon.Information)
+            box.setText(result.reason or "No releases have been published yet.")
         else:
             box.setIcon(QMessageBox.Icon.Warning)
             box.setText(f"Couldn't check for updates: {result.reason}")

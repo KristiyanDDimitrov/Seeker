@@ -97,7 +97,10 @@ def test_real_404_shape_reports_no_releases_published(monkeypatch):
 
     result = check_for_update()
 
-    assert result.status == UpdateStatus.UNAVAILABLE
+    # Round 9 §4.2a — its own status, not UNAVAILABLE: a repo with
+    # nothing published yet isn't a fault. See NO_RELEASES_PUBLISHED's
+    # own docstring.
+    assert result.status == UpdateStatus.NO_RELEASES_PUBLISHED
     assert result.reason == "No releases have been published yet."
 
 

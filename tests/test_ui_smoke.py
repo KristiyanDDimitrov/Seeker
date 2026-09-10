@@ -1580,6 +1580,40 @@ def test_unavailable_dialog_shows_the_reason(qtbot, monkeypatch):
         "seeker.ui.main_window.check_for_update",
         lambda: UpdateCheckResult(
             UpdateStatus.UNAVAILABLE,
+            reason="Couldn't reach GitHub: connection refused.",
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    assert "Couldn't reach GitHub: connection refused." in shown[0].text()
+    assert shown[0].icon() == QMessageBox.Icon.Warning
+
+
+def test_no_releases_published_dialog_is_honest_and_un_alarming(
+        qtbot, monkeypatch,
+):
+    # Round 9 §4.2a — verified 2026-09-09 the repo has no published
+    # releases, so this is the real, currently-live branch for every
+    # user clicking "Check for updates...". Must read as a true,
+    # un-alarming statement (Information icon, no "Couldn't check for
+    # updates:" fault framing) rather than implying a network or
+    # configuration problem.
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.NO_RELEASES_PUBLISHED,
             reason="No releases have been published yet.",
         ),
     )
@@ -1596,7 +1630,9 @@ def test_unavailable_dialog_shows_the_reason(qtbot, monkeypatch):
     window.check_for_updates_action.trigger()
     qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
 
-    assert "No releases have been published yet." in shown[0].text()
+    assert shown[0].text() == "No releases have been published yet."
+    assert shown[0].icon() == QMessageBox.Icon.Information
+    assert "couldn't" not in shown[0].text().lower()
 
 
 def test_check_for_updates_action_disabled_while_running_and_reenabled(

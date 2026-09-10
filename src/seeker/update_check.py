@@ -35,6 +35,14 @@ class UpdateStatus(Enum):
     UP_TO_DATE = auto()
     UPDATE_AVAILABLE = auto()
     UNAVAILABLE = auto()
+    # Round 9 §4.2a — split out of UNAVAILABLE. A repo with no
+    # published releases (confirmed live 2026-09-09: this repo has
+    # none) has nothing wrong with it; GitHub's own 404 for that case is
+    # identical to every OTHER 404 shape this module treats as a real
+    # failure. UNAVAILABLE's caller (main_window.py) renders a Warning
+    # icon and a "Couldn't check for updates:" prefix — both imply a
+    # fault. A repo with nothing to report yet isn't one.
+    NO_RELEASES_PUBLISHED = auto()
 
 
 @dataclass
@@ -127,9 +135,10 @@ def _check_for_update() -> UpdateCheckResult:
         # The real, confirmed shape for this repo today (no release has
         # ever been published) — GitHub returns the identical 404 for
         # "repo doesn't exist" too, but that's not a real scenario for
-        # a hardcoded, known-good REPO constant.
+        # a hardcoded, known-good REPO constant. NO_RELEASES_PUBLISHED,
+        # not UNAVAILABLE — see that status's own docstring for why.
         return UpdateCheckResult(
-            UpdateStatus.UNAVAILABLE,
+            UpdateStatus.NO_RELEASES_PUBLISHED,
             reason="No releases have been published yet.",
             installed_version=installed,
         )
