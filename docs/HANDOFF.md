@@ -8,41 +8,19 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `4ef99fa`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `664a9a9`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine, X9 Pro mounted so the
-  `@requires_x9_pro` tests ran for real too):** `1183 passed, 1
-  skipped in 106.01s` — fully clean, no flakes fired locally. Both
-  flakes named below re-ran green locally immediately after their own
-  CI failures (5/5 for the review-tab one specifically).
-- **Real CI: ruff/mypy clean on all four runs this session. pytest
-  failed on all four** — not a regression from this session's own work
-  (three of the four pushes were docs-only), **two DIFFERENT
-  already-tracked flakes, each now past its own stated "dedicated
-  diagnosis session" threshold, both firing at real frequency right
-  now:**
-  - `test_history_refresh_button_refetches`: `34452686991` (commit
-    `44109aa`, the *previous* session's own close-out push, never
-    checked before this session started), `34457258960` (this
-    session's `b07287c`), and `34458223276` (this session's final
-    push, `4ef99fa` — see below) — **three** hits now, not two;
-    earlier two had an identical debug-snapshot signature
-    (`active_threads=0 max_threads=3`, `no tasks in flight`).
-  - `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`:
-    `34457820512` (commit `85ce139`, docs-only) and `34458223276`
-    (`4ef99fa`, docs-only) — **fourth** real recurrence overall now.
-  - The final run, `34458223276` (`4ef99fa`, this handoff's own
-    close-out push): `2 failed, 1153 passed, 29 skipped` — **both
-    flakes fired together in the same run.** Both are documented with
-    full evidence in CLAUDE.md's Open issues; **do not keep re-pushing
-    to chase a green run** — that's confirmed to not be a useful
-    signal right now. **Either flake is a legitimate next pickup**
-    ahead of or alongside S5. Neither is caused by S4's own diff (ruff/
-    mypy clean on every single run; those are the only gates S4's own
-    code changes could affect).
+- **Local pytest (offscreen Qt, this machine):** `1183 passed, 1
+  skipped` clean once (see below), but the full suite also produced
+  `2 failed, 1183 passed, 1 skipped in 102.16s` on a separate run —
+  see "Discovered this session" below, not a regression from this
+  session's own diff (confirmed via `git stash -u`).
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings.**
+- **CI on this session's push (`664a9a9`): pushed, run queued at
+  session close — result not yet known. Check `gh run list --limit 3`
+  next session before assuming green or red.**
 
 ## Where we are in the plan
 
@@ -50,64 +28,70 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1, S2, S3** (see prior handoffs / HISTORY §115-§122).
-- **Done: S4** — Quit semantics + confirmation dialog (§2.1, §2.2),
-  commits: `7598240` (§2.1, live verification), `b07287c` (§2.2, the
-  dialog + the `QEvent.Type.Quit` mechanism), `aa32fb3` and this
-  handoff's own close-out commit (CI-flake evidence, opportunistic,
-  not part of S4's own scope).
-- **Next: S5** — the quit hang (§2.3). **Consider one of the two
-  now-qualified flake diagnoses as an alternative/companion pickup**
-  — see "Current state" above.
+- **Done: S1-S5.**
+- **Next: S6** — Window geometry + wizard support page + update-check
+  honesty (§3.1, §4.1, §4.2a). Split point: after §3.1.
+- Two of round 9's own approval gates are still waiting on Kris
+  (unchanged — see `docs/round9/SESSION-PLAN.md`'s "Waiting on Kris"):
+  §4.2b (cut a real release / auto-update opt-in) and §3.2
+  (`SMAppService` for start-at-login). §4.2a in S6 does NOT need
+  either gate — check the brief's own text for what's actually scoped
+  there before assuming it's blocked.
 
-## S4 report
+## S5 report — §2.3, the quit hang
 
-**§2.1 — live-verified, not assumed.** Brought up the real
-production stack (Docker Desktop + the real `docker-compose.yml`
-slskd container; the X9 Pro drive had to be physically reconnected
-first — wasn't mounted at session start). Used the fact that the
-`seeker` CLI is itself a clean "Seeker not running" proxy (each
-invocation enqueues/polls then exits, no persistent process) rather
-than trying to automate the real Qt GUI. Requested a real download via
-`seeker search ... --download`, watched slskd's own API directly with
-zero `seeker` process running — it finished the transfer completely on
-its own — then confirmed `seeker downloads status` reconciled it into
-the library on the next "open." **Confirmed: quitting Seeker stops
-reconciliation, not the transfer.** Nothing is lost. Cleaned up every
-trace of the test against real prod (file, DB row, config, container)
-afterward. Full method/result: HISTORY §123; condensed fact: CLAUDE.md
-Standing facts (SoulSeek/slskd).
+**Reproduction: not achieved live, and said so rather than closing
+this as a one-off**, per the brief's own explicit instruction for this
+exact outcome. Judged a full real-GUI repro (real background job, a
+real tray-menu click via System Events, watching for an actual hang)
+out of this session's budget against three candidate mechanisms the
+brief itself ranks by likelihood.
 
-**§2.2 — the single seam, found by live experiment.** The brief asked
-to find the one seam both real quit routes (tray Quit, ⌘Q/Dock "Quit
-Seeker") pass through, since `cleanup_before_quit`'s `aboutToQuit`
-hook fires too late to cancel anything. Built a throwaway probe app on
-this real Mac, drove it via `osascript`/System Events (a synthetic
-Cmd+Q keystroke did NOT reach the handler — clicking the actual native
-Quit menu item did), and confirmed **both routes deliver
-`QEvent.Type.Quit` to the `QApplication` instance itself, before
-`aboutToQuit`.** Ruled out a reentrant "cancel-then-repost-quit()"
-design by testing it directly — it exits the process silently with no
-`aboutToQuit` at all, skipping cleanup. The working mechanism needs no
-repost: `MainWindow` installs itself as an event filter on the
-`QApplication`; on that one event it decides synchronously (via
-`DashboardService.get_active_downloads()`, filtered to
-`status == "downloading"`, matching `downloads_page`'s own existing
-definition) and returns `False` to let the same event proceed or
-`True` to cancel it. Zero active downloads: no dialog at all. Copy
-follows §2.1's confirmed truth — no "lose." "Keep Seeker Open" is the
-real default button. 8 new tests in `test_ui_smoke.py`, both the
-decision method and the `eventFilter` boundary itself (a real
-`QEvent(QEvent.Type.Quit)`, not a stand-in). Full mechanism/method:
-HISTORY §124; condensed fact: CLAUDE.md Standing facts
-(Qt/threading) — **likely reusable for any future "confirm before a
-real quit" need.**
+**Instead, mechanically confirmed candidate mechanism 1** (`QThreadPool`
+blocking at exit) in isolation: a throwaway probe submitted one 4s
+`QRunnable` to a per-instance `QThreadPool` (the same shape
+`MainWindow.thread_pool` is) and timed teardown — `quit()` always
+returns instantly, but the enclosing scope took +4.011s to actually
+finish vs. +0.012s with no task running. This is real, live evidence
+of the reported shape (event loop gone, process still alive, blocked
+in native code) — not yet confirmed as Kris's specific cause.
 
-**Real production infra was used deliberately, with Kris's explicit
-sign-off each time it mattered** (running against real prod vs. a
-disposable substitute; physically reconnecting the X9 Pro drive) —
-see this session's own transcript for the specific asks, not repeated
-here.
+**Landed regardless, per the brief's own fallback:**
+1. **§2.3.3's latent bug, fixed.** `WA_DeleteOnClose` is now decided in
+   exactly one place (`TrayController._build_tray_icon()`, both
+   branches explicit) instead of split between it and
+   `MainWindow.__init__`.
+2. **Instrumentation.** `cleanup_before_quit` now logs the real
+   per-window thread pool's active/max count at entry and elapsed time
+   at exit — designed so a real recurrence is diagnosable from
+   `seeker.log` alone next time, without needing a deliberate repro.
+3. Two new tests (`testAttribute` on both tray branches) plus one
+   logging test (`caplog`, shape-only assertion — see HISTORY §125 for
+   why an exact `active=0` count was tried first and had to be
+   loosened: a freshly-built window can have its own real worker still
+   running).
+
+**Deliberately not done:** no `waitForDone()` (bare or timed) added
+anywhere — the brief warns a bare one is the same hang with a
+different stack, and a timed one needs a confirmed live repro to pick
+a real value for. Full method/reasoning: HISTORY §125; condensed
+facts: CLAUDE.md Standing facts (Qt/threading) and Open issues
+(Item 125, still genuinely open).
+
+## Discovered this session, out of S5's own scope
+
+**The fullscreen-close test pair now has its third recurrence** —
+`test_reopening_after_a_fullscreen_close_restores_prior_geometry` and
+`test_fullscreen_close_policy_check_ignores_a_stale_request` failed
+together under the full suite (`uv run pytest -q`), confirmed
+pre-existing via `git stash -u` (both fail identically on unmodified
+`HEAD`, both pass individually / under a narrower `-k` selection every
+time — not caused by this session's `WA_DeleteOnClose`/
+`cleanup_before_quit` diff). CLAUDE.md's own prior note named "a third
+time" as the bar for a dedicated diagnosis session — that bar is now
+cleared. Not diagnosed this session (S5 was scoped to §2.3 only); a
+good candidate for a future session, though not itself a scheduled row
+in `docs/round9/SESSION-PLAN.md` yet.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -121,27 +105,29 @@ default. Don't read a brief section your row doesn't point at.
 Unchanged from `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris"
 section — see that file, not here (approval gates on
 §4.2b/§3.2/§1.2-fallback/§8.1-§8.5, and the real-desktop checks Code
-cannot do). S4 resolved **§2.1's own real-desktop check itself** (that
-item wasn't formally listed in the "Waiting on Kris" table, but it
-required Kris's live participation the same way — done now, no action
-needed). Nothing else in S4 added a new one.
+cannot do). S5 adds one real-desktop item to that list, already
+present there: **if the §2.3 hang recurs before a dedicated diagnosis
+session, capture it live** — `sample Seeker 10 -f
+/tmp/seeker-hang.txt` while it's stuck, plus `seeker.log` around the
+same timestamp (now carries the two new `cleanup_before_quit` lines).
+That one real capture is worth more than another session of guessing.
 
 ## Open questions
 
-- **`test_history_refresh_button_refetches` now has two matching real
-  CI recurrences with debug-snapshot evidence** (see "Current state"
-  above and CLAUDE.md's Open issues) — ready for a dedicated diagnosis
-  session; the "no active threads, no tasks in flight" signature rules
-  out the stuck-worker hypothesis, points toward a missed signal
-  delivery or a race between the click and the snapshot instead.
-- **`test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
-  now has a THIRD real CI recurrence** (see "Current state" above and
-  CLAUDE.md's Open issues) — also ready for a dedicated diagnosis
-  session; still zero local repros across all three occurrences.
-- Carried, unconfirmed: the
-  fullscreen-close pattern and `test_callback_server.py`'s trio in
-  CLAUDE.md's Open issues — none fired this session.
-- `docs/HISTORY.md` is now ~880 KB — still never read whole.
+- **Item 125 (the §2.3 quit hang) is still open** — mechanism
+  confirmed mechanically, Kris's specific case not reproduced. See
+  CLAUDE.md Open issues and HISTORY §125 for what a live attempt
+  should watch for.
+- **The two history-refresh/review-tab-replace flakes from S4 are
+  unchanged** — still ready for a dedicated diagnosis session, see
+  CLAUDE.md's Open issues. Neither fired this session (this session's
+  only CI run was still in progress at handoff time).
+- **The fullscreen-close pair now has a real third recurrence** (see
+  above) — also ready for a dedicated diagnosis session.
+- Carried, unconfirmed: `test_callback_server.py`'s trio and the
+  focus-search CI-only flake in CLAUDE.md's Open issues — neither
+  fired this session.
+- `docs/HISTORY.md` is now ~890 KB — still never read whole.
 
 ## How to end your session
 
