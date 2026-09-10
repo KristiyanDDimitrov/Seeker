@@ -463,13 +463,25 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Seeker")
         self.resize(1180, 760)
         self.setMinimumSize(960, 640)
-        # Round 8 §12.1 — restoreGeometry() silently no-ops on a
-        # missing/corrupt value, leaving the resize() default above in
-        # place, so there's nothing to validate here beyond the base64
-        # decode itself.
-        self._restore_window_geometry()
 
         self._build_ui()
+        # Round 9 §3.1 — moved from before _build_ui() (round 8 §12.1's
+        # original placement). restoreGeometry() ran against a window
+        # with no central widget/layout yet; layout activation on first
+        # show then resized the window to the layout's own size hint,
+        # discarding the restored geometry and landing the user back on
+        # something close to the resize() default above — confirmed
+        # live as the actual cause of the round-9 report ("reopens at
+        # default size, not the size it was closed at"). Qt's own docs
+        # for QWidget::restoreGeometry() describe it as reproducing a
+        # window's size/position as previously saved; nothing in that
+        # contract survives a layout that hasn't been installed yet
+        # deciding the size afterward. restoreGeometry() itself still
+        # silently no-ops on a missing/corrupt value, leaving whatever
+        # _build_ui() left in place, so there's nothing to validate here
+        # beyond the base64 decode itself.
+        self._restore_window_geometry()
+
         # Roadmap item C5.6 — subscribes to the OS's own appearance
         # changes when (and only when) the persisted mode is "system",
         # so the app follows the Mac flipping at sunset with no
@@ -1816,7 +1828,23 @@ class MainWindow(QMainWindow):
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
 
-        self._persist_window_geometry()
+        # Round 9 §3.1 — this is now a BACKSTOP, not the primary save
+        # path: `closeEvent` already persists geometry while the window
+        # is still visible, immediately before hiding to the tray (both
+        # branches). Skip an already-hidden window here rather than
+        # overwriting that good value with whatever saveGeometry()
+        # reports against a non-visible window. Gated on
+        # `_hidden_to_tray` rather than Qt's own `isHidden()`
+        # deliberately — `isHidden()` reads True for a widget that was
+        # simply never shown at all (confirmed live), which would wrongly
+        # skip the quit-without-closing route (the window is genuinely
+        # visible there, just never explicitly hidden-to-tray) and every
+        # existing test that constructs a `MainWindow` without a real
+        # `show()`. `_hidden_to_tray` starts False and only flips True
+        # once this window has actually been hidden to the tray, which is
+        # exactly the state this backstop needs to distinguish.
+        if not self._hidden_to_tray:
+            self._persist_window_geometry()
 
         # Roadmap item C5.6 — a real Qt signal connection to a
         # GLOBAL object (QGuiApplication.styleHints(), not this
@@ -1917,6 +1945,13 @@ class MainWindow(QMainWindow):
         # (`_build_tray_icon`) — not here; see that comment.
         if sys.platform == "darwin" and self.isFullScreen():
             self._pre_fullscreen_geometry = self.normalGeometry()
+            # Round 9 §3.1 — persisted here, while the window is still
+            # genuinely visible, rather than left solely to
+            # cleanup_before_quit's backstop: in Kris's real flow the
+            # window is already hidden to the tray by the time a quit
+            # follows, and saveGeometry() against a non-visible window
+            # is not the geometry the user actually wants back.
+            self._persist_window_geometry()
             self._tray.show_hide_notice_once()
             super().closeEvent(event)
             # Roadmap item E1.4 (round 7, corrected after a SECOND
@@ -1952,6 +1987,10 @@ class MainWindow(QMainWindow):
             return
 
         event.ignore()
+        # Round 9 §3.1 — persisted while still visible, before hide()
+        # below makes it not; see the fullscreen branch above for the
+        # same reasoning.
+        self._persist_window_geometry()
         self.hide()
         self._tray.show_hide_notice_once()
         self._confirm_hidden_to_tray(self._hide_request_id)

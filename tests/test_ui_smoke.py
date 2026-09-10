@@ -3513,6 +3513,68 @@ def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
     assert window.geometry() == expected_geometry
 
 
+def test_close_to_tray_persists_geometry_for_a_fresh_window_to_restore(
+        qtbot, monkeypatch,
+):
+    # Round 9 §3.1 — the real acceptance path Kris reported broken:
+    # reopens at the default 1180x760, not the size the window was
+    # closed at. Resize to something distinctive, close to the tray
+    # (not quit), then build a brand new MainWindow against the SAME
+    # config and confirm the size actually round-trips — exercising
+    # both halves of the fix together: the save path (closeEvent now
+    # persists while still visible, not only from cleanup_before_quit)
+    # and the restore path (_restore_window_geometry moved to after
+    # _build_ui(), so layout activation can no longer discard it).
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.setGeometry(QRect(40, 30, 1000, 700))
+    qtbot.wait(20)
+    expected_geometry = window.geometry()
+
+    window.close()
+    qtbot.wait(20)
+    assert window.isHidden()
+    assert application.settings.window_geometry
+
+    fresh_window = MainWindow(application)
+    qtbot.addWidget(fresh_window)
+    fresh_window.show()
+    qtbot.wait(20)
+
+    assert fresh_window.geometry() == expected_geometry
+
+
+def test_cleanup_before_quit_does_not_overwrite_geometry_already_hidden(
+        qtbot, monkeypatch,
+):
+    # Round 9 §3.1 — the backstop must not re-save once the window is
+    # already confirmed hidden to the tray: closeEvent already captured
+    # the good, visible-window geometry, and a saveGeometry() call
+    # against a hidden window is not trustworthy (the bug this whole
+    # item exists to fix). Confirmed directly, not just inferred from
+    # the flag check, by spying on _persist_window_geometry itself.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+
+    window.close()
+    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+
+    calls = []
+    monkeypatch.setattr(
+        window, "_persist_window_geometry", lambda: calls.append(True),
+    )
+    window.cleanup_before_quit()
+
+    assert calls == []
+
+
 def test_hidden_to_tray_stays_false_when_platform_window_still_exposed(
         qtbot, monkeypatch,
 ):
