@@ -359,6 +359,14 @@ Each links to the HISTORY.md item where the full investigation lives.
 - `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService` is
   a **callable**, not a snapshot — a Settings change takes effect
   immediately, no restart. [HISTORY §28](docs/HISTORY.md#28)
+- A `setCellWidget`-only column (no `QTableWidgetItem`) sorts as a
+  silent no-op under click-to-sort — give it a `SortKeyItem`
+  (`ui/table_sort.py`) if it has real data to order by (see
+  Progress's fraction-complete key), never a bare display string.
+  `theme.configure_columns` already vetoes sorting entirely on
+  whichever column `ColumnLayout.actions` names, for every table, so
+  a new Actions column needs no per-page handling at all.
+  [HISTORY §122](docs/HISTORY.md#122)
 
 ### Testing
 

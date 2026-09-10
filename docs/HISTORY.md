@@ -14218,3 +14218,97 @@ immediately after) plus a working, verified probe is the honest
 result for the time allotted, per the brief's own "an honest 'ran it N
 times, did not fire, instrumentation now in place' is a real result"
 guidance.
+
+### 122 — Round 9 §5.1-§5.3: table sorting was silently broken on every widget-only column
+
+**§5.1.** The Dashboard's Progress column (`dashboard_page.py`) and
+the Downloads page's Progress column (`downloads_page.py`) each set
+only a `setCellWidget` (a progress bar or blank placeholder), never a
+`QTableWidgetItem` — Qt's click-to-sort (round 8 §12.2) compares
+items, so with none present every row compared equal and the sort was
+a silent no-op with a header indicator that still looked live. Fixed
+both by adding a `SortKeyItem` alongside the widget, keyed on fraction
+complete (`bytes_transferred / total_bytes`) rather than raw byte
+count, so two tracks at the same percentage sort together regardless
+of file size. Rows with nothing real to show get an explicit `-1.0`
+sentinel (never `None` — `SortKeyItem`'s own docstring forbids it) so
+they sort below any real progress; display text stays empty since the
+widget is what's drawn. Downloads' sort key additionally branches on
+`failed`/`unavailable` (sentinel `-1.0`, same as no transfer) and a
+terminal status with no recorded bytes (`1.0`, rendered as a full bar)
+to mirror `_build_progress_widget`'s own branching exactly.
+
+**§5.2.** The same root cause hit every Actions column app-wide —
+sorting by a column of buttons is meaningless, but round 8 §12.2
+turned sorting on uniformly, so every Actions header still showed a
+live-looking sort indicator that did nothing (or, worse, silently
+reordered rows by whatever a button's default item comparison fell
+back to). Fixed once, in the shared seam: `theme.configure_columns`
+already receives `ColumnLayout.actions` for every table that has one,
+so `_veto_actions_column_sort` (`theme.py`) is wired there generically
+— no per-page special case, confirming the brief's own bet that the
+existing `ColumnLayout` hook was already the right shape (no second
+parameter needed).
+
+Mechanism: `configure_columns` runs on every populated render (item
+E2's contract), so the wiring itself is guarded to connect exactly
+once per table via a dynamic Qt property on the header. Two
+connections do the real work — `sortIndicatorChanged` continuously
+records the last real (non-Actions) `(section, order)` pair, seeded
+from whatever `apply_table_defaults` already set; `sectionClicked`
+checks whether the clicked section is the Actions column and, if so,
+calls `setSortIndicator` back to that last-real pair. This has to be
+two signals, not one: by the time `sectionClicked` reaches a handler,
+Qt has already flipped the indicator and its internally-connected
+`QTableView` has already re-sorted (the flip happens inside the
+header's own mouse handling, before `sectionClicked` is emitted) — so
+reverting via `sectionClicked` alone, reading `sortIndicatorSection()`
+at that moment, would read the NEW (Actions) section, not the prior
+one. Restoring the previous indicator within the same call re-sorts
+back to it synchronously, so nothing paints in between and the
+indicator never visibly rests on the Actions column.
+
+Verified with a real `qtbot.mouseClick` on the header section's
+viewport coordinates, not a manually emitted `sectionClicked` signal —
+emitting the signal directly skips Qt's own mouse-handling code path
+entirely (the indicator flip + re-sort that the fix depends on
+reverting never happens), so a manual-emit test would pass for the
+wrong reason. `tests/test_theme.py::
+test_actions_column_click_never_sorts_and_shows_no_indicator` asserts
+both that the indicator stays on the prior real column and that the
+table's row order is unchanged after clicking Actions.
+
+**§5.3 — audit.** `grep -rn "\.setCellWidget(" src/seeker/ui/` returns
+**13** real call sites across **7** files (the brief's own "ten" was
+an undercount — recounted directly against a literal `.setCellWidget(`
+grep rather than the looser `setCellWidget` one, which also matches
+comments/docstrings).
+
+| Table (file) | Widget column(s) | Item present before this session? | Classification | Fix |
+|---|---|---|---|---|
+| Dashboard track table (`dashboard_page.py`) | Progress (2) | No | needs a sort key | §5.1 |
+| Dashboard track table (`dashboard_page.py`) | Actions (3) | No | must never sort | §5.2 (generic) |
+| Downloads table (`downloads_page.py`) | Progress (4) | No | needs a sort key | §5.1 |
+| Settings locations table (`settings_window.py`) | Actions (3) | No | must never sort | §5.2 (generic) |
+| Search results table (`search_page.py`) | Actions (last) | No | must never sort | §5.2 (generic) — every other column already had a real/`SortKeyItem` item |
+| Review needs-review table (`review_page.py`) | Actions (4) | No | must never sort | §5.2 (generic) |
+| Review upgrades table (`review_page.py`) | Actions (3) | No | must never sort | §5.2 (generic) |
+| Review local-matches table (`review_page.py`) | Actions (4) | No | must never sort | §5.2 (generic) |
+| Sharing locations table (`sharing_page.py`) | Actions (4, two branches: "Shared" label / add button) | No | must never sort | §5.2 (generic) |
+| Duplicates table (`duplicates_page.py`) | Group-header widget + Actions (two `setCellWidget` sites) | No | **excluded by design** | `setSortingEnabled(False)` right after `apply_table_defaults` — rows are grouped via `setSpan()`, a per-row sort would visually corrupt the grouping. Confirmed still in place, comment still accurate. |
+
+Two tables with `setCellWidget` calls were already correctly excluded
+from this audit going in, per the brief: Duplicates (above) and Search
+results, whose data columns were already fully `QTableWidgetItem`/
+`SortKeyItem`-backed — only its Actions column had the generic hole,
+fixed the same way as every other table's.
+
+`history_page.py` and Sharing's own uploads table have **no**
+`setCellWidget` call at all — fully item-based, no widget-only column,
+not in scope for either fix.
+
+Net effect: every real progress-style widget column in the app now
+has a genuine sort key, and every Actions column in the app — present
+and future, since the fix lives in the shared `ColumnLayout`/
+`configure_columns` seam rather than any one page — can no longer
+advertise a sort it cannot perform.
