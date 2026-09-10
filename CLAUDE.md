@@ -487,8 +487,15 @@ Genuinely open only — no "done" items, no flakes that resolved.
     sort veto), none of which touch this test's replace-button/
     status-label path; passed 5/5 re-run locally immediately after.
     Two real CI recurrences with no local repro either time is
-    stronger evidence of a genuine timing race than "fired once" was —
-    worth a dedicated diagnosis session if it recurs a third time.
+    stronger evidence of a genuine timing race than "fired once" was.
+    **Round 9 S4, third real recurrence** (`gh run 34457820512`, same
+    assertion shape: `assert '' == 'Replaced with /new/path'`) — a
+    pure docs-only push (session-plan checkbox + handoff rewrite, zero
+    code changes), so not a regression from anything in that commit;
+    passed 5/5 re-run locally immediately after, same as both prior
+    occurrences. Three real CI recurrences, zero local repros, now
+    clears this item's own previously-stated "third time" bar — worth
+    a dedicated diagnosis session.
   - `test_history_refresh_button_refetches` — timed out roughly 1-in-8
     to 1-in-10 full-suite runs. A real cause was found and fixed
     (pytest-qt's own teardown doesn't flush Qt's deferred deletion,
