@@ -3,7 +3,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import QEvent, QRect, Qt
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -3981,6 +3981,173 @@ def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):
 
     assert not window.poll_timer.isActive()
     assert not window.backend_poll_timer.isActive()
+
+
+# --- Quit-while-downloading confirmation (round 9 §2.2, HISTORY §123) ------
+
+def _active_download(status: str) -> ActiveDownload:
+    return ActiveDownload(
+        request=DownloadRequest(
+            track_id="t1", username="peer", filename="file.flac",
+            format="flac", requested_at="2026-01-01T00:00:00+00:00",
+            status=status,
+        ),
+        track=Track(
+            id="t1", title="Song", artist="Artist", album="Album",
+            duration_ms=200_000,
+        ),
+        playlist_name="My Playlist",
+    )
+
+
+def test_quit_confirmation_skipped_when_nothing_downloading(qtbot, monkeypatch):
+    shown = []
+    monkeypatch.setattr(QMessageBox, "exec", shown.append)
+    application = FakeApplication(active_downloads=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._confirm_quit_if_downloads_active() is True
+    assert shown == []
+
+
+def test_quit_confirmation_skipped_for_non_downloading_statuses(
+        qtbot, monkeypatch,
+):
+    # Mirrors downloads_page.active_downloads_count's own definition of
+    # "in progress" exactly (status == "downloading") — a queued or
+    # already-completed row must not trigger the dialog.
+    shown = []
+    monkeypatch.setattr(QMessageBox, "exec", shown.append)
+    application = FakeApplication(
+        active_downloads=[
+            _active_download("queued"), _active_download("completed"),
+        ],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._confirm_quit_if_downloads_active() is True
+    assert shown == []
+
+
+def test_quit_confirmation_shown_with_real_count_and_no_word_lose(
+        qtbot, monkeypatch,
+):
+    shown: list[QMessageBox] = []
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    application = FakeApplication(
+        active_downloads=[
+            _active_download("downloading"), _active_download("downloading"),
+        ],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._confirm_quit_if_downloads_active()
+
+    assert len(shown) == 1
+    box = shown[0]
+    assert "2" in box.text()
+    assert "lose" not in box.text().lower()
+    assert "lose" not in box.informativeText().lower()
+    button_labels = {button.text() for button in box.buttons()}
+    assert "Quit Anyway" in button_labels
+    assert "Keep Seeker Open" in button_labels
+    # The safe choice is the default — an Enter/Return keypress must
+    # never quit out from under an in-progress download.
+    assert box.defaultButton().text() == "Keep Seeker Open"
+
+
+def test_quit_confirmation_quit_anyway_allows_the_quit(qtbot, monkeypatch):
+    def fake_exec(self):
+        return None
+
+    def fake_clicked_button(self):
+        for button in self.buttons():
+            if button.text() == "Quit Anyway":
+                return button
+        return None
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(QMessageBox, "clickedButton", fake_clicked_button)
+    application = FakeApplication(
+        active_downloads=[_active_download("downloading")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._confirm_quit_if_downloads_active() is True
+
+
+def test_quit_confirmation_keep_open_cancels_the_quit(qtbot, monkeypatch):
+    def fake_exec(self):
+        return None
+
+    def fake_clicked_button(self):
+        for button in self.buttons():
+            if button.text() == "Keep Seeker Open":
+                return button
+        return None
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(QMessageBox, "clickedButton", fake_clicked_button)
+    application = FakeApplication(
+        active_downloads=[_active_download("downloading")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._confirm_quit_if_downloads_active() is False
+
+
+def test_event_filter_ignores_events_other_than_app_quit(qtbot):
+    from PySide6.QtWidgets import QApplication
+
+    # The filter must not swallow ordinary events for whatever else the
+    # QApplication instance happens to be watched by/dispatch to.
+    application = FakeApplication(
+        active_downloads=[_active_download("downloading")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    event = QEvent(QEvent.Type.ApplicationStateChange)
+    assert window.eventFilter(QApplication.instance(), event) is False
+
+
+def test_event_filter_consumes_quit_event_when_declined(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: None)
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: None)
+    application = FakeApplication(
+        active_downloads=[_active_download("downloading")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    event = QEvent(QEvent.Type.Quit)
+    # True = consumed = the quit is cancelled.
+    assert window.eventFilter(QApplication.instance(), event) is True
+
+
+def test_event_filter_lets_quit_event_through_when_nothing_downloading(
+        qtbot,
+):
+    from PySide6.QtWidgets import QApplication
+
+    application = FakeApplication(active_downloads=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    event = QEvent(QEvent.Type.Quit)
+    # False = not consumed = the real quit proceeds to aboutToQuit.
+    assert window.eventFilter(QApplication.instance(), event) is False
 
 
 # --- Window geometry/last-page persistence (round 8 §12.1) -----------------

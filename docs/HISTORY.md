@@ -14378,3 +14378,73 @@ started and was left the same way.
 
 See CLAUDE.md's Standing facts (SoulSeek / slskd) for the condensed,
 present-tense version of this result.
+
+### 124 — Round 9 §2.2: the quit-while-downloading confirmation, and the real single seam behind it
+
+Built on §123's confirmed answer: quitting stops reconciliation, not
+the transfer. The dialog only needed to say that truthfully; the harder
+problem was the brief's own explicit ask — find the one seam both real
+quit routes (`tray.py`'s `_on_tray_quit()` and the native macOS ⌘Q/Dock
+"Quit Seeker") pass through, given `cleanup_before_quit()`'s own
+`aboutToQuit` connection fires too late to cancel anything.
+
+**The seam, found by live experiment, not guessed.** Wrote a throwaway
+probe script (`QApplication` subclass overriding `event()`, printing
+every event type) and drove it two ways on this real Mac: `System
+Events` UI-scripting to click the app's own native "Quit" menu item
+(⌘Q's real handler — a raw synthetic `keystroke "q" using command down`
+did NOT reach it, menu-click did), and a direct `app.quit()` call from
+a `QTimer`. **Both delivered `QEvent.Type.Quit` (20) to the
+`QApplication` instance itself, before `aboutToQuit` fired** — the
+identical event, from both routes. A follow-up probe confirmed the
+event is genuinely cancellable at that point: an installed
+`QObject.eventFilter` that returns `True` (consumes it) for that one
+event leaves the process running, `aboutToQuit` never fires at all. A
+third probe ruled out the reentrant-sounding alternative design
+(catch, decide, call `app.quit()` again to "re-trigger" the real
+quit): calling `quit()` from inside the filter that's already handling
+a `Quit` event does not cleanly redeliver a second one — it exits the
+process immediately, silently, without `aboutToQuit` running at all,
+which would have broken `cleanup_before_quit`'s own teardown
+(geometry persistence, tray icon, Dock-visibility reset). The correct
+mechanism instead needs no re-post: decide synchronously inside the
+one `eventFilter` call already handling the real event, then return
+`False` to let that *same* event proceed unchanged (confirmed live:
+`aboutToQuit` fires, process exits normally) or `True` to cancel it
+outright (confirmed live: process stays running, `aboutToQuit` never
+fires). No `QApplication` subclass needed — `main_ui.py` already
+constructs a bare `QApplication`, so `MainWindow.__init__` installs
+itself as an event filter on it instead, same shape as the existing
+`applicationStateChanged` connection right above it in the same
+method.
+
+**Implementation** (`ui/main_window.py`): `MainWindow.eventFilter`
+checks `watched is QApplication.instance() and event.type() ==
+QEvent.Type.Quit`; if so, `_confirm_quit_if_downloads_active()` decides
+— `DashboardService.get_active_downloads()` (service layer, never a
+repository), filtered to `status == "downloading"` to mirror
+`downloads_page.active_downloads_count`'s own existing definition of
+"in progress" rather than inventing a second one. Zero active
+downloads: return `True` immediately, no dialog — "no dialog at all
+when the count is zero" was the brief's own explicit rule, an
+"are you sure" on an idle app is noise. One or more: a `QMessageBox`
+with the real count, the §123-confirmed copy (no "lose" — nothing is),
+"Quit Anyway" (`DestructiveRole`)/"Keep Seeker Open" (`RejectRole`,
+and the actual default button — a stray Enter/Return must never quit
+past an in-progress download).
+
+**Tests** (`test_ui_smoke.py`): both the decision method
+(`_confirm_quit_if_downloads_active`, count logic, copy content, real
+default-button check) and the `eventFilter` boundary itself
+(constructing a real `QEvent(QEvent.Type.Quit)` and asserting the
+`True`/`False` consume contract directly) — the same "test the real
+Qt code path, not a stand-in for it" discipline round 9 §5.2 already
+established for `sectionClicked`. `QMessageBox.exec`/`clickedButton`
+monkeypatched per-test (existing codebase pattern, see the
+update-check dialog tests just above these in the same file) rather
+than driving a real modal loop.
+
+See CLAUDE.md's Qt/threading Standing facts for the condensed
+present-tense version of the `QEvent.Type.Quit` mechanism — likely
+reusable for any future "confirm before a real quit" need, not just
+this one dialog.

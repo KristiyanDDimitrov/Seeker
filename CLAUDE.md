@@ -312,6 +312,21 @@ Each links to the HISTORY.md item where the full investigation lives.
 
 ### Qt, threading, and UI
 
+- **The single seam every real quit route passes through, confirmed
+  live: `QEvent.Type.Quit` delivered to the `QApplication` instance
+  itself, before `aboutToQuit`.** Both `tray.py`'s `_on_tray_quit()`
+  (`app.quit()`) and the native macOS ⌘Q/Dock "Quit Seeker" menu item
+  deliver this same event to the app object — an installed
+  `QObject.eventFilter` catching it can decide synchronously whether
+  to let that exact event proceed (return `False`) or cancel the quit
+  outright (return `True`); `aboutToQuit`-connected cleanup
+  (`cleanup_before_quit`) fires too late for either. Do NOT re-post a
+  fresh `app.quit()` from inside the filter to "confirm and retry" —
+  confirmed live this exits the process silently without `aboutToQuit`
+  ever running, skipping all cleanup. `MainWindow.eventFilter`
+  (`ui/main_window.py`) is the reference implementation — reusable for
+  any future "confirm before a real quit" need.
+  [HISTORY §124](docs/HISTORY.md#124)
 - `ui/workers.py`'s `Worker`: one shared, permanently-connected
   dispatcher QObject, never a fresh one per task —
   connect/disconnect cycling through Qt's mutex pool per call caused a

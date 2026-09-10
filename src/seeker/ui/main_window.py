@@ -7,6 +7,8 @@ from typing import Any
 
 from PySide6.QtCore import (
     QByteArray,
+    QEvent,
+    QObject,
     QPointF,
     QRect,
     QRectF,
@@ -434,6 +436,22 @@ class MainWindow(QMainWindow):
                 self._on_application_state_changed
             )
             self._app_state_connected = True
+
+        # Round 9 §2.2 — the one seam both real quit routes pass
+        # through. Confirmed live (HISTORY §123): tray.py's
+        # `_on_tray_quit()` (`app.quit()`) and the native macOS ⌘Q/Dock
+        # "Quit Seeker" menu item both deliver a `QEvent.Type.Quit` to
+        # the QApplication instance itself, before `aboutToQuit` fires
+        # — `cleanup_before_quit`'s own `aboutToQuit` hook is too late
+        # to cancel anything (nothing about a quit already in progress
+        # can be undone from there), but an installed event filter can
+        # still decide, synchronously, whether THIS Quit event is
+        # allowed to proceed: returning `True` from `eventFilter`
+        # consumes it and no quit happens at all; returning `False`
+        # lets this exact event continue on to `aboutToQuit` unchanged
+        # — no QApplication subclass or re-posted `quit()` call needed.
+        if app is not None:
+            app.installEventFilter(self)
 
         # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit
         # SHA in the one string a user reads most often looked like a
@@ -1705,6 +1723,62 @@ class MainWindow(QMainWindow):
             self, state: Qt.ApplicationState,
     ) -> None:
         self._tray.on_application_state_changed(state)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # Round 9 §2.2 — installed on the QApplication instance itself
+        # (see __init__'s own comment on this same mechanism); every
+        # other event passes through untouched via the base
+        # implementation, same pattern as any other QObject-level
+        # filter in this codebase would use.
+        if (
+            watched is QApplication.instance()
+            and event.type() == QEvent.Type.Quit
+        ):
+            return not self._confirm_quit_if_downloads_active()
+        return super().eventFilter(watched, event)
+
+    def _confirm_quit_if_downloads_active(self) -> bool:
+        # UI -> service, as always: the count comes from
+        # DashboardService.get_active_downloads() (a cheap local DB
+        # read — see downloads_page.py's own comment on this same
+        # call), never a repository queried directly here. "In
+        # progress" mirrors downloads_page.active_downloads_count's own
+        # definition (status == "downloading") rather than inventing a
+        # second one.
+        active = self.application.dashboard_service.get_active_downloads()
+        count = sum(
+            1 for download in active
+            if download.request.status == "downloading"
+        )
+        if count == 0:
+            return True
+        return self._show_quit_confirmation(count)
+
+    def _show_quit_confirmation(self, count: int) -> bool:
+        # Round 9 §2.1 (HISTORY §123) established what's actually true
+        # before this copy was written: quitting stops Seeker's own
+        # reconciliation, not the transfer itself — slskd keeps the
+        # download running in its own container regardless. Nothing is
+        # ever lost, so the word "lose" does not belong here.
+        noun = "download" if count == 1 else "downloads"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Quit Seeker?")
+        box.setText(f"{count} {noun} still in progress.")
+        box.setInformativeText(
+            "Seeker hands transfers to SoulSeek, which keeps running "
+            "after you quit — but Seeker won't file the finished "
+            "tracks into your library until you open it again."
+        )
+        quit_button = box.addButton(
+            "Quit Anyway", QMessageBox.ButtonRole.DestructiveRole,
+        )
+        keep_open_button = box.addButton(
+            "Keep Seeker Open", QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(keep_open_button)
+        box.exec()
+        return box.clickedButton() is quit_button
 
     def cleanup_before_quit(self) -> None:
         # Roadmap item R7.7 — the one real cleanup path for every quit
