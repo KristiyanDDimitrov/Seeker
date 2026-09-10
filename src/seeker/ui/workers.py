@@ -318,6 +318,36 @@ _callbacks: dict[int, _CallbackEntry] = {}
 # completion can never look up a stale callback.
 _progress_callbacks: dict[int, Callable[[str, int, int], None]] = {}
 
+# HISTORY §116/§1.4 (round 9) — diagnostic-only, added to catch the
+# ~1-in-8 test_history_refresh_button_refetches timeout the next time
+# it fires. Populated in run_worker(), popped by the same two handlers
+# that pop _callbacks/_progress_callbacks above, so it can never outlive
+# a task's real completion. Read only by debug_snapshot() below.
+_task_started_at: dict[int, float] = {}
+
+
+def debug_snapshot(pool: QThreadPool) -> str:
+    """One-line-per-task dump of live worker state: the thread pool's
+    active/max thread count, plus every task still in `_callbacks` with
+    how long it has been in flight. Call this from a test's own timeout
+    handler (never from production code) to capture what the dispatcher
+    actually saw at the moment a `qtbot.waitUntil` gave up — see
+    docs/HISTORY.md §116 for the flake this exists to diagnose.
+    """
+    now = time.monotonic()
+    lines = [
+        f"active_threads={pool.activeThreadCount()} "
+        f"max_threads={pool.maxThreadCount()}",
+    ]
+    for task_id, started_at in _task_started_at.items():
+        lines.append(
+            f"task_id={task_id} elapsed={now - started_at:.3f}s "
+            f"has_progress_callback={task_id in _progress_callbacks}",
+        )
+    if len(lines) == 1:
+        lines.append("no tasks in flight")
+    return "\n".join(lines)
+
 
 def _delete_native_worker(worker: Worker) -> None:
     """Frees the underlying C++ `QRunnable` once its own completion has
@@ -398,6 +428,7 @@ def _handle_task_progress(
 def _handle_task_finished(task_id: int, result: Any) -> None:
     entry = _callbacks.pop(task_id, None)
     _progress_callbacks.pop(task_id, None)
+    _task_started_at.pop(task_id, None)
 
     if entry is None:
         return
@@ -427,6 +458,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
 def _handle_task_error(task_id: int, message: str) -> None:
     entry = _callbacks.pop(task_id, None)
     _progress_callbacks.pop(task_id, None)
+    _task_started_at.pop(task_id, None)
 
     if entry is None:
         return
@@ -498,6 +530,7 @@ def run_worker(
         status_label.setText("")
 
     worker = Worker(fn, wants_progress=on_progress is not None)
+    _task_started_at[worker.task_id] = time.monotonic()
     _callbacks[worker.task_id] = (
             worker,
             button,

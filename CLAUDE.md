@@ -451,11 +451,16 @@ Genuinely open only — no "done" items, no flakes that resolved.
     letting a previous test's live `MainWindow` react to a later
     test's `applicationStateChanged`) via an autouse fixture, confirmed
     closed with a weakref/gc probe — but the flake recurred at least
-    once **after** that fix, cause still unknown. Worth instrumenting
-    `_run_busy_worker`/`QThreadPool` timing directly next time. One of
-    the post-fix recurrences is a real, inspectable CI run
-    (`34207858803`, 2026-09-08) — a live example if this needs
-    instrumenting for real. [HISTORY §116](docs/HISTORY.md#116)
+    once **after** that fix, cause still unknown. One of the post-fix
+    recurrences is a real, inspectable CI run (`34207858803`,
+    2026-09-08). [HISTORY §116](docs/HISTORY.md#116) **Round 9 §1.4:**
+    the test now dumps a live worker-state snapshot
+    (`ui/workers.py::debug_snapshot`) on its own timeout — recurred
+    once in a 12-run local loop and confirmed the instrumentation
+    itself, verified working via a forced repro. Still no real
+    snapshot from a *natural* recurrence yet — diagnose from that
+    output the next time it fires for real. [HISTORY
+    §121](docs/HISTORY.md#121)
   - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
     once during S13 (round 8, comment-triage-only session — nothing in
     that session touched close/fullscreen logic, so not a regression

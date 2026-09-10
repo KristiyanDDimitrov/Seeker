@@ -9,8 +9,10 @@ a factory two future test files both need. Imported from there below.
 """
 
 from PySide6.QtCore import Qt
+from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
 from seeker.models.history_event import DOWNLOADED, TAGGED
+from seeker.ui import workers
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import FakeApplication, _make_history_event
 
@@ -140,7 +142,18 @@ def test_history_refresh_button_refetches(qtbot):
 
     window._history_page.history_refresh_button.click()
 
-    qtbot.waitUntil(
-        lambda: application.history_service.get_recent_events_calls == 3,
-        timeout=2000,
-    )
+    # HISTORY §116/§1.4 (round 9) — this is the ~1-in-8 to 1-in-10
+    # flake CLAUDE.md's Open issues tracks. On a timeout, dump the
+    # dispatcher's own live state before letting the assertion fail, so
+    # a real recurrence carries evidence instead of just a stack trace.
+    try:
+        qtbot.waitUntil(
+            lambda: application.history_service.get_recent_events_calls == 3,
+            timeout=2000,
+        )
+    except QtBotTimeoutError:
+        print(
+            "test_history_refresh_button_refetches timed out — "
+            "worker snapshot:\n" + workers.debug_snapshot(window.thread_pool),
+        )
+        raise

@@ -14170,3 +14170,51 @@ immediate-self-wipe pattern (their terminal result callbacks don't
 themselves trigger a further `status_label`-writing `run_worker` call
 the way Sharing's did). Not rewritten; a channel already doing its one
 real job doesn't need touching just to look busy.
+
+### 121 — Round 9 §1.4: a real capture of `test_history_refresh_
+button_refetches`'s flake, and a bug in the instrumentation meant to
+catch it
+
+Added diagnostic-only instrumentation ahead of trying to reproduce the
+flake: `ui/workers.py` gained `_task_started_at` (a `task_id -> 
+time.monotonic()` dict, populated in `run_worker()`, popped by the
+same two handlers that already pop `_callbacks`/`_progress_callbacks`)
+and a `debug_snapshot(pool)` function dumping the thread pool's
+active/max thread count plus every in-flight task's elapsed time. The
+test's own second `qtbot.waitUntil` was wrapped in a `try`/`except`
+that prints that snapshot before re-raising.
+
+**First attempt shipped with a real bug in the instrumentation
+itself.** The except clause caught the builtin `TimeoutError` —
+`pytestqt.exceptions.TimeoutError` does NOT inherit from it
+(confirmed: its MRO is `(TimeoutError, Exception, BaseException,
+object)`, i.e. pytestqt's own `TimeoutError`, not Python's). A 12-run
+full-suite loop (each ~60s) caught a real recurrence on run 7 — but
+because of the wrong exception type, the snapshot never printed; only
+the bare pytest traceback came through. Fixed by importing
+`pytestqt.exceptions.TimeoutError as QtBotTimeoutError` and catching
+that instead. Verified working by deliberately forcing the same
+timeout (temporarily changing the awaited call count to an
+unreachable value, running with `-s`, confirming the snapshot printed,
+then reverting) — `-s` showed it live, and a subsequent run without
+`-s` confirmed pytest's own "Captured stdout call" section carries it
+on a real failure too, so the fix works under the loop's actual
+`pytest -q` invocation, not just interactively.
+
+**What the real (first, buggy-instrumentation) capture showed, for
+what it's worth:** a bare `pytestqt.exceptions.TimeoutError`, no
+further detail — the snapshot that would have shown thread count and
+in-flight task elapsed time never printed due to the bug above. Not a
+wasted run: it's what proved the instrumentation itself needed
+fixing, and the fixed version was confirmed to work via the forced
+repro immediately after.
+
+**Time-boxed per the brief — stopped here.** The instrumentation is
+now correct and permanently in place; the next real recurrence (still
+~1-in-8 to 1-in-10) will carry a real snapshot. Did not re-run the
+loop again looking for a second natural recurrence within this
+session's box — one real capture (even with the bug found and fixed
+immediately after) plus a working, verified probe is the honest
+result for the time allotted, per the brief's own "an honest 'ran it N
+times, did not fire, instrumentation now in place' is a real result"
+guidance.
