@@ -8,16 +8,21 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `e7c8d57`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `32713ce`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine):** `1146 passed, 29
-  skipped in 59.36s` — clean, no flakes fired this run.
-- **Real CI (`gh run view 34450316595`, the push of this session's
-  three commits): ruff/mypy clean, pytest `1146 passed, 29 skipped,
-  158.49s`.** Fully green — the one remaining failure from the prior
-  push (`test_view_menu_focus_search_navigates_and_focuses_the_search_field`,
-  S1's handoff) is now fixed and confirmed on real CI.
+- **Local pytest (offscreen Qt, this machine):** `1147 passed, 29
+  skipped in 88.69s` — clean, no flakes fired locally this session.
+- **Real CI (`gh run view 34452439345`, the push of this session's
+  final commit `32713ce`): ruff/mypy clean, pytest fully green.** The
+  prior push in this session (`34452031576`, commit `d1701bf`) DID
+  fail pytest — one real failure,
+  `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`,
+  already a tracked round-8 flake in CLAUDE.md's Open issues. Passed
+  5/5 re-run locally immediately after; this session's own diff
+  doesn't touch that test's code path. Recorded as a second real
+  recurrence in CLAUDE.md rather than silently re-pushing past it —
+  see that file's Open issues section.
 - **`mypy --strict src/`: clean, 102 files. `ruff check src tests`: 0
   findings** (both local and on CI).
 
@@ -27,54 +32,53 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1** (§1.1, §1.2 — see prior HISTORY/handoff, superseded by
-  this file). **Done: S2** (§1.3 the focus-search flake, §1.4 the
-  history-refresh flake instrumentation, §1.5a the skip-count doc
-  entry), three commits: `706f00c` (§1.3), `9ff840b` (§1.5a),
-  `e7c8d57` (§1.4).
-- **Next: S3** — Table sorting correctness (§5.1, §5.2, §5.3).
+- **Done: S1, S2** (see prior handoffs / HISTORY §115-§121).
+- **Done: S3** — Table sorting correctness (§5.1, §5.2, §5.3), five
+  commits: `39f54f5` (§5.1), `9157a93` (§5.2), `d1701bf` (§5.3),
+  `10650b6` (CI flake recorded), `32713ce` (session-plan tick).
+- **Next: S4** — Quit semantics + confirmation dialog (§2.1, §2.2).
 
-## S2 report
+## S3 report
 
-**§1.3.** `hasFocus()` requires the window to be the active window,
-which never happens under the offscreen QPA platform CI runs under —
-that's why this test failed on CI twice while passing locally every
-time. Changed the one live assertion
-(`tests/test_ui_smoke.py`) to `window.focusWidget() is
-<field>` instead. Grepped for the same pattern elsewhere: one other
-hit, a comment in `test_wizard.py` explaining why an assertion was
-deliberately omitted there (not a live `hasFocus()` call) — left as
-is, still accurate.
+**§5.1.** Dashboard's and Downloads' Progress columns were
+`setCellWidget`-only, no `QTableWidgetItem` — click-to-sort compared
+nothing and was a silent no-op. Added a `SortKeyItem` (already
+existed in `ui/table_sort.py`) alongside each progress widget, keyed
+on fraction complete (not raw bytes) so same-percentage rows sort
+together regardless of file size. `-1.0` sentinel for "nothing real
+to show" rows (never `None`).
 
-**§1.5a.** Added a "Why one test always skips" entry to CLAUDE.md's
-Standing facts → Testing (new subsection), citing HISTORY §32 (the
-real item that documents `test_stress_e2e.py`'s opt-in gate, not §116
-as the brief's own text suggested — verified by grepping HISTORY for
-the actual heading before citing it). No behavior change.
+**§5.2 — the round's real seam work.** Same root cause hit every
+Actions column app-wide. Fixed once in `theme.configure_columns`,
+keyed off `ColumnLayout.actions` (already existed, no new field
+needed — the brief's own bet paid off). Mechanism:
+`sortIndicatorChanged` continuously tracks the last real (non-Actions)
+sort state; `sectionClicked` on the Actions column restores it. Two
+signals are required, not one — by the time `sectionClicked` fires,
+Qt's own mouse handling has already flipped the indicator and
+re-sorted, so reading `sortIndicatorSection()` inside that handler
+would read the wrong (new) value. Verified with a **real**
+`qtbot.mouseClick` on header coordinates (`tests/test_theme.py`) — a
+manually emitted `sectionClicked` signal would skip the exact Qt code
+path the fix depends on and pass for the wrong reason.
 
-**§1.4 — time-boxed, and the interesting part of this session.**
-Added `ui/workers.py::debug_snapshot()` plus a `_task_started_at`
-tracking dict, wired into `test_history_refresh_button_refetches`'s
-own timeout handler. Ran a 12-run full-suite loop (~60s/run); run 7
-caught a real recurrence — but the instrumentation itself had a bug:
-`except TimeoutError` never fired because `pytestqt.exceptions.
-TimeoutError` does not inherit from the builtin one (confirmed via its
-MRO). Fixed to catch pytestqt's own type by name, then **verified the
-fix works** via a deliberately forced timeout (temporarily changed the
-awaited call count to an unreachable value, ran with `-s`, confirmed
-the snapshot printed, confirmed it also survives pytest's normal
-capture-and-report path without `-s`, then reverted the temporary
-change). Did not chase a second natural recurrence within the
-time-box — full account in HISTORY §121. CLAUDE.md's existing Open
-issues bullet for this flake is updated to point at the new
-instrumentation and HISTORY §121, not removed (still open: no *real*
-diagnostic snapshot exists yet, only a verified-working probe).
+**§5.3.** Audited all 13 real `.setCellWidget(` call sites (7 files —
+the brief's own count of "ten" was an undercount, corrected in
+HISTORY). Full table in HISTORY §122. Duplicates' two sites remain
+correctly excluded (`setSortingEnabled(False)`, grouped via
+`setSpan()`). Every other site now either has a real sort key or is
+covered by §5.2's generic veto.
 
-**Skills used:** `engineering-advanced-skills` was the row's assigned
-bundle; no single skill in that bundle names "flake diagnosis"
-directly (checked the full list) — followed the brief's own
-instrumentation instructions directly, same divergence pattern S1
-already noted for pre-diagnosed items.
+**A real CI-only flake fired** on this session's own push (see
+above) — not a regression, already tracked, recorded with the new
+evidence rather than ignored.
+
+**Skills used:** `improve-codebase-architecture` was the row's
+assigned bundle — the actual available skill list this session (see
+`docs/round9/SESSION-PLAN.md`'s own resolve-at-start step) had no
+exact match by that name; proceeded directly per the brief's own very
+explicit mechanism instructions, same divergence pattern S1/S2 already
+noted.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -88,26 +92,26 @@ default. Don't read a brief section your row doesn't point at.
 Unchanged from `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris"
 section — see that file, not here, for the current list (approval
 gates on §4.2b/§3.2/§1.2-fallback/§8.1-§8.5, and the real-desktop
-checks Code cannot do). Nothing in S2 added a new one.
+checks Code cannot do). Nothing in S3 added a new one.
 
 ## Open questions
 
-- **`test_history_refresh_button_refetches` is still an open flake** —
-  the instrumentation added this session is verified working but has
-  not yet captured a *real* natural recurrence's snapshot (the one
-  real recurrence this session hit predated the instrumentation fix).
-  Next session that sees it fire should read the printed snapshot and
-  diagnose from there — see HISTORY §121.
-- **CLAUDE.md's Open issues still lists the `test_callback_server.py`
-  trio as open** (carried from S1's handoff, still not actioned —
-  low priority, not urgent enough to justify its own session).
-- **`docs/HISTORY.md` is now ~844 KB** (grew this session) — still
-  never read whole, per the standing rule.
-- Carried, unconfirmed: the remaining round-8 test flakes in
-  CLAUDE.md's Open issues (fullscreen-close pattern) — none fired in
-  this session's ~13 total full-suite runs (12-run loop + 1 final
-  check), consistent with their known low/unpredictable rate, not
-  evidence they're gone.
+- **`test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
+  fired a second time, on real CI, this session** (`gh run
+  34452031576`) — see CLAUDE.md's Open issues, updated with this
+  recurrence's detail. Two real CI failures with zero local repro
+  either time is stronger evidence of a genuine race than the
+  single round-8 occurrence was. Worth a dedicated diagnosis session
+  if it recurs a third time; not diagnosed this session (out of S3's
+  scope, and the brief's own row didn't point at it).
+- **`test_history_refresh_button_refetches` is still an open flake**
+  (carried from S2) — instrumentation in place (HISTORY §121), no
+  real natural-recurrence snapshot captured yet.
+- Carried, unconfirmed: the fullscreen-close pattern and
+  `test_callback_server.py` trio in CLAUDE.md's Open issues — neither
+  fired this session (2 full-suite runs total), not evidence they're
+  gone.
+- `docs/HISTORY.md` is now ~850 KB — still never read whole.
 
 ## How to end your session
 
