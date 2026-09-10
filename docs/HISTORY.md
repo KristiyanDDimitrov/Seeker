@@ -14448,3 +14448,124 @@ See CLAUDE.md's Qt/threading Standing facts for the condensed
 present-tense version of the `QEvent.Type.Quit` mechanism — likely
 reusable for any future "confirm before a real quit" need, not just
 this one dialog.
+
+### 125 — Round 9 §2.3: the "not responding" quit hang — unreproduced live, mechanism confirmed mechanically
+
+**The report, unchanged from the brief:** Kris closed the window once
+(correctly hid to the menu bar, Dock icon removed), then quit from the
+tray, and the app reappeared in the Dock marked "not responding." One
+occurrence, never seen since.
+
+**What this session did NOT do:** drive the real GUI end-to-end (a
+real background scan/fingerprint job, a real tray-menu click via
+System Events, watching Activity Monitor/`sample` for a real hang).
+That is the only way to reproduce Kris's *exact* sequence, and it was
+judged out of this session's budget against three candidate
+mechanisms already ranked by the brief itself — see Open issues below
+for what a future session doing that live attempt should watch for.
+
+**What this session did instead: mechanically confirmed candidate
+mechanism 1 (`QThreadPool` blocking at exit) in isolation, live, not
+reasoned about.** A throwaway probe
+(`QApplication` + a per-instance `QThreadPool()` — the same shape
+`MainWindow.thread_pool` is, not the global instance) submitted one
+`QRunnable` sleeping 4s, called `app.quit()`, and timed how long the
+enclosing function took to actually return once nothing but the local
+`pool` variable held a reference to it — the same shape as `window`/
+`window.thread_pool` going out of scope once `sys.exit(qt_app.exec())`
+returns in `main_ui.py`. Result, run twice for a baseline:
+
+```
+baseline (no slow task):     quit() returns at +0.000s, function returns at +0.012s
+with one slow task in flight: quit() returns at +0.000s, function returns at +4.011s
+```
+
+`app.quit()` itself always returns instantly — the Qt event loop exits
+immediately either way. The extra ~4s in the second run is
+`QThreadPool`'s own destructor (`clear()` + `waitForDone()`, no
+timeout, Qt's documented behavior) blocking while the Python object is
+torn down. This is exactly the reported shape: the event loop is
+already gone (nothing left to answer window-manager pings) but the
+*process* is still alive, blocked in native code, for exactly as long
+as the slowest in-flight background task takes — which macOS
+surfaces as "not responding" on whatever's left in the Dock. Real
+`MainWindow.thread_pool` tasks (a scan, a fingerprint run, a
+`librosa` analysis) run from seconds to real minutes, matching the
+mechanism to the report's own timing plausibly, though not
+confirmed against Kris's specific case.
+
+**Fixed regardless of the hang's confirmed cause — §2.3.3's latent
+bug.** `WA_DeleteOnClose` was set `True` unconditionally in
+`MainWindow.__init__`, then conditionally set `False` later inside
+`TrayController._build_tray_icon()` only on the branch where a tray
+icon actually gets built. Not the reported path (a tray icon clearly
+existed there) and not currently reachable either — `_build_tray_icon`
+runs synchronously inside `__init__`, so a raised exception there
+aborts construction entirely rather than leaving a half-configured
+window — but genuinely fragile structure: the single invariant ("a
+window with a live tray icon must never be deleted on close") was
+decided in two places, one setting a default the other had to
+remember to override. Moved to one decision, in one method, covering
+both branches explicitly: `_build_tray_icon`'s early-return (no tray
+available) now sets `True` itself instead of relying on whatever
+`__init__` left behind; its tray-built tail still sets `False`, as
+before. `MainWindow.__init__` no longer touches the attribute at all.
+Two new tests in `test_ui_smoke.py` assert both branches directly via
+`testAttribute`.
+
+**Instrumentation landed, not a behavior fix** — the brief's own
+explicit fallback for an unreproduced hang. `cleanup_before_quit`
+(`ui/main_window.py`) now logs, at INFO, the per-window
+`self.thread_pool`'s `activeThreadCount()`/`maxThreadCount()` at entry
+and total elapsed time at exit. Deliberately reads `self.thread_pool`,
+not `QThreadPool.globalInstance()` — every real worker in this app
+runs on the per-window pool (`run_worker(pool, ...)` always takes it
+as an explicit argument), so the global instance's count would always
+read 0 regardless of what's actually in flight. The two log lines are
+designed to localize a future real recurrence: both present quickly
+means the hang is NOT inside `cleanup_before_quit`'s own body (nothing
+in it waits on the thread pool); "starting" logged but "finished"
+never appearing in `seeker.log` would mean it is. Confirmed useful
+sooner than expected — a test asserting `active=0` at entry failed
+under the full suite (a freshly-constructed window's own initial-load
+worker was still genuinely in flight on `window.thread_pool` at the
+moment `cleanup_before_quit` ran), so the test itself was loosened to
+assert the log line's shape only, not a specific count — real evidence
+that "is a worker still running right when quit happens" is a live,
+not hypothetical, condition even during ordinary use, not just a
+deliberately slow one.
+
+**Deliberately not touched:** no `waitForDone()` (bare or timed) was
+added anywhere on the quit path — the brief explicitly warns a bare
+call is the same hang with a different stack, and adding a *timed*
+one without a confirmed live repro of Kris's actual case would be
+guessing at both the timeout value and whether this mechanism is even
+the right one to bound. Hypothesis 2 (disk I/O in
+`_persist_window_geometry`) was read, not benchmarked — it's a small
+in-memory encode plus one `update_settings()` round trip through
+`atomic_file.write_text_locked()`, nothing that plausibly accounts for
+a multi-second-or-longer hang on its own; the entry/exit timing log
+above will show it directly if that changes.
+
+**Open issue, carried forward, not closed:** the report is still a
+single unreproduced occurrence. Next session attempting a live repro
+should bias toward quitting while a real background worker is
+provably still running (a scan, a fingerprint pass, a slow SoulSeek
+search) — mechanism 1 above is now a confirmed-live *capability* of
+this codebase's own `QThreadPool` usage, not yet a confirmed cause of
+Kris's specific report. If it recurs, `sample Seeker 10 -f
+/tmp/seeker-hang.txt` plus `seeker.log`'s two new lines around the
+same timestamp should settle it in one occurrence rather than needing
+a deliberate reproduction at all.
+
+**Discovered, out of this row's scope:** the full suite
+(`uv run pytest -q`) hit `test_reopening_after_a_fullscreen_close_
+restores_prior_geometry` and `test_fullscreen_close_policy_check_
+ignores_a_stale_request` failing together — confirmed pre-existing via
+`git stash -u` (both fail identically on unmodified `HEAD`, both pass
+individually and under a narrower `-k` selection). This is the SAME
+pair CLAUDE.md's Open issues already tracks as having failed together
+once before (S14) and calls "worth a dedicated diagnosis session if it
+recurs a third time" — this is that third time. See CLAUDE.md's Open
+issues for the full history; not diagnosed this session, which was
+scoped to §2.3 only.

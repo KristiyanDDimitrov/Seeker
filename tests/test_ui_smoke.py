@@ -1,4 +1,5 @@
 import base64
+import logging
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -3401,11 +3402,27 @@ def test_close_event_falls_back_to_real_close_when_no_tray(qtbot, monkeypatch):
     _force_tray_available(monkeypatch, False)
     application = FakeApplication()
     window = MainWindow(application)
+    # Round 9 §2.3.3 — the no-tray branch of `TrayController.
+    # _build_tray_icon` (the single place this is now decided) sets
+    # this explicitly, rather than relying on whatever `MainWindow.
+    # __init__` set it to.
+    assert window.testAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
     window.show()
 
     window.close()
 
     assert window._hidden_to_tray is False
+
+
+def test_tray_available_clears_delete_on_close(qtbot, monkeypatch):
+    # Round 9 §2.3.3 — the mirror of the no-tray case just above: the
+    # same single decision point, other branch.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert not window.testAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
 
 def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
@@ -3981,6 +3998,32 @@ def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):
 
     assert not window.poll_timer.isActive()
     assert not window.backend_poll_timer.isActive()
+
+
+def test_cleanup_before_quit_logs_thread_pool_state_and_duration(
+        qtbot, monkeypatch, caplog,
+):
+    # Round 9 §2.3 — instrumentation added for the unreproduced "not
+    # responding" quit hang. A real recurrence needs these two lines in
+    # seeker.log to localize the hang: both present quickly points away
+    # from this method's own body (see its own comment for why).
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    with caplog.at_level(logging.INFO, logger="seeker.ui.main_window"):
+        window.cleanup_before_quit()
+
+    # Deliberately not asserting an exact active-thread count: a
+    # freshly-constructed window can have its own real initial-load
+    # worker still in flight on `window.thread_pool`, so 0 isn't
+    # guaranteed even here — only the log shape itself is the contract.
+    assert "cleanup_before_quit: starting, thread_pool active=" in (
+        caplog.text
+    )
+    assert " max=" in caplog.text
+    assert "cleanup_before_quit: finished in " in caplog.text
 
 
 # --- Quit-while-downloading confirmation (round 9 §2.2, HISTORY §123) ------

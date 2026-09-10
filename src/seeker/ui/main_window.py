@@ -2,6 +2,7 @@ import base64
 import logging
 import math
 import sys
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -285,25 +286,25 @@ def _build_nav_button(label: str) -> QPushButton:
 class MainWindow(QMainWindow):
     def __init__(self, application: Application):
         super().__init__()
-        # See SettingsWindow's identical fix (CLAUDE.md's broad
-        # end-to-end stress test entry) — a parentless top-level
-        # QMainWindow's close() only hides it by default, never
-        # actually destroys it, unless this is set. MainWindow is
-        # normally only closed once (app exit), but tests construct
-        # and close it repeatedly — this matters there even if it's
-        # rarely the operational hot path in real usage. Confirmed
-        # this specific attribute was never the cause of a real,
-        # separately-found segfault (see workers.py's own
-        # SingleShotConnection fix) — isolated by temporarily removing
-        # each of the two changes independently against the full test
-        # suite before concluding which one was actually responsible.
-        # Roadmap item E1 (round 7) — "normally only closed once" is no
-        # longer quite true: `TrayController._build_tray_icon()` (round
-        # 8 §9.3.2 — extracted to ui/tray.py) clears this attribute
-        # again, permanently, the moment a real tray icon exists — see
-        # that method's own comment for why a window with a live tray
-        # icon to reopen from must never actually be deleted on close.
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        # Round 9 §2.3.3 — WA_DeleteOnClose is decided exactly once,
+        # entirely inside `TrayController._build_tray_icon()`
+        # (ui/tray.py), for BOTH branches (tray available or not): True
+        # when no tray icon exists to reopen from (a parentless
+        # top-level QMainWindow's close() only hides it by default,
+        # never actually destroys it, unless this is set — tests
+        # construct and close MainWindow repeatedly and rely on this),
+        # False the moment a real tray icon exists (see that method's
+        # own comment for why a window with a live tray icon to reopen
+        # from must never actually be deleted on close). Previously set
+        # True here unconditionally and then conditionally flipped False
+        # inside `_build_tray_icon` — a real latent bug (round 9 §2.3):
+        # if tray construction ever raised or was skipped, a window
+        # still carrying True from here could be destroyed by a stray
+        # close, leaving `qt_app.aboutToQuit.connect(window.
+        # cleanup_before_quit)` (main_ui.py) bound to a dead object.
+        # Not the reported §2.3 hang (a tray icon clearly existed there)
+        # but worth closing regardless — one decision, one place, both
+        # branches covered unconditionally.
         self.application = application
         self.thread_pool = QThreadPool()
         # Roadmap item 65 (Phase 2.1) — the single source of truth for
@@ -1789,6 +1790,29 @@ class MainWindow(QMainWindow):
         # tray icon so a real quit doesn't leave anything running past
         # the window closing, but does not change poll_downloads/
         # fingerprinting internals at all.
+        #
+        # Round 9 §2.3 — instrumentation for the reported "not
+        # responding" quit hang (unreproduced live; mechanically
+        # confirmed via a standalone QThreadPool probe that a slow
+        # in-flight runnable blocks the pool's own destructor for
+        # exactly its remaining runtime — see HISTORY §125). This
+        # method's own body finishes quickly regardless (nothing here
+        # waits on `self.thread_pool`), so a future real recurrence
+        # logging "starting" but never "finished" points at something
+        # IN this method; both logged quickly but the process still
+        # hangs afterward points at teardown of `self.thread_pool`
+        # itself once this method returns and `window` goes out of
+        # scope. Logs `self.thread_pool` specifically, not
+        # `QThreadPool.globalInstance()` — every real worker here runs
+        # on the per-window pool built in `__init__`, so the global
+        # instance's own count would always read 0 regardless.
+        started_at = time.monotonic()
+        logger.info(
+            "cleanup_before_quit: starting, thread_pool active=%d max=%d",
+            self.thread_pool.activeThreadCount(),
+            self.thread_pool.maxThreadCount(),
+        )
+
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
 
@@ -1826,6 +1850,11 @@ class MainWindow(QMainWindow):
         _set_dock_icon_visible(True)
 
         self._tray.hide_icon()
+
+        logger.info(
+            "cleanup_before_quit: finished in %.3fs",
+            time.monotonic() - started_at,
+        )
 
     # Roadmap item 116 (round 8, §14.5) — corrected: the previous
     # comment here claimed "400ms is comfortably above" a stated

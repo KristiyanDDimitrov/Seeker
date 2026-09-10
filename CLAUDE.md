@@ -346,6 +346,23 @@ Each links to the HISTORY.md item where the full investigation lives.
   real tray icon exists, or the first close after that deletes the
   window's C++ object and "reopen from tray" breaks permanently.
   [HISTORY §114](docs/HISTORY.md#114)
+- `WA_DeleteOnClose`'s value is decided in exactly one place —
+  `TrayController._build_tray_icon()` (`ui/tray.py`), both branches
+  explicitly (`True` when no tray is available, `False` the moment one
+  is built). `MainWindow.__init__` does not set it at all. A future
+  change to this invariant belongs in that one method, not split
+  between it and `__init__` again. [HISTORY §125](docs/HISTORY.md#125)
+- A per-window `QThreadPool` (`MainWindow.thread_pool` — every real
+  `run_worker` call takes it as an explicit argument, never
+  `QThreadPool.globalInstance()`) blocks its own destructor on any
+  in-flight runnable, confirmed live via an isolated probe: `quit()`
+  itself always returns instantly, but the enclosing process stays
+  alive exactly as long as the slowest running task takes once nothing
+  else holds a reference to the pool. `cleanup_before_quit` logs this
+  pool's active/max thread count at entry and its own elapsed time at
+  exit, specifically to localize a future recurrence of the
+  unreproduced "not responding" quit hang. [HISTORY
+  §125](docs/HISTORY.md#125)
 - `QHeaderView::section:horizontal:last-child` is invalid Qt QSS (valid
   CSS, not Qt's dialect) and silently poisons the **entire**
   `::section` rule — use `:last` alone.
@@ -471,6 +488,20 @@ Genuinely open only — no "done" items, no flakes that resolved.
   symptom, trigger, and mechanism. Real Spotify sync duration and/or
   real DB size/content are the untested suspects.
   [HISTORY §70](docs/HISTORY.md#70)
+- **Item 125 — a real "not responding" quit hang, reported once,
+  still unreproduced.** Kris closed the window (hid to tray correctly)
+  then quit from the tray icon; the app reappeared in the Dock marked
+  "not responding." Round 9 §2.3 mechanically confirmed the leading
+  candidate mechanism in isolation — a per-window `QThreadPool` (the
+  same shape `MainWindow.thread_pool` is) blocks its own destructor on
+  any in-flight runnable, so `quit()` returning instantly does not mean
+  the process actually exits — but did not reproduce Kris's specific
+  sequence live. `cleanup_before_quit` now logs the real pool's
+  active/max thread count at entry and elapsed time at exit
+  specifically so a real recurrence is diagnosable from `seeker.log`
+  alone. Next live attempt should bias toward quitting while a real
+  background worker (scan/fingerprint/search) is provably still
+  running. [HISTORY §125](docs/HISTORY.md#125)
 - **Five unconfirmed round-8 test flakes.** Diagnose any recurrence
   directly — never reach for `pytest-rerunfailures`.
   - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
@@ -548,7 +579,15 @@ Genuinely open only — no "done" items, no flakes that resolved.
     area failing together, only under the full suite, is stronger
     evidence of a real ordering/state-leak bug in that area than either
     single occurrence was; worth a dedicated diagnosis session if it
-    recurs a third time.
+    recurs a third time. **Round 9 S5: third recurrence, same pair,
+    together again** (`uv run pytest -q` locally, this session's own
+    `WA_DeleteOnClose`/`cleanup_before_quit` diff — confirmed NOT the
+    cause via `git stash -u`: both fail identically on unmodified
+    `HEAD` too, and both pass individually and under a narrower `-k`
+    selection every time). Same failure (`assert dock_calls == []`
+    actually `[True]`) both times. This is the third recurrence the
+    prior note named as its own trigger for a dedicated diagnosis
+    session — genuinely due now, not just close to the bar.
   - `test_view_menu_focus_search_navigates_and_focuses_the_search_field`
     (added S15, §12.3/§12.5) — fails on real CI (`macos-latest`) with
     `assert False` on `search_artist_edit.hasFocus()`, confirmed on TWO

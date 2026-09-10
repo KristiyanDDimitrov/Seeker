@@ -127,6 +127,16 @@ class TrayController:
         # is not None before doing anything different.
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self._tray_icon = None
+            # Round 9 §2.3.3 — the other half of the single decision
+            # this method now owns in full: no tray icon exists to
+            # reopen from, so an ordinary close() must actually destroy
+            # the window (see the True branch below for the mirror
+            # case). Explicit here rather than left to whatever
+            # MainWindow.__init__ set, so this method is the one place
+            # that decides either way, unconditionally.
+            self._host.window.setAttribute(
+                Qt.WidgetAttribute.WA_DeleteOnClose, True
+            )
             return
 
         icon_path = _resolve_tray_icon_path()
