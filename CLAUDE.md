@@ -360,6 +360,18 @@ Each links to the HISTORY.md item where the full investigation lives.
   a **callable**, not a snapshot — a Settings change takes effect
   immediately, no restart. [HISTORY §28](docs/HISTORY.md#28)
 
+### Testing
+
+- **Why one test always skips, and why that is correct:**
+  `tests/test_stress_e2e.py` is gated by `requires_stress_opt_in` on
+  `SEEKER_RUN_STRESS_TEST != "1"` — it drives the real Spotify/slskd/
+  X9 Pro pipeline for real wall-clock minutes and mutates the real
+  production database, so it must never run just because the
+  infrastructure happens to be connected (see the file's own
+  docstring). Run it deliberately via `SEEKER_RUN_STRESS_TEST=1 uv run
+  pytest tests/test_stress_e2e.py` after any change to worker/timer/
+  connection lifecycle code. [HISTORY §32](docs/HISTORY.md#32)
+
 ### Database and migrations
 
 - `local_files`' analysis/fingerprint columns (`bpm`, `camelot_key`,
