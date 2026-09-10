@@ -504,7 +504,23 @@ Genuinely open only — no "done" items, no flakes that resolved.
     itself, verified working via a forced repro. Still no real
     snapshot from a *natural* recurrence yet — diagnose from that
     output the next time it fires for real. [HISTORY
-    §121](docs/HISTORY.md#121)
+    §121](docs/HISTORY.md#121) **Round 9 S4: two real natural
+    recurrences, back to back, on real CI** (`34452686991`, commit
+    `44109aa`, a previous session's own push never checked before this
+    one started; `34457258960`, commit `b07287c`, this session's own
+    push — neither commit touches `history_page.py`, `workers.py`, or
+    anything in this test's path, so neither is a regression from its
+    own diff). **Both snapshots read identically: `active_threads=0
+    max_threads=3`, `no tasks in flight`.** This rules out the
+    "worker/task genuinely stuck" hypothesis the instrumentation was
+    built to catch — by the time the timeout fires, the dispatcher
+    reports nothing running at all, so the third `run_worker` call
+    either was never submitted (a missed button-click signal delivery)
+    or already finished before the snapshot without its result ever
+    reaching `get_recent_events_calls`. Two matching real recurrences
+    now clears this item's own "diagnose from that output the next
+    time it fires for real" bar — worth a dedicated diagnosis session,
+    not a third data point.
   - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
     once during S13 (round 8, comment-triage-only session — nothing in
     that session touched close/fullscreen logic, so not a regression
