@@ -4,7 +4,6 @@ from seeker.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
 )
-from seeker.ui import help_text
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -43,21 +42,18 @@ def test_wizard_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
         assert widget.toolTip() != ""
 
 
-def test_done_page_support_buttons_open_placeholder_links(
-        qtbot, tmp_path, monkeypatch,
-):
+def test_done_page_has_no_support_buttons(qtbot, tmp_path, monkeypatch):
+    # Round 9 §4.1 — Kris: "no point in having it before the user
+    # actually experiences the app." The done page's own support row
+    # was removed; the real Support page (sidebar,
+    # ui/pages/static_pages.py) and AboutDialog are the surfaces that
+    # keep it. Inverted from the round-8 test this replaces, which
+    # asserted the buttons existed — this asserts they can't come back.
     from PySide6.QtWidgets import QPushButton
-
-    from seeker.ui import wizard as wizard_module
 
     application = make_application(tmp_path, monkeypatch)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
     qtbot.addWidget(wizard)
-
-    opened: list[str] = []
-    monkeypatch.setattr(
-        wizard_module.webbrowser, "open", opened.append
-    )
 
     wizard.stack.setCurrentIndex(3)
     done_page = wizard.stack.currentWidget()
@@ -66,12 +62,7 @@ def test_done_page_support_buttons_open_placeholder_links(
         for widget in done_page.findChildren(QPushButton)
         if widget.text().startswith("Support on")
     ]
-    assert len(buttons) == len(help_text.SUPPORT_LINKS)
-
-    for button in buttons:
-        button.click()
-
-    assert set(opened) == set(help_text.SUPPORT_LINKS.values())
+    assert buttons == []
 
 
 def test_wizard_starts_at_spotify_step_when_nothing_configured(

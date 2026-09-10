@@ -1139,5 +1139,4 @@ DONE_PAGE_BODY = (
     "Seeker is ready — sync your playlists, scan your library, and "
     "start matching whenever you like."
 )
-DONE_PAGE_SUPPORT_PROMPT = "Enjoying Seeker?"
 DONE_PAGE_CONTINUE_BUTTON_TEXT = "Go to Dashboard"

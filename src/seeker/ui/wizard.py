@@ -717,7 +717,7 @@ class OnboardingWizard(QMainWindow):
     def _advance_to_done_page(self) -> None:
         self.stack.setCurrentIndex(3)
 
-    # --- Step 4: done (Task 3's support-the-creator placement) ---------
+    # --- Step 4: done -----------------------------------------------
 
     def _build_done_page(self) -> QWidget:
         page = QWidget()
@@ -725,20 +725,6 @@ class OnboardingWizard(QMainWindow):
 
         layout.addWidget(QLabel(help_text.DONE_PAGE_TITLE_HTML))
         layout.addWidget(QLabel(help_text.DONE_PAGE_BODY))
-
-        # A single, low-key mention — not on any daily-use screen, per
-        # Task 3's own scoping. Real URLs aren't ready yet; see
-        # help_text.SUPPORT_LINKS's own placeholder-URL warning.
-        support_row = QHBoxLayout()
-        support_row.addWidget(QLabel(help_text.DONE_PAGE_SUPPORT_PROMPT))
-        for name, url in help_text.SUPPORT_LINKS.items():
-            support_button = QPushButton(f"Support on {name}")
-            support_button.setToolTip(help_text.TOOLTIP_SUPPORT_LINK)
-            support_button.clicked.connect(
-                lambda _=False, url=url: webbrowser.open(url)
-            )
-            support_row.addWidget(support_button)
-        layout.addLayout(support_row)
 
         layout.addStretch()
 

@@ -120,12 +120,13 @@ class AboutDialog(QDialog):
         notices_label.setProperty("badge", "faint")
         layout.addWidget(notices_label)
 
-        # Real URLs aren't ready for every link yet — is_real_support_link()
-        # filters out any still-TODO placeholder so a dead, non-URL button
-        # never actually renders (see help_text.SUPPORT_LINKS's own note).
-        # Same webbrowser.open() mechanism the Spotify OAuth flow already
-        # uses; no SDK, no embedded payment UI. Shared with the Support
-        # page (roadmap item 64) via build_support_links_row().
+        # SUPPORT_LINKS now holds only real URLs (Revolut, PayPal) —
+        # is_real_support_link() stays as a guard against a future
+        # still-TODO placeholder never actually rendering as a dead,
+        # non-URL button. Same webbrowser.open() mechanism the Spotify
+        # OAuth flow already uses; no SDK, no embedded payment UI.
+        # Shared with the Support page (roadmap item 64) via
+        # build_support_links_row().
         layout.addLayout(build_support_links_row())
 
         close_row = QHBoxLayout()
