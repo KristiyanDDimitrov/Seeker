@@ -8,26 +8,36 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `1707ab7`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `f9aa687`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
 - **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1186
-  passed, 2 failed, 29 skipped`** — the 2 failures are the already-
-  documented S4 flake pair (`test_reopening_after_a_fullscreen_close_
+  passed, 2 failed, 29 skipped`** — the 2 failures are the documented
+  fullscreen-close pair, order-dependent (pass in isolation, fail only
+  under the full suite). Confirmed pre-existing this session via `git
+  stash -u`: identical 2 failures on unmodified HEAD, same area. On a
+  second full-suite run with this session's changes present, the exact
+  same 2 tests failed again (`test_reopening_after_a_fullscreen_close_
   restores_prior_geometry`, `test_fullscreen_close_policy_check_
-  ignores_a_stale_request`), confirmed pre-existing this session via
-  `git stash -u` (fails identically on unmodified HEAD). Re-running
-  full-suite locally without those two selected: 1186 passed.
+  ignores_a_stale_request`) — one earlier run in between also surfaced
+  a third test in the same area
+  (`test_fullscreen_close_schedules_a_policy_only_check`), consistent
+  with CLAUDE.md's already-tracked "two different tests in the same
+  fullscreen-close area, only under the full suite" flake.
 - **`mypy --strict src/`: clean, 103 files. `ruff check src tests`: 0
   findings.**
-- **CI on `1707ab7` (this session's push): run `34840265764`, `2
-  failed`.** ruff/mypy both clean; `src/seeker/login_item.py` shows
-  100% coverage. The 2 failures are the OTHER already-tracked flake
-  pair (`test_history_refresh_button_refetches`,
+- **CI on `f9aa687` (this session's push): run `34857398720`, `2
+  failed`.** ruff/mypy both clean; new `src/seeker/ui/pages/
+  review_page.py` code shows 98% coverage. The 2 failures are the
+  OTHER already-tracked CI-only flake pair
+  (`test_history_refresh_button_refetches`,
   `test_review_tab_replace_button_calls_apply_upgrade_decision_with_
-  delete_flag`) — not new, not this session's diff (neither test
-  touches login_item.py/config_store.py/application.py/main_ui.py/
-  main_window.py/settings_window.py's new code paths).
+  delete_flag`) — the same pair that failed on S7's own CI run
+  (`34840265764`), not new, not this session's diff (the replace-
+  button test lives in `tests/pages/test_review_page.py` and exercises
+  the same page this session touched, but it's the specific,
+  multiply-recurring flake CLAUDE.md's Open issues already tracks by
+  name — see that section for the recurrence history).
 
 ## Where we are in the plan
 
@@ -35,75 +45,56 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1-S7.**
-- **Next: S8** — Review page resizable panes (§6). Split point: after
-  the splitter works, before persistence.
+- **Done: S1-S8.**
+- **Next: S9** — Library page, lift the selection seam (§7.1, pure
+  refactor, no visible change). Hard stop named in the session map: no
+  visible change in this row.
 
-## S7 report — §3.2, start Seeker at login
-
-**Approval gate cleared this session** — Kris chose `SMAppService`
-over the `LaunchAgent` plist alternative (asked live via
-AskUserQuestion at session start, per the session plan's own gate).
-Removed from `docs/round9/SESSION-PLAN.md`'s "Waiting on Kris".
+## S8 report — §6, Review page resizable panes
 
 **What landed:**
-- `src/seeker/login_item.py` — new module wrapping
-  `SMAppService.mainAppService()`. `is_supported()` gates on
-  `sys.platform == "darwin"` AND `sys.frozen` (a `uv run` dev process
-  has no bundle identifier to register against). `get_status()`
-  always reads the REAL live ServiceManagement status, never a
-  mirrored `config.json` boolean — confirmed live on this real Darwin
-  25.6.0 machine (unbundled `uv run python`): `status()` returns `3`
-  (`NotFound`) without raising, and `registerAndReturnError_`/
-  `unregisterAndReturnError_` are real bound methods — the four raw
-  status ints (0-3) are confirmed against the real module, not
-  assumed. What real register()/unregister() does against a genuine
-  `.app` bundle is UNVERIFIED here (is_supported() never lets a dev
-  run reach those calls) — needs a real packaged-build check.
-- `pyobjc-framework-ServiceManagement>=10.0; sys_platform == 'darwin'`
-  added to `pyproject.toml`; mypy override added (no py.typed marker,
-  same gap as `AppKit`).
-- `packaging/seeker.spec`'s `hiddenimports` gains
-  `"ServiceManagement"` — same "PyInstaller can't see a deferred
-  import" reason the existing `AppKit`/`Foundation`/`objc` entries are
-  there for. **Untested by any automated check** (nothing in this
-  repo tests the spec file) — first real packaged build should
-  confirm the login item actually registers.
-- `config_store.py` gains `start_hidden_at_login: bool = False` — the
-  "start hidden in the menu bar" companion option. This field is
-  standalone, not a mirror of the login-item's own on/off state.
-- `Application.login_item_supported`/`login_item_status()`/
-  `set_login_item_enabled()` — thin passthroughs to `login_item.py`.
-- `MainWindow.start_hidden_to_tray()` — skips `show()` entirely
-  (never shows-then-hides, which would flash a frame) when a tray
-  icon exists; returns `False` when there's no tray to hide behind, in
-  which case `main_ui.main()` shows the window normally. Wired at the
-  same seam `main_ui.main()`'s existing `window.show()` call already
-  was.
-- Settings' new "Startup" group (`_build_thresholds_tab`, after
-  Notifications) — two checkboxes ("Start Seeker at login", "Start
-  hidden in the menu bar") plus a status label for the
-  `REQUIRES_APPROVAL`/unsupported states. `refresh_login_item_state()`
-  re-reads the real status on every real Settings page show
-  (`MainWindow._on_page_changed`, same lazy-refresh-on-show pattern
-  Duplicates/Sharing/History already use) — a login item revoked via
-  System Settings shows as off here too, no restart needed. Enabling
-  login-at-startup defaults "start hidden" on every time (not just
-  once); disabling login leaves "start hidden" untouched, since
-  `main_ui.main()` applies it on every launch regardless of how the
-  process started (there's no reliable in-process signal to
-  distinguish a login-triggered launch from a Finder double-click —
-  same always-on-when-enabled behavior other login-item apps use).
-
-**New tests:** `tests/test_login_item.py` (mocks `sys.modules
-["ServiceManagement"]` directly to exercise `get_status`/`set_enabled`
-against every real status value without needing a real bundle),
-plus additions to `test_config_store.py`, `test_application.py`,
-`test_settings_window.py`, `test_ui_smoke.py` (including
-`FakeApplication` gaining `login_item_supported`/`login_item_status`/
-`set_login_item_enabled`, defaulted to the same "unsupported" state a
-real dev-run `Application` reports, so no pre-existing test needed to
-change).
+- `src/seeker/ui/pages/review_page.py` — the three Review sections
+  (needs-review, downloaded upgrades, local matches) moved from a
+  plain `QVBoxLayout` stack into a `QSplitter(Qt.Orientation.Vertical)`
+  (`review_splitter`). Each section's header row and card are wrapped
+  in one `QWidget` so the whole section moves as a unit (the upgrades
+  header row, including "Replace all," travels with its table).
+  `setChildrenCollapsible(False)` plus a real `minimumHeight`
+  (`_REVIEW_SECTION_MIN_HEIGHT = 140`) per section keeps every pane
+  recoverable. First-run proportions are `setStretchFactor` 3:2:2
+  (needs-review favored — the section acted on most), not equal
+  thirds.
+- Persistence mirrors `window_geometry`'s existing pattern exactly:
+  `config_store.SeekerConfig.review_splitter_state: str | None` (base64
+  of `QSplitter.saveState()`), written by a new
+  `ReviewPage._persist_splitter_state()` called from
+  `MainWindow.cleanup_before_quit` — **unconditionally**, unlike the
+  `_hidden_to_tray`-gated window-geometry backstop next to it, since a
+  hidden-to-tray splitter still reports its real current sizes (only
+  the top-level window's own `saveGeometry()` has that visibility
+  quirk).
+- Restore (`ReviewPage._restore_splitter_state`) is called from a new
+  `ReviewPage.showEvent()`, guarded to fire once, on the page's first
+  real show — the same §3.1 failure mode (restoring before the
+  splitter has real, laid-out geometry distributes the saved sizes
+  against the wrong total; this page sits hidden inside MainWindow's
+  `QStackedWidget` until first navigated to). Verified live with a
+  scratch two-`MainWindow` script: a dragged split round-tripped
+  through persist/restore byte-for-byte once both windows shared real
+  geometry (script deleted after use).
+- `theme.py`'s `_misc_qss` gains `QSplitter::handle` rules —
+  `BORDER_STRONG` (same reasoning as the table-header divider),
+  `ACCENT` on hover, 6px thickness matching `setHandleWidth()`.
+  Confirmed visible in both themes via a real offscreen `window.grab()`
+  screenshot (scratch check, not committed).
+- No new dedicated test file — `tests/pages/test_review_page.py` and
+  `tests/test_ui_smoke.py` already construct/interact with the three
+  tables by attribute name, which the restructuring preserved, so
+  existing tests cover section rendering unchanged. **A real gap**: no
+  automated test asserts the splitter's persist/restore round-trip, or
+  that `_persist_splitter_state` is called from `cleanup_before_quit`
+  — only verified via a scratch script this session. Worth adding if a
+  future session touches this page again.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -114,30 +105,27 @@ default. Don't read a brief section your row doesn't point at.
 
 ## Waiting on Kris
 
-See `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris" section.
-This session adds one real-desktop check there: **confirm on a real
-packaged `.app` build that "Start Seeker at login" actually registers**
-(System Settings > General > Login Items) and that "start hidden"
-skips the window on the next real login-triggered launch — nothing in
-this session verified real register()/unregister() behavior, only the
-gating logic around it.
+See `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris" section —
+unchanged by this session. Carried from round 8, still open: click
+through the Review page's new splitter on a real display (drag each
+handle, quit, reopen, confirm the drag survived) — this session only
+verified the persist/restore round-trip mechanically, never on a real
+Mac.
 
 ## Open questions
 
-- **§3.1's real applied-pixel behavior is still unverified by any
-  automated test**, and **§3.2's real register()/unregister() behavior
-  against a packaged `.app` is unverified by anything but reading the
-  real API shape** — both need the same real-Mac session. Worth
-  combining into one real-hardware pass rather than two.
-- **Item 125 (the §2.3 quit hang), the two S4 flakes, the fullscreen-
-  close pair, and the other tracked CI-only flakes are all unchanged**
-  — this session's own CI run reproduced the S4 pair again (see above),
-  nothing newly fired. Tracked in CLAUDE.md's Open issues; not
-  re-litigated here.
+- **No automated test covers the splitter persist/restore round-trip**
+  (see S8 report above) — only manually/mechanically verified this
+  session via a scratch script, not committed.
+- Item 125 (the §2.3 quit hang), the two S4 flakes (fullscreen-close
+  pair), and the CI-only flake pair (history-refresh/replace-button)
+  are all unchanged — this session's own local and CI runs reproduced
+  them again, nothing newly fired. Tracked in CLAUDE.md's Open issues;
+  not re-litigated here.
 - `docs/HISTORY.md` is now ~890 KB — still never read whole. No
-  HISTORY entry written yet for §3.2 — worth adding given the real
-  live SMAppService investigation above, if a future session has
-  budget for the two-tier docs pass (Working agreement #1).
+  HISTORY entry written yet for §3.2 (carried from S7) or §6 (this
+  session) — worth a combined two-tier docs pass if a future session
+  has budget (Working agreement #1).
 
 ## How to end your session
 

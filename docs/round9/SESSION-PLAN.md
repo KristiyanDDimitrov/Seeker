@@ -38,7 +38,7 @@ point, commit, and say precisely where you stopped.
 | ☒ S5 | The quit hang | §2.3 | ~120 K | Reproduction attempt is the box; report either way |
 | ☒ S6 | Window geometry + wizard support page + update-check honesty | §3.1, §4.1, §4.2a | ~130 K | After §3.1 |
 | ☒ S7 | Start at login | §3.2 | ~120 K | After the mechanism decision is written down |
-| ☐ S8 | Review page — resizable panes | §6 | ~110 K | After the splitter works, before persistence |
+| ☒ S8 | Review page — resizable panes | §6 | ~110 K | After the splitter works, before persistence |
 | ☐ S9 | Library — lift the selection seam (pure refactor) | §7.1 | ~110 K | Hard stop: no visible change in this row |
 | ☐ S10 | Library — context header + playlist picker | §7.2 | ~110 K | After the header; the picker can stand alone |
 
