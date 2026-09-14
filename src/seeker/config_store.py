@@ -77,6 +77,15 @@ class SeekerConfig:
     # True by the Settings checkbox the moment login-at-startup is
     # first enabled, but stored independently and always overridable.
     start_hidden_at_login: bool = False
+    # Round 9 §6 — base64 of the Review page's three-section
+    # QSplitter.saveState() (proportions between needs-review/upgrades/
+    # local-matches). Written once, at real quit
+    # (MainWindow.cleanup_before_quit reaching into ReviewPage, same
+    # seam it already uses for other page-owned state), never on every
+    # drag — restoreState() tolerates a missing/corrupt value by
+    # leaving the splitter at its hardcoded first-run proportions, so
+    # no validation is needed here.
+    review_splitter_state: str | None = None
 
 
 def resolve_config_path() -> Path:
@@ -134,6 +143,7 @@ def load_config(path: Path) -> SeekerConfig:
         window_geometry=data.get("window_geometry"),
         last_open_page=data.get("last_open_page"),
         start_hidden_at_login=data.get("start_hidden_at_login", False),
+        review_splitter_state=data.get("review_splitter_state"),
     )
 
 

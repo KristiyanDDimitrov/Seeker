@@ -25,10 +25,12 @@ method that legitimately needs to" precedent as `_invalidate_after_
 leaving_settings` calling `self._dashboard_page._poll_next_step()`.
 """
 
+import base64
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -36,6 +38,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -71,6 +74,17 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
     stretch=(0, 1), fit_content=(2, 3), actions=4,
 )
 
+# Round 9 §6 — enough to show a section's header row plus a couple of
+# table rows even when a neighbour has been dragged to take most of the
+# splitter; setChildrenCollapsible(False) alone still lets a section
+# shrink to its layout's bare minimum otherwise, which is a header row
+# with no visible table at all.
+_REVIEW_SECTION_MIN_HEIGHT = 140
+# Wide enough to comfortably grab with a mouse; matches the QSS handle
+# thickness in theme.py's _misc_qss (kept in sync by hand — no shared
+# constant crosses the theme/page module boundary elsewhere either).
+_REVIEW_SPLITTER_HANDLE_WIDTH = 6
+
 
 @dataclass(frozen=True)
 class ReviewHost:
@@ -98,6 +112,10 @@ class ReviewPage(QWidget):
         # _focus_pending_review_row the next time this page's data
         # actually loads.
         self._pending_review_focus_track_id: str | None = None
+        # Round 9 §6 — guards the same "restore only once, after the
+        # splitter's children have real geometry" race window_geometry
+        # already solved (see _restore_splitter_state's own comment).
+        self._splitter_state_restored_after_first_show = False
 
         # Two independent sections: SoulSeek needs-review candidates
         # (HISTORY §17's tier, gaining its first real confirm/reject
@@ -110,15 +128,39 @@ class ReviewPage(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("SoulSeek candidates needing confirmation"))
+        # Round 9 §6 — each section (its header row *and* its card)
+        # lives in its own QWidget so it moves as one unit inside the
+        # splitter; a bare QVBoxLayout can't be handed to addWidget()
+        # directly, only a widget can.
+        self.review_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.review_splitter.setHandleWidth(_REVIEW_SPLITTER_HANDLE_WIDTH)
+        # No pane may be dragged away to nothing and become
+        # unrecoverable — paired with each section's own minimumHeight
+        # below (setChildrenCollapsible(False) alone still allows a
+        # section to shrink to its layout's bare minimum, which is a
+        # header row with no visible table at all).
+        self.review_splitter.setChildrenCollapsible(False)
+
+        needs_section = QWidget()
+        needs_layout = QVBoxLayout(needs_section)
+        needs_layout.setContentsMargins(0, 0, 0, 0)
+        needs_layout.addWidget(
+            QLabel("SoulSeek candidates needing confirmation")
+        )
 
         self.review_needs_table = QTableWidget(0, 5)
         self.review_needs_table.setHorizontalHeaderLabels(
             ["Track", "Score", "Candidate", "Runner-up", "Actions"]
         )
         theme.apply_table_defaults(self.review_needs_table)
-        layout.addWidget(theme.make_card(self.review_needs_table))
+        needs_layout.addWidget(theme.make_card(self.review_needs_table))
         self._configure_review_needs_columns()
+        needs_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
+        self.review_splitter.addWidget(needs_section)
+
+        upgrades_section = QWidget()
+        upgrades_layout = QVBoxLayout(upgrades_section)
+        upgrades_layout.setContentsMargins(0, 0, 0, 0)
 
         upgrades_header_row = QHBoxLayout()
         upgrades_header_row.addWidget(
@@ -137,29 +179,50 @@ class ReviewPage(QWidget):
             self._on_replace_all_upgrades_clicked
         )
         upgrades_header_row.addWidget(self.replace_all_upgrades_button)
-        layout.addLayout(upgrades_header_row)
+        upgrades_layout.addLayout(upgrades_header_row)
 
         self.review_upgrades_table = QTableWidget(0, 4)
         self.review_upgrades_table.setHorizontalHeaderLabels(
             ["Track", "Current", "New quality", "Actions"]
         )
         theme.apply_table_defaults(self.review_upgrades_table)
-        layout.addWidget(theme.make_card(self.review_upgrades_table))
+        upgrades_layout.addWidget(theme.make_card(self.review_upgrades_table))
         self._configure_review_upgrades_columns()
+        upgrades_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
+        self.review_splitter.addWidget(upgrades_section)
 
         # Third section (HISTORY §56 Phase 2), closing HISTORY §7's
         # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
         # from the SoulSeek candidates table above) never had a
         # confirm/reject UI at all before this.
-        layout.addWidget(QLabel("Local library matches needing confirmation"))
+        local_section = QWidget()
+        local_layout = QVBoxLayout(local_section)
+        local_layout.setContentsMargins(0, 0, 0, 0)
+        local_layout.addWidget(
+            QLabel("Local library matches needing confirmation")
+        )
 
         self.review_local_table = QTableWidget(0, 5)
         self.review_local_table.setHorizontalHeaderLabels(
             ["Track", "Matched file", "Location", "Score", "Actions"]
         )
         theme.apply_table_defaults(self.review_local_table)
-        layout.addWidget(theme.make_card(self.review_local_table))
+        local_layout.addWidget(theme.make_card(self.review_local_table))
         self._configure_review_local_columns()
+        local_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
+        self.review_splitter.addWidget(local_section)
+
+        # Sensible first-run proportions rather than three equal
+        # thirds (round 9 §6) — needs-review is the section a user acts
+        # on most, so it gets the most room by default. Only matters
+        # before a real splitter_state has ever been persisted;
+        # _restore_splitter_state below overrides these the moment a
+        # saved value exists.
+        self.review_splitter.setStretchFactor(0, 3)
+        self.review_splitter.setStretchFactor(1, 2)
+        self.review_splitter.setStretchFactor(2, 2)
+
+        layout.addWidget(self.review_splitter)
 
         # The 2s poll_timer rebuilds this table's checkboxes from
         # scratch every tick; nothing carried the checked state across
@@ -175,6 +238,57 @@ class ReviewPage(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        # Round 9 §6 — same failure mode §3.1 found for the main
+        # window's own geometry: a splitter given saveState() bytes
+        # before it has real, laid-out geometry (this page sits hidden
+        # inside MainWindow's QStackedWidget until first navigated to)
+        # redistributes them against a size that isn't the real one yet
+        # and the proportions come out wrong. Restoring here — the first
+        # time this page is actually shown, guarded so a later
+        # navigation back to Review never re-stomps a size the user has
+        # since dragged — is the same "wait for the real show event"
+        # fix, applied to this page's own splitter instead of
+        # MainWindow's own geometry.
+        super().showEvent(event)
+        if not self._splitter_state_restored_after_first_show:
+            self._splitter_state_restored_after_first_show = True
+            self._restore_splitter_state()
+
+    def _restore_splitter_state(self) -> None:
+        # A corrupt/foreign base64 blob (a hand-edited config.json, or a
+        # value from some future format this version doesn't
+        # understand) must never raise; restoreState() itself already
+        # reports success/failure via its return value rather than
+        # throwing, so a bad value just leaves the hardcoded
+        # setStretchFactor() proportions from __init__ in place.
+        encoded = self._context.application.settings.review_splitter_state
+        if not encoded:
+            return
+
+        try:
+            raw = base64.b64decode(encoded)
+        except (ValueError, TypeError):
+            return
+
+        self.review_splitter.restoreState(QByteArray(raw))
+
+    def _persist_splitter_state(self) -> None:
+        # Round 9 §6 — called from MainWindow.cleanup_before_quit, the
+        # one real quit path (HISTORY §124), mirroring
+        # _persist_window_geometry's own "write once, at quit" pattern
+        # rather than on every drag. Unlike window geometry, there is no
+        # hide-to-tray race to guard against here — this page's splitter
+        # keeps reporting its real current sizes regardless of whether
+        # MainWindow itself is visible, since hiding to the tray never
+        # destroys it.
+        encoded = base64.b64encode(
+            self.review_splitter.saveState().data()
+        ).decode("ascii")
+        self._context.application.update_settings(
+            review_splitter_state=encoded,
+        )
 
     def _poll_review_items(self) -> None:
         # All three halves are cheap, local-DB-only reads (like

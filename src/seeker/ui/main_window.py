@@ -1862,6 +1862,14 @@ class MainWindow(QMainWindow):
         if not self._hidden_to_tray:
             self._persist_window_geometry()
 
+        # Round 9 §6 — unlike window geometry above, there is no
+        # hide-to-tray visibility race to guard against: the Review
+        # page's splitter keeps reporting its real current sizes
+        # whether or not MainWindow itself is visible, since hiding to
+        # the tray never destroys either widget. Unconditional, unlike
+        # the `_hidden_to_tray` gate just above.
+        self._review_page._persist_splitter_state()
+
         # Roadmap item C5.6 — a real Qt signal connection to a
         # GLOBAL object (QGuiApplication.styleHints(), not this
         # window), so it must be torn down explicitly rather than

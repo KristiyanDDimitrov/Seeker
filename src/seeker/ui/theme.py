@@ -1248,6 +1248,27 @@ QToolTip {{
     padding: 4px 6px;
 }}
 
+/* Round 9 §6 — the Review page's three-section splitter. BORDER_STRONG
+rather than BORDER for the same reason QHeaderView::section's own
+divider uses it (see _table_header_qss's comment): this handle sits on
+BG_APP, the page background, not a card, with nothing else nearby to
+help the eye find it. */
+QSplitter::handle {{
+    background-color: {palette.BORDER_STRONG};
+}}
+
+QSplitter::handle:hover {{
+    background-color: {palette.ACCENT};
+}}
+
+QSplitter::handle:vertical {{
+    height: 6px;
+}}
+
+QSplitter::handle:horizontal {{
+    width: 6px;
+}}
+
 """
 
 
