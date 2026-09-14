@@ -37,7 +37,7 @@ point, commit, and say precisely where you stopped.
 | ☒ S4 | Quit semantics + confirmation dialog | §2.1, §2.2 | ~110 K | After §2.1 — the finding alone is worth a commit |
 | ☒ S5 | The quit hang | §2.3 | ~120 K | Reproduction attempt is the box; report either way |
 | ☒ S6 | Window geometry + wizard support page + update-check honesty | §3.1, §4.1, §4.2a | ~130 K | After §3.1 |
-| ☐ S7 | Start at login | §3.2 | ~120 K | After the mechanism decision is written down |
+| ☒ S7 | Start at login | §3.2 | ~120 K | After the mechanism decision is written down |
 | ☐ S8 | Review page — resizable panes | §6 | ~110 K | After the splitter works, before persistence |
 | ☐ S9 | Library — lift the selection seam (pure refactor) | §7.1 | ~110 K | Hard stop: no visible change in this row |
 | ☐ S10 | Library — context header + playlist picker | §7.2 | ~110 K | After the header; the picker can stand alone |
@@ -128,9 +128,6 @@ Carried forward, plus what this round adds. None blocks S1.
 - [ ] **§4.2b** — cut a `v0.1.0` GitHub release, and/or make the update
       check automatic (opt-in, daily, default off). Until a release
       exists, "Check for updates…" cannot succeed for anyone.
-- [ ] **§3.2** — confirm `SMAppService` over a `LaunchAgent` plist for
-      start-at-login, which adds `pyobjc-framework-ServiceManagement` as
-      a dependency.
 - [ ] **§1.2 fallback only** — if the callback-server fix does not make
       CI green, gating those three tests behind a
       `requires_loopback_server` marker trades away real coverage of the
