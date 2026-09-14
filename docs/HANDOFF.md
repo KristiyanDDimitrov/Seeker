@@ -8,36 +8,28 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `f9aa687`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `873eb4f`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1186
-  passed, 2 failed, 29 skipped`** — the 2 failures are the documented
-  fullscreen-close pair, order-dependent (pass in isolation, fail only
-  under the full suite). Confirmed pre-existing this session via `git
-  stash -u`: identical 2 failures on unmodified HEAD, same area. On a
-  second full-suite run with this session's changes present, the exact
-  same 2 tests failed again (`test_reopening_after_a_fullscreen_close_
-  restores_prior_geometry`, `test_fullscreen_close_policy_check_
-  ignores_a_stale_request`) — one earlier run in between also surfaced
-  a third test in the same area
-  (`test_fullscreen_close_schedules_a_policy_only_check`), consistent
-  with CLAUDE.md's already-tracked "two different tests in the same
-  fullscreen-close area, only under the full suite" flake.
-- **`mypy --strict src/`: clean, 103 files. `ruff check src tests`: 0
+- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): first
+  full-suite run `1188 passed, 29 skipped`** (the fullscreen-close pair
+  didn't fire); **a second immediate run reproduced exactly the
+  documented pair, `1186 passed, 2 failed, 29 skipped`**
+  (`test_reopening_after_a_fullscreen_close_restores_prior_geometry`,
+  `test_fullscreen_close_policy_check_ignores_a_stale_request`) — same
+  order-dependent flake CLAUDE.md's Open issues already tracks, not a
+  regression from this session's diff.
+- **`mypy --strict src/`: clean, 104 files. `ruff check src tests`: 0
   findings.**
-- **CI on `f9aa687` (this session's push): run `34857398720`, `2
-  failed`.** ruff/mypy both clean; new `src/seeker/ui/pages/
-  review_page.py` code shows 98% coverage. The 2 failures are the
-  OTHER already-tracked CI-only flake pair
+- **CI on `873eb4f` (this session's push): run `34859570733`,
+  `failure`.** ruff clean (confirmed from the run log). The failure is
+  the OTHER already-tracked CI-only flake pair
   (`test_history_refresh_button_refetches`,
   `test_review_tab_replace_button_calls_apply_upgrade_decision_with_
-  delete_flag`) — the same pair that failed on S7's own CI run
-  (`34840265764`), not new, not this session's diff (the replace-
-  button test lives in `tests/pages/test_review_page.py` and exercises
-  the same page this session touched, but it's the specific,
-  multiply-recurring flake CLAUDE.md's Open issues already tracks by
-  name — see that section for the recurrence history).
+  delete_flag`) — the same pair that failed on S7's and S8's own CI
+  runs (`34840265764`, `34857398720`), not new, not this session's
+  diff (this session never touched `history_page.py`, `review_page.py`,
+  or `workers.py`).
 
 ## Where we are in the plan
 
@@ -45,56 +37,56 @@ Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
 `docs/round9/SESSION-PLAN.md` — **read that, not the full ~40 KB
 brief.**
 
-- **Done: S1-S8.**
-- **Next: S9** — Library page, lift the selection seam (§7.1, pure
-  refactor, no visible change). Hard stop named in the session map: no
-  visible change in this row.
+- **Done: S1-S9.**
+- **Next: S10** — Library page, the context header + inline picker
+  (§7.2), built on S9's seam. Split point named in the session map:
+  after the header lands; the picker can stand alone.
 
-## S8 report — §6, Review page resizable panes
+## S9 report — §7.1, lift the selection into a shared seam
 
-**What landed:**
-- `src/seeker/ui/pages/review_page.py` — the three Review sections
-  (needs-review, downloaded upgrades, local matches) moved from a
-  plain `QVBoxLayout` stack into a `QSplitter(Qt.Orientation.Vertical)`
-  (`review_splitter`). Each section's header row and card are wrapped
-  in one `QWidget` so the whole section moves as a unit (the upgrades
-  header row, including "Replace all," travels with its table).
-  `setChildrenCollapsible(False)` plus a real `minimumHeight`
-  (`_REVIEW_SECTION_MIN_HEIGHT = 140`) per section keeps every pane
-  recoverable. First-run proportions are `setStretchFactor` 3:2:2
-  (needs-review favored — the section acted on most), not equal
-  thirds.
-- Persistence mirrors `window_geometry`'s existing pattern exactly:
-  `config_store.SeekerConfig.review_splitter_state: str | None` (base64
-  of `QSplitter.saveState()`), written by a new
-  `ReviewPage._persist_splitter_state()` called from
-  `MainWindow.cleanup_before_quit` — **unconditionally**, unlike the
-  `_hidden_to_tray`-gated window-geometry backstop next to it, since a
-  hidden-to-tray splitter still reports its real current sizes (only
-  the top-level window's own `saveGeometry()` has that visibility
-  quirk).
-- Restore (`ReviewPage._restore_splitter_state`) is called from a new
-  `ReviewPage.showEvent()`, guarded to fire once, on the page's first
-  real show — the same §3.1 failure mode (restoring before the
-  splitter has real, laid-out geometry distributes the saved sizes
-  against the wrong total; this page sits hidden inside MainWindow's
-  `QStackedWidget` until first navigated to). Verified live with a
-  scratch two-`MainWindow` script: a dragged split round-tripped
-  through persist/restore byte-for-byte once both windows shared real
-  geometry (script deleted after use).
-- `theme.py`'s `_misc_qss` gains `QSplitter::handle` rules —
-  `BORDER_STRONG` (same reasoning as the table-header divider),
-  `ACCENT` on hover, 6px thickness matching `setHandleWidth()`.
-  Confirmed visible in both themes via a real offscreen `window.grab()`
-  screenshot (scratch check, not committed).
-- No new dedicated test file — `tests/pages/test_review_page.py` and
-  `tests/test_ui_smoke.py` already construct/interact with the three
-  tables by attribute name, which the restructuring preserved, so
-  existing tests cover section rendering unchanged. **A real gap**: no
-  automated test asserts the splitter's persist/restore round-trip, or
-  that `_persist_splitter_state` is called from `cleanup_before_quit`
-  — only verified via a scratch script this session. Worth adding if a
-  future session touches this page again.
+**Pure refactor, no visible change — verified: `git diff --stat` below
+touches only `ui/` plumbing, no page's rendered output.**
+
+- New `src/seeker/ui/playlist_selection.py`: `PlaylistSelection`, a
+  `QObject` with a `changed` signal, owned by `MainWindow` (`self.
+  playlist_selection`, constructed next to `busy_actions`) and exposed
+  to every page as `PageContext.playlist_selection`. Holds `playlist`
+  and `track_ids`, each settable via `set_playlist()`/`set_track_ids()`
+  (no-op, no signal, if the new value equals the old).
+- `DashboardPage.selected_playlist` is now a property proxying to
+  `self._context.playlist_selection.playlist` (getter) and `.
+  set_playlist()` (setter, kept so existing external/test assignment —
+  `window._dashboard_page.selected_playlist = ...` — still works
+  unchanged). `_on_playlist_selected` writes into the shared object
+  directly. A new `track_table.itemSelectionChanged` connection
+  (`_on_track_selection_changed`) pushes `_selected_track_ids()` into
+  `playlist_selection.set_track_ids()` on every selection change —
+  this is the one genuinely new piece of wiring (previously nothing
+  observed track-table selection changes at all; track ids were only
+  ever pulled on demand at click time). Invisible to the user: nothing
+  renders from it yet.
+- `LibraryHost`/`TaggingPanelHost` lost their
+  `get_selected_playlist`/`get_selected_track_ids` callable fields
+  entirely — `TaggingPanel` (the only real consumer, 5 call sites) now
+  reads `self._context.playlist_selection.playlist`/`.track_ids`
+  directly, since it already holds a `PageContext`. Both Host
+  dataclasses keep `refresh_track_table` unchanged — that's an action,
+  not selection state, and stayed out of this row's scope per the
+  brief.
+- `main_window.py`'s `LibraryHost(...)` construction no longer reaches
+  `self._dashboard_page.selected_playlist`/`._selected_track_ids` (a
+  private-method reach) at all for those two fields — just
+  `refresh_track_table=self._dashboard_page._poll_selected_playlist`,
+  same private-method reach as before, unchanged (out of scope, see
+  above).
+- One test needed updating for the property becoming settable-only-
+  via-setter rather than a plain attribute:
+  `test_backend_poll_refreshes_selected_playlist_track_table`
+  (`tests/test_ui_smoke.py`) assigns `window._dashboard_page.
+  selected_playlist = Playlist(...)` directly — this now routes through
+  the setter transparently, no test edit needed once the setter was
+  added (see above); flagged here only because it's exactly the kind of
+  silent test dependency a "pure refactor" row can trip over.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -106,24 +98,28 @@ default. Don't read a brief section your row doesn't point at.
 ## Waiting on Kris
 
 See `docs/round9/SESSION-PLAN.md`'s own "Waiting on Kris" section —
-unchanged by this session. Carried from round 8, still open: click
-through the Review page's new splitter on a real display (drag each
-handle, quit, reopen, confirm the drag survived) — this session only
-verified the persist/restore round-trip mechanically, never on a real
-Mac.
+unchanged by this session. Still carried, unaddressed: click through
+the Review page's splitter (S8) on a real display; no automated test
+covers its persist/restore round-trip either.
 
 ## Open questions
 
-- **No automated test covers the splitter persist/restore round-trip**
-  (see S8 report above) — only manually/mechanically verified this
-  session via a scratch script, not committed.
+- **§7.2 (S10) needs a product-skills design pass for the header/picker
+  copy and layout** — the brief gives requirements, not the visual
+  design; session map says to reach for `product-skills`.
+- **S9 added one new live signal connection**
+  (`track_table.itemSelectionChanged` -> `PlaylistSelection.
+  set_track_ids`) that didn't exist before — invisible today since
+  nothing renders from `track_ids` yet, but S10 is the first page that
+  will, so this is the connection to check first if per-track selection
+  ever reads stale in Library.
 - Item 125 (the §2.3 quit hang), the two S4 flakes (fullscreen-close
   pair), and the CI-only flake pair (history-refresh/replace-button)
   are all unchanged — this session's own local and CI runs reproduced
   them again, nothing newly fired. Tracked in CLAUDE.md's Open issues;
   not re-litigated here.
 - `docs/HISTORY.md` is now ~890 KB — still never read whole. No
-  HISTORY entry written yet for §3.2 (carried from S7) or §6 (this
+  HISTORY entry written yet for §3.2 (S7), §6 (S8), or §7.1 (this
   session) — worth a combined two-tier docs pass if a future session
   has budget (Working agreement #1).
 
