@@ -1,11 +1,11 @@
 """The Tagging panel (HISTORY §119). Not itself a top-level page
 registered on the shell's QStackedWidget — it is the sole content of
 `library_page.py` (round 8 §12.6), which owns its own status_label/
-notice widgets; the playlist/track selection it operates on still
-lives on the Dashboard page, so it needs a second, narrower seam
-beyond PageContext: `TaggingPanelHost`, reaching into Dashboard's live
-selection state the same way `LibraryHost` (library_page.py) reaches
-into Dashboard for the same reason.
+notice widgets. The playlist/track selection it acts on is read
+straight off `PageContext.playlist_selection` (round9 §7.1); the
+narrower seam it still needs beyond PageContext, `TaggingPanelHost`,
+is now only its own widgets plus `refresh_track_table`, an action, not
+selection state.
 """
 
 from collections.abc import Callable
@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.library.metadata_service import RenamePlan
-from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
@@ -44,13 +43,10 @@ class TaggingPanelHost:
     `status_label`/`notice` (real widget references, like PageContext's
     own `thread_pool`/`busy_actions` — they never get reassigned, so a
     direct reference is enough, and they're LibraryPage's own widgets,
-    not Dashboard's), plus live reads/actions on Dashboard's own
-    selection state, which have to be callables, not values captured
-    once at construction time."""
+    not Dashboard's), plus `refresh_track_table`, which has to be a
+    callable rather than a value captured once at construction time."""
     status_label: QLabel
     notice: InlineNotice
-    get_selected_playlist: Callable[[], Playlist | None]
-    get_selected_track_ids: Callable[[], list[str]]
     refresh_track_table: Callable[[], None]
 
 
@@ -310,7 +306,7 @@ class TaggingPanel(QWidget):
         )
 
     def _on_tag_selected_clicked(self) -> None:
-        track_ids = self._host.get_selected_track_ids()
+        track_ids = self._context.playlist_selection.track_ids
 
         if not track_ids:
             self._host.notice.show_message(
@@ -343,7 +339,7 @@ class TaggingPanel(QWidget):
         )
 
     def _on_tag_playlist_clicked(self) -> None:
-        playlist = self._host.get_selected_playlist()
+        playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
             self._host.notice.show_message(
@@ -375,7 +371,7 @@ class TaggingPanel(QWidget):
         )
 
     def _on_fix_missing_art_clicked(self) -> None:
-        playlist = self._host.get_selected_playlist()
+        playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
             self._host.notice.show_message(
@@ -407,7 +403,7 @@ class TaggingPanel(QWidget):
         self._host.notice.show_message(message, kind=kind)
 
     def _on_fill_missing_art_urls_clicked(self) -> None:
-        playlist = self._host.get_selected_playlist()
+        playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
             self._host.notice.show_message(
@@ -442,7 +438,7 @@ class TaggingPanel(QWidget):
             )
 
     def _on_rename_files_clicked(self) -> None:
-        playlist = self._host.get_selected_playlist()
+        playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
             self._host.notice.show_message(

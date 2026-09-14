@@ -76,6 +76,7 @@ from seeker.ui.pages.review_page import (
 from seeker.ui.pages.search_page import SearchPage
 from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.pages.static_pages import HelpPage, SupportPage
+from seeker.ui.playlist_selection import PlaylistSelection
 from seeker.ui.settings_window import SettingsPage
 from seeker.ui.tray import (
     TrayController,
@@ -314,6 +315,11 @@ class MainWindow(QMainWindow):
         # action is still in flight instead of fighting run_worker's own
         # busy-disable (the proven mechanism behind Phase 0's 0.1 bug).
         self.busy_actions = BusyActionRegistry()
+        # round9 §7.1 — the shared playlist/track selection Dashboard
+        # writes and Library reads, replacing LibraryHost/TaggingPanel
+        # Host's prior read-only reach into DashboardPage's own
+        # attributes.
+        self.playlist_selection = PlaylistSelection()
         # Roadmap item 65 (Phase 2.2/2.3) — keyed the same as
         # busy_actions; populated by a run_worker(on_progress=...)
         # callback (via _on_activity_progress), consulted by
@@ -664,6 +670,7 @@ class MainWindow(QMainWindow):
             update_nav_badge=self._update_nav_badge,
             is_hidden_to_tray=lambda: self._hidden_to_tray,
             render_activity_strip=self._render_activity_strip,
+            playlist_selection=self.playlist_selection,
         )
 
         self._page_indices: dict[str, int] = {}
@@ -688,8 +695,6 @@ class MainWindow(QMainWindow):
         self._library_page = LibraryPage(
             page_context,
             LibraryHost(
-                get_selected_playlist=lambda: self._dashboard_page.selected_playlist,
-                get_selected_track_ids=self._dashboard_page._selected_track_ids,
                 refresh_track_table=self._dashboard_page._poll_selected_playlist,
             ),
         )

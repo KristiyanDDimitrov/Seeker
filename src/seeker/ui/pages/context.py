@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from seeker.application import Application
 from seeker.ui import theme
 from seeker.ui.busy_actions import BusyActionRegistry
+from seeker.ui.playlist_selection import PlaylistSelection
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,9 @@ class PageContext:
     bound to the one real MainWindow implementation rather than a
     reimplemented copy — see HISTORY §119 for which page found which
     field necessary, and for the deliberately-not-yet-added `notify`.
+    `playlist_selection` (round9 §7.1) was added when Library needed to
+    read Dashboard's live playlist/track selection without reaching
+    into DashboardPage's own attributes through a Host callable.
     """
     application: Application
     thread_pool: QThreadPool
@@ -42,6 +46,7 @@ class PageContext:
     update_nav_badge: Callable[[str, int], None]
     is_hidden_to_tray: Callable[[], bool]
     render_activity_strip: Callable[[], None]
+    playlist_selection: PlaylistSelection
 
 
 def build_subtitle_label(text: str) -> QLabel:

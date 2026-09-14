@@ -234,7 +234,10 @@ class DashboardPage(QWidget):
         self._context = context
         self._host = host
 
-        self.selected_playlist: Playlist | None = None
+        # round9 §7.1 — `selected_playlist` itself now lives on the
+        # shared `PlaylistSelection` seam (see the property below), not
+        # as a plain attribute here, so Library can read the same
+        # single source of truth instead of reaching into this page.
         # The full statuses list for the currently-selected playlist,
         # rebuilt on every render. Round 8 §12.2 — no longer used to
         # resolve a table row back to its TrackStatus (the table is now
@@ -335,6 +338,12 @@ class DashboardPage(QWidget):
         self.track_table.cellDoubleClicked.connect(
             self._on_track_table_cell_double_clicked
         )
+        # round9 §7.1 — keeps the shared PlaylistSelection.track_ids
+        # live so Library/TaggingPanel can read it directly instead of
+        # pulling through a get_selected_track_ids() callable.
+        self.track_table.itemSelectionChanged.connect(
+            self._on_track_selection_changed
+        )
         self._configure_track_columns()
         right.addLayout(self._build_track_filter_row())
         self.track_area_stack = QStackedWidget()
@@ -404,6 +413,16 @@ class DashboardPage(QWidget):
         row.addStretch()
         return row
 
+    @property
+    def selected_playlist(self) -> Playlist | None:
+        # round9 §7.1 — the shared PlaylistSelection is the single
+        # source of truth; this page no longer holds a parallel copy.
+        return self._context.playlist_selection.playlist
+
+    @selected_playlist.setter
+    def selected_playlist(self, playlist: Playlist | None) -> None:
+        self._context.playlist_selection.set_playlist(playlist)
+
     def _selected_track_ids(self) -> list[str]:
         rows = sorted(
             {index.row() for index in self.track_table.selectionModel().selectedRows()}
@@ -419,6 +438,11 @@ class DashboardPage(QWidget):
                 track_ids.append(item.data(Qt.ItemDataRole.UserRole))
 
         return track_ids
+
+    def _on_track_selection_changed(self) -> None:
+        self._context.playlist_selection.set_track_ids(
+            self._selected_track_ids()
+        )
 
     def _build_track_actions(self, status: TrackStatus) -> QWidget:
         # No button at all outside IN_LIBRARY — tag_tracks would just
@@ -584,7 +608,7 @@ class DashboardPage(QWidget):
             current: QListWidgetItem | None,
             previous: QListWidgetItem | None,
     ) -> None:
-        self.selected_playlist = (
+        self._context.playlist_selection.set_playlist(
             current.data(Qt.ItemDataRole.UserRole)
             if current is not None
             else None
