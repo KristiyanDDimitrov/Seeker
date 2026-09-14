@@ -1061,6 +1061,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pyobjc-framework-servicemanagement"
+version = "12.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6a/06/2c5efc48ec11ec5f1e9e7cb5f27dec6eabae8fe2e826f5ffed04e6881904/pyobjc_framework_servicemanagement-12.2.2.tar.gz", hash = "sha256:0328aaa73b6c060547ff1a563e12c2023e3c1912f2955f8272a18371df7acd94", size = 15395, upload-time = "2026-08-11T19:45:27.531Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/84/55/80326daf895129715fa79f0eabff9b3bce686731887808b70f5fe2e3a7a3/pyobjc_framework_servicemanagement-12.2.2-py2.py3-none-any.whl", hash = "sha256:cf975b44871f414f959c3db77f30009c8ed95ea46d8d9a0c79449e7f988928bc", size = 5456, upload-time = "2026-08-11T19:41:45.306Z" },
+]
+
+[[package]]
 name = "pyside6"
 version = "6.11.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1381,6 +1394,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pyloudnorm" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-servicemanagement", marker = "sys_platform == 'darwin'" },
     { name = "pyside6" },
     { name = "python-dotenv" },
     { name = "rapidfuzz" },
@@ -1411,6 +1425,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.11.4" },
     { name = "pyloudnorm", specifier = ">=0.1.1" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'", specifier = ">=10.0" },
+    { name = "pyobjc-framework-servicemanagement", marker = "sys_platform == 'darwin'", specifier = ">=10.0" },
     { name = "pyside6", specifier = ">=6.11.2" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },

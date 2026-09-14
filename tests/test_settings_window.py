@@ -8,6 +8,7 @@ from seeker.docker_setup import (
     SlskdHealthStatus,
     SlskdWebLoginStatus,
 )
+from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.spotify.token import SpotifyToken
@@ -1052,3 +1053,143 @@ def test_notification_checkboxes_save_immediately_on_toggle(
 
     window.notify_errors_checkbox.setChecked(False)
     assert application._config_store.notify_errors is False
+
+
+# --- Round 9 §3.2: start at login ------------------------------------
+
+def test_startup_group_shows_unsupported_message_when_not_supported(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "seeker.login_item.is_supported", lambda: False,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.start_at_login_checkbox.isEnabled() is False
+    assert window.start_at_login_checkbox.isChecked() is False
+    assert "packaged app" in window.start_at_login_status_label.text()
+
+
+def test_startup_group_reflects_disabled_status_when_supported(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.DISABLED,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.start_at_login_checkbox.isEnabled() is True
+    assert window.start_at_login_checkbox.isChecked() is False
+    assert window.start_at_login_status_label.text() == ""
+
+
+def test_startup_group_reflects_enabled_status(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.ENABLED,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    assert window.start_at_login_checkbox.isChecked() is True
+    assert window.start_at_login_status_label.text() == ""
+
+
+def test_startup_group_reflects_requires_approval_status_with_message(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.REQUIRES_APPROVAL,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    # A revoked-but-not-yet-approved registration still shows as
+    # checked (macOS considers it a real pending registration, not
+    # "off") — the status label is what surfaces the real distinction.
+    assert window.start_at_login_checkbox.isChecked() is True
+    assert "System Settings" in window.start_at_login_status_label.text()
+
+
+def test_toggling_start_at_login_checkbox_calls_set_login_item_enabled(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.DISABLED,
+    )
+    calls = []
+    monkeypatch.setattr(
+        "seeker.login_item.set_enabled",
+        lambda enabled: (calls.append(enabled), LoginItemStatus.ENABLED)[1],
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.start_at_login_checkbox.setChecked(True)
+
+    assert calls == [True]
+
+
+def test_enabling_start_at_login_defaults_start_hidden_on(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.DISABLED,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    assert application._config_store.start_hidden_at_login is False
+
+    monkeypatch.setattr(
+        "seeker.login_item.set_enabled",
+        lambda enabled: LoginItemStatus.ENABLED,
+    )
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.ENABLED,
+    )
+    window.start_at_login_checkbox.setChecked(True)
+
+    assert application._config_store.start_hidden_at_login is True
+    assert window.start_hidden_at_login_checkbox.isChecked() is True
+
+
+def test_start_hidden_checkbox_saves_immediately_on_toggle(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.login_item.is_supported", lambda: True)
+    monkeypatch.setattr(
+        "seeker.login_item.get_status",
+        lambda: LoginItemStatus.DISABLED,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.start_hidden_at_login_checkbox.setChecked(True)
+
+    assert application._config_store.start_hidden_at_login is True

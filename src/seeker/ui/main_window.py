@@ -1363,6 +1363,9 @@ class MainWindow(QMainWindow):
             self._history_loaded = True
             self._history_page._refresh_history()
 
+        if index == self._settings_page_index:
+            self.settings_page.refresh_login_item_state()
+
     def _trigger_backend_poll(self) -> None:
         if self._backend_poll_in_progress:
             # A previous poll_downloads() call (real slskd network
@@ -1948,6 +1951,29 @@ class MainWindow(QMainWindow):
         if not self._window_geometry_restored_after_first_show:
             self._window_geometry_restored_after_first_show = True
             self._restore_window_geometry()
+
+    def start_hidden_to_tray(self) -> bool:
+        """Round 9 §3.2's "start hidden in the menu bar" option — the
+        only caller is `main_ui.main()`, in place of `window.show()`,
+        when the user has opted into starting hidden. Never calls
+        show() at all rather than showing then immediately hiding,
+        which would flash a real window on screen for one frame first;
+        the saved geometry is picked up normally the next time the
+        window IS shown (`showEvent`'s own restore), since it never
+        ran here.
+
+        Returns whether it actually started hidden. On False (no tray
+        icon exists to hide behind), the caller must show() instead —
+        a launch with neither a visible window nor a tray icon would
+        make the app unreachable, the same reasoning `closeEvent`
+        already applies to an ordinary close.
+        """
+        if not self._tray.is_icon_visible():
+            return False
+
+        self._hidden_to_tray = True
+        _set_dock_icon_visible(False)
+        return True
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Roadmap item R7.1/R7.2 — hides to the menu bar instead of

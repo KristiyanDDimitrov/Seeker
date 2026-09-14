@@ -105,7 +105,8 @@ a = Analysis(
     # switch) isn't statically visible to PyInstaller's own import
     # scanner as a top-level import, so it needs to be listed
     # explicitly or a frozen build would ship without it.
-    hiddenimports=["AppKit", "Foundation", "objc"],
+    # ServiceManagement — same story, round 9 §3.2's login_item.py.
+    hiddenimports=["AppKit", "Foundation", "objc", "ServiceManagement"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

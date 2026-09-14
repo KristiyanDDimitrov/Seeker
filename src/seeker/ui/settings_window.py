@@ -36,6 +36,7 @@ from seeker.docker_setup import (
     is_non_loopback_http_url,
     slskd_data_dir,
 )
+from seeker.login_item import LoginItemStatus
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
@@ -1169,11 +1170,112 @@ class SettingsPage(QWidget):
 
         layout.addWidget(notifications_group)
 
+        layout.addWidget(self._build_startup_group())
+
         layout.addStretch()
 
         self._load_threshold_fields()
 
         return tab
+
+    # --- Round 9 §3.2: start at login --------------------------------
+
+    def _build_startup_group(self) -> QGroupBox:
+        group = QGroupBox("Startup")
+        layout = QVBoxLayout(group)
+
+        self.start_at_login_checkbox = QCheckBox("Start Seeker at login")
+        self.start_at_login_checkbox.setToolTip(
+            help_text.TOOLTIP_START_AT_LOGIN_CHECKBOX
+        )
+        self.start_at_login_checkbox.toggled.connect(
+            self._on_start_at_login_toggled
+        )
+        layout.addWidget(self.start_at_login_checkbox)
+
+        self.start_hidden_at_login_checkbox = QCheckBox(
+            "Start hidden in the menu bar"
+        )
+        self.start_hidden_at_login_checkbox.setToolTip(
+            help_text.TOOLTIP_START_HIDDEN_AT_LOGIN_CHECKBOX
+        )
+        self.start_hidden_at_login_checkbox.toggled.connect(
+            lambda checked: self.application.update_settings(
+                start_hidden_at_login=checked,
+            )
+        )
+        layout.addWidget(self.start_hidden_at_login_checkbox)
+
+        self.start_at_login_status_label = QLabel("")
+        self.start_at_login_status_label.setProperty("badge", "muted")
+        self.start_at_login_status_label.setWordWrap(True)
+        layout.addWidget(self.start_at_login_status_label)
+
+        self.refresh_login_item_state()
+
+        return group
+
+    def refresh_login_item_state(self) -> None:
+        """Re-reads the REAL ServiceManagement status, never a mirrored
+        config.json boolean (round 9 §3.2's "honest state reporting"
+        requirement) — called both at Settings' own construction and,
+        by MainWindow._on_page_changed, on every real show of this
+        page, so a login item the user revoked via System Settings
+        stops showing as on here too without needing a restart."""
+        if not self.application.login_item_supported:
+            self.start_at_login_checkbox.setEnabled(False)
+            self.start_at_login_checkbox.blockSignals(True)
+            self.start_at_login_checkbox.setChecked(False)
+            self.start_at_login_checkbox.blockSignals(False)
+            self.start_hidden_at_login_checkbox.blockSignals(True)
+            self.start_hidden_at_login_checkbox.setChecked(
+                self.application.settings.start_hidden_at_login
+            )
+            self.start_hidden_at_login_checkbox.blockSignals(False)
+            self.start_at_login_status_label.setText(
+                help_text.TOOLTIP_START_AT_LOGIN_UNSUPPORTED
+            )
+            return
+
+        status = self.application.login_item_status()
+
+        self.start_at_login_checkbox.setEnabled(True)
+        self.start_at_login_checkbox.blockSignals(True)
+        self.start_at_login_checkbox.setChecked(
+            status in (
+                LoginItemStatus.ENABLED, LoginItemStatus.REQUIRES_APPROVAL,
+            )
+        )
+        self.start_at_login_checkbox.blockSignals(False)
+
+        self.start_hidden_at_login_checkbox.blockSignals(True)
+        self.start_hidden_at_login_checkbox.setChecked(
+            self.application.settings.start_hidden_at_login
+        )
+        self.start_hidden_at_login_checkbox.blockSignals(False)
+
+        self.start_at_login_status_label.setText(
+            "Waiting on approval in System Settings > General > Login "
+            "Items."
+            if status == LoginItemStatus.REQUIRES_APPROVAL else ""
+        )
+
+    def _on_start_at_login_toggled(self, checked: bool) -> None:
+        self.application.set_login_item_enabled(checked)
+
+        # Defaults "start hidden" on every time login-at-startup is
+        # turned ON (round 9 §3.2's own instruction — an app that
+        # launches at login and throws a window in your face at every
+        # boot is a worse experience than one that doesn't launch at
+        # all); a no-op if it's already True. Turning login OFF leaves
+        # "start hidden" exactly as it was — that checkbox is a
+        # standalone preference (main_ui.py applies it on every launch,
+        # not only ones the login item triggered), not something this
+        # method un-sets on the OFF transition.
+        if checked:
+            self.application.update_settings(start_hidden_at_login=True)
+
+        self.refresh_login_item_state()
 
     def _load_threshold_fields(self) -> None:
         config = self.application.settings

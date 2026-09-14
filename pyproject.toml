@@ -19,6 +19,7 @@ dependencies = [
     "scipy>=1.18.1",
     "soundfile>=0.14.0",
     "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-ServiceManagement>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -192,6 +193,13 @@ ignore_missing_imports = true
 # behind _set_dock_icon_visible's Dock-icon activation-policy switch.
 [[tool.mypy.overrides]]
 module = "AppKit"
+ignore_missing_imports = true
+
+# Same real gap as AppKit above — confirmed live (no py.typed marker,
+# no types-pyobjc-framework-ServiceManagement package on PyPI) for
+# login_item.py's SMAppService wrapper (round 9 §3.2).
+[[tool.mypy.overrides]]
+module = "ServiceManagement"
 ignore_missing_imports = true
 
 # Roadmap item RR1.3 — _build_info_generated.py is gitignored and only

@@ -68,6 +68,15 @@ class SeekerConfig:
     # is ignored at restore time the same way theme_mode's own garbage
     # value is — falls back to the hardcoded "dashboard" default.
     last_open_page: str | None = None
+    # Round 9 §3.2 — whether "start at login" is on lives entirely in
+    # macOS's own ServiceManagement registration (login_item.py reads
+    # it live, never mirrored here — a user revoking it in System
+    # Settings must not leave a stale True behind). This field is only
+    # the companion "start hidden in the menu bar" preference, which
+    # has no equivalent platform-owned state of its own. Defaulted to
+    # True by the Settings checkbox the moment login-at-startup is
+    # first enabled, but stored independently and always overridable.
+    start_hidden_at_login: bool = False
 
 
 def resolve_config_path() -> Path:
@@ -124,6 +133,7 @@ def load_config(path: Path) -> SeekerConfig:
         theme_mode=_resolve_theme_mode(data.get("theme_mode")),
         window_geometry=data.get("window_geometry"),
         last_open_page=data.get("last_open_page"),
+        start_hidden_at_login=data.get("start_hidden_at_login", False),
     )
 
 

@@ -224,6 +224,28 @@ def test_load_config_real_theme_mode_values_round_trip(tmp_path, mode):
     assert loaded.theme_mode == mode
 
 
+def test_load_config_missing_start_hidden_at_login_defaults_to_false(
+        tmp_path,
+):
+    # Round 9 §3.2 — a config.json predating this field has no such
+    # key at all, same flat-additive-JSON tolerance as theme_mode above.
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.start_hidden_at_login is False
+
+
+def test_load_config_start_hidden_at_login_round_trips(tmp_path):
+    path = tmp_path / "config.json"
+    save_config(SeekerConfig(start_hidden_at_login=True), path)
+
+    loaded = load_config(path)
+
+    assert loaded.start_hidden_at_login is True
+
+
 @skip_on_windows
 def test_save_config_sets_restrictive_permissions(tmp_path):
     path = tmp_path / "config.json"

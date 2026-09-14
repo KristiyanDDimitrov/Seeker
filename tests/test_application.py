@@ -977,3 +977,49 @@ def test_data_locations_resolves_real_paths_in_one_shared_directory(
     assert locations.spotify_token_path == data_dir / "spotify_token.json"
     assert locations.slskd_data_dir == data_dir / "slskd-data"
     assert locations.base_dir == data_dir
+
+
+def test_login_item_supported_delegates_to_login_item_module(
+        tmp_path, monkeypatch,
+):
+    # Round 9 §3.2 — Application.login_item_supported/login_item_
+    # status/set_login_item_enabled are thin passthroughs to
+    # login_item.py (the real ServiceManagement wrapper is exercised
+    # directly in test_login_item.py); this just confirms the wiring.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr("seeker.application.login_item.is_supported",
+                         lambda: True)
+
+    assert app.login_item_supported is True
+
+
+def test_login_item_status_delegates_to_login_item_module(
+        tmp_path, monkeypatch,
+):
+    from seeker.login_item import LoginItemStatus
+
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "seeker.application.login_item.get_status",
+        lambda: LoginItemStatus.REQUIRES_APPROVAL,
+    )
+
+    assert app.login_item_status() is LoginItemStatus.REQUIRES_APPROVAL
+
+
+def test_set_login_item_enabled_delegates_to_login_item_module(
+        tmp_path, monkeypatch,
+):
+    from seeker.login_item import LoginItemStatus
+
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        "seeker.application.login_item.set_enabled",
+        lambda enabled: (calls.append(enabled), LoginItemStatus.ENABLED)[1],
+    )
+
+    result = app.set_login_item_enabled(True)
+
+    assert calls == [True]
+    assert result is LoginItemStatus.ENABLED

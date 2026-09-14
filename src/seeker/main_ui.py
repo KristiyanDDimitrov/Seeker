@@ -46,6 +46,10 @@ def main() -> None:
     apply_theme(qt_app, application.theme_mode)
 
     window: QMainWindow
+    # Round 9 §3.2 — "start hidden in the menu bar." Set below only on
+    # the onboarding-complete path; the wizard-first-run path always
+    # shows (see its own branch).
+    started_hidden = False
 
     if application.onboarding_complete:
         # Roadmap item R7.1 — set only once a real MainWindow is about
@@ -58,6 +62,15 @@ def main() -> None:
         qt_app.setQuitOnLastWindowClosed(False)
         window = MainWindow(application)
         qt_app.aboutToQuit.connect(window.cleanup_before_quit)
+        # Applies on every launch the preference is on for, not only
+        # one actually triggered by the login item: there is no
+        # reliable signal from within the process to tell the two
+        # apart (SMAppService relaunches the .app through ordinary
+        # launchd activation, the same as a Finder double-click), so
+        # this is the same always-on-when-enabled behavior other
+        # login-item apps use.
+        if application.settings.start_hidden_at_login:
+            started_hidden = window.start_hidden_to_tray()
     else:
         def show_dashboard() -> None:
             qt_app.setQuitOnLastWindowClosed(False)
@@ -73,5 +86,6 @@ def main() -> None:
 
         window = OnboardingWizard(application, on_complete=show_dashboard)
 
-    window.show()
+    if not started_hidden:
+        window.show()
     sys.exit(qt_app.exec())

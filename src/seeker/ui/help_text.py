@@ -968,6 +968,21 @@ TOOLTIP_NOTIFY_ERRORS_CHECKBOX = (
     "unreachable slskd doesn't notify on every poll."
 )
 
+# --- Round 9 §3.2: start at login --------------------------------------------
+
+TOOLTIP_START_AT_LOGIN_CHECKBOX = (
+    "Register Seeker as a login item. Shows under System Settings > "
+    "General > Login Items, where it can also be turned off directly."
+)
+TOOLTIP_START_HIDDEN_AT_LOGIN_CHECKBOX = (
+    "Don't show the window on launch — Seeker starts in the menu bar "
+    "only. Applies to every launch, not only ones triggered by login."
+)
+TOOLTIP_START_AT_LOGIN_UNSUPPORTED = (
+    "Only available in the packaged app — a login item needs a real "
+    "installed .app bundle to register."
+)
+
 # --- Onboarding wizard -------------------------------------------------------
 
 TOOLTIP_OPEN_SPOTIFY_DASHBOARD = (

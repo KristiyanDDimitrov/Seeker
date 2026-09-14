@@ -5,7 +5,7 @@ from pathlib import Path
 
 import platformdirs
 
-from seeker import config
+from seeker import config, login_item
 from seeker.config_store import (
     SeekerConfig,
     load_config,
@@ -451,6 +451,27 @@ class Application:
         updated = replace(current, **{field_name: enabled})  # type: ignore[arg-type]
         save_config(updated, config_path)
         self._config_store = updated
+
+    @property
+    def login_item_supported(self) -> bool:
+        """macOS-and-packaged-build-only (round 9 §3.2) — Settings uses
+        this to show the "only available in the packaged app" state
+        rather than silently no-opping the toggle under `uv run`."""
+        return login_item.is_supported()
+
+    def login_item_status(self) -> login_item.LoginItemStatus:
+        """Always the REAL, live ServiceManagement status, never a
+        mirrored config.json boolean — Settings calls this fresh every
+        time its page renders so a login item the user revoked via
+        System Settings shows as off here too."""
+        return login_item.get_status()
+
+    def set_login_item_enabled(self, enabled: bool) -> login_item.LoginItemStatus:
+        """Register/unregister the login item and return the resulting
+        real status (which can be REQUIRES_APPROVAL even after a
+        successful register — Settings surfaces that distinctly rather
+        than claiming it's simply on)."""
+        return login_item.set_enabled(enabled)
 
     @property
     def spotify(self) -> SpotifyClient:

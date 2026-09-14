@@ -634,6 +634,12 @@ class FakeApplication:
         self.set_notification_preference_calls: list[tuple[str, bool]] = []
         self.set_theme_mode_calls: list[str] = []
         self.update_settings_calls: list[dict] = []
+        # Round 9 §3.2 — mirrors the real Application's login_item_*
+        # surface. Defaults to "unsupported," the real behavior off a
+        # packaged macOS build, so existing tests that never touch this
+        # see the same inert state a real dev-run Application would.
+        self.login_item_supported = False
+        self.set_login_item_enabled_calls: list[bool] = []
 
     @property
     def settings(self) -> SeekerConfig:
@@ -644,6 +650,18 @@ class FakeApplication:
         self._config_store = replace(self._config_store, **changes)
 
         return self._config_store
+
+    def login_item_status(self):
+        from seeker.login_item import LoginItemStatus
+
+        return LoginItemStatus.NOT_SUPPORTED
+
+    def set_login_item_enabled(self, enabled: bool):
+        from seeker.login_item import LoginItemStatus
+
+        self.set_login_item_enabled_calls.append(enabled)
+
+        return LoginItemStatus.NOT_SUPPORTED
 
     def persist_default_destination(
             self, location_id: int, subfolder_per_playlist: bool,
@@ -3907,6 +3925,51 @@ def test_set_dock_icon_visible_is_a_no_op_off_macos(monkeypatch):
     # Must not raise or attempt any AppKit import off-macOS.
     main_window_module._set_dock_icon_visible(True)
     main_window_module._set_dock_icon_visible(False)
+
+
+def test_start_hidden_to_tray_sets_hidden_state_and_drops_dock_icon(
+        qtbot, monkeypatch,
+):
+    # Round 9 §3.2 — the only caller is main_ui.main(), in place of
+    # show(), when the user has opted into starting hidden. Never
+    # shown at all here (unlike the ordinary hide path above, which
+    # closes an already-visible window) — the point is skipping that
+    # first-frame flash entirely.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible", dock_calls.append,
+    )
+
+    result = window.start_hidden_to_tray()
+
+    assert result is True
+    assert window._hidden_to_tray is True
+    assert window.isHidden()
+    assert dock_calls == [False]
+
+
+def test_start_hidden_to_tray_returns_false_without_a_tray_icon(
+        qtbot, monkeypatch,
+):
+    # No tray to hide behind — the caller (main_ui.main()) must show()
+    # instead, the same "never vanish with no way back" reasoning
+    # closeEvent's own fallback already applies to an ordinary close.
+    _force_tray_available(monkeypatch, False)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    result = window.start_hidden_to_tray()
+
+    assert result is False
+    assert window._hidden_to_tray is False
 
 
 def test_close_event_shows_one_off_notice_only_once(qtbot, monkeypatch):
