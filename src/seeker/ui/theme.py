@@ -255,19 +255,22 @@ PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
 
 
-def set_variant(widget: QWidget, variant: str | None) -> None:
-    """Set a widget's `variant` dynamic property (used by the
-    stylesheet's `[variant="..."]` selectors, e.g. QPushButton
-    `primary`/`danger`) and force Qt to re-poll the stylesheet for it.
-    Qt caches style-sheet-selector results per widget — a plain
-    `setProperty()` call alone doesn't repaint with the new rule
-    applied, so every call site needing a runtime variant change (not
-    just one set once at construction) must go through this rather
-    than calling `setProperty()` directly.
+def set_dynamic_property(widget: QWidget, name: str, value: str | None) -> None:
+    """Set a dynamic property used by a `[name="value"]` stylesheet
+    selector (e.g. QPushButton's `variant`, QLabel's `badge`) and force
+    Qt to re-poll the stylesheet for it. Qt caches style-sheet-selector
+    results per widget — a plain `setProperty()` call alone doesn't
+    repaint with the new rule applied, so every call site needing a
+    runtime property change (not just one set once at construction)
+    must go through this rather than calling `setProperty()` directly.
     """
-    widget.setProperty("variant", variant)
+    widget.setProperty(name, value)
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def set_variant(widget: QWidget, variant: str | None) -> None:
+    set_dynamic_property(widget, "variant", variant)
 
 
 def style_determinate_progress_bar(bar: QProgressBar) -> None:

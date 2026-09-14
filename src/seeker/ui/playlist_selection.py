@@ -12,10 +12,10 @@ class PlaylistSelection(QObject):
     attributes through read-only callables, which could not support a
     second writer (§7.2 needs Library to change the playlist too).
 
-    Dashboard is the sole writer today; Library becomes a second
-    writer in §7.2. Both are readers, and both are meant to re-render
-    on `changed` — Dashboard already does, by construction, since its
-    own selection UI is what drives a write.
+    Both Dashboard and Library are writers as of round9 §7.2 (Library
+    via its own inline picker) and both are readers subscribed to
+    `changed` — each has to be, now that a write can originate on
+    either page.
     """
 
     changed = Signal()

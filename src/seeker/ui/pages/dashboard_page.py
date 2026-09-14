@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -369,6 +369,62 @@ class DashboardPage(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
+
+        # round9 §7.2 — Library became a second writer of the shared
+        # selection (its own inline picker). Before this, Dashboard
+        # never needed to listen to `changed` at all — it only ever
+        # wrote, then rendered explicitly right after. A write from
+        # elsewhere needs this subscription or Dashboard's own
+        # playlist_list highlight and track table go stale.
+        self._context.playlist_selection.changed.connect(
+            self._on_shared_selection_changed
+        )
+
+    def _on_shared_selection_changed(self) -> None:
+        # Deferred, not synchronous: `changed` can fire from inside
+        # this page's own track_table.itemSelectionChanged handler
+        # (_on_track_selection_changed writes track_ids there) — a
+        # synchronous _poll_selected_playlist() re-entrantly mutating
+        # that same table's row count, from inside its own selection-
+        # changed signal's emission, is confirmed live to segfault.
+        # QTimer.singleShot(0, ...) is this codebase's own established
+        # pattern for exactly this — "react to a Qt signal by
+        # deferring the real work off the current call stack"
+        # (ui/workers.py's deferred native delete).
+        QTimer.singleShot(0, self._reconcile_shared_selection)
+
+    def _reconcile_shared_selection(self) -> None:
+        self._sync_playlist_list_highlight()
+        self._poll_selected_playlist()
+        self._poll_next_step()
+
+    def _sync_playlist_list_highlight(self) -> None:
+        # blockSignals, not a bare setCurrentItem: setCurrentItem would
+        # otherwise fire currentItemChanged -> _on_playlist_selected ->
+        # set_playlist() right back, which is a harmless no-op given
+        # the same value, but this keeps the direction of data flow
+        # unambiguous — render follows state, it never re-derives it.
+        selected = self.selected_playlist
+
+        for row in range(self.playlist_list.count()):
+            item = self.playlist_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == selected:
+                if self.playlist_list.currentItem() is not item:
+                    self.playlist_list.blockSignals(True)
+                    self.playlist_list.setCurrentItem(item)
+                    self.playlist_list.blockSignals(False)
+                return
+
+        # No matching row (e.g. picked from a fresher list than
+        # Dashboard's own playlist_list has loaded) — clear rather than
+        # leave a stale row highlighted.
+        if self.playlist_list.currentItem() is not None:
+            self.playlist_list.blockSignals(True)
+            # setCurrentItem(None) isn't in PySide6's stub overloads
+            # (even though Qt's C++ API accepts a null item) —
+            # setCurrentRow(-1) is the typed way to clear it.
+            self.playlist_list.setCurrentRow(-1)
+            self.playlist_list.blockSignals(False)
 
     def _build_dashboard_action_row(self) -> QHBoxLayout:
         # Relocated from the old global QToolBar (visible on every page

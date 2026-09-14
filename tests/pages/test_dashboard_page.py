@@ -540,6 +540,38 @@ def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
     assert application.sync_service.sync_playlist_tracks_calls == []
 
 
+def test_dashboard_reflects_a_selection_write_that_originates_elsewhere(
+        qtbot,
+):
+    # round9 §7.2 — Library's own picker writes into the shared
+    # PlaylistSelection too, not just Dashboard's playlist_list click.
+    # "One selection, two views, never two truths" requires Dashboard
+    # to notice a write it didn't itself make.
+    playlists = [Playlist(id="p1", name="Elsewhere", track_count=4)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+    assert window._dashboard_page.playlist_list.currentItem() is None
+
+    # Simulates the write Library's inline picker makes — never touches
+    # Dashboard's own playlist_list widget directly.
+    window.playlist_selection.set_playlist(playlists[0])
+
+    qtbot.waitUntil(
+        lambda: (
+            (current := window._dashboard_page.playlist_list.currentItem())
+            is not None
+            and current.data(Qt.ItemDataRole.UserRole) == playlists[0]
+        ),
+        timeout=2000,
+    )
+    assert "Elsewhere" in application.dashboard_service.calls
+
+
 def test_needs_review_status_cell_has_tooltip_other_states_dont(qtbot):
     application = FakeApplication(
         playlists=[Playlist(id="p1", name="Test", track_count=2)],

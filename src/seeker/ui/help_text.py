@@ -24,8 +24,12 @@ DASHBOARD_TAB_SUBTITLE = (
 )
 LIBRARY_TAB_SUBTITLE = (
     "Tag downloaded tracks with Spotify's metadata, fix missing cover "
-    "art, and rename files to match — operating on whatever playlist "
-    "and track selection is current on the Dashboard."
+    "art, and rename files to match — pick the playlist to act on "
+    "right here, or keep whatever's already selected on Dashboard."
+)
+LIBRARY_NO_PLAYLIST_TEXT = (
+    "No playlist selected. Pick one below to tag its tracks, fix "
+    "cover art, or rename files to match."
 )
 SEARCH_TAB_SUBTITLE = (
     "Find and download a track that isn't in any Spotify playlist — "
@@ -269,6 +273,10 @@ TOOLTIP_BPM_MIN = (
 )
 TOOLTIP_BPM_MAX = (
         "Upper bound for correcting octave errors (e.g. 64 detected as 128)."
+)
+TOOLTIP_CHANGE_LIBRARY_PLAYLIST = (
+    "Pick a different playlist to act on — changes what Dashboard has "
+    "selected too, since it's the same selection."
 )
 TOOLTIP_TAG_SELECTED = (
     "Write Spotify's artist/title/album/art onto the selected tracks' "

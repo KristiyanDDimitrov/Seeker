@@ -16,12 +16,13 @@ Dashboard state stay in test_tagging_panel.py.
 
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
 from seeker.models.track_status import IN_LIBRARY
+from seeker.ui import help_text
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import FakeApplication, _make_track_status
@@ -787,3 +788,110 @@ def test_rename_result_notice_names_files_whose_written_name_differed(
     text = window._library_page.notice.text()
     assert "1 file" in text
     assert "DIFFERENT name than the preview" in text
+
+
+# --- round9 §7.2: the context header and its inline picker ---------------
+
+
+def test_context_header_shows_empty_state_and_offers_picker(qtbot):
+    playlists = [Playlist(id="p1", name="Test", track_count=3)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert window._library_page._context_label.text() == (
+        help_text.LIBRARY_NO_PLAYLIST_TEXT
+    )
+    assert window._library_page._change_playlist_button.isHidden()
+    # The empty state offers the picker directly, not just the problem.
+    assert not window._library_page._playlist_picker.isHidden()
+    qtbot.waitUntil(
+        lambda: window._library_page._playlist_picker.count() == 1,
+        timeout=2000,
+    )
+
+
+def test_context_header_names_selected_playlist_and_track_count(qtbot):
+    playlists = [Playlist(id="p1", name="240KM/H", track_count=7)]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    text = window._library_page._context_label.text()
+    assert "240KM/H" in text
+    assert "7 tracks" in text
+    assert window._library_page._playlist_picker.isHidden()
+    assert not window._library_page._change_playlist_button.isHidden()
+
+
+def _select_playlist_by_row(window, qtbot, row: int, count: int) -> None:
+    # A local variant of module-level _select_first_playlist, which
+    # asserts playlist_list.count() == 1 — these tests need a second,
+    # unselected playlist available to pick from Library's own picker.
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == count,
+        timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(row)
+    qtbot.waitUntil(
+        window._dashboard_page.download_button.isEnabled, timeout=2000,
+    )
+
+
+def test_change_playlist_button_reveals_picker_populated_from_sync_service(
+        qtbot,
+):
+    playlists = [
+        Playlist(id="p1", name="240KM/H", track_count=7),
+        Playlist(id="p2", name="Other", track_count=2),
+    ]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_playlist_by_row(window, qtbot, 0, 2)
+
+    window._library_page._change_playlist_button.setChecked(True)
+
+    qtbot.waitUntil(
+        lambda: window._library_page._playlist_picker.count() == 2,
+        timeout=2000,
+    )
+    assert not window._library_page._playlist_picker.isHidden()
+
+
+def test_picking_a_playlist_in_library_updates_shared_selection_and_dashboard(
+        qtbot,
+):
+    playlists = [
+        Playlist(id="p1", name="240KM/H", track_count=7),
+        Playlist(id="p2", name="Other", track_count=2),
+    ]
+    application = FakeApplication(playlists=playlists)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_playlist_by_row(window, qtbot, 0, 2)
+
+    window._library_page._change_playlist_button.setChecked(True)
+    qtbot.waitUntil(
+        lambda: window._library_page._playlist_picker.count() == 2,
+        timeout=2000,
+    )
+
+    other_item = window._library_page._playlist_picker.item(1)
+    assert other_item.data(Qt.ItemDataRole.UserRole).name == "Other"
+    window._library_page._on_playlist_picked(other_item)
+
+    # One selection, two views: Library's write must show up in
+    # Dashboard's own state, not just Library's.
+    assert window._dashboard_page.selected_playlist.name == "Other"
+    qtbot.waitUntil(
+        lambda: (
+            (current := window._dashboard_page.playlist_list.currentItem())
+            is not None
+            and current.data(Qt.ItemDataRole.UserRole).name == "Other"
+        ),
+        timeout=2000,
+    )
+    assert window._library_page._playlist_picker.isHidden()
+    assert "Other" in window._library_page._context_label.text()
