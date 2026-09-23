@@ -8,62 +8,50 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `05f798b`, pushed. Tree clean (aside from an untracked
-  `Claude outputs/` directory that predates this session — not part of
-  the repo, left alone).
-- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1202
-  passed, 29 skipped, 0 failed`** on 4 of 5 full-suite runs this
-  session. The 5th run failed `test_reopening_after_a_fullscreen_
-  close_restores_maximized_not_fullscreen` together with `test_
-  fullscreen_close_policy_check_ignores_a_stale_request`, both passing
-  immediately when re-run alone — this is the SAME pre-existing,
-  already-tracked order-dependent pair CLAUDE.md's Open issues
-  describes (its 4th recorded recurrence now), not a new defect this
-  session introduced. Diagnosing it is S6's own scope, not S5's — see
-  that row's split point in the session plan. 29 skipped is this
-  machine's usual split (no X9 Pro drive; see CLAUDE.md's Open issues).
+- **HEAD:** `a820372`, pushed (this handoff's own commit follows it).
+  Tree clean aside from the untracked `Claude outputs/` directory that
+  predates round 10 — not part of the repo, left alone.
+- **Local pytest (offscreen Qt, Darwin 25.6.0): `1204 passed, 29
+  skipped, 0 failed` on 10 of 10 consecutive full-suite runs** (1202 +
+  S6's two new repro tests). 29 skipped is this machine's usual split
+  (no X9 Pro drive; see CLAUDE.md's Open issues).
 - **`mypy --strict src/`: clean, 104 files.** **`ruff check src
   tests`: 0 findings.**
-- **CI on `05f798b` (this session's push): run `35897033958`,
-  `success`.**
+- **CI on `a820372`: run `35903072236`, `success`.**
 
 ## Where we are in the plan
 
-**Round 10: S1, S3, S4, S5 done. S2 is blocked, not skipped.** Brief:
-`docs/BRIEF-2026-09-23-round10.md`. Session map:
-`docs/round10/SESSION-PLAN.md`. **Next: S6 (the fullscreen-close test
-pair — find the real caller, isolate).** S2 remains blocked on Kris
-per S1/S3's own notes — not re-checked this session.
+**Round 10: S1, S3, S4, S5, S6 done. S2 is blocked, not skipped.**
+Brief: `docs/BRIEF-2026-09-23-round10.md`. Session map:
+`docs/round10/SESSION-PLAN.md`. **Next: S7 (HISTORY backfill, round 9
+S7–S10 — docs only).** S2 remains blocked on Kris per S1/S3's notes.
 
-## S5 report — §5, reopen after fullscreen/zoomed close, closed
+## S6 report — §6, the fullscreen-close test pair, closed
 
-Full investigation: [HISTORY §129](docs/HISTORY.md#129). Implemented
-Kris's decision (2026-09-23): a window closed fullscreen or maximized/
-zoomed comes back **filling the screen as a normal window**, never
-re-entering macOS fullscreen (that transition is round 7's own E1).
+Full investigation: [HISTORY §130](docs/HISTORY.md#130). A temporary
+trace in both `_set_dock_icon_visible(True)` callers (plus
+`MainWindow.__init__`) caught the pair firing twice in 5 full-suite
+runs. Both times: **candidate 1, on the test's OWN window** (matching
+`init`/`policy` ids) — offscreen Qt delivered a real
+`applicationStateChanged(ApplicationActive)` inside `qtbot.wait`
+while the window was closed, so the reopen handler ran. Not
+`cleanup_before_quit`, not a leftover window.
 
-`_pre_fullscreen_geometry` replaced by `_reopen_filled: bool`, set in
-`closeEvent` (both branches) from `isFullScreen() or isMaximized()`,
-captured before state changes. New `MainWindow.show_restored()` owns
-"show the window the way it was closed"; `_on_tray_open_seeker` and
-`main_ui.py`'s first `window.show()` both call it now. Persisted for
-relaunch via `SeekerConfig.window_reopen_filled` (default `False`).
-`_restore_window_geometry` strips Qt's own `WindowFullScreen` state
-bit whenever it survives `restoreGeometry()` (the fullscreen-close
-branch unavoidably still saves a blob carrying it), at both call sites
-(`__init__`, `showEvent`'s post-layout re-apply); `showEvent` then
-re-asserts `showMaximized()` last so its own re-apply can never
-un-maximize a window `show_restored()` just filled. Same expression
-fixes Window → Zoom reopening un-zoomed for free.
+Fix is tests-only: conftest's autouse
+`_ignore_organic_application_state_changes` drops signal-delivered
+calls (`sender()` is the QApplication); direct test calls still reach
+the handler, so the reopen contract stays tested. Two repro tests
+(`test_organic_application_active_cannot_fire_the_dock_policy`,
+`..._cannot_reopen_a_closed_window`) emit the real signal during the
+wait — both failed on `HEAD` (`[True] == []`; `isHidden()` False),
+both pass now; the second one covers S5's geometry sibling. PySide6
+gotcha found on the way: a monkeypatched slot needs `functools.wraps`
+or `sender()` reads `None`. CLAUDE.md's Open issues entry updated in
+place (closed).
 
-Offscreen Qt asserts window STATE only, never pixels (round 9 §3.1
-follow-up 3). Rewrote the geometry-restore test to the new
-`isMaximized()`/`not isFullScreen()` contract; added windowed/zoomed
-reopen cases and a real-saved-blob fullscreen-flag test. Every
-new/changed test confirmed failing on unmodified `HEAD` first.
-
-**Not done — real-Mac verification is the brief's own stated
-acceptance test**, not offscreen Qt. See "Waiting on Kris" below.
+**Skills divergence:** the session plan points S6 at
+`engineering-advanced-skills`; not loaded — the brief's own trace-then-
+repro recipe was specific enough, and it found the caller in 5 runs.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -77,12 +65,12 @@ default. Don't read a brief section your row doesn't point at.
 - **Still open from S1, blocks S2:** click Confirm once on a real
   SoulSeek needs-review candidate (slskd running) and paste back what
   Review's notice says plus the matching `seeker.log` entry — this
-  settles §1.4 and unblocks S2's branch. Not re-checked this session.
+  settles §1.4 and unblocks S2's branch.
 - **Still open from S3:** run the real stress test,
   `SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
   with the X9 Pro mounted and Spotify and slskd up, and paste the
   resource table.
-- **New, from S5 (§5's own acceptance test):** script the three real
+- **Still open from S5 (§5's own acceptance test):** script the three real
   paths with System Events (`AXFullScreen` on `window 1` of process
   "Seeker") and `open -a Seeker`: fullscreen close → Dock reopen
   (fills the screen, windowed); windowed resize → close → Dock reopen
@@ -97,21 +85,19 @@ default. Don't read a brief section your row doesn't point at.
 
 ## Open questions
 
-- Item 125 (the §2.3 quit hang) and the fullscreen-close pair (S6's
-  own area — 4th recurrence now, see CLAUDE.md's Open issues and
-  [HISTORY §129](docs/HISTORY.md#129)'s own verification section) are
-  tracked in CLAUDE.md's Open issues.
-- `docs/HISTORY.md` is still growing (now through §129), never read
+- Item 125 (the §2.3 quit hang) is tracked in CLAUDE.md's Open
+  issues.
+- `docs/HISTORY.md` is still growing (now through §130), never read
   whole. No HISTORY entry yet for round 9 §3.2 (S7), §6 (S8), §7.1
   (S9), or §7.2 (S10) — round 10's own S7 row is scheduled to backfill
   these.
-- **From the S3 handoff, not re-checked this session:** a one-occurrence
+- **From the S3 handoff:** a one-occurrence
   CI-only `SETUP ERROR` on
   `test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_
   dialog` (same symptom class as the now-closed history-refresh flake,
-  different victim test). Did not recur in this session's own CI run's
-  named failures (none — CI was green, see Current state); watch for a
-  second occurrence before adding it to CLAUDE.md's Open issues.
+  different victim test). Not seen since: CI green on S5's and S6's
+  runs, and 0 local occurrences across S6's 15 full-suite runs. Watch
+  for a second occurrence before adding it to CLAUDE.md's Open issues.
 
 ## How to end your session
 
