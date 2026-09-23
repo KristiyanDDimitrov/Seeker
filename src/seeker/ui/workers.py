@@ -213,6 +213,18 @@ class Worker(QRunnable):
             # (see its own docstring) is what makes dropping the result
             # here actually safe, including against the tighter race a
             # plain pre-check can't close.
+            #
+            # §1.3 (round 10) — the traceback only exists on this worker
+            # thread; task_error only ever carries str(error), so every
+            # failed background task since logging handlers were last
+            # configured left no trace anywhere (Defect B, brief §1).
+            # logging is thread-safe and this call touches neither
+            # `_dispatcher` nor any other Qt object, so it cannot add a
+            # new failure mode to the straggling-worker teardown case
+            # above.
+            logger.warning(
+                "Background task %d failed", self.task_id, exc_info=True,
+            )
             _emit_or_drop(_dispatcher.task_error, self.task_id, str(error))
         else:
             _emit_or_drop(_dispatcher.task_finished, self.task_id, result)

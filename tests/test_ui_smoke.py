@@ -1779,6 +1779,22 @@ def test_worker_emits_error_on_exception():
     assert errors == ["simulated failure"]
 
 
+def test_worker_run_logs_the_traceback_on_exception(caplog):
+    # §1.3 (round 10, Defect B) — task_error only ever carries
+    # str(error); before this fix nothing logged the traceback anywhere,
+    # so every failed background task left no trace in seeker.log.
+    def boom():
+        raise RuntimeError("simulated failure")
+
+    worker = Worker(boom)
+
+    with caplog.at_level("WARNING", logger="seeker.ui.workers"):
+        worker.run()
+
+    assert "simulated failure" in caplog.text
+    assert "Traceback" in caplog.text
+
+
 def test_run_worker_disables_button_while_running_and_reenables(qtbot):
     button = QPushButton("Go")
     qtbot.addWidget(button)
