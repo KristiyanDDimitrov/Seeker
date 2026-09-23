@@ -53,14 +53,25 @@ import numpy as np
 import psutil
 import pytest
 import soundfile as sf
-from PySide6.QtWidgets import QCheckBox, QPushButton
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QTableWidget,
+)
 
 from seeker.application import Application
 from seeker.audio_fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.ui.main_window import MainWindow
+from seeker.ui.pages.dashboard_page import DashboardPage
+from seeker.ui.pages.duplicates_page import DuplicatesPage
+from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.workers import _callbacks
+from test_ui_smoke import FakeApplication
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
 
@@ -159,6 +170,68 @@ class SampleLog:
         return entry
 
 
+@dataclass
+class _StressHandles:
+    """Real widget/page references resolved once against the current
+    MainWindow layout via _resolve_handles(). The round-8 page
+    extraction moved every one of these off MainWindow itself onto a
+    page object (DashboardPage/DuplicatesPage/SharingPage) without this
+    test noticing, because it only ever runs opt-in — see
+    test_stress_handles_resolve_against_current_main_window below,
+    which runs on every push specifically so the next such refactor
+    fails there instead of silently here. The rest of this test uses
+    only these handles, never main_window.<widget> directly.
+    """
+
+    dashboard_page: DashboardPage
+    duplicates_page: DuplicatesPage
+    sharing_page: SharingPage
+    playlist_list: QListWidget
+    sync_button: QPushButton
+    scan_button: QPushButton
+    match_button: QPushButton
+    status_label: QLabel
+    download_button: QPushButton
+    duplicates_location_combo: QComboBox
+    compute_fingerprints_button: QPushButton
+    find_duplicates_button: QPushButton
+    duplicates_status_label: QLabel
+    duplicates_table: QTableWidget
+    sharing_summary_label: QLabel
+
+    @property
+    def current_duplicate_groups(self) -> list[DuplicateGroup]:
+        # A plain list attribute the page reassigns wholesale on every
+        # compute/delete (duplicates_page.py), not a stable widget
+        # reference — resolving it once at _resolve_handles() time
+        # would go stale after the first reassignment, so this reads
+        # the page fresh on every access instead.
+        return self.duplicates_page._current_duplicate_groups
+
+
+def _resolve_handles(main_window: MainWindow) -> _StressHandles:
+    dashboard_page = main_window._dashboard_page
+    duplicates_page = main_window._duplicates_page
+    sharing_page = main_window._sharing_page
+    return _StressHandles(
+        dashboard_page=dashboard_page,
+        duplicates_page=duplicates_page,
+        sharing_page=sharing_page,
+        playlist_list=dashboard_page.playlist_list,
+        sync_button=dashboard_page.sync_button,
+        scan_button=dashboard_page.scan_button,
+        match_button=dashboard_page.match_button,
+        status_label=dashboard_page.status_label,
+        download_button=dashboard_page.download_button,
+        duplicates_location_combo=duplicates_page.duplicates_location_combo,
+        compute_fingerprints_button=duplicates_page.compute_fingerprints_button,
+        find_duplicates_button=duplicates_page.find_duplicates_button,
+        duplicates_status_label=duplicates_page.duplicates_status_label,
+        duplicates_table=duplicates_page.duplicates_table,
+        sharing_summary_label=sharing_page.sharing_summary_label,
+    )
+
+
 def _pump(
         qapp: object,
         predicate: Callable[[], bool],
@@ -175,18 +248,17 @@ def _pump(
     return predicate()
 
 
-def _select_playlist(main_window: MainWindow, name: str) -> bool:
-    for row in range(main_window.playlist_list.count()):
-        item = main_window.playlist_list.item(row)
+def _select_playlist(playlist_list: QListWidget, name: str) -> bool:
+    for row in range(playlist_list.count()):
+        item = playlist_list.item(row)
         playlist = item.data(256)  # Qt.ItemDataRole.UserRole == 256
         if playlist is not None and playlist.name == name:
-            main_window.playlist_list.setCurrentItem(item)
+            playlist_list.setCurrentItem(item)
             return True
     return False
 
 
-def _select_duplicates_location(main_window: MainWindow, name: str) -> bool:
-    combo = main_window.duplicates_location_combo
+def _select_duplicates_location(combo: QComboBox, name: str) -> bool:
     for index in range(combo.count()):
         if combo.itemText(index) == name:
             combo.setCurrentIndex(index)
@@ -295,16 +367,17 @@ def test_broad_end_to_end_stress(qapp):
         log.sample("start")
 
         main_window = MainWindow(application)
-        _pump(qapp, lambda: main_window.playlist_list.count() > 0, timeout=30)
+        handles = _resolve_handles(main_window)
+        _pump(qapp, lambda: handles.playlist_list.count() > 0, timeout=30)
         log.sample("MainWindow constructed, playlists loaded")
 
         # --- Overlapping sync/scan/match: fired back to back, NOT
         # waiting for each to settle before starting the next — a real
         # impatient user's actual clicking pattern, not a sequential
         # scripted one.
-        main_window.sync_button.click()
-        main_window.scan_button.click()
-        main_window.match_button.click()
+        handles.sync_button.click()
+        handles.scan_button.click()
+        handles.match_button.click()
 
         # --- Duplicates page: switch to it for real (the same real
         # QStackedWidget.currentChanged path a user clicking the sidebar
@@ -317,11 +390,12 @@ def test_broad_end_to_end_stress(qapp):
         _pump(
             qapp,
             lambda: _select_duplicates_location(
-                main_window, STRESS_DUPLICATES_LOCATION_NAME,
+                handles.duplicates_location_combo,
+                STRESS_DUPLICATES_LOCATION_NAME,
             ),
             timeout=15.0,
         )
-        main_window.compute_fingerprints_button.click()
+        handles.compute_fingerprints_button.click()
         log.sample(
                 "sync/scan/match + duplicates fingerprinting fired overlapping"
         )
@@ -329,16 +403,16 @@ def test_broad_end_to_end_stress(qapp):
         settled = _pump(
             qapp,
             lambda: (
-                main_window.sync_button.isEnabled()
-                and main_window.scan_button.isEnabled()
-                and main_window.match_button.isEnabled()
+                handles.sync_button.isEnabled()
+                and handles.scan_button.isEnabled()
+                and handles.match_button.isEnabled()
             ),
             timeout=90.0,
         )
         print(f"[stress] overlapping sync/scan/match settled: {settled}")
         print(
             f"[stress] status_label after settle: "
-            f"{main_window.status_label.text()!r}"
+            f"{handles.status_label.text()!r}"
         )
         log.sample("sync/scan/match settled")
 
@@ -349,15 +423,15 @@ def test_broad_end_to_end_stress(qapp):
         # not just with sync/scan/match above.
         fingerprints_done = _pump(
             qapp,
-            main_window.compute_fingerprints_button.isEnabled,
+            handles.compute_fingerprints_button.isEnabled,
             timeout=30.0,
         )
         print(
             f"[stress] duplicates fingerprinting settled: "
             f"{fingerprints_done}, status="
-            f"{main_window.duplicates_status_label.text()!r}"
+            f"{handles.duplicates_status_label.text()!r}"
         )
-        main_window.find_duplicates_button.click()
+        handles.find_duplicates_button.click()
         log.sample("duplicates: find fired, overlapping with downloads next")
 
         # --- Multiple concurrent downloads across playlists — more
@@ -406,9 +480,9 @@ def test_broad_end_to_end_stress(qapp):
                 on_error=make_on_error(name),
             )
 
-        if _select_playlist(main_window, "Test"):
+        if _select_playlist(handles.playlist_list, "Test"):
             qapp.processEvents()
-            main_window.download_button.click()
+            handles.download_button.click()
 
         log.sample(f"{len(download_targets) + 1} concurrent download operations fired")
 
@@ -455,7 +529,7 @@ def test_broad_end_to_end_stress(qapp):
             # Switch playlists while background work (downloads,
             # backend poll) may still be running.
             for name in ("Test", "240KM/H"):
-                if _select_playlist(main_window, name):
+                if _select_playlist(handles.playlist_list, name):
                     _pump(qapp, lambda: True, timeout=0.5)
 
             # Navigate to and away from the Settings PAGE repeatedly —
@@ -497,7 +571,7 @@ def test_broad_end_to_end_stress(qapp):
             main_window._show_page("sharing")
             _pump(
                 qapp,
-                lambda: bool(main_window.sharing_summary_label.text()),
+                lambda: bool(handles.sharing_summary_label.text()),
                 timeout=15.0,
             )
             main_window._show_page("dashboard")
@@ -521,15 +595,13 @@ def test_broad_end_to_end_stress(qapp):
             # real user takes, through the real run_worker path, while
             # downloads/backend-poll traffic from the sections above may
             # still be in flight.
-            if not duplicates_delete_done and main_window._current_duplicate_groups:
-                group: DuplicateGroup = main_window._current_duplicate_groups[
-                        0
-                ]
+            if not duplicates_delete_done and handles.current_duplicate_groups:
+                group: DuplicateGroup = handles.current_duplicate_groups[0]
                 # Roadmap item 68 (Phase 7.1) — resolved by real header
                 # text, not a literal column index (item 56 Phase 6.3's
                 # own real "Keep column shifted Actions from 6 to 7"
                 # drift is exactly the bug class this hardening closes).
-                table = main_window.duplicates_table
+                table = handles.duplicates_table
                 actions_column = next(
                     column for column in range(table.columnCount())
                     if table.horizontalHeaderItem(column).text() == "Actions"
@@ -549,14 +621,14 @@ def test_broad_end_to_end_stress(qapp):
                 def _group_was_deleted() -> bool:
                     return (
                         group  # noqa: B023
-                        not in main_window._current_duplicate_groups
+                        not in handles.current_duplicate_groups
                     )
 
                 deleted = _pump(qapp, _group_was_deleted, timeout=30.0)
                 print(
                     f"[stress] duplicates: group delete completed="
                     f"{deleted}, status="
-                    f"{main_window.duplicates_status_label.text()!r}"
+                    f"{handles.duplicates_status_label.text()!r}"
                 )
                 duplicates_delete_done = True
                 log.sample("duplicates: group delete lifecycle exercised")
@@ -592,15 +664,15 @@ def test_broad_end_to_end_stress(qapp):
 
                 # Trigger match again on the SAME already-constructed
                 # track_matcher — the real point of this check.
-                main_window.match_button.click()
+                handles.match_button.click()
                 _pump(
                     qapp,
-                    main_window.match_button.isEnabled,
+                    handles.match_button.isEnabled,
                     timeout=60.0,
                 )
-                assert main_window.status_label.text() == "", (
+                assert handles.status_label.text() == "", (
                     "match run after a live threshold change failed: "
-                    f"{main_window.status_label.text()!r}"
+                    f"{handles.status_label.text()!r}"
                 )
                 threshold_changed = True
                 print(
@@ -636,7 +708,7 @@ def test_broad_end_to_end_stress(qapp):
         )
         print(
             f"[stress] sharing page summary after final visit: "
-            f"{main_window.sharing_summary_label.text()!r}"
+            f"{handles.sharing_summary_label.text()!r}"
         )
         log.sample("stress duration complete")
 
@@ -786,3 +858,49 @@ def test_broad_end_to_end_stress(qapp):
         f"thread count grew by {thread_growth} over the run (ceiling "
         f"{MAX_ACCEPTABLE_THREAD_GROWTH}) — possible leak"
     )
+
+
+def test_stress_handles_resolve_against_current_main_window(qtbot):
+    """Not opt-in — runs on every push. _resolve_handles() is the one
+    place test_broad_end_to_end_stress looks up its widgets; this only
+    proves that lookup still matches the real MainWindow layout, the
+    same way round 8's page extraction silently broke it before
+    (§3, docs/BRIEF-2026-09-23-round10.md) — a future refactor that
+    moves one of these widgets again fails here, on every push,
+    instead of ~300 real minutes into an opt-in run nobody but Kris
+    triggers.
+    """
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    handles = _resolve_handles(window)
+
+    assert handles.playlist_list is window._dashboard_page.playlist_list
+    assert handles.sync_button is window._dashboard_page.sync_button
+    assert handles.scan_button is window._dashboard_page.scan_button
+    assert handles.match_button is window._dashboard_page.match_button
+    assert handles.status_label is window._dashboard_page.status_label
+    assert handles.download_button is window._dashboard_page.download_button
+    assert (
+        handles.duplicates_location_combo
+        is window._duplicates_page.duplicates_location_combo
+    )
+    assert (
+        handles.compute_fingerprints_button
+        is window._duplicates_page.compute_fingerprints_button
+    )
+    assert (
+        handles.find_duplicates_button
+        is window._duplicates_page.find_duplicates_button
+    )
+    assert (
+        handles.duplicates_status_label
+        is window._duplicates_page.duplicates_status_label
+    )
+    assert handles.duplicates_table is window._duplicates_page.duplicates_table
+    assert (
+        handles.sharing_summary_label
+        is window._sharing_page.sharing_summary_label
+    )
+    assert handles.current_duplicate_groups == []
