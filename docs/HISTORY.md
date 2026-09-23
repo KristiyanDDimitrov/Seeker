@@ -14742,3 +14742,106 @@ running (`docker ps` empty) nor a live Spotify session in this
 environment, so `SEEKER_RUN_STRESS_TEST=1 uv run pytest
 tests/test_stress_e2e.py` was not run — left for Kris, per the brief's
 own fallback for exactly this case.
+
+### 128 — Round 10 S4 (§4.1–§4.3): the review/history CI flakes were one
+race, confirmed and closed deterministically
+
+**Established, confirmed rather than assumed.** Both
+`test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
+and `test_history_refresh_button_refetches` share the exact mechanism
+the brief named: a `Fake*Service` method increments its own call
+counter on the **worker thread**, at the top of the method, before
+returning; `run_worker`'s triggering button is only re-enabled later,
+once `_handle_task_finished` runs on the **main thread**
+(`workers.py:450`/`481`, via `run_busy_worker`'s `busy_actions.end()`
+wrapper, `main_window.py:1437`/`1444`). A test that waits only on the
+counter and then clicks can land the click on a button that is still
+disabled — a real, correct Qt no-op, not a product bug. The review half
+was already fixed by §1.2 (waits on `Review.notice.text()`); this
+session confirmed that fix is race-free (read, not re-derived) and
+fixed the history half the same way.
+
+**§4.1, deterministic repro.** Rather than wait for the natural
+~1-in-8-to-1-in-10 window, `FakeHistoryService.get_recent_events`
+gained an optional `threading.Event`-based block, keyed on the call's
+`limit` value. A throwaway test (not committed) reproduced the exact
+original click-immediately-after-counter pattern under forced blocking:
+`REPRO CONFIRMED: click was a no-op, calls stuck at 2,
+button.isEnabled()=True` — `pytestqt.exceptions.TimeoutError` on the
+`waitUntil(calls == 3)`, exactly the CI failure shape. This confirmed
+the mechanism mechanically rather than by inference from the brief
+alone.
+
+**A real hang, found while building the repro, not in the brief.** The
+first version of the blocking fake keyed on **call number**
+(`_block_on_call == 2`), following the R7.5 comment's own framing of
+"call #1 is the seed, call #2 is the page's own fetch." That ordering
+is not actually guaranteed: `MainWindow.__init__`'s own
+`TrayController.seed_notification_cutoff()` (`tray.py:405`, `limit=1`)
+and the page's own `_refresh_history()` (`history_page.py:99`, default
+`limit=50`) are two independent tasks submitted to the same
+`QThreadPool`, with no ordering guarantee between them (`QThreadPool`'s
+real `maxThreadCount()` on this machine is well above 1). Confirmed
+live: a 20-run repeat loop of the isolated test hung indefinitely on
+its second iteration — `ps` showed the worker process alive for 5
+minutes at 0.82s total CPU time, i.e. genuinely blocked, not slow.
+Root cause: when the seed call happens to land as "call #2" instead of
+the page fetch, it is the one that blocks; the test's own assertion
+(`button.isEnabled() is False`) then fails immediately (the page fetch,
+unrelated to the seed, already completed and re-enabled the button),
+and the test function exits **without ever reaching `block.set()`** —
+leaking a worker permanently stuck in `Event.wait()`. Per HISTORY §125,
+`MainWindow.thread_pool` blocks its own destructor on any in-flight
+runnable, so the leaked block doesn't just fail one test — it hangs the
+whole process at teardown. Fixed two ways, independently: (1) block on
+the call's **`limit` value** instead of call order/number — the page's
+real fetch and the seed call use different literal limits, so blocking
+by value is correct regardless of which task the scheduler runs first;
+(2) wrapped the risky span in `try/finally` so `block.set()` always
+runs even if an assertion above it fails, as a second, independent
+safety net against the same leak-and-hang shape recurring for any
+future reason.
+
+**§4.2, the fix.** `test_history_refresh_button_refetches` now blocks
+the page's own fetch (`_block_when_limit = 50`), asserts the button is
+disabled at that instant (the repro), releases the block in a
+`finally`, then `qtbot.waitUntil` on the button's own `isEnabled`
+(bound method, not a wrapping lambda — `ruff`'s `PLW0108` flagged the
+lambda form) before clicking. 15 isolated runs and 10 combined
+`test_history_page.py`+`test_review_page.py` runs, all green, none
+hung — confirms the fix is deterministic under the exact forced race,
+not just statistically better.
+
+**§4.3, the audit.** Searched all ~156 `qtbot.waitUntil` call sites
+across `tests/pages/*.py` and `tests/test_ui_smoke.py` (script: find
+every `waitUntil` whose lambda body references a `*_calls`
+counter/list, then check whether a `.click()` follows later in the same
+test function). Two hits: the two already-fixed tests above. Every
+other `waitUntil`-on-`*_calls` site is followed either by an assertion
+on that same fake's own recorded call arguments (safe — the arguments
+are set atomically with the counter, not dependent on the main thread)
+or by a further `qtbot.waitUntil` on the actual main-thread-visible
+effect (a status label, a notice, a second widget's count) before
+anything acts on it — already the correct pattern elsewhere in this
+suite. `test_force_retag_checkbox_passed_through_all_three_triggers`
+(`test_library_page.py`) matched the "click after wait-on-calls"
+grep pattern but is not racy: `tag_selected_button`/`tag_playlist_button`
+are two different buttons under two different `busy_actions` keys
+(`"tag_selected"`/`"tag_playlist"`), so the second click's target was
+never touched by the first action's busy state. No
+`wait_for_workers_idle(window)` conftest helper was added — the audit
+found no site that actually needed one.
+
+**Verification.** Full suite (`uv run pytest -q`): `1197 passed, 29
+skipped` — the two failures the round-10 S1 handoff reported
+(`test_reopening_after_a_fullscreen_close_restores_prior_geometry`,
+`test_fullscreen_close_policy_check_ignores_a_stale_request`, §5/§6's
+own area, untouched by this session) did not recur across 3 consecutive
+full runs this session, consistent with the brief's own framing of that
+pair as order-dependent rather than deterministic. `mypy --strict src/`
+clean, 104 files (unaffected — this session touched only `tests/`).
+`ruff check src tests` clean.
+
+**CLAUDE.md.** Both flakes' entries removed from Open issues'
+"round-8 test flakes" list (now three remaining, not five) and replaced
+with one condensed closed-item note linking here.

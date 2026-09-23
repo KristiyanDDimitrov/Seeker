@@ -286,9 +286,29 @@ class FakeHistoryService:
     def __init__(self, events: list | None = None):
         self._events = events or []
         self.get_recent_events_calls = 0
+        # §4 (round 10) — lets a test force the exact CI-only timing
+        # window deterministically instead of relying on luck: when
+        # set, a call whose `limit` equals `_block_when_limit` blocks on
+        # the worker thread until the test releases `_block_event`, so
+        # the call counter can be observed at its target value while
+        # on_finished has provably not yet run on the main thread.
+        # Keyed on `limit`, not call order/number — MainWindow's own
+        # startup seed call (tray.py, limit=1) and a page's real fetch
+        # (default limit) are two separate QThreadPool tasks with no
+        # ordering guarantee between them. Confirmed live: keying on
+        # call number instead left a worker permanently blocked
+        # whenever the seed call happened to land second, hanging the
+        # whole process at teardown (MainWindow.thread_pool blocks its
+        # own destructor on any in-flight runnable, HISTORY §125). See
+        # test_history_page.py.
+        self._block_event: threading.Event | None = None
+        self._block_when_limit: int | None = None
 
     def get_recent_events(self, limit: int = 50) -> list:
         self.get_recent_events_calls += 1
+        if limit == self._block_when_limit:
+            assert self._block_event is not None
+            self._block_event.wait()
         return self._events
 
 

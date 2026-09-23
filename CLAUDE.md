@@ -502,68 +502,13 @@ Genuinely open only — no "done" items, no flakes that resolved.
   alone. Next live attempt should bias toward quitting while a real
   background worker (scan/fingerprint/search) is provably still
   running. [HISTORY §125](docs/HISTORY.md#125)
-- **Five unconfirmed round-8 test flakes.** Diagnose any recurrence
-  directly — never reach for `pytest-rerunfailures`.
+- **Three unconfirmed round-8 test flakes** (two closed this round —
+  see below). Diagnose any recurrence directly — never reach for
+  `pytest-rerunfailures`.
   - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
     once across ~12 full-suite runs, clean since. Round 8 §14
     subsequently modified `closeEvent` directly — check that first if
     it recurs.
-  - `test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag`
-    — fired once after a `docker-compose.yml`-only commit, clean since
-    that first occurrence. **Round 9 §5, second real recurrence**
-    (`gh run 34452031576`, `AssertionError: assert '' ==
-    'Replaced with /new/path'` on `status_label.text()`) — this
-    session's own commit touched only `dashboard_page.py` (Progress
-    sort key), `downloads_page.py` (same), and `theme.py` (the Actions
-    sort veto), none of which touch this test's replace-button/
-    status-label path; passed 5/5 re-run locally immediately after.
-    Two real CI recurrences with no local repro either time is
-    stronger evidence of a genuine timing race than "fired once" was.
-    **Round 9 S4, third real recurrence** (`gh run 34457820512`, same
-    assertion shape: `assert '' == 'Replaced with /new/path'`) — a
-    pure docs-only push (session-plan checkbox + handoff rewrite, zero
-    code changes), so not a regression from anything in that commit;
-    passed 5/5 re-run locally immediately after, same as both prior
-    occurrences. Three real CI recurrences, zero local repros, now
-    clears this item's own previously-stated "third time" bar — worth
-    a dedicated diagnosis session. **A fourth followed immediately**
-    (`gh run 34458223276`, same commit range, same assertion shape) —
-    fired in the SAME run as `test_history_refresh_button_refetches`
-    below, both together; still zero local repros across all four.
-  - `test_history_refresh_button_refetches` — timed out roughly 1-in-8
-    to 1-in-10 full-suite runs. A real cause was found and fixed
-    (pytest-qt's own teardown doesn't flush Qt's deferred deletion,
-    letting a previous test's live `MainWindow` react to a later
-    test's `applicationStateChanged`) via an autouse fixture, confirmed
-    closed with a weakref/gc probe — but the flake recurred at least
-    once **after** that fix, cause still unknown. One of the post-fix
-    recurrences is a real, inspectable CI run (`34207858803`,
-    2026-09-08). [HISTORY §116](docs/HISTORY.md#116) **Round 9 §1.4:**
-    the test now dumps a live worker-state snapshot
-    (`ui/workers.py::debug_snapshot`) on its own timeout — recurred
-    once in a 12-run local loop and confirmed the instrumentation
-    itself, verified working via a forced repro. Still no real
-    snapshot from a *natural* recurrence yet — diagnose from that
-    output the next time it fires for real. [HISTORY
-    §121](docs/HISTORY.md#121) **Round 9 S4: two real natural
-    recurrences, back to back, on real CI** (`34452686991`, commit
-    `44109aa`, a previous session's own push never checked before this
-    one started; `34457258960`, commit `b07287c`, this session's own
-    push — neither commit touches `history_page.py`, `workers.py`, or
-    anything in this test's path, so neither is a regression from its
-    own diff). **Both snapshots read identically: `active_threads=0
-    max_threads=3`, `no tasks in flight`.** This rules out the
-    "worker/task genuinely stuck" hypothesis the instrumentation was
-    built to catch — by the time the timeout fires, the dispatcher
-    reports nothing running at all, so the third `run_worker` call
-    either was never submitted (a missed button-click signal delivery)
-    or already finished before the snapshot without its result ever
-    reaching `get_recent_events_calls`. Two matching real recurrences
-    now clears this item's own "diagnose from that output the next
-    time it fires for real" bar — worth a dedicated diagnosis session.
-    **A third followed immediately** (`gh run 34458223276`, same
-    commit range) — fired in the SAME run as the review-tab flake
-    above, both together, same `no tasks in flight` signature.
   - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
     once during S13 (round 8, comment-triage-only session — nothing in
     that session touched close/fullscreen logic, so not a regression
@@ -600,6 +545,18 @@ Genuinely open only — no "done" items, no flakes that resolved.
     under CI's headless/offscreen platform — plausible but UNVERIFIED;
     `QApplication.setActiveWindow`/a real `activateWindow()` call before
     the assertion is the next thing to try if it recurs.
+- **Closed, round 10 §4: the review replace-button and history-refresh
+  flakes were one root cause, not two — a fake's call counter increments
+  on the worker thread before `_handle_task_finished` re-enables the
+  triggering button on the main thread, so a test that clicks right
+  after the counter hits its target can land the click on a still-
+  disabled button (correct product behavior; the bug was in the test).
+  §1.2 fixed the replace-button half by waiting on Review's own notice
+  text; round 10 §4 fixed the history-refresh half the same way (wait
+  for the button itself) and added a deterministic repro
+  (`_block_event`/`_block_when_limit` on `FakeHistoryService`) so the
+  race reproduces every run instead of ~1-in-8. [HISTORY
+  §128](docs/HISTORY.md#128)
 - **Three registered library locations nest inside each other and
   double-index ~3,450 real files** — `add_location`/
   `add_location_from_path` only check exact path-string uniqueness, no

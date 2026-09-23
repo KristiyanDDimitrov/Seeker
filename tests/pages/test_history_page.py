@@ -8,6 +8,8 @@ until S11.7) use it too, and there is no shared fixtures module yet for
 a factory two future test files both need. Imported from there below.
 """
 
+import threading
+
 from PySide6.QtCore import Qt
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
@@ -127,25 +129,67 @@ def test_history_filter_combo_filters_by_event_type(qtbot):
 
 
 def test_history_refresh_button_refetches(qtbot):
+    # §4 (round 10) — root cause of the ~1-in-8 to 1-in-10 CI flake
+    # CLAUDE.md's Open issues tracked (HISTORY §116/§121): the fake's
+    # call counter is bumped on the worker thread, at the top of
+    # get_recent_events, before its result is returned — but the
+    # refresh button is only re-enabled later, once
+    # _handle_task_finished runs on the MAIN thread. Waiting on just
+    # the counter and then clicking can land the click while the button
+    # is still disabled; a disabled button ignoring a click is correct
+    # Qt behavior, so the fix belongs in this test, not the product
+    # (brief §4.2). `_block_event`/`_block_when_limit` below force that
+    # exact window on every run — deterministic proof, not luck: the
+    # assertion right after the counter hits its target is the repro
+    # (confirmed live: with no further wait, a click there is a no-op
+    # and the count never reaches 3); the waitUntil after it, on the
+    # button itself, is the fix.
+    block = threading.Event()
     application = FakeApplication(history_events=[_make_history_event()])
+    application.history_service._block_event = block
+    # Roadmap item R7.5 — MainWindow construction fires its own
+    # get_recent_events(limit=1) notification-cutoff seed
+    # (TrayController.seed_notification_cutoff) as a separate
+    # QThreadPool task, with no ordering guarantee against this page's
+    # own fetch below (both real HistoryService.DEFAULT_LIMIT). Block
+    # on the limit value, not call count/order — confirmed live that
+    # blocking by call number instead can block the SEED task if it
+    # happens to run second, and since nothing then ever calls
+    # block.set(), that worker sits in Event.wait() forever;
+    # MainWindow.thread_pool blocks its own destructor on any in-flight
+    # runnable (HISTORY §125), so the leak hangs the whole process at
+    # teardown, not just this one test.
+    application.history_service._block_when_limit = 50
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._show_page("history")
-    # Roadmap item R7.5 — call #1 is MainWindow construction's own
-    # silent notification-cutoff seed (see _seed_notification_cutoff);
-    # this page visit is real call #2.
+    try:
+        window._show_page("history")
+        qtbot.waitUntil(
+            lambda: application.history_service.get_recent_events_calls == 2,
+            timeout=2000,
+        )
+        # Repro: the page's own fetch (limit=50) is recorded but still
+        # blocked inside get_recent_events, so on_finished provably has
+        # not run yet — the button must still be disabled here.
+        assert window._history_page.history_refresh_button.isEnabled() is False
+    finally:
+        # Always release the blocked worker, even on an assertion
+        # failure above — see the leak/hang note on _block_when_limit.
+        block.set()
+
+    # Fix: wait for the real, main-thread-visible condition the click
+    # actually depends on, not just the worker-thread call counter.
     qtbot.waitUntil(
-        lambda: application.history_service.get_recent_events_calls == 2,
+        window._history_page.history_refresh_button.isEnabled,
         timeout=2000,
     )
 
     window._history_page.history_refresh_button.click()
 
-    # HISTORY §116/§1.4 (round 9) — this is the ~1-in-8 to 1-in-10
-    # flake CLAUDE.md's Open issues tracks. On a timeout, dump the
-    # dispatcher's own live state before letting the assertion fail, so
-    # a real recurrence carries evidence instead of just a stack trace.
+    # On a timeout, dump the dispatcher's own live state before letting
+    # the assertion fail, so a real recurrence carries evidence instead
+    # of just a stack trace.
     try:
         qtbot.waitUntil(
             lambda: application.history_service.get_recent_events_calls == 3,
