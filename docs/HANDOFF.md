@@ -8,9 +8,9 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `1d1b934`, not yet pushed. Tree clean (aside from an
-  untracked `Claude outputs/` directory that predates this session —
-  not part of the repo, left alone).
+- **HEAD:** `9a2084a`, pushed. Tree clean (aside from an untracked
+  `Claude outputs/` directory that predates this session — not part of
+  the repo, left alone).
 - **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1195
   passed, 29 skipped, 2 failed`.** The 2 failures are the already-
   tracked order-dependent pair
@@ -26,51 +26,58 @@ a log (`docs/HISTORY.md` is the log).
 - **`mypy --strict src/`: clean, 104 files** (scoped to `src/`, not
   `tests/`, per CLAUDE.md's own Commands section).
   **`ruff check src tests`: 0 findings.**
-- **Not pushed this session — no CI run to report.**
+- **CI on `9a2084a` (this session's push): run `35889442340`,
+  `failure`.** ruff/mypy clean on the run log. `1 failed, 1195 passed,
+  29 skipped, 6 warnings, 1 error`. The failure is the already-tracked
+  CI-only flake (`test_history_refresh_button_refetches`,
+  `pytestqt.exceptions.TimeoutError`). **The error is new** (grepped
+  CLAUDE.md/HISTORY first — not there): `ERROR tests/test_ui_smoke.py::
+  test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_
+  dialog - Failed: SETUP ERROR: Exceptions caught in Qt event loop` —
+  two `RuntimeError: libshiboken: ... already deleted` (`QTableWidget`/
+  `QLabel`) inside `status_label.setText(f"Error: {error}")`, during
+  this test's *setup*, not its body. Same shape as the already-tracked
+  history-refresh mechanism (a previous test's live widget reacting
+  after pytest-qt's own teardown, HISTORY §116/§121) but a different
+  victim test — not confirmed to be the same root cause. Not from this
+  session's diff (`git diff --stat 844f0e7..9a2084a` touches only
+  `tests/test_stress_e2e.py` and docs). One occurrence only — worth a
+  look during S4's own cross-test-teardown audit, not a dedicated
+  session yet.
 
 ## Where we are in the plan
 
-**Round 10, S1 and S3 done. S2 is blocked, not skipped — see below.**
-Brief: `docs/BRIEF-2026-09-23-round10.md`. Session map:
-`docs/round10/SESSION-PLAN.md`. **Next: S2, but only once Kris answers
-the §1.4 question below — until then, S4 is the next row with no
-dependency on it.**
+**Round 10, S1 and S3 done. S2 is blocked, not skipped.** Brief:
+`docs/BRIEF-2026-09-23-round10.md`. Session map:
+`docs/round10/SESSION-PLAN.md`. **Next: S2 once Kris answers §1.4
+below — until then, S4 is next with no dependency on it.**
 
-## Why S2 didn't run this session
-
-S2's own brief section says "Only after §1.4" — its branch (missing
-size / peer offline / slskd unreachable) is picked by whichever cause
-§1.4 found, and that was **not settled** by S1. This session re-checked
-fresh, in case anything had changed since S1's own check: `docker ps`
-— still zero containers, slskd not running on this machine. `select
-count(*) from soulseek_review_candidates` — still 0. `seeker.log` —
-still 442 bytes, last entry 2026-09-10, unchanged. Nothing new. Rather
-than guess a branch, this session moved to S3, the next row with no
-dependency on the answer. **S2 is still fully blocked on Kris
-reproducing live** (see Waiting on Kris below) — don't start it on a
-guess.
+**Why S2 didn't run:** its brief section says "Only after §1.4," and
+that's still unsettled — re-checked fresh this session (not just
+trusted from S1): `docker ps` still zero containers, `select count(*)
+from soulseek_review_candidates` still 0, `seeker.log` still unchanged
+at 442 bytes. Nothing new, so this session moved to S3 instead of
+guessing S2's branch.
 
 ## S3 report — §3.1-§3.2, the stress test's stale widget handles
 
-Full investigation: [HISTORY §127](docs/HISTORY.md#127). Summary:
-round 8's page extraction moved every widget the opt-in stress test
-touches (`playlist_list`, `sync_button`/`scan_button`/`match_button`,
+Full investigation: [HISTORY §127](docs/HISTORY.md#127). Round 8's page
+extraction moved every widget the opt-in stress test touches
+(`playlist_list`, `sync_button`/`scan_button`/`match_button`,
 `status_label`, `download_button`, the duplicates widgets,
 `sharing_summary_label`) off `MainWindow` onto
 `DashboardPage`/`DuplicatesPage`/`SharingPage` — confirmed live via a
 real `AttributeError`, not just trusted from the brief. Fixed with one
-`_StressHandles`/`_resolve_handles(main_window)` seam (`tests/
-test_stress_e2e.py`) the whole test body now reads through, plus a
-new **non-opt-in** guard test,
+`_StressHandles`/`_resolve_handles(main_window)` seam the whole test
+body now reads through, plus a new **non-opt-in** guard test,
 `test_stress_handles_resolve_against_current_main_window`, that runs
-on every push. `_current_duplicate_groups` is a `@property` on
-`_StressHandles`, not a captured value — `DuplicatesPage` reassigns it
-wholesale on every compute/delete, so capturing it once at resolve
-time would have gone stale after the first delete.
+on every push. `_current_duplicate_groups` is a `@property`, not a
+captured value — `DuplicatesPage` reassigns it wholesale on every
+compute/delete, so capturing it once at resolve time would go stale
+after the first delete.
 
-**Not run: the real stress test.** This machine has no X9 Pro drive
-mounted, no slskd running, and no live Spotify session — left for
-Kris, exact command below.
+**Not run: the real stress test** — this machine has no X9 Pro drive,
+no slskd, no live Spotify session. Left for Kris, command below.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -107,6 +114,12 @@ default. Don't read a brief section your row doesn't point at.
   whole. No HISTORY entry yet for round 9 §3.2 (S7), §6 (S8), §7.1
   (S9), or §7.2 (S10) — round 10's own S7 row is scheduled to backfill
   these.
+- **New this session, one occurrence:** a CI-only `SETUP ERROR` on
+  `test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_
+  dialog` (see Current state above) — same symptom class as the
+  tracked history-refresh flake, different victim test, not confirmed
+  as the same cause. Not in CLAUDE.md's Open issues yet — add it there
+  if S4's audit confirms a second occurrence.
 
 ## How to end your session
 
