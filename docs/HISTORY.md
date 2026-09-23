@@ -14975,3 +14975,92 @@ Three checks are still owed by Kris: fullscreen close → Dock reopen
 size); fullscreen close → quit from the menu bar → relaunch (fills the
 screen, windowed). See `docs/HANDOFF.md`'s own "Waiting on Kris"
 section.
+
+### 130 — Round 10 S6 (§6): the fullscreen-close test pair, caller found
+
+**Symptom (four recurrences, rounds 8–10).**
+`test_fullscreen_close_policy_check_ignores_a_stale_request` failed
+with `assert dock_calls == []` → `[True]`, usually together with its
+sibling (S5's `test_reopening_after_a_fullscreen_close_restores_
+maximized_not_fullscreen`, the descendant of S14's
+`..._restores_prior_geometry`), only under the full suite, both passing
+alone. Recurrence record, moved here from CLAUDE.md's Open issues:
+once in S13 (round 8, a comment-only session); together with the
+geometry sibling in S14; together again in round 9 S5 (confirmed not a
+regression via `git stash -u` — failed identically on unmodified
+`HEAD`); together again in round 10 S5.
+
+**Two candidate callers of `_set_dock_icon_visible(True)`**
+(brief §6): (1) `_on_tray_open_seeker`, reached from
+`on_application_state_changed(ApplicationActive)` when the window is
+not visible; (2) `cleanup_before_quit`, unconditional, possibly from
+a still-alive earlier test's window.
+
+**Trace.** A temporary line in both callers (and, on a second pass,
+in `MainWindow.__init__`) appended `id(self)`, `PYTEST_CURRENT_TEST`,
+and the stack to a file. Loop 1 fired on run 4 of the full suite; loop
+2 (on a copy of the tree with the `__init__` trace too) fired on run
+1 — each time only the stale-request test. Both traces:
+
+```
+=== init   id=5030339008 test=...::test_fullscreen_close_policy_check_ignores_a_stale_request (call)
+=== policy id=5030339008 test=...::test_fullscreen_close_policy_check_ignores_a_stale_request (call)
+  test_ui_smoke.py  qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+  pytestqt/wait_signal.py  qt_api.exec(self._loop)
+  main_window.py  _on_application_state_changed
+  tray.py  on_application_state_changed -> self._on_tray_open_seeker()
+  tray.py  _on_tray_open_seeker -> self._host.set_dock_icon_visible(True)
+```
+
+**Root cause: candidate 1, on the test's OWN window.** Offscreen Qt
+delivered a real `applicationStateChanged(ApplicationActive)` from
+inside the test's `qtbot.wait` event loop while its window was
+closed; the reopen handler did what it is for (reopen a hidden window,
+restore the Dock icon). The `init`/`policy` ids match, so it was not
+a leftover window from an earlier test (that is what
+`_flush_deferred_widget_deletion` already guards). `cleanup_before_quit`
+never fired in either failing test. Whether offscreen Qt sends that
+activation in that window of time depends on the focus/activation
+history earlier tests leave behind, which is the order dependence.
+The geometry sibling fails from the same delivery: the window is
+reopened between `close()` and `assert window.isHidden()`.
+
+**Deterministic repro.** `_emit_application_active_during_the_next_
+wait(qapp)` (`test_ui_smoke.py`) emits the real signal via
+`QTimer.singleShot(0, ...)` during the wait. On `HEAD`:
+
+```
+test_organic_application_active_cannot_fire_the_dock_policy
+E       assert [True] == []
+test_organic_application_active_cannot_reopen_a_closed_window
+E       assert False  (window.isHidden())
+2 failed
+```
+
+**Fix (tests only, product unchanged).** `tests/conftest.py`'s
+autouse `_ignore_organic_application_state_changes` wraps
+`MainWindow._on_application_state_changed` so a delivery whose
+`sender()` is the QApplication is dropped; a direct call from a test
+(`sender() is None`) still reaches the real handler, so
+`test_application_active_reopens_a_hidden_window` and friends keep
+testing the reopen contract. No test depended on an organic
+delivery. Chosen over disconnecting the signal per window because
+`cleanup_before_quit`'s own disconnect (and the test asserting
+`_app_state_connected`) stay untouched.
+
+**PySide6 gotcha, confirmed by probe.** PySide6 resolves a Python
+slot by `__name__`: a function monkeypatched onto the class under a
+different name gets `sender() is None` even when the signal delivers
+it, so the first version of the gate let every organic delivery
+through (the repro tests still failed). `functools.wraps(real_handler)`
+fixed it; a class-body method, a subclass override, and a
+`wraps`-named replacement all get the real sender.
+
+**Verification.** Before the fix the pair fired in 2 of 5 traced
+full-suite runs this session (run 4 of loop 1, run 1 of loop 2).
+After it: 10 consecutive full-suite runs, each `1204 passed, 29
+skipped`, 0 failed (brief §6's bar; 1202 + the two repro tests). Both
+repro tests fail on `HEAD` as pasted above and pass with the fixture.
+`mypy --strict src/`: clean, 104 files. `ruff check src tests`:
+clean. Product code unchanged — the Dock-click reopen behaviour is
+correct and stays.

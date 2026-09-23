@@ -4,7 +4,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QRect, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -4007,6 +4007,71 @@ def test_fullscreen_close_policy_check_ignores_a_stale_request(
     qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
 
     assert dock_calls == []
+
+
+def _emit_application_active_during_the_next_wait(qapp) -> None:
+    # Round 10 §6 — the exact delivery a traced full-suite failure
+    # caught (HISTORY §130): QApplication's own applicationStateChanged
+    # (ApplicationActive), emitted from inside qtbot.wait's event loop
+    # while the window is closed. Emitted through the real signal, not
+    # by calling the slot, so it proves conftest's
+    # `_ignore_organic_application_state_changes` drops it.
+    QTimer.singleShot(
+        0,
+        lambda: qapp.applicationStateChanged.emit(
+            Qt.ApplicationState.ApplicationActive
+        ),
+    )
+
+
+def test_organic_application_active_cannot_fire_the_dock_policy(
+        qtbot, qapp, monkeypatch,
+):
+    # Deterministic repro of the fullscreen-close pair's order-dependent
+    # failure (`assert dock_calls == []` → `[True]`) — see
+    # `_emit_application_active_during_the_next_wait`.
+    from seeker.ui import main_window as main_window_module
+
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.showFullScreen()
+    qtbot.wait(20)
+
+    dock_calls = []
+    monkeypatch.setattr(
+        main_window_module, "_set_dock_icon_visible",
+        dock_calls.append,
+    )
+
+    window.close()
+    window._hide_request_id += 1
+    _emit_application_active_during_the_next_wait(qapp)
+    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+
+    assert dock_calls == []
+
+
+def test_organic_application_active_cannot_reopen_a_closed_window(
+        qtbot, qapp, monkeypatch,
+):
+    # The pair's other half: the same stray delivery reopens the window
+    # between `close()` and `assert window.isHidden()`.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+    window.showFullScreen()
+    qtbot.wait(20)
+
+    window.close()
+    _emit_application_active_during_the_next_wait(qapp)
+    qtbot.wait(20)
+
+    assert window.isHidden()
 
 
 def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):

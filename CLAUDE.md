@@ -502,46 +502,25 @@ Genuinely open only — no "done" items, no flakes that resolved.
   alone. Next live attempt should bias toward quitting while a real
   background worker (scan/fingerprint/search) is provably still
   running. [HISTORY §125](docs/HISTORY.md#125)
-- **Three unconfirmed round-8 test flakes** (two closed this round —
-  see below). Diagnose any recurrence directly — never reach for
-  `pytest-rerunfailures`.
+- **Two unconfirmed round-8 test flakes** (the fullscreen-close pair
+  is closed — see below). Diagnose any recurrence directly — never
+  reach for `pytest-rerunfailures`.
   - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
     once across ~12 full-suite runs, clean since. Round 8 §14
     subsequently modified `closeEvent` directly — check that first if
     it recurs.
-  - `test_fullscreen_close_policy_check_ignores_a_stale_request` — fired
-    once during S13 (round 8, comment-triage-only session — nothing in
-    that session touched close/fullscreen logic, so not a regression
-    from it). Passed cleanly when re-run alone immediately after.
-    Consistent with fullscreen-close instability informally noted
-    across S11.2-S11.7 but never before named here specifically. **S14:
-    a second, different fullscreen-close test
-    (`test_reopening_after_a_fullscreen_close_restores_prior_geometry`)
-    fired alongside it in the same full-suite run** (this session
-    touched only `CLAUDE.md`/`README.md`, so again not a regression
-    from the session's own work) — both passed cleanly re-run alone
-    immediately after. Two different tests in the same fullscreen-close
-    area failing together, only under the full suite, is stronger
-    evidence of a real ordering/state-leak bug in that area than either
-    single occurrence was; worth a dedicated diagnosis session if it
-    recurs a third time. **Round 9 S5: third recurrence, same pair,
-    together again** (`uv run pytest -q` locally, this session's own
-    `WA_DeleteOnClose`/`cleanup_before_quit` diff — confirmed NOT the
-    cause via `git stash -u`: both fail identically on unmodified
-    `HEAD` too, and both pass individually and under a narrower `-k`
-    selection every time). Same failure (`assert dock_calls == []`
-    actually `[True]`) both times. This is the third recurrence the
-    prior note named as its own trigger for a dedicated diagnosis
-    session — genuinely due now, not just close to the bar. **Round 10
-    S5: fourth recurrence, same pair, together again** — the other
-    test in the pair is now named `test_reopening_after_a_fullscreen_
-    close_restores_maximized_not_fullscreen` (S5, §5, renamed from the
-    S14-era `..._restores_prior_geometry`; same test lineage, rewritten
-    to a new contract — see [HISTORY §129](docs/HISTORY.md#129)). Both
-    passed individually immediately after. S5 did not attempt a
-    diagnosis (out of its own scope per the round-10 session plan) —
-    still S6's own item, due now on its third-recurrence bar from
-    before this one even landed.
+  - **Closed, round 10 §6: the fullscreen-close pair**
+    (`test_fullscreen_close_policy_check_ignores_a_stale_request` +
+    `test_reopening_after_a_fullscreen_close_restores_maximized_not_
+    fullscreen`, four recurrences). Traced live: offscreen Qt delivered
+    a real `applicationStateChanged(ApplicationActive)` inside the
+    test's own `qtbot.wait`, to the test's OWN closed window (not a
+    zombie), which reopened it and called `set_dock_icon_visible(True)`.
+    conftest's `_ignore_organic_application_state_changes` now drops
+    signal-delivered calls (direct calls still reach the handler); two
+    deterministic repro tests emit the real signal. PySide6 gotcha: a
+    monkeypatched slot needs `functools.wraps` or `sender()` reads
+    `None`. [HISTORY §130](docs/HISTORY.md#130)
   - `test_view_menu_focus_search_navigates_and_focuses_the_search_field`
     (added S15, §12.3/§12.5) — fails on real CI (`macos-latest`) with
     `assert False` on `search_artist_edit.hasFocus()`, confirmed on TWO

@@ -1,3 +1,5 @@
+import functools
+
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 
@@ -54,6 +56,44 @@ def _flush_deferred_widget_deletion(qapp):
     """
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _ignore_organic_application_state_changes(monkeypatch):
+    """Round 10 §6 (HISTORY §130) — the fullscreen-close test pair's
+    order-dependent failure, traced to its caller: offscreen Qt
+    delivered a real applicationStateChanged(ApplicationActive) from
+    inside a test's own qtbot.wait, with the window closed, so
+    MainWindow's reopen handler ran `_on_tray_open_seeker()` —
+    `set_dock_icon_visible(True)` plus a reopen — in the middle of a
+    test that was not about reopening at all. Whether offscreen Qt
+    sends one then depends on earlier tests' focus/activation history,
+    which is why it only fired in the full suite.
+
+    Drops only deliveries that arrive THROUGH the signal (`sender()`
+    is the QApplication); a test calling
+    `window._on_application_state_changed(...)` directly (sender()
+    is None, confirmed by probe) still reaches the real handler, so
+    the reopen contract stays tested. No test depends on an organic
+    delivery — offscreen Qt cannot produce a real Dock click anyway.
+    """
+    from seeker.ui.main_window import MainWindow
+
+    real_handler = MainWindow._on_application_state_changed
+
+    # `functools.wraps` is load-bearing, not cosmetic: PySide6 resolves
+    # a Python slot by `__name__`, and a renamed function gets
+    # `sender() is None` even when the signal delivers it (confirmed by
+    # probe) — which would silently let every organic delivery through.
+    @functools.wraps(real_handler)
+    def direct_calls_only(self, state):
+        if self.sender() is not None:
+            return
+        real_handler(self, state)
+
+    monkeypatch.setattr(
+        MainWindow, "_on_application_state_changed", direct_calls_only,
+    )
 
 
 @pytest.fixture(autouse=True)
