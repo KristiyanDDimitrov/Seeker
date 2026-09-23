@@ -14664,3 +14664,81 @@ which of the three hypotheses (missing size / peer offline / slskd
 unreachable) caused Kris's original report — asked in the handoff for
 Kris to reproduce live now that §1.2/§1.3 make the failure visible and
 logged**, per the brief's own fallback for exactly this case.
+
+### 127 — Round 10 S2 blocked, S3 (§3.1–§3.2): the stress test's stale
+widget handles, repointed and guarded
+
+**S2 blocked on §1.4, not skipped.** Re-checked at the start of this
+session, fresh: `docker ps` — zero containers, slskd still not running
+on this machine. `select count(*) from soulseek_review_candidates` —
+still 0. `~/Library/Logs/Seeker/seeker.log` — still 442 bytes, last
+entry 2026-09-10, unchanged. Nothing new since S1's own check. §2's
+branch (which of the three hypotheses caused Kris's report) is still
+undecided, and the brief is explicit that §2 only starts "after §1.4"
+— so this session moved to S3, the next row with no dependency on
+that answer, rather than guess a branch.
+
+**S3 established, confirmed directly.** The brief's own list of stale
+`MainWindow` attributes was verified live rather than trusted:
+constructing a real `MainWindow(FakeApplication())` and accessing
+`.playlist_list` raises `AttributeError: 'MainWindow' object has no
+attribute 'playlist_list'` — round 8's page extraction moved every one
+of these onto `DashboardPage`/`DuplicatesPage`/`SharingPage`
+(`dashboard_page.py`, `duplicates_page.py`, `sharing_page.py`), and the
+opt-in-only stress test never ran to notice.
+
+**Fix (§3.1).** Added `_StressHandles`, a `@dataclass` holding real
+widget references plus the three page objects themselves, and
+`_resolve_handles(main_window)`, which builds one from
+`main_window._dashboard_page`/`_duplicates_page`/`_sharing_page`. The
+whole test body now reads `handles.<widget>` instead of
+`main_window.<widget>`. One exception: `_current_duplicate_groups` is
+not a stable widget reference — `DuplicatesPage` reassigns it wholesale
+on every compute/delete (`duplicates_page.py:609,989,1155`) — so
+`_StressHandles.current_duplicate_groups` is a `@property` reading
+`self.duplicates_page._current_duplicate_groups` fresh on every access
+rather than a value captured once at resolve time, which would have
+gone stale after the first delete. The two selection helpers
+(`_select_playlist`, `_select_duplicates_location`) were changed to
+take the widget directly instead of `main_window`, so they can't
+regress back to a direct `main_window.<widget>` lookup by accident.
+
+**Fix (§3.2), the guard.** Added
+`test_stress_handles_resolve_against_current_main_window` — not
+opt-in, runs on every push — which builds a real
+`MainWindow(FakeApplication())` and asserts every `_StressHandles`
+field `is` the real widget on the real page object. This is the same
+construction pattern `tests/pages/test_dashboard_page.py` already
+uses. The next refactor that moves one of these widgets again now
+fails on every push, not silently inside a ~5-minute-plus opt-in run
+nobody but Kris triggers.
+
+**Verification.** `uv run pytest tests/test_stress_e2e.py -q` → `1
+passed, 1 skipped` (the guard test passes; the real opt-in test still
+skips without `SEEKER_RUN_STRESS_TEST=1`). `git stash -u` back to
+unmodified `HEAD` and rerun: `1 skipped` — the guard test doesn't exist
+on that side, confirming it is genuinely new, not a pre-existing pass.
+The direct `AttributeError` repro above is the actual "fails on
+unmodified `HEAD` for the stated reason" evidence per §0.4, since the
+brief's own bug is in `main_window.py`'s current shape, not something
+a stashed version of the test file alone can reproduce.
+
+**Heavy imports, checked per the brief's own ask.** `numpy`,
+`soundfile`, `psutil` were already imported at this module's top before
+this session, and the module was already collected on every CI run
+today per §0's own framing — this session's edit adds no new
+dependency (`dataclass`/`field` are already imported from
+`dataclasses`; the three page-class imports and the extra `PySide6`
+widget imports are all already-vendored `PySide6`/`seeker` code, not
+new packages). Full local suite after the change: `1195 passed, 29
+skipped, 2 failed` (X9 Pro not mounted on this machine right now — see
+CLAUDE.md's already-documented 29-vs-1 skip-count explanation — and the
+2 failures are the already-tracked order-dependent fullscreen-close
+pair, scheduled for S5/S6, untouched by this session's diff).
+
+**Not run: the real stress test itself.** This machine has neither the
+X9 Pro drive mounted (`/Volumes/X9 Pro` does not exist) nor slskd
+running (`docker ps` empty) nor a live Spotify session in this
+environment, so `SEEKER_RUN_STRESS_TEST=1 uv run pytest
+tests/test_stress_e2e.py` was not run — left for Kris, per the brief's
+own fallback for exactly this case.
