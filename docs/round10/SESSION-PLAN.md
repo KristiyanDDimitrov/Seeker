@@ -27,7 +27,7 @@ exactly where you stopped.
 | ☑ S4 | CI: the worker-thread-counter test race, repro + audit | §4.1–§4.3 | ~130 K | After §4.2 (the two known tests fixed and pushed) |
 | ☑ S5 | Reopen after a fullscreen close: fill the screen, windowed | §5 | ~130 K | After the Dock-reopen path works; relaunch persistence can stand alone |
 | ☑ S6 | Fullscreen-close test pair: find the real caller, isolate | §6 | ~100 K | After the caller is identified and written down |
-| ☐ S7 | HISTORY backfill, round 9 S7–S10 | §7 | ~80 K | After two of the four entries |
+| ☑ S7 | HISTORY backfill, round 9 S7–S10 | §7 | ~80 K | After two of the four entries |
 
 **Why this order.**
 
