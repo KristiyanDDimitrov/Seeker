@@ -8,60 +8,69 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `fccf411`, pushed. Tree clean (aside from an untracked
-  `Claude outputs/` directory that predates this session — not part of
-  the repo, left alone).
-- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1222
-  passed, 1 skipped, 2 failed`.** The 2 failures are the already-tracked
-  order-dependent pair
+- **HEAD:** `1d1b934`, not yet pushed. Tree clean (aside from an
+  untracked `Claude outputs/` directory that predates this session —
+  not part of the repo, left alone).
+- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1195
+  passed, 29 skipped, 2 failed`.** The 2 failures are the already-
+  tracked order-dependent pair
   (`test_reopening_after_a_fullscreen_close_restores_prior_geometry`,
   `test_fullscreen_close_policy_check_ignores_a_stale_request`) — pass
   individually, fail together under the full suite. Scheduled for S5/S6
-  this round, not touched here.
-- **`mypy --strict src/`: clean, 104 files. `ruff check src tests`: 0
-  findings.**
-- **CI on `fccf411` (this session's push): run `35870225354`,
-  `failure`.** ruff/mypy clean on the run log. The one failure is the
-  OTHER already-tracked CI-only flake
-  (`test_history_refresh_button_refetches`, `pytestqt.exceptions.
-  TimeoutError`) — not new, not this session's diff (this session never
-  touched `history_page.py`). Scheduled for S4 this round.
+  this round, not touched here. **29 skipped, not S1's 1** — this
+  machine has no X9 Pro drive mounted right now
+  (`/Volumes/X9 Pro` doesn't exist); CLAUDE.md's Open issues already
+  explains this exact 29-vs-1 split (28 `@requires_x9_pro` tests + 1
+  `@requires_stress_opt_in`). Not a regression, just this machine's
+  state at the moment.
+- **`mypy --strict src/`: clean, 104 files** (scoped to `src/`, not
+  `tests/`, per CLAUDE.md's own Commands section).
+  **`ruff check src tests`: 0 findings.**
+- **Not pushed this session — no CI run to report.**
 
 ## Where we are in the plan
 
-**Round 10, S1 done — start S2 next.** Brief:
-`docs/BRIEF-2026-09-23-round10.md`. Session map:
-`docs/round10/SESSION-PLAN.md`.
+**Round 10, S1 and S3 done. S2 is blocked, not skipped — see below.**
+Brief: `docs/BRIEF-2026-09-23-round10.md`. Session map:
+`docs/round10/SESSION-PLAN.md`. **Next: S2, but only once Kris answers
+the §1.4 question below — until then, S4 is the next row with no
+dependency on it.**
 
-## S1 report — §1.1-§1.4, Review's Confirm button
+## Why S2 didn't run this session
 
-Full investigation: [HISTORY §126](docs/HISTORY.md#126). Summary:
-three independent defects produced one observed symptom (Confirm
-"does nothing," cell highlight creeps sideways).
+S2's own brief section says "Only after §1.4" — its branch (missing
+size / peer offline / slskd unreachable) is picked by whichever cause
+§1.4 found, and that was **not settled** by S1. This session re-checked
+fresh, in case anything had changed since S1's own check: `docker ps`
+— still zero containers, slskd not running on this machine. `select
+count(*) from soulseek_review_candidates` — still 0. `seeker.log` —
+still 442 bytes, last entry 2026-09-10, unchanged. Nothing new. Rather
+than guess a branch, this session moved to S3, the next row with no
+dependency on the answer. **S2 is still fully blocked on Kris
+reproducing live** (see Waiting on Kris below) — don't start it on a
+guess.
 
-- **§1.1 (fixed):** the moving highlight was real Qt focus traversal —
-  a disabled, previously-focused button makes Qt synthesize a Tab
-  press. `theme.cell_widget` now sets `NoFocus` on every button it
-  wraps (all 15 call sites, not just Review).
-- **§1.2 (fixed):** every Review `run_worker` call wrote errors to the
-  *Dashboard's* `status_label` — invisible from Review, wiped by
-  Dashboard's own 2s poll. Review now has its own `self.notice`
-  (`InlineNotice`), same as Library/TaggingPanel. `status_label`
-  removed from `ReviewHost` entirely.
-- **§1.3 (fixed):** `Worker.run` never logged a traceback on failure —
-  confirmed live via `seeker.log` (442 bytes, last entry 2026-09-10,
-  unchanged as of this session). Now logs one `logger.warning(...,
-  exc_info=True)` per failure, in its own commit (workers.py has the
-  deadlock history — kept independently revertable).
-- **§1.4 (read-only, NOT settled):** the real `soulseek_review_
-  candidates` table is currently **empty** (`select count(*)` → 0) —
-  whatever row Kris hit is gone, most likely worked around via Reject.
-  `docker ps` also shows slskd is not running on this machine right
-  now. Neither read-only check settles which of the three hypotheses
-  (missing size / peer offline / slskd unreachable) caused the
-  original report. **Asking Kris (see below) to reproduce live now
-  that §1.2/§1.3 make a real failure visible and logged** — this was
-  the brief's own named fallback for exactly this case.
+## S3 report — §3.1-§3.2, the stress test's stale widget handles
+
+Full investigation: [HISTORY §127](docs/HISTORY.md#127). Summary:
+round 8's page extraction moved every widget the opt-in stress test
+touches (`playlist_list`, `sync_button`/`scan_button`/`match_button`,
+`status_label`, `download_button`, the duplicates widgets,
+`sharing_summary_label`) off `MainWindow` onto
+`DashboardPage`/`DuplicatesPage`/`SharingPage` — confirmed live via a
+real `AttributeError`, not just trusted from the brief. Fixed with one
+`_StressHandles`/`_resolve_handles(main_window)` seam (`tests/
+test_stress_e2e.py`) the whole test body now reads through, plus a
+new **non-opt-in** guard test,
+`test_stress_handles_resolve_against_current_main_window`, that runs
+on every push. `_current_duplicate_groups` is a `@property` on
+`_StressHandles`, not a captured value — `DuplicatesPage` reassigns it
+wholesale on every compute/delete, so capturing it once at resolve
+time would have gone stale after the first delete.
+
+**Not run: the real stress test.** This machine has no X9 Pro drive
+mounted, no slskd running, and no live Spotify session — left for
+Kris, exact command below.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -72,10 +81,16 @@ default. Don't read a brief section your row doesn't point at.
 
 ## Waiting on Kris
 
-- **New this session:** click Confirm once on a real SoulSeek
-  needs-review candidate (slskd running) and paste back what Review's
-  notice says plus the matching `seeker.log` entry — this settles §1.4
-  and unblocks S2's own branch (brief §2 is built on the answer).
+- **Still open from S1, blocks S2:** click Confirm once on a real
+  SoulSeek needs-review candidate (slskd running) and paste back what
+  Review's notice says plus the matching `seeker.log` entry — this
+  settles §1.4 and unblocks S2's branch.
+- **New this session:** run the real stress test,
+  `SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
+  with the X9 Pro mounted and Spotify and slskd up, and paste the
+  resource table. This is still the round-9 §1.5b check, and S3's own
+  fix means the widget lookups it now uses are real for the first time
+  since round 8.
 - Carried, unaddressed: click through the Review page's splitter (S8)
   on a real display; the Library context header/picker (round 9 S10)
   on a real display, both themes. No automated screenshot exists for
@@ -88,7 +103,7 @@ default. Don't read a brief section your row doesn't point at.
   the replace-button half of this pair should be re-examined after
   §1.2, since it now waits on the notice instead of the old vacuous
   assertion) are all unchanged — tracked in CLAUDE.md's Open issues.
-- `docs/HISTORY.md` is still growing (now through §126), never read
+- `docs/HISTORY.md` is still growing (now through §127), never read
   whole. No HISTORY entry yet for round 9 §3.2 (S7), §6 (S8), §7.1
   (S9), or §7.2 (S10) — round 10's own S7 row is scheduled to backfill
   these.
