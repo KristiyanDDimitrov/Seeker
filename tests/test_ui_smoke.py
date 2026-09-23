@@ -3563,8 +3563,8 @@ def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
     # tear the Space down correctly, since it's the platform's own.
     # `isFullScreen()` deliberately still reports True here — Qt's
     # window-state flags don't reset on hide() alone, only on the
-    # explicit `showNormal()` `_on_tray_open_seeker` performs on reopen
-    # (see the geometry-restore test below).
+    # explicit `show_restored()` `_on_tray_open_seeker` performs on
+    # reopen (see the reopen tests below).
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
@@ -3581,26 +3581,28 @@ def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
     # (E1.4, round 7, corrected after review) — `isHidden()` above is
     # unaffected, since `hide()` itself is never deferred.
     qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
-    assert window._pre_fullscreen_geometry is not None
+    assert window._reopen_filled is True
 
 
-def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
+def test_reopening_after_a_fullscreen_close_restores_maximized_not_fullscreen(
         qtbot, monkeypatch,
 ):
-    # D4.2/E1 — reopening from the menu bar must give back the window
-    # the user had, not an arbitrary default. `_pre_fullscreen_geometry`
-    # is captured in `closeEvent`, before anything about fullscreen
-    # state changes at all (E1 no longer calls `showNormal()` there);
-    # `_on_tray_open_seeker` is what actually clears fullscreen and
-    # restores it.
+    # Round 10 §5 — Kris's decision, 2026-09-23: a window closed while
+    # fullscreen comes back filling the screen as a NORMAL window, not
+    # re-entering macOS fullscreen — that transition is round 7's own
+    # E1 (an empty, unclosable window). `_reopen_filled` is captured in
+    # `closeEvent`, before anything about fullscreen state changes at
+    # all; `show_restored()` is what actually turns it into
+    # `showMaximized()` on reopen. Offscreen Qt asserts window STATE
+    # only, never pixels (round 9 §3.1 follow-up 3) — the previous
+    # version of this test asserted a restored geometry rect, which is
+    # no longer the contract at all.
     _force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.show()
-    window.setGeometry(QRect(50, 60, 1000, 700))
     qtbot.wait(20)
-    expected_geometry = window.normalGeometry()
 
     window.showFullScreen()
     qtbot.wait(20)
@@ -3611,7 +3613,92 @@ def test_reopening_after_a_fullscreen_close_restores_prior_geometry(
     window._tray._on_tray_open_seeker()
 
     assert not window.isFullScreen()
-    assert window.geometry() == expected_geometry
+    assert window.isMaximized()
+
+
+def test_reopening_after_a_windowed_close_restores_the_same_normal_size(
+        qtbot, monkeypatch,
+):
+    # The other half of the same decision: a window closed WITHOUT
+    # being filled comes back at exactly its windowed geometry, as
+    # before — `_reopen_filled` must not blanket-maximize every reopen.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    window.setGeometry(QRect(50, 60, 1000, 700))
+    qtbot.wait(20)
+    expected_size = window.normalGeometry().size()
+
+    window.close()
+    qtbot.wait(20)
+    assert window.isHidden()
+
+    window._tray._on_tray_open_seeker()
+
+    assert not window.isMaximized()
+    assert not window.isFullScreen()
+    assert window.normalGeometry().size() == expected_size
+
+
+def test_reopening_after_a_zoomed_close_restores_maximized(
+        qtbot, monkeypatch,
+):
+    # The brief's own "related problem" #2: a window closed via Window
+    # -> Zoom used to reopen un-zoomed, because the old unconditional
+    # showNormal() call cleared it. The same _reopen_filled flag fixes
+    # both — set from isMaximized() at close, same as fullscreen.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+
+    window.showMaximized()
+    qtbot.wait(20)
+    assert window.isMaximized()
+    window.close()
+    qtbot.wait(20)
+    assert window.isHidden()
+
+    window._tray._on_tray_open_seeker()
+
+    assert window.isMaximized()
+    assert not window.isFullScreen()
+
+
+def test_restore_window_geometry_clears_a_fullscreen_flag_and_treats_it_filled(
+        qtbot,
+):
+    # Round 10 §5 — closeEvent's fullscreen branch still has to persist
+    # geometry while genuinely fullscreen (see that method's own
+    # comment on why state can't be changed first), so a real saved
+    # blob CAN carry Qt's own WindowFullScreen state bit.
+    # _restore_window_geometry() is the one place that strips it back
+    # out and treats it as filled instead, every time it runs (both the
+    # __init__ call and showEvent's post-layout re-apply) — "never let
+    # a restore enter fullscreen" applies to the geometry BLOB, not
+    # just the separate window_reopen_filled flag.
+    source_window = MainWindow(FakeApplication())
+    qtbot.addWidget(source_window)
+    source_window.showFullScreen()
+    qtbot.wait(20)
+    assert source_window.isFullScreen()
+    saved = base64.b64encode(
+        bytes(source_window.saveGeometry().data())
+    ).decode("ascii")
+
+    application = FakeApplication()
+    application._config_store = replace(
+        application._config_store, window_geometry=saved,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    assert not window.isFullScreen()
+    assert window._reopen_filled is True
 
 
 def test_close_to_tray_persists_geometry_for_a_fresh_window_to_restore(
@@ -4217,7 +4304,7 @@ def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
     assert quit_calls == [True]
     # Nothing about the close/hide-to-tray machinery fired.
     assert window._hidden_to_tray is False
-    assert window._pre_fullscreen_geometry is None
+    assert window._reopen_filled is False
 
 
 def test_cleanup_before_quit_stops_timers_and_hides_tray(qtbot, monkeypatch):

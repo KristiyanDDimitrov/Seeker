@@ -21,14 +21,22 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRect, Qt, QThreadPool
+from PySide6.QtCore import Qt, QThreadPool
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from seeker.application import Application
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.ui.workers import run_worker
+
+if TYPE_CHECKING:
+    # Import-cycle-only: main_window.py imports TrayController/TrayHost
+    # from this module at runtime, so this side can only reach back for
+    # typing, guarded by `from __future__ import annotations` above
+    # (never evaluated at import time).
+    from seeker.ui.main_window import MainWindow
 
 # Roadmap item R7.5 — an unreachable slskd must not emit a tray
 # notification on every 20s backend-poll error; untuned, same
@@ -45,18 +53,21 @@ class TrayHost:
     `application`/`thread_pool`/`window` are real, stable references
     (never reassigned) — same direct-reference treatment PageContext
     already gives `application`/`thread_pool` and ReviewHost gives
-    `status_label`. `window` is used only for the handful of genuinely
-    generic QMainWindow operations reopening needs (showNormal/raise_/
-    activateWindow/isVisible/setGeometry) — not as a back door to
-    MainWindow's own private state.
+    `status_label`. `window` is used only for the handful of operations
+    reopening needs (`show_restored`/raise_/activateWindow/isVisible) —
+    not as a back door to MainWindow's own private state; `show_
+    restored` is itself public precisely so this module can call it.
 
-    `get_hidden_to_tray`/`set_hidden_to_tray`/`bump_hide_request_id`/
-    `get_pre_fullscreen_geometry`/`clear_pre_fullscreen_geometry` are
+    `get_hidden_to_tray`/`set_hidden_to_tray`/`bump_hide_request_id` are
     genuinely shared mutable state with MainWindow's own closeEvent and
     hide-to-tray verification (staying there per this module's own
     docstring) — get/set callables, not values captured once, since
     both sides read AND write them. Same shape as PageContext's own
-    `is_hidden_to_tray`.
+    `is_hidden_to_tray`. Round 10 §5 — `window.show_restored()`
+    replaces the old `showNormal()` + pre-fullscreen-geometry
+    `setGeometry()` pair this class used to run itself; `_reopen_
+    filled` stays MainWindow-private, read through that one public
+    method instead of its own get/clear pair.
 
     `set_dock_icon_visible` is a real seam, not just style: routed
     through a MainWindow method (bound at construction, resolved by
@@ -72,7 +83,7 @@ class TrayHost:
     """
     application: Application
     thread_pool: QThreadPool
-    window: QMainWindow
+    window: MainWindow
     navigate: Callable[[str], None]
     render_activity_strip: Callable[[], None]
     set_dock_icon_visible: Callable[[bool], None]
@@ -84,8 +95,6 @@ class TrayHost:
     get_hidden_to_tray: Callable[[], bool]
     set_hidden_to_tray: Callable[[bool], None]
     bump_hide_request_id: Callable[[], None]
-    get_pre_fullscreen_geometry: Callable[[], QRect | None]
-    clear_pre_fullscreen_geometry: Callable[[], None]
     needs_review_count: Callable[[], int]
     pending_upgrades_count: Callable[[], int]
     active_downloads_count: Callable[[], int]
@@ -281,14 +290,10 @@ class TrayController:
         # window must be shown by an app that is already Regular, or it
         # can come up behind other applications.
         self._host.set_dock_icon_visible(True)
-        self._host.window.showNormal()
-        # D4.2 — give back the exact window the user had before it was
-        # hidden, rather than whatever `showNormal()` alone resolves to
-        # after a fullscreen-exit-then-hide cycle.
-        pre_fullscreen_geometry = self._host.get_pre_fullscreen_geometry()
-        if pre_fullscreen_geometry is not None:
-            self._host.window.setGeometry(pre_fullscreen_geometry)
-            self._host.clear_pre_fullscreen_geometry()
+        # Round 10 §5 — give back the window filled (maximized) or
+        # windowed exactly as the user left it, never re-entering
+        # fullscreen; see MainWindow.show_restored()'s own docstring.
+        self._host.window.show_restored()
         self._host.window.raise_()
         self._host.window.activateWindow()
         # Roadmap item R7.6 — the poll methods skip their own work

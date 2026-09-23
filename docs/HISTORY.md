@@ -14845,3 +14845,133 @@ clean, 104 files (unaffected — this session touched only `tests/`).
 **CLAUDE.md.** Both flakes' entries removed from Open issues'
 "round-8 test flakes" list (now three remaining, not five) and replaced
 with one condensed closed-item note linking here.
+
+---
+
+### 129 — Round 10 S5 (§5): reopen after a fullscreen/zoomed close fills
+the screen, never re-enters fullscreen
+
+**Kris's decision, 2026-09-23.** A window closed while fullscreen or
+maximized/zoomed comes back **filling the screen as a normal window**
+on Dock/menu-bar reopen or relaunch — never re-entering macOS
+fullscreen. Re-entering a fullscreen Space is the transition that
+produced round 7's E1 (an empty, unclosable window), and a
+start-at-login app jumping into its own Space on relaunch is hostile.
+A window closed windowed still comes back at exactly its windowed
+geometry, unchanged.
+
+**What changed.** `_pre_fullscreen_geometry: QRect | None`
+(`main_window.py`) replaced by `_reopen_filled: bool`, set in
+`closeEvent` (both the fullscreen-darwin branch and the ordinary hide
+branch) from one expression — `self.isFullScreen() or
+self.isMaximized()` — captured before either branch changes window
+state, so it reflects how the user actually left the window. One new
+method, `MainWindow.show_restored()`, owns "show the window the way it
+was closed": `showMaximized()` when `_reopen_filled`, else
+`showNormal()`. `TrayController._on_tray_open_seeker`
+(`ui/tray.py`) calls it in place of the old `showNormal()` +
+`get_pre_fullscreen_geometry()`/`setGeometry()`/
+`clear_pre_fullscreen_geometry()` sequence; those two `TrayHost`
+callables are gone, and `TrayHost.window` is now typed `MainWindow`
+(via a `TYPE_CHECKING`-guarded import, since `main_window.py` imports
+`TrayController`/`TrayHost` from `tray.py` at runtime — the reverse
+import would be circular) so `show_restored()` is callable on it at
+all; every other `TrayHost.window` use was already a real `QMainWindow`
+method, so nothing else needed the tighter type.
+
+**Persisted for relaunch.** A new `SeekerConfig.window_reopen_filled:
+bool = False` field (`config_store.py`, same flat-additive-JSON
+tolerance as every other optional field — a `config.json` predating it
+loads unchanged, defaulting False). `MainWindow.__init__` seeds
+`_reopen_filled` from `application.settings.window_reopen_filled`
+(rather than hardcoding `False`), and `_persist_window_geometry` writes
+it back alongside `window_geometry`/`last_open_page`. `main_ui.py`'s
+first `window.show()` is now `window.show_restored()` (guarded by
+`isinstance(window, MainWindow)` — the wizard-first-run path has no
+such state and keeps the plain `show()`), so a relaunch honors the same
+decision a live tray reopen does.
+
+**The part that isn't optional: `_restore_window_geometry` itself must
+never let a restore enter fullscreen.** `closeEvent`'s fullscreen
+branch still has to persist geometry while the window is genuinely
+fullscreen — see that method's own comment on why window state can't
+be changed before AppKit's own close animation runs — so
+`saveGeometry()`'s blob there unavoidably still carries Qt's own
+`WindowFullScreen` state bit, and `restoreGeometry()` will reproduce it
+on every call. `_restore_window_geometry` now checks
+`windowState() & Qt.WindowState.WindowFullScreen` immediately after
+every `restoreGeometry()` call and, if set, strips the bit and ORs in
+`WindowMaximized` instead, and sets `_reopen_filled = True` to match.
+This runs at both call sites — `__init__`'s best-effort call and
+`showEvent`'s round-9-§3.1-follow-up post-layout re-apply — so a legacy
+blob predating this fix, or a freshly-saved fullscreen-close blob, both
+get corrected the same way every time, not just once.
+
+**Ordering, made explicit (the brief's own ask).** `showEvent`'s
+first-show re-apply calls `_restore_window_geometry()` (which can, on
+its own, decide a Normal state — e.g. a geometry blob saved before
+`window_reopen_filled` existed, disagreeing with a since-set flag) and
+then, if `_reopen_filled` is still `True`, calls `showMaximized()`
+again, unconditionally, as the last write in that method. This is a
+no-op whenever the geometry restore and the flag already agree (the
+ordinary case) and a deterministic override whenever they don't — the
+concrete failure mode this ordering rules out is `show_restored()`
+maximizing the window on first show, then `showEvent`'s own re-apply
+silently un-maximizing it moments later.
+
+**Two related problems, same fix.** A window closed via Window → Zoom
+(`_on_zoom_clicked`) used to reopen un-zoomed — `showNormal()` cleared
+it unconditionally. `isMaximized()` folding into the same
+`_reopen_filled` expression as `isFullScreen()` fixes this for free;
+`test_reopening_after_a_zoomed_close_restores_maximized` covers it
+directly.
+
+**Tests.** Offscreen Qt asserts window STATE only, never pixels (round
+9 §3.1 follow-up 3 — a prior pixel-geometry assertion in this exact
+test area is what let round 9's own fix ship broken on real CI).
+`test_reopening_after_a_fullscreen_close_restores_prior_geometry`
+rewritten (renamed
+`test_reopening_after_a_fullscreen_close_restores_maximized_not_
+fullscreen`) to assert `isMaximized()`/`not isFullScreen()` instead of
+a restored `QRect`. New:
+`test_reopening_after_a_windowed_close_restores_the_same_normal_size`
+(the unfilled half of the same decision, `normalGeometry().size()`
+still an exact match), `test_reopening_after_a_zoomed_close_restores_
+maximized`, `test_restore_window_geometry_clears_a_fullscreen_flag_
+and_treats_it_filled` (builds a REAL saved blob from a real
+`showFullScreen()`'d window's own `saveGeometry()` — not a fake byte
+string — so the `WindowFullScreen` bit in it is genuine, then confirms
+a fresh `MainWindow` restoring it comes back not-fullscreen with
+`_reopen_filled` True). `test_config_store.py` gained the same
+missing-key-defaults-False / round-trips pair every other optional
+`SeekerConfig` field already has. Two existing assertions updated for
+the renamed attribute
+(`test_close_event_from_fullscreen_hides_without_leaving_fullscreen_
+first`, `test_tray_quit_from_fullscreen_bypasses_closeevent_entirely`).
+Every new/changed test confirmed failing on unmodified `HEAD` first,
+for the stated reason (missing `_reopen_filled` attribute /
+`isFullScreen()` still `True` after reopen), before the fix.
+
+**Verification.** `uv run pytest -q`: `1202 passed, 29 skipped` (0
+failed) on 4 of 5 full-suite runs this session. The 5th run failed
+`test_reopening_after_a_fullscreen_close_restores_maximized_not_
+fullscreen` together with `test_fullscreen_close_policy_check_ignores_
+a_stale_request` — both passed immediately when re-run alone. This is
+the SAME pre-existing, already-tracked, order-dependent pair CLAUDE.md's
+Open issues describes (three prior recurrences noted there before this
+session); the renamed geometry test is the direct descendant of the
+test named in that entry's own history, so this is its fourth
+recurrence, not a new defect introduced here — diagnosing the actual
+cross-test leak is S6's own scope (see the session plan's division of
+labor: "S6 diagnoses whatever is left against the new code, not the
+old"). `mypy --strict src/`: clean, 104 files. `ruff check src tests`:
+clean.
+
+**Not done this session — real-Mac verification is the brief's own
+stated acceptance test**, not offscreen Qt (see the pixel-geometry
+comment above — that's exactly what let round 9's fix ship broken).
+Three checks are still owed by Kris: fullscreen close → Dock reopen
+(fills the screen, windowed); resize → close → Dock reopen (same
+size); fullscreen close → quit from the menu bar → relaunch (fills the
+screen, windowed). See `docs/HANDOFF.md`'s own "Waiting on Kris"
+section.

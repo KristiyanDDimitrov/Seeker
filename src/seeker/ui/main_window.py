@@ -11,7 +11,6 @@ from PySide6.QtCore import (
     QEvent,
     QObject,
     QPointF,
-    QRect,
     QRectF,
     Qt,
     QThreadPool,
@@ -351,11 +350,21 @@ class MainWindow(QMainWindow):
         # FIRST real show, never a later one (reopening from the tray
         # must not stomp on a size the user has since resized to).
         self._window_geometry_restored_after_first_show = False
-        # Roadmap item E1 (round 7) — captured in `closeEvent` before a
-        # fullscreen window is allowed to close for real, so `_on_tray_
-        # open_seeker` can restore the pre-fullscreen size/position
-        # instead of whatever a bare reopen resolves to.
-        self._pre_fullscreen_geometry: QRect | None = None
+        # Round 10 §5 — replaces round 7's `_pre_fullscreen_geometry`.
+        # Kris's decision (2026-09-23): a window closed fullscreen or
+        # maximized/zoomed comes back FILLING THE SCREEN AS A NORMAL
+        # WINDOW, never re-entering macOS fullscreen (that transition
+        # is round 7's own E1 — an empty, unclosable window). Set in
+        # `closeEvent` (both branches) as `isFullScreen() or
+        # isMaximized()`, captured before anything changes window
+        # state. Initialized from the persisted setting so a fresh
+        # relaunch honors the same reopen behavior a live reopen would
+        # (`show_restored()`'s only caller besides `_on_tray_open_
+        # seeker` is `main_ui.py`'s first `window.show()`);
+        # `_restore_window_geometry()` can also set this True later in
+        # `__init__`, if the geometry blob itself still carries Qt's
+        # own fullscreen state bit — see that method's own comment.
+        self._reopen_filled = application.settings.window_reopen_filled
         # Roadmap item E1.4 (round 7, corrected after a second review) —
         # a monotonic counter, bumped on every hide-to-tray attempt AND
         # every deliberate reopen (`_on_tray_open_seeker`). A delayed
@@ -575,12 +584,13 @@ class MainWindow(QMainWindow):
         # exist yet at this point in construction (this runs before
         # _build_ui()) — TrayController only calls them later, on a
         # real reopen. `get_hidden_to_tray`/`set_hidden_to_tray`/
-        # `bump_hide_request_id`/`get_pre_fullscreen_geometry`/
-        # `clear_pre_fullscreen_geometry` are genuinely shared mutable
-        # state with closeEvent/the hide-to-tray verification below
-        # (staying on MainWindow — see tray.py's own module docstring
-        # for why), same read-through-a-seam shape as PageContext's
-        # `is_hidden_to_tray`.
+        # `bump_hide_request_id` are genuinely shared mutable state
+        # with closeEvent/the hide-to-tray verification below (staying
+        # on MainWindow — see tray.py's own module docstring for why),
+        # same read-through-a-seam shape as PageContext's
+        # `is_hidden_to_tray`. `_reopen_filled` (round 10 §5) is not
+        # passed through the same way — `show_restored()` reads it
+        # directly off `window`, itself already a TrayHost field.
         return TrayController(TrayHost(
             application=self.application,
             thread_pool=self.thread_pool,
@@ -612,8 +622,6 @@ class MainWindow(QMainWindow):
             get_hidden_to_tray=lambda: self._hidden_to_tray,
             set_hidden_to_tray=self._set_hidden_to_tray,
             bump_hide_request_id=self._bump_hide_request_id,
-            get_pre_fullscreen_geometry=lambda: self._pre_fullscreen_geometry,
-            clear_pre_fullscreen_geometry=self._clear_pre_fullscreen_geometry,
             needs_review_count=lambda: self._review_page._needs_review_count,
             pending_upgrades_count=(
                 lambda: self._review_page._pending_upgrades_count
@@ -814,6 +822,22 @@ class MainWindow(QMainWindow):
             return
 
         self.restoreGeometry(QByteArray(raw))
+        # Round 10 §5 — closeEvent's fullscreen branch has to persist
+        # geometry while genuinely fullscreen (see that method's own
+        # comment on why window state can't be changed before AppKit's
+        # own close animation runs), so a real saved blob CAN still
+        # carry Qt's own WindowFullScreen state bit — restoreGeometry()
+        # above just re-applied it. Stripped back out and treated as
+        # filled instead, every time this runs (both the __init__ call
+        # and showEvent's post-layout re-apply below): Kris's decision
+        # is "never re-enter fullscreen on a restore," full stop, not
+        # just "the window_reopen_filled flag says so."
+        if self.windowState() & Qt.WindowState.WindowFullScreen:
+            self.setWindowState(
+                (self.windowState() & ~Qt.WindowState.WindowFullScreen)
+                | Qt.WindowState.WindowMaximized
+            )
+            self._reopen_filled = True
 
     def _persist_window_geometry(self) -> None:
         # Round 8 §12.1 — called from cleanup_before_quit, the one real
@@ -836,6 +860,7 @@ class MainWindow(QMainWindow):
         )
         self.application.update_settings(
             window_geometry=encoded, last_open_page=page_key,
+            window_reopen_filled=self._reopen_filled,
         )
 
     # History's own delegating properties (window.history_table, etc.)
@@ -1742,8 +1767,19 @@ class MainWindow(QMainWindow):
     def _bump_hide_request_id(self) -> None:
         self._hide_request_id += 1
 
-    def _clear_pre_fullscreen_geometry(self) -> None:
-        self._pre_fullscreen_geometry = None
+    def show_restored(self) -> None:
+        """Show the window the way it was closed — round 10 §5, the
+        single method that owns "come back filled or windowed."
+        Replaces the old `showNormal()` + pre-fullscreen-geometry
+        `setGeometry()` pair `_on_tray_open_seeker` used to run
+        directly; `main_ui.py`'s first show honors the same flag
+        (loaded from settings at construction — see `_reopen_filled`'s
+        own comment) so a relaunch behaves like a live reopen.
+        """
+        if self._reopen_filled:
+            self.showMaximized()
+        else:
+            self.showNormal()
 
     def _set_dock_icon_visible_policy(self, visible: bool) -> None:
         # A real seam, not just style — see TrayHost's own
@@ -1963,6 +1999,17 @@ class MainWindow(QMainWindow):
         if not self._window_geometry_restored_after_first_show:
             self._window_geometry_restored_after_first_show = True
             self._restore_window_geometry()
+            # Round 10 §5 — enforced deterministically LAST, after the
+            # geometry re-apply above: `_restore_window_geometry()`'s
+            # own `restoreGeometry()` call can decide a Normal window
+            # state on its own (e.g. a geometry blob saved before
+            # `window_reopen_filled` existed, disagreeing with a since-
+            # set flag) — this makes sure that can never un-maximize a
+            # window `show_restored()` already filled moments earlier.
+            # A no-op whenever the two already agree, which is the
+            # ordinary case.
+            if self._reopen_filled:
+                self.showMaximized()
 
     def start_hidden_to_tray(self) -> bool:
         """Round 9 §3.2's "start hidden in the menu bar" option — the
@@ -2002,6 +2049,14 @@ class MainWindow(QMainWindow):
         # `_hide_request_id`'s own comment at its declaration).
         self._hide_request_id += 1
 
+        # Round 10 §5 — captured before anything below changes window
+        # state (both branches use this same value), so it reflects
+        # how the user actually left the window, not whatever's left
+        # after hide()/AppKit's own close handling runs. Kris's
+        # decision, 2026-09-23: a reopen fills the screen as a normal
+        # window either way — it never re-enters fullscreen.
+        reopen_filled = self.isFullScreen() or self.isMaximized()
+
         # Roadmap item E1 (round 7) — reverses D4 (round 6). D4's
         # "exit fullscreen, defer the hide to the next WindowStateChange"
         # was only ever confirmed under offscreen QPA, which has no
@@ -2023,7 +2078,7 @@ class MainWindow(QMainWindow):
         # DeleteOnClose` is handled once, where the tray icon is built
         # (`_build_tray_icon`) — not here; see that comment.
         if sys.platform == "darwin" and self.isFullScreen():
-            self._pre_fullscreen_geometry = self.normalGeometry()
+            self._reopen_filled = reopen_filled
             # Round 9 §3.1 — persisted here, while the window is still
             # genuinely visible, rather than left solely to
             # cleanup_before_quit's backstop: in Kris's real flow the
@@ -2066,6 +2121,7 @@ class MainWindow(QMainWindow):
             return
 
         event.ignore()
+        self._reopen_filled = reopen_filled
         # Round 9 §3.1 — persisted while still visible, before hide()
         # below makes it not; see the fullscreen branch above for the
         # same reasoning.

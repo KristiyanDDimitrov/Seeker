@@ -87,5 +87,13 @@ def main() -> None:
         window = OnboardingWizard(application, on_complete=show_dashboard)
 
     if not started_hidden:
-        window.show()
+        # Round 10 §5 — a relaunch honors the same "came back filled or
+        # windowed, never fullscreen" decision a live tray reopen does;
+        # MainWindow.show_restored() reads the flag `__init__` already
+        # loaded from settings. The wizard-first-run path has no such
+        # state at all, so it keeps the plain show().
+        if isinstance(window, MainWindow):
+            window.show_restored()
+        else:
+            window.show()
     sys.exit(qt_app.exec())

@@ -86,6 +86,17 @@ class SeekerConfig:
     # leaving the splitter at its hardcoded first-run proportions, so
     # no validation is needed here.
     review_splitter_state: str | None = None
+    # Round 10 §5 — whether the window was closed fullscreen or
+    # maximized/zoomed, so a reopen (Dock/menu-bar icon) or a relaunch
+    # can come back filling the screen as a normal window rather than
+    # re-entering macOS fullscreen (Kris's decision, 2026-09-23: never
+    # re-enter fullscreen on reopen — that transition is round 7's E1).
+    # Mirrors window_geometry's own "written at real close, tolerant of
+    # a missing key" shape; MainWindow._restore_window_geometry() is
+    # the actual enforcement point, not this field alone (a saved
+    # window_geometry blob from a fullscreen close still carries Qt's
+    # own FullScreen state bit and has to be corrected there too).
+    window_reopen_filled: bool = False
 
 
 def resolve_config_path() -> Path:
@@ -144,6 +155,7 @@ def load_config(path: Path) -> SeekerConfig:
         last_open_page=data.get("last_open_page"),
         start_hidden_at_login=data.get("start_hidden_at_login", False),
         review_splitter_state=data.get("review_splitter_state"),
+        window_reopen_filled=data.get("window_reopen_filled", False),
     )
 
 

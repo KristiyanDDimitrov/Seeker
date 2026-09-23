@@ -246,6 +246,29 @@ def test_load_config_start_hidden_at_login_round_trips(tmp_path):
     assert loaded.start_hidden_at_login is True
 
 
+def test_load_config_missing_window_reopen_filled_defaults_to_false(
+        tmp_path,
+):
+    # Round 10 §5 — a config.json predating this field has no such
+    # key at all, same flat-additive-JSON tolerance as start_hidden_
+    # at_login above.
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.window_reopen_filled is False
+
+
+def test_load_config_window_reopen_filled_round_trips(tmp_path):
+    path = tmp_path / "config.json"
+    save_config(SeekerConfig(window_reopen_filled=True), path)
+
+    loaded = load_config(path)
+
+    assert loaded.window_reopen_filled is True
+
+
 @skip_on_windows
 def test_save_config_sets_restrictive_permissions(tmp_path):
     path = tmp_path / "config.json"

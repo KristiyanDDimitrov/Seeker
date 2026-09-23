@@ -532,7 +532,16 @@ Genuinely open only — no "done" items, no flakes that resolved.
     selection every time). Same failure (`assert dock_calls == []`
     actually `[True]`) both times. This is the third recurrence the
     prior note named as its own trigger for a dedicated diagnosis
-    session — genuinely due now, not just close to the bar.
+    session — genuinely due now, not just close to the bar. **Round 10
+    S5: fourth recurrence, same pair, together again** — the other
+    test in the pair is now named `test_reopening_after_a_fullscreen_
+    close_restores_maximized_not_fullscreen` (S5, §5, renamed from the
+    S14-era `..._restores_prior_geometry`; same test lineage, rewritten
+    to a new contract — see [HISTORY §129](docs/HISTORY.md#129)). Both
+    passed individually immediately after. S5 did not attempt a
+    diagnosis (out of its own scope per the round-10 session plan) —
+    still S6's own item, due now on its third-recurrence bar from
+    before this one even landed.
   - `test_view_menu_focus_search_navigates_and_focuses_the_search_field`
     (added S15, §12.3/§12.5) — fails on real CI (`macos-latest`) with
     `assert False` on `search_artist_edit.hasFocus()`, confirmed on TWO

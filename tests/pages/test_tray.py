@@ -9,7 +9,7 @@ even where they trigger a TrayController action along the way
 (_on_tray_open_seeker, _on_tray_icon_activated, _on_tray_check_now,
 _on_tray_quit from a fullscreen state, _on_application_state_changed,
 cleanup_before_quit): each of those asserts on MainWindow's own
-_hidden_to_tray/isVisible/_pre_fullscreen_geometry/_app_state_connected/
+_hidden_to_tray/isVisible/_reopen_filled/_app_state_connected/
 poll-timer state, not on anything TrayController owns, so they belong
 with the window-side machinery they are actually verifying.
 """
