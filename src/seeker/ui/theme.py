@@ -41,6 +41,7 @@ from dataclasses import dataclass, fields
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QFrame,
     QHBoxLayout,
@@ -387,6 +388,16 @@ def cell_widget(*widgets: QWidget) -> QWidget:
     )
     layout.setSpacing(SPACING_SM)
     for widget in widgets:
+        # §1.1 (round 10) — a click gives a StrongFocus button real
+        # keyboard focus; disabling it later (run_worker's pattern)
+        # then makes Qt synthesize a Tab press on its behalf via
+        # focusNextChild(), walking the table's current cell one
+        # column to the right per click. NoFocus stops the button from
+        # ever taking focus in the first place. Nothing is lost for
+        # keyboard users — tabKeyNavigation (on by default) already
+        # moves between cells without ever entering a cell widget.
+        if isinstance(widget, QAbstractButton):
+            widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(widget)
     layout.addStretch()
     return container

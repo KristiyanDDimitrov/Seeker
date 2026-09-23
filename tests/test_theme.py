@@ -104,6 +104,30 @@ def test_cell_widget_single_label_matches_existing_shared_state_pattern(qtbot):
     assert label.parentWidget() is container
 
 
+def test_cell_widget_button_does_not_steal_tab_focus_when_disabled(qtbot):
+    # §1.1 — a real click gives the button keyboard focus; disabling it
+    # the way run_worker does (workers.py) then makes Qt synthesize a
+    # Tab press on its behalf, walking the current cell one column to
+    # the right. Confirm's "does nothing but the highlight moves" bug
+    # was exactly this. cell_widget() must set NoFocus on every button
+    # it wraps so a click never grants focus in the first place.
+    table = QTableWidget(1, 3)
+    table.setItem(0, 0, QTableWidgetItem("track"))
+    table.setItem(0, 1, QTableWidgetItem("score"))
+    button = QPushButton("Confirm")
+    table.setCellWidget(0, 2, theme.cell_widget(button))
+    qtbot.addWidget(table)
+    table.resize(400, 100)
+    table.show()
+    qtbot.waitExposed(table)
+
+    table.setCurrentCell(0, 0)
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+    button.setEnabled(False)
+
+    assert table.currentColumn() == 0
+
+
 def test_actions_column_click_never_sorts_and_shows_no_indicator(qtbot):
     # §5.2 — a click on an Actions column header must neither sort by
     # it nor leave the indicator sitting on it; a real click, not a
