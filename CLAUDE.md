@@ -199,9 +199,13 @@ src/seeker/
 - **Page widgets live in `ui/pages/`, one `QWidget` subclass per page,
   never a `MainWindow` mixin.** Each takes a `PageContext`
   (`ui/pages/context.py` — application, thread pool, busy-action
-  registry, `navigate`, `notify`) and never reaches back into
-  `MainWindow`; `MainWindow` itself is the shell (nav, timers, tray).
-  [HISTORY §119](docs/HISTORY.md#119)
+  registry, `navigate`, `run_busy_worker`, and the rest) and never
+  reaches back into `MainWindow`; `MainWindow` itself is the shell
+  (nav, timers, tray). [HISTORY §119](docs/HISTORY.md#119)
+  Cross-page selection state goes through
+  `PageContext.playlist_selection` (`ui/playlist_selection.py`),
+  never through one page reading another's attributes; Dashboard and
+  Library both write it. [HISTORY §133](docs/HISTORY.md#133)
 - **Five UI feedback channels, each with exactly one job — never blur
   them.** Activity strip (top): GLOBAL, cross-page, whatever
   `busy_actions` reports running anywhere, auto-hides when idle.
@@ -410,6 +414,18 @@ Each links to the HISTORY.md item where the full investigation lives.
   whichever column `ColumnLayout.actions` names, for every table, so
   a new Actions column needs no per-page handling at all.
   [HISTORY §122](docs/HISTORY.md#122)
+- **Never synchronously rebuild a widget from a handler that can run
+  inside that widget's own selection/data-changed emission** —
+  directly or via a shared signal like `PlaylistSelection.changed`.
+  Reproduced as a real SIGSEGV (Dashboard's `track_table` cleared
+  from inside its own `itemSelectionChanged`); defer with
+  `QTimer.singleShot(0, ...)`, as `_on_shared_selection_changed`
+  does. [HISTORY §134](docs/HISTORY.md#134)
+- A page inside `MainWindow`'s `QStackedWidget` has no real geometry
+  until first navigated to — restore saved splitter/size state from
+  its first real `showEvent`, never its constructor
+  (`ReviewPage._restore_splitter_state`). [HISTORY
+  §132](docs/HISTORY.md#132)
 
 ### Testing
 
@@ -462,6 +478,12 @@ Each links to the HISTORY.md item where the full investigation lives.
   output plus explicit Homebrew/Docker-Desktop fallbacks into
   `os.environ["PATH"]` once, at `Application.__init__`.
   [HISTORY §44](docs/HISTORY.md#44)
+- `login_item.py` (`SMAppService`) is a no-op outside a frozen `.app`
+  — `is_supported()` needs `sys.frozen`, since a `uv run` process has
+  no bundle identifier. Its status is always read live, never
+  mirrored into `config.json`, so a System Settings revocation shows
+  immediately. Real register/unregister on a packaged build is still
+  UNVERIFIED. [HISTORY §131](docs/HISTORY.md#131)
 
 ## Open issues
 

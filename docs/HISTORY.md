@@ -15064,3 +15064,222 @@ repro tests fail on `HEAD` as pasted above and pass with the fixture.
 `mypy --strict src/`: clean, 104 files. `ruff check src tests`:
 clean. Product code unchanged — the Dock-click reopen behaviour is
 correct and stays.
+
+### 131 — Round 9 S7 (§3.2): start Seeker at login via `SMAppService`
+
+*Backfilled in round 10 S7 from commit `1707ab7` and the S7 handoff
+(`git show afbfbd1:docs/HANDOFF.md`); no new investigation.*
+
+**Decision.** Kris chose `SMAppService.mainAppService()` over a
+`LaunchAgent` plist at the session's own approval gate: the modern,
+Apple-supported route, and one the user can revoke in System Settings
+> General > Login Items. Adds `pyobjc-framework-ServiceManagement`
+(darwin-only marker in `pyproject.toml`, a mypy override for the
+missing `py.typed`, and a `hiddenimports` entry in
+`packaging/seeker.spec` for the same deferred-import reason as the
+existing `AppKit`/`Foundation`/`objc` entries).
+
+**Shape.** `src/seeker/login_item.py`:
+
+- `is_supported()` needs **both** `sys.platform == "darwin"` and
+  `sys.frozen`. A `uv run` process has no bundle identifier to
+  register against, so dev runs never reach the register calls.
+- `get_status()` always reads the live ServiceManagement status and
+  never mirrors a `config.json` boolean. A login item revoked in
+  System Settings therefore shows as off in Seeker's own checkbox,
+  with no restart.
+- `Application.login_item_supported` / `login_item_status()` /
+  `set_login_item_enabled()` are thin passthroughs (the UI never
+  imports `login_item` directly).
+
+**Companion option.** `SeekerConfig.start_hidden_at_login` ("Start
+hidden in the menu bar"). It is a standalone preference, not a mirror
+of the login item. Enabling login-at-startup turns it on every time;
+disabling login leaves it alone. `main_ui.main()` calls
+`MainWindow.start_hidden_to_tray()` instead of `window.show()` when it
+is on. That method skips `show()` entirely rather than showing and
+re-hiding (which would flash a frame), and returns `False` when there
+is no tray icon to hide behind, in which case `main_ui` shows the
+window normally. It applies on every launch, not only login-triggered
+ones: there is no reliable in-process signal that tells the two apart.
+
+**Settings.** A "Startup" group in the thresholds tab, after
+Notifications. `refresh_login_item_state()` re-reads the live status
+on every Settings page show (`MainWindow._on_page_changed`), the same
+lazy-refresh-on-show pattern Duplicates/Sharing/History use.
+
+**What was verified live, and what was not.** On Darwin 25.6.0 from an
+unbundled `uv run python`: `SMAppService.mainAppService().status()`
+returned `3` (`NotFound`) without raising, and
+`registerAndReturnError_`/`unregisterAndReturnError_` were real bound
+methods. The four raw status ints (0–3) were checked against the real
+module, not assumed. **UNVERIFIED:** real `register()`/`unregister()`
+against a packaged `.app`, and that the `hiddenimports` entry is
+enough for PyInstaller. Nothing in the repo tests the spec file. This
+is still on Kris's real-desktop list.
+
+**Tests.** `tests/test_login_item.py` injects a fake
+`sys.modules["ServiceManagement"]` to drive `get_status`/`set_enabled`
+through every status value without a bundle. `FakeApplication` in
+`test_ui_smoke.py` defaults to the same "unsupported" state a dev-run
+`Application` reports, so no existing test had to change.
+
+### 132 — Round 9 S8 (§6): Review page resizable, persisted splitter
+
+*Backfilled in round 10 S7 from commit `f9aa687` and the S8 handoff
+(`git show 0d12c53:docs/HANDOFF.md`).*
+
+**Change.** `ui/pages/review_page.py`'s three sections (needs-review,
+downloaded upgrades, local matches) moved from a `QVBoxLayout` stack
+into a vertical `QSplitter` (`review_splitter`). Each section's header
+row and card share one wrapper `QWidget`, so a section moves as a unit
+(the upgrades header, "Replace all" included, travels with its
+table). `setChildrenCollapsible(False)` plus
+`_REVIEW_SECTION_MIN_HEIGHT = 140` keeps every pane recoverable.
+First-run stretch is 3:2:2, favouring needs-review, the section acted
+on most.
+
+**Persistence** mirrors `window_geometry`: base64 of
+`QSplitter.saveState()` in `SeekerConfig.review_splitter_state`,
+written by `ReviewPage._persist_splitter_state()` from
+`MainWindow.cleanup_before_quit`. It is called **unconditionally**,
+unlike the `_hidden_to_tray`-gated window-geometry backstop next to it:
+a hidden-to-tray splitter still reports its real sizes; only the
+top-level window's own `saveGeometry()` has that visibility quirk.
+
+**Restore on first real show, not at construction.**
+`ReviewPage.showEvent` calls `_restore_splitter_state()` once, on the
+page's first real show. The page sits hidden inside `MainWindow`'s
+`QStackedWidget` until first navigated to, and restoring before the
+splitter has laid-out geometry distributes the saved sizes against the
+wrong total. That is the same failure round 9 §3.1 hit for the main
+window's own geometry (commits `1fc4898`, `16815d4`, `14a4676`).
+
+**Theme.** `QSplitter::handle` rules in `theme.py`'s `_misc_qss`:
+`BORDER_STRONG` (same reasoning as the table-header divider), `ACCENT`
+on hover, 6 px to match `setHandleWidth()`. Checked visible in both
+themes with an offscreen `window.grab()` (scratch, not committed).
+
+**Verification, and the gap it left.** A scratch two-`MainWindow`
+script round-tripped a dragged split through persist/restore
+byte-for-byte (deleted after use). Existing Review tests address the
+tables by attribute name, which the restructuring kept, so they cover
+rendering unchanged. **Still a gap at round 10 S7:** no automated test
+asserts the persist/restore round-trip or that `cleanup_before_quit`
+calls `_persist_splitter_state` (`grep -rn review_splitter tests/`
+returns nothing). Dragging the handles on a real display is still on
+Kris's list.
+
+### 133 — Round 9 S9 (§7.1): the shared `PlaylistSelection` seam
+
+*Backfilled in round 10 S7 from commit `873eb4f` and the S9 handoff
+(`git show 559f268:docs/HANDOFF.md`). Pure refactor, no visible
+change.*
+
+**Why.** Library and `TaggingPanel` read Dashboard's selection through
+read-only callables on `LibraryHost`/`TaggingPanelHost`
+(`get_selected_playlist`, `get_selected_track_ids`), which reached
+into `DashboardPage`'s private attributes. §7.2 needed Library to
+*write* the selection too, which read-only callables cannot express.
+
+**Shape.** `src/seeker/ui/playlist_selection.py`: `PlaylistSelection`,
+a `QObject` with a `changed` signal, owned by `MainWindow` (built next
+to `busy_actions`) and handed to every page as
+`PageContext.playlist_selection`. It holds `playlist` and `track_ids`;
+`set_playlist()`/`set_track_ids()` are no-ops (no signal) when the
+value is unchanged.
+
+- `DashboardPage.selected_playlist` became a property over the shared
+  object, with a setter so existing direct assignment in tests
+  (`window._dashboard_page.selected_playlist = ...`, e.g.
+  `test_backend_poll_refreshes_selected_playlist_track_table`) keeps
+  working unedited.
+- New wiring: `track_table.itemSelectionChanged` →
+  `_on_track_selection_changed` pushes the selected ids into
+  `set_track_ids()`. Before this, nothing observed track-table
+  selection; ids were pulled only at click time. This connection is
+  the one that later made §7.2's re-entrancy segfault possible (§134).
+- Both Host dataclasses lost the two selection callables.
+  `TaggingPanel`'s five call sites read the shared object through its
+  `PageContext`. `refresh_track_table` stayed (an action, not state;
+  out of the row's scope), still bound to Dashboard's private
+  `_poll_selected_playlist`.
+
+### 134 — Round 9 S10 (§7.2): Library context header, inline picker, and a re-entrant segfault
+
+*Backfilled in round 10 S7 from commit `5175429` and the S10 handoff
+(`git show d38d80f:docs/HANDOFF.md`).*
+
+**Report.** Kris: "Library section is currently confusing — it doesn't
+say which playlist it's acting upon."
+
+**Change.** `library_page.py` gains a persistent header card:
+"Acting on '<name>' — N tracks in this playlist." (muted badge) with a
+"Change playlist" toggle. The picker is an inline `QListWidget`, not a
+modal (frequent enough that a dialog would be friction), sourced from
+`sync_service.list_playlists` like Dashboard's own `playlist_list`.
+With no playlist selected (`help_text.LIBRARY_NO_PLAYLIST_TEXT`, warn
+badge) the toggle hides and the picker is forced open, instead of only
+warning after a click. Picking writes `set_playlist()` and collapses
+the picker explicitly. That explicit collapse is needed because
+picking the already-selected playlist fires no `changed`.
+
+**Library became a second writer**, so Dashboard now listens:
+`_on_shared_selection_changed` → reconcile (`_sync_playlist_list_
+highlight()` under `blockSignals`, so no redundant re-entrant
+`_on_playlist_selected`; then `_poll_selected_playlist()` and
+`_poll_next_step()`). Before this, Dashboard only wrote and then
+rendered explicitly; it never subscribed to `changed`.
+
+**The segfault (reproduced, not theorized).** Run synchronously, that
+reconciliation crashed with SIGSEGV. The chain: a selection change in
+Dashboard's `track_table` → its own `itemSelectionChanged` handler
+writes `set_track_ids()` (§133) → `changed` → reconcile →
+`_poll_selected_playlist()` clears that same table's rows, from inside
+its own selection signal's emission. Reproduced locally via
+`tests/pages/test_library_page.py::test_force_retag_checkbox_passed_
+through_all_three_triggers`. Fix: `_on_shared_selection_changed`
+defers the reconcile with `QTimer.singleShot(0, ...)`, the same idiom
+as `ui/workers.py`'s deferred native delete. **Standing rule:** any
+handler that can run from inside a widget's own selection/data-changed
+emission, directly or through a shared signal, must not synchronously
+rebuild that widget; defer it.
+
+**Theme.** `theme.set_variant`'s unpolish/polish/repaint logic became
+`theme.set_dynamic_property(widget, name, value)` so the header's
+badge switch reuses it; `set_variant` is a one-line wrapper and no
+call site changed.
+
+**Tests.** Four new in `tests/pages/test_library_page.py` (empty
+state offers the picker; populated state names playlist and count;
+"Change playlist" reveals a populated picker; picking updates the
+shared selection and Dashboard's highlight and track table). One new in
+`tests/pages/test_dashboard_page.py`,
+`test_dashboard_reflects_a_selection_write_that_originates_elsewhere`.
+The header and picker have not yet been checked on a real display in
+either theme. That check is still on Kris's list.
+
+**Skill divergence (recorded then).** The session map pointed §7.2 at
+`product-skills`. `product-skills:cs-product` routed a small copy and
+layout call into a discovery/prioritization framework (RICE/WSJF,
+OST linting), which does not fit a decision that small. The design
+followed the codebase's existing badge, notice, and list conventions
+instead. Round 10's session plan carries this forward as guidance.
+
+### 135 — Round 10 S7 (§7): round 9's HISTORY debt paid
+
+Docs only. §131–§134 backfill round 9 S7–S10, which closed without
+HISTORY entries. Each was built from its feature commit and the
+handoff written at that session's close (`git show <close-out>:
+docs/HANDOFF.md`), with the load-bearing claims re-checked against the
+current tree by `grep`: `login_item.is_supported`/`get_status`,
+`ReviewPage.showEvent`/`_persist_splitter_state` and its
+`cleanup_before_quit` call, `PageContext.playlist_selection`,
+`DashboardPage._on_shared_selection_changed`'s `QTimer.singleShot(0,
+...)`, and `theme.set_dynamic_property`. All were still present. New
+standing facts in CLAUDE.md: the re-entrant-rebuild rule (§134),
+restoring page state on first real show (§132), `PlaylistSelection`
+as the cross-page selection seam (§133), and the login item's
+frozen-only gate and live status (§131). One gap carried forward and
+not fixed here, since this row is docs only: no test covers the
+Review splitter's persist/restore round-trip (§132).
