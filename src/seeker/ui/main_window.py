@@ -706,7 +706,6 @@ class MainWindow(QMainWindow):
         self._review_page = ReviewPage(
             page_context,
             ReviewHost(
-                status_label=self._dashboard_page.status_label,
                 refresh_track_table=self._dashboard_page._poll_selected_playlist,
                 check_for_needs_decision_notification=(
                     self._tray.check_for_needs_decision_notification

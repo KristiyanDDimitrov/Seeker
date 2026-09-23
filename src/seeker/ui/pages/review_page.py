@@ -4,14 +4,22 @@ tray-badge/notification path back to the shell: SoulSeek needs-review
 candidates, Phase 2 upgrade replacements, and local-file matches.
 
 Beyond PageContext, this page needs a second, narrower seam —
-`ReviewHost` — for `status_label` (the same shared Dashboard-owned
-widget TaggingPanel already reaches through its own Host),
-`refresh_track_table` (Dashboard's `_poll_selected_playlist`, called
-after a local-match confirm/reject changes what's IN_LIBRARY), and
-`check_for_needs_decision_notification` (real MainWindow/tray logic —
-a de-duplicated notification — that stays shell-owned because it also
-reads `_tray_icon`/`application.settings`, neither of which belongs on
-a page).
+`ReviewHost` — for `refresh_track_table` (Dashboard's
+`_poll_selected_playlist`, called after a local-match confirm/reject
+changes what's IN_LIBRARY) and `check_for_needs_decision_notification`
+(real MainWindow/tray logic — a de-duplicated notification — that
+stays shell-owned because it also reads `_tray_icon`/
+`application.settings`, neither of which belongs on a page).
+
+Round 10 §1.2 — this page used to route every `run_worker` call's
+`status_label` at `ReviewHost.status_label`, in reality the
+*Dashboard's* `status_label`: a widget on a different page, wiped
+every ~2s by Dashboard's own poll regardless of what Review just wrote
+there (HISTORY: see `ui/notice.py`'s module docstring — this is the
+exact failure it exists to fix). A failed Confirm/Reject left Kris
+with no visible error at all. Review now owns its own `self.notice`
+(`InlineNotice`) the same way Library/TaggingPanel do; nothing here
+writes to another page's widget again.
 
 `_pending_review_focus_track_id`/`_focus_pending_review_row` move here
 too — both are genuinely Review-owned state/logic, just previously
@@ -52,6 +60,7 @@ from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.download_service import BulkUpgradeReplaceResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
+from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
@@ -91,7 +100,6 @@ class ReviewHost:
     """What Review needs from the shell beyond PageContext (HISTORY
     §119).
     """
-    status_label: QLabel
     refresh_track_table: Callable[[], None]
     check_for_needs_decision_notification: Callable[[int], None]
 
@@ -127,6 +135,13 @@ class ReviewPage(QWidget):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Round 10 §1.2 — Review's own persistent, dismissible banner
+        # (Library/TaggingPanel precedent) for anything a run_worker
+        # call needs the user to still see a few seconds later. Nothing
+        # on this page writes to another page's status_label again.
+        self.notice = InlineNotice()
+        layout.addWidget(self.notice)
 
         # Round 9 §6 — each section (its header row *and* its card)
         # lives in its own QWidget so it moves as one unit inside the
@@ -445,7 +460,9 @@ class ReviewPage(QWidget):
             lambda: self._context.application.download_service
             .confirm_review_candidate(track_id),
             button=button,
-            status_label=self._host.status_label,
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=lambda _: self._poll_review_items(),
         )
 
@@ -459,7 +476,9 @@ class ReviewPage(QWidget):
             lambda: self._context.application.download_service
             .reject_review_candidate(track_id),
             button=button,
-            status_label=self._host.status_label,
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=lambda _: self._poll_review_items(),
         )
 
@@ -613,10 +632,9 @@ class ReviewPage(QWidget):
     def _on_upgrade_decision_finished(self, message: str | None) -> None:
         # apply_upgrade_decision returns None for a decline (no-op, no
         # message needed) and a short status string for a real replace —
-        # run_worker's own status_label wiring only fires on error, so
-        # the success message is surfaced here instead.
+        # surfaced on this page's own notice.
         if message is not None:
-            self._host.status_label.setText(message)
+            self.notice.show_message(message, kind="success")
 
         self._poll_review_items()
 
@@ -641,7 +659,9 @@ class ReviewPage(QWidget):
             lambda: self._context.application.download_service
             .apply_upgrade_decisions_batch(request_ids, delete_old),
             button=self.replace_all_upgrades_button,
-            status_label=self._host.status_label,
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=self._on_bulk_replace_upgrades_finished,
         )
 
@@ -744,7 +764,9 @@ class ReviewPage(QWidget):
             lambda: self._context.application.library_service
             .confirm_match(track_id),
             button=button,
-            status_label=self._host.status_label,
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=self._on_local_review_decision_finished,
         )
 
@@ -758,7 +780,9 @@ class ReviewPage(QWidget):
             lambda: self._context.application.library_service
             .reject_match(track_id),
             button=button,
-            status_label=self._host.status_label,
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=self._on_local_review_decision_finished,
         )
 

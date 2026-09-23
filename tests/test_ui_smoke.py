@@ -357,6 +357,7 @@ class FakeDownloadService:
             search_manual_results: list | None = None,
             download_manual_result: dict | None = None,
             download_manual_error: Exception | None = None,
+            confirm_review_candidate_error: Exception | None = None,
     ):
         self._review_candidates = review_candidates or []
         self._pending_upgrades = pending_upgrades or []
@@ -368,10 +369,16 @@ class FakeDownloadService:
             "reason": "no_candidate_found",
         }
         self._download_manual_error = download_manual_error
+        self._confirm_review_candidate_error = confirm_review_candidate_error
         self.search_manual_calls: list[tuple[str, str]] = []
         self.download_manual_calls: list[tuple] = []
         self.confirm_review_candidate_calls: list[str] = []
         self.reject_review_candidate_calls: list[str] = []
+        # §1.2 (round 10) — proves a re-poll (_poll_review_items, called
+        # from on_finished) has actually run, rather than asserting on a
+        # notice's text/visibility immediately after a click, which
+        # would pass whether or not anything happened yet.
+        self.get_pending_upgrade_reviews_calls = 0
         self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
         self.apply_upgrade_decision_result: str | None = (
                 "Replaced with /new/path"
@@ -430,9 +437,13 @@ class FakeDownloadService:
         return self._review_candidates
 
     def get_pending_upgrade_reviews(self) -> list:
+        self.get_pending_upgrade_reviews_calls += 1
         return self._pending_upgrades
 
     def confirm_review_candidate(self, track_id: str) -> None:
+        if self._confirm_review_candidate_error is not None:
+            raise self._confirm_review_candidate_error
+
         self.confirm_review_candidate_calls.append(track_id)
 
     def reject_review_candidate(self, track_id: str) -> None:

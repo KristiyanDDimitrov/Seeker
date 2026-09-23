@@ -130,6 +130,46 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
     assert application.download_service.reject_review_candidate_calls == []
 
 
+def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
+        qtbot,
+):
+    # §1.2 — Defect A from the round-10 brief: a failed Confirm used to
+    # write its error to the Dashboard's status_label, invisible from
+    # the Review page and wiped within ~2s regardless. It must now show
+    # on Review's own notice, and the row must still be there (no
+    # on_finished ran, so no re-poll removed it).
+    candidates = [
+            (_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))
+    ]
+    # Configured on the fake itself (not just a manual render call
+    # below) so MainWindow's own startup poll — which races the manual
+    # render on a real thread pool — settles on the same row rather
+    # than wiping it back to empty.
+    application = FakeApplication(review_candidates=candidates)
+    application.download_service._confirm_review_candidate_error = (
+        Exception("User X appears to be offline")
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._review_page._render_needs_review_candidates(candidates)
+
+    actions = window._review_page.review_needs_table.cellWidget(0, 4)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Confirm"].click()
+
+    qtbot.waitUntil(
+        lambda: window._review_page.notice.text()
+        == "User X appears to be offline",
+        timeout=2000,
+    )
+    assert window._review_page.review_needs_table.rowCount() == 1
+    assert (
+        window._review_page.review_needs_table.item(0, 0)
+        .data(Qt.ItemDataRole.UserRole) == "t7"
+    )
+
+
 def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
     candidates = [
             (_make_track(track_id="t9"), _make_review_candidate(track_id="t9"))
@@ -209,7 +249,18 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
         == [(42, True, True)],
         timeout=2000,
     )
-    assert window._dashboard_page.status_label.text() == "Replaced with /new/path"
+    # §1.2 — Review's own notice, not the Dashboard's status_label
+    # (which this success message used to be silently wiped from by
+    # Dashboard's own 2s poll before anyone on the Review page could
+    # read it). Wait on the notice text itself, not just the fake's
+    # call list — see §4's own note on why that distinction is the CI
+    # flake fix: on_finished can still be in flight after the call list
+    # already reflects the backend call.
+    qtbot.waitUntil(
+        lambda: window._review_page.notice.text()
+        == "Replaced with /new/path",
+        timeout=2000,
+    )
 
 
 def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
@@ -271,6 +322,12 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
 
     window._review_page._render_pending_upgrades(details)
 
+    # §1.2 — baseline before the click, since MainWindow's own startup
+    # sequence already calls get_pending_upgrade_reviews once.
+    baseline_reviews_calls = (
+        application.download_service.get_pending_upgrade_reviews_calls
+    )
+
     actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Decline"].click()
@@ -281,8 +338,19 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
         timeout=2000,
     )
     # A decline returns None from apply_upgrade_decision — no status
-    # message should be surfaced, unlike a real replace.
-    assert window._dashboard_page.status_label.text() == ""
+    # message should be surfaced, unlike a real replace. Wait on proof
+    # that on_finished (_on_upgrade_decision_finished) has actually run
+    # — it calls _poll_review_items, which re-fetches — rather than
+    # asserting the notice is "" immediately, which would pass whether
+    # or not anything happened yet (today's vacuous version of this
+    # test).
+    qtbot.waitUntil(
+        lambda: application.download_service.get_pending_upgrade_reviews_calls
+        > baseline_reviews_calls,
+        timeout=2000,
+    )
+    assert window._review_page.notice.text() == ""
+    assert window._review_page.notice.isVisible() is False
 
 
 # --- Roadmap item R3.1: "Replace all" upgrades -----------------------------
