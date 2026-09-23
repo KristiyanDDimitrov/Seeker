@@ -32,15 +32,22 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Where we are in the plan
 
-Round 9. Full plan: `docs/BRIEF-2026-09-09-round9.md`. Session map:
-`docs/round9/SESSION-PLAN.md`.
+**Round 10 is scheduled — start at S1.** Brief:
+`docs/BRIEF-2026-09-23-round10.md`. Session map:
+`docs/round10/SESSION-PLAN.md`. Round 9 (S1-S10) is complete.
 
-- **Done: S1-S10 — every row in the session map is now ticked.**
-- **Nothing scheduled next.** Everything remaining in the round-9 brief
-  is §8, and every §8 item is explicitly [ASK KRIS] — see "Waiting on
-  Kris" below. A future session should either get a yes on one of
-  those, or this round is effectively complete and the next session
-  should ask Kris what's next rather than inventing scope.
+- The design chat wrote the round-10 brief, session plan, and this
+  section on 2026-09-23 without committing them. **S1's first commit
+  is those three files.**
+- Where round 10 came from: Kris's hand-testing after round 9. Review
+  Confirm silently fails (with a moving cell highlight), the window
+  reopens at default size after a fullscreen close, and the stress
+  test fails with `'MainWindow' object has no attribute
+  'playlist_list'`. Investigating those also produced concrete causes
+  for both CI-only flakes and the fullscreen-close test pair. All are
+  in the brief.
+- **HEAD at time of writing: `d38d80f`** (not `5175429` as the Current
+  state section above says; `d38d80f` is the S10 close-out on top of it).
 
 ## S10 report — §7.2, the Library context header + inline picker
 
@@ -130,10 +137,6 @@ automated screenshot exists for either.
 
 ## Open questions
 
-- **Round 9's session map is fully ticked (S1-S10).** The only
-  remaining brief items are §8.1-§8.5, all [ASK KRIS], none scheduled.
-  A future session's first move should be getting a yes on one of
-  those from Kris, not inventing new scope.
 - Item 125 (the §2.3 quit hang), the fullscreen-close pair (S4/S5's own
   area), and the CI-only flake pair (history-refresh/replace-button)
   are all unchanged — this session's own local and CI runs reproduced
