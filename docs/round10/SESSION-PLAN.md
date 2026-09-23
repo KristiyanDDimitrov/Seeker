@@ -21,7 +21,7 @@ exactly where you stopped.
 
 | # | Session | Executes | Est. | Split point if overrunning |
 |---|---|---|---|---|
-| ☐ S1 | Review: focus traversal, visible errors, worker logging, diagnose the stuck candidate | §1.1–§1.4 | ~120 K | After §1.2 (§1.1 + §1.2 alone fix what Kris sees) |
+| ☑ S1 | Review: focus traversal, visible errors, worker logging, diagnose the stuck candidate | §1.1–§1.4 | ~120 K | After §1.2 (§1.1 + §1.2 alone fix what Kris sees) |
 | ☐ S2 | Review: make Confirm work for the cause S1 found | §2 | ~110 K | After the slskd endpoint is verified live and recorded |
 | ☐ S3 | Stress test: repoint stale handles + default-run guard | §3 | ~90 K | None; small row. Do not pull S4 in |
 | ☐ S4 | CI: the worker-thread-counter test race, repro + audit | §4.1–§4.3 | ~130 K | After §4.2 (the two known tests fixed and pushed) |

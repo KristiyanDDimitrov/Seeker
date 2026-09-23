@@ -14569,3 +14569,98 @@ once before (S14) and calls "worth a dedicated diagnosis session if it
 recurs a third time" — this is that third time. See CLAUDE.md's Open
 issues for the full history; not diagnosed this session, which was
 scoped to §2.3 only.
+
+### 126 — Round 10 S1 (§1.1–§1.4): Review's Confirm button — three defects behind one report
+
+**The report, unchanged from the brief:** on the Review page, clicking
+Confirm on a SoulSeek needs-review candidate did nothing visible — the
+row stayed, and each click moved a cell highlight one column to the
+right (track, then score, then candidate...). Reject worked. Three
+independent defects, confirmed by reading the code, produced this one
+observed symptom together.
+
+**§1.1 — Defect C, the moving highlight, fixed.** Traced to real Qt
+focus-traversal mechanics: a click gives a `StrongFocus` `QPushButton`
+keyboard focus; `run_worker` then disables that same button, and a
+disabled focused widget makes Qt call `focusNextChild()` on it, which
+`QAbstractItemView` (with `tabKeyNavigation` on, the default)
+implements by synthesizing a real Tab key press — moving the table's
+current cell one column right, once per click. Fix: `theme.cell_widget`
+now sets `Qt.FocusPolicy.NoFocus` on every `QAbstractButton` it wraps,
+so a click never grants focus in the first place. Affects all 15
+`cell_widget` call sites across the app, not just Review. Failing test
+first (`test_cell_widget_button_does_not_steal_tab_focus_when_disabled`,
+`tests/test_theme.py`): builds a 3-column table, puts a button in
+column 2 via `cell_widget`, sets the current cell to (0, 0), does a
+real `qtbot.mouseClick`, disables the button the way `run_worker` does,
+and asserts the current column is still 0 — failed with column 1 on
+unmodified `HEAD`, passes after the fix.
+
+**§1.2 — Defect A, the silent failure, fixed.** Every `run_worker` call
+on Review passed `status_label=self._host.status_label`, which
+`ReviewHost` wired to the *Dashboard's* `status_label` — a widget on a
+different page, wiped every ~2s by Dashboard's own poll regardless of
+what Review had just written there. This is the exact failure
+`ui/notice.py`'s own module docstring names as the reason `InlineNotice`
+exists — Review just never got one. Fix: Review now owns
+`self.notice`, the same pattern Library/TaggingPanel use. All five
+`run_worker` calls (confirm/reject review candidate, replace-all
+upgrades, confirm/reject local match) dropped `status_label=` for
+`on_error=` routed to the notice; the upgrade-decision success message
+moved from the Dashboard's label to the notice. `status_label` removed
+from `ReviewHost` entirely. Rewrote the replace/decline upgrade-decision
+tests to `qtbot.waitUntil` on the notice's own text rather than just the
+fake's call list (the old decline test asserted `""` immediately after
+the click — vacuously true whether or not anything had actually run;
+now waits for proof that `on_finished` ran, via a new
+`get_pending_upgrade_reviews_calls` counter on the fake, before
+asserting the notice is still empty). Added a new test: a Confirm
+failure shows the error on Review's own notice and leaves the row in
+place (`FakeDownloadService._confirm_review_candidate_error`, the same
+error-injection pattern `_download_manual_error` already established).
+
+**§1.3 — Defect B, no log trace, fixed.** `Worker.run`'s `except` block
+only ever emitted `str(error)` to `task_error` — no `logger` call, no
+traceback, anywhere. Confirmed live against the real
+`~/Library/Logs/Seeker/seeker.log`: 442 bytes, last entry
+2026-09-10 11:33, unchanged as of this session (2026-09-23) despite
+Kris's hand-testing landing in between — every failed background task
+since then, Review's Confirm included, left no trace anywhere. Fix: one
+`logger.warning("Background task %d failed", self.task_id,
+exc_info=True)` call before `_emit_or_drop`, on the worker thread where
+the traceback actually exists (`logging` is thread-safe). Kept in its
+own commit, separate from §1.2, because `workers.py` is the file with
+the deadlock history (HISTORY §32/§39) and this needed to be
+independently revertable. The call touches neither `_dispatcher` nor
+any other Qt object, so it adds no new failure mode to the
+straggling-worker teardown case the comment directly above it
+describes. Test: `test_worker_run_logs_the_traceback_on_exception`
+(`caplog`), confirmed failing without the fix by stashing only
+`workers.py`'s change and rerunning.
+
+**§1.4 — the real stuck candidate: NOT settled by the read-only
+checks, a live repro is needed.** `sqlite3 -readonly
+~/Library/Application\ Support/Seeker/seeker.db "select count(*) from
+soulseek_review_candidates"` returned **0** — the table is currently
+empty. Whatever row(s) Kris saw are gone: `confirm_review_candidate`
+only calls `self._clear_review_candidate(track_id)` *after* a
+successful `request_download()` (`download_service.py:748-808`), so a
+row that failed to confirm should have stayed — its absence now is
+most consistent with Kris having since used Reject (confirmed working)
+to get past it, though that can't be verified after the fact.
+`download_requests` has no row newer than 2026-09-04, so the eventual
+resolution (if any) left no trace there either. Two more real,
+independently-checked facts, neither conclusive on their own: (1)
+`docker ps` shows **zero containers running** — slskd is not up right
+now on this machine, which would produce hypothesis 3 (connection
+error) for anyone confirming anything at this exact moment, but doesn't
+tell us what state slskd was in when Kris originally saw the bug; (2)
+no user-status endpoint exists yet in `SoulseekClient`
+(`soulseek/client.py`) to check peer-online state for hypothesis 2, and
+per the brief's own instruction it must be verified against a live
+slskd before being relied on — deferred, since slskd isn't up to verify
+against right now. **Conclusion: the read-only checks don't settle
+which of the three hypotheses (missing size / peer offline / slskd
+unreachable) caused Kris's original report — asked in the handoff for
+Kris to reproduce live now that §1.2/§1.3 make the failure visible and
+logged**, per the brief's own fallback for exactly this case.
