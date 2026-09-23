@@ -8,70 +8,62 @@ a log (`docs/HISTORY.md` is the log).
 
 ## Current state
 
-- **HEAD:** `ddc1f6e`, pushed. Tree clean (aside from an untracked
+- **HEAD:** `05f798b`, pushed. Tree clean (aside from an untracked
   `Claude outputs/` directory that predates this session — not part of
   the repo, left alone).
-- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1197
-  passed, 29 skipped, 0 failed`**, confirmed across 3 consecutive
-  full-suite runs this session (no failures, no hangs, ~70s each). The
-  round-10 S1 handoff's 2 tracked failures
-  (`test_reopening_after_a_fullscreen_close_restores_prior_geometry`,
-  `test_fullscreen_close_policy_check_ignores_a_stale_request`) did not
-  recur — consistent with that pair being order-dependent, not
-  deterministic (still open, S5/S6's own area, untouched here). 29
-  skipped is this machine's usual split (no X9 Pro drive mounted; see
-  CLAUDE.md's Open issues for the 28+1 explanation).
+- **Local pytest (offscreen Qt, this machine, Darwin 25.6.0): `1202
+  passed, 29 skipped, 0 failed`** on 4 of 5 full-suite runs this
+  session. The 5th run failed `test_reopening_after_a_fullscreen_
+  close_restores_maximized_not_fullscreen` together with `test_
+  fullscreen_close_policy_check_ignores_a_stale_request`, both passing
+  immediately when re-run alone — this is the SAME pre-existing,
+  already-tracked order-dependent pair CLAUDE.md's Open issues
+  describes (its 4th recorded recurrence now), not a new defect this
+  session introduced. Diagnosing it is S6's own scope, not S5's — see
+  that row's split point in the session plan. 29 skipped is this
+  machine's usual split (no X9 Pro drive; see CLAUDE.md's Open issues).
 - **`mypy --strict src/`: clean, 104 files.** **`ruff check src
   tests`: 0 findings.**
-- **CI on `ddc1f6e` (this session's push): run `35892529042`,
-  `success`.** Clean — CI green is §4's own stated acceptance criterion
-  and it's met.
+- **CI on `05f798b` (this session's push): run `35897033958`,
+  `success`.**
 
 ## Where we are in the plan
 
-**Round 10: S1, S3, S4 done. S2 is blocked, not skipped.** Brief:
+**Round 10: S1, S3, S4, S5 done. S2 is blocked, not skipped.** Brief:
 `docs/BRIEF-2026-09-23-round10.md`. Session map:
-`docs/round10/SESSION-PLAN.md`. **Next: S5 (fullscreen-close reopen
-behavior), no dependency on S2's block.** S2 remains blocked on Kris
-per S1/S3's own notes — not re-checked this session, nothing new to
-report there.
+`docs/round10/SESSION-PLAN.md`. **Next: S6 (the fullscreen-close test
+pair — find the real caller, isolate).** S2 remains blocked on Kris
+per S1/S3's own notes — not re-checked this session.
 
-## S4 report — §4.1-§4.3, the review/history CI race, closed
+## S5 report — §5, reopen after fullscreen/zoomed close, closed
 
-Full investigation: [HISTORY §128](docs/HISTORY.md#128). Both
-`test_review_tab_replace_button_calls_apply_upgrade_decision_with_
-delete_flag` (already fixed by S1's §1.2) and
-`test_history_refresh_button_refetches` shared one mechanism: a fake
-service's call counter increments on the worker thread before
-`run_worker`'s triggering button is re-enabled on the main thread — a
-test that waits only on the counter and clicks can land on a still-
-disabled button (a real Qt no-op, not a product bug).
+Full investigation: [HISTORY §129](docs/HISTORY.md#129). Implemented
+Kris's decision (2026-09-23): a window closed fullscreen or maximized/
+zoomed comes back **filling the screen as a normal window**, never
+re-entering macOS fullscreen (that transition is round 7's own E1).
 
-Confirmed with a deterministic repro (`threading.Event`-based blocking
-on `FakeHistoryService.get_recent_events`) rather than trusting the
-brief's framing. **Found a real hang while building it**, not in the
-brief: blocking by call *number* (following the R7.5 comment's "call #1
-is the seed, call #2 is the page fetch") assumes an ordering the
-`QThreadPool` doesn't guarantee between the two independent tasks —
-when the seed call lands second instead, it's the one that blocks, the
-test's assertion fails before ever releasing it, and the leaked
-`Event.wait()` hangs the whole process at teardown
-(`MainWindow.thread_pool` blocks its own destructor on any in-flight
-runnable, HISTORY §125). Fixed by keying the block on the call's
-**`limit` value** instead (the seed call and the page's real fetch use
-different literal limits, so this is correct regardless of scheduling
-order) plus a `try/finally` as a second, independent safety net.
+`_pre_fullscreen_geometry` replaced by `_reopen_filled: bool`, set in
+`closeEvent` (both branches) from `isFullScreen() or isMaximized()`,
+captured before state changes. New `MainWindow.show_restored()` owns
+"show the window the way it was closed"; `_on_tray_open_seeker` and
+`main_ui.py`'s first `window.show()` both call it now. Persisted for
+relaunch via `SeekerConfig.window_reopen_filled` (default `False`).
+`_restore_window_geometry` strips Qt's own `WindowFullScreen` state
+bit whenever it survives `restoreGeometry()` (the fullscreen-close
+branch unavoidably still saves a blob carrying it), at both call sites
+(`__init__`, `showEvent`'s post-layout re-apply); `showEvent` then
+re-asserts `showMaximized()` last so its own re-apply can never
+un-maximize a window `show_restored()` just filled. Same expression
+fixes Window → Zoom reopening un-zoomed for free.
 
-Audited all ~156 `waitUntil` sites in `tests/pages/` and
-`test_ui_smoke.py` for the same shape — no other instance found (one
-near-miss, `test_force_retag_checkbox_passed_through_all_three_
-triggers`, is safe: its two clicked buttons use different
-`busy_actions` keys). No `wait_for_workers_idle` conftest helper added
-— nothing else needed it.
+Offscreen Qt asserts window STATE only, never pixels (round 9 §3.1
+follow-up 3). Rewrote the geometry-restore test to the new
+`isMaximized()`/`not isFullScreen()` contract; added windowed/zoomed
+reopen cases and a real-saved-blob fullscreen-flag test. Every
+new/changed test confirmed failing on unmodified `HEAD` first.
 
-CLAUDE.md: closed both flakes' Open issues entries (condensed note +
-link to HISTORY §128, per the doc rules — "three unconfirmed round-8
-test flakes" now, not five).
+**Not done — real-Mac verification is the brief's own stated
+acceptance test**, not offscreen Qt. See "Waiting on Kris" below.
 
 ## Read discipline — unchanged, still why sessions blow their budget
 
@@ -90,20 +82,26 @@ default. Don't read a brief section your row doesn't point at.
   `SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
   with the X9 Pro mounted and Spotify and slskd up, and paste the
   resource table.
+- **New, from S5 (§5's own acceptance test):** script the three real
+  paths with System Events (`AXFullScreen` on `window 1` of process
+  "Seeker") and `open -a Seeker`: fullscreen close → Dock reopen
+  (fills the screen, windowed); windowed resize → close → Dock reopen
+  (same size); fullscreen close → quit from the menu bar → relaunch
+  (fills the screen, windowed). Paste the raw `size of window 1`
+  numbers plus one screenshot each; HISTORY has prior `AXFullScreen`
+  recipes (`grep -n "AXFullScreen" docs/HISTORY.md`).
 - Carried, unaddressed: click through the Review page's splitter (S8)
   on a real display; the Library context header/picker (round 9 S10)
   on a real display, both themes. No automated screenshot exists for
   either.
-- **New, from S5's own brief section:** once S5 lands, three real-Mac
-  checks (fullscreen close → Dock reopen; resize → close → Dock reopen;
-  fullscreen close → quit from menu bar → relaunch) — not reached yet
-  this session.
 
 ## Open questions
 
-- Item 125 (the §2.3 quit hang) and the fullscreen-close pair (S5/S6's
-  own area) are unchanged — tracked in CLAUDE.md's Open issues.
-- `docs/HISTORY.md` is still growing (now through §128), never read
+- Item 125 (the §2.3 quit hang) and the fullscreen-close pair (S6's
+  own area — 4th recurrence now, see CLAUDE.md's Open issues and
+  [HISTORY §129](docs/HISTORY.md#129)'s own verification section) are
+  tracked in CLAUDE.md's Open issues.
+- `docs/HISTORY.md` is still growing (now through §129), never read
   whole. No HISTORY entry yet for round 9 §3.2 (S7), §6 (S8), §7.1
   (S9), or §7.2 (S10) — round 10's own S7 row is scheduled to backfill
   these.
@@ -112,8 +110,8 @@ default. Don't read a brief section your row doesn't point at.
   `test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_
   dialog` (same symptom class as the now-closed history-refresh flake,
   different victim test). Did not recur in this session's own CI run's
-  named failures (none — see Current state); watch for a second
-  occurrence before adding it to CLAUDE.md's Open issues.
+  named failures (none — CI was green, see Current state); watch for a
+  second occurrence before adding it to CLAUDE.md's Open issues.
 
 ## How to end your session
 
