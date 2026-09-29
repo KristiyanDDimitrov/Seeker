@@ -1,56 +1,41 @@
-# SLSKD_SLSK_USERNAME/SLSKD_SLSK_PASSWORD/SLSKD_API_KEY are populated by
-# the onboarding wizard (Application/docker_setup.py) via the
-# environment `docker compose up` is invoked with — never written to a
-# second, compose-specific env file. Confirmed live (2026-08-28) safe
-# to leave unset for a manual `docker compose up`: slskd falls through
-# to whatever's already persisted in slskd-data/slskd.yml when an
-# env var override is empty, rather than clobbering it (verified
-# against a real persisted credential before relying on this).
-# SLSKD_DATA_DIR/SLSKD_SHARE_PATH default to this repo's existing real
-# values so a manual run without the wizard behaves exactly as before.
+# Seeker's slskd template. Seeker copies it into each user's slskd data
+# directory and runs `docker compose up` against that copy; the tracked
+# file is never edited by the app.
+#
+# Every value below comes from the environment `docker compose up` runs
+# with (docker_setup.bring_up_slskd). Nothing names one machine's paths:
+# SLSKD_DATA_DIR and SLSKD_SHARE_PATH are required, so a missing value
+# fails loudly instead of mounting someone else's folder.
+#
+# The credential variables may be empty for a manual run: slskd then
+# keeps whatever its own slskd.yml already holds (HISTORY §23).
 services:
   slskd:
-    image: slskd/slskd
+    image: slskd/slskd:0.26.0
     container_name: slskd
     ports:
-      # Roadmap item 116 (round 8, §6.1.1) — the web UI is bound to
-      # loopback only. Seeker's own client never talks to slskd over
-      # anything but localhost (SLSKD_LOCAL_BASE_URL, ui/wizard.py), and
-      # an unbound Docker port mapping binds 0.0.0.0 -- reachable from
-      # any device on the same network. Confirmed live: a real slskd
-      # container on this machine was published on 0.0.0.0/[::] before
-      # this change.
+      # The web UI and API answer on this machine only; Seeker talks to
+      # slskd over localhost. HISTORY §116.
       - "127.0.0.1:5030:5030"
       - "127.0.0.1:5031:5031"
-      # MUST stay open on every interface -- real incoming Soulseek peer
-      # connections need it; the P2P protocol requires it.
+      # Soulseek peers connect in on this port, so it stays published on
+      # every interface.
       - "50300:50300"
     environment:
       - PUID=1000
       - PGID=1000
-      # Roadmap item 116 (round 8, §6.1.3) — checked, not assumed: grep
-      # for api/v0/options, api/v0/config, and remote_configuration
-      # across src/ turns up nothing calling slskd's remote config API
-      # (SharingService.add_location_to_share's own comment records that
-      # PATCH /api/v0/options was tried for share-path changes and found
-      # unusable — it recreates the container via bring_up_slskd
-      # instead, a compose-level change, not a remote-configuration
-      # one). slskd defaults this to false; there was never a reason it
-      # was true here.
+      # Share directories change only by recreating the container from
+      # this file (sharing_service.py), never through slskd's remote
+      # configuration API.
       - SLSKD_REMOTE_CONFIGURATION=false
+      # The Soulseek network login.
       - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
       - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
       - SLSKD_API_KEY=${SLSKD_API_KEY}
-      # Roadmap item 116 (round 8, §6.1.2) — the WEB UI login (distinct
-      # from SLSKD_SLSK_USERNAME/PASSWORD above, the Soulseek NETWORK
-      # login). Never set before this item, leaving the web UI at
-      # slskd's own vendor default ("slskd"/"slskd"). Same "empty means
-      # keep whatever's already persisted" behavior applies here as the
-      # top-of-file comment already documents for the other credentials.
+      # The web UI login, distinct from the network login above.
       - SLSKD_USERNAME=${SLSKD_USERNAME}
       - SLSKD_PASSWORD=${SLSKD_PASSWORD}
     volumes:
-      - ${SLSKD_DATA_DIR:-./slskd-data}:/app
-      - "${SLSKD_SHARE_PATH:-/Volumes/X9 Pro/Music}:/shared/music:ro"
-      - "/Volumes/X9 Pro/Music/Test:/shared/Test:ro"
-    restart: always
+      - "${SLSKD_DATA_DIR:?set by Seeker}:/app"
+      - "${SLSKD_SHARE_PATH:?set by Seeker}:/shared/music:ro"
+    restart: unless-stopped

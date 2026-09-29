@@ -545,6 +545,60 @@ def test_add_location_to_share_rolls_back_compose_when_recreate_fails(
     assert compose_path.read_text() == original_compose_text
 
 
+def test_add_location_to_share_refuses_without_a_live_music_share(
+        tmp_path, monkeypatch,
+):
+    # The template requires SLSKD_SHARE_PATH. A container with no
+    # /shared/music mount gives no value to pass, so the recreate must
+    # stop before any file is touched rather than fail halfway.
+    compose_path = tmp_path / "docker-compose.yml"
+    original_compose_text = (
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "${SLSKD_DATA_DIR:?set by Seeker}:/app"\n'
+        "    restart: unless-stopped\n"
+    )
+    compose_path.write_text(original_compose_text)
+
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    original_slskd_yml_text = "shares:\n  directories:\n    - /shared/x\n"
+    slskd_yml_path.write_text(original_slskd_yml_text)
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({"shares": {"directories": 1, "files": 3}})
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"] and "Labels" in cmd[-1]:
+            return FakeCompletedProcess(stdout=str(compose_path) + "\n")
+
+        if cmd[:2] == ["docker", "inspect"]:
+            return FakeCompletedProcess(stdout=json.dumps([
+                {"Destination": "/app", "Source": str(data_dir)},
+            ]))
+
+        raise AssertionError(f"unexpected command {cmd}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="/shared/music"):
+        service.add_location_to_share(location, confirm=True)
+
+    assert compose_path.read_text() == original_compose_text
+    assert slskd_yml_path.read_text() == original_slskd_yml_text
+    assert list(tmp_path.glob("*.bak-*")) == []
+    assert list(data_dir.glob("*.bak-*")) == []
+
+
 def test_add_location_to_share_backs_up_and_writes_both_files(
         tmp_path, monkeypatch,
 ):

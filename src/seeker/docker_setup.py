@@ -343,19 +343,16 @@ def bring_up_slskd(
         slskd_data_dir: str,
         web_username: str,
         web_password: str,
-        library_location_path: str | None = None,
+        library_location_path: str,
 ) -> subprocess.CompletedProcess[str]:
     # Passes the collected credentials/API key/paths directly as
     # environment variables to `docker compose up`, which Compose
     # substitutes into docker-compose.yml's ${VAR} placeholders — no
     # second, compose-specific env file.
     #
-    # `library_location_path` is optional: a recreate triggered by
-    # SharingService.add_location_to_share may not know the current
-    # live-mounted share path and must not clobber it with a blank —
-    # omitting the key lets Compose fall through to docker-compose.yml's
-    # own `${SLSKD_SHARE_PATH:-...}` default instead of substituting an
-    # explicit empty string. HISTORY §84 (R6).
+    # The template has no default share path, so every caller names the
+    # folder to share explicitly; a recreate passes the live container's
+    # current share back unchanged.
     env = {
         **os.environ,
         SLSKD_NETWORK_USERNAME_ENV_VAR: soulseek_username,
@@ -364,10 +361,8 @@ def bring_up_slskd(
         "SLSKD_DATA_DIR": slskd_data_dir,
         SLSKD_WEB_USERNAME_ENV_VAR: web_username,
         SLSKD_WEB_PASSWORD_ENV_VAR: web_password,
+        "SLSKD_SHARE_PATH": library_location_path,
     }
-
-    if library_location_path is not None:
-        env["SLSKD_SHARE_PATH"] = library_location_path
 
     return subprocess.run(
         ["docker", "compose", "-f", compose_file, "up", "-d"],

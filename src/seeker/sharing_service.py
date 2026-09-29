@@ -407,6 +407,20 @@ class SharingService:
                 "directory -- is it running?"
             )
 
+        # The template requires SLSKD_SHARE_PATH, and the recreate passes
+        # the live value back unchanged, so a container without this
+        # mount cannot be recreated at all. Refuse before any file is
+        # touched.
+        original_share_host_path = mounts.get(f"{SHARE_MOUNT_ROOT}/music")
+
+        if original_share_host_path is None:
+            raise RuntimeError(
+                f"The running slskd container has no {SHARE_MOUNT_ROOT}/"
+                "music share, so Seeker can't recreate it without "
+                "changing what's shared. Re-run SoulSeek setup in "
+                "Settings first."
+            )
+
         slskd_yml_path = Path(data_dir) / "slskd.yml"
 
         if not slskd_yml_path.exists():
@@ -470,8 +484,6 @@ class SharingService:
         # substitutes. One code path now knows the full contract; a
         # future compose variable can't be forgotten in one of two
         # places again.
-        original_share_host_path = mounts.get(f"{SHARE_MOUNT_ROOT}/music")
-
         recreate_result = bring_up_slskd(
             compose_file=str(self._compose_path),
             soulseek_username=config.slskd_username or "",

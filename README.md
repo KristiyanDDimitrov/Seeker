@@ -359,10 +359,12 @@ fallback for values the config store doesn't have.
 
 `seeker` talks to SoulSeek through [`slskd`](https://github.com/slskd/slskd),
 a self-hosted daemon with a REST API, rather than implementing the raw
-protocol itself. A `docker-compose.yml` is included:
+protocol itself. A `docker-compose.yml` template is included. It names
+no folders of its own, so pass the data directory and the folder to
+share (read-only) when you start it:
 
 ```
-docker compose up -d
+SLSKD_DATA_DIR=./slskd-data SLSKD_SHARE_PATH="$HOME/Music" docker compose up -d
 ```
 
 Then open `http://127.0.0.1:5030`, finish slskd's own setup (SoulSeek
