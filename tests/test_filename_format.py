@@ -149,3 +149,14 @@ def test_truncation_only_shortens_the_title_never_the_artist_prefix():
     result = build_track_filename("Real Artist Name", long_title, "mp3")
     assert result is not None
     assert result.startswith("Real Artist Name - ")
+
+
+def test_a_dot_led_artist_does_not_produce_a_hidden_file():
+    result = build_track_filename(
+        "...And You Will Know Us by the Trail of Dead",
+        "Relative Ways",
+        "mp3",
+    )
+    assert result == (
+        "___And You Will Know Us by the Trail of Dead - Relative Ways.mp3"
+    )

@@ -68,3 +68,14 @@ def test_entirely_invalid_name_falls_back_to_a_real_name():
 def test_very_long_name_is_truncated():
     result = sanitize_path_component("x" * 500)
     assert len(result) <= MAX_LENGTH
+
+
+def test_leading_dots_are_replaced_so_the_folder_is_not_hidden():
+    # A dot-led name is hidden in Finder and most DJ file browsers.
+    # Each leading dot becomes "_", one for one.
+    assert sanitize_path_component(".late night mix") == "_late night mix"
+    assert sanitize_path_component("...Mix") == "___Mix"
+
+
+def test_a_dot_inside_the_name_is_kept():
+    assert sanitize_path_component("Mr. Oizo") == "Mr. Oizo"

@@ -20,6 +20,8 @@ import re
 # library onto a Windows-formatted drive.
 _INVALID_CHARS_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
+_LEADING_DOTS_PATTERN = re.compile(r"^\.+")
+
 # Untuned constant — a generous ceiling well under real filesystem
 # limits (255 bytes on most modern filesystems), just a sanity bound
 # against a pathologically long playlist name.
@@ -30,8 +32,9 @@ _FALLBACK_NAME = "Untitled"
 
 def clean_path_component(name: str) -> str:
     """The part of sanitization that has nothing to do with length:
-    illegal-character replacement plus the Windows trailing-dot/space
-    strip. Factored out (roadmap item 67, Phase 6.1) so
+    illegal-character replacement, the Windows trailing-dot/space
+    strip, and leading dots replaced so the name is never hidden.
+    Factored out (roadmap item 67, Phase 6.1) so
     filename_format.py::build_track_filename can reuse this exact
     cleaning logic under its own, different length rule (255 UTF-8
     BYTES, not this module's MAX_LENGTH characters) without a second
@@ -46,13 +49,22 @@ def clean_path_component(name: str) -> str:
     # cosmetic) if left in: the folder that actually gets created
     # doesn't match the name this app thinks it just used, and a later
     # lookup by the original (unstripped) name would miss it.
-    return sanitized.rstrip(" .")
+    sanitized = sanitized.rstrip(" .")
+
+    # A dot-led name is hidden by Finder and most DJ file browsers, so
+    # each leading dot becomes "_", one for one: "...And You" becomes
+    # "___And You". Runs after the trailing strip, so a name of only
+    # dots still empties out (and sanitize_path_component falls back).
+    return _LEADING_DOTS_PATTERN.sub(
+        lambda match: "_" * len(match.group()), sanitized,
+    )
 
 
 def sanitize_path_component(name: str) -> str:
     """Replace anything unsafe with '-', strip Windows-illegal trailing
-    dots/spaces, and fall back to a real, non-empty name if nothing
-    usable survives (e.g. a name that was entirely invalid characters).
+    dots/spaces, replace leading dots with '_', and fall back to a
+    real, non-empty name if nothing usable survives (e.g. a name that
+    was entirely invalid characters).
     """
     sanitized = clean_path_component(name)
     sanitized = sanitized[:MAX_LENGTH].rstrip(" .")
