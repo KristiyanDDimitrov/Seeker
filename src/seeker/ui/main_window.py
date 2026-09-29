@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
+from seeker.models.spotify_sync import TrackSyncResult
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
@@ -1709,13 +1710,26 @@ class MainWindow(QMainWindow):
 
         playlist = self._dashboard_page.selected_playlist
 
-        def do_sync() -> Any:
-            self.application.sync_service.sync_playlist_tracks(playlist)
+        def do_sync() -> TrackSyncResult:
+            return self.application.sync_service.sync_playlist_tracks(
+                playlist,
+            )
+
+        def on_finished(result: TrackSyncResult) -> None:
+            self._dashboard_page._poll_selected_playlist()
+
+            if result.local_files_skipped:
+                self._dashboard_page.dashboard_notice.show_message(
+                    help_text.format_skipped_local_files_notice(
+                        playlist.name, result.local_files_skipped,
+                    ),
+                    kind="warning",
+                )
 
         self._run_busy_worker(
             "sync_tracks", self._dashboard_page.sync_tracks_button, do_sync,
             status_label=self._dashboard_page.status_label,
-            on_finished=lambda _: self._dashboard_page._poll_selected_playlist(),
+            on_finished=on_finished,
         )
 
     # Round 8 §12.6 — Dashboard's own track-table row actions (a Tag

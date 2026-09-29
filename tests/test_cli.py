@@ -17,6 +17,7 @@ from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
+from seeker.models.spotify_sync import TrackSyncResult
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.download_service import NoDestinationConfiguredError
@@ -28,6 +29,7 @@ from seeker.spotify.sync_service import (
 class FakeSyncService:
     def __init__(self, playlists: list[Playlist]):
         self._playlists = playlists
+        self.track_sync_result = TrackSyncResult(tracks_saved=0)
 
     def get_playlist_by_name(self, name: str) -> Playlist:
         for playlist in self._playlists:
@@ -40,6 +42,9 @@ class FakeSyncService:
 
     def list_playlists(self) -> list[Playlist]:
         return self._playlists
+
+    def sync_playlist_tracks(self, playlist: Playlist) -> TrackSyncResult:
+        return self.track_sync_result
 
 
 class FakeApplication:
@@ -1196,3 +1201,28 @@ def test_library_remove_unknown_name_exits_with_the_error(tmp_path, capsys):
 
     assert exit_info.value.code == 1
     assert "No library location named 'Nope'" in capsys.readouterr().out
+
+
+def test_sync_tracks_reports_skipped_local_files_and_duplicates(
+        tmp_path, capsys,
+):
+    playlist = Playlist(id="p1", name="Bootlegs", track_count=6)
+    sync_service = FakeSyncService([playlist])
+    sync_service.track_sync_result = TrackSyncResult(
+        tracks_saved=3, local_files_skipped=2, duplicates_collapsed=1,
+    )
+    application = FakeApplication(
+        make_matcher(tmp_path),
+        sync_service=sync_service,
+    )
+
+    cli.handle_sync_tracks(
+        application, cli.build_parser().parse_args(
+            ["sync-tracks", "Bootlegs"],
+        ),
+    )
+
+    output = capsys.readouterr().out
+    assert "Saved 3 tracks for 'Bootlegs'." in output
+    assert "1 repeated listing(s)" in output
+    assert "Skipped 2 Spotify local file(s)" in output

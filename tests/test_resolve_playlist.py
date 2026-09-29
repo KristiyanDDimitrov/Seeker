@@ -6,6 +6,7 @@ from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
 from seeker.models.playlist import Playlist
+from seeker.models.spotify_sync import PlaylistItems
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError as SyncPlaylistNotFoundError,
 )
@@ -21,8 +22,8 @@ class StubSpotifyClient:
     def get_current_user_playlists(self) -> list[Playlist]:
         return self._playlists
 
-    def get_playlist_tracks(self, playlist_id: str):
-        return []
+    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
+        return PlaylistItems([])
 
 
 class FakeApplication:

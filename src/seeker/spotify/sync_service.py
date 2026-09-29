@@ -6,6 +6,8 @@ from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.models.playlist import Playlist
+from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.track import Track
 from seeker.spotify.client import SpotifyClient
 
 logger = logging.getLogger(__name__)
@@ -132,20 +134,18 @@ class SpotifySyncService:
     def sync_playlist_tracks(
             self,
             playlist: Playlist,
-    ) -> int:
+    ) -> TrackSyncResult:
         logger.info("Synchronizing tracks: %s", playlist.name)
 
-        tracks = self.spotify.get_playlist_tracks(
+        items = self.spotify.get_playlist_tracks(
             playlist.id
         )
+        tracks = _first_occurrences(items.tracks)
+        duplicates_collapsed = len(items.tracks) - len(tracks)
 
         with self.database.transaction() as connection:
-            # Roadmap item 66 (Phase 5.3) — captured BEFORE the save
-            # below overwrites it, so "how many missing album art URLs
-            # did this sync just fill in" (item 9's own capture point —
-            # album_art_url comes from the same playlist-items response,
-            # no separate call) can be reported honestly rather than
-            # guessed at afterward.
+            # Read before the save below overwrites it, so the count of
+            # album art URLs this sync filled in is exact.
             previously_missing_art = {
                 track.id
                 for track in self.tracks.get_all_for_playlist(
@@ -172,9 +172,37 @@ class SpotifySyncService:
         )
 
         logger.info("Saved %d tracks.", len(tracks))
+        if items.local_files_skipped:
+            logger.info(
+                "Skipped %d Spotify local file(s).",
+                items.local_files_skipped,
+            )
+        if duplicates_collapsed:
+            logger.info(
+                "Collapsed %d duplicate listing(s).", duplicates_collapsed,
+            )
         if art_urls_filled:
             logger.info(
                 "Filled in %d missing album art URL(s).", art_urls_filled,
             )
 
-        return art_urls_filled
+        return TrackSyncResult(
+            tracks_saved=len(tracks),
+            local_files_skipped=items.local_files_skipped,
+            duplicates_collapsed=duplicates_collapsed,
+            art_urls_filled=art_urls_filled,
+        )
+
+
+def _first_occurrences(tracks: list[Track]) -> list[Track]:
+    seen: set[str] = set()
+    unique = []
+
+    for track in tracks:
+        if track.id in seen:
+            continue
+
+        seen.add(track.id)
+        unique.append(track)
+
+    return unique

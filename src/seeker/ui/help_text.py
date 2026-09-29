@@ -862,6 +862,17 @@ SEARCH_EMPTY_FIELDS_MESSAGE = "Enter both an artist and a title first."
 SEARCH_NO_RESULTS_MESSAGE = "No results found."
 
 
+def format_skipped_local_files_notice(
+        playlist_name: str, local_files_skipped: int,
+) -> str:
+    return (
+        f"'{playlist_name}' has "
+        f"{_count(local_files_skipped, 'Spotify local file')}. They have "
+        f"no Spotify id, so Seeker can't match or download them "
+        f"automatically."
+    )
+
+
 def format_search_result_count(count: int) -> str:
     return f"Found {count} result{'s' if count != 1 else ''}."
 

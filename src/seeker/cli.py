@@ -648,7 +648,20 @@ def handle_sync_tracks(
         parsed.playlist_name, application
     )
 
-    application.sync_service.sync_playlist_tracks(playlist)
+    result = application.sync_service.sync_playlist_tracks(playlist)
+
+    print(f"Saved {result.tracks_saved} tracks for '{playlist.name}'.")
+    if result.duplicates_collapsed:
+        print(
+            f"  {result.duplicates_collapsed} repeated listing(s) of the "
+            f"same track stored once."
+        )
+    if result.local_files_skipped:
+        print(
+            f"  Skipped {result.local_files_skipped} Spotify local "
+            f"file(s): they have no Spotify id, so Seeker can't match "
+            f"or download them automatically."
+        )
 
 def handle_library(
         application: Application,

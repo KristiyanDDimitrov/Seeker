@@ -79,7 +79,7 @@ def test_get_playlist_tracks_reads_item_field_from_correct_endpoint(
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    tracks = SpotifyClient("token").get_playlist_tracks("playlist1")
+    tracks = SpotifyClient("token").get_playlist_tracks("playlist1").tracks
 
     assert requested_urls == ["https://api.spotify.com/v1/playlists/playlist1/items"]
     assert len(tracks) == 1
@@ -114,7 +114,7 @@ def test_get_playlist_tracks_joins_multiple_artists(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    tracks = SpotifyClient("token").get_playlist_tracks("playlist1")
+    tracks = SpotifyClient("token").get_playlist_tracks("playlist1").tracks
 
     assert len(tracks) == 1
     assert tracks[0].artist == "MK, Dom Dolla"
@@ -151,10 +151,59 @@ def test_get_playlist_tracks_skips_non_track_entries(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
-    tracks = SpotifyClient("token").get_playlist_tracks("playlist1")
+    tracks = SpotifyClient("token").get_playlist_tracks("playlist1").tracks
 
     assert len(tracks) == 1
     assert tracks[0].id == "track1"
+
+
+def test_get_playlist_tracks_skips_local_files_and_null_ids(monkeypatch):
+    # A Spotify "local file" is a track with no Spotify id; it can never
+    # be stored or matched by id.
+    local_file = {
+        "is_local": True,
+        "item": {
+            "type": "track",
+            "is_local": True,
+            "id": None,
+            "name": "My Bootleg",
+            "artists": [{"name": "Me"}],
+            "album": {"name": ""},
+            "duration_ms": 1000,
+        },
+    }
+    unavailable = {
+        "item": {
+            "type": "track",
+            "id": None,
+            "name": "Gone",
+            "artists": [{"name": "Someone"}],
+            "album": {"name": "Album"},
+            "duration_ms": 1000,
+        },
+    }
+    real_track = {
+        "item": {
+            "type": "track",
+            "id": "track1",
+            "name": "Song",
+            "artists": [{"name": "Artist"}],
+            "album": {"name": "Album"},
+            "duration_ms": 12345,
+        },
+    }
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return FakeResponse(
+            {"items": [local_file, unavailable, real_track], "next": None}
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    items = SpotifyClient("token").get_playlist_tracks("playlist1")
+
+    assert [track.id for track in items.tracks] == ["track1"]
+    assert items.local_files_skipped == 1
 
 
 class FakeRateLimitedResponse:

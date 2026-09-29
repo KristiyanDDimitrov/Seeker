@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
+from seeker.models.spotify_sync import TrackSyncResult
 from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
@@ -538,6 +539,62 @@ def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
         window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
     )
     assert application.sync_service.sync_playlist_tracks_calls == []
+
+
+def test_load_tracks_warns_when_spotify_local_files_were_skipped(qtbot):
+    # A Spotify local file has no Spotify id, so it can never be matched
+    # or downloaded automatically; a DJ needs to be told.
+    playlists = [Playlist(id="p1", name="Bootlegs", track_count=5)]
+    application = FakeApplication(playlists=playlists, statuses=[])
+    application.sync_service.track_sync_result = TrackSyncResult(
+        tracks_saved=3, local_files_skipped=2,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+    qtbot.waitUntil(
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+    )
+
+    window._dashboard_page.sync_tracks_button.click()
+
+    notice = window._dashboard_page.dashboard_notice
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    assert "2 Spotify local files" in notice.text()
+    assert "Bootlegs" in notice.text()
+
+
+def test_load_tracks_shows_no_notice_when_nothing_was_skipped(qtbot):
+    playlists = [Playlist(id="p1", name="Clean", track_count=3)]
+    application = FakeApplication(playlists=playlists, statuses=[])
+    application.sync_service.track_sync_result = TrackSyncResult(
+        tracks_saved=3,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+    qtbot.waitUntil(
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+    )
+
+    window._dashboard_page.sync_tracks_button.click()
+
+    qtbot.waitUntil(
+        lambda: application.sync_service.sync_playlist_tracks_calls != [],
+        timeout=2000,
+    )
+    qtbot.wait(100)
+    assert window._dashboard_page.dashboard_notice.isHidden()
 
 
 def test_dashboard_reflects_a_selection_write_that_originates_elsewhere(

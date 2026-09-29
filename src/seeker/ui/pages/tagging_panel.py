@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.library.metadata_service import RenamePlan
+from seeker.models.spotify_sync import TrackSyncResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
@@ -422,8 +423,11 @@ class TaggingPanel(QWidget):
             f"Refreshing '{playlist.name}' from Spotify..."
         )
 
-    def _on_fill_missing_art_urls_finished(self, art_urls_filled: int) -> None:
+    def _on_fill_missing_art_urls_finished(
+            self, result: TrackSyncResult,
+    ) -> None:
         self._host.refresh_track_table()
+        art_urls_filled = result.art_urls_filled
 
         if art_urls_filled:
             plural = "s" if art_urls_filled != 1 else ""

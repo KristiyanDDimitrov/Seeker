@@ -3,6 +3,7 @@ import pytest
 from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.models.playlist import Playlist
+from seeker.models.spotify_sync import PlaylistItems
 from seeker.models.track import Track
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError,
@@ -21,15 +22,16 @@ class StubSpotifyClient:
         self._tracks = tracks or []
         self._playlists = playlists or []
         self._tracks_by_playlist = tracks_by_playlist or {}
+        self.local_files_skipped = 0
 
     def get_current_user_playlists(self) -> list[Playlist]:
         return self._playlists
 
-    def get_playlist_tracks(self, playlist_id: str) -> list[Track]:
+    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
         if self._tracks_by_playlist:
-            return self._tracks_by_playlist.get(playlist_id, [])
+            return PlaylistItems(self._tracks_by_playlist.get(playlist_id, []))
 
-        return self._tracks
+        return PlaylistItems(self._tracks, self.local_files_skipped)
 
 
 def make_track(track_id: str) -> Track:
@@ -203,3 +205,46 @@ def test_find_close_playlist_matches_catches_single_character_typo():
         "Afterlife Releasea", ["Afterlife Releases", "Chill"]
     )
     assert matches == ["Afterlife Releases"]
+
+
+def test_sync_playlist_tracks_collapses_a_track_listed_twice(tmp_path):
+    # Spotify lets a playlist hold the same track more than once; the
+    # playlist_tracks primary key does not.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    playlist = Playlist(
+        id="playlist1", name="One", track_count=3, snapshot_id="s1"
+    )
+    spotify = StubSpotifyClient(
+        [make_track("track1"), make_track("track2"), make_track("track1")]
+    )
+    sync_service = SpotifySyncService(spotify, database)
+
+    result = sync_service.sync_playlist_tracks(playlist)
+
+    with database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM playlist_tracks WHERE playlist_id = ?",
+            ("playlist1",),
+        ).fetchall()
+
+    assert sorted(row["track_id"] for row in rows) == ["track1", "track2"]
+    assert result.tracks_saved == 2
+    assert result.duplicates_collapsed == 1
+
+
+def test_sync_playlist_tracks_reports_skipped_local_files(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    playlist = Playlist(
+        id="playlist1", name="One", track_count=3, snapshot_id="s1"
+    )
+    spotify = StubSpotifyClient([make_track("track1")])
+    spotify.local_files_skipped = 2
+    sync_service = SpotifySyncService(spotify, database)
+
+    result = sync_service.sync_playlist_tracks(playlist)
+
+    assert result.tracks_saved == 1
+    assert result.local_files_skipped == 2
+    assert result.duplicates_collapsed == 0

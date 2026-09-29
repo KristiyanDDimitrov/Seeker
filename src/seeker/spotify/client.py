@@ -7,6 +7,7 @@ from typing import Any, cast
 import httpx
 
 from seeker.models.playlist import Playlist
+from seeker.models.spotify_sync import PlaylistItems
 from seeker.models.track import Track
 
 logger = logging.getLogger(__name__)
@@ -228,13 +229,14 @@ class SpotifyClient:
             for playlist in items
         ]
 
-    def get_playlist_tracks(self, playlist_id: str) -> list[Track]:
+    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
         entries = self._get_all_pages(
             f"{BASE_URL}/playlists/{playlist_id}/items",
             {"limit": 50},
         )
 
         tracks = []
+        local_files_skipped = 0
 
         for entry in entries:
             track_data = entry.get("item")
@@ -243,6 +245,15 @@ class SpotifyClient:
                 continue
 
             if track_data.get("type") != "track":
+                continue
+
+            if entry.get("is_local") or track_data.get("is_local"):
+                local_files_skipped += 1
+                continue
+
+            # An unavailable track can come back with no id; nothing
+            # can be stored or matched without one.
+            if not track_data.get("id"):
                 continue
 
             artists = track_data.get("artists", [])
@@ -268,4 +279,4 @@ class SpotifyClient:
                 )
             )
 
-        return tracks
+        return PlaylistItems(tracks, local_files_skipped)

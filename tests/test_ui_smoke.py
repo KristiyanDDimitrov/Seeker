@@ -25,6 +25,7 @@ from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
+from seeker.models.spotify_sync import TrackSyncResult
 from seeker.models.track import Track
 from seeker.models.track_status import (
     DOWNLOADING,
@@ -60,7 +61,9 @@ class FakeSyncService:
         self._playlists = playlists or []
         self.sync_playlists_calls = 0
         self.sync_playlist_tracks_calls: list[Playlist] = []
-        self._art_urls_filled = art_urls_filled
+        self.track_sync_result = TrackSyncResult(
+            tracks_saved=0, art_urls_filled=art_urls_filled,
+        )
 
     def list_playlists(self) -> list[Playlist]:
         return self._playlists
@@ -68,9 +71,9 @@ class FakeSyncService:
     def sync_playlists(self) -> None:
         self.sync_playlists_calls += 1
 
-    def sync_playlist_tracks(self, playlist: Playlist) -> int:
+    def sync_playlist_tracks(self, playlist: Playlist) -> TrackSyncResult:
         self.sync_playlist_tracks_calls.append(playlist)
-        return self._art_urls_filled
+        return self.track_sync_result
 
 
 class FakeDashboardService:
