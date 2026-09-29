@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,9 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 
 logger = logging.getLogger(__name__)
+
+# Rows written per short scan transaction.
+UPSERT_BATCH_SIZE = 200
 
 
 class LibraryUnavailableError(RuntimeError):
@@ -49,63 +53,69 @@ class LibraryScanner:
 
         logger.info("Scanning library location '%s': %s", location.name, root)
 
+        with self.database.transaction() as connection:
+            existing_by_relative_path = {
+                local_file.relative_path: local_file
+                for local_file in self.local_files.get_all_for_location(
+                    location.id, connection,
+                )
+            }
+
         added = 0
         updated = 0
         unchanged = 0
         seen_relative_paths = set()
+        pending: list[LocalFile] = []
+
+        # Tags are read outside any transaction and written in short
+        # batches, so a long first scan never holds the write lock
+        # while it walks; other writers (the download poll, tagging)
+        # otherwise wait out SQLite's 5-second busy timeout and fail
+        # with "database is locked" (measured: HISTORY §142).
+        for relative_path in _walk_audio_files(root):
+            seen_relative_paths.add(relative_path)
+
+            file_path = root / relative_path
+            stat = file_path.stat()
+            existing = existing_by_relative_path.get(relative_path)
+
+            if (
+                    existing is not None
+                    and existing.size_bytes == stat.st_size
+                    and existing.mtime == stat.st_mtime
+            ):
+                unchanged += 1
+                continue
+
+            pending.append(
+                _read_local_file(location.id, relative_path, file_path, stat)
+            )
+
+            if existing is None:
+                added += 1
+            else:
+                updated += 1
+
+            if len(pending) >= UPSERT_BATCH_SIZE:
+                self._write(pending)
+                pending = []
+
+        self._write(pending)
+
+        # Only rows that existed when the scan started: a file another
+        # writer indexed meanwhile (a finished download) is not in the
+        # walk if its folder was already passed, and must stay.
+        removed_ids = [
+            local_file.id
+            for relative_path, local_file in existing_by_relative_path.items()
+            if relative_path not in seen_relative_paths
+            and local_file.id is not None
+        ]
 
         with self.database.transaction() as connection:
-            existing_by_relative_path = {
-                local_file.relative_path: local_file
-                for local_file in self.local_files.get_all(connection)
-                if local_file.location_id == location.id
-            }
+            self.local_files.delete_by_ids(removed_ids, connection)
 
-            for file_path in root.rglob("*"):
-                if not file_path.is_file():
-                    continue
-
-                if file_path.name.startswith("._"):
-                    continue
-
-                if file_path.suffix.lower() not in AUDIO_EXTENSIONS:
-                    continue
-
-                relative_path = str(file_path.relative_to(root))
-                seen_relative_paths.add(relative_path)
-
-                stat = file_path.stat()
-                existing = existing_by_relative_path.get(relative_path)
-
-                if (
-                        existing is not None
-                        and existing.size_bytes == stat.st_size
-                        and existing.mtime == stat.st_mtime
-                ):
-                    unchanged += 1
-                    continue
-
-                index_single_file(
-                    location,
-                    relative_path,
-                    self.local_files,
-                    connection,
-                )
-
-                if existing is None:
-                    added += 1
-                else:
-                    updated += 1
-
-            removed = len(
-                set(existing_by_relative_path) - seen_relative_paths
-            )
-
-            self.local_files.delete_missing(
-                location.id,
-                seen_relative_paths,
-                connection,
-            )
+        removed = len(removed_ids)
 
         summary = {
             "added": added,
@@ -120,6 +130,42 @@ class LibraryScanner:
         )
 
         return summary
+
+    def _write(self, local_files: list[LocalFile]) -> None:
+        if not local_files:
+            return
+
+        with self.database.transaction() as connection:
+            for local_file in local_files:
+                self.local_files.upsert(local_file, connection)
+
+
+def _walk_audio_files(root: Path) -> Iterator[str]:
+    """Relative paths of the audio files under `root`.
+
+    Hidden directories (`.Trashes`, `.Spotlight-V100`, `.fseventsd` on
+    a volume root) are never entered, and AppleDouble `._*` sidecars
+    are skipped. A dot-led audio *file* is still indexed: the user may
+    own one.
+    """
+    for directory, subdirectories, filenames in os.walk(root):
+        subdirectories[:] = [
+            name for name in subdirectories if not name.startswith(".")
+        ]
+
+        for filename in filenames:
+            if filename.startswith("._"):
+                continue
+
+            file_path = Path(directory) / filename
+
+            if file_path.suffix.lower() not in AUDIO_EXTENSIONS:
+                continue
+
+            if not file_path.is_file():
+                continue
+
+            yield str(file_path.relative_to(root))
 
 
 def index_single_file(
@@ -205,6 +251,7 @@ def _read_tags(
 
         return tag_artist, tag_title, tag_album, duration_ms
     except Exception:
+        logger.debug("Could not read tags from %s", file_path, exc_info=True)
         return None, None, None, None
 
 
