@@ -283,6 +283,14 @@ class SharingService:
             for location in locations
         ]
 
+    def current_share_path(self) -> str | None:
+        """The host folder the running container shares as
+        /shared/music, or None when there is no container (or Docker
+        can't be reached). A recreate passes this back unchanged so it
+        never alters what is shared."""
+        mounts = _get_live_container_mounts(self._container_name)
+        return mounts.get(f"{SHARE_MOUNT_ROOT}/music")
+
     def is_self_managed(self) -> bool:
         """True only when the running slskd container was created by
         THIS app's own docker-compose.yml -- never a user's own

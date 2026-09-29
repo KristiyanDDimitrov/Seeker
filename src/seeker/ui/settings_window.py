@@ -960,19 +960,43 @@ class SettingsPage(QWidget):
             )
             return
 
-        locations = list(self._locations_by_name.values())
-
-        if not locations:
+        if not self._locations_by_name:
             self.update_credentials_status_label.setText(
                 "Register a library location before setting up SoulSeek."
             )
             return
 
-        # Reuses whichever location is already shared with slskd —
-        # same single-location assumption the onboarding wizard itself
-        # makes; this project doesn't yet support choosing a different
-        # share path from Settings.
-        library_location_path = locations[0].path
+        # A credential update must never change what is shared: keep the
+        # running container's share, and ask only when none is running.
+        run_worker(
+            self.thread_pool,
+            self.application.sharing_service.current_share_path,
+            button=self.update_credentials_button,
+            status_label=self.update_credentials_status_label,
+            on_finished=lambda share_path: self._recreate_with_credentials(
+                username, password, share_path,
+            ),
+        )
+        self.update_credentials_status_label.setText(
+            "Checking which folder SoulSeek shares now..."
+        )
+
+    def _recreate_with_credentials(
+            self,
+            username: str,
+            password: str,
+            live_share_path: str | None,
+    ) -> None:
+        library_location_path = live_share_path
+
+        if library_location_path is None:
+            library_location_path = self._ask_which_location_to_share()
+
+        if library_location_path is None:
+            self.update_credentials_status_label.setText(
+                "Cancelled — SoulSeek was not changed."
+            )
+            return
 
         api_key = generate_api_key()
         data_dir = slskd_data_dir()
@@ -1016,6 +1040,23 @@ class SettingsPage(QWidget):
         self.update_credentials_status_label.setText(
             "Recreating SoulSeek container..."
         )
+
+    def _ask_which_location_to_share(self) -> str | None:
+        names = list(self._locations_by_name)
+        name, accepted = QInputDialog.getItem(
+            self,
+            "Share a folder",
+            "SoulSeek isn't running, so there's no current share to keep.\n"
+            "Which library location should SoulSeek share (read-only)?",
+            names,
+            0,
+            False,
+        )
+
+        if not accepted or name not in self._locations_by_name:
+            return None
+
+        return self._locations_by_name[name].path
 
     def _on_credentials_updated(self) -> None:
         self.new_soulseek_username_field.clear()

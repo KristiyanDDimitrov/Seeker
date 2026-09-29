@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import pytest
 from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
@@ -830,6 +831,9 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
 ):
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
+    _fake_live_mounts(
+        monkeypatch, {"/shared/music": str(tmp_path / "music")},
+    )
 
     bring_up_calls = []
 
@@ -879,6 +883,122 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
     assert application._config_store.slskd_api_key == "generated-key"
 
 
+def _fake_live_mounts(monkeypatch, mounts: dict[str, str]) -> None:
+    monkeypatch.setattr(
+        "seeker.sharing_service._get_live_container_mounts",
+        lambda container_name: mounts,
+    )
+
+
+def _fake_successful_bring_up(monkeypatch, tmp_path) -> list[dict]:
+    bring_up_calls: list[dict] = []
+
+    class FakeResult:
+        returncode = 0
+        stderr = ""
+
+    def fake_bring_up(**kwargs):
+        bring_up_calls.append(kwargs)
+        return FakeResult()
+
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.bring_up_slskd", fake_bring_up,
+    )
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.slskd_data_dir",
+        lambda: tmp_path / "slskd-data",
+    )
+    return bring_up_calls
+
+
+def _click_update_credentials(qtbot, window) -> None:
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    window.new_soulseek_username_field.setText("realuser")
+    window.new_soulseek_password_field.setText("realpass")
+    window.update_credentials_button.click()
+
+
+def test_update_credentials_keeps_sharing_the_live_share_not_the_first_location(
+        qtbot, tmp_path, monkeypatch,
+):
+    # "Desktop" sorts before "Music"; the container shares Music. Updating
+    # credentials must never swap the share for whichever location
+    # happens to sort first.
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Desktop", tmp_path / "Desktop")
+    add_location(application, "Music", tmp_path / "Music")
+    _fake_live_mounts(monkeypatch, {
+        "/app": str(tmp_path / "slskd-data"),
+        "/shared/music": str(tmp_path / "Music"),
+    })
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        QInputDialog, "getItem",
+        lambda *a, **k: pytest.fail("must not ask when a share is live"),
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _click_update_credentials(qtbot, window)
+
+    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    assert bring_up_calls[0]["library_location_path"] == str(
+        tmp_path / "Music"
+    )
+
+
+def test_update_credentials_without_a_container_asks_which_location(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Desktop", tmp_path / "Desktop")
+    add_location(application, "Music", tmp_path / "Music")
+    _fake_live_mounts(monkeypatch, {})
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+    offered: list[list[str]] = []
+
+    def fake_get_item(parent, title, label, items, *args, **kwargs):
+        offered.append(list(items))
+        return "Music", True
+
+    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _click_update_credentials(qtbot, window)
+
+    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    assert offered == [["Desktop", "Music"]]
+    assert bring_up_calls[0]["library_location_path"] == str(
+        tmp_path / "Music"
+    )
+
+
+def test_update_credentials_cancelling_the_share_question_starts_nothing(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Music", tmp_path / "Music")
+    _fake_live_mounts(monkeypatch, {})
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+    asked: list[bool] = []
+
+    def fake_get_item(*args, **kwargs):
+        asked.append(True)
+        return "", False
+
+    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _click_update_credentials(qtbot, window)
+
+    qtbot.waitUntil(lambda: asked != [], timeout=2000)
+    qtbot.waitUntil(window.update_credentials_button.isEnabled, timeout=2000)
+    assert bring_up_calls == []
+    assert "cancel" in window.update_credentials_status_label.text().lower()
+
+
 def test_soulseek_password_return_pressed_calls_update_credentials(
         qtbot, tmp_path, monkeypatch,
 ):
@@ -886,6 +1006,9 @@ def test_soulseek_password_return_pressed_calls_update_credentials(
     # names directly.
     application = make_application(tmp_path, monkeypatch)
     add_location(application, "Main", tmp_path / "music")
+    _fake_live_mounts(
+        monkeypatch, {"/shared/music": str(tmp_path / "music")},
+    )
 
     bring_up_calls = []
 
