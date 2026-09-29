@@ -313,9 +313,7 @@ class LocalFileRepository:
             local_file_id: int,
             connection: sqlite3.Connection,
     ) -> None:
-        # track_matches.local_file_id references this via ON DELETE SET
-        # NULL (see schema.py) -- a track matched to this file goes back
-        # to unmatched rather than left pointing at a deleted row.
+        _release_matches(connection, "id = ?", (local_file_id,))
         connection.execute(
             "DELETE FROM local_files WHERE id = ?",
             (local_file_id,),
@@ -327,28 +325,50 @@ class LocalFileRepository:
             seen_relative_paths: set[str],
             connection: sqlite3.Connection,
     ) -> None:
-        if not seen_relative_paths:
-            connection.execute(
-                "DELETE FROM local_files WHERE location_id = ?",
-                (location_id,),
-            )
-            return
+        where = "location_id = ?"
 
-        placeholders = ", ".join("?" for _ in seen_relative_paths)
+        if seen_relative_paths:
+            # Built only from "?" and ", ", one per path; every value
+            # still goes through the parameter tuple.
+            placeholders = ", ".join("?" for _ in seen_relative_paths)
+            where += f" AND relative_path NOT IN ({placeholders})"
 
-        # Safe despite the f-string below (S608, suppressed there):
-        # `placeholders` is built only from "?" and ", " (one per item
-        # in seen_relative_paths, never from any value), and every real
-        # value is still passed through the parameter tuple; nothing
-        # user- or file-derived reaches the query string itself.
+        params = (location_id, *seen_relative_paths)
+        _release_matches(connection, where, params)
         connection.execute(
-            f"""
-            DELETE FROM local_files
-            WHERE location_id = ?
-            AND relative_path NOT IN ({placeholders})
-            """,  # noqa: S608
-            (location_id, *seen_relative_paths),
+            f"DELETE FROM local_files WHERE {where}",  # noqa: S608
+            params,
         )
+
+
+def _release_matches(
+        connection: sqlite3.Connection,
+        where: str,
+        params: tuple[object, ...],
+) -> None:
+    """Resets every match pointing at the `local_files` rows `where`
+    selects to a clean unmatched state. Call it before deleting those
+    rows, in the same transaction.
+
+    The schema's `ON DELETE SET NULL` alone only nulls `local_file_id`,
+    leaving a method, score and `confirmed_at` on a row that points
+    nowhere: shown missing, never downloaded, never re-matched
+    (HISTORY §139).
+
+    `where` must be a fixed SQL fragment over `local_files`' own
+    columns; every value goes through `params`.
+    """
+    connection.execute(
+        f"""
+        UPDATE track_matches
+        SET local_file_id = NULL,
+            match_method = NULL,
+            score = NULL,
+            confirmed_at = NULL
+        WHERE local_file_id IN (SELECT id FROM local_files WHERE {where})
+        """,  # noqa: S608
+        params,
+    )
 
 
 def _row_to_local_file(row: sqlite3.Row) -> LocalFile:

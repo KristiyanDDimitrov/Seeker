@@ -889,38 +889,14 @@ class DuplicateService:
             connection: Any,
     ) -> None:
         """If a `track_matches` row currently points at the file about
-        to be deleted, re-point it at the group's surviving file instead
-        of leaving it to fall back to the schema's `ON DELETE SET NULL`
-        cascade.
+        to be deleted, re-point it at the group's surviving file.
+        Otherwise `delete_by_id` would reset it to unmatched, and the
+        next download would fetch a track whose near-identical copy is
+        already in the library.
 
-        Confirmed live, not assumed, that this matters: the cascade
-        only nulls `local_file_id` — it leaves `match_method`/`score`
-        untouched, so a track that was `match_method='auto'` stays
-        `'auto'` with `local_file_id=NULL`. Checked directly what that
-        combination does downstream: `DashboardService._compute_status`
-        requires BOTH `match_method == "auto"` AND a resolvable
-        `local_file_id` for `IN_LIBRARY`, so the track falsely shows
-        `NOT_FOUND` — even though the group's other (often
-        higher-quality) copy is sitting right there. Checked the
-        actual re-download risk this could imply, not just the display
-        bug: `TrackRepository.get_unmatched_for_playlist` (what
-        `download_playlist` actually schedules against) filters on
-        `match_method IS NULL`, which stays FALSE for this row (it's
-        still `'auto'`) — so `download_playlist` does NOT pick it back
-        up either, meaning the track is stuck in limbo (shown missing,
-        never re-searched) rather than actually re-downloaded. Neither
-        outcome is acceptable, and re-pointing avoids both: no separate
-        "repoint" helper exists elsewhere to reuse (every real call site
-        — `TrackMatcher.match_all()`, `DownloadService
-        .apply_upgrade_decision`'s replace path — just constructs a
-        `TrackMatch` and calls `TrackMatchRepository.upsert()` directly;
-        that IS the reusable primitive, already used the same way here).
-        `match_method`/`score` are preserved as-is (not re-evaluated) —
-        the underlying audio is fingerprint-confirmed near-identical
-        (>= DUPLICATE_SIMILARITY_THRESHOLD), so the existing match's own
-        confidence is still the right thing to report; only
-        `matched_at` is refreshed to reflect that the pointer just
-        changed.
+        `match_method`/`score` are kept, not re-evaluated: the surviving
+        audio is fingerprint-confirmed near-identical
+        (>= DUPLICATE_SIMILARITY_THRESHOLD).
         """
         if keep_local_file_id is None:
             return
