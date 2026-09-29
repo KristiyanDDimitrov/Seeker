@@ -1126,3 +1126,21 @@ def test_insert_slskd_share_directory_matches_the_lists_own_indentation():
 def test_insert_slskd_share_directory_refuses_a_shape_it_cannot_edit(text):
     with pytest.raises(RuntimeError, match=r"slskd\.yml"):
         _insert_slskd_share_directory(text, "    - /shared/new")
+
+
+def test_insert_slskd_share_directory_ignores_a_nested_directories_key():
+    text = (
+        "shares:\n"
+        "  filters:\n"
+        "    directories:\n"
+        "      - not-the-share-list\n"
+        "  directories:\n"
+        "    - /shared/music\n"
+    )
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.splitlines()[-2:] == [
+        "    - /shared/music",
+        "    - /shared/new",
+    ]

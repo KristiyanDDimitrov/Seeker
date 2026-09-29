@@ -771,6 +771,9 @@ def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
     directories_index = None
 
     for index in children:
+        if _indent_of(lines[index]) != child_indent:
+            continue  # inside another child (e.g. under filters:)
+
         stripped = lines[index].strip()
 
         if _DIRECTORIES_KEY.match(stripped):
