@@ -6,7 +6,10 @@ CREATE TABLE IF NOT EXISTS playlists (
     snapshot_id TEXT,
     synced_at TEXT,
     download_location_id INTEGER REFERENCES library_locations(id),
-    download_subfolder TEXT
+    download_subfolder TEXT,
+    -- The snapshot_id the cached playlist_tracks rows were loaded from;
+    -- NULL until the playlist's tracks are first loaded.
+    tracks_snapshot_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tracks (

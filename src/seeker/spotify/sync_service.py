@@ -164,6 +164,9 @@ class SpotifySyncService:
                 [track.id for track in tracks],
                 connection,
             )
+            self.playlists.mark_tracks_loaded(
+                playlist.id, playlist.snapshot_id, connection,
+            )
 
         art_urls_filled = sum(
             1 for track in tracks

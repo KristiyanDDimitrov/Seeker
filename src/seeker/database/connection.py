@@ -115,6 +115,23 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "soulseek_review_candidates", "runner_up_score", "REAL"
     )
+    # Playlists loaded before this column existed are taken as current,
+    # so the upgrade doesn't report every one of them as changed on
+    # Spotify. Only on the run that adds the column: afterwards a
+    # differing snapshot means real staleness.
+    if _add_column_if_missing(
+            connection, "playlists", "tracks_snapshot_id", "TEXT",
+    ):
+        connection.execute(
+            """
+            UPDATE playlists
+            SET tracks_snapshot_id = snapshot_id
+            WHERE EXISTS (
+                SELECT 1 FROM playlist_tracks
+                WHERE playlist_tracks.playlist_id = playlists.id
+            )
+            """
+        )
     # A match pointing at no file is unmatched. Older builds let the
     # ON DELETE SET NULL cascade leave its method, score and
     # confirmation behind (HISTORY §139); today every local_files
@@ -133,7 +150,8 @@ def _add_column_if_missing(
         table: str,
         column: str,
         sql_type: str,
-) -> None:
+) -> bool:
+    """Add the column if absent; True when it was added just now."""
     existing_columns = {
         row["name"]
         for row in connection.execute(
@@ -141,7 +159,10 @@ def _add_column_if_missing(
         ).fetchall()
     }
 
-    if column not in existing_columns:
-        connection.execute(
-            f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"
-        )
+    if column in existing_columns:
+        return False
+
+    connection.execute(
+        f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"
+    )
+    return True

@@ -50,7 +50,8 @@ class PlaylistRepository:
                 track_count,
                 snapshot_id,
                 download_location_id,
-                download_subfolder
+                download_subfolder,
+                tracks_snapshot_id
             FROM playlists
             WHERE id = ?
             """,
@@ -75,7 +76,8 @@ class PlaylistRepository:
                 track_count,
                 snapshot_id,
                 download_location_id,
-                download_subfolder
+                download_subfolder,
+                tracks_snapshot_id
             FROM playlists
             WHERE name = ?
             """,
@@ -96,7 +98,8 @@ class PlaylistRepository:
                 track_count,
                 snapshot_id,
                 download_location_id,
-                download_subfolder
+                download_subfolder,
+                tracks_snapshot_id
             FROM playlists
             ORDER BY name
             """
@@ -129,7 +132,8 @@ class PlaylistRepository:
                 p.track_count,
                 p.snapshot_id,
                 p.download_location_id,
-                p.download_subfolder
+                p.download_subfolder,
+                p.tracks_snapshot_id
             FROM playlists p
             JOIN playlist_tracks pt ON pt.playlist_id = p.id
             WHERE pt.track_id = ?
@@ -167,6 +171,17 @@ class PlaylistRepository:
             result.setdefault(row["track_id"], []).append(row["name"])
 
         return result
+
+    def mark_tracks_loaded(
+            self,
+            playlist_id: str,
+            snapshot_id: str | None,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            "UPDATE playlists SET tracks_snapshot_id = ? WHERE id = ?",
+            (snapshot_id, playlist_id),
+        )
 
     def set_destination(
             self,
@@ -228,4 +243,5 @@ def _row_to_playlist(row: sqlite3.Row) -> Playlist:
         snapshot_id=row["snapshot_id"],
         download_location_id=row["download_location_id"],
         download_subfolder=row["download_subfolder"],
+        tracks_snapshot_id=row["tracks_snapshot_id"],
     )

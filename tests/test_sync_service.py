@@ -248,3 +248,77 @@ def test_sync_playlist_tracks_reports_skipped_local_files(tmp_path):
     assert result.tracks_saved == 1
     assert result.local_files_skipped == 2
     assert result.duplicates_collapsed == 0
+
+
+def _tracks_snapshot_id(database: Database, playlist_id: str) -> str | None:
+    with database.transaction() as connection:
+        row = connection.execute(
+            "SELECT tracks_snapshot_id FROM playlists WHERE id = ?",
+            (playlist_id,),
+        ).fetchone()
+
+    return row["tracks_snapshot_id"]
+
+
+def test_sync_playlist_tracks_records_the_snapshot_it_loaded(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    playlist = Playlist(
+        id="playlist1", name="One", track_count=1, snapshot_id="s1"
+    )
+    sync_service = SpotifySyncService(
+        StubSpotifyClient([make_track("track1")]), database,
+    )
+
+    sync_service.sync_playlist_tracks(playlist)
+
+    assert _tracks_snapshot_id(database, "playlist1") == "s1"
+
+
+def test_sync_playlist_tracks_leaves_tracks_snapshot_on_failure(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    playlist = Playlist(
+        id="playlist1", name="One", track_count=1, snapshot_id="s1"
+    )
+    sync_service = SpotifySyncService(
+        StubSpotifyClient([make_track("track1")]), database,
+    )
+
+    with database.transaction() as connection:
+        sync_service.playlists.save(playlist, connection)
+
+    def failing_replace(*args, **kwargs):
+        raise RuntimeError("simulated crash")
+
+    sync_service.tracks.replace_playlist_tracks = failing_replace
+
+    with pytest.raises(RuntimeError):
+        sync_service.sync_playlist_tracks(playlist)
+
+    assert _tracks_snapshot_id(database, "playlist1") is None
+
+
+def test_sync_playlists_keeps_the_loaded_tracks_snapshot(tmp_path):
+    # Refreshing the playlist list records Spotify's new snapshot, but
+    # the cached tracks still come from the old one.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    loaded = Playlist(
+        id="playlist1", name="One", track_count=1, snapshot_id="s1"
+    )
+    spotify = StubSpotifyClient(tracks=[make_track("track1")])
+    sync_service = SpotifySyncService(spotify, database)
+    sync_service.sync_playlist_tracks(loaded)
+
+    spotify._playlists = [
+        Playlist(id="playlist1", name="One", track_count=2, snapshot_id="s2")
+    ]
+    sync_service.sync_playlists()
+
+    with database.transaction() as connection:
+        row = connection.execute(
+            "SELECT snapshot_id, tracks_snapshot_id FROM playlists"
+        ).fetchone()
+
+    assert tuple(row) == ("s2", "s1")

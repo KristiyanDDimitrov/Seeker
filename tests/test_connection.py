@@ -499,3 +499,85 @@ def test_initialize_repairs_matches_left_pointing_at_no_file(tmp_path):
         # A plain unmatched row keeps its below-threshold score.
         ("unmatched", None, None, 40.0, None),
     ]
+
+
+def _create_pre_tracks_snapshot_playlists(db_path) -> None:
+    connection = sqlite3.connect(db_path)
+    connection.executescript(
+        """
+        CREATE TABLE playlists (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            track_count INTEGER NOT NULL,
+            snapshot_id TEXT,
+            synced_at TEXT,
+            download_location_id INTEGER,
+            download_subfolder TEXT
+        );
+        CREATE TABLE tracks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            album TEXT NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            album_art_url TEXT
+        );
+        CREATE TABLE playlist_tracks (
+            playlist_id TEXT NOT NULL,
+            track_id TEXT NOT NULL,
+            PRIMARY KEY (playlist_id, track_id)
+        );
+        INSERT INTO playlists (id, name, track_count, snapshot_id)
+        VALUES ('loaded', 'Loaded', 1, 'snap-loaded'),
+               ('unloaded', 'Unloaded', 9, 'snap-unloaded');
+        INSERT INTO tracks (id, title, artist, album, duration_ms)
+        VALUES ('t1', 'T', 'A', 'Al', 1000);
+        INSERT INTO playlist_tracks (playlist_id, track_id)
+        VALUES ('loaded', 't1');
+        """
+    )
+    connection.commit()
+    connection.close()
+
+
+def _tracks_snapshot_ids(database: Database) -> dict[str, str | None]:
+    with database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT id, tracks_snapshot_id FROM playlists"
+        ).fetchall()
+
+    return {row["id"]: row["tracks_snapshot_id"] for row in rows}
+
+
+def test_initialize_treats_already_loaded_playlists_as_current(tmp_path):
+    # Upgrading must not flag every loaded playlist as changed on
+    # Spotify; a never-loaded playlist stays unloaded (NULL).
+    db_path = tmp_path / "seeker.db"
+    _create_pre_tracks_snapshot_playlists(db_path)
+
+    database = Database(db_path)
+    database.initialize()
+
+    assert _tracks_snapshot_ids(database) == {
+        "loaded": "snap-loaded",
+        "unloaded": None,
+    }
+
+
+def test_initialize_sets_tracks_snapshot_only_when_adding_the_column(
+        tmp_path,
+):
+    db_path = tmp_path / "seeker.db"
+    _create_pre_tracks_snapshot_playlists(db_path)
+    database = Database(db_path)
+    database.initialize()
+
+    with database.transaction() as connection:
+        connection.execute(
+            "UPDATE playlists SET snapshot_id = 'snap-newer' "
+            "WHERE id = 'loaded'"
+        )
+
+    database.initialize()
+
+    assert _tracks_snapshot_ids(database)["loaded"] == "snap-loaded"
