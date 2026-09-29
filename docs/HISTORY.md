@@ -15323,3 +15323,23 @@ mechanism is still unexplained. Either way,
 the product code keeps (1): it also narrows the real
 browser-versus-listener race in `auth_manager`. Closed in CLAUDE.md's
 Open issues; its standing-fact replacement is under Spotify / OAuth.
+
+#### Round 10's S2 row: superseded, not done
+
+Round 10 S2 was to make Review's Confirm work for the stuck candidate
+round 10 S1 diagnosed: a legacy `soulseek_review_candidates` row with
+no `size`, which `confirm_review_candidate` refuses. It never ran, and
+it no longer needs to:
+
+- `sqlite3 -readonly …/seeker.db "select count(*) from
+  soulseek_review_candidates"` returns `0` (2026-09-29). The stuck row
+  is gone.
+- The legacy branch cannot recur. The only production write site,
+  `DownloadService` (`download_service.py:692`), passes `size=file.size`,
+  and `SoulseekFile.size` is a non-optional `int`. A `NULL` size exists
+  only on rows written before item 26 added the column.
+- The branches left (the peer offline, slskd unreachable) are round 11's
+  §11 (readable errors) and §12 (saying when slskd is down).
+
+The row is struck through in `docs/rounds/round-10/SESSION-PLAN.md`
+with a link here.
