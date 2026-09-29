@@ -4,92 +4,84 @@
 first. Overwrite it last.** Keep it under about 120 lines: a baton, not a
 log. The log is `docs/HISTORY.md`, split into `docs/history/` from S2.
 The nine fields below follow the contract in
-`docs/rounds/round-11/SESSION-PLAN.md`.
+`docs/rounds/round-11/SESSION-PLAN.md`. Every document: `docs/README.md`.
 
 ---
 
 ## 1. Current state
 
-- **HEAD:** `378646a` (round 10 S7 close-out), pushed. Tree clean apart
-  from the untracked `Claude outputs/` and the four round-11 documents
-  the audit chat wrote and did **not** commit:
-  `docs/rounds/round-11/{AUDIT,BRIEF,SESSION-PLAN}.md` and this file.
-  S1 commits them first.
-- **Local pytest** (offscreen Qt, Darwin 25.6.0, 2026-09-29):
-  `1204 passed, 29 skipped, 6 warnings in 74.33s`. Branch coverage
-  90.3 %.
+- **HEAD:** `d0af9d4` (round 11 S1 close-out) plus this handoff commit,
+  pushed. Tree clean apart from the untracked `Claude outputs/` (§1.6,
+  waiting on Kris).
+- **Local pytest** (offscreen Qt, 2026-09-29):
+  `1232 passed, 1 skipped, 6 warnings in 116.00s`. Same 1,233 tests as
+  round 10's `1204 passed, 29 skipped`: the X9 Pro was mounted, so its
+  28 `@requires_x9_pro` tests ran.
 - **`mypy --strict src/`:** clean, 104 files. **`ruff check src
   tests`:** 0 findings.
-- **CI on `378646a`:** run `35906721903`, `success`. That is 8
-  consecutive green runs since round 10 S4's race fix (`ddc1f6e`).
+- **CI on `d0af9d4`:** run `36567623511`, `success` (`1204 passed, 29 skipped`; callback server `.....`).
 
 ## 2. Where we are
 
-Round 10 is complete apart from S2, which is superseded (S1 records it;
-BRIEF §1.5). **Round 11 is planned and ready: 43 rows plus 2 optional.
-The next row is S1.** Brief: `docs/rounds/round-11/BRIEF.md`. Session
-map: `docs/rounds/round-11/SESSION-PLAN.md`. Ranked findings:
-`docs/rounds/round-11/AUDIT.md`.
+S1 done. **Next row: S2** (split `HISTORY.md` into `docs/history/`
+with anchors that work, BRIEF §2). Then Phase B: S3 (downloads never
+overwrite), the first critical fix.
 
-## 3. Session report (audit chat, 2026-09-29)
+## 3. Session report (S1)
 
-No code changed. A whole-repository audit (method and tools in
-`AUDIT.md`: ship-gate, tech-debt-tracker, deptry, pip-audit, radon,
-vulture, a ruff survey, branch coverage, import timing, 48 offscreen
-screenshots, and probes against throwaway databases) produced 60
-findings and this round's three documents.
+- `af73e7c` §1.1: the four round-11 documents committed as written.
+- `a9f7e60` §1.2: `git mv` of every round document into
+  `docs/rounds/round-NN/`; all references repointed. HISTORY §136.
+- `4383420` §1.3: `docs/README.md`, the docs index (59 lines).
+- `00e8d3f` §1.4: callback-server CI issue closed, roadmap points at
+  round 11. Evidence: HISTORY §136, "The `test_callback_server.py` CI
+  timeouts".
+- `0e51256` §1.5: round 10's S2 struck through as superseded. Evidence:
+  HISTORY §136, "Round 10's S2 row".
+- `d0af9d4` close-out: HISTORY §136 numbers; S1 ticked.
 
 ## 4. Key context
 
-- **Three critical findings, in order: S3, then S5.**
-  - Same-name upgrade with "Delete old file" leaves no file at all (A-01).
-  - Downloads silently overwrite a different same-named library file
-    (A-02).
-  - The shipped Compose file mounts `/Volumes/X9 Pro/...` (A-03,
-    confirmed inside `dist/Seeker.app`).
-  Reproductions are in BRIEF Appendix A. Turn them into the failing
-  tests.
-- **A privacy bug, also in S5 (§5.5, A-54).** Settings → "Update
-  SoulSeek credentials" would re-share the alphabetically first location,
-  which is `~/Desktop` on this machine, with the Soulseek network.
-- **Interim cautions for Kris** (also in SESSION-PLAN → "Waiting on
-  Kris"): no Review **Replace + Delete old file** until S3; no
-  **Update SoulSeek credentials** until S5.
-- **Real-data facts** (read-only; BRIEF Appendix B):
-  - 2 limbo matches (Denzel Curry) and 1 orphan manual track;
-  - 0 SoulSeek review candidates, which is why round 10 S2 is
-    superseded;
-  - 4 locations nest into 6,921 rows for about 3,460 files, one of them
-    the volume root `/Volumes/X9 Pro`.
-- **New docs layout.** Round documents live in
-  `docs/rounds/round-NN/`; round 11's are already there, and S1 moves
-  rounds 1–10. S1 appends §136 to `docs/HISTORY.md`; S2 splits the file
-  into `docs/history/` with working `#N` anchors, and its own entry is
-  §137.
-- **Stale build identity.** A leftover `src/seeker/_build_info_generated.py`
-  from the last packaging build makes source runs claim build `d38d80f`.
-  Do not trust the Help page's build id in dev until S39.
-- **Never start, stop or recreate Kris's slskd container, and never
-  write real data** (BRIEF §0.7). Migrations are rehearsed on a copy of
-  the database.
-- **The audit's screenshot harness is not in the repository.** S27.0
-  builds `tools/screenshots.py` (the design is in BRIEF §27.0).
+- **For S2, the links to repoint** (`grep -rl "HISTORY\.md#"`, 2026-09-29):
+  `CLAUDE.md` 66, `docs/rounds/round-05/TASKS.md` 5,
+  `docs/rounds/round-11/BRIEF.md` 3, `docs/rounds/round-08/SESSION-PLAN.md`
+  2, `pyproject.toml` 2, `docs/rounds/round-10/SESSION-PLAN.md` 1,
+  `src/seeker/ui/main_window.py` 1, and 1 inside `HISTORY.md` itself.
+  `docs/README.md` links `HISTORY.md` without an anchor. Archived docs
+  sit two levels down, so their links are `../../HISTORY.md#N`.
+- **HISTORY's last entry is §136** (this session). S2's entry is §137.
+- **The callback-server CI failures were fixed by round 9's `231b512`,
+  not by anything environmental.** 39 of 39 CI runs since it pass all
+  five tests; the two runs before it show `FFF..`. Which of its two
+  changes did it is unexplained. CLAUDE.md now carries it as a
+  standing fact under Spotify / OAuth.
+- **Pytest's skip count depends on the X9 Pro being mounted** (1 skip
+  mounted, 29 unmounted, same total). Compare totals, not the split.
+- **In zsh, an unquoted `$files` is not word-split.** A `perl -pi` over
+  `$files` failed silently the first time; pass the paths inline.
+- **Still true from the audit:** three critical findings (S3: A-01,
+  A-02; S5: A-03) and a privacy bug (S5 §5.5, A-54); reproductions in
+  BRIEF Appendix A. A stale `_build_info_generated.py` makes dev runs
+  claim build `d38d80f` until S39. Never start, stop or recreate
+  Kris's slskd container, never write real data (BRIEF §0.7).
 
 ## 5. Decisions made
 
-- **Kris, 2026-09-29:** schedule the v0.1.0 release, the opt-in daily
-  update check, the HISTORY split and the nested-location guard; do a
-  consistency pass plus a visual refresh (Kris picks the direction at
-  S30); archive round documents under `docs/rounds/`; keep Windows and
-  Linux packaging, labelled unverified, with no new CI.
-- **Audit chat:** keep the BRIEF, SESSION-PLAN and HANDOFF format
-  rather than tc-tracker's JSON records, adopting its key-context,
-  decisions, blockers and files-in-progress fields. Row numbers follow
-  the brief's § order (S35a/S35b split §35).
+- **Old paths inside archived prose stay only where they are verbatim
+  quotes.** Round 8's brief quotes a `git status` line naming
+  `docs/BRIEF-2026-09-07.md`; it records the tree as it was, so it was
+  left alone. Every navigational reference was repointed.
+- **The callback-server issue closes as fixed-with-unexplained-cause,
+  not as a verified root cause.** The CI record is conclusive about
+  *when* it stopped; the mechanism is marked unexplained in HISTORY
+  §136 and CLAUDE.md, per working agreement 4.
+- **Skill divergence:** `codebase-onboarding` was loaded for §1.3; its
+  analyzer and onboarding template target full onboarding packets, so
+  only its audience-tailoring guidance was used for the 59-line index.
 
 ## 6. Blockers
 
-None for S1.
+None for S2.
 
 ## 7. Files in progress
 
@@ -97,21 +89,26 @@ None.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** §1.6 `Claude outputs/` (default: leave it); S21
-package regrouping; S30 visual direction; S39 bundle identifier; S42
-publishing commands; X1 and X2, the optional features.
+**Approval gates:**
+- **§1.6** `Claude outputs/` (two stray copies of round 9 documents):
+  delete it, gitignore it, or leave it. Left untouched (the default).
+- S21 package regrouping; S30 visual direction; S39 bundle identifier;
+  S42 publishing commands; X1 and X2, the optional features.
+
+**Interim cautions until their fix lands:** no Review **Replace +
+Delete old file** until S3; no Settings → **Update SoulSeek
+credentials** until S5.
 
 **Live checks:** consolidated into S41's checklist (details in
-`SESSION-PLAN.md` → "Waiting on Kris"), including every open live check
-carried from rounds 9 and 10.
+`SESSION-PLAN.md` → "Waiting on Kris").
 
 ## 9. Open questions
 
-- CLAUDE.md open items 63 (retry storm), 70 (stress hang; S22 adds a new
+- CLAUDE.md open items 63 (retry storm), 70 (stress hang; S22 has a new
   lead: the 2-second poll deserialises 32.6 MB of fingerprints) and 125
   (quit hang) remain open.
-- The one-off CI `SETUP ERROR` from round 10 S3 has not recurred in 8
-  runs. S38 decides whether it deserves an Open-issues entry.
+- The one-off CI `SETUP ERROR` from round 10 S3 has not recurred. S38
+  decides whether it deserves an Open-issues entry.
 
 ---
 
