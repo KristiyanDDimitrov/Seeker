@@ -865,7 +865,7 @@ def test_stress_handles_resolve_against_current_main_window(qtbot):
     place test_broad_end_to_end_stress looks up its widgets; this only
     proves that lookup still matches the real MainWindow layout, the
     same way round 8's page extraction silently broke it before
-    (§3, docs/BRIEF-2026-09-23-round10.md) — a future refactor that
+    (§3, docs/rounds/round-10/BRIEF.md) — a future refactor that
     moves one of these widgets again fails here, on every push,
     instead of ~300 real minutes into an opt-in run nobody but Kris
     triggers.

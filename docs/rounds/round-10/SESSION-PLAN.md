@@ -2,7 +2,7 @@
 
 **Purpose (unchanged): keep each Claude Code session inside a
 predictable token budget.** This file is the index. The task text is in
-`docs/BRIEF-2026-09-23-round10.md`; nothing here repeats it.
+`docs/rounds/round-10/BRIEF.md`; nothing here repeats it.
 
 **Budget: 150 K ceiling, ~120 K target.** Round 9 held this across all
 ten rows by keeping to one cohesive change per row. The same two rules
@@ -69,7 +69,7 @@ brief for **what**, and record the divergence in the handoff.
 
 1. `docs/HANDOFF.md`
 2. This file, **your row only**
-3. The §sections your row points at in `docs/BRIEF-2026-09-23-round10.md`,
+3. The §sections your row points at in `docs/rounds/round-10/BRIEF.md`,
    plus §0
 4. `CLAUDE.md`
 
@@ -83,7 +83,7 @@ the three numbers, tick your box here, and rewrite `docs/HANDOFF.md`.
 If you pushed, record the CI run id and result.
 
 **S1 only:** the first commit of the round is these three docs files
-(`docs/BRIEF-2026-09-23-round10.md`, `docs/round10/SESSION-PLAN.md`,
+(`docs/rounds/round-10/BRIEF.md`, `docs/rounds/round-10/SESSION-PLAN.md`,
 the updated `docs/HANDOFF.md`). They were written by the design chat
 and are not yet committed.
 

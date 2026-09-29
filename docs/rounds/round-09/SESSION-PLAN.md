@@ -2,7 +2,7 @@
 
 **Purpose, unchanged from round 8: keep each Claude Code session inside a
 predictable token budget.** This file is the index. The task text lives in
-`docs/BRIEF-2026-09-09-round9.md`; nothing is restated here.
+`docs/rounds/round-09/BRIEF.md`; nothing is restated here.
 
 ---
 
@@ -86,7 +86,7 @@ Identical to round 8. Four steps.
 
 1. `docs/HANDOFF.md`
 2. This file — **your row only**
-3. The §sections your row points at in `docs/BRIEF-2026-09-09-round9.md`
+3. The §sections your row points at in `docs/rounds/round-09/BRIEF.md`
 4. `CLAUDE.md` (~33 KB)
 
 That is the whole orientation budget: roughly 15 K tokens.

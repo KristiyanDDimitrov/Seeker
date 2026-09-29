@@ -614,9 +614,9 @@ Forward-looking only — see `docs/HISTORY.md` for everything shipped.
 
 - **Round 8 — refactor, layering, dedup, `MainWindow` decomposition, and
   this doc pass — in progress.** Session map:
-  `docs/round8/SESSION-PLAN.md`. Full plan:
-  `docs/BRIEF-2026-09-08-refactor.md`. Security phase (done):
-  `docs/BRIEF-2026-09-09-security.md`.
+  `docs/rounds/round-08/SESSION-PLAN.md`. Full plan:
+  `docs/rounds/round-08/BRIEF.md`. Security phase (done):
+  `docs/rounds/round-08/SECURITY-BRIEF.md`.
 - **Linux packaging** (AppImage or `.deb`) — deprioritized, not scoped.
 - **SoundCloud as a second source — deliberately deferred, not
   started.** Two disqualifying blockers found researching it:

@@ -1,6 +1,6 @@
-/clear# Brief for Claude Code — 2026-09-03 (round 2)
+# Brief for Claude Code — 2026-09-03 (round 2)
 
-Follow-up to `docs/BRIEF-2026-09-02.md`. Items 71-76 landed; this brief
+Follow-up to `docs/rounds/round-01/BRIEF.md`. Items 71-76 landed; this brief
 covers what real manual testing found afterwards.
 
 **Read section 0 first — it corrects a root cause the previous brief got
@@ -414,7 +414,7 @@ One commit per item, each verified before the next:
 6. **P13** — the new feature, last, on a clean base.
 
 `mypy --strict src/` clean and the full suite green before each commit.
-Update `docs/TASKS.md`, `docs/HISTORY.md` and `CLAUDE.md` per the
+Update `docs/rounds/round-05/TASKS.md`, `docs/HISTORY.md` and `CLAUDE.md` per the
 project's conventions — and in HISTORY, state plainly that item 73's
 diagnosis was aimed at a real but *different* defect from the one the
 user keeps reporting, rather than writing a fifth entry that reads like
@@ -490,7 +490,7 @@ Code's word.
   `.gitignore`'s comment corrected. New `tests/test_build_info.py`.
   `mypy --strict src/` clean, full suite green (2 pre-existing,
   unrelated failures reproduced identically on a clean pre-fix
-  checkout — see `docs/TASKS.md`'s R1 entry). See CLAUDE.md roadmap
+  checkout — see `docs/rounds/round-05/TASKS.md`'s R1 entry). See CLAUDE.md roadmap
   item 83.
 
 ## Left for the user (not code work)

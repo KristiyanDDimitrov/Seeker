@@ -697,7 +697,7 @@ real disk that a future round would otherwise rediscover.
 
 One commit per B-item, each independently verified before the next.
 `mypy --strict src/` clean and the suite run before each. Update
-`docs/TASKS.md`, `docs/HISTORY.md` and `CLAUDE.md` per the project's
+`docs/rounds/round-05/TASKS.md`, `docs/HISTORY.md` and `CLAUDE.md` per the project's
 conventions.
 
 On test reporting, RR3's rule is now in force and this round is its

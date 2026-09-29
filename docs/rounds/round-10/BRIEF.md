@@ -1,7 +1,7 @@
 # Round 10 — Review Confirm, reopen after fullscreen, stress test, CI races
 
 **Author:** design/review chat, 2026-09-23. **Executor:** Claude Code.
-**Session map:** `docs/round10/SESSION-PLAN.md`. Read your row there,
+**Session map:** `docs/rounds/round-10/SESSION-PLAN.md`. Read your row there,
 then only the §sections it points at. Do not read this file whole.
 
 Everything here was checked against the real repository at `d38d80f`

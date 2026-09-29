@@ -9899,7 +9899,7 @@ capability for no proven benefit.
 
 ### 71
 
-New work block: `docs/BRIEF-2026-09-02.md`, six real user-reported bugs
+New work block: `docs/rounds/round-01/BRIEF.md`, six real user-reported bugs
 (P1-P6), four of which had been reported and closed as irreproducible
 before. Standing rule for this block: reproduce everything live at the
 app's real minimum window size (960×640) before touching code, and "not
@@ -12954,7 +12954,7 @@ real Mac, not available in this sandboxed session.
 
 ### 114 — Round 7 (E1-E4): fullscreen close reversed again, empty-table columns, a stylesheet cascade bug, wordmark deleted
 
-Four items from the round-7 brief (`docs/BRIEF-2026-09-07.md`), each
+Four items from the round-7 brief (`docs/rounds/round-07/BRIEF.md`), each
 diagnosed by the brief against real pixels sampled from the user's own
 screenshots before any code was touched.
 
@@ -13391,7 +13391,7 @@ in `test_history_refresh_button_refetches` seen once across ~6 full
 runs this round, passing every other time including immediately after
 in isolation — not chased further, noted rather than silently ignored
 per this project's own standing rule on pre-existing-failure counts).
-`mypy --strict src/` clean. `docs/BRIEF-2026-09-07.md`'s own closing
+`mypy --strict src/` clean. `docs/rounds/round-07/BRIEF.md`'s own closing
 question — whether roadmap item 70 (the stress-test hang) is now
 believed to be the same defect as item 105 (C3)'s queued-`QMessageBox`
 fix or still separate — was already answered in CLAUDE.md's own item
@@ -13400,7 +13400,7 @@ new this round changes that determination.
 
 ### 115 — Round 8 Phase 1: toolchain (ruff config, pytest config, CI)
 
-Per `docs/BRIEF-2026-09-08-refactor.md` §4. Phase 0 (baseline) had
+Per `docs/rounds/round-08/BRIEF.md` §4. Phase 0 (baseline) had
 already found the brief's own headline number obsolete before Phase 1
 started: ruff 0.16.0 widened its default rule set from 59 to 413 rules
 (pulling in `flake8-bugbear`, `pyupgrade`, `RUF`, and more, while
@@ -13700,7 +13700,7 @@ caught.
 
 ### 116 — Round 8 Phase 3 + 3B: security hardening and the macOS Dock icon
 
-Per `docs/BRIEF-2026-09-09-security.md`. Kris's own framing — "there is
+Per `docs/rounds/round-08/SECURITY-BRIEF.md`. Kris's own framing — "there is
 little that can go wrong with this app as no sensitive user credentials
 are actually stored" — was independently checked rather than taken on
 faith, and was wrong on both halves before any code was touched:
@@ -14033,7 +14033,7 @@ The nine-phase brief's biggest single arc: `main_window.py` and
 `ui/pages/<name>_page.py` module per screen, one page per session
 (S5-S10), then tray extraction plus `__init__` shrink (S11) and the
 matching test-file split (S11.1-S11.7). Mechanism, unchanged across
-every session (`docs/round8/SESSION-PLAN.md`'s own summary of brief
+every session (`docs/rounds/round-08/SESSION-PLAN.md`'s own summary of brief
 §9.3): move the page's methods verbatim into the new module, add
 temporary delegating properties on `MainWindow` for whatever the tests
 still touch, confirm the full suite green with **zero test edits**

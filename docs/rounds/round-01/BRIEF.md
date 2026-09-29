@@ -498,7 +498,7 @@ real sub-cases:
 One commit per P-item, each independently verified, in this order:
 P3 (smallest, fully understood) → P1 → P4 → P5 → P6 → P2 (needs the
 most live investigation). `mypy --strict src/` clean and the full suite
-green before each commit. Update `docs/TASKS.md`, `docs/HISTORY.md` and
+green before each commit. Update `docs/rounds/round-05/TASKS.md`, `docs/HISTORY.md` and
 `CLAUDE.md` as the project's conventions require — and in HISTORY, say
 plainly for P4 and P6 that the previous rounds' conclusions were wrong
 and why, rather than adding a fourth entry that reads like the first

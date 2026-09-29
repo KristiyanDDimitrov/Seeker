@@ -1,7 +1,7 @@
 # Round 9 — CI, quit safety, window lifecycle, UX corrections
 
 **Author:** design/review chat, 2026-09-09. **Executor:** Claude Code.
-**Session map:** `docs/round9/SESSION-PLAN.md` — read your row there,
+**Session map:** `docs/rounds/round-09/SESSION-PLAN.md` — read your row there,
 then only the §sections it points at. Do not read this file whole; it
 is ~40 KB and no session needs all of it.
 
@@ -832,7 +832,7 @@ Unchanged from round 8, four steps:
 1. All work committed, tree clean.
 2. `uv run pytest -q`, `uv run mypy --strict src/`,
    `uv run ruff check src tests` — quote all three.
-3. Tick your row in `docs/round9/SESSION-PLAN.md`.
+3. Tick your row in `docs/rounds/round-09/SESSION-PLAN.md`.
 4. **Rewrite `docs/HANDOFF.md`** — the commit you ended on, the three
    numbers, what landed, what is next, and anything you found that
    changes a later row. Under ~120 lines. Delete what is no longer true.

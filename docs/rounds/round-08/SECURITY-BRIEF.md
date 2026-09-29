@@ -2,7 +2,7 @@
 # security hardening and the macOS Dock icon
 
 You are starting cold. This file is self-contained — you do not need to
-read anything else to begin, though `docs/BRIEF-2026-09-08-refactor.md`
+read anything else to begin, though `docs/rounds/round-08/BRIEF.md`
 in this repo is the full nine-phase plan this is Phase 3 and 3B of, and
 it has the wider context if you want it.
 

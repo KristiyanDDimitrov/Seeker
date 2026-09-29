@@ -5,8 +5,8 @@ have been running 300–700 K. This file is the index that chunks the
 existing briefs into session-sized slices; it does not restate their
 tasks. The task text lives in:
 
-- `docs/BRIEF-2026-09-08-refactor.md` — the full nine-phase plan
-- `docs/BRIEF-2026-09-09-security.md` — Phase 3 + 3B (complete)
+- `docs/rounds/round-08/BRIEF.md` — the full nine-phase plan
+- `docs/rounds/round-08/SECURITY-BRIEF.md` — Phase 3 + 3B (complete)
 
 **No existing task has been changed.** Section numbers below refer to
 those files. Only §S1.N items are new, appended from Phase 3B's report.
@@ -21,7 +21,7 @@ those files. Only §S1.N items are new, appended from Phase 3B's report.
 | `tests/test_ui_smoke.py` | 8,688 lines | **~95 K** |
 | `src/seeker/ui/main_window.py` | 6,882 lines | **~78 K** |
 | `CLAUDE.md` | 148 KB | **~40 K** |
-| `docs/BRIEF-2026-09-08-refactor.md` | 115 KB | **~31 K** |
+| `docs/rounds/round-08/BRIEF.md` | 115 KB | **~31 K** |
 
 Two conclusions drive everything below.
 
@@ -147,7 +147,7 @@ a pointer.
   never completed a real run — both recorded runs failed/cancelled
   before any check started, root cause a GitHub billing block on
   Kris's account ("recent account payments have failed"). Not a code
-  defect; needs Kris. [HISTORY §117](../HISTORY.md#117)
+  defect; needs Kris. [HISTORY §117](../../HISTORY.md#117)
 
 - [x] **S1.2 — Settings displays a slskd web UI credential that does not
   work. Fix it.** §6.1.2 generates a web UI login and shows it in
@@ -182,7 +182,7 @@ a pointer.
   never touched. Generated credential returned a real `200` from
   `POST /api/v0/session`; a wrong password on the same container
   returned a real `401`. Cleaned up and confirmed removed.
-  [HISTORY §117](../HISTORY.md#117)
+  [HISTORY §117](../../HISTORY.md#117)
 
 - [x] **S1.4 — Re-assess §6.1's severity in CLAUDE.md, honestly.** The
   finding was written as HIGH on the assumption the web UI sat at the
