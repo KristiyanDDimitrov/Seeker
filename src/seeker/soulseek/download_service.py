@@ -1,11 +1,12 @@
 import glob
 import logging
 import os
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
@@ -158,6 +159,97 @@ def _quality_descriptor(file: SoulseekFile) -> str:
     return descriptor
 
 
+@dataclass(frozen=True)
+class CompletedFileLookup:
+    """Where a finished download sits in slskd's download directory.
+    `path` is None when it cannot be named unambiguously; `problem`
+    then says why (None when the file is simply not there yet)."""
+    path: Path | None
+    problem: str | None = None
+
+
+def _locate_completed_file(
+        download_dir: Path,
+        request: DownloadRequest,
+) -> CompletedFileLookup:
+    """Finds the file slskd wrote for `request`, or refuses to guess.
+
+    slskd writes `<remote parent folder>/<basename>` and, when that
+    name is taken, `<stem>_<UtcNow.Ticks><suffix>` instead
+    (`FileService.MoveFile`, HISTORY §138). So candidates are looked
+    for under the remote parent's name first, with a whole-tree search
+    only as the fallback, and `request.size` (the requested file's
+    exact byte size) narrows them. Several same-size survivors are one
+    file downloaded more than once: the newest wins. With no size to
+    check, more than one candidate is ambiguous and nothing is chosen.
+    """
+    remote = PurePosixPath(request.filename.replace("\\", "/"))
+    basename = remote.name
+
+    if basename in ("", ".", ".."):
+        return CompletedFileLookup(
+            None, f"remote filename {request.filename!r} names no file",
+        )
+
+    stem = PurePosixPath(basename).stem
+    suffix = PurePosixPath(basename).suffix
+    clash_copy = re.compile(
+        re.escape(stem) + r"_\d+" + re.escape(suffix),
+    )
+
+    def is_candidate(path: Path) -> bool:
+        return path.is_file() and (
+            path.name == basename or clash_copy.fullmatch(path.name) is not None
+        )
+
+    def of_requested_size(paths: list[Path]) -> list[Path]:
+        if request.size is None:
+            return paths
+        return [path for path in paths if path.stat().st_size == request.size]
+
+    found: list[Path] = []
+    survivors: list[Path] = []
+    parent_folder = download_dir / remote.parent.name
+
+    if remote.parent.name not in ("", ".", "..") and parent_folder.is_dir():
+        found = [path for path in parent_folder.iterdir() if is_candidate(path)]
+        survivors = of_requested_size(found)
+
+    if not survivors:
+        tree = set(download_dir.rglob(glob.escape(basename)))
+        tree.update(
+            download_dir.rglob(f"{glob.escape(stem)}_*{glob.escape(suffix)}")
+        )
+        found = sorted(path for path in tree if is_candidate(path))
+        survivors = of_requested_size(found)
+
+    if len(survivors) == 1:
+        return CompletedFileLookup(survivors[0])
+
+    if not survivors:
+        if not found:
+            return CompletedFileLookup(None)
+        return CompletedFileLookup(
+            None,
+            f"{len(found)} file(s) named '{basename}' found, none of the "
+            f"requested {request.size} bytes",
+        )
+
+    if request.size is None:
+        return CompletedFileLookup(
+            None,
+            f"{len(survivors)} files named '{basename}' found and the "
+            f"requested size is unknown; not guessing",
+        )
+
+    newest = max(survivors, key=lambda path: path.stat().st_mtime)
+    logger.info(
+        "%d files named '%s' of %d bytes; taking the newest, %s",
+        len(survivors), basename, request.size, newest,
+    )
+    return CompletedFileLookup(newest)
+
+
 class DownloadService:
     def __init__(
         self,
@@ -198,6 +290,10 @@ class DownloadService:
         # needing DownloadService itself reconstructed.
         self._get_config = get_config or SeekerConfig
         self.slskd_download_dir = slskd_download_dir
+        # Request ids whose file could not be located unambiguously
+        # and have been logged at WARNING already: every poll retries
+        # them, but the condition is reported once per process.
+        self._unlocatable_reported: set[int] = set()
 
     @property
     def soulseek(self) -> SoulseekClient:
@@ -1510,24 +1606,15 @@ class DownloadService:
 
         location, subfolder = resolved
 
-        basename = Path(request.filename.replace("\\", "/")).name
-        # rglob() treats its argument as a glob PATTERN, not a literal
-        # name — real Soulseek filenames routinely contain '[', ']'
-        # (release tags like "[www.dj-promo.org]", "[FLAC]"), which
-        # fnmatch interprets as a character class. Unescaped, a real
-        # completed download with such a filename silently never
-        # matches here (an empty `matches` list, not an error) and
-        # stays stuck in 'downloading' forever, never moved or indexed
-        # — found live while verifying the Phase 1 indexing fix against
-        # a real completed transfer whose filename contained exactly
-        # this pattern. glob.escape() makes the lookup literal again.
-        matches = list(
-            Path(self.slskd_download_dir).rglob(glob.escape(basename))
+        lookup = _locate_completed_file(
+            Path(self.slskd_download_dir), request,
         )
 
-        if not matches:
+        if lookup.path is None:
+            self._report_unlocatable(request, lookup.problem)
             return None
 
+        basename = PurePosixPath(request.filename.replace("\\", "/")).name
         destination_dir = Path(location.path)
 
         if subfolder:
@@ -1536,7 +1623,7 @@ class DownloadService:
         destination_dir.mkdir(parents=True, exist_ok=True)
 
         destination_path = destination_dir / basename
-        shutil.move(str(matches[0]), str(destination_path))
+        shutil.move(str(lookup.path), str(destination_path))
 
         logger.info("Moved '%s' to %s", basename, destination_dir)
 
@@ -1545,6 +1632,26 @@ class DownloadService:
         )
 
         return (location, relative_path)
+
+    def _report_unlocatable(
+            self,
+            request: DownloadRequest,
+            problem: str | None,
+    ) -> None:
+        if problem is None:
+            return
+
+        if request.id is not None and request.id in self._unlocatable_reported:
+            logger.debug("Still cannot locate '%s': %s", request.filename, problem)
+            return
+
+        if request.id is not None:
+            self._unlocatable_reported.add(request.id)
+
+        logger.warning(
+            "Cannot locate the finished download '%s': %s. Leaving it "
+            "for the next poll.", request.filename, problem,
+        )
 
     def _index_and_match_settled_download(
             self,
