@@ -10,85 +10,82 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** `02d6424` (S6 close-out) plus this handoff commit, pushed.
+- **HEAD:** the S7 part-1 close-out commit plus this handoff, pushed.
   Tree clean apart from the untracked `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-29):
-  `1318 passed, 1 skipped, 6 warnings in 90.49s` (X9 Pro mounted;
-  S5's 1297 plus 21 new).
+- **Local pytest** (offscreen Qt, 2026-09-29): `1332 passed, 1 skipped, 6 warnings in 86.91s`
+  (X9 Pro mounted; S6's 1318 plus 14 new). No `slskd-data` created.
 - **`mypy --strict src/`:** clean, 108 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** S5 close-out `29a901a` → run `36588330478`, **success**. S6's
-  push: see the handoff commit's own CI run (`gh run list --limit 1`).
+- **CI:** S6's handoff push `f2e7852` → run `36589804219`, **success**. This push: see `gh run list --limit 1`.
 
 ## 2. Where we are
 
-Phases A and B done; Phase C started: S1–S6 ticked. **Next: S7**
-(Scale: big locations, short transactions, real and visible paths;
-BRIEF §7).
+S1–S6 ticked. **S7 is partial (◐):** §7.1–§7.4 and §7.7 done;
+**next: finish S7 with §7.5 (never create hidden names) and §7.6 (the
+destination subfolder the user sees is the one used)**, BRIEF §7. Then
+S8.
 
-## 3. Session report (S6, plus S5's close-out)
+## 3. Session report (S7 part 1)
 
-This session first committed S5's close-out, which the previous
-session had left uncommitted (`29a901a`), and pushed it. S6's evidence
-(every red output, the migration rehearsal table) is in HISTORY §141.
-- `7a8ba7d` §6.2: parser skips Spotify local files and null ids;
-  service keeps a repeated track's first listing; `TrackSyncResult`;
-  Load tracks warns about skipped local files; CLI prints counts.
-- `1b70995` §6.3: `playlists.tracks_snapshot_id` + migration
-  (rehearsed on a copy: 215 playlists, 6 loaded → 6 current, 0 stale).
-- `971fd03` §6.4: `refresh_playlists()` re-syncs stale loaded
-  playlists; UI (with progress) and `seeker sync` use it; stale banner.
-- `02d6424` close-out: §141, CLAUDE.md staleness bullet, S6 ticked.
-- §6.1's red tests landed with each fix, per the one-commit-per-item
-  rule.
+Evidence (every red, the lock measurement, the timing table) is in
+HISTORY §142.
+- `b4f4030` §7.1: `delete_missing` past SQLite's 32,766-variable
+  limit; new `delete_by_ids` (chunks of 500).
+- `398e076` §7.2: scanner reads outside the write lock, upserts in
+  batches of 200, prunes hidden directories, logs bad tags at DEBUG,
+  keeps a row indexed mid-scan.
+- `a1e49a3` §7.3: `match_all` read/compute/write split; keeps a
+  confirmation made mid-compute; a file deleted mid-compute → unmatched;
+  bisect duration index (identical results on the real data).
+- `1819eef` §7.4: add-location paths `expanduser().resolve()`; drive
+  hint only under `/Volumes`.
+- Close-out: §142, CLAUDE.md "no slow work inside a write transaction",
+  S7 row marked ◐.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §142**: `docs/history/121-150.md` plus its
-  README line.
-- **`SpotifyClient.get_playlist_tracks` now returns `PlaylistItems`,
-  not `list[Track]`.** Any new stub needs `.tracks`
-  (`tests/test_sync_service.py`'s `StubSpotifyClient` is the model).
-- **`sync_playlist_tracks` returns `TrackSyncResult`,
-  `refresh_playlists` returns `PlaylistRefreshResult`**, both in
-  `models/spotify_sync.py`. S14 (typed service results) can count
-  these as done.
-- **`_add_column_if_missing` returns `True` when it added the
-  column.** Use that for any one-time backfill that must not re-run
-  (S7, S8 and S26 migrations).
-- **The real database will migrate on Kris's next launch:** 6 loaded
-  playlists become "current", none stale. Nothing else changes.
-- **Test hazard (carried):** anything reaching `start_slskd` or a
-  default `SharingService` must patch `platformdirs.user_data_dir` and
-  fake `seeker.sharing_service._get_live_container_mounts`. After
-  each full run, check `~/Library/Application Support/Seeker/` has no
-  `slskd-data`.
-- **Carried:** S9 fixes `atomic_file._write_atomic`'s umask-mode temp
-  file (`os.open(..., O_EXCL, 0o600)`); three
-  `LibraryLocationNotFoundError` classes (S13);
-  `_repoint_or_clear_match` drops `confirmed_at` (S8). Never touch
-  slskd or real data (BRIEF §0.7).
-- **zsh gotcha:** `echo ======` fails (`=` expansion); use
-  `echo '---'`.
+- **Your HISTORY entry is §143**, "S7, part 2 (§7.5–§7.6)":
+  `docs/history/121-150.md` plus its README line. Then tick S7.
+- **The lock hypothesis is confirmed, not assumed:** pre-S7, a cold
+  scan made concurrent writers fail with "database is locked" (3 of 5,
+  5.23 s wait). The measurement script is described in §142; it copies
+  the real DB with `sqlite3.backup` from a `mode=ro` connection.
+- **Two `match_all` races were real on HEAD** (a plain `SELECT` holds
+  no lock): a confirmation made mid-run was wiped, and a file deleted
+  mid-run failed the whole write on the FK. Both fixed and tested.
+- **`LocalFileRepository` gained `delete_by_ids` and `get_ids`.**
+  `delete_by_id` delegates to `delete_by_ids`.
+- **§7.6 starting points (from BRIEF, unverified this session):**
+  `DestinationDialog.selected_subfolder()` returns raw text;
+  `set_destination` persists it; `_move_completed_file` joins it
+  unsanitized; `seeker playlists set-destination --subfolder` has the
+  same gap. Validate once at the service boundary.
+- **Test helpers:** `tests/test_library_scale.py` imports
+  `test_library_integrity`'s `make_scenario` etc. as `from
+  test_library_integrity import …` (not `tests.`).
+- **Carried:** the `platformdirs.user_data_dir`/`slskd-data` test
+  hazard (checked clean this run); S9's `_write_atomic` umask fix; three
+  `LibraryLocationNotFoundError` classes (S13); `_repoint_or_clear_match`
+  drops `confirmed_at` (S8); never touch slskd or real data.
+- **zsh gotcha:** `echo ======` fails; use `echo '---'`.
 
 ## 5. Decisions made
 
-- **A failed track sync inside `refresh_playlists` propagates** rather
-  than being caught per playlist. Playlists already re-synced stay
-  committed, and the rest stay stale for the banner. There's no broad
-  `except` in the service, and S11 owns readable errors.
-- **Staleness is read back from the database**, not from
-  `sync_playlists()`'s return value, so a playlist left stale by an
-  earlier failure is retried on the next refresh.
-- **The banner's stale check comes before "Load tracks"** for the
-  selected playlist, and another playlist being stale never hides the
-  selected one's own step. With nothing selected, the banner now names
-  stale playlists; before, it was hidden.
-- **Null-id entries that aren't local files are skipped uncounted**:
-  only local files get the DJ-facing warning.
-- **Skill divergence:** `focused-fix` and `tdd` were not loaded; the
-  failing-test-first discipline was followed by hand (§141 has every
-  red).
+- **Chunked `IN (…)` of 500, not `executemany`** (BRIEF §7.1 said
+  `executemany`): `track_matches.local_file_id` has no index, so
+  per-id `UPDATE`s would scan that table once per deleted file.
+- **The scan deletes only rows that existed when it started** and were
+  not seen, so a download placed mid-scan survives. A row renamed
+  mid-scan is still treated as missing, and the next scan re-indexes it.
+  Accepted.
+- **`match_all`'s write re-reads confirmations and file ids.** A newly
+  confirmed track is kept and counted as auto. A vanished file becomes
+  unmatched, with no score.
+- **Stopped before §7.5–§7.6** at ~136 K context (target 120 K). This
+  is not the plan's named split point, which also includes §7.5–§7.6.
+  Both are independent of everything done here.
+- **Skill divergence:** `focused-fix`, `tdd`, `database-designer` not
+  loaded; failing-test-first was followed by hand (§142 has every red).
 
 ## 6. Blockers
 
@@ -96,7 +93,7 @@ None.
 
 ## 7. Files in progress
 
-None.
+None. §7.5 and §7.6 are not started; no partial edits exist.
 
 ## 8. Waiting on Kris
 
@@ -106,12 +103,13 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 **Interim cautions:** none.
 
 **Kris's own decision (carried):** keep or discard the repo's
-`./slskd-data` (slskd state, 728 MB of downloads, the `Test` share).
-See HISTORY §140's data-directory trace.
+`./slskd-data` (see HISTORY §140).
 
-**Live checks:** S41's checklist. New from S6: after the next launch,
-edit a loaded playlist on Spotify, then Refresh playlists. The notice
-should say "Updated tracks for 1", and the new track should appear.
+**Live checks:** S41's checklist. Carried from S6: edit a loaded
+playlist on Spotify, then Refresh playlists → "Updated tracks for 1".
+New from S7: note that the real library has drifted since the last
+scan (a copy re-scan found 261 added, 60 updated, 25 removed). The next
+real Scan will apply that.
 
 ## 9. Open questions
 

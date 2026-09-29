@@ -499,6 +499,14 @@ Each links to the HISTORY entry where the full investigation lives;
   [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)
 - `Database.transaction()` opens a new connection per call — safe to
   use across threads. [HISTORY §22](docs/history/001-024.md#22)
+- **No slow work inside a write transaction.** Walks, tag reads and
+  fuzzy passes run outside `Database.transaction()`; writes go in short
+  batches, and the write re-checks what may have changed meanwhile
+  (`match_all` keeps a confirmation made while it computed). Measured:
+  a first scan holding one transaction made concurrent writers fail
+  with "database is locked". Never bind one `?` per row either: SQLite
+  caps a statement at 32,766 parameters, so chunk (`delete_by_ids`).
+  [HISTORY §142](docs/history/121-150.md#142)
 
 ### Packaging
 
