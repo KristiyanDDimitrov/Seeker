@@ -33,7 +33,10 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
-from seeker.destination_resolution import resolve_playlist_destination
+from seeker.destination_resolution import (
+    resolve_playlist_destination,
+    validate_destination_subfolder,
+)
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.file_deletion import delete_file, same_file
 from seeker.file_placement import resolve_collision
@@ -330,6 +333,10 @@ class DownloadService:
         location_name: str,
         subfolder: str | None = None,
     ) -> None:
+        """Raises InvalidDestinationSubfolderError, saving nothing, for
+        a subfolder that is unsafe or would leave the location."""
+        subfolder = validate_destination_subfolder(subfolder)
+
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
 

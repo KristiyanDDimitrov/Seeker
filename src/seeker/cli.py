@@ -3,6 +3,7 @@ import sys
 
 from seeker.application import Application
 from seeker.audio_fingerprint import FingerprintingUnavailableError
+from seeker.destination_resolution import InvalidDestinationSubfolderError
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
 from seeker.library.duplicate_service import (
     LibraryLocationNotFoundError as DuplicateLibraryLocationNotFoundError,
@@ -1193,6 +1194,7 @@ def run(
             DuplicateLibraryLocationNotFoundError,
             LibraryServiceLocationNotFoundError,
             FingerprintingUnavailableError,
+            InvalidDestinationSubfolderError,
     ) as error:
         print(str(error))
         sys.exit(1)

@@ -13,6 +13,7 @@ config-backed value in this codebase. Returns None when neither
 resolves to a real, still-registered location.
 """
 
+import logging
 from collections.abc import Callable
 from sqlite3 import Connection
 
@@ -23,6 +24,64 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
+
+logger = logging.getLogger(__name__)
+
+
+class InvalidDestinationSubfolderError(ValueError):
+    pass
+
+
+def validate_destination_subfolder(subfolder: str | None) -> str | None:
+    """The subfolder a destination uses, exactly: None for none, else
+    one or more folder names joined by "/" (nested folders are real:
+    "Music/Techno"). Anything unsafe is rejected with a reason, never
+    rewritten, so the folder the user typed is the folder that is
+    used. Surrounding whitespace and a trailing "/" are dropped.
+
+    Raises InvalidDestinationSubfolderError for an absolute path, a
+    "." or ".." component (it must stay inside the location), an empty
+    component, or a folder name that sanitize_path_component would
+    change (illegal characters, a leading dot, a trailing dot/space).
+    """
+    if subfolder is None:
+        return None
+
+    text = subfolder.strip().rstrip("/")
+
+    if not text:
+        return None
+
+    if text.startswith("/"):
+        raise InvalidDestinationSubfolderError(
+            f"The subfolder '{subfolder}' is an absolute path. Use a "
+            f"folder inside the location, such as 'Techno'."
+        )
+
+    components = text.split("/")
+
+    for component in components:
+        if component in (".", ".."):
+            raise InvalidDestinationSubfolderError(
+                f"The subfolder '{subfolder}' must stay inside the "
+                f"location, so it can't contain '{component}'."
+            )
+
+        if not component:
+            raise InvalidDestinationSubfolderError(
+                f"The subfolder '{subfolder}' has an empty folder name "
+                f"('//')."
+            )
+
+        safe = sanitize_path_component(component)
+
+        if component != safe:
+            raise InvalidDestinationSubfolderError(
+                f"'{component}' can't be used as a folder name. Try "
+                f"'{safe}'."
+            )
+
+    return "/".join(components)
 
 
 def resolve_playlist_destination(
@@ -42,7 +101,20 @@ def resolve_playlist_destination(
         )
 
         if location is not None:
-            return location, playlist.download_subfolder
+            try:
+                subfolder = validate_destination_subfolder(
+                    playlist.download_subfolder,
+                )
+            except InvalidDestinationSubfolderError as error:
+                # Saved before set_destination validated. Joining it
+                # could leave the location, so it does not resolve.
+                logger.warning(
+                    "Ignoring the destination of '%s': %s",
+                    playlist.name, error,
+                )
+                return None
+
+            return location, subfolder
 
     config = get_config()
 

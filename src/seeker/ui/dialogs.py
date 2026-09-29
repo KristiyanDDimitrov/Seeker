@@ -29,6 +29,10 @@ from PySide6.QtWidgets import (
 
 from seeker import _build_info
 from seeker.audio_formats import AUDIO_EXTENSIONS
+from seeker.destination_resolution import (
+    InvalidDestinationSubfolderError,
+    validate_destination_subfolder,
+)
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.library.duplicate_service import GroupResolutionPlan
 from seeker.library.metadata_service import RenamePlan
@@ -203,9 +207,11 @@ class DestinationDialog(QDialog):
             if index >= 0:
                 self.location_combo.setCurrentIndex(index)
 
+        # The playlist's own folder, named as the per-playlist default
+        # rule names it ("240KM/H" becomes "240KM-H", one folder).
         self.subfolder_field = QLineEdit(
             initial_subfolder if initial_subfolder is not None
-            else playlist_name
+            else sanitize_path_component(playlist_name)
         )
         form.addRow("Subfolder:", self.subfolder_field)
 
@@ -224,7 +230,6 @@ class DestinationDialog(QDialog):
 
         self.location_combo.currentIndexChanged.connect(self._update_preview)
         self.subfolder_field.textChanged.connect(self._update_preview)
-        self._update_preview()
 
         self.remember_checkbox = QCheckBox("Remember this for this playlist")
         self.remember_checkbox.setChecked(True)
@@ -246,6 +251,9 @@ class DestinationDialog(QDialog):
         button_row.addWidget(cancel_button)
         layout.addLayout(button_row)
 
+        # After confirm_button exists: an unsafe subfolder disables it.
+        self._update_preview()
+
     def _resolved_path(self) -> Path | None:
         location_id = self.selected_location_id()
         location = next(
@@ -256,10 +264,17 @@ class DestinationDialog(QDialog):
 
         subfolder = self.selected_subfolder()
         path = Path(location.path)
-        return path / sanitize_path_component(subfolder) if subfolder else path
+        return path / subfolder if subfolder else path
 
     def _update_preview(self) -> None:
-        path = self._resolved_path()
+        try:
+            path = self._resolved_path()
+        except InvalidDestinationSubfolderError as error:
+            self.location_path_preview.setText(str(error))
+            self.confirm_button.setEnabled(False)
+            return
+
+        self.confirm_button.setEnabled(True)
 
         if path is None:
             self.location_path_preview.setText("")
@@ -289,8 +304,10 @@ class DestinationDialog(QDialog):
         return int(data) if data is not None else None
 
     def selected_subfolder(self) -> str | None:
-        text = self.subfolder_field.text().strip()
-        return text or None
+        """Exactly what set_destination will save. Raises
+        InvalidDestinationSubfolderError for an unsafe subfolder, which
+        the disabled Download button keeps from being confirmed."""
+        return validate_destination_subfolder(self.subfolder_field.text())
 
     def remember_for_playlist(self) -> bool:
         return self.remember_checkbox.isChecked()
