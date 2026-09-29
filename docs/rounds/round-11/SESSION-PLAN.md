@@ -30,7 +30,7 @@ explicit yes.
 | # | Session | Executes | Est. | Split point if overrunning |
 |---|---|---|---|---|
 | **Phase A — Foundation** | | | | |
-| ☐ S1 | Archive round docs, docs index, commit the round-11 docs, close round 10's S2 | §1 | ~70 K | After §1.2 (moves and links); the index can follow |
+| ☑ S1 | Archive round docs, docs index, commit the round-11 docs, close round 10's S2 | §1 | ~70 K | After §1.2 (moves and links); the index can follow |
 | ☐ S2 | Split HISTORY.md with anchors that work | §2 | ~110 K | After §2.1's lossless split is verified |
 | **Phase B — Data safety (critical)** | | | | |
 | ☐ S3 | Downloads never overwrite, never guess | §3 | ~130 K | After §3.3; the upgrade semantics (§3.4) can stand alone |

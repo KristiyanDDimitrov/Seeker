@@ -15343,3 +15343,12 @@ it no longer needs to:
 
 The row is struck through in `docs/rounds/round-10/SESSION-PLAN.md`
 with a link here.
+
+#### Close-out numbers
+
+`uv run pytest -q`: `1232 passed, 1 skipped, 6 warnings`. The same
+1,233 tests as round 10's `1204 passed, 29 skipped`: the X9 Pro was
+mounted this run, so its 28 `@requires_x9_pro` tests ran and only the
+opt-in stress test skipped. `mypy --strict src/`: clean, 104 files.
+`ruff check src tests`: 0 findings. `Claude outputs/` is untouched,
+awaiting Kris's §1.6 answer (default: leave it).
