@@ -35,6 +35,9 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.docker_setup import (
+    SLSKD_LOCAL_BASE_URL,
+    bring_up_slskd,
+    compose_file_path,
     ensure_full_path_environment,
     generate_api_key,
     slskd_data_dir,
@@ -46,6 +49,7 @@ from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
 from seeker.models.data_locations import DataLocations
 from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.slskd_start import SlskdStartResult
 from seeker.sharing_service import SharingService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
@@ -334,6 +338,58 @@ class Application:
         # method forever, even after real credentials just landed.
         self._download_service = None
         self._sharing_service = None
+
+    def start_slskd(
+            self,
+            soulseek_username: str,
+            soulseek_password: str,
+            share_path: str,
+            *,
+            persist: bool,
+    ) -> SlskdStartResult:
+        """(Re)create the slskd container with a freshly generated API
+        key, sharing `share_path` read-only. Blocks on `docker compose
+        up`, so callers run it on a worker; raises `SlskdBringUpError`
+        when Compose fails.
+
+        `persist` is explicit because the two callers save at different
+        moments: Settings passes True and saves as soon as the
+        container is up; the wizard passes False and saves the returned
+        values only once its health poll confirms the network login.
+        Sharing's recreate does not come through here — it keeps the
+        saved key and login and the live container's data directory,
+        so it calls `docker_setup.bring_up_slskd` directly.
+        """
+        api_key = generate_api_key()
+        data_dir = slskd_data_dir()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        web_username, web_password = self.ensure_slskd_web_credentials()
+
+        bring_up_slskd(
+            compose_file=str(compose_file_path()),
+            soulseek_username=soulseek_username,
+            soulseek_password=soulseek_password,
+            api_key=api_key,
+            slskd_data_dir=str(data_dir),
+            web_username=web_username,
+            web_password=web_password,
+            library_location_path=share_path,
+        )
+
+        result = SlskdStartResult(
+            api_key=api_key, download_dir=str(data_dir / "downloads"),
+        )
+
+        if persist:
+            self.persist_soulseek_config(
+                SLSKD_LOCAL_BASE_URL,
+                result.api_key,
+                result.download_dir,
+                soulseek_username,
+                soulseek_password,
+            )
+
+        return result
 
     def ensure_slskd_web_credentials(self) -> tuple[str, str]:
         """Return the slskd WEB UI login, generating and persisting it

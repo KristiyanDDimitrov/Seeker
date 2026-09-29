@@ -846,14 +846,14 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
         return FakeResult()
 
     monkeypatch.setattr(
-        "seeker.ui.settings_window.bring_up_slskd", fake_bring_up,
+        "seeker.application.bring_up_slskd", fake_bring_up,
     )
     monkeypatch.setattr(
-        "seeker.ui.settings_window.generate_api_key",
+        "seeker.application.generate_api_key",
         lambda: "generated-key",
     )
     monkeypatch.setattr(
-        "seeker.ui.settings_window.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
     window = SettingsPage(application)
@@ -902,10 +902,10 @@ def _fake_successful_bring_up(monkeypatch, tmp_path) -> list[dict]:
         return FakeResult()
 
     monkeypatch.setattr(
-        "seeker.ui.settings_window.bring_up_slskd", fake_bring_up,
+        "seeker.application.bring_up_slskd", fake_bring_up,
     )
     monkeypatch.setattr(
-        "seeker.ui.settings_window.slskd_data_dir",
+        "seeker.application.slskd_data_dir",
         lambda: tmp_path / "slskd-data",
     )
     return bring_up_calls
@@ -1021,14 +1021,14 @@ def test_soulseek_password_return_pressed_calls_update_credentials(
         return FakeResult()
 
     monkeypatch.setattr(
-        "seeker.ui.settings_window.bring_up_slskd", fake_bring_up,
+        "seeker.application.bring_up_slskd", fake_bring_up,
     )
     monkeypatch.setattr(
-        "seeker.ui.settings_window.generate_api_key",
+        "seeker.application.generate_api_key",
         lambda: "generated-key",
     )
     monkeypatch.setattr(
-        "seeker.ui.settings_window.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
     window = SettingsPage(application)
@@ -1053,7 +1053,7 @@ def test_update_credentials_without_username_or_password_makes_no_call(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.settings_window.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(1),
     )
 
@@ -1072,7 +1072,7 @@ def test_update_credentials_without_a_library_location_shows_message(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.settings_window.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(1),
     )
 

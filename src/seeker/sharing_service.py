@@ -60,7 +60,11 @@ from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
-from seeker.docker_setup import bring_up_slskd, compose_file_path
+from seeker.docker_setup import (
+    SlskdBringUpError,
+    bring_up_slskd,
+    compose_file_path,
+)
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SoulseekClient
@@ -492,32 +496,27 @@ class SharingService:
         # substitutes. One code path now knows the full contract; a
         # future compose variable can't be forgotten in one of two
         # places again.
-        recreate_result = bring_up_slskd(
-            compose_file=str(self._compose_path),
-            soulseek_username=config.slskd_username or "",
-            soulseek_password=config.slskd_password or "",
-            api_key=config.slskd_api_key or "",
-            slskd_data_dir=data_dir,
-            # Roadmap item 116 (round 8, §6.1.2) — already generated and
-            # persisted by whichever earlier real bring-up (wizard or
-            # Settings) first shared a location; this recreate is only
-            # reachable once a location is ALREADY shared, so these are
-            # never genuinely unset here. Read directly rather than
-            # generating, since this service only holds a read-only
-            # get_config callable, not a config-store write path.
-            web_username=config.slskd_web_username or "",
-            web_password=config.slskd_web_password or "",
-            library_location_path=original_share_host_path,
-        )
-
-        if recreate_result.returncode != 0:
+        try:
+            bring_up_slskd(
+                compose_file=str(self._compose_path),
+                soulseek_username=config.slskd_username or "",
+                soulseek_password=config.slskd_password or "",
+                api_key=config.slskd_api_key or "",
+                slskd_data_dir=data_dir,
+                # Saved by whichever bring-up (wizard or Settings) first
+                # shared a location, which this recreate requires. Read,
+                # never generated: this service holds only a read-only
+                # get_config callable.
+                web_username=config.slskd_web_username or "",
+                web_password=config.slskd_web_password or "",
+                library_location_path=original_share_host_path,
+            )
+        except SlskdBringUpError:
             # Same "roll the compose file back" safety net as the
             # slskd.yml write failure above -- a failed recreate must
             # not leave a retry able to add the same volume line twice.
             shutil.copy2(compose_backup, self._compose_path)
-            raise RuntimeError(
-                f"docker compose up failed: {recreate_result.stderr.strip()}"
-            )
+            raise
 
         deadline = time.monotonic() + SHARE_READY_TIMEOUT_SECONDS
         became_ready = False

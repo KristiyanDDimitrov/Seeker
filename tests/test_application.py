@@ -16,6 +16,7 @@ from seeker.config_store import (
     save_config,
 )
 from seeker.database.connection import Database
+from seeker.docker_setup import SlskdBringUpError
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
@@ -770,6 +771,102 @@ def test_ensure_slskd_web_credentials_never_rotates_an_existing_value(
 
     assert second_username == first_username
     assert second_password == first_password
+
+
+def _fake_slskd_bring_up(tmp_path, monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "seeker.application.bring_up_slskd",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
+    )
+    monkeypatch.setattr(
+        "seeker.application.compose_file_path",
+        lambda: tmp_path / "slskd-data" / "docker-compose.yml",
+    )
+    monkeypatch.setattr(
+        "seeker.application.generate_api_key", lambda: "generated-key",
+    )
+    return calls
+
+
+def test_start_slskd_brings_up_with_generated_key_and_web_login(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    result = app.start_slskd("netuser", "netpass", "/music", persist=False)
+
+    web_username, web_password = app.ensure_slskd_web_credentials()
+    assert calls == [{
+        "compose_file": str(tmp_path / "slskd-data" / "docker-compose.yml"),
+        "soulseek_username": "netuser",
+        "soulseek_password": "netpass",
+        "api_key": "generated-key",
+        "slskd_data_dir": str(tmp_path / "slskd-data"),
+        "web_username": web_username,
+        "web_password": web_password,
+        "library_location_path": "/music",
+    }]
+    assert (tmp_path / "slskd-data").is_dir()
+    assert result.api_key == "generated-key"
+    assert result.download_dir == str(tmp_path / "slskd-data" / "downloads")
+
+
+def test_start_slskd_without_persist_saves_no_connection_details(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+    before = load_config(resolve_config_path())
+
+    app.start_slskd("netuser", "netpass", "/music", persist=False)
+
+    after = load_config(resolve_config_path())
+    assert after.slskd_api_key == before.slskd_api_key != "generated-key"
+    assert after.slskd_username == before.slskd_username
+    assert app.settings.slskd_api_key == before.slskd_api_key
+
+
+def test_start_slskd_with_persist_saves_what_it_started_with(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    app.start_slskd("netuser", "netpass", "/music", persist=True)
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_base_url == "http://127.0.0.1:5030"
+    assert reloaded.slskd_api_key == "generated-key"
+    assert reloaded.slskd_download_dir == str(
+        tmp_path / "slskd-data" / "downloads"
+    )
+    assert reloaded.slskd_username == "netuser"
+    assert reloaded.slskd_password == "netpass"
+
+
+def test_start_slskd_compose_failure_propagates_and_persists_nothing(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    def failing_bring_up(**kwargs):
+        raise SlskdBringUpError("docker compose up failed: boom")
+
+    monkeypatch.setattr("seeker.application.bring_up_slskd", failing_bring_up)
+    before = load_config(resolve_config_path())
+
+    with pytest.raises(SlskdBringUpError, match="boom"):
+        app.start_slskd("netuser", "netpass", "/music", persist=True)
+
+    after = load_config(resolve_config_path())
+    assert after.slskd_api_key == before.slskd_api_key != "generated-key"
+    assert after.slskd_username == before.slskd_username
 
 
 def test_persist_default_destination_updates_store_and_disk(

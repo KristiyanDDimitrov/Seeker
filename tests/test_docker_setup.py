@@ -12,6 +12,7 @@ from seeker.docker_setup import (
     SLSKD_WEB_PASSWORD_ENV_VAR,
     SLSKD_WEB_USERNAME_ENV_VAR,
     DockerState,
+    SlskdBringUpError,
     SlskdHealthStatus,
     SlskdWebLoginStatus,
     bring_up_slskd,
@@ -672,6 +673,31 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
     assert env["UNRELATED_VAR"] == "should-be-preserved"
     assert captured["capture_output"] is True
     assert captured["text"] is True
-    # Explicit, not defaulted (PLW1510, round 8 §4.8.6) — the caller
-    # inspects .returncode itself rather than wanting an exception.
+    # Explicit, not defaulted (PLW1510): bring_up_slskd inspects
+    # .returncode itself so its own error can carry Compose's stderr.
     assert captured["check"] is False
+
+
+def test_bring_up_slskd_raises_with_compose_stderr_on_failure(monkeypatch):
+    class FakeFailedResult:
+        returncode = 1
+        stderr = "  no such image  \n"
+
+    monkeypatch.setattr(
+        subprocess, "run", lambda *args, **kwargs: FakeFailedResult(),
+    )
+
+    with pytest.raises(
+            SlskdBringUpError,
+            match=r"^docker compose up failed: no such image$",
+    ):
+        bring_up_slskd(
+            compose_file="docker-compose.yml",
+            soulseek_username="realuser",
+            soulseek_password="realpass",
+            api_key="real-api-key",
+            slskd_data_dir="/data/slskd-data",
+            web_username="webuser",
+            web_password="webpass",
+            library_location_path="/music",
+        )

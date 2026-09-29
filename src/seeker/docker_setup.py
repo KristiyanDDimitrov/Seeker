@@ -61,6 +61,13 @@ def ensure_full_path_environment() -> None:
     os.environ["PATH"] = os.pathsep.join(merged)
 
 
+# 127.0.0.1, not "localhost": the Compose template's
+# "127.0.0.1:5030:5030" port binding is IPv4-only, and macOS resolves
+# "localhost" to ::1 first, so every request would try IPv6, be
+# refused, and only then fall back to IPv4. HISTORY §116.
+SLSKD_LOCAL_BASE_URL = "http://127.0.0.1:5030"
+
+
 def compose_file_path() -> Path:
     # Same home as slskd_data_dir() just below — both wizard.py and
     # settings_window.py need the identical path.
@@ -335,6 +342,11 @@ def check_slskd_web_login(
     return SlskdWebLoginStatus.UNKNOWN
 
 
+class SlskdBringUpError(RuntimeError):
+    """`docker compose up` for slskd exited non-zero; the message
+    carries Compose's own stderr."""
+
+
 def bring_up_slskd(
         compose_file: str,
         soulseek_username: str,
@@ -344,7 +356,7 @@ def bring_up_slskd(
         web_username: str,
         web_password: str,
         library_location_path: str,
-) -> subprocess.CompletedProcess[str]:
+) -> None:
     # Passes the collected credentials/API key/paths directly as
     # environment variables to `docker compose up`, which Compose
     # substitutes into docker-compose.yml's ${VAR} placeholders — no
@@ -364,11 +376,16 @@ def bring_up_slskd(
         "SLSKD_SHARE_PATH": library_location_path,
     }
 
-    return subprocess.run(
+    result = subprocess.run(
         ["docker", "compose", "-f", compose_file, "up", "-d"],
         env=env,
         capture_output=True,
         text=True,
         timeout=120,
-        check=False,  # caller inspects .returncode itself
+        check=False,  # raises its own error below, carrying stderr
     )
+
+    if result.returncode != 0:
+        raise SlskdBringUpError(
+            f"docker compose up failed: {result.stderr.strip()}"
+        )

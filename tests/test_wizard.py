@@ -1,9 +1,11 @@
 from seeker.application import Application
 from seeker.docker_setup import (
     DockerState,
+    SlskdBringUpError,
     SlskdHealthCheckResult,
     SlskdHealthStatus,
 )
+from seeker.models.slskd_start import SlskdStartResult
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -321,7 +323,7 @@ def test_soulseek_username_return_pressed_triggers_bring_up_validation(
     )
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -361,11 +363,11 @@ def test_soulseek_password_return_pressed_calls_bring_up_slskd(
 
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: (calls.append(kwargs), FakeResult())[1],
     )
     monkeypatch.setattr(
-        "seeker.ui.wizard.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
     application = make_application(tmp_path, monkeypatch)
@@ -555,7 +557,7 @@ def test_bring_up_soulseek_requires_username_and_password(
     )
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -596,9 +598,9 @@ def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
         calls.append(kwargs)
         return FakeResult()
 
-    monkeypatch.setattr("seeker.ui.wizard.bring_up_slskd", fake_bring_up)
+    monkeypatch.setattr("seeker.application.bring_up_slskd", fake_bring_up)
     monkeypatch.setattr(
-        "seeker.ui.wizard.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
     application = make_application(tmp_path, monkeypatch)
@@ -660,7 +662,7 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
         lambda: DockerState.RUNNING,
     )
     monkeypatch.setattr(
-        "seeker.ui.wizard.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
     application = make_application(tmp_path, monkeypatch)
@@ -681,7 +683,10 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
 
     wizard.soulseek_username_field.setText("realuser")
     wizard.soulseek_password_field.setText("realpass")
-    wizard._slskd_api_key = "real-api-key"
+    wizard._slskd_started = SlskdStartResult(
+        api_key="real-api-key",
+        download_dir=str(tmp_path / "slskd-data" / "downloads"),
+    )
 
     wizard._handle_health_result(
         SlskdHealthCheckResult(SlskdHealthStatus.HEALTHY)
@@ -689,6 +694,7 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
 
     assert len(persist_calls) == 1
     assert persist_calls[0][1] == "real-api-key"
+    assert persist_calls[0][2] == str(tmp_path / "slskd-data" / "downloads")
     assert persist_calls[0][3] == "realuser"
     assert persist_calls[0][4] == "realpass"
     # Same done-page indirection as the skip path — on_complete fires
@@ -831,7 +837,7 @@ def test_bring_up_soulseek_blocked_when_docker_not_running(
     )
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -871,7 +877,7 @@ def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
     )
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -924,7 +930,7 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
     )
     calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
+        "seeker.application.bring_up_slskd",
         lambda **kwargs: calls.append(kwargs),
     )
 
@@ -963,16 +969,16 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
         lambda: DockerState.RUNNING,
     )
     monkeypatch.setattr(
-        "seeker.ui.wizard.slskd_data_dir", lambda: tmp_path / "slskd-data",
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
 
-    class FakeFailedResult:
-        returncode = 1
-        stderr = "real docker compose error text"
+    def failing_bring_up(**kwargs):
+        raise SlskdBringUpError(
+            "docker compose up failed: real docker compose error text"
+        )
 
     monkeypatch.setattr(
-        "seeker.ui.wizard.bring_up_slskd",
-        lambda **kwargs: FakeFailedResult(),
+        "seeker.application.bring_up_slskd", failing_bring_up,
     )
 
     application = make_application(tmp_path, monkeypatch)

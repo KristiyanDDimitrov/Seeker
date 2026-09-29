@@ -29,13 +29,9 @@ from seeker.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
     SlskdWebLoginStatus,
-    bring_up_slskd,
     check_slskd_health,
     check_slskd_web_login,
-    compose_file_path,
-    generate_api_key,
     is_non_loopback_http_url,
-    slskd_data_dir,
 )
 from seeker.login_item import LoginItemStatus
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
@@ -45,7 +41,6 @@ from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice
-from seeker.ui.wizard import SLSKD_LOCAL_BASE_URL
 from seeker.ui.workers import run_worker
 
 
@@ -998,36 +993,9 @@ class SettingsPage(QWidget):
             )
             return
 
-        api_key = generate_api_key()
-        data_dir = slskd_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        web_username, web_password = (
-            self.application.ensure_slskd_web_credentials()
-        )
-
         def do_update() -> None:
-            result = bring_up_slskd(
-                compose_file=str(compose_file_path()),
-                soulseek_username=username,
-                soulseek_password=password,
-                api_key=api_key,
-                slskd_data_dir=str(data_dir),
-                web_username=web_username,
-                web_password=web_password,
-                library_location_path=library_location_path,
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"docker compose up failed: {result.stderr.strip()}"
-                )
-
-            self.application.persist_soulseek_config(
-                SLSKD_LOCAL_BASE_URL,
-                api_key,
-                str(data_dir / "downloads"),
-                username,
-                password,
+            self.application.start_slskd(
+                username, password, library_location_path, persist=True,
             )
 
         run_worker(

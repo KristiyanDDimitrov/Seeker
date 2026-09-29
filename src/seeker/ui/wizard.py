@@ -23,17 +23,15 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.docker_setup import (
+    SLSKD_LOCAL_BASE_URL,
     DockerState,
     SlskdHealthCheckResult,
     SlskdHealthStatus,
-    bring_up_slskd,
     check_slskd_health,
-    compose_file_path,
     detect_docker_state,
-    generate_api_key,
-    slskd_data_dir,
 )
 from seeker.models.library_location import LibraryLocation
+from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
@@ -46,16 +44,6 @@ from seeker.ui.workers import run_worker
 # reach a real Soulseek network login.
 HEALTH_POLL_INTERVAL_MS = 2_000
 HEALTH_POLL_TIMEOUT_SECONDS = 60.0
-
-# Roadmap item 116 (round 8, §6.1.1) — 127.0.0.1, not "localhost".
-# Docker's own "127.0.0.1:5030:5030" port binding (docker-compose.yml)
-# is IPv4-only; macOS resolves "localhost" to both ::1 and 127.0.0.1,
-# and getaddrinfo commonly returns ::1 first, so an httpx request to
-# "http://localhost:5030" could try IPv6, get connection refused, and
-# only then fall back to IPv4 -- a real per-request delay this sidesteps
-# deterministically rather than needing to time a before/after search on
-# real hardware.
-SLSKD_LOCAL_BASE_URL = "http://127.0.0.1:5030"
 
 
 class OnboardingWizard(QMainWindow):
@@ -90,7 +78,7 @@ class OnboardingWizard(QMainWindow):
 
         self._library_location_path: str | None = None
         self._docker_state: DockerState | None = None
-        self._slskd_api_key: str | None = None
+        self._slskd_started: SlskdStartResult | None = None
         self._health_poll_timer: QTimer | None = None
         self._health_poll_elapsed = 0.0
         self._health_poll_started_at: datetime | None = None
@@ -556,33 +544,13 @@ class OnboardingWizard(QMainWindow):
             )
             return
 
-        api_key = generate_api_key()
-        data_dir = slskd_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        web_username, web_password = (
-            self.application.ensure_slskd_web_credentials()
-        )
-
         library_path = self._library_location_path
 
-        def do_bring_up() -> str:
-            result = bring_up_slskd(
-                compose_file=str(compose_file_path()),
-                soulseek_username=username,
-                soulseek_password=password,
-                api_key=api_key,
-                slskd_data_dir=str(data_dir),
-                web_username=web_username,
-                web_password=web_password,
-                library_location_path=library_path,
+        def do_bring_up() -> SlskdStartResult:
+            # Saved only once the health poll confirms the login.
+            return self.application.start_slskd(
+                username, password, library_path, persist=False,
             )
-
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"docker compose up failed: {result.stderr.strip()}"
-                )
-
-            return api_key
 
         run_worker(
             self.thread_pool,
@@ -598,8 +566,8 @@ class OnboardingWizard(QMainWindow):
         # this new attempt ends up showing.
         self.soulseek_status_label.setToolTip("")
 
-    def _start_health_poll(self, api_key: str) -> None:
-        self._slskd_api_key = api_key
+    def _start_health_poll(self, started: SlskdStartResult) -> None:
+        self._slskd_started = started
         self._health_poll_elapsed = 0.0
         # Real timestamp this specific bring-up attempt started —
         # check_slskd_health uses it to ignore any stale Error log
@@ -621,9 +589,9 @@ class OnboardingWizard(QMainWindow):
 
     def _poll_slskd_health_once(self) -> None:
         self._health_poll_elapsed += HEALTH_POLL_INTERVAL_MS / 1000
-        api_key = self._slskd_api_key
+        assert self._slskd_started is not None
+        api_key = self._slskd_started.api_key
         since = self._health_poll_started_at
-        assert api_key is not None
         assert since is not None
 
         run_worker(
@@ -698,15 +666,16 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_progress.hide()
 
     def _persist_soulseek_config(self) -> None:
-        assert self._slskd_api_key is not None
+        started = self._slskd_started
+        assert started is not None
 
         # Form fields are still populated from _on_bring_up_clicked —
         # nothing clears them between requesting the bring-up and the
         # health poll confirming it succeeded.
         self.application.persist_soulseek_config(
             SLSKD_LOCAL_BASE_URL,
-            self._slskd_api_key,
-            str(slskd_data_dir() / "downloads"),
+            started.api_key,
+            started.download_dir,
             self.soulseek_username_field.text().strip(),
             self.soulseek_password_field.text(),
         )
