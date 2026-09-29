@@ -12,6 +12,9 @@ from seeker.library.metadata_service import (
 )
 from seeker.library.scanner import LibraryUnavailableError
 from seeker.library.service import (
+    LibraryLocationNotFoundError as LibraryServiceLocationNotFoundError,
+)
+from seeker.library.service import (
     PlaylistNotFoundError as LibraryReviewPlaylistNotFoundError,
 )
 from seeker.models.playlist import Playlist
@@ -672,9 +675,7 @@ def handle_library(
             )
 
     elif parsed.library_command == "remove":
-        application.library_service.remove_location(
-            parsed.name
-        )
+        application.remove_location(parsed.name)
 
     elif parsed.library_command == "scan":
         if parsed.match:
@@ -1150,6 +1151,7 @@ def run(
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
             DuplicateLibraryLocationNotFoundError,
+            LibraryServiceLocationNotFoundError,
             FingerprintingUnavailableError,
     ) as error:
         print(str(error))

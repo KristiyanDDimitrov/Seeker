@@ -787,6 +787,44 @@ def test_persist_default_destination_updates_store_and_disk(
     assert reloaded.default_download_subfolder_per_playlist is False
 
 
+def test_remove_location_clears_the_default_destination_it_was(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    music = tmp_path / "music"
+    music.mkdir()
+    location = app.library_service.add_location("Music", str(music))
+    assert location.id is not None
+    app.persist_default_destination(location.id, True)
+
+    summary = app.remove_location("Music")
+
+    assert summary.was_default is True
+    assert app.settings.default_download_location_id is None
+    assert load_config(resolve_config_path()).default_download_location_id is None
+
+
+def test_remove_location_keeps_a_default_destination_elsewhere(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    for name in ("Music", "Other"):
+        (tmp_path / name).mkdir()
+        app.library_service.add_location(name, str(tmp_path / name))
+    kept_id = next(
+        location.id
+        for location, _ in app.library_service.list_locations()
+        if location.name == "Other"
+    )
+    assert kept_id is not None
+    app.persist_default_destination(kept_id, False)
+
+    summary = app.remove_location("Music")
+
+    assert summary.was_default is False
+    assert app.settings.default_download_location_id == kept_id
+
+
 def test_persist_default_destination_reflected_by_download_service_immediately(
         tmp_path, monkeypatch,
 ):

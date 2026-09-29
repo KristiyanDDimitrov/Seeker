@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,9 +13,13 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.track_match_repository import (
+    TrackMatchRepository,
+)
 from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
+from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 
 logger = logging.getLogger(__name__)
@@ -31,6 +36,12 @@ class LibraryLocationPathAlreadyRegisteredError(RuntimeError):
 
 class PlaylistNotFoundError(RuntimeError):
     pass
+
+
+class LibraryLocationNotFoundError(RuntimeError):
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(f"No library location named '{name}' is registered.")
 
 
 # Untuned constant — how many auto-suffix attempts (" (2)", " (3)", ...)
@@ -53,6 +64,7 @@ class LibraryService:
         self.locations = location_repo
         self.local_files = local_file_repo
         self.scanner = LibraryScanner(local_file_repo, database)
+        self.track_matches = TrackMatchRepository(database)
         # Both optional — only scan_and_match()/get_needs_review_matches()
         # etc. need them (roadmap item 56). Every existing caller that
         # constructs a LibraryService without them (tests included) is
@@ -186,21 +198,90 @@ class LibraryService:
         with self.database.transaction() as connection:
             return self.local_files.exists_any(connection)
 
-    def remove_location(self, name: str) -> None:
+    def remove_location(
+            self,
+            name: str,
+            default_location_id: int | None = None,
+    ) -> LocationRemovalSummary:
+        """Forgets a location in one transaction: its indexed files and
+        every match to them (confirmed ones included), and the
+        destination of every playlist that downloads into it. Files on
+        disk are not touched. `default_location_id` is the configured
+        default destination, which only the caller can clear.
+        """
+        playlists = self._require_playlists("remove_location()")
+
         with self.database.transaction() as connection:
-            location = self.locations.get_by_name(name, connection)
-
-            if location is None:
-                logger.warning(
-                    "No library location named '%s' is registered.", name,
-                )
-                return
-
-            # Loaded from the DB via get_by_name above, so .id is set.
+            location = self._get_location_or_raise(name, connection)
+            # Loaded from the DB, so .id is set.
             assert location.id is not None
+            summary = self._removal_summary(
+                location, default_location_id, connection,
+            )
+
+            self.local_files.delete_all_for_location(location.id, connection)
+            playlists.clear_destination_for_location(location.id, connection)
             self.locations.delete(location.id, connection)
 
-        logger.info("Removed library location '%s'.", name)
+        logger.info(
+            "Removed library location '%s': %d files forgotten, %d "
+            "matches cleared (%d confirmed), %d playlists lost their "
+            "destination.",
+            name,
+            summary.files_forgotten,
+            summary.matches_cleared,
+            summary.confirmed_matches_cleared,
+            summary.playlists_affected,
+        )
+
+        return summary
+
+    def _get_location_or_raise(
+            self,
+            name: str,
+            connection: sqlite3.Connection,
+    ) -> LibraryLocation:
+        location = self.locations.get_by_name(name, connection)
+
+        if location is None:
+            raise LibraryLocationNotFoundError(name)
+
+        return location
+
+    def _removal_summary(
+            self,
+            location: LibraryLocation,
+            default_location_id: int | None,
+            connection: sqlite3.Connection,
+    ) -> LocationRemovalSummary:
+        playlists = self._require_playlists("_removal_summary()")
+        # Loaded from the DB, so .id is set.
+        assert location.id is not None
+        matches, confirmed = self.track_matches.count_for_location(
+            location.id, connection,
+        )
+
+        return LocationRemovalSummary(
+            location_name=location.name,
+            files_forgotten=self.local_files.count_for_location(
+                location.id, connection,
+            ),
+            matches_cleared=matches,
+            confirmed_matches_cleared=confirmed,
+            playlists_affected=playlists.count_with_destination(
+                location.id, connection,
+            ),
+            was_default=location.id == default_location_id,
+        )
+
+    def _require_playlists(self, caller: str) -> PlaylistRepository:
+        if self.playlists is None:
+            raise RuntimeError(
+                f"{caller} requires a playlist repository — this "
+                "LibraryService was constructed without one."
+            )
+
+        return self.playlists
 
     def scan_all(self) -> dict[str, int]:
         totals = {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}

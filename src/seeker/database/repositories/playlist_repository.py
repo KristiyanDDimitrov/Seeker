@@ -184,6 +184,32 @@ class PlaylistRepository:
             (location_id, subfolder, playlist_id),
         )
 
+    def count_with_destination(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> int:
+        row = connection.execute(
+            "SELECT COUNT(*) FROM playlists WHERE download_location_id = ?",
+            (location_id,),
+        ).fetchone()
+
+        return int(row[0])
+
+    def clear_destination_for_location(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE playlists
+            SET download_location_id = NULL, download_subfolder = NULL
+            WHERE download_location_id = ?
+            """,
+            (location_id,),
+        )
+
     def delete(self, playlist_id: str, connection: sqlite3.Connection) -> None:
         connection.execute(
             """

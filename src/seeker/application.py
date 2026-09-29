@@ -45,6 +45,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
 from seeker.models.data_locations import DataLocations
+from seeker.models.location_removal import LocationRemovalSummary
 from seeker.sharing_service import SharingService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
@@ -394,6 +395,22 @@ class Application:
         )
         save_config(updated, config_path)
         self._config_store = updated
+
+    def remove_location(self, name: str) -> LocationRemovalSummary:
+        """Removes a library location (see
+        `LibraryService.remove_location`) and, when it was the default
+        download destination, clears that too so `config.json` never
+        keeps a dangling id.
+        """
+        summary = self.library_service.remove_location(
+            name,
+            default_location_id=self._config_store.default_download_location_id,
+        )
+
+        if summary.was_default:
+            self.update_settings(default_download_location_id=None)
+
+        return summary
 
     @property
     def downloads_paused(self) -> bool:

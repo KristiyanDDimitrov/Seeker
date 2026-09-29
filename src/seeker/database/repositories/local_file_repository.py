@@ -319,6 +319,25 @@ class LocalFileRepository:
             (local_file_id,),
         )
 
+    def count_for_location(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> int:
+        row = connection.execute(
+            "SELECT COUNT(*) FROM local_files WHERE location_id = ?",
+            (location_id,),
+        ).fetchone()
+
+        return int(row[0])
+
+    def delete_all_for_location(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        self.delete_missing(location_id, set(), connection)
+
     def delete_missing(
             self,
             location_id: int,

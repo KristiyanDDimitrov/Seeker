@@ -5,6 +5,8 @@ leaves `match_method`/`score`/`confirmed_at` behind on a row that no
 longer points anywhere ("limbo"): shown missing on the Dashboard, never
 downloaded, never re-matched (HISTORY §139).
 """
+import pytest
+
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -20,7 +22,11 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
-from seeker.library.service import LibraryService
+from seeker.library.service import (
+    LibraryLocationNotFoundError,
+    LibraryService,
+)
+from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
@@ -243,3 +249,78 @@ def test_a_limbo_row_is_not_offered_as_auto_matched(tmp_path):
         auto = matcher.tracks.get_auto_matched_for_playlist("p1", connection)
 
     assert auto == []
+
+
+# --- §4.4: removing a location -----------------------------------------
+
+def set_destination(matcher: TrackMatcher, playlist_id: str) -> None:
+    playlists = PlaylistRepository(matcher.database)
+
+    with matcher.database.transaction() as connection:
+        if playlists.get_by_id(playlist_id, connection) is None:
+            playlists.save(
+                Playlist(id=playlist_id, name=playlist_id, track_count=0),
+                connection,
+            )
+        playlists.set_destination(playlist_id, 1, "P", connection)
+
+
+def test_removing_a_location_a_playlist_downloads_into_succeeds(tmp_path):
+    # Probe A.4: this raised IntegrityError (FOREIGN KEY constraint).
+    service, matcher = make_scenario(tmp_path)
+    set_destination(matcher, "p1")
+
+    service.remove_location("Lib")
+
+    with matcher.database.transaction() as connection:
+        playlist = PlaylistRepository(matcher.database).get_by_id(
+            "p1", connection,
+        )
+
+    assert service.list_locations() == []
+    assert playlist is not None
+    assert (playlist.download_location_id, playlist.download_subfolder) == (
+        None, None,
+    )
+
+
+def test_removing_a_location_unmatches_its_files_and_reports_counts(
+        tmp_path,
+):
+    service, matcher = make_scenario(tmp_path)
+    (tmp_path / "lib" / "other.wav").write_bytes(b"x")
+    service.scan_and_match()
+    service.confirm_match("t1")
+    set_destination(matcher, "p1")
+    set_destination(matcher, "p2")
+
+    summary = service.remove_location("Lib", default_location_id=1)
+
+    assert summary == LocationRemovalSummary(
+        location_name="Lib",
+        files_forgotten=2,
+        matches_cleared=1,
+        confirmed_matches_cleared=1,
+        playlists_affected=2,
+        was_default=True,
+    )
+    assert local_file_ids(matcher) == []
+    assert match_row(matcher) == (None, None, None, None)
+    assert unmatched_ids(matcher) == ["t1"]
+
+
+def test_removing_a_location_that_is_not_the_default_says_so(tmp_path):
+    service, _ = make_scenario(tmp_path)
+
+    summary = service.remove_location("Lib", default_location_id=99)
+
+    assert summary.was_default is False
+
+
+def test_removing_an_unknown_location_raises(tmp_path):
+    service, _ = make_scenario(tmp_path)
+
+    with pytest.raises(LibraryLocationNotFoundError, match="Nope"):
+        service.remove_location("Nope")
+
+    assert len(service.list_locations()) == 1

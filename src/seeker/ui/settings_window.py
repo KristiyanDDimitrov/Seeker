@@ -321,7 +321,7 @@ class SettingsPage(QWidget):
         # established design calls for).
         run_worker(
             self.thread_pool,
-            lambda: self.application.library_service.remove_location(name),
+            lambda: self.application.remove_location(name),
             status_label=self.locations_status_label,
             on_finished=lambda _: self._on_location_added(),
         )

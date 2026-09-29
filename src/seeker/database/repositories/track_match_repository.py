@@ -142,6 +142,28 @@ class TrackMatchRepository:
 
         return [_row_to_track_match(row) for row in rows]
 
+    def count_for_location(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> tuple[int, int]:
+        """(matches, confirmed matches) pointing at files indexed under
+        this location.
+        """
+        row = connection.execute(
+            """
+            SELECT
+                COUNT(*),
+                COUNT(tm.confirmed_at)
+            FROM track_matches tm
+            JOIN local_files lf ON lf.id = tm.local_file_id
+            WHERE lf.location_id = ?
+            """,
+            (location_id,),
+        ).fetchone()
+
+        return int(row[0]), int(row[1])
+
 
 def _row_to_track_match(row: sqlite3.Row) -> TrackMatch:
     return TrackMatch(
