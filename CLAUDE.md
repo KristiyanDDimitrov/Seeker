@@ -94,8 +94,9 @@ src/seeker/
 │                              #   .env/config.py is the fallback when unset
 ├── docker_setup.py              # Docker/slskd detection, bring-up, health
 │                              #   checks — shared by wizard.py/settings_window.py
-├── download_dedup.py, file_deletion.py, filename_sanitize.py,
-│   filename_format.py, update_check.py, album_art_cache.py
+├── download_dedup.py, file_deletion.py, file_placement.py,
+│   filename_sanitize.py, filename_format.py, update_check.py,
+│   album_art_cache.py
 ├── atomic_file.py               # write_text_locked() — 0600 + atomic writes
 │                              #   for any credential/token file
 ├── config.py                     # .env-sourced fallback values
@@ -293,6 +294,13 @@ Each links to the HISTORY entry where the full investigation lives;
   application`'s `ServerState` carries no error/reason field at all, so
   `check_slskd_health` reads `/api/v0/logs` with a `since:` filter).
   [HISTORY §13](docs/history/001-024.md#13)
+- **A finished download is never guessed and never lands on an
+  existing file.** slskd writes `<remote parent>/<basename>`, or
+  `<stem>_<UtcNow.Ticks><suffix>` on a clash (its `FileService.MoveFile`);
+  `_locate_completed_file` accepts only the request's exact byte size
+  and refuses an ambiguous match. Placement goes through
+  `file_placement.resolve_collision` — the one collision rule, shared
+  with renames. [HISTORY §138](docs/history/121-150.md#138)
 - `RECOGNIZED_REJECTION_PATTERNS`/`is_recognized_rejection()` apply
   unconditionally to any `download_requests.role`, not just
   `role='upgrade'`. [HISTORY §13](docs/history/001-024.md#13)
