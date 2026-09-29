@@ -254,6 +254,12 @@ Each links to the HISTORY.md item where the full investigation lives.
 - `get_current_user_playlists` reads `playlist["items"]["total"]`, never
   `["tracks"]["total"]`.
   [HISTORY](docs/HISTORY.md#spotify-field-name-history-get_current_user_playlists)
+- `callback_server._LoopbackHTTPServer` overrides `server_bind()` to
+  skip `HTTPServer`'s reverse-DNS `socket.getfqdn()` between `bind()`
+  and `listen()` — keep it, never go back to a plain `HTTPServer`. The
+  CI-only `test_callback_server.py` timeouts stopped at the commit that
+  added it (all 39 CI runs since pass; mechanism still unexplained).
+  [HISTORY §136](docs/HISTORY.md#136)
 - The token cache path is resolved via `platformdirs`, not
   CWD-relative — a double-clicked `.app`'s CWD can be unwritable.
   [HISTORY §43](docs/HISTORY.md#43)
@@ -572,22 +578,6 @@ Genuinely open only — no "done" items, no flakes that resolved.
   `add_location_from_path` only check exact path-string uniqueness, no
   containment check exists. A real user decision, deliberately left
   open. [HISTORY §93](docs/HISTORY.md#93)
-- **`test_callback_server.py`: 3 real tests (`test_wait_for_callback_
-  parses_code_and_state_from_real_request`,
-  `..._captures_error_param`, `..._returns_404_but_keeps_waiting...`)
-  fail on CI (`macos-latest`) with `httpx.ConnectTimeout` connecting to
-  the test's own local `HTTPServer`, root cause unconfirmed.** Pass
-  reliably locally. A thread-startup race was checked and ruled out (a
-  too-early connection is refused instantly, not timed out at 5s).
-  **S14 update: CI is not billing-blocked any more (see below) and
-  `gh run view` now IS a live runner to check against** — all three
-  runs inspected (`34207858803`, `34207444009`, `34206885872`,
-  2026-09-08) reproduce exactly these 3 failures, consistently, nothing
-  else related. Leading hypothesis on *why* — still UNVERIFIED, `gh`
-  can't inspect macOS's own permission-prompt state — is macOS's Local
-  Network permission prompt silently blocking an unsigned process's
-  loopback listener in a non-interactive session.
-  [HISTORY §117](docs/HISTORY.md#117)
 - **CI is real and running (not billing-blocked) as of 2026-09-08 —
   the S1.1/§117 "never completed a real run" finding is superseded.**
   Confirmed live via `gh run list`/`gh run view`: ruff/mypy clean on
@@ -612,11 +602,10 @@ Genuinely open only — no "done" items, no flakes that resolved.
 
 Forward-looking only — see `docs/HISTORY.md` for everything shipped.
 
-- **Round 8 — refactor, layering, dedup, `MainWindow` decomposition, and
-  this doc pass — in progress.** Session map:
-  `docs/rounds/round-08/SESSION-PLAN.md`. Full plan:
-  `docs/rounds/round-08/BRIEF.md`. Security phase (done):
-  `docs/rounds/round-08/SECURITY-BRIEF.md`.
+- **Round 11 — the final polish round, ending in the v0.1.0 release —
+  in progress.** Session map: `docs/rounds/round-11/SESSION-PLAN.md`;
+  task text: `docs/rounds/round-11/BRIEF.md`; findings:
+  `docs/rounds/round-11/AUDIT.md`. Every document: `docs/README.md`.
 - **Linux packaging** (AppImage or `.deb`) — deprioritized, not scoped.
 - **SoundCloud as a second source — deliberately deferred, not
   started.** Two disqualifying blockers found researching it:

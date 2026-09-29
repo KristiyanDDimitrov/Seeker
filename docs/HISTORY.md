@@ -15283,3 +15283,43 @@ as the cross-page selection seam (§133), and the login item's
 frozen-only gate and live status (§131). One gap carried forward and
 not fixed here, since this row is docs only: no test covers the
 Review splitter's persist/restore round-trip (§132).
+
+### 136 — Round 11 S1 (§1): round documents archived, docs index, round 10's S2 closed
+
+Docs only. The four round-11 documents the audit chat wrote were
+committed first, unchanged (`af73e7c`). Every dated brief, round 5's
+`TASKS.md` and the three `roundN/SESSION-PLAN.md` folders moved to
+`docs/rounds/round-NN/` by `git mv` (`a9f7e60`); every reference was
+repointed, including relative `HISTORY.md` links the move made one
+level deeper. The only old path left is round 8's verbatim
+`git status` quote. `docs/README.md` indexes every document with
+reading orders for three audiences (`4383420`).
+
+#### The `test_callback_server.py` CI timeouts: closed, fixed by §1.2 of round 9
+
+Open since §117: three tests timing out with `httpx.ConnectTimeout`
+on CI only, with macOS's Local Network permission prompt as the
+leading (never verified) hypothesis. That hypothesis is now very
+unlikely. The failures stopped at a specific commit and have not
+recurred once:
+
+- Last two runs before `231b512`: `34340583368` (`6f1ea0b`) and
+  `34346738383` (`2b83554`) both show `test_callback_server.py FFF..`.
+- `231b512` ("split callback_server bind from serve") and every run
+  since: all 39 runs from `34407483639` (`661e272`, the first run
+  containing it) through `35906721903` (`378646a`) show
+  `test_callback_server.py .....`. Tallied from each run's log
+  (`gh run view <id> --log`), 2026-09-29.
+
+`231b512` made two changes at once, so which one fixed it is
+UNVERIFIED. (1) `_LoopbackHTTPServer.server_bind()` skips
+`HTTPServer.server_bind()`'s `socket.getfqdn(host)`, a reverse-DNS
+lookup that runs after `bind()` but before `listen()`. (2) The tests
+now create the server on their own thread, with port 0, before any
+client exists. Neither obviously explains a 5-second *timeout*: §117
+found a too-early connection is refused instantly, and a bound but
+not yet listening socket is refused too. The failure stopped; the
+mechanism is still unexplained. Either way,
+the product code keeps (1): it also narrows the real
+browser-versus-listener race in `auth_manager`. Closed in CLAUDE.md's
+Open issues; its standing-fact replacement is under Spotify / OAuth.
