@@ -802,7 +802,8 @@ def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
     real_write_text = Path.write_text
 
     def failing_write_text(self, *args, **kwargs):
-        if self == slskd_yml_path:
+        # The write lands in a temp sibling first (write_text_atomic).
+        if self.parent == slskd_yml_path.parent and self.suffix == ".tmp":
             raise OSError("disk full (simulated)")
         return real_write_text(self, *args, **kwargs)
 
@@ -917,3 +918,211 @@ def test_insert_slskd_share_directory_creates_block_against_real_generated_defau
     assert updated == (
         text + "\nshares:\n  directories:\n    - /shared/new\n"
     )
+
+
+# --- Robustness: both files restored, atomic writes, pruned backups ------
+
+_ROBUSTNESS_COMPOSE = (
+    "services:\n"
+    "  slskd:\n"
+    "    volumes:\n"
+    '      - "${SLSKD_DATA_DIR:?set by Seeker}:/app"\n'
+    '      - "${SLSKD_SHARE_PATH:?set by Seeker}:/shared/music:ro"\n'
+    "    restart: unless-stopped\n"
+)
+_ROBUSTNESS_SLSKD_YML = "shares:\n  directories:\n    - /shared/music\n"
+
+
+def _ready_share_scenario(tmp_path, monkeypatch, compose_up_returncode=0):
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(_ROBUSTNESS_COMPOSE)
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    slskd_yml_path.write_text(_ROBUSTNESS_SLSKD_YML)
+
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            return FakeResponse({
+                "shares": {
+                    "ready": True, "scanning": False, "scanPending": False,
+                    "faulted": False, "directories": 1, "files": 3,
+                }
+            })
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    fake_run = _fake_run_for_add_location(compose_path, data_dir)
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "compose"] and compose_up_returncode:
+            result = FakeCompletedProcess(returncode=compose_up_returncode)
+            result.stderr = "boom"
+            return result
+        return fake_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    return service, location, compose_path, slskd_yml_path
+
+
+def test_add_location_to_share_restores_both_files_when_recreate_fails(
+        tmp_path, monkeypatch,
+):
+    service, location, compose_path, slskd_yml_path = _ready_share_scenario(
+        tmp_path, monkeypatch, compose_up_returncode=1,
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.add_location_to_share(location, confirm=True)
+
+    assert compose_path.read_text() == _ROBUSTNESS_COMPOSE
+    assert slskd_yml_path.read_text() == _ROBUSTNESS_SLSKD_YML
+
+
+def test_add_location_to_share_never_leaves_a_half_written_file(
+        tmp_path, monkeypatch,
+):
+    # A write that dies part-way (disk full, a crash) must leave the
+    # original file, not a truncated one slskd then fails to parse.
+    service, location, compose_path, slskd_yml_path = _ready_share_scenario(
+        tmp_path, monkeypatch,
+    )
+    real_write_text = Path.write_text
+
+    def dies_part_way(self, data, *args, **kwargs):
+        if self.name.startswith("slskd.yml") and ".bak-" not in self.name:
+            real_write_text(self, data[:5], *args, **kwargs)
+            raise OSError("disk full (simulated)")
+        return real_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", dies_part_way)
+
+    with pytest.raises(OSError, match="disk full"):
+        service.add_location_to_share(location, confirm=True)
+
+    assert slskd_yml_path.read_text() == _ROBUSTNESS_SLSKD_YML
+    assert compose_path.read_text() == _ROBUSTNESS_COMPOSE
+    assert sorted(
+        path.name for path in slskd_yml_path.parent.iterdir()
+        if ".bak-" not in path.name
+    ) == ["slskd.yml"]
+
+
+def test_add_location_to_share_keeps_only_the_newest_five_backups(
+        tmp_path, monkeypatch,
+):
+    service, location, compose_path, slskd_yml_path = _ready_share_scenario(
+        tmp_path, monkeypatch,
+    )
+
+    for day in range(1, 7):
+        stamp = f"202601{day:02d}T000000Z"
+        for path in (compose_path, slskd_yml_path):
+            path.with_name(f"{path.name}.bak-{stamp}").write_text("old")
+
+    result = service.add_location_to_share(location, confirm=True)
+
+    for path, newest in (
+            (compose_path, result.compose_backup_path),
+            (slskd_yml_path, result.slskd_yml_backup_path),
+    ):
+        backups = sorted(path.parent.glob(f"{path.name}.bak-*"))
+        assert len(backups) == 5
+        assert newest in backups
+        assert path.with_name(f"{path.name}.bak-20260106T000000Z") in backups
+        assert not path.with_name(
+            f"{path.name}.bak-20260102T000000Z"
+        ).exists()
+
+
+def test_insert_compose_volume_line_skips_comments_inside_the_list():
+    text = (
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        "      # slskd's own state\n"
+        '      - "${SLSKD_DATA_DIR:?x}:/app"\n'
+        "\n"
+        "      # the music share\n"
+        '      - "${SLSKD_SHARE_PATH:?x}:/shared/music:ro"\n'
+        "    restart: unless-stopped\n"
+    )
+
+    updated = _insert_compose_volume_line(text, '      - "/x:/shared/y:ro"')
+    lines = updated.splitlines()
+
+    assert lines[7] == '      - "${SLSKD_SHARE_PATH:?x}:/shared/music:ro"'
+    assert lines[8] == '      - "/x:/shared/y:ro"'
+    assert lines[9] == "    restart: unless-stopped"
+
+
+def test_insert_slskd_share_directory_finds_directories_after_filters():
+    # A `shares:` block that starts with another key must gain the new
+    # directory in its own list, never a second top-level `shares:`.
+    text = (
+        "shares:\n"
+        "  filters:\n"
+        "    - \\.ini$\n"
+        "  directories:\n"
+        "    - /shared/music\n"
+        "web:\n"
+        "  port: 5030\n"
+    )
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.count("shares:") == 1
+    assert updated.splitlines() == [
+        "shares:",
+        "  filters:",
+        "    - \\.ini$",
+        "  directories:",
+        "    - /shared/music",
+        "    - /shared/new",
+        "web:",
+        "  port: 5030",
+    ]
+
+
+def test_insert_slskd_share_directory_adds_directories_to_a_block_without_one():
+    text = "shares:\n  filters:\n    - \\.ini$\nweb:\n  port: 5030\n"
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.count("shares:") == 1
+    assert updated.splitlines() == [
+        "shares:",
+        "  directories:",
+        "    - /shared/new",
+        "  filters:",
+        "    - \\.ini$",
+        "web:",
+        "  port: 5030",
+    ]
+
+
+def test_insert_slskd_share_directory_matches_the_lists_own_indentation():
+    # YAML allows a list at its key's own indentation; a new entry
+    # indented differently would break the file.
+    text = "shares:\n  directories:\n  - /shared/music\n  # end\n"
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.splitlines()[:4] == [
+        "shares:",
+        "  directories:",
+        "  - /shared/music",
+        "  - /shared/new",
+    ]
+
+
+@pytest.mark.parametrize("text", [
+    "shares: {}\n",
+    "shares:\n  directories: [/shared/music]\n",
+])
+def test_insert_slskd_share_directory_refuses_a_shape_it_cannot_edit(text):
+    with pytest.raises(RuntimeError, match=r"slskd\.yml"):
+        _insert_slskd_share_directory(text, "    - /shared/new")

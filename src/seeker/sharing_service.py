@@ -45,6 +45,7 @@ rather than text-parsing docker-compose.yml for paths.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -55,6 +56,7 @@ from pathlib import Path
 
 import httpx
 
+from seeker.atomic_file import write_text_atomic
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -83,6 +85,10 @@ SHARE_MOUNT_ROOT = "/shared"
 # share rescan of a modestly sized new folder.
 SHARE_READY_TIMEOUT_SECONDS = 120.0
 SHARE_READY_POLL_INTERVAL_SECONDS = 2.0
+
+# `.bak-<timestamp>` copies kept per edited file; older ones are pruned
+# each time a share is added.
+BACKUPS_KEPT = 5
 
 
 class SharingWriteNotAllowedError(RuntimeError):
@@ -458,6 +464,8 @@ class SharingService:
 
         shutil.copy2(self._compose_path, compose_backup)
         shutil.copy2(slskd_yml_path, slskd_yml_backup)
+        _prune_backups(self._compose_path)
+        _prune_backups(slskd_yml_path)
 
         # Roadmap item 74 (P5.2) — BOTH new file contents are computed
         # BEFORE either file is written. The old order (write compose,
@@ -476,16 +484,20 @@ class SharingService:
             slskd_yml_text, plan.slskd_share_directory_line
         )
 
-        self._compose_path.write_text(updated_compose_text)
+        # Each write is atomic, so a failure leaves that file whole.
+        # Restoring the other keeps the pair consistent: a retry must
+        # not find a volume line with no matching share, or add the
+        # same line twice.
+        def restore_both() -> None:
+            write_text_atomic(self._compose_path, compose_text)
+            write_text_atomic(slskd_yml_path, slskd_yml_text)
+
+        write_text_atomic(self._compose_path, updated_compose_text)
 
         try:
-            slskd_yml_path.write_text(updated_slskd_yml_text)
+            write_text_atomic(slskd_yml_path, updated_slskd_yml_text)
         except Exception:
-            # The only failure window left: the second write itself
-            # (disk full, permissions, ...). Roll the compose file back
-            # from the backup just taken so a retry can't add the same
-            # volume line twice.
-            shutil.copy2(compose_backup, self._compose_path)
+            write_text_atomic(self._compose_path, compose_text)
             raise
 
         # Reuses the CURRENT live-resolved value for the pre-existing
@@ -519,10 +531,7 @@ class SharingService:
                 library_location_path=original_share_host_path,
             )
         except SlskdBringUpError:
-            # Same "roll the compose file back" safety net as the
-            # slskd.yml write failure above -- a failed recreate must
-            # not leave a retry able to add the same volume line twice.
-            shutil.copy2(compose_backup, self._compose_path)
+            restore_both()
             raise
 
         deadline = time.monotonic() + SHARE_READY_TIMEOUT_SECONDS
@@ -662,6 +671,29 @@ def _as_optional_int(value: object) -> int | None:
     return None
 
 
+def _prune_backups(path: Path) -> None:
+    # The timestamp format sorts chronologically by name.
+    backups = sorted(path.parent.glob(f"{path.name}.bak-*"))
+
+    for backup in backups[:-BACKUPS_KEPT]:
+        backup.unlink(missing_ok=True)
+
+
+# Both edits below are line-level text surgery, not a YAML round-trip:
+# each file has a known, machine-written shape (Seeker's own Compose
+# template, and the slskd.yml slskd generates), the project carries no
+# YAML dependency, and a shape these helpers don't recognise is refused
+# rather than guessed at.
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _is_blank_or_comment(line: str) -> bool:
+    stripped = line.strip()
+    return not stripped or stripped.startswith("#")
+
+
 def _insert_compose_volume_line(compose_text: str, new_line: str) -> str:
     lines = compose_text.splitlines()
     volumes_index = None
@@ -676,15 +708,15 @@ def _insert_compose_volume_line(compose_text: str, new_line: str) -> str:
             "docker-compose.yml has no 'volumes:' section to add to."
         )
 
-    # Insert after the last existing "      - ..." entry under
-    # volumes:, i.e. right before the first line that's no longer more
-    # indented than the sibling entries (or end of file).
+    # After the last "- ..." entry; comments and blank lines inside the
+    # list don't end it.
     insert_at = volumes_index + 1
 
     for index in range(volumes_index + 1, len(lines)):
-        stripped = lines[index].strip()
+        if _is_blank_or_comment(lines[index]):
+            continue
 
-        if stripped.startswith("- "):
+        if lines[index].strip().startswith("- "):
             insert_at = index + 1
             continue
 
@@ -695,48 +727,106 @@ def _insert_compose_volume_line(compose_text: str, new_line: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+# The active top-level key, not slskd's commented-out reference copy
+# ("# shares:") near the top of the file it generates.
+_ACTIVE_SHARES_KEY = re.compile(r"^shares:\s*(#.*)?$")
+_DIRECTORIES_KEY = re.compile(r"^directories:\s*(#.*)?$")
+
+
 def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
     lines = slskd_yml_text.splitlines()
+    entry = new_line.strip()
+    shares_index = next(
+        (
+            index for index, line in enumerate(lines)
+            if _ACTIVE_SHARES_KEY.match(line)
+        ),
+        None,
+    )
 
-    # The REAL, active (uncommented) "shares:" block, not the fully
-    # commented default-template reference near the top of the file
-    # (see this module's docstring) -- only a line that's exactly
-    # "shares:" at column 0, with an uncommented "directories:" child
-    # right after it, is the real one.
-    directories_index = None
+    if shares_index is None:
+        if any(line.startswith("shares:") for line in lines):
+            raise _unsupported_slskd_yml("an inline 'shares:' value")
 
-    for index, line in enumerate(lines):
-        if line == "shares:" and index + 1 < len(lines):
-            next_line = lines[index + 1].strip()
-
-            if next_line == "directories:":
-                directories_index = index + 1
-                break
-
-    if directories_index is None:
-        # Roadmap item 74 (P5.1) — no active block exists. This is the
-        # NORMAL state for a slskd.yml slskd itself generated fresh
-        # (its own default template ships the whole "shares:" section
-        # commented out, same shape as the commented reference block
-        # this file's own docstring already describes) — not an error
-        # condition to refuse. Create a real, active one instead,
-        # appended at the end of the file.
+        # No active block is the normal state of a freshly generated
+        # slskd.yml: slskd ships the whole section commented out.
         text = slskd_yml_text if slskd_yml_text.endswith("\n") else (
             slskd_yml_text + "\n"
         )
         return f"{text}shares:\n  directories:\n{new_line}\n"
 
-    insert_at = directories_index + 1
+    block_end = next(
+        (
+            index for index in range(shares_index + 1, len(lines))
+            if not _is_blank_or_comment(lines[index])
+            and _indent_of(lines[index]) == 0
+        ),
+        len(lines),
+    )
+    children = [
+        index for index in range(shares_index + 1, block_end)
+        if not _is_blank_or_comment(lines[index])
+    ]
+    child_indent = _indent_of(lines[children[0]]) if children else 2
+    directories_index = None
 
-    for index in range(directories_index + 1, len(lines)):
+    for index in children:
         stripped = lines[index].strip()
 
-        if stripped.startswith("- "):
+        if _DIRECTORIES_KEY.match(stripped):
+            directories_index = index
+            break
+
+        if stripped.startswith("directories:"):
+            raise _unsupported_slskd_yml("an inline 'directories:' value")
+
+    if directories_index is None:
+        lines[shares_index + 1:shares_index + 1] = [
+            " " * child_indent + "directories:",
+            " " * (child_indent + 2) + entry,
+        ]
+        return "\n".join(lines) + "\n"
+
+    # After the list's last entry, at that entry's own indentation (YAML
+    # also allows a list level with its key, "  - x" under
+    # "  directories:"). Deeper lines continue the entry above them.
+    directories_indent = _indent_of(lines[directories_index])
+    entry_indent: int | None = None
+    insert_at = directories_index + 1
+
+    for index in range(directories_index + 1, block_end):
+        line = lines[index]
+
+        if _is_blank_or_comment(line):
+            continue
+
+        indent = _indent_of(line)
+
+        if (
+                line.strip().startswith("- ")
+                and indent >= directories_indent
+                and entry_indent in (None, indent)
+        ):
+            entry_indent = indent
+            insert_at = index + 1
+            continue
+
+        if entry_indent is not None and indent > entry_indent:
             insert_at = index + 1
             continue
 
         break
 
-    lines.insert(insert_at, new_line)
+    if entry_indent is None:
+        entry_indent = directories_indent + 2
+
+    lines.insert(insert_at, " " * entry_indent + entry)
 
     return "\n".join(lines) + "\n"
+
+
+def _unsupported_slskd_yml(shape: str) -> RuntimeError:
+    return RuntimeError(
+        f"slskd.yml has {shape}, which Seeker can't edit safely. Add the "
+        "share to slskd.yml by hand, using the preview as a guide."
+    )
