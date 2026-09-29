@@ -98,8 +98,9 @@ src/seeker/
 ├── download_dedup.py, file_deletion.py, file_placement.py,
 │   filename_sanitize.py, filename_format.py, update_check.py,
 │   album_art_cache.py
-├── atomic_file.py               # write_text_locked() — 0600 + atomic writes
-│                              #   for any credential/token file
+├── atomic_file.py               # write_text_atomic() (mode kept) and
+│                              #   write_text_locked() (0600) — credential
+│                              #   files and Sharing's slskd.yml/Compose edits
 ├── config.py                     # .env-sourced fallback values
 ├── application.py, cli.py
 ├── main.py                       # `seeker` entry point
@@ -302,6 +303,15 @@ Each links to the HISTORY entry where the full investigation lives;
   and refuses an ambiguous match. Placement goes through
   `file_placement.resolve_collision` — the one collision rule, shared
   with renames. [HISTORY §138](docs/history/121-150.md#138)
+- **One slskd bring-up: `Application.start_slskd(..., persist=)`.**
+  The wizard (saves after its health poll) and Settings (saves at
+  once) both go through it; §12's Start slskd should too. Sharing's
+  recreate calls `docker_setup.bring_up_slskd` directly, since it
+  reuses the saved key/login and the live `/app` dir. The app only
+  ever runs the per-user Compose copy (`compose_file_path()`, dev and
+  frozen alike), never the tracked template, and a recreate keeps a
+  live container's `/app` data dir. The per-user copy is seeded once
+  and never re-seeded. [HISTORY §140](docs/history/121-150.md#140)
 - `RECOGNIZED_REJECTION_PATTERNS`/`is_recognized_rejection()` apply
   unconditionally to any `download_requests.role`, not just
   `role='upgrade'`. [HISTORY §13](docs/history/001-024.md#13)
