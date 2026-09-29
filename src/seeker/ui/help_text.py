@@ -15,6 +15,7 @@ matching.py's two independent copies once did (see CLAUDE.md).
 from typing import Any
 
 from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.spotify_sync import PlaylistRefreshResult
 
 # --- Persistent tab/section subtitles (not hover-dependent) --------------
 # One line under each tab's own header, aimed at someone who never reads
@@ -860,6 +861,33 @@ TOOLTIP_DOWNLOAD_THIS_ONE = (
 )
 SEARCH_EMPTY_FIELDS_MESSAGE = "Enter both an artist and a title first."
 SEARCH_NO_RESULTS_MESSAGE = "No results found."
+
+
+def format_playlist_refresh_message(result: PlaylistRefreshResult) -> str:
+    message = f"Refreshed {_count(result.playlist_count, 'playlist')}."
+    updated = len(result.updated_playlist_names)
+    if updated:
+        message += (
+            f" Updated tracks for {updated:,} that changed on Spotify."
+        )
+    if result.local_files_skipped:
+        message += (
+            f" Skipped "
+            f"{_count(result.local_files_skipped, 'Spotify local file')}: "
+            f"Seeker can't match or download them automatically."
+        )
+    return message
+
+
+def format_stale_playlist_message(playlist_names: list[str]) -> str:
+    first = playlist_names[0]
+    others = len(playlist_names) - 1
+    if not others:
+        return f"'{first}' changed on Spotify — refresh its tracks."
+    return (
+        f"'{first}' and {_count(others, 'other playlist')} changed on "
+        f"Spotify — refresh their tracks."
+    )
 
 
 def format_skipped_local_files_notice(

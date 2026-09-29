@@ -25,7 +25,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
-from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
@@ -167,6 +167,89 @@ def test_next_step_notice_hidden_when_nothing_selected_and_all_set_up(qtbot):
 
     qtbot.wait(50)
     assert window._dashboard_page.next_step_notice.isHidden()
+
+
+def _one_location() -> list:
+    return [(
+        LibraryLocation(
+            id=1, name="Main", path="/music",
+            added_at="2026-01-01T00:00:00+00:00",
+        ),
+        True,
+    )]
+
+
+def test_next_step_says_a_selected_playlist_changed_on_spotify(qtbot):
+    # Its cached tracks are all in the library and tagged, but they
+    # come from an older snapshot: not "all set".
+    stale = Playlist(
+        id="p1", name="Peak Time", track_count=2,
+        snapshot_id="s2", tracks_snapshot_id="s1",
+    )
+    application = FakeApplication(
+        playlists=[stale], locations=_one_location(),
+        statuses=[_make_track_status(tagged_at="2026-01-01")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+
+    notice = window._dashboard_page.next_step_notice
+    qtbot.waitUntil(
+        lambda: "changed on Spotify" in notice.text(), timeout=2000,
+    )
+    assert "'Peak Time' changed on Spotify" in notice.text()
+    assert "all set" not in notice.text()
+
+
+def test_next_step_names_a_stale_playlist_with_nothing_selected(qtbot):
+    playlists = [
+        Playlist(id="p1", name="Current", track_count=1,
+                 snapshot_id="s1", tracks_snapshot_id="s1"),
+        Playlist(id="p2", name="Warmup", track_count=1,
+                 snapshot_id="s3", tracks_snapshot_id="s2"),
+    ]
+    application = FakeApplication(
+        playlists=playlists, locations=_one_location(),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    notice = window._dashboard_page.next_step_notice
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    assert "'Warmup' changed on Spotify" in notice.text()
+
+
+def test_refresh_playlists_reports_the_playlists_it_updated(qtbot):
+    playlists = [
+        Playlist(id="p1", name="Warmup", track_count=1),
+        Playlist(id="p2", name="Peak", track_count=1),
+    ]
+    application = FakeApplication(
+        playlists=playlists, locations=_one_location(),
+    )
+    application.sync_service.refresh_result = PlaylistRefreshResult(
+        playlist_count=2, updated_playlist_names=["Peak"],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page.sync_button.click()
+
+    notice = window._dashboard_page.dashboard_notice
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    assert notice.text() == (
+        "Refreshed 2 playlists. Updated tracks for 1 that changed on "
+        "Spotify."
+    )
+    assert application.sync_service.refresh_playlists_calls == 1
+    # Track re-syncs report progress on the activity strip.
+    assert application.sync_service.refresh_progress is not None
 
 
 def test_next_step_notice_shows_connect_spotify_first(qtbot):

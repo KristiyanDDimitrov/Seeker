@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
-from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.ui import help_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
@@ -1486,9 +1486,17 @@ class MainWindow(QMainWindow):
     def _on_sync_clicked(self) -> None:
         self._run_busy_worker(
             "sync", self._dashboard_page.sync_button,
-            self.application.sync_service.sync_playlists,
+            self.application.sync_service.refresh_playlists,
             status_label=self._dashboard_page.status_label,
-            on_finished=lambda _: self._dashboard_page._load_playlists(),
+            on_finished=self._on_sync_finished,
+            reports_progress=True,
+        )
+
+    def _on_sync_finished(self, result: PlaylistRefreshResult) -> None:
+        self._dashboard_page._load_playlists()
+        self._dashboard_page.dashboard_notice.show_message(
+            help_text.format_playlist_refresh_message(result),
+            kind="warning" if result.local_files_skipped else "success",
         )
 
     def _on_scan_clicked(self) -> None:

@@ -1,6 +1,7 @@
 import base64
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
-from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track import Track
 from seeker.models.track_status import (
     DOWNLOADING,
@@ -64,12 +65,25 @@ class FakeSyncService:
         self.track_sync_result = TrackSyncResult(
             tracks_saved=0, art_urls_filled=art_urls_filled,
         )
+        self.refresh_playlists_calls = 0
+        self.refresh_progress: Callable[[str, int, int], None] | None = None
+        self.refresh_result = PlaylistRefreshResult(
+            playlist_count=len(self._playlists), updated_playlist_names=[],
+        )
 
     def list_playlists(self) -> list[Playlist]:
         return self._playlists
 
     def sync_playlists(self) -> None:
         self.sync_playlists_calls += 1
+
+    def refresh_playlists(
+            self,
+            progress: Callable[[str, int, int], None] | None = None,
+    ) -> PlaylistRefreshResult:
+        self.refresh_playlists_calls += 1
+        self.refresh_progress = progress
+        return self.refresh_result
 
     def sync_playlist_tracks(self, playlist: Playlist) -> TrackSyncResult:
         self.sync_playlist_tracks_calls.append(playlist)

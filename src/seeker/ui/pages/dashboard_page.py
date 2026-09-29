@@ -16,7 +16,7 @@ carry (jumping to Review with a specific track focused).
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
@@ -99,6 +99,9 @@ class _NextStepFacts:
     track_statuses: list[TrackStatus] | None
     has_scanned_library: bool
     soulseek_configured: bool
+    # Loaded playlists whose cached tracks predate their Spotify
+    # snapshot (Playlist.tracks_are_stale), in playlist-list order.
+    stale_playlist_names: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -138,9 +141,22 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
         )
 
     if facts.selected_playlist_name is None or facts.track_statuses is None:
+        if facts.stale_playlist_names:
+            return _NextStep(
+                help_text.format_stale_playlist_message(
+                    facts.stale_playlist_names,
+                ),
+                "info", "Refresh playlists", "sync",
+            )
         return None
 
     playlist_name = facts.selected_playlist_name
+
+    if playlist_name in facts.stale_playlist_names:
+        return _NextStep(
+            help_text.format_stale_playlist_message([playlist_name]),
+            "info", "Refresh tracks", "sync_tracks",
+        )
 
     if not facts.track_statuses:
         return _NextStep(
@@ -911,21 +927,24 @@ class DashboardPage(QWidget):
             if playlist_name is not None
             else None
         )
+        playlists = self._context.application.sync_service.list_playlists()
 
         return _NextStepFacts(
             spotify_configured=self._context.application.spotify_configured,
             has_library_location=bool(
                 self._context.application.library_service.list_locations()
             ),
-            has_cached_playlists=bool(
-                self._context.application.sync_service.list_playlists()
-            ),
+            has_cached_playlists=bool(playlists),
             selected_playlist_name=playlist_name,
             track_statuses=track_statuses,
             has_scanned_library=(
                 self._context.application.library_service.has_scanned_library()
             ),
             soulseek_configured=self._context.application.soulseek_configured,
+            stale_playlist_names=[
+                playlist.name for playlist in playlists
+                if playlist.tracks_are_stale
+            ],
         )
 
     def _poll_next_step(self) -> None:

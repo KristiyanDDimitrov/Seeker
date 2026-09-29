@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 from rapidfuzz.distance import Levenshtein
 
@@ -6,7 +7,7 @@ from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.models.playlist import Playlist
-from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track import Track
 from seeker.spotify.client import SpotifyClient
 
@@ -104,6 +105,42 @@ class SpotifySyncService:
         logger.info("Playlist synchronization complete.")
 
         return playlists_needing_track_sync
+
+    def refresh_playlists(
+            self,
+            progress: Callable[[str, int, int], None] | None = None,
+    ) -> PlaylistRefreshResult:
+        """Refresh the playlist list, then re-sync the tracks of every
+        loaded playlist that changed on Spotify.
+
+        Staleness is read back from the database rather than taken from
+        this call's own snapshot comparison, so a playlist left stale by
+        an earlier failed track sync is retried too. Never-loaded
+        playlists stay unloaded. A failed track sync propagates; the
+        playlists not yet re-synced stay stale for the next refresh.
+        """
+        self.sync_playlists()
+
+        playlists = self.list_playlists()
+        stale = [playlist for playlist in playlists
+                 if playlist.tracks_are_stale]
+        local_files_skipped = 0
+
+        for index, playlist in enumerate(stale):
+            if progress is not None:
+                progress("Updating tracks", index, len(stale))
+
+            result = self.sync_playlist_tracks(playlist)
+            local_files_skipped += result.local_files_skipped
+
+        if progress is not None and stale:
+            progress("Updating tracks", len(stale), len(stale))
+
+        return PlaylistRefreshResult(
+            playlist_count=len(playlists),
+            updated_playlist_names=[playlist.name for playlist in stale],
+            local_files_skipped=local_files_skipped,
+        )
 
     def list_playlists(self) -> list[Playlist]:
         with self.database.transaction() as connection:

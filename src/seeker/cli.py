@@ -634,8 +634,21 @@ def _handle_downloads_review_all(application: Application) -> None:
         print(f"  {detail}")
 
 def handle_sync(application: Application) -> None:
-    application.sync_service.sync_playlists()
+    result = application.sync_service.refresh_playlists()
 
+    print()
+    print(f"Refreshed {result.playlist_count} playlists.")
+    if result.updated_playlist_names:
+        print(
+            f"Updated tracks for {len(result.updated_playlist_names)} "
+            f"that changed on Spotify: "
+            f"{', '.join(result.updated_playlist_names)}"
+        )
+    if result.local_files_skipped:
+        print(
+            f"Skipped {result.local_files_skipped} Spotify local "
+            f"file(s): Seeker can't match or download them automatically."
+        )
     print()
     _print_playlists(application.sync_service.list_playlists())
 

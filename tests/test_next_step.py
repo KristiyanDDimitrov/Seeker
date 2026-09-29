@@ -155,3 +155,38 @@ def test_missing_and_untagged_both_present_missing_wins():
 
     assert step is not None
     assert step.action == "download"
+
+
+def test_selected_stale_playlist_offers_to_refresh_its_tracks():
+    step = _decide_next_step(_facts(
+        track_statuses=[_status(IN_LIBRARY, tagged_at="2026-01-01")],
+        stale_playlist_names=["Test"],
+    ))
+
+    assert step is not None
+    assert step.action == "sync_tracks"
+    assert step.message == "'Test' changed on Spotify — refresh its tracks."
+
+
+def test_stale_playlists_with_nothing_selected_offer_a_refresh():
+    step = _decide_next_step(_facts(
+        selected_playlist_name=None, track_statuses=None,
+        stale_playlist_names=["Warmup", "Peak", "Closing"],
+    ))
+
+    assert step is not None
+    assert step.action == "sync"
+    assert step.message == (
+        "'Warmup' and 2 other playlists changed on Spotify — refresh "
+        "their tracks."
+    )
+
+
+def test_another_playlist_being_stale_does_not_hide_the_selected_ones_step():
+    step = _decide_next_step(_facts(
+        track_statuses=[_status(NOT_FOUND)],
+        stale_playlist_names=["Elsewhere"],
+    ))
+
+    assert step is not None
+    assert step.action == "download"

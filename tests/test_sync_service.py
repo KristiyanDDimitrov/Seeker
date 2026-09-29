@@ -3,7 +3,7 @@ import pytest
 from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.models.playlist import Playlist
-from seeker.models.spotify_sync import PlaylistItems
+from seeker.models.spotify_sync import PlaylistItems, PlaylistRefreshResult
 from seeker.models.track import Track
 from seeker.spotify.sync_service import (
     PlaylistNotFoundError,
@@ -322,3 +322,101 @@ def test_sync_playlists_keeps_the_loaded_tracks_snapshot(tmp_path):
         ).fetchone()
 
     assert tuple(row) == ("s2", "s1")
+
+
+def _loaded_tracks(database: Database, playlist_id: str) -> list[str]:
+    with database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM playlist_tracks WHERE playlist_id = ? "
+            "ORDER BY track_id",
+            (playlist_id,),
+        ).fetchall()
+
+    return [row["track_id"] for row in rows]
+
+
+def test_refresh_playlists_resyncs_loaded_playlists_that_changed(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    spotify = StubSpotifyClient(
+        tracks_by_playlist={
+            "changed": [make_track("old")],
+            "same": [make_track("kept")],
+            "never": [make_track("unwanted")],
+        },
+    )
+    sync_service = SpotifySyncService(spotify, database)
+    for playlist_id in ("changed", "same"):
+        sync_service.sync_playlist_tracks(Playlist(
+            id=playlist_id, name=playlist_id.title(), track_count=1,
+            snapshot_id=f"{playlist_id}-1",
+        ))
+
+    spotify._tracks_by_playlist["changed"] = [
+        make_track("old"), make_track("new"),
+    ]
+    spotify._playlists = [
+        Playlist(id="changed", name="Changed", track_count=2,
+                 snapshot_id="changed-2"),
+        Playlist(id="same", name="Same", track_count=1,
+                 snapshot_id="same-1"),
+        Playlist(id="never", name="Never", track_count=1,
+                 snapshot_id="never-1"),
+    ]
+    progress_calls = []
+
+    result = sync_service.refresh_playlists(
+        lambda stage, current, total: progress_calls.append(
+            (current, total)
+        ),
+    )
+
+    assert result == PlaylistRefreshResult(
+        playlist_count=3, updated_playlist_names=["Changed"],
+    )
+    assert _loaded_tracks(database, "changed") == ["new", "old"]
+    assert _tracks_snapshot_id(database, "changed") == "changed-2"
+    # Never-loaded playlists stay unloaded: the API budget the snapshot
+    # check exists to protect.
+    assert _loaded_tracks(database, "never") == []
+    assert _tracks_snapshot_id(database, "never") is None
+    assert progress_calls == [(0, 1), (1, 1)]
+
+
+def test_refresh_playlists_retries_a_playlist_left_stale_earlier(tmp_path):
+    # The playlist list already has Spotify's newest snapshot (an
+    # earlier refresh saved it) but its track sync failed back then.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    spotify = StubSpotifyClient(tracks=[make_track("track1")])
+    sync_service = SpotifySyncService(spotify, database)
+    sync_service.sync_playlist_tracks(Playlist(
+        id="p1", name="One", track_count=1, snapshot_id="s1",
+    ))
+    spotify._playlists = [
+        Playlist(id="p1", name="One", track_count=1, snapshot_id="s2"),
+    ]
+    sync_service.sync_playlists()
+
+    result = sync_service.refresh_playlists()
+
+    assert result.updated_playlist_names == ["One"]
+    assert _tracks_snapshot_id(database, "p1") == "s2"
+
+
+def test_refresh_playlists_totals_skipped_local_files(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    spotify = StubSpotifyClient(tracks=[make_track("track1")])
+    sync_service = SpotifySyncService(spotify, database)
+    sync_service.sync_playlist_tracks(Playlist(
+        id="p1", name="One", track_count=1, snapshot_id="s1",
+    ))
+    spotify._playlists = [
+        Playlist(id="p1", name="One", track_count=3, snapshot_id="s2"),
+    ]
+    spotify.local_files_skipped = 2
+
+    result = sync_service.refresh_playlists()
+
+    assert result.local_files_skipped == 2
