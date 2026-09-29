@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -34,7 +35,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
-from seeker.file_deletion import delete_file
+from seeker.file_deletion import delete_file, same_file
 from seeker.file_placement import resolve_collision
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
@@ -256,6 +257,17 @@ class _SettleTarget:
     location: LibraryLocation
     source: Path
     proposed_path: Path
+
+
+@dataclass(frozen=True)
+class _MatchedFile:
+    local_file_id: int
+    location: LibraryLocation
+    relative_path: str
+
+    @property
+    def path(self) -> Path:
+        return Path(self.location.path) / self.relative_path
 
 
 class DownloadService:
@@ -1865,11 +1877,17 @@ class DownloadService:
         action — pure mutation, no input() anywhere, so the CLI's
         interactive loop and a UI can call the identical logic with
         already-resolved booleans instead of blocking on stdin. Returns
-        a short, human-readable status message (the exact text
-        review_pending_upgrades() used to print inline) for the caller
-        to surface, or None for `replace=False` (a no-op — the row
-        stays ready_for_review, offered again later, same as declining
-        in the CLI).
+        a short, human-readable status message for the caller to
+        surface, or None for `replace=False` (a no-op — the row stays
+        ready_for_review, offered again later, same as declining in the
+        CLI).
+
+        With `delete_old`, the upgrade takes over the track: when it
+        would land on the current file's own path, it is swapped in
+        atomically over that file; otherwise it lands under a
+        collision-free name and the old file's row, then the file
+        itself, are removed. Without `delete_old`, nothing that already
+        exists is touched.
         """
         if not replace:
             return None
@@ -1880,25 +1898,23 @@ class DownloadService:
         if request is None:
             return "Request not found."
 
-        with self.database.transaction() as connection:
-            current_match = self.track_matches.get_by_track_id(
-                request.track_id,
-                connection,
-            )
+        current = self._current_matched_file(request.track_id)
+        target = self._settle_target(request)
 
-            current_local_file = None
-            if current_match is not None and current_match.local_file_id:
-                current_local_file = self.local_files.get_by_id(
-                    current_match.local_file_id,
-                    connection,
-                )
-
-        result = self._move_completed_file(request)
-
-        if result is None:
+        if target is None:
             return "Could not locate the downloaded file; leaving for review."
 
-        location, relative_path = result
+        if (
+                delete_old
+                and current is not None
+                and same_file(current.path, target.proposed_path)
+        ):
+            return self._swap_upgrade_in_place(
+                request_id, request.track_id, target, current,
+            )
+
+        location, relative_path = self._place_without_overwrite(target)
+        new_path = Path(location.path) / relative_path
 
         with self.database.transaction() as connection:
             new_local_file = index_single_file(
@@ -1907,53 +1923,117 @@ class DownloadService:
                 self.local_files,
                 connection,
             )
-
-            self.track_matches.upsert(
-                TrackMatch(
-                    track_id=request.track_id,
-                    local_file_id=new_local_file.id,
-                    match_method="auto",
-                    score=100.0,
-                    matched_at=datetime.now(UTC).isoformat(),
-                ),
-                connection,
+            assert new_local_file.id is not None
+            self._record_upgrade(
+                request_id, request.track_id, new_local_file.id, connection,
             )
 
-            # request_id, not request.id — this is the caller-supplied
-            # id (always set for any real caller: get_ready_for_review()
-            # rows always have one), avoiding a redundant assert on the
-            # freshly-refetched `request` above.
-            self.download_requests.mark_status(
-                request_id,
-                "completed",
-                connection,
-            )
+        message = f"Replaced with {new_path}"
 
-        message = f"Replaced with {location.path}/{relative_path}"
-
-        if current_local_file is None:
+        if current is None:
             return message
-
-        with self.database.transaction() as connection:
-            old_location = self.locations.get_by_id(
-                current_local_file.location_id,
-                connection,
-            )
-
-        if old_location is None:
-            return message
-
-        old_path = Path(old_location.path) / current_local_file.relative_path
 
         if not delete_old:
-            return f"{message}\n  Leaving {old_path} in place."
+            return f"{message}\n  Leaving {current.path} in place."
 
-        error = delete_file(old_path)
+        # Unreachable while placement never overwrites (the swap above
+        # takes the same-path case), and kept so it stays that way: the
+        # file the match now points at is never the one deleted.
+        if same_file(current.path, new_path):
+            return message
+
+        # Database row first, then the file (HISTORY §40).
+        with self.database.transaction() as connection:
+            self.local_files.delete_by_id(current.local_file_id, connection)
+
+        error = delete_file(current.path)
 
         if error is None:
-            return f"{message}\n  Deleted {old_path}"
+            return f"{message}\n  Deleted {current.path}"
 
-        return f"{message}\n  Could not delete {old_path}: {error}"
+        return f"{message}\n  Could not delete {current.path}: {error}"
+
+    def _current_matched_file(self, track_id: str) -> _MatchedFile | None:
+        with self.database.transaction() as connection:
+            match = self.track_matches.get_by_track_id(track_id, connection)
+
+            if match is None or match.local_file_id is None:
+                return None
+
+            local_file = self.local_files.get_by_id(
+                match.local_file_id, connection,
+            )
+
+            if local_file is None:
+                return None
+
+            location = self.locations.get_by_id(
+                local_file.location_id, connection,
+            )
+
+        if location is None:
+            return None
+
+        return _MatchedFile(
+            local_file_id=match.local_file_id,
+            location=location,
+            relative_path=local_file.relative_path,
+        )
+
+    def _swap_upgrade_in_place(
+            self,
+            request_id: int,
+            track_id: str,
+            target: _SettleTarget,
+            current: _MatchedFile,
+    ) -> str:
+        # Moved next to the old file first so the final step is one
+        # same-directory rename(2): the old content is gone at the
+        # instant the new content appears, and no delete follows that
+        # could hit the file the match points at.
+        temp_path = current.path.with_name(
+            f".{current.path.name}.seeker-upgrade-tmp",
+        )
+        shutil.move(str(target.source), str(temp_path))
+        temp_path.replace(current.path)
+
+        logger.info("Swapped the upgrade in over %s", current.path)
+
+        with self.database.transaction() as connection:
+            refreshed = index_single_file(
+                current.location,
+                current.relative_path,
+                self.local_files,
+                connection,
+            )
+            assert refreshed.id is not None
+            self.local_files.clear_content_derived_fields(
+                refreshed.id, connection,
+            )
+            self._record_upgrade(
+                request_id, track_id, refreshed.id, connection,
+            )
+
+        return f"Replaced {current.path} in place with the upgrade."
+
+    def _record_upgrade(
+            self,
+            request_id: int,
+            track_id: str,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        self.track_matches.upsert(
+            TrackMatch(
+                track_id=track_id,
+                local_file_id=local_file_id,
+                match_method="auto",
+                score=100.0,
+                matched_at=datetime.now(UTC).isoformat(),
+            ),
+            connection,
+        )
+        self.download_requests.mark_status(request_id, "completed", connection)
 
     def apply_upgrade_decisions_batch(
             self,

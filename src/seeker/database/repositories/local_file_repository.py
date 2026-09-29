@@ -122,6 +122,29 @@ class LocalFileRepository:
             (relative_path, filename, local_file_id),
         )
 
+    def clear_content_derived_fields(
+            self,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        # For a row whose file was replaced by different content under
+        # the same path: upsert() deliberately preserves these, and
+        # values measured on the old audio would describe the new one.
+        connection.execute(
+            """
+            UPDATE local_files
+            SET bpm = NULL,
+                camelot_key = NULL,
+                key_confidence = NULL,
+                tagged_at = NULL,
+                fingerprint = NULL,
+                fingerprint_duration = NULL,
+                fingerprint_computed_at = NULL
+            WHERE id = ?
+            """,
+            (local_file_id,),
+        )
+
     def mark_tagged(
             self,
             local_file_id: int,

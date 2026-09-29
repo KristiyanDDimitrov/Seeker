@@ -219,6 +219,66 @@ def seed_upgrade(
 # --- Upgrades (probe A.1) ---------------------------------------------
 
 
+def test_same_name_upgrade_with_delete_old_keeps_the_new_file(tmp_path):
+    scenario, old, _ = seed_upgrade(
+        tmp_path, "Artist - Song.mp3", "Artist - Song.mp3",
+    )
+    with scenario.service.database.transaction() as connection:
+        old_row_id = scenario.service.local_files.get_by_location_and_relative_path(
+            scenario.location.id, "P/Artist - Song.mp3", connection,
+        ).id
+
+    message = scenario.service.apply_upgrade_decision(
+        scenario.request_id(), replace=True, delete_old=True,
+    )
+
+    # Invariants 2 and 3: the track's file exists and is the upgrade.
+    assert old.read_text() == "NEW upgrade"
+    assert scenario.matched_path() == old
+    assert scenario.local_file_paths() == ["P/Artist - Song.mp3"]
+    assert scenario.status() == "completed"
+    assert message is not None
+    assert "Deleted" not in message
+    # The swap keeps the row; nothing measured on the old content
+    # survives onto the new content.
+    with scenario.service.database.transaction() as connection:
+        row = scenario.service.local_files.get_by_location_and_relative_path(
+            scenario.location.id, "P/Artist - Song.mp3", connection,
+        )
+    assert row.id == old_row_id
+    assert row.size_bytes == len("NEW upgrade")
+
+
+def test_same_name_swap_clears_analysis_measured_on_the_old_content(
+        tmp_path,
+):
+    scenario, _, _ = seed_upgrade(
+        tmp_path, "Artist - Song.mp3", "Artist - Song.mp3",
+    )
+    with scenario.service.database.transaction() as connection:
+        row = scenario.service.local_files.get_by_location_and_relative_path(
+            scenario.location.id, "P/Artist - Song.mp3", connection,
+        )
+        scenario.service.local_files.update_analysis(
+            row.id, 128.0, "8A", 0.9, connection,
+        )
+        scenario.service.local_files.update_fingerprint(
+            row.id, "AQAA", 1.0, "x", connection,
+        )
+        scenario.service.local_files.mark_tagged(row.id, "x", connection)
+
+    scenario.service.apply_upgrade_decision(
+        scenario.request_id(), replace=True, delete_old=True,
+    )
+
+    with scenario.service.database.transaction() as connection:
+        after = scenario.service.local_files.get_by_id(row.id, connection)
+    assert after.bpm is None
+    assert after.camelot_key is None
+    assert after.fingerprint is None
+    assert after.tagged_at is None
+
+
 def test_same_name_upgrade_without_delete_old_keeps_both_files(tmp_path):
     scenario, old, _ = seed_upgrade(
         tmp_path, "Artist - Song.mp3", "Artist - Song.mp3",
@@ -235,6 +295,27 @@ def test_same_name_upgrade_without_delete_old_keeps_both_files(tmp_path):
     assert scenario.matched_path() == new
     assert message is not None
     assert "Leaving" in message
+
+
+def test_differently_named_upgrade_with_delete_old_removes_row_then_file(
+        tmp_path,
+):
+    scenario, old, _ = seed_upgrade(
+        tmp_path, "old.mp3", "Artist - Song.flac",
+    )
+
+    message = scenario.service.apply_upgrade_decision(
+        scenario.request_id(), replace=True, delete_old=True,
+    )
+
+    new = scenario.destination / "Artist - Song.flac"
+    assert not old.exists()
+    assert new.read_text() == "NEW upgrade"
+    assert scenario.matched_path() == new
+    # No row left behind for a file that no longer exists.
+    assert scenario.local_file_paths() == ["P/Artist - Song.flac"]
+    assert message is not None
+    assert "Deleted" in message
 
 
 def test_upgrade_never_overwrites_an_unrelated_same_named_file(tmp_path):
