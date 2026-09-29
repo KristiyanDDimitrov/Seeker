@@ -77,7 +77,7 @@ src/seeker/
 │                              #   active_download, track_status, upgrade_review,
 │                              #   history_event, data_locations,
 │                              #   duplicate_cleanup, needs_review_match,
-│                              #   location_removal
+│                              #   location_removal, spotify_sync
 ├── matching.py                 # shared fuzzy artist/title matching — used by
 │                              #   BOTH library/matcher.py and soulseek/
 │                              #   quality.py, neither has its own copy
@@ -255,6 +255,14 @@ Each links to the HISTORY entry where the full investigation lives;
   `item["type"] == "track"` (Feb 2026 API migration repurposed the old
   `"track"` key as a type flag).
   [HISTORY](docs/history/early-fixes.md#spotify-field-name-and-endpoint-history-get_playlist_tracks)
+- **A playlist's tracks are stale when `tracks_snapshot_id` (the
+  snapshot its cached tracks came from; NULL = never loaded) differs
+  from `snapshot_id`.** Only `sync_playlist_tracks` sets it; the list
+  refresh never does. `refresh_playlists()` re-syncs stale *loaded*
+  playlists only — never-loaded ones stay unloaded to protect the API
+  budget. The parser drops Spotify local files (no id) and the sync
+  keeps a repeated track's first listing.
+  [HISTORY §141](docs/history/121-150.md#141)
 - `get_current_user_playlists` reads `playlist["items"]["total"]`, never
   `["tracks"]["total"]`.
   [HISTORY](docs/history/early-fixes.md#spotify-field-name-history-get_current_user_playlists)

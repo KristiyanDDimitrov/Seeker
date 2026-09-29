@@ -37,7 +37,7 @@ explicit yes.
 | ☑ S4 | Library integrity: limbo matches and location removal | §4 | ~130 K | After §4.3; removal (§4.4–§4.5) can stand alone |
 | ☑ S5 | A portable Compose template (release blocker); Settings never changes what is shared (privacy) | §5 | ~130 K | After §5.2 and §5.5 (the blocker and the privacy fix); §5.3–§5.4 can stand alone |
 | **Phase C — Correctness** | | | | |
-| ☐ S6 | Spotify sync: duplicates, local files, stale tracks | §6 | ~120 K | After §6.2; staleness (§6.3–§6.4) can stand alone |
+| ☑ S6 | Spotify sync: duplicates, local files, stale tracks | §6 | ~120 K | After §6.2; staleness (§6.3–§6.4) can stand alone |
 | ☐ S7 | Scale: big locations, short transactions, real and visible paths | §7 | ~140 K | After §7.1 and §7.4–§7.6 (limits and paths); §7.2, §7.3 and §7.7 (transaction shape and timing) can stand alone |
 | ☐ S8 | Review decisions stick; failures stay visible | §8 | ~130 K | After §8.2 |
 | **Phase D — Security** | | | | |

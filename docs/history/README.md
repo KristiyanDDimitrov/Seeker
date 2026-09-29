@@ -219,3 +219,4 @@ under their entry and live in the same file, after it.
 - §138 — Round 11 S3 (§3): downloads never overwrite and never guess → [121-150.md#138](121-150.md#138)
 - §139 — Round 11 S4 (§4): library integrity — limbo matches and location removal → [121-150.md#139](121-150.md#139)
 - §140 — Round 11 S5 (§5.1–§5.5): portable Compose template; Settings never changes what is shared; one bring-up; per-user Compose copy; robust Sharing edits → [121-150.md#140](121-150.md#140)
+- §141 — Round 11 S6 (§6.1–§6.4): Spotify sync survives duplicate tracks and local files; changed playlists refresh their tracks → [121-150.md#141](121-150.md#141)
