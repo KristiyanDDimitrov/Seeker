@@ -74,7 +74,7 @@ class LibraryService:
         self.playlists = playlist_repo
 
     def add_location(self, name: str, path: str) -> LibraryLocation:
-        resolved_path = Path(path)
+        resolved_path = Path(path).expanduser().resolve()
 
         if not resolved_path.is_dir():
             raise LibraryUnavailableError(resolved_path)
@@ -107,7 +107,7 @@ class LibraryService:
         above (explicit name + path) stays the CLI's own entry point,
         unchanged.
         """
-        resolved_path = Path(path)
+        resolved_path = Path(path).expanduser().resolve()
 
         if not resolved_path.is_dir():
             raise LibraryUnavailableError(resolved_path)
@@ -310,9 +310,9 @@ class LibraryService:
         for location in locations:
             if not Path(location.path).is_dir():
                 logger.warning(
-                    "Skipping '%s' (%s): path is unreachable. The drive "
-                    "it lives on may not be connected.",
-                    location.name, location.path,
+                    "Skipping '%s': %s",
+                    location.name,
+                    LibraryUnavailableError(Path(location.path)),
                 )
                 continue
 

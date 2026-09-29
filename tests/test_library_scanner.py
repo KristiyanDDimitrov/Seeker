@@ -34,7 +34,6 @@ def test_scan_raises_when_location_path_does_not_exist(tmp_path):
         scanner.scan(location)
 
     assert str(missing_path) in str(exc_info.value)
-    assert "drive" in str(exc_info.value).lower()
 
 
 def test_scan_skips_appledouble_sidecar_files(tmp_path):

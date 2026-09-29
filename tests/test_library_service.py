@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from seeker.database.connection import Database
@@ -135,6 +137,50 @@ def test_add_location_raises_clear_error_for_duplicate_path(tmp_path):
 
     with pytest.raises(RuntimeError, match="already registered"):
         service.add_location("other", str(library_root))
+
+
+def test_add_location_resolves_a_relative_path(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    (tmp_path / "Music").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    location = service.add_location("main", "./Music")
+
+    assert location.path == str((tmp_path / "Music").resolve())
+
+
+def test_add_location_expands_the_home_directory(tmp_path, monkeypatch):
+    service = make_service(tmp_path)
+    (tmp_path / "Music").mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    location = service.add_location("main", "~/Music")
+
+    assert location.path == str((tmp_path / "Music").resolve())
+
+
+def test_add_location_from_path_resolves_before_checking_duplicates(
+        tmp_path, monkeypatch,
+):
+    service = make_service(tmp_path)
+    (tmp_path / "Music").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    location = service.add_location_from_path("~/Music")
+
+    assert location.path == str((tmp_path / "Music").resolve())
+    with pytest.raises(RuntimeError, match="already registered"):
+        service.add_location_from_path("./Music")
+
+
+def test_a_missing_path_blames_a_drive_only_under_volumes(tmp_path):
+    local = str(LibraryUnavailableError(tmp_path / "gone"))
+    external = str(LibraryUnavailableError(Path("/Volumes/X9 Pro/Music")))
+
+    assert "drive" not in local.lower()
+    assert str(tmp_path / "gone") in local
+    assert "drive" in external.lower()
 
 
 def test_add_location_from_path_uses_folder_basename_as_the_name(tmp_path):

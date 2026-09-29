@@ -24,10 +24,13 @@ UPSERT_BATCH_SIZE = 200
 
 class LibraryUnavailableError(RuntimeError):
     def __init__(self, path: Path):
-        super().__init__(
-            f"Library path {path} does not exist or is not a "
-            f"directory. The drive it lives on may not be connected."
-        )
+        message = f"Library path {path} does not exist or is not a directory."
+
+        # macOS mounts every external drive under /Volumes.
+        if path.is_absolute() and path.parts[1:2] == ("Volumes",):
+            message += " The drive it lives on may not be connected."
+
+        super().__init__(message)
 
 
 class LibraryScanner:
