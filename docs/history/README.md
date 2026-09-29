@@ -217,3 +217,4 @@ under their entry and live in the same file, after it.
 - §136 — Round 11 S1 (§1): round documents archived, docs index, round 10's S2 closed → [121-150.md#136](121-150.md#136)
 - §137 — Round 11 S2 (§2): HISTORY.md split into docs/history/, anchors that work → [121-150.md#137](121-150.md#137)
 - §138 — Round 11 S3 (§3): downloads never overwrite and never guess → [121-150.md#138](121-150.md#138)
+- §139 — Round 11 S4 (§4): library integrity — limbo matches and location removal → [121-150.md#139](121-150.md#139)

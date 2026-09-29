@@ -76,7 +76,8 @@ src/seeker/
 │                              #   download_request, soulseek_review_candidate,
 │                              #   active_download, track_status, upgrade_review,
 │                              #   history_event, data_locations,
-│                              #   duplicate_cleanup, needs_review_match
+│                              #   duplicate_cleanup, needs_review_match,
+│                              #   location_removal
 ├── matching.py                 # shared fuzzy artist/title matching — used by
 │                              #   BOTH library/matcher.py and soulseek/
 │                              #   quality.py, neither has its own copy
@@ -463,8 +464,18 @@ Each links to the HISTORY entry where the full investigation lives;
   [§39](docs/history/032-046.md#39)
 - `track_matches.confirmed_at` protects a human-confirmed match from
   being silently demoted by a later `match_all()` re-run, which
-  otherwise has no provenance concept at all.
+  otherwise has no provenance concept at all — but only while its
+  `local_file_id` is set.
   [HISTORY §56](docs/history/047-071.md#56)
+- **A match pointing at no file is unmatched, everywhere.** Every
+  `local_files` delete goes through `LocalFileRepository`
+  (`delete_by_id`/`delete_missing`/`delete_all_for_location`), which
+  resets the dependent matches in the same transaction — never delete
+  `local_files` rows with raw SQL, or the `ON DELETE SET NULL`
+  cascade leaves a method/score/confirmation on a row pointing
+  nowhere. Removing a location also clears playlist destinations
+  (no `ON DELETE` on that FK) and, via `Application`, the default.
+  [HISTORY §139](docs/history/121-150.md#139)
 - Deleting a local file: DB row first, then the file on disk. Renaming
   one: the opposite order, file then DB row.
   [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)

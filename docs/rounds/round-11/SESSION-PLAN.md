@@ -34,7 +34,7 @@ explicit yes.
 | ☑ S2 | Split HISTORY.md with anchors that work | §2 | ~110 K | After §2.1's lossless split is verified |
 | **Phase B — Data safety (critical)** | | | | |
 | ☑ S3 | Downloads never overwrite, never guess | §3 | ~130 K | After §3.3; the upgrade semantics (§3.4) can stand alone |
-| ☐ S4 | Library integrity: limbo matches and location removal | §4 | ~130 K | After §4.3; removal (§4.4–§4.5) can stand alone |
+| ☑ S4 | Library integrity: limbo matches and location removal | §4 | ~130 K | After §4.3; removal (§4.4–§4.5) can stand alone |
 | ☐ S5 | A portable Compose template (release blocker); Settings never changes what is shared (privacy) | §5 | ~130 K | After §5.2 and §5.5 (the blocker and the privacy fix); §5.3–§5.4 can stand alone |
 | **Phase C — Correctness** | | | | |
 | ☐ S6 | Spotify sync: duplicates, local files, stale tracks | §6 | ~120 K | After §6.2; staleness (§6.3–§6.4) can stand alone |
