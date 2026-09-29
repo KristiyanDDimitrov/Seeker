@@ -2,63 +2,61 @@
 
 **Entry point for every new Claude Code session on this project. Read it
 first. Overwrite it last.** Keep it under about 120 lines: a baton, not a
-log. The log is `docs/HISTORY.md`, split into `docs/history/` from S2.
-The nine fields below follow the contract in
+log. The log is `docs/history/` (index: `docs/history/README.md`). The
+nine fields below follow the contract in
 `docs/rounds/round-11/SESSION-PLAN.md`. Every document: `docs/README.md`.
 
 ---
 
 ## 1. Current state
 
-- **HEAD:** `d0af9d4` (round 11 S1 close-out) plus this handoff commit,
+- **HEAD:** `718781a` (round 11 S2 close-out) plus this handoff commit,
   pushed. Tree clean apart from the untracked `Claude outputs/` (§1.6,
   waiting on Kris).
 - **Local pytest** (offscreen Qt, 2026-09-29):
-  `1232 passed, 1 skipped, 6 warnings in 116.00s`. Same 1,233 tests as
-  round 10's `1204 passed, 29 skipped`: the X9 Pro was mounted, so its
-  28 `@requires_x9_pro` tests ran.
+  `1232 passed, 1 skipped, 6 warnings in 109.73s` (X9 Pro mounted;
+  identical to S1).
 - **`mypy --strict src/`:** clean, 104 files. **`ruff check src
   tests`:** 0 findings.
-- **CI on `d0af9d4`:** run `36567623511`, `success` (`1204 passed, 29 skipped`; callback server `.....`).
+- **CI on `718781a`:** run `36569645359`, `success` (`1204 passed, 29
+  skipped`).
 
 ## 2. Where we are
 
-S1 done. **Next row: S2** (split `HISTORY.md` into `docs/history/`
-with anchors that work, BRIEF §2). Then Phase B: S3 (downloads never
-overwrite), the first critical fix.
+Phase A done (S1, S2). **Next row: S3** (downloads never overwrite,
+never guess, BRIEF §3), the first critical data-safety fix. Then S4.
 
-## 3. Session report (S1)
+## 3. Session report (S2)
 
-- `af73e7c` §1.1: the four round-11 documents committed as written.
-- `a9f7e60` §1.2: `git mv` of every round document into
-  `docs/rounds/round-NN/`; all references repointed. HISTORY §136.
-- `4383420` §1.3: `docs/README.md`, the docs index (59 lines).
-- `00e8d3f` §1.4: callback-server CI issue closed, roadmap points at
-  round 11. Evidence: HISTORY §136, "The `test_callback_server.py` CI
-  timeouts".
-- `0e51256` §1.5: round 10's S2 struck through as superseded. Evidence:
-  HISTORY §136, "Round 10's S2 row".
-- `d0af9d4` close-out: HISTORY §136 numbers; S1 ticked.
+- `53dd2d8` §2.1: HISTORY split into eight files under `docs/history/`,
+  lossless (byte-identical minus 128 anchors). HISTORY §137.
+- `ee74749` §2.2: `docs/history/README.md`, one line per entry.
+- `00b8864` §2.3: `docs/HISTORY.md` is a stub pointing at the index.
+- `b39f5bd` §2.4: 74 markdown links repointed to `file#N`, plus
+  `pyproject.toml`, `README.md`, one `main_window.py` comment.
+- `718781a` close-out: §137 (both scripts, lossless and link-check
+  output); append rule promoted to CLAUDE.md working agreement 1.
 
 ## 4. Key context
 
-- **For S2, the links to repoint** (`grep -rl "HISTORY\.md#"`, 2026-09-29):
-  `CLAUDE.md` 66, `docs/rounds/round-05/TASKS.md` 5,
-  `docs/rounds/round-11/BRIEF.md` 3, `docs/rounds/round-08/SESSION-PLAN.md`
-  2, `pyproject.toml` 2, `docs/rounds/round-10/SESSION-PLAN.md` 1,
-  `src/seeker/ui/main_window.py` 1, and 1 inside `HISTORY.md` itself.
-  `docs/README.md` links `HISTORY.md` without an anchor. Archived docs
-  sit two levels down, so their links are `../../HISTORY.md#N`.
-- **HISTORY's last entry is §136** (this session). S2's entry is §137.
-- **The callback-server CI failures were fixed by round 9's `231b512`,
-  not by anything environmental.** 39 of 39 CI runs since it pass all
-  five tests; the two runs before it show `FFF..`. Which of its two
-  changes did it is unexplained. CLAUDE.md now carries it as a
-  standing fact under Spotify / OAuth.
+- **Your HISTORY entry is §138: append it to `docs/history/121-150.md`**
+  with `<a name="138"></a>` on the line directly above `### 138 — …`,
+  then add its line at the end of `docs/history/README.md`. That file
+  is 79 KB; the range reserves room through §150.
+- **Link to entries as `docs/history/<file>#N`** (from the repo root;
+  `../../history/<file>#N` from a round doc). `HISTORY §N` in plain text
+  is also fine: the index resolves it.
+- **§37, §57–§61, §97 and §108 never existed**; §62 is only a
+  follow-up heading inside §56's phases. Nothing references the others.
+- **28 source/test comments still say `docs/HISTORY.md item N`** (prose,
+  not links). They land on the stub, and S24/S25 rewrite those comments
+  anyway, so they were deliberately left alone.
+- **The link checker must skip fenced code blocks** in Markdown:
+  quoted output in a HISTORY entry otherwise reads as dead links. The
+  fixed script is pasted in §137 if a later row needs to re-run it.
 - **Pytest's skip count depends on the X9 Pro being mounted** (1 skip
   mounted, 29 unmounted, same total). Compare totals, not the split.
-- **In zsh, an unquoted `$files` is not word-split.** A `perl -pi` over
-  `$files` failed silently the first time; pass the paths inline.
+- **In zsh, an unquoted `$files` is not word-split.** Pass paths inline.
 - **Still true from the audit:** three critical findings (S3: A-01,
   A-02; S5: A-03) and a privacy bug (S5 §5.5, A-54); reproductions in
   BRIEF Appendix A. A stale `_build_info_generated.py` makes dev runs
@@ -67,21 +65,22 @@ overwrite), the first critical fix.
 
 ## 5. Decisions made
 
-- **Old paths inside archived prose stay only where they are verbatim
-  quotes.** Round 8's brief quotes a `git status` line naming
-  `docs/BRIEF-2026-09-07.md`; it records the tree as it was, so it was
-  left alone. Every navigational reference was repointed.
-- **The callback-server issue closes as fixed-with-unexplained-cause,
-  not as a verified root cause.** The CI record is conclusive about
-  *when* it stopped; the mechanism is marked unexplained in HISTORY
-  §136 and CLAUDE.md, per working agreement 4.
-- **Skill divergence:** `codebase-onboarding` was loaded for §1.3; its
-  analyzer and onboarding template target full onboarding packets, so
-  only its audience-tailoring guidance was used for the 59-line index.
+- **Ranges were measured, not the brief's proposal:** 1–30 alone was
+  274 KB. Files: `001-024`, `025-031`, `032-046`, `047-071`, `072-107`,
+  `108-120`, `121-150`, each under 150 KB.
+- **The last file is a reserved range (`121-150.md`)** so appending
+  never forces a rename; §151 opens `151-180.md`. Renaming would break
+  every `file#N` link.
+- **Anchors sit on their own line even after list-continuation text**,
+  where they join that paragraph invisibly and land one line above the
+  heading. Putting them inside the heading would break losslessness.
+- **Skill divergence:** `codebase-onboarding` was not loaded; the brief
+  fully specifies the index format, and S1 found its templates target
+  full onboarding packets.
 
 ## 6. Blockers
 
-None for S2.
+None for S3.
 
 ## 7. Files in progress
 
@@ -113,10 +112,9 @@ credentials** until S5.
 ---
 
 **Read discipline (still why sessions blow their budget):** never read
-`docs/HISTORY.md` (or a whole `docs/history/*.md`), `main_window.py` or
-`test_ui_smoke.py` whole; `grep -n`, then read a range. Report only
-pytest's summary line plus named failures. Read only BRIEF §0 plus your
-row's §.
+a whole `docs/history/*.md` file, `main_window.py` or
+`test_ui_smoke.py`; `grep -n`, then read a range. Report only pytest's
+summary line plus named failures. Read only BRIEF §0 plus your row's §.
 
 **Ending a session:** follow `SESSION-PLAN.md` → "Session protocol" →
 "Ending" (HISTORY entry, commit, three numbers, tick, rewrite this file,
