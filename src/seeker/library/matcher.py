@@ -1,4 +1,5 @@
 import logging
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,6 +78,47 @@ def _resolve_artist_evidence(
             return source, False
 
     return fallback_sources[0], False
+
+
+def _is_confirmed(match: TrackMatch) -> bool:
+    return match.confirmed_at is not None and match.local_file_id is not None
+
+
+class _DurationIndex:
+    """The files within `DURATION_TOLERANCE_MS` of a duration, plus
+    every file with no duration, found by bisection instead of a scan
+    per track. Candidates keep their original order, because
+    `find_best_match` keeps the first of equal scores.
+    """
+
+    def __init__(self, local_files: list[LocalFile]):
+        timed = sorted(
+            (
+                (local_file.duration_ms, position, local_file)
+                for position, local_file in enumerate(local_files)
+                if local_file.duration_ms is not None
+            ),
+            key=lambda entry: entry[0],
+        )
+        self._durations = [duration for duration, _, _ in timed]
+        self._timed = [(position, file) for _, position, file in timed]
+        self._untimed = [
+            (position, local_file)
+            for position, local_file in enumerate(local_files)
+            if local_file.duration_ms is None
+        ]
+
+    def candidates(self, duration_ms: int) -> list[LocalFile]:
+        low = bisect_left(self._durations, duration_ms - DURATION_TOLERANCE_MS)
+        high = bisect_right(
+            self._durations, duration_ms + DURATION_TOLERANCE_MS,
+        )
+        in_window = self._timed[low:high] + self._untimed
+
+        return [
+            local_file
+            for _, local_file in sorted(in_window, key=lambda entry: entry[0])
+        ]
 
 
 def find_best_match(
@@ -160,71 +202,49 @@ class TrackMatcher:
 
         counts = {"auto": 0, "needs_review": 0, "unmatched": 0}
 
+        # Read, compute and write are separate so the fuzzy pass never
+        # holds the write lock (HISTORY §142). The write re-checks what
+        # may have changed while computing.
         with self.database.transaction() as connection:
             tracks = self.tracks.get_all(connection)
             local_files = self.local_files.get_all(connection)
-            existing_matches = {
-                match.track_id: match
+            existing_matches = self.track_matches.get_all(connection)
+
+        results = self._compute_matches(
+            tracks,
+            local_files,
+            {match.track_id: match for match in existing_matches},
+            resolved_auto_threshold,
+            resolved_needs_review_threshold,
+        )
+        # Tracks already confirmed are left out of `results`.
+        counts["auto"] += len(tracks) - len(results)
+
+        with self.database.transaction() as connection:
+            confirmed = {
+                match.track_id
                 for match in self.track_matches.get_all(connection)
+                if _is_confirmed(match)
             }
+            file_ids = self.local_files.get_ids(connection)
 
-            for track in tracks:
-                # A human-confirmed match survives a re-match untouched
-                # (HISTORY §56), but only while its file is still
-                # indexed: a confirmation of a file that is gone
-                # confirms nothing (HISTORY §139).
-                existing = existing_matches.get(track.id)
-
-                if (
-                        existing is not None
-                        and existing.confirmed_at is not None
-                        and existing.local_file_id is not None
-                ):
+            for result in results:
+                if result.track_id in confirmed:
                     counts["auto"] += 1
                     continue
 
-                candidates = [
-                    local_file
-                    for local_file in local_files
-                    if local_file.duration_ms is None
-                    or abs(
-                        local_file.duration_ms - track.duration_ms
-                    ) <= DURATION_TOLERANCE_MS
-                ]
+                if (
+                        result.local_file_id is not None
+                        and result.local_file_id not in file_ids
+                ):
+                    # Deleted while computing: a match pointing at no
+                    # file is unmatched (HISTORY §139).
+                    result.local_file_id = None
+                    result.match_method = None
+                    result.score = None
 
-                match = find_best_match(track, candidates)
-
-                match_method = None
-                local_file_id = None
-                score = None
-
-                if match is not None:
-                    candidate, score = match
-
-                    if score >= resolved_auto_threshold:
-                        match_method = "auto"
-                        local_file_id = candidate.id
-                    elif score >= resolved_needs_review_threshold:
-                        match_method = "needs_review"
-                        local_file_id = candidate.id
-
-                if match_method == "auto":
-                    counts["auto"] += 1
-                elif match_method == "needs_review":
-                    counts["needs_review"] += 1
-                else:
-                    counts["unmatched"] += 1
-
-                self.track_matches.upsert(
-                    TrackMatch(
-                        track_id=track.id,
-                        local_file_id=local_file_id,
-                        match_method=match_method,
-                        score=score,
-                        matched_at=datetime.now(UTC).isoformat(),
-                    ),
-                    connection,
-                )
+                counts[result.match_method or "unmatched"] += 1
+                self.track_matches.upsert(result, connection)
 
         logger.info(
             "Matching complete. Auto: %d, Needs review: %d, Unmatched: %d.",
@@ -232,6 +252,59 @@ class TrackMatcher:
         )
 
         return counts
+
+    def _compute_matches(
+            self,
+            tracks: list[Track],
+            local_files: list[LocalFile],
+            existing_matches: dict[str, TrackMatch],
+            auto_threshold: float,
+            needs_review_threshold: float,
+    ) -> list[TrackMatch]:
+        """One unsaved result per track, except tracks whose match a
+        human already confirmed: those survive a re-match untouched
+        (HISTORY §56), but only while their file is still indexed, since
+        a confirmation of a file that is gone confirms nothing (HISTORY
+        §139).
+        """
+        by_duration = _DurationIndex(local_files)
+        results = []
+
+        for track in tracks:
+            existing = existing_matches.get(track.id)
+
+            if existing is not None and _is_confirmed(existing):
+                continue
+
+            match = find_best_match(
+                track, by_duration.candidates(track.duration_ms),
+            )
+
+            match_method = None
+            local_file_id = None
+            score = None
+
+            if match is not None:
+                candidate, score = match
+
+                if score >= auto_threshold:
+                    match_method = "auto"
+                    local_file_id = candidate.id
+                elif score >= needs_review_threshold:
+                    match_method = "needs_review"
+                    local_file_id = candidate.id
+
+            results.append(
+                TrackMatch(
+                    track_id=track.id,
+                    local_file_id=local_file_id,
+                    match_method=match_method,
+                    score=score,
+                    matched_at=datetime.now(UTC).isoformat(),
+                )
+            )
+
+        return results
 
     def generate_match_report(
             self,

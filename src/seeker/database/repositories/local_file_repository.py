@@ -201,6 +201,11 @@ class LocalFileRepository:
 
         return [_row_to_local_file(row) for row in rows]
 
+    def get_ids(self, connection: sqlite3.Connection) -> set[int]:
+        rows = connection.execute("SELECT id FROM local_files").fetchall()
+
+        return {row["id"] for row in rows}
+
     def get_all_for_location(
             self,
             location_id: int,

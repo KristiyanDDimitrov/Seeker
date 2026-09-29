@@ -7,6 +7,7 @@ binding one `?` per file breaks on a big enough location.
 import logging
 import sqlite3
 
+import seeker.library.matcher as matcher_module
 import seeker.library.scanner as scanner_module
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -17,6 +18,8 @@ from seeker.database.repositories.local_file_repository import (
 )
 from seeker.library.scanner import LibraryScanner, index_single_file
 from seeker.models.library_location import LibraryLocation
+from seeker.models.local_file import LocalFile
+from seeker.models.track import Track
 from test_library_integrity import (
     local_file_ids,
     make_scenario,
@@ -203,3 +206,162 @@ def test_scan_keeps_a_row_another_writer_indexes_mid_scan(
 
     assert summary["removed"] == 0
     assert indexed_paths(database, local_files) == ["a.mp3", "zz-new.mp3"]
+
+
+# --- §7.3: match_all's transaction shape and duration pre-filter ----------
+
+def add_track(matcher, track_id: str, artist: str, title: str, duration_ms):
+    with matcher.database.transaction() as connection:
+        matcher.tracks.save(
+            Track(
+                id=track_id, title=title, artist=artist, album="A",
+                duration_ms=duration_ms,
+            ),
+            connection,
+        )
+
+
+def add_file(matcher, relative_path: str, duration_ms, **tags) -> None:
+    with matcher.database.transaction() as connection:
+        matcher.local_files.upsert(
+            LocalFile(
+                location_id=1, relative_path=relative_path,
+                filename=relative_path.rsplit("/", 1)[-1], format="mp3",
+                size_bytes=1, mtime=0.0, scanned_at="x",
+                duration_ms=duration_ms, **tags,
+            ),
+            connection,
+        )
+
+
+def match_rows(matcher) -> dict[str, tuple[object, ...]]:
+    with matcher.database.transaction() as connection:
+        return {
+            match.track_id: (
+                match.local_file_id, match.match_method, match.score,
+            )
+            for match in matcher.track_matches.get_all(connection)
+        }
+
+
+def test_match_all_computes_without_holding_the_write_lock(
+        tmp_path, monkeypatch,
+):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_all()
+    add_track(matcher, "t2", "Someone", "Else", 200_000)
+    add_track(matcher, "t3", "Another", "One", 200_000)
+    real_find = matcher_module.find_best_match
+    could_write: list[bool] = []
+
+    def probe_the_lock(track, candidates):
+        other = sqlite3.connect(matcher.database.path, timeout=0)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            other.rollback()
+            could_write.append(True)
+        except sqlite3.OperationalError:
+            could_write.append(False)
+        finally:
+            other.close()
+        return real_find(track, candidates)
+
+    monkeypatch.setattr(matcher_module, "find_best_match", probe_the_lock)
+
+    matcher.match_all()
+
+    assert could_write == [True, True, True]
+
+
+def test_match_all_keeps_a_confirmation_made_while_it_computes(
+        tmp_path, monkeypatch,
+):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_and_match()
+    add_track(matcher, "t2", "Someone", "Else", 200_000)
+    real_find = matcher_module.find_best_match
+
+    def confirm_meanwhile(track, candidates):
+        if track.id == "t1":
+            service.confirm_match("t1")
+        return real_find(track, candidates)
+
+    monkeypatch.setattr(matcher_module, "find_best_match", confirm_meanwhile)
+
+    counts = matcher.match_all()
+
+    assert match_row(matcher)[3] is not None
+    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 1}
+
+
+def test_match_all_survives_a_file_deleted_while_it_computes(
+        tmp_path, monkeypatch,
+):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_all()
+    [file_id] = local_file_ids(matcher)
+    real_find = matcher_module.find_best_match
+
+    def delete_meanwhile(track, candidates):
+        with matcher.database.transaction() as connection:
+            matcher.local_files.delete_by_id(file_id, connection)
+        return real_find(track, candidates)
+
+    monkeypatch.setattr(matcher_module, "find_best_match", delete_meanwhile)
+
+    counts = matcher.match_all()
+
+    assert counts == {"auto": 0, "needs_review": 0, "unmatched": 1}
+    assert unmatched_ids(matcher) == ["t1"]
+
+
+def test_match_all_results_equal_the_linear_duration_filter(tmp_path):
+    """The bisect pre-filter must pick exactly the old candidates, in
+    the old order: `find_best_match` keeps the first of equal scores.
+    """
+    service, matcher = make_scenario(tmp_path)
+    service.scan_all()
+    # Equal scores: the lower id is longer, so a duration-sorted
+    # candidate list would put the other one first.
+    add_file(matcher, "x/Daft Punk - Veridis Quo.mp3", 203_000)
+    add_file(matcher, "y/Daft Punk - Veridis Quo.mp3", 197_000)
+    add_file(matcher, "Daft Punk - Veridis Quo (edit).mp3", None)
+    # Exactly on either edge of the ±5 s window, and just outside it.
+    add_file(matcher, "Burial - Archangel.mp3", 235_000)
+    add_file(matcher, "Burial - Archangel (VIP).mp3", 245_000)
+    add_file(matcher, "Burial - Archangel (dub).mp3", 245_001)
+    add_file(
+        matcher, "Four Tet/Unknown.flac", 300_000,
+        tag_artist="Four Tet", tag_title="Baby",
+    )
+    add_track(matcher, "t2", "Daft Punk", "Veridis Quo", 200_000)
+    add_track(matcher, "t3", "Burial", "Archangel", 240_000)
+    add_track(matcher, "t4", "Four Tet", "Baby", 297_000)
+    add_track(matcher, "t5", "Four Tet", "Baby", 305_001)
+    add_track(matcher, "t6", "Nobody", "Nothing", 100_000)
+
+    with matcher.database.transaction() as connection:
+        tracks = matcher.tracks.get_all(connection)
+        files = matcher.local_files.get_all(connection)
+
+    expected = {}
+    for track in tracks:
+        found = matcher_module.find_best_match(track, [
+            f for f in files
+            if f.duration_ms is None
+            or abs(f.duration_ms - track.duration_ms)
+            <= matcher_module.DURATION_TOLERANCE_MS
+        ])
+        expected[track.id] = found[0].id if found else None
+
+    matcher.match_all(auto_match_threshold=0.0, needs_review_threshold=0.0)
+
+    actual = {
+        track_id: row[0] for track_id, row in match_rows(matcher).items()
+    }
+    assert actual == expected
+    # The fixture exercises what it claims: the tie goes to the lower
+    # id, and the window's edge includes t4's file but not t5's.
+    daft_punk_x, four_tet = 2, 8
+    assert expected["t2"] == daft_punk_x
+    assert expected["t4"] == four_tet and expected["t5"] != four_tet
