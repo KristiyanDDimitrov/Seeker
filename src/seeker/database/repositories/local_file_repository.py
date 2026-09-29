@@ -1,7 +1,12 @@
 import sqlite3
+from collections.abc import Iterable
 
 from seeker.database.connection import Database
 from seeker.models.local_file import LocalFile
+
+# Ids bound per statement. SQLite's own limit is 32,766 bound parameters
+# (999 before 3.32), so a big location's deletes go in chunks.
+_ID_CHUNK_SIZE = 500
 
 
 class LocalFileRepository:
@@ -313,11 +318,25 @@ class LocalFileRepository:
             local_file_id: int,
             connection: sqlite3.Connection,
     ) -> None:
-        _release_matches(connection, "id = ?", (local_file_id,))
-        connection.execute(
-            "DELETE FROM local_files WHERE id = ?",
-            (local_file_id,),
-        )
+        self.delete_by_ids([local_file_id], connection)
+
+    def delete_by_ids(
+            self,
+            local_file_ids: Iterable[int],
+            connection: sqlite3.Connection,
+    ) -> None:
+        ids = list(local_file_ids)
+
+        for start in range(0, len(ids), _ID_CHUNK_SIZE):
+            chunk = tuple(ids[start:start + _ID_CHUNK_SIZE])
+            # Built only from "?" and ", ", one per id; every value
+            # still goes through the parameter tuple.
+            where = f"id IN ({', '.join('?' for _ in chunk)})"
+            _release_matches(connection, where, chunk)
+            connection.execute(
+                f"DELETE FROM local_files WHERE {where}",  # noqa: S608
+                chunk,
+            )
 
     def count_for_location(
             self,
@@ -336,7 +355,11 @@ class LocalFileRepository:
             location_id: int,
             connection: sqlite3.Connection,
     ) -> None:
-        self.delete_missing(location_id, set(), connection)
+        _release_matches(connection, "location_id = ?", (location_id,))
+        connection.execute(
+            "DELETE FROM local_files WHERE location_id = ?",
+            (location_id,),
+        )
 
     def delete_missing(
             self,
@@ -344,19 +367,22 @@ class LocalFileRepository:
             seen_relative_paths: set[str],
             connection: sqlite3.Connection,
     ) -> None:
-        where = "location_id = ?"
+        """Deletes every row of the location whose path is not in
+        `seen_relative_paths`. The set is compared in Python, never
+        bound into the SQL, so its size is unbounded.
+        """
+        rows = connection.execute(
+            "SELECT id, relative_path FROM local_files WHERE location_id = ?",
+            (location_id,),
+        ).fetchall()
 
-        if seen_relative_paths:
-            # Built only from "?" and ", ", one per path; every value
-            # still goes through the parameter tuple.
-            placeholders = ", ".join("?" for _ in seen_relative_paths)
-            where += f" AND relative_path NOT IN ({placeholders})"
-
-        params = (location_id, *seen_relative_paths)
-        _release_matches(connection, where, params)
-        connection.execute(
-            f"DELETE FROM local_files WHERE {where}",  # noqa: S608
-            params,
+        self.delete_by_ids(
+            [
+                row["id"]
+                for row in rows
+                if row["relative_path"] not in seen_relative_paths
+            ],
+            connection,
         )
 
 
