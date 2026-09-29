@@ -35,6 +35,7 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
 from seeker.file_deletion import delete_file
+from seeker.file_placement import resolve_collision
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
@@ -1622,10 +1623,14 @@ class DownloadService:
 
         destination_dir.mkdir(parents=True, exist_ok=True)
 
-        destination_path = destination_dir / basename
+        # Never onto an existing file: shutil.move replaces one silently
+        # (os.rename on one volume, copy-then-unlink across volumes).
+        destination_path = resolve_collision(
+            lookup.path, destination_dir / basename,
+        )
         shutil.move(str(lookup.path), str(destination_path))
 
-        logger.info("Moved '%s' to %s", basename, destination_dir)
+        logger.info("Moved '%s' to %s", basename, destination_path)
 
         relative_path = str(
             destination_path.relative_to(Path(location.path))

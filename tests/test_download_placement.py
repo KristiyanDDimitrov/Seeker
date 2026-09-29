@@ -216,7 +216,67 @@ def seed_upgrade(
     return scenario, old, new
 
 
+# --- Upgrades (probe A.1) ---------------------------------------------
+
+
+def test_same_name_upgrade_without_delete_old_keeps_both_files(tmp_path):
+    scenario, old, _ = seed_upgrade(
+        tmp_path, "Artist - Song.mp3", "Artist - Song.mp3",
+    )
+
+    message = scenario.service.apply_upgrade_decision(
+        scenario.request_id(), replace=True, delete_old=False,
+    )
+
+    # Invariant 1: the old file is untouched.
+    assert old.read_text() == "OLD"
+    new = scenario.destination / "Artist - Song (2).mp3"
+    assert new.read_text() == "NEW upgrade"
+    assert scenario.matched_path() == new
+    assert message is not None
+    assert "Leaving" in message
+
+
+def test_upgrade_never_overwrites_an_unrelated_same_named_file(tmp_path):
+    # The current file is old.mp3; an unrelated file already holds the
+    # upgrade's name. With delete-old checked, only old.mp3 may go.
+    scenario, old, _ = seed_upgrade(
+        tmp_path, "old.mp3", "Artist - Song.flac",
+    )
+    unrelated = write(scenario.destination / "Artist - Song.flac", "OTHER")
+
+    scenario.service.apply_upgrade_decision(
+        scenario.request_id(), replace=True, delete_old=True,
+    )
+
+    assert unrelated.read_text() == "OTHER"
+    assert not old.exists()
+    new = scenario.destination / "Artist - Song (2).flac"
+    assert new.read_text() == "NEW upgrade"
+    assert scenario.matched_path() == new
+
+
 # --- Settled downloads (probe A.2) ------------------------------------
+
+
+def test_settled_download_never_overwrites_a_different_same_named_file(
+        tmp_path,
+):
+    scenario = make_scenario(tmp_path, {"tx-1": "Completed, Succeeded"})
+    existing = write(
+        scenario.destination / "01 - Intro.mp3",
+        "USER'S EXISTING FILE (different song)",
+    )
+    write(scenario.slskd / "AlbumA" / "01 - Intro.mp3", "download for A")
+    add_request(scenario, "@@peer\\AlbumA\\01 - Intro.mp3", size=14)
+
+    scenario.service.poll_downloads()
+
+    assert existing.read_text() == "USER'S EXISTING FILE (different song)"
+    new = scenario.destination / "01 - Intro (2).mp3"
+    assert new.read_text() == "download for A"
+    assert scenario.matched_path() == new
+    assert scenario.status() == "completed"
 
 
 def test_same_named_downloads_resolve_by_remote_parent_folder(tmp_path):
