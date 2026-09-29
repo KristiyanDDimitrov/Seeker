@@ -27,6 +27,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
 from seeker.file_deletion import same_file
+from seeker.file_placement import resolve_collision
 from seeker.filename_format import build_track_filename
 from seeker.metadata import (
     embed_album_art,
@@ -165,27 +166,6 @@ def _destination_note(
         f"matched file is in {actual_display}, not this playlist's "
         f"configured destination ({expected_display})"
     )
-
-
-def _resolve_collision(current_path: Path, proposed_path: Path) -> Path:
-    # Real filesystem state at WRITE time, not the plan's own possibly-
-    # stale snapshot. A case-only rename of the same file is never a
-    # real collision (handled by the caller via _same_file); a
-    # genuinely different file at the target gets " (2)", " (3)", ...
-    if not proposed_path.exists() or _same_file(current_path, proposed_path):
-        return proposed_path
-
-    stem = proposed_path.stem
-    suffix = proposed_path.suffix
-    counter = 2
-
-    while True:
-        candidate = proposed_path.with_name(f"{stem} ({counter}){suffix}")
-
-        if not candidate.exists() or _same_file(current_path, candidate):
-            return candidate
-
-        counter += 1
 
 
 def _rename_via_temp(source: Path, destination: Path) -> None:
@@ -1124,7 +1104,7 @@ class MetadataService:
         is informational at PLAN time (so a preview can show "this will
         need a suffix" before the user confirms) but is NOT refused at
         apply time — _apply_one_rename resolves it for real, via a
-        fresh _resolve_collision() call against the real filesystem
+        fresh resolve_collision() call against the real filesystem
         state (which may have changed since planning), appending
         " (2)", " (3)", ... Real user files — never called without the
         caller's own explicit confirmation gate (item 27's "no gate for
@@ -1256,7 +1236,7 @@ class MetadataService:
 
         # Collision resolved fresh at write time — real filesystem state
         # may have changed since planning.
-        final_path = _resolve_collision(current_path, plan.proposed_path)
+        final_path = resolve_collision(current_path, plan.proposed_path)
 
         if _same_file(current_path, final_path):
             # Roadmap item 67 (Phase 6.2) — a case-only rename of the
@@ -1272,7 +1252,7 @@ class MetadataService:
 
         # Roadmap item 76 (P2, 2.3) — the honest-preview fix: the
         # preview shows plan.proposed_path.name, but this real, fresh
-        # _resolve_collision() call (real filesystem state at WRITE
+        # resolve_collision() call (real filesystem state at WRITE
         # time, which can differ from the plan's own snapshot) can
         # legitimately return a different name. Silence here is
         # EXACTLY what made "preview said X, disk got Y" invisible —
