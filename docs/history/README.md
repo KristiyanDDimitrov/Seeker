@@ -218,3 +218,4 @@ under their entry and live in the same file, after it.
 - §137 — Round 11 S2 (§2): HISTORY.md split into docs/history/, anchors that work → [121-150.md#137](121-150.md#137)
 - §138 — Round 11 S3 (§3): downloads never overwrite and never guess → [121-150.md#138](121-150.md#138)
 - §139 — Round 11 S4 (§4): library integrity — limbo matches and location removal → [121-150.md#139](121-150.md#139)
+- §140 — Round 11 S5 part 1 (§5.1, §5.2, §5.5 fix): portable Compose template; Settings never changes what is shared → [121-150.md#140](121-150.md#140)
