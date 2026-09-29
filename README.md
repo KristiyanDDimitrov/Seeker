@@ -592,7 +592,7 @@ real `config.json`'s Spotify Client ID and library location. Full
 detail — including a wrong assumption in the first verification-script
 draft (about *when* `onboarding_complete` actually turns true) that
 got caught and fixed once checked against the real property's logic —
-is in `docs/HISTORY.md`'s packaging entry.
+is in [HISTORY §30](docs/history/025-031.md#30), the packaging entry.
 
 **Also confirmed:** the build only pulls in runtime dependencies — a
 built app has zero `pytest`/`mypy`/`ruff` files anywhere in it (checked
@@ -657,8 +657,8 @@ Spotify OAuth builds a real authorization URL, Sync/Scan/Match all
 complete against the real production app, "skip Docker" completes
 onboarding, Settings reflects real config) passed again too, launched
 from the relocated copy. Full detail, including how the relocated
-binary was built and driven, is in `docs/HISTORY.md`'s packaging
-entry. Test copies were removed from `/Applications` after
+binary was built and driven, is in [HISTORY §30](docs/history/025-031.md#30), the
+packaging entry. Test copies were removed from `/Applications` after
 verification — this doesn't leave anything installed.
 
 Same as the `.app` itself: **ad-hoc signed, not notarized** — confirmed

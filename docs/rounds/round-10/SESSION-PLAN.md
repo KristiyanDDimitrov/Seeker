@@ -22,7 +22,7 @@ exactly where you stopped.
 | # | Session | Executes | Est. | Split point if overrunning |
 |---|---|---|---|---|
 | ☑ S1 | Review: focus traversal, visible errors, worker logging, diagnose the stuck candidate | §1.1–§1.4 | ~120 K | After §1.2 (§1.1 + §1.2 alone fix what Kris sees) |
-| ~~S2~~ | **Superseded by round 11 S1** ([HISTORY §136](../../HISTORY.md#136)): the stuck candidate is gone and its cause cannot recur. Was: Review: make Confirm work for the cause S1 found | §2 | ~110 K | — |
+| ~~S2~~ | **Superseded by round 11 S1** ([HISTORY §136](../../history/121-150.md#136)): the stuck candidate is gone and its cause cannot recur. Was: Review: make Confirm work for the cause S1 found | §2 | ~110 K | — |
 | ☑ S3 | Stress test: repoint stale handles + default-run guard | §3 | ~90 K | None; small row. Do not pull S4 in |
 | ☑ S4 | CI: the worker-thread-counter test race, repro + audit | §4.1–§4.3 | ~130 K | After §4.2 (the two known tests fixed and pushed) |
 | ☑ S5 | Reopen after a fullscreen close: fill the screen, windowed | §5 | ~130 K | After the Dock-reopen path works; relaunch persistence can stand alone |

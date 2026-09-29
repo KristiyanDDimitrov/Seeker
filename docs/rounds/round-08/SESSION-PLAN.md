@@ -147,7 +147,7 @@ a pointer.
   never completed a real run — both recorded runs failed/cancelled
   before any check started, root cause a GitHub billing block on
   Kris's account ("recent account payments have failed"). Not a code
-  defect; needs Kris. [HISTORY §117](../../HISTORY.md#117)
+  defect; needs Kris. [HISTORY §117](../../history/108-120.md#117)
 
 - [x] **S1.2 — Settings displays a slskd web UI credential that does not
   work. Fix it.** §6.1.2 generates a web UI login and shows it in
@@ -182,7 +182,7 @@ a pointer.
   never touched. Generated credential returned a real `200` from
   `POST /api/v0/session`; a wrong password on the same container
   returned a real `401`. Cleaned up and confirmed removed.
-  [HISTORY §117](../../HISTORY.md#117)
+  [HISTORY §117](../../history/108-120.md#117)
 
 - [x] **S1.4 — Re-assess §6.1's severity in CLAUDE.md, honestly.** The
   finding was written as HIGH on the assumption the web UI sat at the

@@ -10,8 +10,10 @@ Every document in the repository, then where to start.
   facts and gotchas, open issues. Present tense only.
 - [`HANDOFF.md`](HANDOFF.md) — the baton between Claude Code sessions:
   state, next row, blockers. Overwritten every session.
-- [`HISTORY.md`](HISTORY.md) — the full investigation log, numbered
-  `§N`. Very large: `grep -n` for the section, never read it whole.
+- [`history/`](history/README.md) — the full investigation log,
+  numbered `§N`, split by range; its README indexes every entry.
+  `grep -n` for the section, never read a whole file.
+  `HISTORY.md` is a stub pointing there.
 - [`screenshots/`](screenshots/) — the README's images and `generate.py`.
 
 ## Round archive (`rounds/`)
@@ -52,8 +54,8 @@ is its budgeted row-by-row map.
   `../CLAUDE.md`. Nothing else until the task needs it.
 - **A new contributor:** `../README.md` → `../CLAUDE.md` (Architecture,
   Conventions) → the current round's `AUDIT.md` for known weak spots →
-  `HISTORY.md` sections as `CLAUDE.md` links them.
+  `history/` entries as `CLAUDE.md` links them.
 - **A portfolio reviewer:** `../README.md` → `../CLAUDE.md` → the
   round-11 `AUDIT.md` (an honest whole-repo audit) → any one round's
-  brief next to its `HISTORY.md` entries, to see diagnosis turn into
+  brief next to its `history/` entries, to see diagnosis turn into
   a fix.

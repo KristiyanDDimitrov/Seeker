@@ -2067,7 +2067,7 @@ class MainWindow(QMainWindow):
         # widget marked hidden while AppKit re-ordered the real NSWindow
         # back on screen once the animation finished — an empty,
         # unclosable window with a native title bar Qt no longer thinks
-        # exists (reported live; see docs/HISTORY.md#E1).
+        # exists (reported live; see HISTORY §114, E1).
         #
         # Fixed by not intercepting the close at all while fullscreen:
         # let AppKit's own "close a fullscreen window" handling run,

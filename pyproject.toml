@@ -82,7 +82,7 @@ ignore = [
     # S101 (assert): every real src/ finding read individually (not
     # sampled) and confirmed to narrow a type/logic invariant, never
     # validate user input or an external response — python -O stripping
-    # is always safe. See docs/HISTORY.md#115 (§4.8.5) for the sampling.
+    # is always safe. See docs/history/108-120.md#115 (§4.8.5) for the sampling.
     "S101",
 ]
 
@@ -93,7 +93,7 @@ ignore = [
 # confirmed to be a deliberate pytest per-test import or a synthetic
 # fixture value, never an accident or a real credential — src/'s own
 # findings are checked and scoped separately below, not covered by this
-# blanket ignore. See docs/HISTORY.md#115 (§4.8.2/§4.8.4) for the
+# blanket ignore. See docs/history/108-120.md#115 (§4.8.2/§4.8.4) for the
 # sampling.
 "tests/*" = ["PLC0415", "S105", "S106"]
 # NAME-only false positives (S105 fires on the ASSIGNMENT TARGET name

@@ -17,7 +17,7 @@ brief's own stated ordering: C1 → C2 → C3 → C4 → C5 → C6.
   the real one. Fixed with a new session-scoped `conftest.py` fixture.
   Also found and fixed a latent `devicePixelRatio` bug in two
   `window.grab()` pixel tests. 1056 passed, 1 skipped.
-  [HISTORY §103](../../HISTORY.md#103)
+  [HISTORY §103](../../history/072-107.md#103)
 
 ## C2 — "Action" reads as ".ction" on an empty table
 
@@ -29,7 +29,7 @@ brief's own stated ordering: C1 → C2 → C3 → C4 → C5 → C6.
   tables all show "Actions" in full. Also recorded (not fixed): a
   real, intermittent full-suite stall caught live via `lldb` — later
   root-caused in C3. 1058 passed, 1 skipped.
-  [HISTORY §104](../../HISTORY.md#104)
+  [HISTORY §104](../../history/072-107.md#104)
 
 ## C3 — Dashboard progress bar, a second untouched site
 
@@ -43,7 +43,7 @@ brief's own stated ordering: C1 → C2 → C3 → C4 → C5 → C6.
   fire, leaving it queued to pop a real blocking modal during a later
   test. Fixed by mocking it in all three. Full suite: 1060 passed, 1
   skipped, in 70.71s (no stall — was inflated by real stall minutes
-  before this fix). [HISTORY §105](../../HISTORY.md#105)
+  before this fix). [HISTORY §105](../../history/072-107.md#105)
 
 ## C4 — Wordmark: brows over the real "ee"
 
@@ -54,7 +54,7 @@ brief's own stated ordering: C1 → C2 → C3 → C4 → C5 → C6.
   `CompositionMode_SourceIn` (`ACCENT`) — one asset serves any future
   palette. Degrades to plain text if the asset is missing (tested).
   Screenshot-confirmed at real size, in context. 1063 passed, 1
-  skipped. [HISTORY §106](../../HISTORY.md#106)
+  skipped. [HISTORY §106](../../history/072-107.md#106)
 
 ## C5 — Light and dark themes, with system-follow
 
@@ -77,7 +77,7 @@ brief's own stated ordering: C1 → C2 → C3 → C4 → C5 → C6.
   claimed, 4.35:1 real). Verified with real `window.grab()` screenshots
   across every real page in both themes, all four `InlineNotice`
   variants, the About dialog, and the app's 960×640 minimum. 1086
-  passed, 1 skipped. [HISTORY §107](../../HISTORY.md#107)
+  passed, 1 skipped. [HISTORY §107](../../history/072-107.md#107)
 
 ## C6 — SoundCloud: deferred, research recorded
 
