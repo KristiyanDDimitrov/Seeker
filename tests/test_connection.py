@@ -459,3 +459,43 @@ def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
     downloads = dashboard_service.get_active_downloads()
     assert len(downloads) == 1
     assert downloads[0].request.bytes_transferred == iterations - 1
+
+
+def test_initialize_repairs_matches_left_pointing_at_no_file(tmp_path):
+    # Rows the old ON DELETE SET NULL cascade left behind (HISTORY §139):
+    # no file, but a method, score and confirmation still set.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    with database.transaction() as connection:
+        for track_id in ("limbo", "unmatched"):
+            connection.execute(
+                "INSERT INTO tracks (id, title, artist, album, duration_ms) "
+                "VALUES (?, 'T', 'A', 'Al', 1000)",
+                (track_id,),
+            )
+        connection.execute(
+            "INSERT INTO track_matches (track_id, local_file_id, "
+            "match_method, score, matched_at, confirmed_at) "
+            "VALUES ('limbo', NULL, 'auto', 95.0, 'x', 'y')"
+        )
+        connection.execute(
+            "INSERT INTO track_matches (track_id, local_file_id, "
+            "match_method, score, matched_at, confirmed_at) "
+            "VALUES ('unmatched', NULL, NULL, 40.0, 'x', NULL)"
+        )
+
+    database.initialize()
+    database.initialize()
+
+    with database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id, local_file_id, match_method, score, "
+            "confirmed_at FROM track_matches ORDER BY track_id"
+        ).fetchall()
+
+    assert [tuple(row) for row in rows] == [
+        ("limbo", None, None, None, None),
+        # A plain unmatched row keeps its below-threshold score.
+        ("unmatched", None, None, 40.0, None),
+    ]

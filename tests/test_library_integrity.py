@@ -23,6 +23,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.service import LibraryService
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
+from seeker.models.track_match import TrackMatch
 
 MATCHING_NAME = "3AMDISCO - Get Back.wav"
 
@@ -175,3 +176,70 @@ def test_delete_by_id_leaves_matches_to_other_files_alone(tmp_path):
     assert before is not None and before[1] == "auto"
     assert match_row(matcher) == before
 
+
+
+# --- §4.3: a limbo row already in the database is tolerated ------------
+
+def seed_limbo_row(matcher: TrackMatcher) -> None:
+    """The exact shape the old cascade left behind: no file, but a
+    method, a score and a human confirmation still set.
+    """
+    with matcher.database.transaction() as connection:
+        matcher.track_matches.upsert(
+            TrackMatch(
+                track_id="t1",
+                matched_at="2026-09-01T00:00:00+00:00",
+                local_file_id=None,
+                match_method="auto",
+                score=95.0,
+                confirmed_at="2026-09-01T00:00:00+00:00",
+            ),
+            connection,
+        )
+
+
+def test_a_limbo_row_counts_as_unmatched_for_download(tmp_path):
+    _, matcher = make_scenario(tmp_path)
+    seed_limbo_row(matcher)
+
+    assert unmatched_ids(matcher) == ["t1"]
+
+
+def test_match_all_re_evaluates_a_confirmed_row_that_lost_its_file(
+        tmp_path,
+):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_all()
+    seed_limbo_row(matcher)
+
+    counts = matcher.match_all()
+
+    [file_id] = local_file_ids(matcher)
+    row = match_row(matcher)
+    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert row is not None
+    assert (row[0], row[1], row[3]) == (file_id, "auto", None)
+
+
+def test_match_all_keeps_a_confirmed_row_whose_file_is_still_there(
+        tmp_path,
+):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_and_match()
+    service.confirm_match("t1")
+    before = match_row(matcher)
+
+    matcher.match_all()
+
+    assert before is not None and before[3] is not None
+    assert match_row(matcher) == before
+
+
+def test_a_limbo_row_is_not_offered_as_auto_matched(tmp_path):
+    _, matcher = make_scenario(tmp_path)
+    seed_limbo_row(matcher)
+
+    with matcher.database.transaction() as connection:
+        auto = matcher.tracks.get_auto_matched_for_playlist("p1", connection)
+
+    assert auto == []

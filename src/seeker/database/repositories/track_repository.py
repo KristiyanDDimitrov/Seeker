@@ -123,7 +123,11 @@ class TrackRepository:
             JOIN playlist_tracks pt ON pt.track_id = t.id
             LEFT JOIN track_matches tm ON tm.track_id = t.id
             WHERE pt.playlist_id = ?
-            AND (tm.track_id IS NULL OR tm.match_method IS NULL)
+            AND (
+                tm.track_id IS NULL
+                OR tm.match_method IS NULL
+                OR tm.local_file_id IS NULL
+            )
             """,
             (playlist_id,),
         ).fetchall()
@@ -149,6 +153,7 @@ class TrackRepository:
             JOIN track_matches tm ON tm.track_id = t.id
             WHERE pt.playlist_id = ?
             AND tm.match_method = 'auto'
+            AND tm.local_file_id IS NOT NULL
             """,
             (playlist_id,),
         ).fetchall()

@@ -169,15 +169,17 @@ class TrackMatcher:
             }
 
             for track in tracks:
-                # A human-confirmed match (roadmap item 56 Phase 2) must
-                # survive a re-match untouched — this is what closes item
-                # 45's pre-existing demotion bug (match_all() used to
-                # recompute every row from scratch with no concept of
-                # "already confirmed," so a later run could silently
-                # demote a just-confirmed match back to needs_review).
+                # A human-confirmed match survives a re-match untouched
+                # (HISTORY §56), but only while its file is still
+                # indexed: a confirmation of a file that is gone
+                # confirms nothing (HISTORY §139).
                 existing = existing_matches.get(track.id)
 
-                if existing is not None and existing.confirmed_at is not None:
+                if (
+                        existing is not None
+                        and existing.confirmed_at is not None
+                        and existing.local_file_id is not None
+                ):
                     counts["auto"] += 1
                     continue
 

@@ -115,6 +115,17 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "soulseek_review_candidates", "runner_up_score", "REAL"
     )
+    # A match pointing at no file is unmatched. Older builds let the
+    # ON DELETE SET NULL cascade leave its method, score and
+    # confirmation behind (HISTORY §139); today every local_files
+    # delete resets them itself. Idempotent.
+    connection.execute(
+        """
+        UPDATE track_matches
+        SET match_method = NULL, score = NULL, confirmed_at = NULL
+        WHERE local_file_id IS NULL AND match_method IS NOT NULL
+        """
+    )
 
 
 def _add_column_if_missing(
