@@ -311,6 +311,14 @@ Each links to the HISTORY entry where the full investigation lives;
   and refuses an ambiguous match. Placement goes through
   `file_placement.resolve_collision` — the one collision rule, shared
   with renames. [HISTORY §138](docs/history/121-150.md#138)
+- **A destination subfolder is validated, never rewritten.**
+  `validate_destination_subfolder` (`destination_resolution.py`)
+  accepts folder names joined by `/` (nested is real), each already
+  sanitized; it rejects `..`, absolute paths and unsafe names.
+  `set_destination` and resolution both call it, and the dialog
+  previews its result. Every Seeker-built file or folder name goes
+  through `clean_path_component`, which never leaves a leading dot.
+  [HISTORY §143](docs/history/121-150.md#143)
 - **One slskd bring-up: `Application.start_slskd(..., persist=)`.**
   The wizard (saves after its health poll) and Settings (saves at
   once) both go through it; §12's Start slskd should too. Sharing's

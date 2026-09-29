@@ -10,82 +10,76 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S7 part-1 close-out commit plus this handoff, pushed.
-  Tree clean apart from the untracked `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-29): `1332 passed, 1 skipped, 6 warnings in 86.91s`
-  (X9 Pro mounted; S6's 1318 plus 14 new). No `slskd-data` created.
+- **HEAD:** the S7 close-out commit (HISTORY §143, CLAUDE.md rule, S7
+  ticked, this handoff), pushed. Tree clean apart from the untracked
+  `Claude outputs/`.
+- **Local pytest** (offscreen Qt, 2026-09-30): `1363 passed, 1 skipped, 6 warnings in 114.38s`
+  (X9 Pro mounted; S7 part 1's 1332 plus 31 new). No new `slskd-data`
+  (the repo's own is from Sep 10, untouched).
 - **`mypy --strict src/`:** clean, 108 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** S6's handoff push `f2e7852` → run `36589804219`, **success**. This push: see `gh run list --limit 1`.
+- **CI:** S7 part 1's push `d1bcb04` → run `36606608838`, **success**.
+  This push: see `gh run list --limit 1`.
 
 ## 2. Where we are
 
-S1–S6 ticked. **S7 is partial (◐):** §7.1–§7.4 and §7.7 done;
-**next: finish S7 with §7.5 (never create hidden names) and §7.6 (the
-destination subfolder the user sees is the one used)**, BRIEF §7. Then
-S8.
+S1–S7 ticked. **Next: S8, "Review decisions stick; failures stay
+visible"** (BRIEF §8; split point after §8.2).
 
-## 3. Session report (S7 part 1)
+## 3. Session report (S7 part 2)
 
-Evidence (every red, the lock measurement, the timing table) is in
-HISTORY §142.
-- `b4f4030` §7.1: `delete_missing` past SQLite's 32,766-variable
-  limit; new `delete_by_ids` (chunks of 500).
-- `398e076` §7.2: scanner reads outside the write lock, upserts in
-  batches of 200, prunes hidden directories, logs bad tags at DEBUG,
-  keeps a row indexed mid-scan.
-- `a1e49a3` §7.3: `match_all` read/compute/write split; keeps a
-  confirmation made mid-compute; a file deleted mid-compute → unmatched;
-  bisect duration index (identical results on the real data).
-- `1819eef` §7.4: add-location paths `expanduser().resolve()`; drive
-  hint only under `/Volumes`.
-- Close-out: §142, CLAUDE.md "no slow work inside a write transaction",
-  S7 row marked ◐.
+Evidence (every red, the real-data checks) is in HISTORY §143.
+- `1fcbcd6` §7.5: `clean_path_component` replaces each leading dot
+  with `_`, so renames and per-playlist folders are never hidden.
+- `8ea78c1` §7.6: `validate_destination_subfolder` is the one rule,
+  used by `set_destination`, resolution, the dialog and (via the
+  service) the CLI and Settings. A stored `../x` no longer moves a
+  download outside its location.
+- Close-out: §143, a CLAUDE.md rule under SoulSeek / slskd, S7 ticked.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §143**, "S7, part 2 (§7.5–§7.6)":
-  `docs/history/121-150.md` plus its README line. Then tick S7.
-- **The lock hypothesis is confirmed, not assumed:** pre-S7, a cold
-  scan made concurrent writers fail with "database is locked" (3 of 5,
-  5.23 s wait). The measurement script is described in §142; it copies
-  the real DB with `sqlite3.backup` from a `mode=ro` connection.
-- **Two `match_all` races were real on HEAD** (a plain `SELECT` holds
-  no lock): a confirmation made mid-run was wiped, and a file deleted
-  mid-run failed the whole write on the FK. Both fixed and tested.
-- **`LocalFileRepository` gained `delete_by_ids` and `get_ids`.**
-  `delete_by_id` delegates to `delete_by_ids`.
-- **§7.6 starting points (from BRIEF, unverified this session):**
-  `DestinationDialog.selected_subfolder()` returns raw text;
-  `set_destination` persists it; `_move_completed_file` joins it
-  unsanitized; `seeker playlists set-destination --subfolder` has the
-  same gap. Validate once at the service boundary.
-- **Test helpers:** `tests/test_library_scale.py` imports
-  `test_library_integrity`'s `make_scenario` etc. as `from
-  test_library_integrity import …` (not `tests.`).
+- **Your HISTORY entry is §144**: `docs/history/121-150.md` plus its
+  README line.
+- **Nested destination subfolders are real data**, not a hypothetical:
+  the real DB holds `Music/240KMH` and `Music/Test` (plus `32 Zel`,
+  `Under Pressure (Deluxe)`). All four validate unchanged. Any later
+  change to destination rules must keep them valid.
+- **A stored unsafe subfolder resolves to `None`**, which the UI and
+  CLI treat as "no destination configured". That is deliberate (the
+  set-a-destination dialog is the recovery path), but the CLI's
+  wording is then "no destination is configured". None exists in real
+  data.
+- **S8 starting point (carried):** `_repoint_or_clear_match` drops
+  `confirmed_at`.
+- **Test helpers:** `tests/test_destination_subfolder.py` imports
+  `test_cli`'s `FakeApplication`/`FakeSyncService`/`make_matcher` and
+  `test_download_service`'s `_seed_default_destination_scenario` (bare
+  module names, not `tests.`).
 - **Carried:** the `platformdirs.user_data_dir`/`slskd-data` test
   hazard (checked clean this run); S9's `_write_atomic` umask fix; three
-  `LibraryLocationNotFoundError` classes (S13); `_repoint_or_clear_match`
-  drops `confirmed_at` (S8); never touch slskd or real data.
-- **zsh gotcha:** `echo ======` fails; use `echo '---'`.
+  `LibraryLocationNotFoundError` classes (S13); never touch slskd or
+  real data.
+- **zsh gotcha:** `echo ======` fails; use `echo '---'`. `grep
+  --include=*.py` needs quoting in zsh.
 
 ## 5. Decisions made
 
-- **Chunked `IN (…)` of 500, not `executemany`** (BRIEF §7.1 said
-  `executemany`): `track_matches.local_file_id` has no index, so
-  per-id `UPDATE`s would scan that table once per deleted file.
-- **The scan deletes only rows that existed when it started** and were
-  not seen, so a download placed mid-scan survives. A row renamed
-  mid-scan is still treated as missing, and the next scan re-indexes it.
-  Accepted.
-- **`match_all`'s write re-reads confirmations and file ids.** A newly
-  confirmed track is kept and counted as auto. A vanished file becomes
-  unmatched, with no score.
-- **Stopped before §7.5–§7.6** at ~136 K context (target 120 K). This
-  is not the plan's named split point, which also includes §7.5–§7.6.
-  Both are independent of everything done here.
-- **Skill divergence:** `focused-fix`, `tdd`, `database-designer` not
-  loaded; failing-test-first was followed by hand (§142 has every red).
+- **Leading dots → `_`, one for one** (not stripped): the name stays
+  recognisable and can never empty out. It runs after the trailing
+  strip, so `"..."` still falls back to `"Untitled"`.
+- **Nested subfolders allowed, every component must already be
+  sanitized; reject, never rewrite.** The error suggests the safe form
+  (`'Bad:Name' … Try 'Bad-Name'`). A trailing `/` and surrounding
+  whitespace are the only normalisation.
+- **Stored invalid values resolve to `None`** rather than raising (four
+  callers, one of them the poll loop) or falling back to the default
+  (that would silently put the file somewhere the user did not pick).
+- **The dialog's default prefill is `sanitize_path_component(playlist
+  name)`**, the default rule's own folder, so a raw `240KM/H` is not
+  offered as a nested path.
+- **Skill divergence:** `focused-fix`, `tdd` not loaded;
+  failing-test-first was followed by hand (§143 has every red).
 
 ## 6. Blockers
 
@@ -93,7 +87,7 @@ None.
 
 ## 7. Files in progress
 
-None. §7.5 and §7.6 are not started; no partial edits exist.
+None.
 
 ## 8. Waiting on Kris
 
@@ -107,12 +101,23 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 
 **Live checks:** S41's checklist. Carried from S6: edit a loaded
 playlist on Spotify, then Refresh playlists → "Updated tracks for 1".
-New from S7: note that the real library has drifted since the last
-scan (a copy re-scan found 261 added, 60 updated, 25 removed). The next
-real Scan will apply that.
+Carried from S7: the real library has drifted since the last scan (a
+copy re-scan found 261 added, 60 updated, 25 removed); the next real
+Scan applies that.
 
 ## 9. Open questions
 
+- **Found in S7, not fixed:** in `DestinationDialog`, unchecking
+  "Remember this for this playlist" makes `MainWindow` save only the
+  app-wide default (per-playlist folders on) and drop the typed
+  subfolder (`main_window.py`, `do_persist`'s `else` branch). The
+  preview can show a folder the download will not use. Which row owns
+  it: S19 (this flow moves to DashboardPage, but that row is
+  behaviour-neutral) or S29 (information architecture)? It needs its own
+  behaviour commit either way.
+- Settings → Destinations shows a rejected subfolder as `Error: …` on
+  its ephemeral `status_label`, not an `InlineNotice`. S11 (readable
+  errors) should cover it.
 - CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
   late-worker defect (S11 or S18)? It has failed CI twice
   (`36570098069`, `36580274797`).
