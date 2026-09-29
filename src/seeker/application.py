@@ -361,7 +361,10 @@ class Application:
         so it calls `docker_setup.bring_up_slskd` directly.
         """
         api_key = generate_api_key()
-        data_dir = slskd_data_dir()
+        # An existing container keeps its data directory (slskd's own
+        # state and any finished downloads), wherever it was created.
+        live_data_dir = self.sharing_service.current_data_dir()
+        data_dir = Path(live_data_dir) if live_data_dir else slskd_data_dir()
         data_dir.mkdir(parents=True, exist_ok=True)
         web_username, web_password = self.ensure_slskd_web_credentials()
 

@@ -23,6 +23,12 @@ def make_application(tmp_path, monkeypatch) -> Application:
         "seeker.application.platformdirs.user_data_dir",
         _fake_user_data_dir(data_dir),
     )
+    # No container: start_slskd reads the live /app mount, and a test
+    # must never reach the real `docker inspect`.
+    monkeypatch.setattr(
+        "seeker.sharing_service._get_live_container_mounts",
+        lambda container_name: {},
+    )
     return Application()
 
 

@@ -789,7 +789,15 @@ def _fake_slskd_bring_up(tmp_path, monkeypatch) -> list[dict]:
     monkeypatch.setattr(
         "seeker.application.generate_api_key", lambda: "generated-key",
     )
+    _fake_live_slskd_mounts(monkeypatch, {})
     return calls
+
+
+def _fake_live_slskd_mounts(monkeypatch, mounts: dict[str, str]) -> None:
+    monkeypatch.setattr(
+        "seeker.sharing_service._get_live_container_mounts",
+        lambda container_name: mounts,
+    )
 
 
 def test_start_slskd_brings_up_with_generated_key_and_web_login(
@@ -814,6 +822,30 @@ def test_start_slskd_brings_up_with_generated_key_and_web_login(
     assert (tmp_path / "slskd-data").is_dir()
     assert result.api_key == "generated-key"
     assert result.download_dir == str(tmp_path / "slskd-data" / "downloads")
+
+
+def test_start_slskd_keeps_the_live_containers_data_dir(
+        tmp_path, monkeypatch,
+):
+    # A container created elsewhere (a manual `docker compose up` from
+    # the repository) keeps its slskd state and downloads: a recreate
+    # reuses its /app mount instead of starting an empty per-user one.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    live_data_dir = tmp_path / "repo" / "slskd-data"
+    _fake_live_slskd_mounts(monkeypatch, {
+        "/app": str(live_data_dir),
+        "/shared/music": "/music",
+    })
+
+    result = app.start_slskd("netuser", "netpass", "/music", persist=True)
+
+    assert calls[0]["slskd_data_dir"] == str(live_data_dir)
+    assert result.download_dir == str(live_data_dir / "downloads")
+    assert load_config(resolve_config_path()).slskd_download_dir == str(
+        live_data_dir / "downloads"
+    )
+    assert not (tmp_path / "slskd-data").exists()
 
 
 def test_start_slskd_without_persist_saves_no_connection_details(

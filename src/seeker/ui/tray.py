@@ -531,7 +531,7 @@ class TrayController:
 
 def _resolve_tray_icon_path() -> Path:
     """Roadmap item R7.2/98 (B9.1) — same sys.frozen/sys._MEIPASS branch
-    as docker_setup.py's compose_file_path(): an ordinary `uv run
+    as docker_setup.py's compose_template_path(): an ordinary `uv run
     seeker-ui` dev run resolves against this file's own real location
     in the source tree; a packaged build resolves against the
     icons/ directory seeker.spec bundles as a real PyInstaller `datas`

@@ -68,46 +68,41 @@ def ensure_full_path_environment() -> None:
 SLSKD_LOCAL_BASE_URL = "http://127.0.0.1:5030"
 
 
-def compose_file_path() -> Path:
-    # Same home as slskd_data_dir() just below — both wizard.py and
-    # settings_window.py need the identical path.
-    #
-    # docker-compose.yml is real *resource data*: a packaged build
-    # bundles it as a PyInstaller `datas` entry (packaging/seeker.spec).
-    # In dev, `sys.frozen` is never set, so this stays CWD-relative
-    # (`docker compose up` is documented, README, to run from the
-    # project root) — deliberately not source-tree-relative, which
-    # would be a real behavior change from what's shipped and tested.
-    if not getattr(sys, "frozen", False):
-        return Path("docker-compose.yml")
+def compose_template_path() -> Path:
+    """The tracked `docker-compose.yml` template: bundled as a
+    PyInstaller `datas` entry in a frozen build, the repository's own
+    file in dev. Only ever read — `compose_file_path()` is the copy
+    Seeker runs and edits."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "docker-compose.yml"  # type: ignore[attr-defined]
 
-    # A frozen build must NOT resolve this to sys._MEIPASS directly —
-    # PyInstaller regenerates that path on every build, so a rebuilt or
-    # relocated .app could never again recognize a container it had
-    # itself previously created as self-managed (SharingService.
-    # is_self_managed() compares against the running container's
-    # recorded config-files label). Copy the bundled resource, once,
-    # into the stable per-user slskd_data_dir() and always return that
-    # canonical path afterward — guarded so a later Sharing-added
-    # volume line is never clobbered by a subsequent app update.
-    # HISTORY §74 (P5.3).
+    return Path(__file__).resolve().parents[2] / "docker-compose.yml"
+
+
+def compose_file_path() -> Path:
+    """The per-user Compose file Seeker runs `docker compose up`
+    against, seeded once from the template, in dev and frozen builds
+    alike.
+
+    Stable across rebuilds on purpose: `SharingService.
+    is_self_managed()` compares it with the path Compose records on the
+    container, which a `_MEIPASS` path (regenerated per build) could
+    never match. Never re-seeded once it exists, because Sharing adds
+    volume lines to it. HISTORY §74.
+    """
     canonical_path = slskd_data_dir() / "docker-compose.yml"
 
     if not canonical_path.exists():
         canonical_path.parent.mkdir(parents=True, exist_ok=True)
-        bundled_path = (
-            Path(sys._MEIPASS)  # type: ignore[attr-defined]
-            / "docker-compose.yml"
-        )
-        shutil.copy2(bundled_path, canonical_path)
+        shutil.copy2(compose_template_path(), canonical_path)
 
     return canonical_path
 
 
 def slskd_data_dir() -> Path:
-    # Shared by both wizard.py and settings_window.py, hence living in
-    # a service-layer module rather than either UI one. Same per-user
-    # app-data directory the DB/config store live in.
+    # The default for a new container; an existing one keeps its own
+    # /app mount (Application.start_slskd). Same per-user app-data
+    # directory the DB and config store live in.
     return Path(
         platformdirs.user_data_dir("Seeker", appauthor=False)
     ) / "slskd-data"

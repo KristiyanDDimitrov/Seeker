@@ -103,3 +103,16 @@ def test_restart_policy_respects_a_user_stopping_slskd():
     ]
 
     assert restart_lines == ["restart: unless-stopped"]
+
+
+def test_project_name_is_fixed():
+    # Compose otherwise names the project after the file's directory:
+    # "seeker" from the repository, "slskd-data" from the per-user
+    # copy. With a fixed container_name, a container created under one
+    # project then conflicts on `up` under the other.
+    top_level = [
+        line for line in _uncommented(_template_lines())
+        if line and not line[0].isspace()
+    ]
+
+    assert "name: seeker" in top_level

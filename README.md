@@ -367,6 +367,14 @@ share (read-only) when you start it:
 SLSKD_DATA_DIR=./slskd-data SLSKD_SHARE_PATH="$HOME/Music" docker compose up -d
 ```
 
+The app itself never runs or edits this tracked file. It copies it
+once to `~/Library/Application Support/Seeker/slskd-data/` and runs
+that copy. Both use the Compose project name `seeker`, so they manage
+the same `slskd` container instead of colliding over its name. When
+Settings recreates a container started this way, it keeps that
+container's data directory, including its slskd state and downloads.
+Sharing edits only a container Seeker started from its own copy.
+
 Then open `http://127.0.0.1:5030`, finish slskd's own setup (SoulSeek
 account credentials, an API key for `SLSKD_API_KEY` above, and which
 local folders it shares), and confirm its configured download directory

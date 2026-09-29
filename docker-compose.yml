@@ -9,6 +9,11 @@
 #
 # The credential variables may be empty for a manual run: slskd then
 # keeps whatever its own slskd.yml already holds (HISTORY §23).
+
+# Fixed, so the project is the same whichever directory the file is
+# run from (the repository or Seeker's per-user copy).
+name: seeker
+
 services:
   slskd:
     image: slskd/slskd:0.26.0

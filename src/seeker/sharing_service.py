@@ -295,6 +295,13 @@ class SharingService:
         mounts = _get_live_container_mounts(self._container_name)
         return mounts.get(f"{SHARE_MOUNT_ROOT}/music")
 
+    def current_data_dir(self) -> str | None:
+        """The host folder the running container mounts as /app (its
+        slskd.yml, state and downloads), or None when there is no
+        container. A recreate reuses it so slskd keeps its state."""
+        mounts = _get_live_container_mounts(self._container_name)
+        return mounts.get("/app")
+
     def is_self_managed(self) -> bool:
         """True only when the running slskd container was created by
         THIS app's own docker-compose.yml -- never a user's own

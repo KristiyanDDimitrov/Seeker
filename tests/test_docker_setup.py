@@ -19,6 +19,7 @@ from seeker.docker_setup import (
     check_slskd_health,
     check_slskd_web_login,
     compose_file_path,
+    compose_template_path,
     detect_docker_state,
     ensure_full_path_environment,
     generate_api_key,
@@ -32,6 +33,8 @@ from seeker.docker_setup import (
 SINCE = datetime(2026, 8, 28, 15, 0, 0, tzinfo=UTC)
 BEFORE_SINCE = (SINCE - timedelta(minutes=5)).isoformat()
 AFTER_SINCE = (SINCE + timedelta(seconds=1)).isoformat()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 # Regression test locking in the real, confirmed-live env var mapping
@@ -101,16 +104,32 @@ def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(
     assert slskd_data_dir() == tmp_path / "slskd-data"
 
 
-# Packaging task's resource-path fix (see docs/HISTORY.md packaging
-# entry): dev-mode behavior must stay byte-identical to what shipped
-# before — CWD-relative, matching the CLI's own documented "run
-# `docker compose up` from the project root" convention. Only a frozen
-# build (sys.frozen set by PyInstaller's bootloader) should switch to
-# resolving against sys._MEIPASS instead.
-def test_compose_file_path_is_cwd_relative_outside_a_frozen_build(monkeypatch):
+def test_compose_template_is_the_tracked_file_outside_a_frozen_build(
+        monkeypatch,
+):
     monkeypatch.delattr("sys.frozen", raising=False)
 
-    assert compose_file_path() == Path("docker-compose.yml")
+    assert compose_template_path() == REPO_ROOT / "docker-compose.yml"
+
+
+def test_compose_file_path_seeds_a_per_user_copy_outside_a_frozen_build(
+        tmp_path, monkeypatch,
+):
+    # A dev run must never edit the tracked template: Sharing's volume
+    # edits go to the per-user copy, exactly as in a packaged build.
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "seeker.docker_setup.platformdirs.user_data_dir",
+        lambda appname, **kwargs: str(data_dir),
+    )
+    monkeypatch.delattr("sys.frozen", raising=False)
+
+    result = compose_file_path()
+
+    assert result == data_dir / "slskd-data" / "docker-compose.yml"
+    assert result.read_text() == (
+        REPO_ROOT / "docker-compose.yml"
+    ).read_text()
 
 
 def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
