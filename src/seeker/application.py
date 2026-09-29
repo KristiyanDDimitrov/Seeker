@@ -396,6 +396,12 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
 
+    def preview_remove_location(self, name: str) -> LocationRemovalSummary:
+        return self.library_service.preview_remove_location(
+            name,
+            default_location_id=self._config_store.default_download_location_id,
+        )
+
     def remove_location(self, name: str) -> LocationRemovalSummary:
         """Removes a library location (see
         `LibraryService.remove_location`) and, when it was the default

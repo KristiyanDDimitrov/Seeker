@@ -421,7 +421,7 @@ uv run seeker <command>
 | `playlists set-destination <playlist> <location> [subfolder]` | Set where a playlist's downloads should be moved to once complete. |
 | `library add <name> <path>` | Register a library location (a folder on disk). |
 | `library list` | List registered locations and whether they're currently reachable. |
-| `library remove <name>` | Unregister a location. |
+| `library remove <name>` | Unregister a location: forgets its indexed files and their matches, and clears any playlist or default destination pointing at it. Files on disk are untouched. |
 | `library scan` | Scan all registered locations for audio files. |
 | `library match` | Fuzzy-match cached Spotify tracks against scanned local files. |
 | `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX] [--force]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key; `--force` redoes both even for tracks already tagged/analyzed. |

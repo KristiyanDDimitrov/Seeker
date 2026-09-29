@@ -198,6 +198,20 @@ class LibraryService:
         with self.database.transaction() as connection:
             return self.local_files.exists_any(connection)
 
+    def preview_remove_location(
+            self,
+            name: str,
+            default_location_id: int | None = None,
+    ) -> LocationRemovalSummary:
+        """What `remove_location` would forget, read-only."""
+        self._require_playlists("preview_remove_location()")
+
+        with self.database.transaction() as connection:
+            location = self._get_location_or_raise(name, connection)
+            return self._removal_summary(
+                location, default_location_id, connection,
+            )
+
     def remove_location(
             self,
             name: str,

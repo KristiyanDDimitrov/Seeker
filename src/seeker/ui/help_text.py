@@ -14,6 +14,8 @@ matching.py's two independent copies once did (see CLAUDE.md).
 
 from typing import Any
 
+from seeker.models.location_removal import LocationRemovalSummary
+
 # --- Persistent tab/section subtitles (not hover-dependent) --------------
 # One line under each tab's own header, aimed at someone who never reads
 # the README and goes straight into the app.
@@ -889,9 +891,74 @@ TOOLTIP_ADD_LOCATION = (
     "below."
 )
 TOOLTIP_REMOVE_LOCATION = (
-    "Unregister this location. Files already matched or tagged are "
-    "unaffected — nothing on disk is touched."
+    "Unregister this location. Seeker forgets its indexed files and "
+    "their matches; asks first, and nothing on disk is touched."
 )
+REMOVE_LOCATION_CONFIRM_TITLE = "Remove Location"
+
+
+def _count(number: int, singular: str, plural: str | None = None) -> str:
+    word = singular if number == 1 else (plural or f"{singular}s")
+    return f"{number:,} {word}"
+
+
+def _forgotten_phrase(summary: LocationRemovalSummary) -> str:
+    phrase = (
+        f"{_count(summary.files_forgotten, 'indexed file')} and "
+        f"{_count(summary.matches_cleared, 'match', 'matches')}"
+    )
+
+    if summary.confirmed_matches_cleared:
+        phrase += f" ({summary.confirmed_matches_cleared:,} you confirmed)"
+
+    return phrase
+
+
+def format_remove_location_confirm_body(
+        summary: LocationRemovalSummary,
+) -> str:
+    """Names everything the removal forgets, from the same counts the
+    removal itself reports."""
+    lines = [
+        f"Remove '{summary.location_name}'? Seeker forgets "
+        f"{_forgotten_phrase(summary)}."
+    ]
+
+    if summary.playlists_affected:
+        verb = "downloads" if summary.playlists_affected == 1 else "download"
+        lines.append(
+            f"{_count(summary.playlists_affected, 'playlist')} {verb} here "
+            f"and will need a new destination."
+        )
+
+    if summary.was_default:
+        lines.append(
+            "It is also the default download location, which will be "
+            "cleared."
+        )
+
+    lines.append("Files on disk are not touched.")
+
+    return " ".join(lines)
+
+
+def format_remove_location_result(summary: LocationRemovalSummary) -> str:
+    text = (
+        f"Removed '{summary.location_name}': forgot "
+        f"{_forgotten_phrase(summary)}."
+    )
+
+    if summary.playlists_affected:
+        verb = "needs" if summary.playlists_affected == 1 else "need"
+        text += (
+            f" {_count(summary.playlists_affected, 'playlist')} {verb} "
+            f"a new destination."
+        )
+
+    if summary.was_default:
+        text += " The default download location is now unset."
+
+    return text
 TOOLTIP_RENAME_LOCATION = "Give this location a different display name."
 
 # --- Settings: Playlist Destinations tab ----------------------------------

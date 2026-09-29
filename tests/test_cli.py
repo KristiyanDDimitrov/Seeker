@@ -1,3 +1,5 @@
+import pytest
+
 from seeker import cli
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
@@ -8,7 +10,9 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher
+from seeker.library.service import LibraryLocationNotFoundError
 from seeker.models.local_file import LocalFile
+from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
@@ -1138,3 +1142,57 @@ def test_sharing_status_reports_not_self_managed(tmp_path, capsys):
 
     output = capsys.readouterr().out
     assert "NOT managed by Seeker" in output
+
+
+# --- library remove ------------------------------------------------------
+
+class FakeApplicationRemovingLocations(FakeApplication):
+    def __init__(self, matcher, summary=None, error=None):
+        super().__init__(matcher)
+        self._summary = summary
+        self._error = error
+        self.remove_location_calls: list[str] = []
+
+    def remove_location(self, name):
+        self.remove_location_calls.append(name)
+        if self._error is not None:
+            raise self._error
+        return self._summary
+
+
+def test_library_remove_prints_what_was_forgotten(tmp_path, capsys):
+    application = FakeApplicationRemovingLocations(
+        make_matcher(tmp_path),
+        summary=LocationRemovalSummary(
+            location_name="Music",
+            files_forgotten=3454,
+            matches_cleared=12,
+            confirmed_matches_cleared=3,
+            playlists_affected=2,
+            was_default=True,
+        ),
+    )
+
+    cli.run(application, ["library", "remove", "Music"])
+
+    assert application.remove_location_calls == ["Music"]
+    output = capsys.readouterr().out
+    assert "Removed 'Music'" in output
+    assert "3,454 indexed files" in output
+    assert "12 matches (3 you confirmed)" in output
+    assert "2 playlists" in output
+    assert "default download location" in output
+    assert "Files on disk were not touched." in output
+
+
+def test_library_remove_unknown_name_exits_with_the_error(tmp_path, capsys):
+    application = FakeApplicationRemovingLocations(
+        make_matcher(tmp_path),
+        error=LibraryLocationNotFoundError("Nope"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(application, ["library", "remove", "Nope"])
+
+    assert exit_info.value.code == 1
+    assert "No library location named 'Nope'" in capsys.readouterr().out

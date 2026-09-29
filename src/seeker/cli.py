@@ -675,7 +675,21 @@ def handle_library(
             )
 
     elif parsed.library_command == "remove":
-        application.remove_location(parsed.name)
+        summary = application.remove_location(parsed.name)
+        print(f"Removed '{summary.location_name}'.")
+        print(f"  Forgot {summary.files_forgotten:,} indexed files and "
+              f"{summary.matches_cleared:,} matches "
+              f"({summary.confirmed_matches_cleared:,} you confirmed).")
+
+        if summary.playlists_affected:
+            print(f"  {summary.playlists_affected:,} playlists downloaded "
+                  "here and need a new destination "
+                  "('seeker playlists set-destination').")
+
+        if summary.was_default:
+            print("  It was the default download location, now unset.")
+
+        print("  Files on disk were not touched.")
 
     elif parsed.library_command == "scan":
         if parsed.match:

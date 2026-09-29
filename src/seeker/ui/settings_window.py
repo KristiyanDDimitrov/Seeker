@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QRadioButton,
     QTableWidget,
@@ -39,6 +40,7 @@ from seeker.docker_setup import (
 from seeker.login_item import LoginItemStatus
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
+from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
@@ -201,9 +203,6 @@ class SettingsPage(QWidget):
         add_row.addStretch()
         layout.addLayout(add_row)
 
-        self.locations_status_label = QLabel("")
-        layout.addWidget(self.locations_status_label)
-
         layout.addStretch()
         return tab
 
@@ -315,16 +314,41 @@ class SettingsPage(QWidget):
         self._refresh_destinations()
 
     def _on_remove_location_clicked(self, name: str) -> None:
-        # No confirmation prompt — matches `seeker library remove`,
-        # which has none either (checked before building this; adding
-        # one here would be a heavier gate than the CLI's own
-        # established design calls for).
+        self.locations_notice.dismiss()
+
+        run_worker(
+            self.thread_pool,
+            lambda: self.application.preview_remove_location(name),
+            on_finished=self._confirm_remove_location,
+            on_error=self._show_locations_error,
+        )
+
+    def _confirm_remove_location(self, preview: LocationRemovalSummary) -> None:
+        confirmed = QMessageBox.question(
+            self,
+            help_text.REMOVE_LOCATION_CONFIRM_TITLE,
+            help_text.format_remove_location_confirm_body(preview),
+        )
+
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        name = preview.location_name
         run_worker(
             self.thread_pool,
             lambda: self.application.remove_location(name),
-            status_label=self.locations_status_label,
-            on_finished=lambda _: self._on_location_added(),
+            on_finished=self._on_location_removed,
+            on_error=self._show_locations_error,
         )
+
+    def _on_location_removed(self, summary: LocationRemovalSummary) -> None:
+        self.locations_notice.show_message(
+            help_text.format_remove_location_result(summary),
+        )
+        self._on_location_added()
+
+    def _show_locations_error(self, message: str) -> None:
+        self.locations_notice.show_message(message, kind="error")
 
     # --- Playlist destinations (§2) -----------------------------------
 

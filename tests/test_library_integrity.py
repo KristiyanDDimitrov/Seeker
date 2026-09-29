@@ -324,3 +324,34 @@ def test_removing_an_unknown_location_raises(tmp_path):
         service.remove_location("Nope")
 
     assert len(service.list_locations()) == 1
+
+
+# --- §4.5: preview before removal ------------------------------------
+
+def test_preview_reports_the_removal_counts_and_changes_nothing(tmp_path):
+    service, matcher = make_scenario(tmp_path)
+    service.scan_and_match()
+    service.confirm_match("t1")
+    set_destination(matcher, "p1")
+    before = match_row(matcher)
+
+    preview = service.preview_remove_location("Lib", default_location_id=1)
+
+    assert preview == LocationRemovalSummary(
+        location_name="Lib",
+        files_forgotten=1,
+        matches_cleared=1,
+        confirmed_matches_cleared=1,
+        playlists_affected=1,
+        was_default=True,
+    )
+    assert len(service.list_locations()) == 1
+    assert match_row(matcher) == before
+    assert service.remove_location("Lib", default_location_id=1) == preview
+
+
+def test_preview_of_an_unknown_location_raises(tmp_path):
+    service, _ = make_scenario(tmp_path)
+
+    with pytest.raises(LibraryLocationNotFoundError):
+        service.preview_remove_location("Nope")

@@ -1,6 +1,11 @@
 from dataclasses import replace
 
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QPushButton
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QInputDialog,
+    QMessageBox,
+    QPushButton,
+)
 
 from seeker.application import Application
 from seeker.docker_setup import (
@@ -269,29 +274,98 @@ def test_rename_location_collision_shows_an_inline_notice(
     assert "Main" in window.locations_notice.text()
 
 
-def test_remove_location_calls_remove_location_with_correct_name(
-        qtbot, tmp_path, monkeypatch,
-):
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Main", tmp_path / "music")
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-
+def click_remove_location(window: SettingsPage, qtbot) -> None:
     qtbot.waitUntil(
         lambda: window.locations_table.rowCount() == 1, timeout=2000,
     )
-
     actions = window.locations_table.cellWidget(0, 3)
     remove_button = next(
         b for b in actions.findChildren(QPushButton) if b.text() == "Remove"
     )
     remove_button.click()
 
+
+def answer_question(monkeypatch, answer) -> list[str]:
+    asked: list[str] = []
+
+    def fake_question(parent, title, text, *args, **kwargs):
+        asked.append(text)
+        return answer
+
+    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    return asked
+
+
+def test_remove_location_confirms_with_the_real_counts_then_removes(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    location = add_location(application, "Main", tmp_path / "music")
+    add_playlist(application, Playlist(id="p1", name="P", track_count=0))
+    with application.database.transaction() as connection:
+        application.sync_service.playlists.set_destination(
+            "p1", location.id, None, connection,
+        )
+    asked = answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    click_remove_location(window, qtbot)
+
     qtbot.waitUntil(
         lambda: window.locations_table.rowCount() == 0, timeout=2000,
     )
     assert application.library_service.list_locations() == []
+    assert len(asked) == 1
+    assert "Remove 'Main'?" in asked[0]
+    assert "0 indexed files" in asked[0]
+    assert "1 playlist downloads here" in asked[0]
+    assert "Files on disk are not touched." in asked[0]
+    qtbot.waitUntil(
+        lambda: not window.locations_notice.isHidden(), timeout=2000,
+    )
+    assert window.locations_notice.property("variant") == "info"
+    assert "Removed 'Main'" in window.locations_notice.text()
+
+
+def test_remove_location_cancelled_removes_nothing(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    asked = answer_question(monkeypatch, QMessageBox.StandardButton.No)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    click_remove_location(window, qtbot)
+
+    qtbot.waitUntil(lambda: len(asked) == 1, timeout=2000)
+    qtbot.wait(50)
+    assert len(application.library_service.list_locations()) == 1
+    assert window.locations_table.rowCount() == 1
+
+
+def test_remove_location_failure_lands_on_the_notice_as_an_error(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    def fail(name):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(application, "remove_location", fail)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    click_remove_location(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: not window.locations_notice.isHidden(), timeout=2000,
+    )
+    assert window.locations_notice.property("variant") == "error"
+    assert "database is locked" in window.locations_notice.text()
 
 
 # --- Playlist destinations (§2) ----------------------------------------

@@ -804,6 +804,22 @@ def test_remove_location_clears_the_default_destination_it_was(
     assert load_config(resolve_config_path()).default_download_location_id is None
 
 
+def test_preview_remove_location_reports_the_default_and_changes_nothing(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    (tmp_path / "music").mkdir()
+    location = app.library_service.add_location("Music", str(tmp_path / "music"))
+    assert location.id is not None
+    app.persist_default_destination(location.id, True)
+
+    preview = app.preview_remove_location("Music")
+
+    assert preview.was_default is True
+    assert app.settings.default_download_location_id == location.id
+    assert len(app.library_service.list_locations()) == 1
+
+
 def test_remove_location_keeps_a_default_destination_elsewhere(
         tmp_path, monkeypatch,
 ):
