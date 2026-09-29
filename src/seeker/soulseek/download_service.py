@@ -251,6 +251,13 @@ def _locate_completed_file(
     return CompletedFileLookup(newest)
 
 
+@dataclass(frozen=True)
+class _SettleTarget:
+    location: LibraryLocation
+    source: Path
+    proposed_path: Path
+
+
 class DownloadService:
     def __init__(
         self,
@@ -1561,10 +1568,13 @@ class DownloadService:
                 playlist, self.locations, self._get_config, connection,
             )
 
-    def _move_completed_file(
+    def _settle_target(
             self,
             request: DownloadRequest,
-    ) -> tuple[LibraryLocation, str] | None:
+    ) -> _SettleTarget | None:
+        """Where `request`'s finished file is now, and the path it
+        would take in its destination folder. None, logged, when either
+        cannot be determined."""
         if not self.slskd_download_dir:
             logger.warning(
                 "SLSKD_DOWNLOAD_DIR is not configured; cannot move '%s'.",
@@ -1621,17 +1631,37 @@ class DownloadService:
         if subfolder:
             destination_dir = destination_dir / subfolder
 
-        destination_dir.mkdir(parents=True, exist_ok=True)
+        return _SettleTarget(location, lookup.path, destination_dir / basename)
+
+    def _move_completed_file(
+            self,
+            request: DownloadRequest,
+    ) -> tuple[LibraryLocation, str] | None:
+        target = self._settle_target(request)
+
+        if target is None:
+            return None
+
+        return self._place_without_overwrite(target)
+
+    def _place_without_overwrite(
+            self,
+            target: _SettleTarget,
+    ) -> tuple[LibraryLocation, str]:
+        target.proposed_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Never onto an existing file: shutil.move replaces one silently
         # (os.rename on one volume, copy-then-unlink across volumes).
         destination_path = resolve_collision(
-            lookup.path, destination_dir / basename,
+            target.source, target.proposed_path,
         )
-        shutil.move(str(lookup.path), str(destination_path))
+        shutil.move(str(target.source), str(destination_path))
 
-        logger.info("Moved '%s' to %s", basename, destination_path)
+        logger.info(
+            "Moved '%s' to %s", target.proposed_path.name, destination_path,
+        )
 
+        location = target.location
         relative_path = str(
             destination_path.relative_to(Path(location.path))
         )
