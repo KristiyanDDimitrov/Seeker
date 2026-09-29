@@ -10,120 +10,138 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** `c98b77f` (round 11 S4 close-out) plus this handoff commit,
-  pushed. Tree clean apart from the untracked `Claude outputs/` (left
-  as is: Kris's answer to §1.6).
+- **HEAD:** `e339f0d` (S5 part 1 close-out) plus this handoff commit,
+  pushed. Tree clean apart from the untracked `Claude outputs/`.
 - **Local pytest** (offscreen Qt, 2026-09-29):
-  `1268 passed, 1 skipped, 6 warnings in 113.89s` (X9 Pro mounted;
-  S3's 1245 plus 23 new).
+  `1277 passed, 1 skipped, 6 warnings in 86.12s` (X9 Pro mounted;
+  S4's 1268 plus 9 new).
 - **`mypy --strict src/`:** clean, 106 files. **`ruff check src
   tests`:** 0 findings.
-- **CI on `c98b77f`:** run `36579783924`, `success` (`1240 passed,
-  29 skipped`: 1268 + 1 locally = 1269 = 1240 + 29 on CI).
+- **CI on `e339f0d`:** run `36582422863`, `success` (`1249 passed, 29 skipped`: 1277 + 1 locally = 1278 = 1249 + 29).
+- **CI on `6bcb180` (S4's handoff commit): run `36580274797`,
+  `failure`**: `1 failed, 1239 passed, 29 skipped`. The failure was
+  `test_close_event_falls_back_to_real_close_when_no_tray`, caused by
+  the carried late-worker defect (`status_label.setText` on a deleted
+  `QLabel`/`QListWidget` from `_handle_task_finished`). S4's handoff
+  only recorded the green run on `c98b77f`.
 
 ## 2. Where we are
 
-Phase A done (S1, S2). Phase B: S3 and **S4 done. Next row: S5**
-(a portable Compose template, the release blocker, and Settings never
-changing what is shared; BRIEF §5). Then S6.
+Phases A and B up to S4 done. **S5 part 1 done; S5 is not ticked**
+(it is marked ◐ in the plan). The row overran its ~130 K budget and
+stopped at its split point. **Next: finish S5 (part 2)**, then S6.
 
-## 3. Session report (S4)
+## 3. Session report (S5 part 1)
 
-All evidence is in HISTORY §139: red output per item, the rehearsal
-counts, and the numbers.
-- `c362d6a` §4.2: every `local_files` delete resets its matches
-  (`_release_matches`). Probe A.3 inverted.
-- `ad38d29` §4.3: limbo is tolerated in `match_all`,
-  `get_unmatched_for_playlist` and `get_auto_matched_for_playlist`,
-  plus an idempotent repair in `_migrate`. Rehearsed on a DB copy:
-  2 → 0.
-- `541f2f1` §4.4: `remove_location` runs in one transaction, returns
-  `LocationRemovalSummary` and raises `LibraryLocationNotFoundError`.
-  `Application.remove_location` clears the default. Probe A.4 inverted.
-- `1a38ec0` §4.5: `preview_remove_location`; a Settings confirm dialog;
-  outcome and errors go on `locations_notice`; the CLI prints the
-  summary.
-- `c98b77f` close-out: §139, row ticked, a CLAUDE.md standing fact
-  (a match pointing at no file is unmatched) and the models layout
-  line.
+All evidence (red output, the pinned digest, the `compose config`
+acceptance output) is in HISTORY §140.
+- `764c4d0` §5.1–§5.2: structural template test; required
+  `SLSKD_DATA_DIR`/`SLSKD_SHARE_PATH`, no `Test` mount,
+  `slskd/slskd:0.26.0`, `unless-stopped`; `bring_up_slskd`'s share path
+  required; Sharing refuses with no live `/shared/music`; README manual
+  command.
+- `738685a` §5.5 fix: Settings keeps the live share
+  (`SharingService.current_share_path`), and asks when there is no
+  container.
+- `e339f0d` close-out: §140, plan marked ◐, credentials caution lifted.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §140: append it to `docs/history/121-150.md`**
-  with `<a name="140"></a>` directly above `### 140 — …`, then its line
-  at the end of `docs/history/README.md`.
-- **Found, not fixed:** `DuplicateService._repoint_or_clear_match`
-  (`library/duplicate_service.py`) upserts the re-pointed match without
-  `confirmed_at`, so resolving a duplicate drops a human confirmation.
-  No row owns it. It fits S8 (review decisions stick) as a one-test fix.
-- **Three `LibraryLocationNotFoundError` classes now exist**
-  (`library/service.py`, new; `library/duplicate_service.py`;
-  `soulseek/download_service.py`). `cli.py` imports all three under
-  aliases. S13 (one exception hierarchy) should merge them.
-- **Never delete `local_files` rows with raw SQL.** Go through
-  `LocalFileRepository`, which resets matches first. The CLAUDE.md
-  standing fact records this.
-- **Settings' `locations_status_label` is gone.** Location feedback is
-  `locations_notice` only.
-- **`tests/test_library_integrity.py::make_scenario`** gives location
-  `Lib` (id 1) with `A/3AMDISCO - Get Back.wav`, which auto-matches
-  track `t1` in playlist `p1`. `test_download_placement.py` has the
-  download-side equivalent.
-- **Settings tests never show the page:** wait on `not
-  widget.isHidden()`, never `isVisible()`.
-- **Carried:** the round-10 CI late-worker `SETUP ERROR`
-  (`_handle_task_finished` → a deleted `QTableWidget`, run
-  `36570098069`) is still unowned. S11 or S18 should take it.
-  `download_requests.size` gates location (S3). Pytest's skip count
-  depends on the X9 Pro (1 mounted, 29 not). Never start, stop or
-  recreate Kris's slskd container, and never write real data
-  (BRIEF §0.7).
+- **Your HISTORY entry is §141** (or extend §140 with a "part 2"
+  section, which reads better): `docs/history/121-150.md` plus its
+  README line.
+- **S5 part 2 is three items:**
+  1. §5.5 consolidation. The wizard (`ui/wizard.py` `_on_bring_up_
+     clicked`, about line 559) and Settings (`_recreate_with_
+     credentials`) duplicate: generate a key, mkdir the data dir,
+     `ensure_slskd_web_credentials`, `bring_up_slskd`, check the
+     return code. They move into one `Application` method. **Persist
+     timing differs:** the wizard persists only after its health poll
+     reports HEALTHY (`_persist_soulseek_config`); Settings persists
+     immediately. Keep both behaviours explicit (for example, a
+     `persist` flag). Sharing reuses the persisted key and credentials
+     and the live `/app` dir, and never generates or persists, so it can
+     share only the lower "bring up and check the return code" core.
+     Record that divergence. `SLSKD_LOCAL_BASE_URL` lives in
+     `ui/wizard.py`; move it to the service layer if `Application`
+     needs it.
+  2. §5.3 per-user Compose copy in dev.
+  3. §5.4 Sharing robustness (restore both files, atomic writes, keep
+     5 backups, other `shares:` shapes).
+- **§5.3 data-directory trace, answered from the code:** the wizard
+  and Settings **already** pass `SLSKD_DATA_DIR = slskd_data_dir()` =
+  `~/Library/Application Support/Seeker/slskd-data`, which does not
+  exist on Kris's machine. Sharing passes the live container's `/app`
+  mount. So the repo's `./slskd-data` (728 MB `downloads/`, slskd's
+  own `data/` and a `slskd.yml` sharing `/shared/music` **and
+  `/shared/Test`**) is used only by a manual repo-root `docker compose
+  up`. Kris's `config.json` has `slskd_download_dir =
+  ./slskd-data/downloads` (CWD-relative), and the next wizard or
+  Settings bring-up overwrites that with the per-user path. §5.3
+  should make the data dir follow the live `/app` mount when a
+  container exists, and tell Kris to move `./slskd-data` himself if
+  he wants its state kept. Never move it for him (§0.7).
+- **Kris has no slskd container right now** (`docker ps -a` is empty;
+  image `slskd/slskd:latest` = `0.26.0` by digest). The "not
+  self-managed until recreated" note in BRIEF §5.3 applies only once
+  one exists. The `Test` share must be re-added through Sharing if
+  still wanted.
+- **Project name:** Compose names the project after the Compose file's
+  directory: `seeker` from the repo, `slskd-data` from the per-user
+  copy. The service has a fixed `container_name: slskd`, so a
+  container created under one project conflicts on `up` under the
+  other. §5.3 should add a top-level `name: seeker` to the template
+  (and a structural assertion).
+- **Test hazard:** any test that reaches Settings' credential update
+  without faking `seeker.sharing_service._get_live_container_mounts`
+  hits real `docker inspect`. With no container, a real modal
+  `QInputDialog` then blocks pytest. Use `_fake_live_mounts` in
+  `tests/test_settings_window.py`.
+- **Carried:** three `LibraryLocationNotFoundError` classes (S13);
+  `_repoint_or_clear_match` drops `confirmed_at` (S8). Never touch
+  slskd or real data (BRIEF §0.7).
 
 ## 5. Decisions made
 
-- **The match reset lives in `LocalFileRepository`**, as one private
-  helper called explicitly by each delete method. Every delete path,
-  current or future, gets it without a trigger, and callers need no
-  second repository.
-- **`get_auto_matched_for_playlist` was fixed as well,** beyond the
-  brief's two queries, because "tolerate limbo everywhere" covers it: a
-  limbo `auto` row was offered to `tag_playlist`.
-- **`was_default` is computed by the service from an id the caller
-  passes;** only `Application` owns config, so only it clears the
-  default.
-- **The CLI does not ask before `library remove`:** it prints the
-  summary. The brief asked only for the summary, and the command is
-  explicit.
-- **Skill divergence:** `focused-fix`, `tdd` and `database-designer`
-  were not loaded. The brief specified the fix and the tests, and
-  red-then-green was done by hand (red output in §139).
+- **Both bind-mount sources are required, with no default,** not only
+  the share path. A relative `./slskd-data` default inside the
+  per-user copy would resolve next to that copy, which is a silent
+  trap. The README's manual command passes both.
+- **The consolidation was deferred** to part 2 on budget. It is a
+  refactor, and it is safer to land it as its own commit against the
+  now-fixed behaviour.
+- **Skill divergence:** `env-secrets-manager` and `adversarial-reviewer`
+  were not loaded (budget). Part 2 should run `adversarial-reviewer`
+  before S5's final close-out.
 
 ## 6. Blockers
 
-None for S5.
+None.
 
 ## 7. Files in progress
 
-None.
+None; part 2 starts clean (the three items in Key context).
 
 ## 8. Waiting on Kris
 
 **Approval gates:** S21 package regrouping; S30 visual direction; S39
 bundle identifier; S42 publishing commands; X1 and X2 (optional).
 
-**Interim caution until its fix lands:** no Settings → **Update
-SoulSeek credentials** until S5.
+**Interim cautions:** none left. "Update SoulSeek credentials" is safe
+again: it keeps the live share, and asks when slskd isn't running.
 
-**Live checks:** consolidated into S41's checklist
-(`SESSION-PLAN.md` → "Waiting on Kris"). New from S4: after the next
-launch plus a Scan, the two Denzel Curry tracks are re-evaluated, and
-Settings → Remove shows the confirmation with real counts.
+**Kris's own decision:** keep or discard the repo's `./slskd-data`
+(its slskd state, 728 MB of downloads, and the `Test` share). The next
+Seeker bring-up uses the per-user data dir.
+
+**Live checks:** S41's checklist (the fresh-account wizard tests the
+template).
 
 ## 9. Open questions
 
-- CLAUDE.md open items 63 (retry storm), 70 (stress hang; S22 has a
-  lead) and 125 (quit hang) remain open.
-- The late-worker `SETUP ERROR`: which row fixes it (S11 or S18).
+- CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
+  late-worker defect (S11 or S18)? It has failed CI twice
+  (`36570098069`, `36580274797`).
 
 ---
 
