@@ -631,7 +631,11 @@ Hard-won, all five stay.
    belongs in HISTORY only, linked), and — only if genuine
    investigation happened — a matching HISTORY entry. Move, never
    delete: a "done" item's detail must land in HISTORY before it
-   leaves this file.
+   leaves this file. A new entry appends to the last
+   `docs/history/` file with `<a name="N"></a>` directly above its
+   `### N — title`, plus one line in `docs/history/README.md`; link
+   entries as `docs/history/<file>#N`, never by title slug.
+   [HISTORY §137](docs/history/121-150.md#137)
 2. **Checking whether a test failure is "pre-existing": always `git
    stash -u`, never a bare `git stash`.** A bare stash doesn't stash
    untracked files, so it can't see a defect living in one (e.g. a
