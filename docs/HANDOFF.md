@@ -10,97 +10,97 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** `a8e7c0d` (round 11 S3 close-out) plus this handoff commit,
+- **HEAD:** `c98b77f` (round 11 S4 close-out) plus this handoff commit,
   pushed. Tree clean apart from the untracked `Claude outputs/` (left
   as is: Kris's answer to §1.6).
 - **Local pytest** (offscreen Qt, 2026-09-29):
-  `1245 passed, 1 skipped, 6 warnings in 113.01s` (X9 Pro mounted;
-  S2's 1232 plus 13 new).
-- **`mypy --strict src/`:** clean, 105 files. **`ruff check src
+  `1268 passed, 1 skipped, 6 warnings in 113.89s` (X9 Pro mounted;
+  S3's 1245 plus 23 new).
+- **`mypy --strict src/`:** clean, 106 files. **`ruff check src
   tests`:** 0 findings.
-- **CI on `a8e7c0d`:** run `36572807959`, `success` (`1217 passed, 29 skipped`).
-- **CI on S2's handoff commit `c0bcfe6`:** run `36570098069`,
-  **`failure`** (`1203 passed, 29 skipped, 1 error`). S2's handoff never
-  recorded it. See §4.
+- **CI on `c98b77f`:** run `36579783924`, `success` (`1240 passed,
+  29 skipped`: 1268 + 1 locally = 1269 = 1240 + 29 on CI).
 
 ## 2. Where we are
 
-Phase A done (S1, S2); Phase B started: **S3 done. Next row: S4**
-(library integrity: limbo matches and location removal, BRIEF §4).
-Then S5.
+Phase A done (S1, S2). Phase B: S3 and **S4 done. Next row: S5**
+(a portable Compose template, the release blocker, and Settings never
+changing what is shared; BRIEF §5). Then S6.
 
-## 3. Session report (S3)
+## 3. Session report (S4)
 
-All evidence is in HISTORY §138 (red output, probe re-runs, numbers).
-- `33a0c03` §3.3 refactor: `resolve_collision` lifted into
-  `seeker/file_placement.py`, unchanged.
-- `d2b7452` §3.2: `_locate_completed_file`, which checks the remote
-  parent folder first, then the whole tree, by exact size, and never
-  guesses. Five existing tests had seeded sizes that did not match
-  their fixtures, now fixed.
-- `f746d3f` §3.3: settled downloads go through `resolve_collision`.
-- `c0713b9` §3.4 refactor: `_settle_target` / `_place_without_overwrite`.
-- `18fb626` §3.4: same-path upgrade = atomic swap; otherwise row then
-  file, behind a `same_file` guard.
-- `a8e7c0d` close-out: §138, row ticked, the Replace caution lifted,
-  §1.6 answer recorded, CLAUDE.md standing fact plus layout line.
+All evidence is in HISTORY §139: red output per item, the rehearsal
+counts, and the numbers.
+- `c362d6a` §4.2: every `local_files` delete resets its matches
+  (`_release_matches`). Probe A.3 inverted.
+- `ad38d29` §4.3: limbo is tolerated in `match_all`,
+  `get_unmatched_for_playlist` and `get_auto_matched_for_playlist`,
+  plus an idempotent repair in `_migrate`. Rehearsed on a DB copy:
+  2 → 0.
+- `541f2f1` §4.4: `remove_location` runs in one transaction, returns
+  `LocationRemovalSummary` and raises `LibraryLocationNotFoundError`.
+  `Application.remove_location` clears the default. Probe A.4 inverted.
+- `1a38ec0` §4.5: `preview_remove_location`; a Settings confirm dialog;
+  outcome and errors go on `locations_notice`; the CLI prints the
+  summary.
+- `c98b77f` close-out: §139, row ticked, a CLAUDE.md standing fact
+  (a match pointing at no file is unmatched) and the models layout
+  line.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §139: append it to `docs/history/121-150.md`**
-  with `<a name="139"></a>` directly above `### 139 — …`, then its line
+- **Your HISTORY entry is §140: append it to `docs/history/121-150.md`**
+  with `<a name="140"></a>` directly above `### 140 — …`, then its line
   at the end of `docs/history/README.md`.
-- **The round-10 CI `SETUP ERROR` recurred** (run `36570098069`, a
-  docs-only commit, so not caused by code). At setup of
-  `tests/pages/test_library_page.py::test_picking_a_playlist_in_library_updates_shared_selection_and_dashboard`,
-  a *previous* test's Dashboard worker finished late:
-  `workers.py:460 _handle_task_finished` → `dashboard_page.py:720
-  _render_track_statuses` → `track_table.setRowCount(0)` on a deleted
-  `QTableWidget`, then the error path's `status_label.setText` on a
-  deleted `QLabel`. `_handle_task_finished` has no guard for widgets
-  deleted while a worker is in flight. This is a real test-isolation
-  (and possibly shutdown) defect. S18 (test infrastructure) or S11
-  (errors) should own it; S38 decides the Open-issues entry.
-- **`tests/test_download_placement.py`** holds a `make_scenario()`
-  helper: location `Lib`, playlist `p1` → (`Lib`, `"P"`), track `t1`,
-  empty slskd dir. It is a cheap base for S4's limbo/removal tests.
-- **`download_requests.size` now gates location.** A test that seeds a
-  request over a fixture file must make `size` equal the file's bytes
-  (or `None`), or the file is correctly refused.
-- **`local_files.clear_content_derived_fields()`** exists: use it
-  whenever a row's file content changes under the same path.
-- **slskd naming is confirmed in its source** (`FileService.MoveFile`,
-  slskd `7beef07`): `<stem>_<UtcNow.Ticks><suffix>` on a clash. Current
-  slskd `master` makes the download subdirectory configurable, so never
-  rely on the remote parent folder alone.
-- **Pytest's skip count depends on the X9 Pro being mounted** (1 skip
-  mounted, 29 unmounted). Compare totals.
-- **Still true from the audit:** A-03 (Compose template, release
-  blocker) and A-54 (privacy) are S5's. A stale
-  `_build_info_generated.py` makes dev runs claim build `d38d80f` until
-  S39. Never start, stop or recreate Kris's slskd container, and never
-  write real data (BRIEF §0.7).
+- **Found, not fixed:** `DuplicateService._repoint_or_clear_match`
+  (`library/duplicate_service.py`) upserts the re-pointed match without
+  `confirmed_at`, so resolving a duplicate drops a human confirmation.
+  No row owns it. It fits S8 (review decisions stick) as a one-test fix.
+- **Three `LibraryLocationNotFoundError` classes now exist**
+  (`library/service.py`, new; `library/duplicate_service.py`;
+  `soulseek/download_service.py`). `cli.py` imports all three under
+  aliases. S13 (one exception hierarchy) should merge them.
+- **Never delete `local_files` rows with raw SQL.** Go through
+  `LocalFileRepository`, which resets matches first. The CLAUDE.md
+  standing fact records this.
+- **Settings' `locations_status_label` is gone.** Location feedback is
+  `locations_notice` only.
+- **`tests/test_library_integrity.py::make_scenario`** gives location
+  `Lib` (id 1) with `A/3AMDISCO - Get Back.wav`, which auto-matches
+  track `t1` in playlist `p1`. `test_download_placement.py` has the
+  download-side equivalent.
+- **Settings tests never show the page:** wait on `not
+  widget.isHidden()`, never `isVisible()`.
+- **Carried:** the round-10 CI late-worker `SETUP ERROR`
+  (`_handle_task_finished` → a deleted `QTableWidget`, run
+  `36570098069`) is still unowned. S11 or S18 should take it.
+  `download_requests.size` gates location (S3). Pytest's skip count
+  depends on the X9 Pro (1 mounted, 29 not). Never start, stop or
+  recreate Kris's slskd container, and never write real data
+  (BRIEF §0.7).
 
 ## 5. Decisions made
 
-- **A new test file rather than growing `test_download_service.py`**
-  (3,890 lines): the five invariants read as one unit, and S18 is
-  splitting test files anyway.
-- **"Logged once" is per request id per process** (an in-memory set on
-  `DownloadService`); later polls log at DEBUG. Persisting it would
-  need a schema change for no user-visible gain.
-- **A size mismatch is refused, not tolerated.** If a peer's real file
-  differs from its advertised size, the download stays `downloading`
-  with one WARNING. §X1 is where such leftovers surface.
-- **The same-path swap clears BPM, key, fingerprint and `tagged_at`**:
-  `upsert()` preserves them by design, and they described the old audio.
-- **Skill divergence:** `focused-fix` and `tdd` were not loaded. The
-  brief specified the invariants and the tests, and red-then-green was
-  followed by hand (red output in §138).
+- **The match reset lives in `LocalFileRepository`**, as one private
+  helper called explicitly by each delete method. Every delete path,
+  current or future, gets it without a trigger, and callers need no
+  second repository.
+- **`get_auto_matched_for_playlist` was fixed as well,** beyond the
+  brief's two queries, because "tolerate limbo everywhere" covers it: a
+  limbo `auto` row was offered to `tag_playlist`.
+- **`was_default` is computed by the service from an id the caller
+  passes;** only `Application` owns config, so only it clears the
+  default.
+- **The CLI does not ask before `library remove`:** it prints the
+  summary. The brief asked only for the summary, and the command is
+  explicit.
+- **Skill divergence:** `focused-fix`, `tdd` and `database-designer`
+  were not loaded. The brief specified the fix and the tests, and
+  red-then-green was done by hand (red output in §139).
 
 ## 6. Blockers
 
-None for S4.
+None for S5.
 
 ## 7. Files in progress
 
@@ -110,22 +110,20 @@ None.
 
 **Approval gates:** S21 package regrouping; S30 visual direction; S39
 bundle identifier; S42 publishing commands; X1 and X2 (optional).
-§1.6 is answered (leave `Claude outputs/`).
 
 **Interim caution until its fix lands:** no Settings → **Update
-SoulSeek credentials** until S5. (The Review Replace + Delete old
-caution is lifted: fixed in S3.)
+SoulSeek credentials** until S5.
 
-**Live checks:** consolidated into S41's checklist (details in
-`SESSION-PLAN.md` → "Waiting on Kris").
+**Live checks:** consolidated into S41's checklist
+(`SESSION-PLAN.md` → "Waiting on Kris"). New from S4: after the next
+launch plus a Scan, the two Denzel Curry tracks are re-evaluated, and
+Settings → Remove shows the confirmation with real counts.
 
 ## 9. Open questions
 
 - CLAUDE.md open items 63 (retry storm), 70 (stress hang; S22 has a
-  lead: the 2-second poll deserialises 32.6 MB of fingerprints) and 125
-  (quit hang) remain open.
-- The late-worker `SETUP ERROR` above: which row fixes it (S11 or S18),
-  and whether production can hit the same path on window close.
+  lead) and 125 (quit hang) remain open.
+- The late-worker `SETUP ERROR`: which row fixes it (S11 or S18).
 
 ---
 
