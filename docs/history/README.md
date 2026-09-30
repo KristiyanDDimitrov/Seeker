@@ -239,3 +239,4 @@ under their entry and live in the same file, after it.
 - §154 — Round 11 S14 part 1 (§14.1, downloads): typed download and poll results; a failed playlist track carries its reason → [151-180.md#154](151-180.md#154)
 - §155 — Round 11 S14 part 2 (§14.1 rest, §14.2, §14.3): typed library, tag and fingerprint results; `_tag_one_track` as named steps → [151-180.md#155](151-180.md#155)
 - §156 — Round 11 S15 (§15.1–§15.4): CLI structure — one handler per subcommand; --help never opens the database; no print or input in a service → [151-180.md#156](151-180.md#156)
+- §157 — Round 11 S16 part 1 (§16.1, §16.2): repositories without a Database; dead code out of `src/` → [151-180.md#157](151-180.md#157)

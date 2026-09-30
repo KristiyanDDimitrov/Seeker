@@ -10,49 +10,49 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S15 close-out commit (HISTORY §156, session plan,
-  this handoff). Tree clean apart from the untracked `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1559 passed, 1 skipped, 9 warnings`
-  (X9 Pro mounted; S15 adds 21 tests).
+- **HEAD:** the S16 part-1 close-out commit (HISTORY §157, session
+  plan, this handoff). Tree clean apart from the untracked `Claude
+  outputs/`.
+- **Local pytest** (2026-09-30): `1557 passed, 1 skipped, 9 warnings`
+  (X9 Pro mounted). 1559 → 1557 is `format_speed`'s two tests,
+  deleted with it.
 - **`mypy --strict src/`:** clean, 119 files. **`ruff check src
   tests`:** 0 findings.
 - **CI:** see the handoff-CI commit that follows this one.
 
 ## 2. Where we are
 
-S1–S15 ticked. **Next: S16** (service-layer cleanup and dead code,
-BRIEF §16; split point after §16.2). Then S17.
+S1–S15 ticked; **S16 stopped at its split point** (§16.1–§16.2 done,
+marked ◐ in the session plan). **Next: S16 part 2** — §16.3 legacy
+path migrations, §16.4 `SoulseekClient` getters + Sharing phases +
+one status GET, §16.5 `library/audio_quality.py`, §16.6 the
+fingerprinter as a context manager. Then S17.
 
-## 3. Session report (S15)
+## 3. Session report (S16 part 1)
 
-Evidence for every line is in HISTORY §156.
-- `c9bc0f0` §15.1 fix (behaviour): a command group needs its subcommand.
-- `cb01c8d` tests: CLI rename/tag/fix-art/routing output pinned.
-- `381d8b8` §15.1: one handler per subcommand (`handle_library` F 54 → gone).
-- `3726703` §15.4 fix (behaviour): `--help` never opens the database.
-- `11ac23f` §15.2: `seeker/formatting.py`; layering sweep test.
-- `6e0596b` §15.3: no `print`/`input` in a service; poll trace is
-  `logger.debug`.
+Evidence for every line is in HISTORY §157.
+- `05f3349` §16.1: repositories take no `Database`; `SpotifySyncService`
+  receives its repositories.
+- `c13cace` §16.2: dead code deleted (incl. `delete_missing`, not in
+  the brief); four test-only helpers leave `src/`; PIE790, RSE102,
+  FURB161 gated.
 
 ## 4. Key context
 
-- **For S16:** radon D-or-worse in `src/` is now 4:
+- **For S16 part 2:** radon D-or-worse in `src/` is 4:
   `_insert_slskd_share_directory` D (26),
-  `SharingService.add_location_to_share` D (24),
+  `SharingService.add_location_to_share` D (24, §16.4 targets it),
   `DownloadService._retry_locked_request` D (24), `_decide_next_step`
-  D (21). Carried from S14: `_fix_one_track_art` (C, 15) still mutates
-  the shared `FixArtResult` it is passed (`TagResult.record` is the
-  model); still dicts, not in the brief:
+  D (21). vulture/A.9 results are in §157; A.9 is ~50 lines of
+  `tokenize` + `ast`, re-created from BRIEF A.9. Repositories are now built bare (`TrackRepository()`); a
+  test seeding one playlist track uses `tests/db_seed.
+  add_playlist_track` (S18's `tests/fakes.py` may absorb it).
+  Carried from S14: `_fix_one_track_art` (C, 15) still mutates the
+  shared `FixArtResult`; still dicts, not in the brief:
   `DuplicateService.delete_local_files`,
-  `TrackMatcher.generate_match_report`;
-  `DownloadRequestRepository.get_active_for_track` has no caller.
-- **CLI shape now:** `cli.parse_args` (exits for help/usage/no
-  command) → `main()` builds `Application` → `cli.dispatch`. Tests use
-  `cli.run(app, argv)`, which composes the two. A new subcommand is a
-  subparser plus `set_defaults(handler=handle_<group>_<name>)`, and
-  every handler takes `(application, parsed)`. A test that
-  monkeypatches `cli.handle_x` still works: `build_parser` runs inside
-  `run`, after the patch.
+  `TrackMatcher.generate_match_report`.
+- **CLI shape** (S15): see HISTORY §156; every handler takes
+  `(application, parsed)`.
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
   Coverage margin ~2.7 points (floor 89). Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; never touch slskd or real data;
@@ -65,17 +65,17 @@ Evidence for every line is in HISTORY §156.
 
 ## 5. Decisions made
 
-- **`seeker playlists` stays an optional group**: its no-subcommand
-  behaviour is the listing. The other three groups became required;
-  a bare `seeker` still prints full help, exit 0 (as `git` does).
-- **`ui/formatting.py` moved whole, no re-export** (the brief allowed
-  either): every function in it was pure, so one home beats an alias.
-- **`SEEKER_DEBUG_POLL` is read once at startup**, not per call:
-  logging levels are an entry-point concern, like handlers. Promoted
-  to CLAUDE.md with the "no print or input in a service" rule.
-- **Help text still carries "Roadmap item R3.1/R3.4" and "(roadmap
-  item 56)"** (`downloads review --all`, `library scan --match`):
-  left for S24, since §15's acceptance is byte-identical help.
+- **`delete_missing` deleted, not kept for its tests**: the scanner
+  deletes by id since S7; its tests moved onto `delete_by_ids`, the
+  path the scanner actually takes past SQLite's variable limit.
+- **`format_speed` deleted with its tests** rather than moved: the
+  tests exercised nothing but the function itself.
+- **PIE790, RSE102, FURB161 selected by exact code** so the §16.2
+  fixes stay fixed (explicit-preview-rules; see CLAUDE.md).
+- **Result-dataclass fields only tests read stay** (`index_failed`,
+  `tagged_art_rarely_supported_format`): the §16 acceptance excludes
+  dataclass fields.
+- Carried: help text's "Roadmap item" strings wait for S24.
 
 ## 6. Blockers
 
@@ -83,7 +83,8 @@ None.
 
 ## 7. Files in progress
 
-None. S15 is complete.
+None mid-edit. S16 stopped cleanly at its split point; §16.3–§16.6
+not started.
 
 ## 8. Waiting on Kris
 
