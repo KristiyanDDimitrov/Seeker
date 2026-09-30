@@ -1,5 +1,7 @@
+import contextlib
 import logging
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from logging.handlers import RotatingFileHandler
 
 from PySide6.QtWidgets import QApplication, QMainWindow
@@ -34,6 +36,18 @@ def _configure_logging() -> None:
     logger.setLevel(logging.INFO)
 
 
+def _configure_application_identity(qt_app: QApplication) -> None:
+    # What macOS shows in the app menu and "not responding" dialogs, and
+    # what Qt appends to window titles on Windows and Linux.
+    qt_app.setApplicationName("Seeker")
+    qt_app.setApplicationDisplayName("Seeker")
+
+    # A build without installed package metadata keeps the name; only
+    # the version is unknown.
+    with contextlib.suppress(PackageNotFoundError):
+        qt_app.setApplicationVersion(version("seeker"))
+
+
 def main() -> None:
     _configure_logging()
     install_exception_hooks()
@@ -47,6 +61,7 @@ def main() -> None:
     application = Application()
 
     qt_app = QApplication(sys.argv)
+    _configure_application_identity(qt_app)
     # Before any window is constructed — apply_theme() sets Fusion
     # (predictable QSS rendering on both macOS and Windows) plus the
     # palette/stylesheet every window relies on, resolved from the
