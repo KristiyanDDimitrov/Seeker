@@ -46,13 +46,14 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QProgressBar,
     QPushButton,
     QTableWidget,
     QVBoxLayout,
     QWidget,
 )
+
+from seeker.ui.plain_text import PlainLabel
 
 # --- Palettes ----------------------------------------------------------
 
@@ -309,7 +310,7 @@ def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(bar, 1)
     if label_text is not None:
-        layout.addWidget(QLabel(label_text))
+        layout.addWidget(PlainLabel(label_text))
     return container
 
 

@@ -878,6 +878,37 @@ def test_search_without_download_flag_lists_results(tmp_path, capsys):
     assert output.index("peer1") < output.index("peer2")
 
 
+def test_search_output_strips_terminal_control_from_peer_strings(
+        tmp_path, capsys,
+):
+    matcher = make_matcher(tmp_path)
+    files = [
+        SoulseekFile(
+            username="peer\x1b[2J\x9b31m",
+            filename="\x1b]8;;https://evil.example\x07Rhyme Dust.flac",
+            extension="flac", size=25_000_000, queue_length=0,
+            upload_speed=1_000_000, has_free_upload_slot=True,
+            bit_rate=None,
+        ),
+    ]
+    download_service = FakeDownloadServiceForSearch(files=files)
+
+    cli.run(
+        FakeApplication(matcher, download_service=download_service),
+        ["search", "Dom Dolla", "Rhyme Dust"],
+    )
+
+    output = capsys.readouterr().out
+    assert "\x1b" not in output
+    assert "\x07" not in output
+    assert "\x9b" not in output
+    assert "Rhyme Dust.flac" in output
+
+
+def test_printable_keeps_tabs_and_text_and_drops_control_characters():
+    assert cli.printable("a\tb\x00c\x1bd\x7fe\x85f\nñ") == "a\tbcdefñ"
+
+
 def test_search_without_results_prints_a_clear_message(tmp_path, capsys):
     matcher = make_matcher(tmp_path)
     download_service = FakeDownloadServiceForSearch(files=[])

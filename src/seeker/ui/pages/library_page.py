@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -35,6 +34,7 @@ from seeker.ui import help_text, theme
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker
 
 
@@ -61,7 +61,7 @@ class LibraryPage(QWidget):
 
         layout.addWidget(self._build_context_header())
 
-        self.status_label = QLabel("")
+        self.status_label = PlainLabel("")
 
         self._tagging_panel = TaggingPanel(
             context,
@@ -103,7 +103,7 @@ class LibraryPage(QWidget):
         inner_layout.setSpacing(theme.SPACING_SM)
 
         summary_row = QHBoxLayout()
-        self._context_label = QLabel("")
+        self._context_label = PlainLabel("")
         self._context_label.setWordWrap(True)
         summary_row.addWidget(self._context_label, 1)
 

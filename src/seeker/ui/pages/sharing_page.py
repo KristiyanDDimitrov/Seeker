@@ -3,10 +3,8 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -22,9 +20,10 @@ from seeker.sharing_service import (
     SharingApplyResult,
     UploadStatus,
 )
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel, RichLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
@@ -65,8 +64,7 @@ class SharingPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_LG)
 
-        framing_label = QLabel(help_text.SHARING_FRAMING_BODY)
-        framing_label.setTextFormat(Qt.TextFormat.RichText)
+        framing_label = RichLabel(help_text.SHARING_FRAMING_BODY)
         framing_label.setWordWrap(True)
         layout.addWidget(framing_label)
 
@@ -82,7 +80,7 @@ class SharingPage(QWidget):
         layout.addWidget(self.sharing_notice)
 
         controls = QHBoxLayout()
-        self.sharing_summary_label = QLabel("")
+        self.sharing_summary_label = PlainLabel("")
         controls.addWidget(self.sharing_summary_label, 1)
 
         self.sharing_refresh_button = QPushButton("Refresh")
@@ -91,7 +89,7 @@ class SharingPage(QWidget):
         controls.addWidget(self.sharing_refresh_button)
         layout.addLayout(controls)
 
-        self.sharing_status_label = QLabel("")
+        self.sharing_status_label = PlainLabel("")
         layout.addWidget(self.sharing_status_label)
 
         self.sharing_locations_table = QTableWidget(0, 5)
@@ -102,7 +100,7 @@ class SharingPage(QWidget):
         layout.addWidget(theme.make_card(self.sharing_locations_table))
         self._configure_sharing_locations_columns()
 
-        uploads_label = QLabel("Currently uploading")
+        uploads_label = PlainLabel("Currently uploading")
         # QLabel#sectionHeaderLabel in theme.py.
         uploads_label.setObjectName("sectionHeaderLabel")
         layout.addWidget(uploads_label)
@@ -255,7 +253,7 @@ class SharingPage(QWidget):
                 )
 
                 if state.shared:
-                    shared_widget = theme.cell_widget(QLabel("Shared"))
+                    shared_widget = theme.cell_widget(PlainLabel("Shared"))
                     action_widgets.append(shared_widget)
                     table.setCellWidget(row, 4, shared_widget)
                     continue
@@ -359,7 +357,7 @@ class SharingPage(QWidget):
         plan = service.preview_add_location(location)
 
         if not self._current_sharing_self_managed:
-            QMessageBox.information(
+            plain_text.information(
                 self,
                 help_text.SHARING_ADD_CONFIRM_TITLE,
                 help_text.SHARING_NOT_SELF_MANAGED_NOTICE
@@ -370,7 +368,7 @@ class SharingPage(QWidget):
             )
             return
 
-        confirmed = QMessageBox.question(
+        confirmed = plain_text.question(
             self,
             help_text.SHARING_ADD_CONFIRM_TITLE,
             help_text.format_add_to_share_confirm_body(

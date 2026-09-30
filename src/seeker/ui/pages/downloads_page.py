@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -22,6 +21,7 @@ from seeker.ui.download_eta import (
     format_aggregate_header,
 )
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
@@ -181,7 +181,7 @@ class DownloadsPage(QWidget):
         # Aggregate remaining-time header (HISTORY §53) — text only,
         # empty (no reserved-but-blank strip) whenever there's nothing
         # active to summarize; see _render_aggregate_eta.
-        self.downloads_eta_label = QLabel("")
+        self.downloads_eta_label = PlainLabel("")
         # QLabel[badge="muted"] in theme.py.
         self.downloads_eta_label.setProperty("badge", "muted")
 
@@ -294,7 +294,7 @@ class DownloadsPage(QWidget):
                 if request.failure_reason:
                     # The cell elides a long reason; the tooltip never
                     # does.
-                    status_item.setToolTip(status_item.text())
+                    status_item.setToolTip(plain_tooltip(status_item.text()))
                 self.downloads_table.setItem(row, 3, status_item)
 
                 is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES

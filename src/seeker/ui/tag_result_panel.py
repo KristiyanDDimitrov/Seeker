@@ -19,7 +19,6 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.ui import theme
+from seeker.ui.plain_text import PlainLabel
 
 
 def summarize_tag_result(result: dict[str, Any]) -> str:
@@ -83,7 +83,7 @@ class TagResultPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_XS)
 
-        self.summary_label = QLabel("")
+        self.summary_label = PlainLabel("")
         self.summary_label.setWordWrap(True)
         self.summary_label.setProperty("badge", "muted")
         layout.addWidget(self.summary_label)
@@ -144,7 +144,7 @@ class TagResultPanel(QWidget):
                 theme.SPACING_XS, theme.SPACING_XS,
                 theme.SPACING_XS, theme.SPACING_XS,
             )
-            label = QLabel(f"[{detail['reason']}] {detail['message']}")
+            label = PlainLabel(f"[{detail['reason']}] {detail['message']}")
             label.setWordWrap(True)
             row_layout.addWidget(label, 1)
 

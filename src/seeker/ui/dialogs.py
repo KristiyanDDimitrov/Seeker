@@ -7,6 +7,7 @@ dependency, so this was a pure file move, not a redesign.
 """
 
 import contextlib
+import html
 import webbrowser
 from importlib.metadata import version
 from pathlib import Path
@@ -18,7 +19,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -39,6 +39,7 @@ from seeker.library.metadata_service import RenamePlan
 from seeker.models.library_location import LibraryLocation
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text, theme
+from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 
 
 def build_support_links_row() -> QHBoxLayout:
@@ -89,15 +90,17 @@ class AboutDialog(QDialog):
 
         body = help_text.ABOUT_DIALOG_BODY
         if installed_version is not None:
-            body += f"<p>Version {installed_version}</p>"
+            body += f"<p>Version {html.escape(installed_version)}</p>"
         build_identity = help_text.format_build_identity(
             _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
             _build_info.BUILT_AT,
         )
-        body += f"<p>{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}</p>"
+        body += (
+            f"<p>{help_text.HELP_BUILD_IDENTITY_LABEL} "
+            f"{html.escape(build_identity)}</p>"
+        )
 
-        text_label = QLabel(body)
-        text_label.setTextFormat(Qt.TextFormat.RichText)
+        text_label = RichLabel(body)
         text_label.setWordWrap(True)
         layout.addWidget(text_label)
 
@@ -106,19 +109,16 @@ class AboutDialog(QDialog):
         # webbrowser.open() wiring needed for a plain clickable label
         # (unlike the support buttons below, which need an explicit
         # click handler since they're QPushButtons, not link text).
-        author_label = QLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
-        author_label.setTextFormat(Qt.TextFormat.RichText)
+        author_label = RichLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
         author_label.setWordWrap(True)
         author_label.setOpenExternalLinks(True)
         layout.addWidget(author_label)
 
-        license_label = QLabel(help_text.ABOUT_DIALOG_LICENSE_LINE)
-        license_label.setTextFormat(Qt.TextFormat.RichText)
+        license_label = RichLabel(help_text.ABOUT_DIALOG_LICENSE_LINE)
         license_label.setWordWrap(True)
         layout.addWidget(license_label)
 
-        notices_label = QLabel(help_text.ABOUT_DIALOG_THIRD_PARTY_NOTICES)
-        notices_label.setTextFormat(Qt.TextFormat.RichText)
+        notices_label = RichLabel(help_text.ABOUT_DIALOG_THIRD_PARTY_NOTICES)
         notices_label.setWordWrap(True)
         # Roadmap item C5.3 — QLabel[badge="faint"] in theme.py.
         notices_label.setProperty("badge", "faint")
@@ -183,7 +183,7 @@ class DestinationDialog(QDialog):
         )
         layout.setSpacing(theme.SPACING_MD)
 
-        intro = QLabel(
+        intro = PlainLabel(
             help_text.DESTINATION_DIALOG_INTRO.format(playlist=playlist_name)
         )
         intro.setWordWrap(True)
@@ -222,7 +222,7 @@ class DestinationDialog(QDialog):
         # there. Recomputed on every relevant field change, not just once
         # at open, so it never goes stale while the user is still
         # deciding.
-        self.location_path_preview = QLabel()
+        self.location_path_preview = PlainLabel()
         self.location_path_preview.setWordWrap(True)
         # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
         self.location_path_preview.setProperty("badge", "muted")
@@ -233,11 +233,11 @@ class DestinationDialog(QDialog):
 
         self.remember_checkbox = QCheckBox("Remember this for this playlist")
         self.remember_checkbox.setChecked(True)
-        self.remember_checkbox.setToolTip(
+        self.remember_checkbox.setToolTip(plain_tooltip(
             help_text.TOOLTIP_REMEMBER_DESTINATION_CHECKBOX.format(
                 playlist=playlist_name,
             )
-        )
+        ))
         layout.addWidget(self.remember_checkbox)
 
         button_row = QHBoxLayout()
@@ -339,7 +339,7 @@ class RenamePreviewDialog(QDialog):
         )
         layout.setSpacing(theme.SPACING_MD)
 
-        intro = QLabel(
+        intro = PlainLabel(
             f"'{playlist_name}': "
             + help_text.RENAME_PREVIEW_DIALOG_INTRO
         )
@@ -403,7 +403,7 @@ class RenamePreviewDialog(QDialog):
                     if path is not None
                 ]
                 if tooltip_parts:
-                    item.setToolTip("\n".join(tooltip_parts))
+                    item.setToolTip(plain_tooltip("\n".join(tooltip_parts)))
 
                 list_widget.addItem(item)
 
@@ -467,7 +467,7 @@ class BulkReplaceUpgradesDialog(QDialog):
         )
         layout.setSpacing(theme.SPACING_MD)
 
-        intro = QLabel(
+        intro = PlainLabel(
             help_text.format_bulk_replace_upgrades_intro(len(upgrades))
         )
         intro.setWordWrap(True)
@@ -536,7 +536,7 @@ class BulkResolveDuplicatesDialog(QDialog):
         total_files_to_delete = sum(
             len(plan.delete_local_file_ids) for plan, _, _ in plans_with_labels
         )
-        intro = QLabel(
+        intro = PlainLabel(
             help_text.format_bulk_resolve_duplicates_intro(
                 len(plans_with_labels), total_files_to_delete,
             )

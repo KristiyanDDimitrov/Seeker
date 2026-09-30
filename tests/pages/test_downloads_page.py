@@ -5,6 +5,7 @@ mirror of §9.3.1's own Downloads extraction (S7).
 
 from datetime import UTC, datetime, timedelta
 
+from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel, QProgressBar
 
 from seeker.models.active_download import ActiveDownload
@@ -609,7 +610,28 @@ def test_a_failed_row_shows_its_reason_with_the_full_text_in_a_tooltip(
 
     item = window._downloads_page.downloads_table.item(0, 3)
     assert item.text() == "Failed — Peer rejected: too many requests"
-    assert item.toolTip() == "Failed — Peer rejected: too many requests"
+    tooltip = QTextDocument()
+    tooltip.setHtml(item.toolTip())
+    assert tooltip.toPlainText() == "Failed — Peer rejected: too many requests"
+
+
+def test_a_failure_reason_with_markup_renders_literally_in_the_tooltip(
+        qtbot,
+):
+    reason = 'Peer said <a href="https://evil.example">update</a>'
+    download = _make_active_download(
+        status="failed", bytes_transferred=None, total_bytes=None,
+    )
+    download.request.failure_reason = reason
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads([download])
+
+    tooltip = QTextDocument()
+    tooltip.setHtml(window._downloads_page.downloads_table.item(0, 3).toolTip())
+    assert tooltip.toPlainText() == f"Failed — {reason}"
 
 
 def test_an_unavailable_row_shows_its_reason(qtbot):

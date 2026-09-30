@@ -93,3 +93,21 @@ def test_second_show_message_replaces_the_action_rather_than_stacking(qtbot):
     notice._action_button.click()
 
     assert calls == ["b"]
+
+
+def test_a_peer_filename_in_a_message_renders_literally_not_as_a_link(
+        qtbot,
+):
+    from PySide6.QtCore import Qt
+
+    filename = '<a href="https://evil.example">Update Seeker</a>.mp3'
+    notice = InlineNotice()
+    qtbot.addWidget(notice)
+
+    notice.show_message(
+        f"slskd rejected the download of '{filename}' from 'peer'.",
+        kind="error",
+    )
+
+    assert notice._message_label.textFormat() == Qt.TextFormat.PlainText
+    assert filename in notice.text()

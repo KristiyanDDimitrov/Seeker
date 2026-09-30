@@ -6,7 +6,6 @@ pure class move with no MainWindow state attached).
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -18,6 +17,7 @@ from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 
 # Plain-language labels for HistoryEvent.event_type — see
@@ -44,7 +44,7 @@ class HistoryPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Show:"))
+        controls.addWidget(PlainLabel("Show:"))
 
         self.history_filter_combo = QComboBox()
         self.history_filter_combo.setToolTip(
@@ -69,7 +69,7 @@ class HistoryPage(QWidget):
 
         layout.addLayout(controls)
 
-        self.history_status_label = QLabel("")
+        self.history_status_label = PlainLabel("")
         layout.addWidget(self.history_status_label)
 
         self.history_table = QTableWidget(0, 4)

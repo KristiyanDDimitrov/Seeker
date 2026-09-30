@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.ui import help_text
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker
 
 
@@ -52,7 +53,7 @@ class SpotifyAuthorizationWait(QWidget):
         self.cancel_button.clicked.connect(self._on_cancel_clicked)
         layout.addWidget(self.cancel_button)
 
-        self.hint_label = QLabel(help_text.SPOTIFY_AUTHORIZATION_HINT)
+        self.hint_label = PlainLabel(help_text.SPOTIFY_AUTHORIZATION_HINT)
         self.hint_label.setWordWrap(True)
         layout.addWidget(self.hint_label, 1)
 

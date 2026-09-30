@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QRect, Qt, QTimer
+from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -35,7 +36,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui import workers as workers_module
 from seeker.ui.main_window import (
     _THEME_MODE_CYCLE,
@@ -1652,6 +1653,64 @@ def test_update_available_dialog_shows_both_versions_and_link(
     assert "https://github.com/example/repo/releases/v1.3.0" in text
 
 
+def test_update_available_dialog_escapes_the_release_data(
+        qtbot, monkeypatch,
+):
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.UPDATE_AVAILABLE,
+            latest_version='v2 <img src="x">',
+            installed_version="1.2.0",
+            release_url='https://example.com/"><b>bold</b>',
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    rendered = QTextDocument()
+    rendered.setHtml(shown[0].text())
+    assert 'v2 <img src="x">' in rendered.toPlainText()
+    assert "<b>" not in shown[0].text()
+
+
+def test_unavailable_dialog_shows_the_reason_as_plain_text(
+        qtbot, monkeypatch,
+):
+    shown: list[QMessageBox] = []
+    monkeypatch.setattr(
+        "seeker.ui.main_window.check_for_update",
+        lambda: UpdateCheckResult(
+            UpdateStatus.UNAVAILABLE, reason="<b>GitHub said no</b>",
+        ),
+    )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window.check_for_updates_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+
+    assert shown[0].textFormat() == Qt.TextFormat.PlainText
+
+
 def test_unavailable_dialog_shows_the_reason(qtbot, monkeypatch):
     shown: list[QMessageBox] = []
     monkeypatch.setattr(
@@ -2548,7 +2607,9 @@ def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
     import seeker.ui.main_window as main_window_module
 
     source = Path(main_window_module.__file__).read_text()
-    literals = re.findall(r'Q(?:PushButton|Label)\(\s*"([^"]*)"', source)
+    literals = re.findall(
+        r'(?:QPushButton|PlainLabel|RichLabel)\(\s*"([^"]*)"', source,
+    )
     stray = [
         text for text in literals
         if "&" in text and "&&" not in text and text != "&Help"
@@ -2683,7 +2744,7 @@ def _confirm_yes(monkeypatch) -> None:
     # confirmation dialog stubs the static question() classmethod to
     # answer Yes, the same way a real user clicking Yes would.
     monkeypatch.setattr(
-        QMessageBox, "question",
+        plain_text, "question",
         lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
 

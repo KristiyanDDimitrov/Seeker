@@ -25,9 +25,10 @@ needs to still see a few seconds later belongs there anymore.
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from seeker.ui import theme
+from seeker.ui.plain_text import PlainLabel
 
 _VALID_KINDS = {"info", "success", "warning", "error"}
 
@@ -67,7 +68,7 @@ class InlineNotice(QWidget):
         )
         layout.setSpacing(theme.SPACING_SM)
 
-        self._message_label = QLabel("")
+        self._message_label = PlainLabel("")
         self._message_label.setWordWrap(True)
         layout.addWidget(self._message_label, 1)
 

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from seeker.application import Application
 from seeker.ui import theme
 from seeker.ui.busy_actions import BusyActionRegistry
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.playlist_selection import PlaylistSelection
 
 
@@ -53,7 +54,7 @@ def build_subtitle_label(text: str) -> QLabel:
     # Persistent, not hover-dependent — a muted one-liner under each
     # tab's own header, aimed at someone who never reads the README and
     # goes straight into the app.
-    label = QLabel(text)
+    label = PlainLabel(text)
     # Routed through the global stylesheet's QLabel[badge="muted"] rule
     # (theme.py) rather than a per-widget setStyleSheet() call, so a
     # runtime theme switch re-colors this automatically with no
@@ -94,7 +95,7 @@ def build_page(
     if header_extra is not None:
         title_row.addWidget(header_extra)
 
-    title_label = QLabel(title)
+    title_label = PlainLabel(title)
     # QLabel#pageTitleLabel in theme.py.
     title_label.setObjectName("pageTitleLabel")
     title_row.addWidget(title_label)

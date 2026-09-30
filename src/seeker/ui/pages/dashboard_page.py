@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -53,6 +52,7 @@ from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
@@ -374,7 +374,7 @@ class DashboardPage(QWidget):
         self.track_area_stack.addWidget(self._track_empty_panel)
         right.addWidget(self.track_area_stack)
 
-        self.status_label = QLabel("")
+        self.status_label = PlainLabel("")
         right.addWidget(self.status_label)
 
         layout.addLayout(right, 3)
@@ -536,9 +536,11 @@ class DashboardPage(QWidget):
             )
             return theme.cell_widget(tag_button)
 
-        tagged_label = QLabel("Tagged")
+        tagged_label = PlainLabel("Tagged")
         tagged_label.setProperty("badge", "muted")
-        tagged_label.setToolTip(f"Tagged {format_timestamp(status.tagged_at)}")
+        tagged_label.setToolTip(
+            plain_tooltip(f"Tagged {format_timestamp(status.tagged_at)}"),
+        )
         return theme.cell_widget(tagged_label)
 
     def _on_track_table_context_menu(self, position: Any) -> None:
@@ -654,7 +656,7 @@ class DashboardPage(QWidget):
         layout = QVBoxLayout(panel)
         layout.addStretch()
 
-        self.track_empty_label = QLabel("")
+        self.track_empty_label = PlainLabel("")
         self.track_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.track_empty_label.setWordWrap(True)
         # QLabel[badge="muted"] in theme.py.

@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QMainWindow,
     QProgressBar,
@@ -35,6 +34,7 @@ from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
+from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
 
@@ -121,8 +121,8 @@ class OnboardingWizard(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        layout.addWidget(QLabel("<h2>Connect Spotify</h2>"))
-        layout.addWidget(QLabel(
+        layout.addWidget(RichLabel("<h2>Connect Spotify</h2>"))
+        layout.addWidget(PlainLabel(
             "Seeker needs a Spotify app to sync your playlists. "
             "Register one on the Spotify Developer Dashboard, then "
             "paste its Client ID below."
@@ -139,14 +139,14 @@ class OnboardingWizard(QMainWindow):
 
         redirect_row = QHBoxLayout()
         redirect_row.addWidget(
-            QLabel(f"Redirect URI: {DEFAULT_REDIRECT_URI}")
+            PlainLabel(f"Redirect URI: {DEFAULT_REDIRECT_URI}")
         )
         copy_button = QPushButton("Copy")
         copy_button.setToolTip(help_text.TOOLTIP_COPY_REDIRECT_URI)
         copy_button.clicked.connect(self._copy_redirect_uri)
         redirect_row.addWidget(copy_button)
         layout.addLayout(redirect_row)
-        layout.addWidget(QLabel(
+        layout.addWidget(PlainLabel(
             "Add this exact Redirect URI to your Spotify app's "
             "settings — it must match exactly."
         ))
@@ -177,7 +177,7 @@ class OnboardingWizard(QMainWindow):
         )
         layout.addWidget(self.connect_button)
 
-        self.spotify_status_label = QLabel("")
+        self.spotify_status_label = PlainLabel("")
         layout.addWidget(self.spotify_status_label)
 
         self.spotify_authorization_wait = SpotifyAuthorizationWait(
@@ -224,13 +224,13 @@ class OnboardingWizard(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        layout.addWidget(QLabel("<h2>Choose your music library</h2>"))
-        layout.addWidget(QLabel(
+        layout.addWidget(RichLabel("<h2>Choose your music library</h2>"))
+        layout.addWidget(PlainLabel(
             "Seeker scans this folder for audio files to match "
             "against your Spotify tracks."
         ))
 
-        self.library_path_label = QLabel("No folder selected.")
+        self.library_path_label = PlainLabel("No folder selected.")
         layout.addWidget(self.library_path_label)
 
         choose_button = QPushButton("Choose Folder...")
@@ -266,7 +266,7 @@ class OnboardingWizard(QMainWindow):
         )
         layout.addWidget(self.subfolder_per_playlist_checkbox)
 
-        self.library_status_label = QLabel("")
+        self.library_status_label = PlainLabel("")
         layout.addWidget(self.library_status_label)
 
         layout.addStretch()
@@ -317,23 +317,23 @@ class OnboardingWizard(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        layout.addWidget(QLabel("<h2>Set up SoulSeek (optional)</h2>"))
-        layout.addWidget(QLabel(
+        layout.addWidget(RichLabel("<h2>Set up SoulSeek (optional)</h2>"))
+        layout.addWidget(PlainLabel(
             "Seeker searches SoulSeek for tracks missing from your "
             "local library. This step is optional — SoulSeek-dependent "
             "actions stay disabled until it's set up, same as the CLI."
         ))
 
-        self.docker_state_label = QLabel("Checking Docker...")
+        self.docker_state_label = PlainLabel("Checking Docker...")
         layout.addWidget(self.docker_state_label)
 
         self.docker_action_button = QPushButton("")
         self.docker_action_button.hide()
         layout.addWidget(self.docker_action_button)
 
-        layout.addWidget(QLabel("SoulSeek network account:"))
+        layout.addWidget(PlainLabel("SoulSeek network account:"))
 
-        account_mode_explanation = QLabel(
+        account_mode_explanation = PlainLabel(
             help_text.SOULSEEK_ACCOUNT_MODE_EXPLANATION
         )
         account_mode_explanation.setWordWrap(True)
@@ -408,7 +408,7 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_progress.hide()
         layout.addWidget(self.soulseek_progress)
 
-        self.soulseek_status_label = QLabel("")
+        self.soulseek_status_label = PlainLabel("")
         layout.addWidget(self.soulseek_status_label)
 
         skip_button = QPushButton("Set up later")
@@ -622,7 +622,9 @@ class OnboardingWizard(QMainWindow):
                 "Another client is already logged in with this "
                 "username."
             )
-            self.soulseek_status_label.setToolTip(result.detail or "")
+            self.soulseek_status_label.setToolTip(
+                plain_tooltip(result.detail or ""),
+            )
             return
 
         if self._health_poll_elapsed >= HEALTH_POLL_TIMEOUT_SECONDS:
@@ -658,7 +660,7 @@ class OnboardingWizard(QMainWindow):
 
         # Never dropped — the real log line stays available on hover,
         # regardless of which branch's copy is shown.
-        self.soulseek_status_label.setToolTip(detail or "")
+        self.soulseek_status_label.setToolTip(plain_tooltip(detail or ""))
 
     def _stop_health_poll(self) -> None:
         if self._health_poll_timer is not None:
@@ -694,8 +696,8 @@ class OnboardingWizard(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        layout.addWidget(QLabel(help_text.DONE_PAGE_TITLE_HTML))
-        layout.addWidget(QLabel(help_text.DONE_PAGE_BODY))
+        layout.addWidget(RichLabel(help_text.DONE_PAGE_TITLE_HTML))
+        layout.addWidget(PlainLabel(help_text.DONE_PAGE_BODY))
 
         layout.addStretch()
 

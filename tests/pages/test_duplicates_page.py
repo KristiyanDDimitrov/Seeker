@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.models.library_location import LibraryLocation
-from seeker.ui import help_text
+from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import (
@@ -516,7 +516,7 @@ def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
     # satisfied before `_on_bulk_resolve_duplicates_finished`'s real
     # QMessageBox.information() call has fired, leaving it queued to
     # pop a genuine blocking modal during a later test.
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._duplicates_page.resolve_all_duplicates_button.click()
 
@@ -556,7 +556,7 @@ def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
     monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
     # Roadmap item C3 (round 5) — same real leaked-QMessageBox fix as
     # the two tests above.
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._duplicates_page.resolve_all_duplicates_button.click()
 
@@ -637,7 +637,7 @@ def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
         return QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._duplicates_page.resolve_all_duplicates_button.click()
 
@@ -1218,7 +1218,7 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
         captured["body"] = body
         return QMessageBox.StandardButton.Yes
 
-    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(plain_text, "question", fake_question)
 
     application = FakeApplication(duplicate_groups=[_make_duplicate_group()])
     window = MainWindow(application)

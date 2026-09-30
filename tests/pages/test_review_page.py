@@ -15,10 +15,12 @@ existed for this file's own prior residence in test_ui_smoke.py.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QDialog, QMessageBox, QPushButton
+from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
 
+from seeker.ui import plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.main_window import MainWindow
+from seeker.ui.plain_text import plain_tooltip
 from test_ui_smoke import (
     FakeApplication,
     _make_needs_review_match,
@@ -106,7 +108,7 @@ def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
 
     runner_up_item = window._review_page.review_needs_table.item(0, 3)
     assert runner_up_item.text() == "peer2 (68.5)"
-    assert runner_up_item.toolTip() == "Artist - Title (alt).mp3"
+    assert runner_up_item.toolTip() == plain_tooltip("Artist - Title (alt).mp3")
 
 
 def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
@@ -400,7 +402,7 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     # leaks past this test's own scope — the same defensive pattern
     # `test_resolve_all_duplicates_drops_only_succeeded_groups_locally`
     # already used correctly.
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._review_page.replace_all_upgrades_button.click()
 
@@ -454,7 +456,7 @@ def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
     )
     info_calls = []
     monkeypatch.setattr(
-        QMessageBox, "information",
+        plain_text, "information",
         lambda *a, **k: info_calls.append(a),
     )
 

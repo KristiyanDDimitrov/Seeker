@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QMessageBox,
     QPushButton,
@@ -29,10 +28,11 @@ from seeker.library.duplicate_service import (
     GroupResolutionPlan,
 )
 from seeker.models.library_location import LibraryLocation
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
 from seeker.ui.formatting import format_file_size
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker
 
 # A sentinel QButtonGroup id for the "Keep all" option, sharing the
@@ -104,7 +104,7 @@ class DuplicatesPage(QWidget):
         # matching this app's existing "blank, not a misleading
         # control" precedent for a genuinely-nothing-to-show state
         # (HISTORY §56 Phase 6.4).
-        self.duplicates_milestone_label = QLabel("")
+        self.duplicates_milestone_label = PlainLabel("")
         self.duplicates_milestone_label.hide()
         layout.addWidget(self.duplicates_milestone_label)
 
@@ -195,14 +195,14 @@ class DuplicatesPage(QWidget):
         # Shown BEFORE a real, potentially ~10-minute-at-real-scale run
         # (HISTORY §39) — see help_text.format_duplicates_scope_count's
         # own docstring.
-        self.duplicates_scope_count_label = QLabel("")
+        self.duplicates_scope_count_label = PlainLabel("")
         folders_panel_layout.addWidget(self.duplicates_scope_count_label)
 
         self.duplicates_folders_panel.setVisible(False)
         layout.addWidget(self.duplicates_folders_panel)
 
         duplicates_status_row = QHBoxLayout()
-        self.duplicates_status_label = QLabel("")
+        self.duplicates_status_label = PlainLabel("")
         duplicates_status_row.addWidget(self.duplicates_status_label)
         duplicates_status_row.addStretch()
         # "Resolve all groups" (HISTORY §88). Real count set in
@@ -937,7 +937,7 @@ class DuplicatesPage(QWidget):
             if keep_duplicate_file is not None else None
         )
 
-        confirmed = QMessageBox.question(
+        confirmed = plain_text.question(
             self,
             help_text.DELETE_DUPLICATES_CONFIRM_TITLE,
             help_text.format_delete_duplicates_confirm_body(paths_to_delete),
@@ -1133,7 +1133,7 @@ class DuplicatesPage(QWidget):
             result: BulkDuplicateResolutionResult,
             attempted_groups: list[DuplicateGroup],
     ) -> None:
-        QMessageBox.information(
+        plain_text.information(
             self,
             help_text.BULK_RESOLVE_DUPLICATES_DIALOG_TITLE,
             help_text.format_bulk_resolve_duplicates_result(result),

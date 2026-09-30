@@ -9,6 +9,7 @@ from seeker.docker_setup import (
 )
 from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import AuthorizationCancelledError
+from seeker.ui.plain_text import plain_tooltip
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -698,7 +699,9 @@ def test_health_result_bad_credentials_existing_account_mode(
     assert wizard.soulseek_username_field.text() == "realuser"
     # The real, raw detail is never dropped — available on hover
     # regardless of which branch's copy is shown.
-    assert wizard.soulseek_status_label.toolTip() == "invalid username or password"
+    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(
+        "invalid username or password"
+    )
     assert completed == []
     assert wizard.stack.currentIndex() == 2
 
@@ -732,7 +735,9 @@ def test_health_result_bad_credentials_new_account_mode(
     # suite runs under.
     assert wizard.soulseek_username_field.text() == ""
     assert wizard.soulseek_password_field.text() == "mypassword"
-    assert wizard.soulseek_status_label.toolTip() == "invalid username or password"
+    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(
+        "invalid username or password"
+    )
     assert completed == []
 
 
@@ -754,7 +759,7 @@ def test_health_result_kicked_shows_distinct_message(
     text = wizard.soulseek_status_label.text()
     assert "already logged in" in text
     assert text != real_detail  # plain-language, not the raw log line
-    assert wizard.soulseek_status_label.toolTip() == real_detail
+    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(real_detail)
     assert completed == []
 
 

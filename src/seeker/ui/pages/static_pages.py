@@ -11,7 +11,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -22,6 +21,7 @@ from seeker import _build_info
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import build_support_links_row
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel, RichLabel
 
 
 def _open_in_file_manager(path: Path) -> None:
@@ -61,30 +61,27 @@ class HelpPage(QWidget):
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.setSpacing(theme.SPACING_LG)
 
-        walkthrough_label = QLabel(help_text.HELP_WALKTHROUGH_BODY)
-        walkthrough_label.setTextFormat(Qt.TextFormat.RichText)
+        walkthrough_label = RichLabel(help_text.HELP_WALKTHROUGH_BODY)
         walkthrough_label.setWordWrap(True)
         inner_layout.addWidget(walkthrough_label)
 
-        troubleshooting_label = QLabel(help_text.HELP_TROUBLESHOOTING_BODY)
-        troubleshooting_label.setTextFormat(Qt.TextFormat.RichText)
+        troubleshooting_label = RichLabel(help_text.HELP_TROUBLESHOOTING_BODY)
         troubleshooting_label.setWordWrap(True)
         inner_layout.addWidget(troubleshooting_label)
 
         locations = context.application.data_locations
 
-        data_heading = QLabel(help_text.HELP_DATA_LOCATIONS_HEADING)
-        data_heading.setTextFormat(Qt.TextFormat.RichText)
+        data_heading = RichLabel(help_text.HELP_DATA_LOCATIONS_HEADING)
         inner_layout.addWidget(data_heading)
 
-        intro_label = QLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
+        intro_label = PlainLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
         intro_label.setWordWrap(True)
         inner_layout.addWidget(intro_label)
 
         # Said explicitly, in the app, not just in a doc (HISTORY §81):
         # a "fix didn't work on the other account" report is very often
         # a different-database report, not a different-behavior one.
-        per_account_label = QLabel(
+        per_account_label = PlainLabel(
             help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE
         )
         per_account_label.setWordWrap(True)
@@ -97,7 +94,7 @@ class HelpPage(QWidget):
             _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
             _build_info.BUILT_AT,
         )
-        build_label = QLabel(
+        build_label = PlainLabel(
             f"{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}"
         )
         build_label.setTextInteractionFlags(
@@ -116,7 +113,7 @@ class HelpPage(QWidget):
                 (help_text.DATA_LOCATION_SLSKD_LABEL, locations.slskd_data_dir),
                 (help_text.DATA_LOCATION_LOG_LABEL, locations.log_dir),
         ):
-            path_label = QLabel(str(path))
+            path_label = PlainLabel(str(path))
             path_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -188,27 +185,23 @@ class SupportPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_LG)
 
-        framing_label = QLabel(help_text.SUPPORT_PAGE_FRAMING_BODY)
-        framing_label.setTextFormat(Qt.TextFormat.RichText)
+        framing_label = RichLabel(help_text.SUPPORT_PAGE_FRAMING_BODY)
         framing_label.setWordWrap(True)
         layout.addWidget(framing_label)
 
         layout.addLayout(build_support_links_row())
 
-        non_financial_heading = QLabel(
+        non_financial_heading = RichLabel(
             help_text.SUPPORT_PAGE_NON_FINANCIAL_HEADING
         )
-        non_financial_heading.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(non_financial_heading)
 
-        report_bug_label = QLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY)
-        report_bug_label.setTextFormat(Qt.TextFormat.RichText)
+        report_bug_label = RichLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY)
         report_bug_label.setWordWrap(True)
         report_bug_label.setOpenExternalLinks(True)
         layout.addWidget(report_bug_label)
 
-        share_library_label = QLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)
-        share_library_label.setTextFormat(Qt.TextFormat.RichText)
+        share_library_label = RichLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)
         share_library_label.setWordWrap(True)
         layout.addWidget(share_library_label)
 
@@ -222,8 +215,7 @@ class SupportPage(QWidget):
             go_to_sharing_button, alignment=Qt.AlignmentFlag.AlignLeft,
         )
 
-        author_label = QLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
-        author_label.setTextFormat(Qt.TextFormat.RichText)
+        author_label = RichLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
         author_label.setWordWrap(True)
         author_label.setOpenExternalLinks(True)
         layout.addWidget(author_label)

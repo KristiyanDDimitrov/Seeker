@@ -43,8 +43,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QHBoxLayout,
-    QLabel,
-    QMessageBox,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -58,10 +56,11 @@ from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.download_service import BulkUpgradeReplaceResult
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
@@ -160,7 +159,7 @@ class ReviewPage(QWidget):
         needs_layout = QVBoxLayout(needs_section)
         needs_layout.setContentsMargins(0, 0, 0, 0)
         needs_layout.addWidget(
-            QLabel("SoulSeek candidates needing confirmation")
+            PlainLabel("SoulSeek candidates needing confirmation")
         )
 
         self.review_needs_table = QTableWidget(0, 5)
@@ -179,7 +178,7 @@ class ReviewPage(QWidget):
 
         upgrades_header_row = QHBoxLayout()
         upgrades_header_row.addWidget(
-            QLabel("Downloaded upgrades ready for review")
+            PlainLabel("Downloaded upgrades ready for review")
         )
         upgrades_header_row.addStretch()
         # "Replace all" (HISTORY §88). Real count set/refreshed in
@@ -214,7 +213,7 @@ class ReviewPage(QWidget):
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(0, 0, 0, 0)
         local_layout.addWidget(
-            QLabel("Local library matches needing confirmation")
+            PlainLabel("Local library matches needing confirmation")
         )
 
         self.review_local_table = QTableWidget(0, 5)
@@ -405,7 +404,7 @@ class ReviewPage(QWidget):
                         candidate.runner_up_score,
                     )
                     runner_up_item.setToolTip(
-                        candidate.runner_up_filename or ""
+                        plain_tooltip(candidate.runner_up_filename or "")
                     )
                 else:
                     runner_up_item = SortKeyItem("—", -1.0)
@@ -668,7 +667,7 @@ class ReviewPage(QWidget):
     def _on_bulk_replace_upgrades_finished(
             self, result: BulkUpgradeReplaceResult,
     ) -> None:
-        QMessageBox.information(
+        plain_text.information(
             self,
             help_text.BULK_REPLACE_UPGRADES_DIALOG_TITLE,
             help_text.format_bulk_replace_upgrades_result(result),

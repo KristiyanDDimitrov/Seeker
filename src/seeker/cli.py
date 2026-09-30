@@ -40,6 +40,22 @@ from seeker.spotify.sync_service import (
 from seeker.ui.formatting import format_file_size, format_timestamp
 
 
+def printable(text: str) -> str:
+    """`text` without C0/C1 control characters, tab kept.
+
+    For any string a SoulSeek peer chose (a filename, a username, an
+    error quoting them) before it reaches the terminal: an ESC or CSI
+    sequence in it could otherwise clear the screen, retitle the
+    window or plant an OSC 8 link.
+    """
+    return "".join(
+        char for char in text
+        if char == "\t" or not (
+            char < " " or "\x7f" <= char <= "\x9f"
+        )
+    )
+
+
 def resolve_playlist_or_offer_sync(
         name: str,
         application: Application,
@@ -534,8 +550,8 @@ def handle_search(
 
         if result["settled"]:
             print(
-                f"Requested from {result['username']}: "
-                f"{result['filename']}"
+                f"Requested from {printable(result['username'])}: "
+                f"{printable(result['filename'])}"
             )
         else:
             print(
@@ -557,7 +573,7 @@ def handle_search(
         bitrate = f"{file.bit_rate}kbps" if file.bit_rate else "—"
         lock_note = " [locked]" if file.locked else ""
         print(
-            f"  {file.username}: {file.filename} "
+            f"  {printable(file.username)}: {printable(file.filename)} "
             f"({file.extension}, {bitrate}, "
             f"{format_file_size(file.size)}, "
             f"queue {file.queue_length}){lock_note}"
@@ -632,7 +648,7 @@ def _handle_downloads_review_all(application: Application) -> None:
 
     print(f"Replaced: {result.replaced}, Failed: {result.failed}.")
     for detail in result.details:
-        print(f"  {detail}")
+        print(f"  {printable(detail)}")
 
 def handle_sync(application: Application) -> None:
     result = application.sync_service.refresh_playlists()
@@ -976,7 +992,10 @@ def handle_check(
 
     if parsed.verbose:
         for artist, title, score, filename in report["auto_matched"]:
-            print(f"  {artist} - {title} (score: {score:.1f}) -> {filename}")
+            print(
+                f"  {artist} - {title} (score: {score:.1f}) -> "
+                f"{printable(filename)}"
+            )
 
     needs_review = report["needs_review"]
     print(f"\nNeeds review ({len(needs_review)}):")
@@ -1003,7 +1022,8 @@ def handle_check(
             print(
                 f"  {track.artist} - {track.title} "
                 f"(score: {candidate.score:.1f}) -> "
-                f"{candidate.username}: {candidate.filename}"
+                f"{printable(candidate.username)}: "
+                f"{printable(candidate.filename)}"
             )
 
     unmatched = report["unmatched"]
@@ -1052,7 +1072,8 @@ def handle_review(
             f"{match.track_title} (score: {match.score:.1f})"
         )
         print(
-            f"      -> {match.location_name}: {match.local_file_path} "
+            f"      -> {match.location_name}: "
+            f"{printable(match.local_file_path)} "
             f"(tag: {match.tag_artist!r} - {match.tag_title!r})"
         )
 
@@ -1196,5 +1217,5 @@ def run(
             FingerprintingUnavailableError,
             InvalidDestinationSubfolderError,
     ) as error:
-        print(str(error))
+        print(printable(str(error)))
         sys.exit(1)

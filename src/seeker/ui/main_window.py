@@ -1,4 +1,5 @@
 import base64
+import html
 import logging
 import math
 import sys
@@ -45,7 +46,7 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
@@ -76,6 +77,7 @@ from seeker.ui.pages.review_page import (
 from seeker.ui.pages.search_page import SearchPage
 from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.pages.static_pages import HelpPage, SupportPage
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.playlist_selection import PlaylistSelection
 from seeker.ui.settings_window import SettingsPage
 from seeker.ui.tray import (
@@ -193,7 +195,7 @@ class _ThemeToggleButton(QPushButton):
 
     def _update_tooltip(self) -> None:
         label = _THEME_MODE_LABELS.get(self._mode, self._mode)
-        self.setToolTip(f"Theme: {label} (click to change)")
+        self.setToolTip(plain_tooltip(f"Theme: {label} (click to change)"))
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
@@ -941,7 +943,7 @@ class MainWindow(QMainWindow):
         )
         layout.setSpacing(theme.SPACING_SM)
 
-        self.activity_strip_label = QLabel("")
+        self.activity_strip_label = PlainLabel("")
         layout.addWidget(self.activity_strip_label)
 
         # Untuned fixed width — wide enough to read a real percentage
@@ -1046,7 +1048,7 @@ class MainWindow(QMainWindow):
         # needed. The brow-strokes-over-"ee" idea is deliberately not
         # carried forward — see HISTORY §E4 for why the asset stays,
         # dormant, in the repo rather than deleted outright.
-        self._wordmark = QLabel("Seeker")
+        self._wordmark = PlainLabel("Seeker")
         self._wordmark.setObjectName("wordmark")
         wordmark_row.addWidget(self._wordmark)
         wordmark_row.addStretch()
@@ -1330,6 +1332,8 @@ class MainWindow(QMainWindow):
 
         box = QMessageBox(self)
         box.setWindowTitle(help_text.UPDATE_CHECK_DIALOG_TITLE)
+        # The version, URL and reason come from GitHub's response.
+        box.setTextFormat(Qt.TextFormat.PlainText)
 
         if result.status == UpdateStatus.UP_TO_DATE:
             box.setIcon(QMessageBox.Icon.Information)
@@ -1343,8 +1347,11 @@ class MainWindow(QMainWindow):
                 f"(you have v{result.installed_version})."
             )
             if result.release_url:
-                text += f"<br><a href=\"{result.release_url}\">" \
-                        f"View the release</a>"
+                text = (
+                    f"{html.escape(text)}<br>"
+                    f'<a href="{html.escape(result.release_url)}">'
+                    f"View the release</a>"
+                )
                 box.setTextFormat(Qt.TextFormat.RichText)
             box.setText(text)
         elif result.status == UpdateStatus.NO_RELEASES_PUBLISHED:
@@ -1365,7 +1372,7 @@ class MainWindow(QMainWindow):
         # docstring) — this only exists as a defensive fallback for a
         # failure in run_worker's own dispatch, not an expected path.
         self.check_for_updates_action.setEnabled(True)
-        QMessageBox.warning(
+        plain_text.warning(
             self, help_text.UPDATE_CHECK_DIALOG_TITLE,
             f"Couldn't check for updates: {message}",
         )
@@ -1855,6 +1862,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Quit Seeker?")
+        box.setTextFormat(Qt.TextFormat.PlainText)
         box.setText(f"{count} {noun} still in progress.")
         box.setInformativeText(
             "Seeker hands transfers to SoulSeek, which keeps running "

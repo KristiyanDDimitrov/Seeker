@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -38,9 +37,10 @@ from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.playlist import Playlist
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, plain_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
 
@@ -320,7 +320,7 @@ class SettingsPage(QWidget):
         )
 
     def _confirm_remove_location(self, preview: LocationRemovalSummary) -> None:
-        confirmed = QMessageBox.question(
+        confirmed = plain_text.question(
             self,
             help_text.REMOVE_LOCATION_CONFIRM_TITLE,
             help_text.format_remove_location_confirm_body(preview),
@@ -402,7 +402,7 @@ class SettingsPage(QWidget):
         )
         right.addWidget(self.save_destination_button)
 
-        self.destinations_status_label = QLabel("")
+        self.destinations_status_label = PlainLabel("")
         right.addWidget(self.destinations_status_label)
 
         right.addStretch()
@@ -451,7 +451,7 @@ class SettingsPage(QWidget):
         save_row.addStretch()
         layout.addRow(save_row)
 
-        self.default_destination_status_label = QLabel("")
+        self.default_destination_status_label = PlainLabel("")
         layout.addRow(self.default_destination_status_label)
 
         return group
@@ -635,7 +635,7 @@ class SettingsPage(QWidget):
         )
         spotify_form.addRow("", self.reauthorize_spotify_button)
 
-        self.spotify_status_label = QLabel("")
+        self.spotify_status_label = PlainLabel("")
         spotify_form.addRow("", self.spotify_status_label)
 
         self.spotify_authorization_wait = SpotifyAuthorizationWait(
@@ -651,14 +651,14 @@ class SettingsPage(QWidget):
         soulseek_group = QGroupBox("SoulSeek")
         soulseek_form = QFormLayout(soulseek_group)
 
-        self.soulseek_username_display = QLabel("Not configured")
+        self.soulseek_username_display = PlainLabel("Not configured")
         soulseek_form.addRow("Username:", self.soulseek_username_display)
 
-        self.soulseek_password_display = QLabel("Not configured")
+        self.soulseek_password_display = PlainLabel("Not configured")
         soulseek_form.addRow("Password:", self.soulseek_password_display)
 
         api_key_row = QHBoxLayout()
-        self.soulseek_api_key_display = QLabel("Not configured")
+        self.soulseek_api_key_display = PlainLabel("Not configured")
         api_key_row.addWidget(self.soulseek_api_key_display)
         self.reveal_api_key_button = QPushButton("Show")
         self.reveal_api_key_button.setToolTip(help_text.TOOLTIP_REVEAL_API_KEY)
@@ -673,13 +673,13 @@ class SettingsPage(QWidget):
         # above), otherwise nowhere in the app the user could ever find
         # it once bring_up_slskd stopped leaving the web UI at slskd's
         # own vendor default.
-        self.slskd_web_username_display = QLabel("Not configured")
+        self.slskd_web_username_display = PlainLabel("Not configured")
         soulseek_form.addRow(
             "Web UI username:", self.slskd_web_username_display
         )
 
         web_password_row = QHBoxLayout()
-        self.slskd_web_password_display = QLabel("Not configured")
+        self.slskd_web_password_display = PlainLabel("Not configured")
         web_password_row.addWidget(self.slskd_web_password_display)
         self.reveal_web_password_button = QPushButton("Show")
         self.reveal_web_password_button.setToolTip(
@@ -701,10 +701,10 @@ class SettingsPage(QWidget):
         )
         soulseek_form.addRow("", self.test_connection_button)
 
-        self.test_connection_status_label = QLabel("")
+        self.test_connection_status_label = PlainLabel("")
         soulseek_form.addRow("", self.test_connection_status_label)
 
-        soulseek_form.addRow(QLabel("Update credentials:"))
+        soulseek_form.addRow(PlainLabel("Update credentials:"))
 
         self.new_soulseek_username_field = QLineEdit()
         self.new_soulseek_username_field.setPlaceholderText(
@@ -752,7 +752,7 @@ class SettingsPage(QWidget):
         )
         soulseek_form.addRow("", self.update_credentials_button)
 
-        self.update_credentials_status_label = QLabel("")
+        self.update_credentials_status_label = PlainLabel("")
         soulseek_form.addRow("", self.update_credentials_status_label)
 
         layout.addWidget(soulseek_group)
@@ -1117,7 +1117,7 @@ class SettingsPage(QWidget):
 
         layout.addWidget(self._build_appearance_group())
 
-        layout.addWidget(QLabel(
+        layout.addWidget(PlainLabel(
             "Controls when a matched track is auto-accepted vs. "
             "surfaced for review vs. treated as no match at all."
         ))
@@ -1161,7 +1161,7 @@ class SettingsPage(QWidget):
         )
         layout.addWidget(self.save_thresholds_button)
 
-        self.thresholds_status_label = QLabel("")
+        self.thresholds_status_label = PlainLabel("")
         layout.addWidget(self.thresholds_status_label)
 
         # Roadmap item R7.5 — per-category menu-bar notification
@@ -1249,7 +1249,7 @@ class SettingsPage(QWidget):
         )
         layout.addWidget(self.start_hidden_at_login_checkbox)
 
-        self.start_at_login_status_label = QLabel("")
+        self.start_at_login_status_label = PlainLabel("")
         self.start_at_login_status_label.setProperty("badge", "muted")
         self.start_at_login_status_label.setWordWrap(True)
         layout.addWidget(self.start_at_login_status_label)

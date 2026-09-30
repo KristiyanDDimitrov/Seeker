@@ -21,6 +21,7 @@ from seeker.models.playlist import Playlist
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
+from seeker.ui import plain_text
 from seeker.ui.settings_window import SettingsPage
 
 
@@ -281,7 +282,7 @@ def answer_question(monkeypatch, answer) -> list[str]:
         asked.append(text)
         return answer
 
-    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(plain_text, "question", fake_question)
     return asked
 
 

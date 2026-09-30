@@ -8,9 +8,9 @@ rather than moving here — both are used by structural sweep tests
 own tests that stay there too. Imported from there below.
 """
 
-from PySide6.QtWidgets import QMessageBox, QPushButton
+from PySide6.QtWidgets import QPushButton
 
-from seeker.ui import help_text
+from seeker.ui import help_text, plain_text
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import (
     FakeApplication,
@@ -231,7 +231,7 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
 
     info_calls = []
     monkeypatch.setattr(
-        QMessageBox, "information",
+        plain_text, "information",
         lambda *a, **k: info_calls.append(a),
     )
 
