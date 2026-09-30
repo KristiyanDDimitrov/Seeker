@@ -17,8 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted; S11 adds 37 tests).
 - **`mypy --strict src/`:** clean, 113 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the "CI" line at the end of this file (recorded after
-  the push).
+- **CI:** close-out `0670e88` → run `36704261752`, **success**,
+  `1469 passed, 29 skipped`, branch coverage 91.59 % (floor 89).
 
 ## 2. Where we are
 
