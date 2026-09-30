@@ -18,7 +18,8 @@ nine fields below follow the contract in
   deleted with it.
 - **`mypy --strict src/`:** clean, 119 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the handoff-CI commit that follows this one.
+- **CI:** run `36769570707` on `b56c371` (the close-out commit):
+  success.
 
 ## 2. Where we are
 
