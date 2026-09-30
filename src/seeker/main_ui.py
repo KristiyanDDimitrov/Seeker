@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import sys
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from logging.handlers import RotatingFileHandler
 
@@ -34,6 +35,14 @@ def _configure_logging() -> None:
     logger = logging.getLogger("seeker")
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+
+@dataclass
+class _OpenWindows:
+    """Strong references to top-level windows created after main()'s
+    own `window`, which no parent widget owns."""
+
+    dashboard: MainWindow | None = None
 
 
 def _configure_application_identity(qt_app: QApplication) -> None:
@@ -95,6 +104,8 @@ def main() -> None:
         if application.settings.start_hidden_at_login:
             started_hidden = window.start_hidden_to_tray()
     else:
+        open_windows = _OpenWindows()
+
         def show_dashboard() -> None:
             qt_app.setQuitOnLastWindowClosed(False)
             dashboard = MainWindow(application)
@@ -104,8 +115,9 @@ def main() -> None:
             # otherwise nothing holds the new window and Python would
             # garbage-collect it immediately (same class of bug
             # ui/workers.py's _callbacks registry guards against for
-            # in-flight background tasks).
-            qt_app.dashboard_window = dashboard  # type: ignore[attr-defined]
+            # in-flight background tasks). `open_windows` lives as long
+            # as main(), which is the whole event loop.
+            open_windows.dashboard = dashboard
 
         window = OnboardingWizard(application, on_complete=show_dashboard)
 
