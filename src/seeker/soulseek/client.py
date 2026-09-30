@@ -45,7 +45,7 @@ class SlskdUnauthorizedError(SeekerError):
 #     shared.") — arrives via the ASYNC shape: request_download's own
 #     POST succeeds (200, a real transfer_id comes back), and the
 #     rejection only shows up moments later via get_download_status
-#     ("Completed, Rejected") + get_download_exception.
+#     ("Completed, Rejected", with the reason in its `exception`).
 #   "appears to be offline" — the peer isn't currently reachable at all
 #     (2026-08-28, "User long25 appears to be offline") — arrives via a
 #     completely different, SYNCHRONOUS shape: slskd refuses the
@@ -90,6 +90,11 @@ class TransferStatus:
     # absent/null).
     bytes_transferred: int | None
     size: int | None
+    # A rejected transfer's real reason ("Transfer rejected: File not
+    # shared.") lives in the record's "exception" field, not in "state",
+    # which only says "Completed, Rejected" (confirmed live 2026-08-27).
+    # None for a 404, and for any transfer slskd gives no reason for.
+    exception: str | None = None
 
 
 class SoulseekClient:
@@ -287,29 +292,8 @@ class SoulseekClient:
             state=cast(str, data["state"]),
             bytes_transferred=data.get("bytesTransferred"),
             size=data.get("size"),
+            exception=data.get("exception"),
         )
-
-    def get_download_exception(
-            self,
-            username: str,
-            transfer_id: str,
-    ) -> str | None:
-        # Confirmed live (2026-08-27): a rejected transfer's real reason
-        # ("Transfer rejected: File not shared.") lives in this
-        # "exception" field, not in "state" itself — state only says
-        # "Completed, Rejected".
-        response = httpx.get(
-            self._transfer_url(username, transfer_id),
-            headers=self._headers(),
-            timeout=10.0,
-        )
-
-        if response.status_code == 404:
-            return None
-
-        response.raise_for_status()
-
-        return cast(str | None, response.json().get("exception"))
 
 
 def _parse_search_response(data: dict[str, Any]) -> list[SoulseekFile]:

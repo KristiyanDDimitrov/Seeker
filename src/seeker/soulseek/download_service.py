@@ -77,6 +77,7 @@ from seeker.soulseek.client import (
     SlskdUnreachableError,
     SoulseekClient,
     SoulseekDownloadError,
+    TransferStatus,
     derive_extension,
     is_recognized_rejection,
 )
@@ -1109,7 +1110,7 @@ class DownloadService:
                     # stays role-specific, since the shortlist/cascade
                     # mechanism is an upgrade-only concept.
                     status, reason = self._classify_failed_transfer(
-                        state, request.username, request.transfer_id,
+                        transfer_status,
                     )
                     self._update_status(
                         request.id, status, failure_reason=reason,
@@ -1227,24 +1228,21 @@ class DownloadService:
 
         return counts
 
+    @staticmethod
     def _classify_failed_transfer(
-            self,
-            state: str,
-            username: str,
-            transfer_id: str,
+            transfer: TransferStatus,
     ) -> tuple[DownloadStatus, str | None]:
         """'locked' (no reason: it is retried) for a recognized
         rejection, otherwise 'failed' with a reason a user can read."""
-        exception_text = self.soulseek.get_download_exception(
-            username, transfer_id,
-        )
-
-        if "Rejected" in state and is_recognized_rejection(exception_text):
+        if (
+                "Rejected" in transfer.state
+                and is_recognized_rejection(transfer.exception)
+        ):
             return DownloadStatus.LOCKED, None
 
         return (
             DownloadStatus.FAILED,
-            describe_transfer_failure(state, exception_text),
+            describe_transfer_failure(transfer.state, transfer.exception),
         )
 
     def _cascade_upgrade(self, track_id: str, counts: PollResult) -> None:
@@ -1329,16 +1327,15 @@ class DownloadService:
         # away rather than waiting a full poll cycle to find out it
         # failed again. A sync-shape rejection (peer offline) never
         # reaches this point at all — it's already handled above.
-        state = self.soulseek.get_download_status(
+        transfer = self.soulseek.get_download_status(
             request.username, transfer_id,
-        ).state
+        )
+        state = transfer.state
 
         reason = None
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
-            status, reason = self._classify_failed_transfer(
-                state, request.username, transfer_id,
-            )
+            status, reason = self._classify_failed_transfer(transfer)
         elif "Succeeded" in state:
             status = DownloadStatus.READY_FOR_REVIEW
         else:

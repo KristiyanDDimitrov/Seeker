@@ -41,6 +41,7 @@ from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import (
     SlskdUnreachableError,
+    SoulseekClient,
     SoulseekDownloadError,
     TransferStatus,
 )
@@ -181,12 +182,8 @@ class FakeSoulseekClient:
             state=self.states[transfer_id],
             bytes_transferred=bytes_transferred,
             size=size,
+            exception=self.exceptions.get(transfer_id),
         )
-
-    def get_download_exception(
-            self, username: str, transfer_id: str,
-    ) -> str | None:
-        return self.exceptions.get(transfer_id)
 
     def request_download(self, username: str, filename: str, size: int) -> str:
         self.request_download_calls.append((username, filename, size))
@@ -1055,6 +1052,38 @@ def test_confirm_review_candidate_locked_rejection_uses_existing_classification(
 
     assert counts.failed == 0
     assert get_status(service, "transfer-1") == "locked"
+
+
+def test_poll_downloads_classifies_a_rejection_from_one_transfer_get(
+        tmp_path, monkeypatch,
+):
+    # slskd's transfer record carries both the state and the rejection
+    # reason, so classifying a rejection reads it once.
+    service = make_service(tmp_path, states={})
+    service._soulseek_client = SoulseekClient("http://slskd.test", "key")
+    seed_pending_request(service, transfer_id="transfer-1")
+    requested_urls: list[str] = []
+
+    def fake_get(url, headers=None, timeout=None):
+        requested_urls.append(url)
+        return httpx.Response(
+            200,
+            json={
+                "state": "Completed, Rejected",
+                "exception": "Transfer rejected: File not shared.",
+            },
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    counts = service.poll_downloads()
+
+    assert counts.failed == 0
+    assert get_status(service, "transfer-1") == "locked"
+    assert requested_urls == [
+        "http://slskd.test/api/v0/transfers/downloads/peer1/transfer-1"
+    ]
 
 
 def test_reject_review_candidate_deletes_and_requests_nothing(tmp_path):

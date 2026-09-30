@@ -241,7 +241,7 @@ def test_search_includes_real_lockedfiles_array_shape(monkeypatch):
     assert results[0].size == 34279790
 
 
-# request_download / get_download_status / get_download_exception were
+# request_download / get_download_status were
 # previously only exercised indirectly, through FakeSoulseekClient in
 # download_service tests — the real client methods (the same ones with
 # real, previously-found bugs: the endpoint/field-name saga, the locked-
@@ -496,7 +496,7 @@ def test_get_download_status_parses_real_progress_fields_before_rejection(
     assert status.size == 55144573
 
 
-def test_get_download_exception_returns_real_reason(monkeypatch):
+def test_get_download_status_carries_the_rejection_reason(monkeypatch):
     # Exact real string confirmed live (2026-08-27 locked-file
     # investigation).
     def fake_get(url, headers=None, timeout=None):
@@ -510,31 +510,37 @@ def test_get_download_exception_returns_real_reason(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    exception_text = client.get_download_exception("peer1", "transfer-abc")
+    exception_text = client.get_download_status(
+        "peer1", "transfer-abc",
+    ).exception
 
     assert exception_text == "Transfer rejected: File not shared."
 
 
-def test_get_download_exception_returns_none_when_absent(monkeypatch):
+def test_get_download_status_exception_is_none_when_absent(monkeypatch):
     def fake_get(url, headers=None, timeout=None):
         return FakeResponse({"state": "Completed, Succeeded"})
 
     monkeypatch.setattr(httpx, "get", fake_get)
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    exception_text = client.get_download_exception("peer1", "transfer-abc")
+    exception_text = client.get_download_status(
+        "peer1", "transfer-abc",
+    ).exception
 
     assert exception_text is None
 
 
-def test_get_download_exception_returns_none_on_404(monkeypatch):
+def test_get_download_status_exception_is_none_on_404(monkeypatch):
     class NotFoundResponse:
         status_code = 404
 
     monkeypatch.setattr(httpx, "get", lambda *a, **k: NotFoundResponse())
 
     client = SoulseekClient("http://localhost:5030", "test-api-key")
-    exception_text = client.get_download_exception("peer1", "transfer-abc")
+    exception_text = client.get_download_status(
+        "peer1", "transfer-abc",
+    ).exception
 
     assert exception_text is None
 
@@ -549,12 +555,9 @@ _HOSTILE_USERNAMES = [
 ]
 
 
-@pytest.mark.parametrize("method_name", [
-    "get_download_status", "get_download_exception",
-])
 @pytest.mark.parametrize(("username", "encoded"), _HOSTILE_USERNAMES)
 def test_transfer_lookups_encode_the_username_as_one_path_segment(
-        monkeypatch, method_name, username, encoded,
+        monkeypatch, username, encoded,
 ):
     requested: list[httpx.URL] = []
 
@@ -566,7 +569,7 @@ def test_transfer_lookups_encode_the_username_as_one_path_segment(
     monkeypatch.setattr(httpx, "get", fake_get)
     client = SoulseekClient("http://localhost:5030", "key")
 
-    getattr(client, method_name)(username, "id/1?x")
+    client.get_download_status(username, "id/1?x")
 
     [url] = requested
     assert url.raw_path.decode() == (
