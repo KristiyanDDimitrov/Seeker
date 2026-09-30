@@ -21,6 +21,11 @@ from seeker.config_store import SeekerConfig
 from seeker.models.active_download import ActiveDownload
 from seeker.models.data_locations import DataLocations
 from seeker.models.download_request import DownloadRequest
+from seeker.models.download_result import (
+    ManualDownloadResult,
+    PlaylistDownloadResult,
+    PollResult,
+)
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -408,9 +413,9 @@ class FakeDownloadService:
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
             resolved_destination: tuple | None = None,
-            download_playlist_result: dict | None = None,
+            download_playlist_result: PlaylistDownloadResult | None = None,
             search_manual_results: list | None = None,
-            download_manual_result: dict | None = None,
+            download_manual_result: ManualDownloadResult | None = None,
             download_manual_error: Exception | None = None,
             confirm_review_candidate_error: Exception | None = None,
     ):
@@ -419,10 +424,10 @@ class FakeDownloadService:
         # Roadmap item 82 (P13) — manual (not-from-Spotify) search/
         # download.
         self._search_manual_results = search_manual_results or []
-        self._download_manual_result = download_manual_result or {
-            "requested": False, "settled": False,
-            "reason": "no_candidate_found",
-        }
+        self._download_manual_result = download_manual_result or ManualDownloadResult(
+            track_id="manual:fake", requested=False, settled=False,
+            reason="no_candidate_found",
+        )
         self._download_manual_error = download_manual_error
         self._confirm_review_candidate_error = confirm_review_candidate_error
         self.search_manual_calls: list[tuple[str, str]] = []
@@ -451,10 +456,9 @@ class FakeDownloadService:
         self._resolved_destination = resolved_destination
         self.set_destination_calls: list[tuple[str, str, str | None]] = []
         self.download_playlist_calls: list[str] = []
-        self._download_playlist_result = download_playlist_result or {
-            "requested": 0, "skipped": 0, "failed": 0, "total": 0,
-            "already_in_progress": [],
-        }
+        self._download_playlist_result = (
+            download_playlist_result or PlaylistDownloadResult()
+        )
 
     def get_resolved_destination(self, playlist_name: str) -> tuple | None:
         return self._resolved_destination
@@ -481,12 +485,12 @@ class FakeDownloadService:
             subfolder,
         )
 
-    def download_playlist(self, playlist_name: str) -> dict:
+    def download_playlist(self, playlist_name: str) -> PlaylistDownloadResult:
         self.download_playlist_calls.append(playlist_name)
         return self._download_playlist_result
 
-    def poll_downloads(self) -> dict:
-        return {}
+    def poll_downloads(self) -> PollResult:
+        return PollResult()
 
     def get_review_candidates(self) -> list:
         return self._review_candidates
@@ -644,7 +648,7 @@ class FakeApplication:
             has_scanned_library: bool = True,
             history_events: list | None = None,
             needs_review_matches: list | None = None,
-            download_playlist_result: dict | None = None,
+            download_playlist_result: PlaylistDownloadResult | None = None,
             sharing_service=None,
             art_urls_filled: int = 0,
             fix_art_result: dict | None = None,
@@ -1314,12 +1318,12 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     application = FakeApplication(
         playlists=playlists,
         resolved_destination=(location, "Test"),
-        download_playlist_result={
-            "requested": 2, "skipped": 3, "failed": 0, "total": 5,
-            "already_in_progress": [
+        download_playlist_result=PlaylistDownloadResult(
+            requested=2, skipped=3, failed=0, total=5,
+            already_in_progress=[
                 "Artist A - Title A", "Artist B - Title B", "Artist C - Title C",
             ],
-        },
+        ),
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -1355,13 +1359,13 @@ def test_download_result_notice_reports_needs_review_separately_from_skipped(
     application = FakeApplication(
         playlists=playlists,
         resolved_destination=(location, "Test"),
-        download_playlist_result={
-            "requested": 4, "skipped": 6, "failed": 0, "total": 10,
-            "already_in_progress": [],
-            "needs_review": [
+        download_playlist_result=PlaylistDownloadResult(
+            requested=4, skipped=6, failed=0, total=10,
+            already_in_progress=[],
+            needs_review=[
                 "Prdk - ONE MORE NIGHT", "Zigi SC, A-Cray - Bit Perfect",
             ],
-        },
+        ),
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -2266,9 +2270,9 @@ def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):
     recorded: dict[str, threading.Thread] = {}
 
     class RecordingDownloadService:
-        def poll_downloads(self) -> dict:
+        def poll_downloads(self) -> PollResult:
             recorded["thread"] = threading.current_thread()
-            return {}
+            return PollResult()
 
     application = FakeApplication(soulseek_configured=True)
     application.download_service = RecordingDownloadService()
@@ -2339,11 +2343,11 @@ def test_backend_poll_overlap_guard_skips_concurrent_tick(qtbot):
     release = threading.Event()
 
     class SlowDownloadService:
-        def poll_downloads(self) -> dict:
+        def poll_downloads(self) -> PollResult:
             call_count["n"] += 1
             started.set()
             release.wait(timeout=5)
-            return {}
+            return PollResult()
 
     application = FakeApplication(soulseek_configured=True)
     application.download_service = SlowDownloadService()

@@ -5,6 +5,7 @@ Start slskd action (HISTORY §151)."""
 from dataclasses import replace
 
 from seeker.docker_setup import SlskdStartRefusedError
+from seeker.models.download_result import PollResult
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.ui.main_window import MainWindow
 from seeker.ui.slskd_status import SlskdStatus
@@ -85,7 +86,7 @@ def test_tray_notifies_once_per_outage(qtbot, monkeypatch):
     assert messages == [OUTAGE]
 
     # A recovery re-arms the notification without notifying itself.
-    application.download_service.poll_downloads = lambda: {}
+    application.download_service.poll_downloads = PollResult
     _poll(qtbot, window)
     assert messages == [OUTAGE]
 
@@ -116,7 +117,7 @@ def test_first_successful_poll_clears_the_outage(qtbot, monkeypatch):
     next_step = window._dashboard_page.next_step_notice
     qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=2000)
 
-    application.download_service.poll_downloads = lambda: {}
+    application.download_service.poll_downloads = PollResult
     _poll(qtbot, window)
 
     assert window.slskd_status.unreachable_message is None

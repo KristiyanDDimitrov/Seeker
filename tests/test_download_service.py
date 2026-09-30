@@ -28,6 +28,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.download_request import DownloadRequest
+from seeker.models.download_result import PollResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
@@ -397,14 +398,14 @@ def test_download_playlist_mid_batch_exception_does_not_abort_remaining_tracks(
 
     result = service.download_playlist("Test")
 
-    assert result["total"] == 3
-    assert result["requested"] == 1
-    assert result["skipped"] == 1
-    assert result["failed"] == 1
+    assert result.total == 3
+    assert result.requested == 1
+    assert result.skipped == 1
+    assert result.failed == 1
     # Every track accounted for exactly once.
     assert (
-        result["requested"] + result["skipped"] + result["failed"]
-        == result["total"]
+        result.requested + result.skipped + result.failed
+        == result.total
     )
 
     # t2 (after the failing t1) was genuinely processed and requested —
@@ -500,9 +501,9 @@ def test_download_playlist_requests_locked_only_candidate_as_upgrade(
 
     # A real download WAS requested (as an upgrade, not settled) — this
     # must not be reported as "skipped, nothing found."
-    assert result["requested"] == 1
-    assert result["skipped"] == 0
-    assert result["failed"] == 0
+    assert result.requested == 1
+    assert result.skipped == 0
+    assert result.failed == 0
 
     assert service.soulseek.request_download_calls == [
         (
@@ -602,9 +603,9 @@ def test_download_playlist_skips_track_with_existing_active_request(
 
     result = service.download_playlist("Test")
 
-    assert result["requested"] == 0
-    assert result["skipped"] == 1
-    assert result["failed"] == 0
+    assert result.requested == 0
+    assert result.skipped == 1
+    assert result.failed == 0
     # The guard fires before ever searching or requesting again.
     assert service.soulseek.search_calls == []
     assert service.soulseek.request_download_calls == []
@@ -644,9 +645,9 @@ def test_download_playlist_skips_track_with_a_completed_request(tmp_path):
 
     result = service.download_playlist("Test")
 
-    assert result["requested"] == 0
-    assert result["skipped"] == 1
-    assert result["already_in_progress"] == ["Kamäleon - Quadrat"]
+    assert result.requested == 0
+    assert result.skipped == 1
+    assert result.already_in_progress == ["Kamäleon - Quadrat"]
     # The guard fires before ever searching or requesting again — a
     # second, differently-named file from a different peer must never
     # even be searched for.
@@ -723,13 +724,13 @@ def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
 
     # No auto-tier candidate exists — a real download must not be
     # requested for a needs_review-only result.
-    assert result["requested"] == 0
-    assert result["skipped"] == 1
+    assert result.requested == 0
+    assert result.skipped == 1
     assert service.soulseek.request_download_calls == []
     # Roadmap item 66 (Phase 4.2) — named separately from the generic
     # "skipped" count so a caller can tell "sent to Review" apart from
     # "no candidate found at all."
-    assert result["needs_review"] == ["Prdk - ONE MORE NIGHT"]
+    assert result.needs_review == ["Prdk - ONE MORE NIGHT"]
 
     with service.database.transaction() as connection:
         rows = connection.execute(
@@ -774,8 +775,8 @@ def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
 
     result2 = service2.download_playlist("Test")
 
-    assert result2["requested"] == 0
-    assert result2["skipped"] == 1
+    assert result2.requested == 0
+    assert result2.skipped == 1
 
     with service2.database.transaction() as connection:
         rows2 = connection.execute(
@@ -833,8 +834,8 @@ def test_download_playlist_resolves_threshold_from_config_end_to_end(
 
     result_before = service.download_playlist("Test")
 
-    assert result_before["requested"] == 0
-    assert result_before["skipped"] == 1
+    assert result_before.requested == 0
+    assert result_before.skipped == 1
     assert service.soulseek.request_download_calls == []
 
     # Settings-equivalent action: lower the config threshold below the
@@ -843,8 +844,8 @@ def test_download_playlist_resolves_threshold_from_config_end_to_end(
 
     result_after = service.download_playlist("Test")
 
-    assert result_after["requested"] == 1
-    assert result_after["skipped"] == 0
+    assert result_after.requested == 1
+    assert result_after.skipped == 0
     assert len(service.soulseek.request_download_calls) == 1
     assert service.soulseek.request_download_calls[0][1] == (
         prdk_candidate.filename
@@ -877,7 +878,7 @@ def test_download_playlist_clears_stale_review_candidate_once_settled(
     _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
 
     first = service.download_playlist("Test")
-    assert first["skipped"] == 1
+    assert first.skipped == 1
 
     with service.database.transaction() as connection:
         count = connection.execute(
@@ -888,7 +889,7 @@ def test_download_playlist_clears_stale_review_candidate_once_settled(
     service.soulseek.search_results[query] = [auto_candidate]
 
     second = service.download_playlist("Test")
-    assert second["requested"] == 1
+    assert second.requested == 1
 
     with service.database.transaction() as connection:
         count = connection.execute(
@@ -1028,7 +1029,7 @@ def test_confirm_review_candidate_locked_rejection_uses_existing_classification(
     service.confirm_review_candidate("t1")
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 0
+    assert counts.failed == 0
     assert get_status(service, "transfer-1") == "locked"
 
 
@@ -1077,8 +1078,8 @@ def test_a_rejected_review_candidate_is_not_suggested_again(tmp_path):
     result = service.download_playlist("Test")
 
     assert _review_candidate_count(service) == 0
-    assert result["needs_review"] == []
-    assert result["skipped"] == 1
+    assert result.needs_review == []
+    assert result.skipped == 1
 
 
 def test_a_rejected_candidate_is_never_auto_requested(tmp_path):
@@ -1096,7 +1097,7 @@ def test_a_rejected_candidate_is_never_auto_requested(tmp_path):
     service.reject_review_candidate("t1")
     result = service.download_playlist("Test")
 
-    assert result["requested"] == 0
+    assert result.requested == 0
     assert service.soulseek.request_download_calls == []
 
 
@@ -1115,7 +1116,7 @@ def test_a_rejection_is_per_track(tmp_path):
     service.reject_review_candidate("t1")
     result = service.download_playlist("Test")
 
-    assert result["requested"] == 1
+    assert result.requested == 1
 
 
 def test_confirm_review_candidate_raises_when_no_candidate_found(tmp_path):
@@ -1156,7 +1157,7 @@ def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert get_status(service, "t1") == "completed"
 
 
@@ -1235,9 +1236,9 @@ def test_settled_completion_indexes_and_matches_the_downloaded_file(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
-    assert counts.get("indexed") == 1
-    assert counts.get("index_failed") is None
+    assert counts.completed == 1
+    assert counts.indexed == 1
+    assert counts.index_failed == 0
 
     with database.transaction() as connection:
         local_file = local_files.get_by_location_and_relative_path(
@@ -1367,8 +1368,8 @@ def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 0
-    assert counts["ready_for_review"] == 1
+    assert counts.completed == 0
+    assert counts.ready_for_review == 1
 
     with database.transaction() as connection:
         # The second file was never moved into the library.
@@ -1470,7 +1471,7 @@ def test_settled_completion_moves_a_filename_with_glob_special_characters(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert (lib_root / filename).exists()
 
     with database.transaction() as connection:
@@ -1602,9 +1603,9 @@ def test_download_playlist_succeeds_with_only_a_default_destination_configured(
     # loop if the default weren't being resolved.
     result = service.download_playlist("Test")
 
-    assert result["requested"] == 0
-    assert result["skipped"] == 0
-    assert result["failed"] == 0
+    assert result.requested == 0
+    assert result.skipped == 0
+    assert result.failed == 0
 
 
 def _seed_default_destination_scenario(
@@ -1714,7 +1715,7 @@ def test_settled_completion_uses_default_destination_with_playlist_subfolder(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert (default_root / "Test" / "Artist - Title.mp3").exists()
 
 
@@ -1727,7 +1728,7 @@ def test_settled_completion_uses_default_destination_with_no_subfolder(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert (default_root / "Artist - Title.mp3").exists()
     assert not (default_root / "Test").exists()
 
@@ -1744,7 +1745,7 @@ def test_settled_completion_sanitizes_a_real_playlist_name_with_a_slash(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert (default_root / "240KM-H" / "Artist - Title.mp3").exists()
     assert not (default_root / "240KM").exists()
 
@@ -1757,7 +1758,7 @@ def test_playlist_specific_destination_wins_over_the_default(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     # Landed in the playlist-specific location, not the default one.
     assert not (default_root / "Test" / "Artist - Title.mp3").exists()
 
@@ -1793,8 +1794,8 @@ def test_settled_completion_index_failure_still_counts_as_completed(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
-    assert counts.get("index_failed") == 1
+    assert counts.completed == 1
+    assert counts.index_failed == 1
     assert get_status(service, "t1") == "completed"
 
 
@@ -1812,8 +1813,8 @@ def test_poll_downloads_mid_batch_exception_does_not_abort_remaining_requests(
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
-    assert counts["downloading"] == 1
+    assert counts.failed == 1
+    assert counts.downloading == 1
     assert get_status(service, "t2") == "downloading"
 
 
@@ -1825,8 +1826,8 @@ def test_errored_state_marks_failed_not_completed(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
-    assert counts["completed"] == 0
+    assert counts.failed == 1
+    assert counts.completed == 0
     assert get_status(service, "t1") == "failed"
 
 
@@ -1838,7 +1839,7 @@ def test_cancelled_state_marks_failed(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
+    assert counts.failed == 1
     assert get_status(service, "t1") == "failed"
 
 
@@ -1850,7 +1851,7 @@ def test_timed_out_state_marks_failed(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
+    assert counts.failed == 1
     assert get_status(service, "t1") == "failed"
 
 
@@ -1862,7 +1863,7 @@ def test_rejected_state_marks_failed(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
+    assert counts.failed == 1
     assert get_status(service, "t1") == "failed"
 
 
@@ -1993,8 +1994,8 @@ def test_rejected_settled_role_with_lock_exception_routes_to_locked_not_failed(
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 0
-    assert counts["locked"] == 1
+    assert counts.failed == 0
+    assert counts.locked == 1
     assert get_status(service, "t1") == "locked"
 
 
@@ -2014,8 +2015,8 @@ def test_rejected_settled_role_with_other_reason_still_marks_failed(
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
-    assert counts["locked"] == 0
+    assert counts.failed == 1
+    assert counts.locked == 0
     assert get_status(service, "t1") == "failed"
 
 
@@ -2066,8 +2067,8 @@ def test_rejected_upgrade_with_lock_exception_routes_to_locked_not_failed(
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 0
-    assert counts["locked"] == 1
+    assert counts.failed == 0
+    assert counts.locked == 1
     assert get_status(service, "t1") == "locked"
 
 
@@ -2084,8 +2085,8 @@ def test_rejected_upgrade_with_other_reason_still_marks_failed(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
-    assert counts["locked"] == 0
+    assert counts.failed == 1
+    assert counts.locked == 0
     assert get_status(service, "t1") == "failed"
 
 
@@ -2105,7 +2106,7 @@ def test_locked_request_succeeds_on_retry_transitions_to_downloading(
 
     counts = service.poll_downloads()
 
-    assert counts["locked"] == 0
+    assert counts.locked == 0
     assert service.soulseek.request_download_calls == [
         ("peer1", "Dom Dolla - Rhyme Dust.mp3", 12_345),
     ]
@@ -2199,8 +2200,8 @@ def test_settled_role_locked_request_succeeds_on_retry_auto_moves_without_review
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
-    assert counts["failed"] == 0
+    assert counts.completed == 1
+    assert counts.failed == 0
 
     with service.database.transaction() as connection:
         row = connection.execute(
@@ -2227,8 +2228,8 @@ def test_locked_request_rejected_again_stays_locked_not_failed(tmp_path):
     # Only a genuinely different rejection reason should ever move a
     # locked request out of the retry cycle — a repeat rejection (any
     # reason) on the retry itself stays 'locked', not 'failed'.
-    assert counts["failed"] == 0
-    assert counts["locked"] == 1
+    assert counts.failed == 0
+    assert counts.locked == 1
 
     with service.database.transaction() as connection:
         row = connection.execute(
@@ -2425,7 +2426,7 @@ def test_retry_loop_dedupes_stale_duplicate_locked_rows(tmp_path):
     assert service.soulseek.request_download_calls == [
         ("long25", "Breach.flac", 1_000_000),
     ]
-    assert counts["locked"] == 0
+    assert counts.locked == 0
 
     with service.database.transaction() as connection:
         rows = {
@@ -2470,7 +2471,7 @@ def test_retry_loop_never_collapses_distinct_candidates(tmp_path):
         ("peerA", "candidate-a.flac", 1_000_000),
         ("peerB", "candidate-b.flac", 1_000_000),
     ]
-    assert counts["locked"] == 0
+    assert counts.locked == 0
 
     with service.database.transaction() as connection:
         statuses = [
@@ -2500,7 +2501,7 @@ def test_retry_loop_single_locked_row_unaffected_by_dedup_check(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["locked"] == 0
+    assert counts.locked == 0
     assert service.soulseek.request_download_calls == [
         ("peer1", "Dom Dolla - Rhyme Dust.mp3", 12_345),
     ]
@@ -2533,8 +2534,8 @@ def test_locked_request_rejected_at_batch_level_stays_locked(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 0
-    assert counts["locked"] == 1
+    assert counts.failed == 0
+    assert counts.locked == 1
     assert get_status(service, "old-1") == "locked"
 
 
@@ -2588,8 +2589,8 @@ def test_retry_locked_request_recognizes_real_peer_offline_rejection(
     # the outer per-request handler that printed this before the fix.
     assert "Failed to retry locked" not in output
 
-    assert counts["failed"] == 0
-    assert counts["locked"] == 1
+    assert counts.failed == 0
+    assert counts.locked == 1
 
     with service.database.transaction() as connection:
         row = connection.execute(
@@ -2651,11 +2652,11 @@ def test_cascade_activation_recognizes_peer_offline_and_locks_not_stuck(
     output = capsys.readouterr().out
     assert "Failed to poll" not in output
 
-    assert counts["failed"] == 0
+    assert counts.failed == 0
     # Both rank 1 (async "not shared" rejection) and the cascaded rank 2
     # (sync "appears to be offline" rejection) correctly classify as
     # 'locked', not 'failed' and not stuck at 'shortlisted'.
-    assert counts["locked"] == 2
+    assert counts.locked == 2
 
     with service.database.transaction() as connection:
         row = connection.execute(
@@ -2677,8 +2678,8 @@ def test_completed_without_succeeded_is_not_treated_as_done(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 0
-    assert counts["failed"] == 0
+    assert counts.completed == 0
+    assert counts.failed == 0
     assert get_status(service, "t1") == "downloading"
 
 
@@ -2690,7 +2691,7 @@ def test_in_progress_state_marks_downloading(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["downloading"] == 1
+    assert counts.downloading == 1
     assert get_status(service, "t1") == "downloading"
 
 
@@ -2783,11 +2784,7 @@ def test_poll_downloads_paused_makes_no_real_calls_and_touches_nothing(
     result = service.poll_downloads()
 
     assert calls == []
-    assert result == {
-        "queued": 0, "downloading": 0, "completed": 0, "failed": 0,
-        "ready_for_review": 0, "locked": 0, "shortlisted": 0,
-        "superseded": 0, "unavailable": 0,
-    }
+    assert result == PollResult()
 
     with database.transaction() as connection:
         row = service.download_requests.get_pending(connection)[0]
@@ -2807,11 +2804,11 @@ def test_poll_downloads_resumes_real_calls_once_unpaused(tmp_path):
     seed_pending_request(service, "tid1", track_id="t1")
 
     paused_result = service.poll_downloads()
-    assert paused_result["downloading"] == 0
+    assert paused_result.downloading == 0
 
     state["paused"] = False
     resumed_result = service.poll_downloads()
-    assert resumed_result["downloading"] == 1
+    assert resumed_result.downloading == 1
 
 
 def test_poll_downloads_updates_progress_for_in_flight_request(tmp_path):
@@ -2910,7 +2907,7 @@ def test_requested_state_stays_queued(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["queued"] == 1
+    assert counts.queued == 1
     assert get_status(service, "t1") == "queued"
 
 
@@ -2934,7 +2931,7 @@ def test_completed_upgrade_transfer_marks_ready_for_review_without_moving(
 
     counts = service.poll_downloads()
 
-    assert counts["ready_for_review"] == 1
+    assert counts.ready_for_review == 1
     assert get_status(service, "t1") == "ready_for_review"
 
     with service.database.transaction() as connection:
@@ -3448,10 +3445,10 @@ def test_cascade_through_two_rejections_to_third_candidate_that_succeeds(
 
     counts = service.poll_downloads()
 
-    assert counts["ready_for_review"] == 1
-    assert counts["locked"] == 0
-    assert counts["shortlisted"] == 0
-    assert counts["superseded"] == 2
+    assert counts.ready_for_review == 1
+    assert counts.locked == 0
+    assert counts.shortlisted == 0
+    assert counts.superseded == 2
 
     with service.database.transaction() as connection:
         rows = connection.execute(
@@ -3499,8 +3496,8 @@ def test_shortlist_exhaustion_falls_back_to_per_entry_daily_retry(tmp_path):
 
     counts_run1 = service.poll_downloads()
 
-    assert counts_run1["locked"] == 3
-    assert counts_run1["shortlisted"] == 0
+    assert counts_run1.locked == 3
+    assert counts_run1.shortlisted == 0
 
     # Run 2: EVERY locked entry for the track gets retried, not just the
     # highest-ranked one — extending Phase 3's per-entry retry to the
@@ -3513,7 +3510,7 @@ def test_shortlist_exhaustion_falls_back_to_per_entry_daily_retry(tmp_path):
 
     counts_run2 = service.poll_downloads()
 
-    assert counts_run2["locked"] == 3
+    assert counts_run2.locked == 3
 
     calls_by_filename: dict[str, int] = {}
     for _, filename, _ in service.soulseek.request_download_calls:
@@ -3563,10 +3560,10 @@ def test_success_on_rank_two_supersedes_locked_rank_one_and_shortlisted_rank_thr
 
     counts = service.poll_downloads()
 
-    assert counts["ready_for_review"] == 1
-    assert counts["locked"] == 0
-    assert counts["shortlisted"] == 0
-    assert counts["superseded"] == 2
+    assert counts.ready_for_review == 1
+    assert counts.locked == 0
+    assert counts.shortlisted == 0
+    assert counts.superseded == 2
 
     with service.database.transaction() as connection:
         rows = connection.execute(
@@ -3641,15 +3638,15 @@ def test_poll_downloads_never_calls_input(tmp_path, monkeypatch):
 
     counts = service.poll_downloads()
 
-    assert counts["failed"] == 1
+    assert counts.failed == 1
     # progress-1, plus the cascaded rank-2 candidate landing in-progress.
-    assert counts["downloading"] == 2
-    assert counts["ready_for_review"] == 1
+    assert counts.downloading == 2
+    assert counts.ready_for_review == 1
     # cascade-active-1 (nothing shortlisted for it beyond rank 2, which
     # got activated) and newly-locked-1 (no shortlist at all) — the
     # already-locked-1 row moved on to 'downloading' via its own retry.
-    assert counts["locked"] == 2
-    assert counts["shortlisted"] == 0
+    assert counts.locked == 2
+    assert counts.shortlisted == 0
 
 
 def test_poll_downloads_never_calls_update_progress_for_never_transferring_requests(
@@ -3799,9 +3796,9 @@ def test_download_manual_zero_results_reports_no_candidate(tmp_path):
 
     result = service.download_manual("Dom Dolla", "Rhyme Dust")
 
-    assert result["requested"] is False
-    assert result["settled"] is False
-    assert result["reason"] == "no_candidate_found"
+    assert result.requested is False
+    assert result.settled is False
+    assert result.reason == "no_candidate_found"
 
     with service.database.transaction() as connection:
         assert service.download_requests.get_all(connection) == []
@@ -3869,9 +3866,9 @@ def test_download_manual_falls_back_when_every_candidate_is_locked(tmp_path):
 
     result = service.download_manual("Dom Dolla", "Rhyme Dust")
 
-    assert result["requested"] is True
-    assert result["settled"] is False
-    assert result["reason"] == "locked_only"
+    assert result.requested is True
+    assert result.settled is False
+    assert result.reason == "locked_only"
 
     with service.database.transaction() as connection:
         requests = service.download_requests.get_all(connection)
@@ -3900,9 +3897,9 @@ def test_download_manual_explicit_pick_bypasses_the_score_threshold(
         "Dom Dolla", "Rhyme Dust", chosen=unrelated_file,
     )
 
-    assert result["requested"] is True
-    assert result["settled"] is True
-    assert result["filename"] == "Totally Unrelated Track.mp3"
+    assert result.requested is True
+    assert result.settled is True
+    assert result.filename == "Totally Unrelated Track.mp3"
 
     with service.database.transaction() as connection:
         requests = service.download_requests.get_all(connection)
@@ -3950,8 +3947,8 @@ def test_download_manual_reuses_a_prefetched_results_list_without_a_new_search(
         "Dom Dolla", "Rhyme Dust", files=[good_file],
     )
 
-    assert result["requested"] is True
-    assert result["settled"] is True
+    assert result.requested is True
+    assert result.settled is True
     assert service._soulseek_client.search_calls == []
 
 
@@ -3965,7 +3962,7 @@ def test_download_manual_creates_a_real_manual_track_row(tmp_path):
     result = service.download_manual("Dom Dolla", "Rhyme Dust")
 
     with service.database.transaction() as connection:
-        track = service.tracks.get_by_id(result["track_id"], connection)
+        track = service.tracks.get_by_id(result.track_id, connection)
 
     assert track is not None
     assert track.id.startswith("manual:")
@@ -4105,7 +4102,7 @@ def test_index_and_match_settled_download_backfills_manual_track_duration(
         transfer_id="t1", size=1000, requested_at="2026-01-01T00:00:00+00:00",
     )
 
-    counts: dict[str, int] = {}
+    counts = PollResult()
     service._index_and_match_settled_download(
         request, (location, relative_path), counts,
     )

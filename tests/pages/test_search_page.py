@@ -5,6 +5,7 @@ mirror of §9.3.1's own Search extraction (S6).
 
 from PySide6.QtWidgets import QPushButton
 
+from seeker.models.download_result import ManualDownloadResult
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import FakeApplication
@@ -100,10 +101,12 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
     )
     application = FakeApplication()
     application.download_service._search_manual_results = [file]
-    application.download_service._download_manual_result = {
-        "requested": True, "settled": True,
-        "username": "peer1", "filename": "Dom Dolla - Rhyme Dust.flac",
-    }
+    application.download_service._download_manual_result = (
+        ManualDownloadResult(
+            track_id="manual:fake", requested=True, settled=True,
+            username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+        )
+    )
     window = MainWindow(application)
     qtbot.addWidget(window)
     window._show_page("search")
@@ -142,10 +145,12 @@ def test_search_download_this_one_passes_the_explicit_pick(qtbot):
     )
     application = FakeApplication()
     application.download_service._search_manual_results = [file]
-    application.download_service._download_manual_result = {
-        "requested": True, "settled": True,
-        "username": "peer1", "filename": "Dom Dolla - Rhyme Dust.flac",
-    }
+    application.download_service._download_manual_result = (
+        ManualDownloadResult(
+            track_id="manual:fake", requested=True, settled=True,
+            username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+        )
+    )
     window = MainWindow(application)
     qtbot.addWidget(window)
     window._show_page("search")

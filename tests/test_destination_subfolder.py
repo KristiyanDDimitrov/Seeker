@@ -86,7 +86,7 @@ def test_a_nested_subfolder_downloads_to_exactly_that_path(tmp_path):
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 1
+    assert counts.completed == 1
     assert (root / "240KM" / "H" / "Artist - Title.mp3").exists()
 
 
@@ -106,7 +106,7 @@ def test_a_stored_unsafe_subfolder_never_moves_a_file_outside_the_location(
 
     counts = service.poll_downloads()
 
-    assert counts["completed"] == 0
+    assert counts.completed == 0
     assert not (tmp_path / "Elsewhere").exists()
     assert (
         tmp_path / "slskd_downloads" / "Artist - Title.mp3"

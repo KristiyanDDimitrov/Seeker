@@ -11,6 +11,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
+from seeker.models.download_result import ManualDownloadResult
 from seeker.models.local_file import LocalFile
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -237,10 +238,10 @@ class FakeDownloadServiceForBulkReview:
 class FakeDownloadServiceForSearch:
     def __init__(self, files=None, download_result=None, download_error=None):
         self._files = files or []
-        self._download_result = download_result or {
-            "requested": False, "settled": False,
-            "reason": "no_candidate_found",
-        }
+        self._download_result = download_result or ManualDownloadResult(
+            track_id="manual:fake", requested=False, settled=False,
+            reason="no_candidate_found",
+        )
         self._download_error = download_error
         self.search_manual_calls: list[tuple[str, str]] = []
         self.download_manual_calls: list[tuple[str, str]] = []
@@ -919,10 +920,10 @@ def test_search_without_results_prints_a_clear_message(tmp_path, capsys):
 def test_search_download_flag_requests_the_best_candidate(tmp_path, capsys):
     matcher = make_matcher(tmp_path)
     download_service = FakeDownloadServiceForSearch(
-        download_result={
-            "requested": True, "settled": True,
-            "username": "peer1", "filename": "Dom Dolla - Rhyme Dust.flac",
-        },
+        download_result=ManualDownloadResult(
+            track_id="manual:fake", requested=True, settled=True,
+            username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+        ),
     )
 
     cli.run(
@@ -943,10 +944,10 @@ def test_search_download_flag_requests_the_best_candidate(tmp_path, capsys):
 def test_search_download_flag_with_no_candidates_reports_it(tmp_path, capsys):
     matcher = make_matcher(tmp_path)
     download_service = FakeDownloadServiceForSearch(
-        download_result={
-            "requested": False, "settled": False,
-            "reason": "no_candidate_found",
-        },
+        download_result=ManualDownloadResult(
+            track_id="manual:fake", requested=False, settled=False,
+            reason="no_candidate_found",
+        ),
     )
 
     cli.run(

@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.models.download_request import DownloadStatus
+from seeker.models.download_result import PlaylistDownloadResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.soulseek.client import SlskdUnreachableError
@@ -1739,17 +1740,12 @@ class MainWindow(QMainWindow):
         self._reset_download_button()
         self._dashboard_page.feedback.show_error(message)
 
-    def _on_download_finished(self, result: dict[str, Any]) -> None:
+    def _on_download_finished(self, result: PlaylistDownloadResult) -> None:
         self._reset_download_button()
         self._dashboard_page._poll_selected_playlist()
 
-        # Roadmap item 66 (Phase 4.2) — the real fix for "Requested 16,
-        # skipped 12 (no candidates found)" when several of those 12 had
-        # in fact become real Review candidates: help_text.py's own
-        # formatter names each outcome separately rather than folding
-        # them into one generic figure.
         message = help_text.format_download_result_message(result)
-        kind = "success" if result["requested"] else "info"
+        kind = "success" if result.requested else "info"
         self._dashboard_page.feedback.show_outcome(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:

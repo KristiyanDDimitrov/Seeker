@@ -8,7 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -60,6 +59,11 @@ from seeker.models.download_request import (
     DownloadRequest,
     DownloadRole,
     DownloadStatus,
+)
+from seeker.models.download_result import (
+    ManualDownloadResult,
+    PlaylistDownloadResult,
+    PollResult,
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
@@ -455,7 +459,9 @@ class DownloadService:
 
         return self._resolve_destination(playlist)
 
-    def download_playlist(self, playlist_name: str) -> dict[str, Any]:
+    def download_playlist(
+            self, playlist_name: str,
+    ) -> PlaylistDownloadResult:
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
 
@@ -498,22 +504,7 @@ class DownloadService:
             config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
         )
 
-        requested = 0
-        skipped = 0
-        failed = 0
-        # Distinct from the generic `skipped` count so the UI can tell
-        # "already downloading/downloaded" apart from "no real
-        # candidate found" (the two skip reasons below are otherwise
-        # indistinguishable from the return value alone).
-        already_in_progress: list[str] = []
-        # Same reasoning, for a third skip reason folded into the same
-        # generic `skipped` counter: "sent to Review" (a real
-        # needs-review candidate was found and recorded) reads
-        # identically to "no candidate found at all" without this.
-        # `skipped` itself is left as their combined total
-        # (backward-compatible with any existing consumer summing it),
-        # this list is what lets a caller subtract the two apart honestly.
-        needs_review_tracks: list[str] = []
+        result = PlaylistDownloadResult(total=len(unmatched_tracks))
 
         for track in unmatched_tracks:
             # One bad track (search timeout, malformed response, a
@@ -547,8 +538,8 @@ class DownloadService:
                         "Already in progress for %s - %s (%s) — skipping.",
                         track.artist, track.title, statuses,
                     )
-                    skipped += 1
-                    already_in_progress.append(
+                    result.skipped += 1
+                    result.already_in_progress.append(
                         f"{track.artist} - {track.title}"
                     )
                     continue
@@ -591,7 +582,7 @@ class DownloadService:
                         self._request_upgrade_shortlist(
                             track, upgrade_shortlist
                         )
-                        requested += 1
+                        result.requested += 1
                     elif needs_review is not None:
                         # No auto-tier candidate at all, but a real,
                         # plausible one exists (70-89) — record it for
@@ -608,13 +599,13 @@ class DownloadService:
                             review_score, review_file.username,
                             review_file.filename,
                         )
-                        skipped += 1
-                        needs_review_tracks.append(
+                        result.skipped += 1
+                        result.needs_review.append(
                             f"{track.artist} - {track.title}"
                         )
                     else:
                         logger.info("No candidates found.")
-                        skipped += 1
+                        result.skipped += 1
                     continue
 
                 self._request_and_record(track, settled, role=DownloadRole.SETTLED)
@@ -622,24 +613,17 @@ class DownloadService:
                     "Requested from %s: %s", settled.username,
                     settled.filename,
                 )
-                requested += 1
+                result.requested += 1
 
                 if upgrade_shortlist:
                     self._request_upgrade_shortlist(track, upgrade_shortlist)
             except Exception as error:
-                failed += 1
+                result.failed += 1
                 logger.warning(
                     "Failed: %s - %s: %s", track.artist, track.title, error,
                 )
 
-        return {
-            "requested": requested,
-            "skipped": skipped,
-            "failed": failed,
-            "total": len(unmatched_tracks),
-            "already_in_progress": already_in_progress,
-            "needs_review": needs_review_tracks,
-        }
+        return result
 
     def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
         """A real SoulSeek search for a track that isn't in any Spotify
@@ -658,7 +642,7 @@ class DownloadService:
             title: str,
             chosen: SoulseekFile | None = None,
             files: list[SoulseekFile] | None = None,
-    ) -> dict[str, Any]:
+    ) -> ManualDownloadResult:
         """Search for and download a track that isn't in any Spotify
         playlist, reusing the same "best quality available, fall back
         until something actually downloads" behavior as a playlist
@@ -719,13 +703,13 @@ class DownloadService:
             logger.info(
                 "Requested from %s: %s", chosen.username, chosen.filename,
             )
-            return {
-                "track_id": track.id,
-                "requested": True,
-                "settled": True,
-                "username": chosen.username,
-                "filename": chosen.filename,
-            }
+            return ManualDownloadResult(
+                track_id=track.id,
+                requested=True,
+                settled=True,
+                username=chosen.username,
+                filename=chosen.filename,
+            )
 
         config = self._get_config()
         auto_match_threshold = (
@@ -745,12 +729,12 @@ class DownloadService:
         )
 
         if settled is None and not upgrade_shortlist:
-            return {
-                "track_id": track.id,
-                "requested": False,
-                "settled": False,
-                "reason": "no_candidate_found",
-            }
+            return ManualDownloadResult(
+                track_id=track.id,
+                requested=False,
+                settled=False,
+                reason="no_candidate_found",
+            )
 
         if settled is not None:
             self._save_manual_track_and_request(
@@ -766,13 +750,13 @@ class DownloadService:
             if upgrade_shortlist:
                 self._request_upgrade_shortlist(track, upgrade_shortlist)
 
-            return {
-                "track_id": track.id,
-                "requested": True,
-                "settled": True,
-                "username": settled.username,
-                "filename": settled.filename,
-            }
+            return ManualDownloadResult(
+                track_id=track.id,
+                requested=True,
+                settled=True,
+                username=settled.username,
+                filename=settled.filename,
+            )
 
         # Nothing practical/unlocked, but select_downloads still found
         # real above-threshold candidate(s) — every one of them locked.
@@ -787,12 +771,12 @@ class DownloadService:
             track,
             lambda: self._request_upgrade_shortlist(track, upgrade_shortlist),
         )
-        return {
-            "track_id": track.id,
-            "requested": True,
-            "settled": False,
-            "reason": "locked_only",
-        }
+        return ManualDownloadResult(
+            track_id=track.id,
+            requested=True,
+            settled=False,
+            reason="locked_only",
+        )
 
     def _save_manual_track_and_request(
             self,
@@ -1061,7 +1045,7 @@ class DownloadService:
             if (file.username, file.filename) not in rejected
         ]
 
-    def poll_downloads(self) -> dict[str, int]:
+    def poll_downloads(self) -> PollResult:
         # Diagnostic — a real, timestamped call-frequency log for the
         # still-open locked-retry burst investigation (HISTORY §63),
         # gated behind SEEKER_DEBUG_POLL=1 (see _debug_poll's own
@@ -1080,17 +1064,7 @@ class DownloadService:
         # other config read in this class already uses), never cached,
         # so a resume takes effect on the very next call.
         if self._get_config().downloads_paused:
-            # Same full key set the CLI's `seeker downloads status`
-            # print reads from a real run (queued/downloading/
-            # completed/failed plus the four counts normally appended
-            # at the end of this method) — a paused run must report
-            # honestly "nothing happened," not raise a KeyError on a
-            # key a real run would have added.
-            return {
-                "queued": 0, "downloading": 0, "completed": 0, "failed": 0,
-                "ready_for_review": 0, "locked": 0, "shortlisted": 0,
-                "superseded": 0, "unavailable": 0,
-            }
+            return PollResult()
 
         with self.database.transaction() as connection:
             pending = self.download_requests.get_pending(connection)
@@ -1100,12 +1074,7 @@ class DownloadService:
             f"[poll_downloads] pending={len(pending)} locked={len(locked)}"
         )
 
-        counts = {
-            "queued": 0,
-            "downloading": 0,
-            "completed": 0,
-            "failed": 0,
-        }
+        counts = PollResult()
 
         for request in pending:
             # Loaded from the DB via get_pending() above, so .id is set —
@@ -1118,7 +1087,7 @@ class DownloadService:
             # stop every request after it in this run from being polled.
             try:
                 if request.transfer_id is None:
-                    counts[request.status] += 1
+                    counts.count_in_flight(request.status)
                     continue
 
                 transfer_status = self.soulseek.get_download_status(
@@ -1152,7 +1121,7 @@ class DownloadService:
                     )
 
                     if status == DownloadStatus.FAILED:
-                        counts["failed"] += 1
+                        counts.failed += 1
 
                     if request.role == DownloadRole.UPGRADE:
                         # Try the next shortlisted candidate for this
@@ -1190,7 +1159,7 @@ class DownloadService:
                     if new_status != request.status:
                         self._update_status(request.id, new_status)
 
-                    counts[new_status] += 1
+                    counts.count_in_flight(new_status)
                     continue
 
                 if request.role == DownloadRole.UPGRADE:
@@ -1219,19 +1188,19 @@ class DownloadService:
 
                 if move_result is not None:
                     self._update_status(request.id, DownloadStatus.COMPLETED)
-                    counts["completed"] += 1
+                    counts.completed += 1
                     self._index_and_match_settled_download(
                         request, move_result, counts,
                     )
                 else:
-                    counts[request.status] += 1
+                    counts.count_in_flight(request.status)
             except httpx.TransportError as error:
                 # slskd itself is down, not this request: every later
                 # request would fail the same way, and none of them
                 # has failed as far as the user is concerned.
                 raise SlskdUnreachableError(self.soulseek.base_url) from error
             except Exception as error:
-                counts["failed"] += 1
+                counts.failed += 1
                 logger.warning(
                     "Failed to poll '%s': %s", request.filename, error,
                 )
@@ -1255,11 +1224,11 @@ class DownloadService:
                     request.filename, error,
                 )
 
-        counts["ready_for_review"] = len(self._get_ready_for_review())
-        counts["locked"] = len(self._get_locked())
-        counts["shortlisted"] = len(self._get_shortlisted())
-        counts["superseded"] = len(self._get_superseded())
-        counts["unavailable"] = len(self._get_unavailable())
+        counts.ready_for_review = len(self._get_ready_for_review())
+        counts.locked = len(self._get_locked())
+        counts.shortlisted = len(self._get_shortlisted())
+        counts.superseded = len(self._get_superseded())
+        counts.unavailable = len(self._get_unavailable())
 
         return counts
 
@@ -1283,7 +1252,7 @@ class DownloadService:
             describe_transfer_failure(state, exception_text),
         )
 
-    def _cascade_upgrade(self, track_id: str, counts: dict[str, int]) -> None:
+    def _cascade_upgrade(self, track_id: str, counts: PollResult) -> None:
         # Sequential, not simultaneous: try one candidate, and only move
         # to the next once this one is confirmed unavailable — never
         # multiple in-flight requests for the same track at once. The
@@ -1306,14 +1275,14 @@ class DownloadService:
             status = self._activate_shortlisted_entry(next_entry)
 
             if status == DownloadStatus.FAILED:
-                counts["failed"] += 1
+                counts.failed += 1
                 continue
 
             if status == DownloadStatus.LOCKED:
                 continue
 
             if status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING):
-                counts[status] += 1
+                counts.count_in_flight(status)
                 return
 
             if status == DownloadStatus.READY_FOR_REVIEW:
@@ -1422,7 +1391,7 @@ class DownloadService:
         )
 
     def _retry_locked_request(
-            self, request: DownloadRequest, counts: dict[str, int],
+            self, request: DownloadRequest, counts: PollResult,
     ) -> None:
         # Reactivate an already-'locked' request. Unlike
         # _activate_shortlisted_entry above, a rejection's specific
@@ -1570,7 +1539,7 @@ class DownloadService:
             move_result = self._move_completed_file(request)
 
             if move_result is not None:
-                counts["completed"] += 1
+                counts.completed += 1
                 # Same indexing gap as poll_downloads()'s main loop
                 # (see _index_and_match_settled_download's own
                 # docstring) — this branch reaches 'completed' for a
@@ -1876,7 +1845,7 @@ class DownloadService:
             self,
             request: DownloadRequest,
             move_result: tuple[LibraryLocation, str],
-            counts: dict[str, int],
+            counts: PollResult,
     ) -> None:
         # Indexes and matches an ordinary settled download once it's
         # moved into place — without this, the file was invisible to
@@ -1952,9 +1921,9 @@ class DownloadService:
                     connection,
                 )
 
-            counts["indexed"] = counts.get("indexed", 0) + 1
+            counts.indexed += 1
         except Exception as error:
-            counts["index_failed"] = counts.get("index_failed", 0) + 1
+            counts.index_failed += 1
             logger.warning(
                 "Downloaded '%s' but failed to index/match it into the "
                 "library: %s", request.filename, error,

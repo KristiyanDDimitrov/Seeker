@@ -14,6 +14,10 @@ matching.py's two independent copies once did (see CLAUDE.md).
 
 from typing import Any
 
+from seeker.models.download_result import (
+    ManualDownloadResult,
+    PlaylistDownloadResult,
+)
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.spotify_sync import PlaylistRefreshResult
 
@@ -184,21 +188,13 @@ TOOLTIP_DOWNLOAD_SELECTED_PLAYLIST = (
 )
 
 
-def format_download_result_message(result: dict[str, Any]) -> str:
-    """Roadmap item 66 (Phase 4.2) — the real fix for "Requested 16,
-    skipped 12 (no candidates found)" when several of those 12 had in
-    fact become real Review candidates: names each outcome separately
-    rather than folding them into one generic "skipped" figure.
-    `skipped` itself stays the combined total of all three (backward-
-    compatible with anything else summing it) — never subtracted from
-    `total` here, which is exactly the shape of bug that produced the
-    original symptom.
-    """
-    requested = result["requested"]
-    skipped = result["skipped"]
-    already_in_progress = result.get("already_in_progress", [])
-    needs_review = result.get("needs_review", [])
-    no_candidate_count = skipped - len(already_in_progress) - len(needs_review)
+def format_download_result_message(result: PlaylistDownloadResult) -> str:
+    """Names each skip outcome separately rather than folding them
+    into one "skipped" figure that hides tracks waiting on Review."""
+    requested = result.requested
+    already_in_progress = result.already_in_progress
+    needs_review = result.needs_review
+    no_candidate_count = result.no_candidate
 
     message = f"Requested {requested} download{'s' if requested != 1 else ''}"
 
@@ -913,16 +909,16 @@ def format_search_result_count(count: int) -> str:
     return f"Found {count} result{'s' if count != 1 else ''}."
 
 
-def format_search_download_result(result: dict[str, Any]) -> str:
+def format_search_download_result(result: ManualDownloadResult) -> str:
     """Roadmap item 82 (P13.5) — a real outcome message for both
     download_manual() branches: a settled request (username/filename
     known) and a locked-only upgrade request (nothing downloadable
     right this moment, but something real is being chased)."""
-    if not result["requested"]:
+    if not result.requested:
         return "No candidates found."
 
-    if result["settled"]:
-        return f"Requested from {result['username']}: {result['filename']}"
+    if result.settled:
+        return f"Requested from {result.username}: {result.filename}"
 
     return (
         "No practical candidate — requested a locked/upgrade-only "
