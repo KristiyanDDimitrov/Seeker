@@ -859,7 +859,7 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
     window.new_soulseek_password_field.setText("realpass")
     window.update_credentials_button.click()
 
-    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    _wait_for_credentials_update(qtbot, window, bring_up_calls)
     assert bring_up_calls[0]["soulseek_username"] == "realuser"
     assert bring_up_calls[0]["soulseek_password"] == "realpass"
     assert bring_up_calls[0]["api_key"] == "generated-key"
@@ -900,6 +900,20 @@ def _fake_successful_bring_up(monkeypatch, tmp_path) -> list[dict]:
     return bring_up_calls
 
 
+def _wait_for_credentials_update(qtbot, window, bring_up_calls) -> None:
+    # The fake records its call on the worker thread; the finish
+    # handler (which re-enables the button) runs later on the main
+    # thread. Returning on the call alone let that handler run after
+    # teardown, against a deleted button (seen on CI, HISTORY §148).
+    qtbot.waitUntil(
+        lambda: bring_up_calls != []
+        and window.update_credentials_status_label.text().startswith(
+            "Credentials updated"
+        ),
+        timeout=2000,
+    )
+
+
 def _click_update_credentials(qtbot, window) -> None:
     qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
     window.new_soulseek_username_field.setText("realuser")
@@ -930,7 +944,7 @@ def test_update_credentials_keeps_sharing_the_live_share_not_the_first_location(
     qtbot.addWidget(window)
     _click_update_credentials(qtbot, window)
 
-    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    _wait_for_credentials_update(qtbot, window, bring_up_calls)
     assert bring_up_calls[0]["library_location_path"] == str(
         tmp_path / "Music"
     )
@@ -956,7 +970,7 @@ def test_update_credentials_without_a_container_asks_which_location(
     qtbot.addWidget(window)
     _click_update_credentials(qtbot, window)
 
-    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    _wait_for_credentials_update(qtbot, window, bring_up_calls)
     assert offered == [["Desktop", "Music"]]
     assert bring_up_calls[0]["library_location_path"] == str(
         tmp_path / "Music"
@@ -1031,7 +1045,7 @@ def test_soulseek_password_return_pressed_calls_update_credentials(
     window.new_soulseek_password_field.setText("realpass")
     window.new_soulseek_password_field.returnPressed.emit()
 
-    qtbot.waitUntil(lambda: bring_up_calls != [], timeout=2000)
+    _wait_for_credentials_update(qtbot, window, bring_up_calls)
     assert bring_up_calls[0]["soulseek_username"] == "realuser"
     assert bring_up_calls[0]["soulseek_password"] == "realpass"
 
