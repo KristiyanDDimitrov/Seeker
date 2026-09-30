@@ -51,9 +51,11 @@ src/seeker/
 ├── soulseek/                   # client.py (slskd REST wrapper), quality.py
 │                              #   (candidate filtering/selection),
 │                              #   download_service.py (destinations,
-│                              #   download_playlist, poll_downloads),
-│                              #   placement.py (locate/move/index a
-│                              #   finished download), review_service.py
+│                              #   download_playlist, download_manual),
+│                              #   poller.py (poll_downloads: status,
+│                              #   cascade, locked retry), placement.py
+│                              #   (locate/move/index a finished
+│                              #   download), review_service.py
 │                              #   (candidate + upgrade decisions)
 ├── library/                     # scanner.py, matcher.py, service.py,
 │                              #   metadata_service.py (writes Spotify tags/art),

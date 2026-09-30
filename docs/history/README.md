@@ -242,3 +242,4 @@ under their entry and live in the same file, after it.
 - §157 — Round 11 S16 part 1 (§16.1, §16.2): repositories without a Database; dead code out of `src/` → [151-180.md#157](151-180.md#157)
 - §158 — Round 11 S16 part 2 (§16.3–§16.6): no legacy migrations; Sharing through the client; one GET per status; a freed chromaprint context → [151-180.md#158](151-180.md#158)
 - §159 — Round 11 S17 part 1 (§17.1, §17.2): placement and review leave `download_service.py` → [151-180.md#159](151-180.md#159)
+- §160 — Round 11 S17 part 2 (§17.3, the line ceiling): named retry steps; polling moves to `soulseek/poller.py` → [151-180.md#160](151-180.md#160)

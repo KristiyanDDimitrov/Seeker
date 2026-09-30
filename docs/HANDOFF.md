@@ -10,49 +10,45 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S17 part 1 close-out commit (HISTORY §159, this
+- **HEAD:** the S17 part 2 close-out commit (HISTORY §160, this
   handoff, CLAUDE.md layout). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1558 passed, 1 skipped, 9 warnings`
+- **Local pytest** (2026-10-01): `1558 passed, 1 skipped, 9 warnings`
   (X9 Pro mounted).
-- **`mypy --strict src/`:** clean, 122 files. **`ruff check src
+- **`mypy --strict src/`:** clean, 123 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36776378850` on `634e7be` (the close-out commit):
-  success.
+- **CI:** see the follow-up commit that records the close-out's run.
 
 ## 2. Where we are
 
-S1–S16 ticked. **S17 part 1 done** (§17.1, §17.2; stopped at the
-session budget, past the named split point). **Next: S17 part 2**:
-§17.3 and the ~800-line ceiling (BRIEF §17). Then S18.
+S1–S17 ticked. **Next: S18** (test infrastructure, BRIEF §18; split
+point after §18.2, the smoke-file split can stand alone).
 
-## 3. Session report (S17 part 1)
+## 3. Session report (S17 part 2)
 
-Evidence for every line, radon before and after included, is in
-HISTORY §159.
-- `e01776d` §17.1: `soulseek/placement.py`, `DownloadPlacement`.
-- `64d8052` §17.2: `soulseek/review_service.py`, `ReviewService`;
-  `Application.review_service`.
+Evidence for every line, radon and the debt scanner before and after,
+is in HISTORY §160.
+- `5eeb48d` §17.3: `_retry_locked_request` as named steps, D (24) →
+  B (7).
+- `32dceba` the line ceiling: `soulseek/poller.py`, `DownloadPoller`;
+  `download_service.py` 1,421 → 729 lines.
 
 ## 4. Key context
 
-- **For S17 part 2, the line ceiling needs one more extraction.**
-  `download_service.py` is 1,421 lines; §17.3 alone will not bring it
-  under ~800. The remaining concern that can leave is polling: from
-  `poll_downloads` through `_get_unavailable`, plus `_update_status`/
-  `_update_progress` (~630 lines). Search and request plus destinations
-  are ~550. Tests call `service.poll_downloads()` hundreds of times
-  and patch privates such as `_move_completed_file` (now on
-  `placement`); keeping `DownloadService.poll_downloads` as the public
-  entry (delegating) keeps them unchanged. Grep tests for
-  `service\._` before choosing.
-- radon D-or-worse in `src/` is still 3: `_retry_locked_request`
-  D (24) (§17.3), `_insert_slskd_share_directory` D (26),
-  `_decide_next_step` D (21).
-- **Seams:** `DownloadService.placement`; `Application.review_service`
-  (over that placement and `download_service.soulseek`); tests use
-  `tests/service_seams.py::review_service_for(service)` and the smoke
-  file's `FakeReviewService` (S18 moves the fakes).
+- **Polling lives in `DownloadPoller`** (`DownloadService.poller`);
+  `DownloadService.poll_downloads()` delegates and stays the one
+  public entry. Its private helpers are now `service.poller._…`.
+- **`SEEKER_DEBUG_POLL` now raises `seeker.soulseek.poller`'s logger**
+  (the trace's two lines moved with the code). Anything filtering the
+  trace by logger name uses that name.
+- radon D-or-worse in `src/` is now 2: `_insert_slskd_share_directory`
+  D (26) and `_decide_next_step` D (21). `poll_downloads` is C (19),
+  two short of D; S22's poll work should not push it over.
+- **For S18:** the smoke file's fakes include `FakeReviewService`
+  (split from `FakeDownloadService` in S17 part 1) and
+  `FakeApplication.review_service`; `tests/service_seams.py` builds a
+  real `ReviewService` for a `DownloadService`. Move them with the
+  others in §18.1.
 - **Carried:** fakes of `get_download_status` return
   `TransferStatus(..., exception=...)`. TRY400/G201 lint-enforced.
   Coverage margin ~2.7 points (floor 89). No `QLabel(...)` or
@@ -62,18 +58,21 @@ HISTORY §159.
   `generate_match_report` still return dicts.
 - **Shell:** zsh `echo ======` and unquoted `--include=*.py` fail;
   BSD `sed` lacks `\b`/`\|`; write edit scripts with the Write tool.
+  A moved block goes through a script that slices by markers, then
+  `ruff check --fix` on just those files (full rule set) for imports.
 
 ## 5. Decisions made
 
-- **`ReviewService` reaches slskd through a callable**, not a client:
-  the error when SoulSeek is unconfigured stays the download service's
-  own, and a credential change needs no second client reset.
-- **Candidate writes stay in `DownloadService`**
-  (`_record_review_candidate`, `_clear_review_candidate`,
-  `_without_rejected`): a download run records and filters them;
-  `ReviewService` only reads and decides.
-- **`index_and_match` still takes `PollResult`** and counts into it,
-  so the refactor moved it unchanged.
+- **`DownloadPoller` reaches slskd through a callable** (`lambda:
+  self.soulseek`), as `ReviewService` does: a test swapping
+  `service._soulseek_client` still reaches it, and the unconfigured
+  error stays the download service's.
+- **`DownloadService.poll_downloads` delegates** rather than
+  `Application` exposing the poller: the UI, CLI and hundreds of test
+  calls stay unchanged, and nothing outside `soulseek/` needs polling
+  internals.
+- **`poller.py` at 801 lines meets "about 800"**; splitting the retry
+  out again would scatter one state machine over two files.
 - Carried: help text's "Roadmap item" strings wait for S24.
 
 ## 6. Blockers
@@ -82,8 +81,7 @@ None.
 
 ## 7. Files in progress
 
-- `src/seeker/soulseek/download_service.py` — `partially_done`: §17.1
-  and §17.2 out; §17.3 and the polling extraction not started.
+None; S17 is complete.
 
 ## 8. Waiting on Kris
 
@@ -101,13 +99,16 @@ ID → Cancel; S11 Scan summary, Docker-stopped Download, Qt warning in
 Dashboard, Downloads, tray once; clears ~20 s after Start slskd); S14
 one-failing-track Download notice, Tag and Fix cover art summaries;
 S15 a real `seeker downloads review` prompts as before; S17 a Review
-page Confirm, Reject and Replace behave as before.
+page Confirm, Reject and Replace behave as before, and a locked
+download still retries and completes (`SEEKER_DEBUG_POLL=1` shows the
+trace).
 
 ## 9. Open questions
 
 - **CI-only flake:** `test_download_button_disabled_with_no_playlist_selected`
   (run `36758864929` attempt 1). Asserts after a bare `qtbot.wait(50)`;
-  UNVERIFIED guess: a timer-driven render enabling the button. S18?
+  UNVERIFIED guess: a timer-driven render enabling the button. §18.6
+  is the natural place.
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
   wait (port 8888 and the token lock held up to 300 s). S20?
 - Late-worker defect: `_handle_task_finished` raises on a button
@@ -120,10 +121,9 @@ page Confirm, Reject and Replace behave as before.
   one-by-one upgrade review skips `printable()` (see §156).
 - S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the
   typed subfolder. S29: should a rejection be undoable?
-- `_activate_shortlisted_entry`: if slskd dies between
+- `DownloadPoller._activate_shortlisted_entry`: if slskd dies between
   `request_download` and `get_download_status`, the enqueued transfer
-  id is never recorded, so the next cascade re-requests it. S17 part 2
-  or X1?
+  id is never recorded, so the next cascade re-requests it. S22 or X1?
 
 ---
 

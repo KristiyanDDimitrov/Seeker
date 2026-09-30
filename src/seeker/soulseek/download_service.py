@@ -655,7 +655,7 @@ class DownloadService:
     ) -> None:
         # Known and persisted, but not yet sent to slskd — request_download
         # only happens once a higher-ranked entry for this track is
-        # rejected (see the poll_downloads cascade below).
+        # rejected (see DownloadPoller._cascade_upgrade).
         with self.database.transaction() as connection:
             self.download_requests.add(
                 DownloadRequest(
