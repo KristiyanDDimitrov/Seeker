@@ -10,70 +10,78 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S16 close-out commit (HISTORY §158, session plan,
-  this handoff). Tree clean apart from the untracked `Claude
-  outputs/`.
-- **Local pytest** (2026-09-30): `1556 passed, 1 skipped, 9 warnings`
-  (X9 Pro mounted; per-commit counts in §158).
-- **`mypy --strict src/`:** clean, 120 files. **`ruff check src
+- **HEAD:** the S17 part 1 close-out commit (HISTORY §159, this
+  handoff, CLAUDE.md layout). Tree clean apart from the untracked
+  `Claude outputs/`.
+- **Local pytest** (2026-09-30): `1558 passed, 1 skipped, 9 warnings`
+  (X9 Pro mounted).
+- **`mypy --strict src/`:** clean, 122 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36773532276` on `4f3423d` (the close-out commit):
-  success.
+- **CI:** see the follow-up commit that records the run id.
 
 ## 2. Where we are
 
-S1–S16 ticked. **Next: S17**, splitting `download_service.py` (BRIEF
-§17, split point after §17.1). Then S18.
+S1–S16 ticked. **S17 part 1 done** (§17.1, §17.2; stopped at the
+session budget, past the named split point). **Next: S17 part 2**:
+§17.3 and the ~800-line ceiling (BRIEF §17). Then S18.
 
-## 3. Session report (S16 part 2)
+## 3. Session report (S17 part 1)
 
-Evidence for every line is in HISTORY §158.
-- `b70d270` §16.3: legacy path migrations and their tests go.
-- `0d3647b` §16.4: client Sharing getters; one status GET per refresh.
-- `a8be33a` §16.4: `add_location_to_share` as phases, D (24) → A (2).
-- `a83a909` §16.4: `TransferStatus.exception`; one GET per rejection.
-- `450b25d` §16.5: `library/audio_quality.py` (refactor).
-- `bf95b33` §16.6: chromaprint context manager; NULL context raises.
+Evidence for every line, radon before and after included, is in
+HISTORY §159.
+- `e01776d` §17.1: `soulseek/placement.py`, `DownloadPlacement`.
+- `64d8052` §17.2: `soulseek/review_service.py`, `ReviewService`;
+  `Application.review_service`.
 
 ## 4. Key context
 
-- **For S17:** radon D-or-worse in `src/` is 3:
-  `DownloadService._retry_locked_request` D (24) (S17's file),
-  `_insert_slskd_share_directory` D (26), `_decide_next_step` D (21).
-  `_classify_failed_transfer` is now a `@staticmethod` taking a
-  `TransferStatus`; fakes of `get_download_status` must return
-  `TransferStatus(..., exception=...)` (`FakeSoulseekClient` in
-  `test_download_service.py` reads it from `exceptions=`).
-- **slskd REST:** Sharing's calls go through `SoulseekClient`; a 401
-  there raises `soulseek.client.SlskdUnauthorizedError`.
-  `docker_setup` still calls slskd directly for health and login
-  checks (not in §16's scope).
-- **Test gotcha:** proving something is freed while a traceback is
-  alive needs `pytest.raises(...) as raised`; the unnamed form drops
-  it at once and hides a `__del__`-only cleanup (§158).
-- Carried: `_fix_one_track_art` (C, 15) mutates the shared
-  `FixArtResult`; `DuplicateService.delete_local_files` and
-  `TrackMatcher.generate_match_report` still return dicts.
+- **For S17 part 2, the line ceiling needs one more extraction.**
+  `download_service.py` is 1,421 lines; §17.3 alone will not bring it
+  under ~800. The remaining concern that can leave is polling: from
+  `poll_downloads` through `_get_unavailable`, plus `_update_status`/
+  `_update_progress` (~630 lines). Search and request plus destinations
+  are ~550. Tests call `service.poll_downloads()` hundreds of times
+  and patch privates such as `_move_completed_file` (now on
+  `placement`); keeping `DownloadService.poll_downloads` as the public
+  entry (delegating) keeps them unchanged. Grep tests for
+  `service\._` before choosing.
+- radon D-or-worse in `src/` is still 3: `_retry_locked_request`
+  D (24) (§17.3's target), `_insert_slskd_share_directory` D (26),
+  `_decide_next_step` D (21). In `soulseek/` the C functions are
+  `poll_downloads` (19), `download_playlist` (15), `select_downloads`
+  (14), `_locate_completed_file` (13), `download_manual` and
+  `apply_upgrade_decision` (12), `request_download` (11).
+- **Seams:** `DownloadService.placement` (public);
+  `ReviewService(soulseek=Callable)`, built by `Application` over the
+  download service's placement and `soulseek` property;
+  `tests/service_seams.py::review_service_for(service)` for tests;
+  `FakeReviewService`/`FakeApplication.review_service` in
+  `test_ui_smoke.py` (S18 moves the fakes).
+- `_classify_failed_transfer` takes a `TransferStatus`; fakes of
+  `get_download_status` return `TransferStatus(..., exception=...)`.
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
   Coverage margin ~2.7 points (floor 89). Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; never touch slskd or real data;
   `config.*()` are functions (tests use `monkeypatch.setenv`). Outage
   state has one writer (`_trigger_backend_poll`).
-  `RETRYING_IN_BACKGROUND`, not `RETRYING`.
+  `RETRYING_IN_BACKGROUND`, not `RETRYING`. `_fix_one_track_art` (C,
+  15) mutates the shared `FixArtResult`;
+  `DuplicateService.delete_local_files` and
+  `TrackMatcher.generate_match_report` still return dicts.
 - **Shell:** zsh `echo ======` and unquoted `--include=*.py` fail;
   BSD `sed` lacks `\b`/`\|`; write edit scripts with the Write tool.
 
 ## 5. Decisions made
 
-- **`quality_tier_for_format` lives in `audio_formats.py`**, not
-  `soulseek/quality.py`: both rankers import it, and `library/` must
-  not import from `soulseek/`.
-- **The client's Sharing getters return raw JSON**; `sharing_service`
-  owns the shapes.
-- **`get_reconciliation` requires the status**: an optional argument
-  would let the double GET come back silently.
-- **The chromaprint context is allocated in `__enter__`**, so a
-  wrapper that is never entered holds nothing.
+- **`ReviewService` reaches slskd through a callable**, not a client:
+  the error when SoulSeek is unconfigured stays the download service's
+  own, and a credential change needs no second client reset.
+- **Candidate writes stay in `DownloadService`**
+  (`_record_review_candidate`, `_clear_review_candidate`,
+  `_without_rejected`): a download run records and filters them;
+  `ReviewService` only reads and decides.
+- **`index_and_match` still takes `PollResult`** and counts into it,
+  so the refactor moved it unchanged.
 - Carried: help text's "Roadmap item" strings wait for S24.
 
 ## 6. Blockers
@@ -82,7 +90,8 @@ None.
 
 ## 7. Files in progress
 
-None.
+- `src/seeker/soulseek/download_service.py` — `partially_done`: §17.1
+  and §17.2 out; §17.3 and the polling extraction not started.
 
 ## 8. Waiting on Kris
 
@@ -99,7 +108,8 @@ ID → Cancel; S11 Scan summary, Docker-stopped Download, Qt warning in
 `seeker.log`, app menu "Seeker"; S12 slskd-stopped outage (CLI exit 1;
 Dashboard, Downloads, tray once; clears ~20 s after Start slskd); S14
 one-failing-track Download notice, Tag and Fix cover art summaries;
-S15 a real `seeker downloads review` prompts as before.
+S15 a real `seeker downloads review` prompts as before; S17 a Review
+page Confirm, Reject and Replace behave as before.
 
 ## 9. Open questions
 
@@ -120,7 +130,8 @@ S15 a real `seeker downloads review` prompts as before.
   typed subfolder. S29: should a rejection be undoable?
 - `_activate_shortlisted_entry`: if slskd dies between
   `request_download` and `get_download_status`, the enqueued transfer
-  id is never recorded, so the next cascade re-requests it. S17 or X1?
+  id is never recorded, so the next cascade re-requests it. S17 part 2
+  or X1?
 
 ---
 

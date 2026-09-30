@@ -241,3 +241,4 @@ under their entry and live in the same file, after it.
 - §156 — Round 11 S15 (§15.1–§15.4): CLI structure — one handler per subcommand; --help never opens the database; no print or input in a service → [151-180.md#156](151-180.md#156)
 - §157 — Round 11 S16 part 1 (§16.1, §16.2): repositories without a Database; dead code out of `src/` → [151-180.md#157](151-180.md#157)
 - §158 — Round 11 S16 part 2 (§16.3–§16.6): no legacy migrations; Sharing through the client; one GET per status; a freed chromaprint context → [151-180.md#158](151-180.md#158)
+- §159 — Round 11 S17 part 1 (§17.1, §17.2): placement and review leave `download_service.py` → [151-180.md#159](151-180.md#159)
