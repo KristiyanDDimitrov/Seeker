@@ -1,6 +1,7 @@
 import time
 from dataclasses import dataclass
 from typing import Any, cast
+from urllib.parse import quote
 
 import httpx
 
@@ -80,6 +81,15 @@ class SoulseekClient:
     def _headers(self) -> dict[str, str]:
         return {"X-API-Key": self.api_key}
 
+    def _transfer_url(self, username: str, transfer_id: str) -> str:
+        # Both are one path segment each. The username is chosen by a
+        # remote peer: unencoded, `?` or `#` would cut the path short
+        # and `../` would reach a different slskd endpoint.
+        return (
+            f"{self.base_url}/api/v0/transfers/downloads/"
+            f"{quote(username, safe='')}/{quote(transfer_id, safe='')}"
+        )
+
     def search(
             self,
             query: str,
@@ -98,12 +108,16 @@ class SoulseekClient:
         create_response.raise_for_status()
 
         search_id = create_response.json()["id"]
+        search_url = (
+            f"{self.base_url}/api/v0/searches/"
+            f"{quote(str(search_id), safe='')}"
+        )
 
         deadline = time.monotonic() + timeout
 
         while True:
             poll_response = httpx.get(
-                f"{self.base_url}/api/v0/searches/{search_id}",
+                search_url,
                 headers=self._headers(),
                 timeout=10.0,
             )
@@ -123,7 +137,7 @@ class SoulseekClient:
         # Fetch them once at the end (complete or timed out) rather than
         # on every poll, since each peer response can carry many files.
         responses_response = httpx.get(
-            f"{self.base_url}/api/v0/searches/{search_id}",
+            search_url,
             params={"includeResponses": "true"},
             headers=self._headers(),
             timeout=10.0,
@@ -204,8 +218,7 @@ class SoulseekClient:
             transfer_id: str,
     ) -> TransferStatus:
         response = httpx.get(
-            f"{self.base_url}/api/v0/transfers/downloads/"
-            f"{username}/{transfer_id}",
+            self._transfer_url(username, transfer_id),
             headers=self._headers(),
             timeout=10.0,
         )
@@ -234,8 +247,7 @@ class SoulseekClient:
         # "exception" field, not in "state" itself — state only says
         # "Completed, Rejected".
         response = httpx.get(
-            f"{self.base_url}/api/v0/transfers/downloads/"
-            f"{username}/{transfer_id}",
+            self._transfer_url(username, transfer_id),
             headers=self._headers(),
             timeout=10.0,
         )

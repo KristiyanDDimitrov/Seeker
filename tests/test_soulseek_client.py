@@ -487,3 +487,40 @@ def test_get_download_exception_returns_none_on_404(monkeypatch):
     exception_text = client.get_download_exception("peer1", "transfer-abc")
 
     assert exception_text is None
+
+
+# A peer's username is peer-controlled. Unencoded, httpx reads `?` as a
+# query, `#` as a fragment, and dot-normalizes `../` into a different
+# API-key-authenticated slskd endpoint (probed against httpx directly).
+_HOSTILE_USERNAMES = [
+    ("what?ever", "what%3Fever"),
+    ("hash#tag", "hash%23tag"),
+    ("../../../application", "..%2F..%2F..%2Fapplication"),
+]
+
+
+@pytest.mark.parametrize("method_name", [
+    "get_download_status", "get_download_exception",
+])
+@pytest.mark.parametrize(("username", "encoded"), _HOSTILE_USERNAMES)
+def test_transfer_lookups_encode_the_username_as_one_path_segment(
+        monkeypatch, method_name, username, encoded,
+):
+    requested: list[httpx.URL] = []
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        request = httpx.Request("GET", url, params=params)
+        requested.append(request.url)
+        return httpx.Response(404, request=request)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    client = SoulseekClient("http://localhost:5030", "key")
+
+    getattr(client, method_name)(username, "id/1?x")
+
+    [url] = requested
+    assert url.raw_path.decode() == (
+        f"/api/v0/transfers/downloads/{encoded}/id%2F1%3Fx"
+    )
+    assert url.query == b""
+    assert url.fragment == ""
