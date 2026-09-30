@@ -1,6 +1,5 @@
 import glob
 import logging
-import os
 import re
 import shutil
 import sqlite3
@@ -84,15 +83,6 @@ from seeker.soulseek.client import (
 from seeker.soulseek.quality import select_downloads
 
 logger = logging.getLogger(__name__)
-
-
-def _debug_poll(message: str) -> None:
-    # Diagnostic only, opt-in via SEEKER_DEBUG_POLL=1 — kept for the
-    # still-open retry-storm investigation (HISTORY §63/§66): a
-    # violated next_retry_at is now a sharper signal than raw call
-    # timing, so this stays available rather than being deleted.
-    if os.environ.get("SEEKER_DEBUG_POLL") == "1":
-        print(message)
 
 
 # Bounds the locked retry loop (HISTORY §63/§66 — a real production
@@ -1056,14 +1046,11 @@ class DownloadService:
         ]
 
     def poll_downloads(self) -> PollResult:
-        # Diagnostic — a real, timestamped call-frequency log for the
-        # still-open locked-retry burst investigation (HISTORY §63),
-        # gated behind SEEKER_DEBUG_POLL=1 (see _debug_poll's own
-        # docstring for why it stays rather than being deleted
-        # outright).
-        _debug_poll(
-            f"[poll_downloads] {datetime.now(UTC).isoformat()} "
-            f"called"
+        # A timestamped call-frequency trace for the still-open
+        # locked-retry storm (HISTORY §63, §66); SEEKER_DEBUG_POLL=1
+        # turns this logger's DEBUG on at startup.
+        logger.debug(
+            "[poll_downloads] %s called", datetime.now(UTC).isoformat(),
         )
 
         # Checked here, not just in the UI's own timer, so pausing is
@@ -1080,8 +1067,8 @@ class DownloadService:
             pending = self.download_requests.get_pending(connection)
             locked = self.download_requests.get_locked(connection)
 
-        _debug_poll(
-            f"[poll_downloads] pending={len(pending)} locked={len(locked)}"
+        logger.debug(
+            "[poll_downloads] pending=%d locked=%d", len(pending), len(locked),
         )
 
         counts = PollResult()
@@ -1645,16 +1632,6 @@ class DownloadService:
                 self._update_status(sibling.id, DownloadStatus.SUPERSEDED)
 
         return False
-
-    def review_pending_upgrades(self) -> None:
-        requests = self._get_ready_for_review()
-
-        if not requests:
-            logger.info("Nothing to review.")
-            return
-
-        for request in requests:
-            self._confirm_upgrade(request)
 
     def _get_ready_for_review(self) -> list[DownloadRequest]:
         with self.database.transaction() as connection:
@@ -2242,36 +2219,3 @@ class DownloadService:
         return BulkUpgradeReplaceResult(
             replaced=replaced, failed=failed, details=details,
         )
-
-    def _confirm_upgrade(self, request: DownloadRequest) -> None:
-        # Thin, interactive wrapper over the two explicit-decision
-        # methods above — CLI-only input() sequencing lives here; the
-        # actual mutation is identical to what apply_upgrade_decision
-        # does for the UI. Always called over rows from
-        # get_ready_for_review(), so .id is set.
-        assert request.id is not None
-
-        details = self.get_upgrade_review_details(request.id)
-
-        if details is None:
-            return
-
-        answer = input(
-            f"Higher quality version of {details.track.artist} - "
-            f"{details.track.title} ready ({details.quality_descriptor} "
-            f"vs current {details.current_description}). Replace? [y/n] "
-        ).strip().lower()
-
-        replace = answer == "y"
-        delete_old = False
-
-        if replace and details.old_file_path is not None:
-            delete_answer = input(
-                f"Delete old file at {details.old_file_path}? [y/n] "
-            ).strip().lower()
-            delete_old = delete_answer == "y"
-
-        message = self.apply_upgrade_decision(request.id, replace, delete_old)
-
-        if message is not None:
-            print(f"  {message}")

@@ -1588,8 +1588,9 @@ class FakeDownloadServiceForCliRouting:
             ("set_destination", playlist_name, location_name, subfolder),
         )
 
-    def review_pending_upgrades(self):
-        self.calls.append(("review_pending_upgrades",))
+    def get_pending_upgrade_reviews(self):
+        self.calls.append(("get_pending_upgrade_reviews",))
+        return []
 
 
 def test_playlists_without_a_subcommand_lists_playlists(tmp_path, capsys):
@@ -1615,7 +1616,7 @@ def test_playlists_set_destination_resolves_the_playlist(tmp_path):
 
 
 def test_downloads_review_without_all_runs_the_interactive_review(
-        tmp_path,
+        tmp_path, capsys,
 ):
     application = _metadata_application(tmp_path, None)
     application.download_service = FakeDownloadServiceForCliRouting()
@@ -1623,5 +1624,6 @@ def test_downloads_review_without_all_runs_the_interactive_review(
     cli.run(application, ["downloads", "review"])
 
     assert application.download_service.calls == [
-        ("review_pending_upgrades",),
+        ("get_pending_upgrade_reviews",),
     ]
+    assert capsys.readouterr().out == "Nothing to review.\n"

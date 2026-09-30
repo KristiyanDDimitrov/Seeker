@@ -620,7 +620,44 @@ def handle_downloads_review(
         _handle_downloads_review_all(application)
         return
 
-    application.download_service.review_pending_upgrades()
+    upgrades = application.download_service.get_pending_upgrade_reviews()
+
+    if not upgrades:
+        print("Nothing to review.")
+        return
+
+    for listed in upgrades:
+        _confirm_upgrade(application, listed.request_id)
+
+
+def _confirm_upgrade(application: Application, request_id: int) -> None:
+    service = application.download_service
+    # Resolved again at its own prompt: replacing an earlier row can
+    # change which file is this row's current one.
+    details = service.get_upgrade_review_details(request_id)
+
+    if details is None:
+        return
+
+    answer = input(
+        f"Higher quality version of {details.track.artist} - "
+        f"{details.track.title} ready ({details.quality_descriptor} "
+        f"vs current {details.current_description}). Replace? [y/n] "
+    ).strip().lower()
+
+    replace = answer == "y"
+    delete_old = False
+
+    if replace and details.old_file_path is not None:
+        delete_answer = input(
+            f"Delete old file at {details.old_file_path}? [y/n] "
+        ).strip().lower()
+        delete_old = delete_answer == "y"
+
+    message = service.apply_upgrade_decision(request_id, replace, delete_old)
+
+    if message is not None:
+        print(f"  {message}")
 
 
 def _handle_downloads_review_all(application: Application) -> None:

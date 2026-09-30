@@ -1,10 +1,12 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from seeker import cli
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -2941,8 +2943,8 @@ def test_completed_upgrade_transfer_marks_ready_for_review_without_moving(
     seed_pending_request(service, "t1", role="upgrade")
 
     # role='upgrade' must not trigger a move (or touch track_matches) on
-    # poll_downloads() — that's review_pending_upgrades()'s job, and
-    # poll_downloads() never calls it (no input() involved here at all).
+    # poll_downloads() — that's the upgrade review's job, and
+    # poll_downloads() never starts one (no input() involved at all).
     def fail_if_called(request):
         raise AssertionError(
             "settled-style move must not run for an unconfirmed upgrade"
@@ -3063,16 +3065,20 @@ def _seed_upgrade_scenario(tmp_path):
     return service, lib_root
 
 
+def _review_upgrades_in_cli(service: DownloadService) -> None:
+    cli.run(SimpleNamespace(download_service=service), ["downloads", "review"])
+
+
 def _ready_for_review_count(service: DownloadService) -> int:
     with service.database.transaction() as connection:
         return len(service.download_requests.get_ready_for_review(connection))
 
 
-def test_review_pending_upgrades_yes_replaces_file_and_track_match(
+def test_cli_upgrade_review_yes_replaces_file_and_track_match(
         tmp_path, monkeypatch,
 ):
     # Operates directly on a pre-seeded ready_for_review row — no poll
-    # step needed, since review_pending_upgrades() never talks to slskd.
+    # step needed, since the review never talks to slskd.
     service, lib_root = _seed_upgrade_scenario(tmp_path)
 
     # First prompt: confirm replacement. Second prompt: decline deleting
@@ -3080,7 +3086,7 @@ def test_review_pending_upgrades_yes_replaces_file_and_track_match(
     answers = iter(["y", "n"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
 
-    service.review_pending_upgrades()
+    _review_upgrades_in_cli(service)
 
     assert _ready_for_review_count(service) == 0
 
@@ -3102,7 +3108,7 @@ def test_review_pending_upgrades_yes_replaces_file_and_track_match(
     assert (lib_root / "old.mp3").exists()
 
 
-def test_review_pending_upgrades_yes_then_yes_deletes_old_file(
+def test_cli_upgrade_review_yes_then_yes_deletes_old_file(
         tmp_path, monkeypatch,
 ):
     service, lib_root = _seed_upgrade_scenario(tmp_path)
@@ -3110,20 +3116,20 @@ def test_review_pending_upgrades_yes_then_yes_deletes_old_file(
     answers = iter(["y", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
 
-    service.review_pending_upgrades()
+    _review_upgrades_in_cli(service)
 
     assert not (lib_root / "old.mp3").exists()
     assert (lib_root / "Dom Dolla - Rhyme Dust.flac").exists()
 
 
-def test_review_pending_upgrades_no_leaves_ready_for_review(
+def test_cli_upgrade_review_no_leaves_ready_for_review(
         tmp_path, monkeypatch,
 ):
     service, lib_root = _seed_upgrade_scenario(tmp_path)
 
     monkeypatch.setattr("builtins.input", lambda prompt="": "n")
 
-    service.review_pending_upgrades()
+    _review_upgrades_in_cli(service)
 
     assert _ready_for_review_count(service) == 1
 
@@ -3395,15 +3401,32 @@ def test_apply_upgrade_decisions_batch_empty_list_is_a_no_op(tmp_path):
     assert _ready_for_review_count(service) == 2
 
 
-def test_review_pending_upgrades_prints_nothing_to_review_when_empty(
-        tmp_path, caplog,
+def test_cli_upgrade_review_prints_nothing_to_review_when_empty(
+        tmp_path, capsys,
 ):
     service = make_service(tmp_path, {})
 
-    with caplog.at_level("INFO"):
-        service.review_pending_upgrades()
+    _review_upgrades_in_cli(service)
 
-    assert "Nothing to review." in caplog.text
+    assert capsys.readouterr().out == "Nothing to review.\n"
+
+
+def test_poll_downloads_traces_each_call_at_debug(tmp_path, caplog):
+    service = make_service(tmp_path, {})
+
+    with caplog.at_level(
+            "DEBUG", logger="seeker.soulseek.download_service",
+    ):
+        service.poll_downloads()
+
+    traces = [
+        record.getMessage() for record in caplog.records
+        if record.levelname == "DEBUG"
+    ]
+    assert len(traces) == 2
+    assert traces[0].startswith("[poll_downloads] ")
+    assert traces[0].endswith(" called")
+    assert traces[1] == "[poll_downloads] pending=0 locked=0"
 
 
 # Real peer usernames/sizes captured from a live "Dom Dolla Rhyme Dust"

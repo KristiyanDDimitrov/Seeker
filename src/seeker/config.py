@@ -52,3 +52,9 @@ def slskd_api_key() -> str | None:
 # when that command needs to move a file.
 def slskd_download_dir() -> str | None:
     return os.getenv("SLSKD_DOWNLOAD_DIR")
+
+
+# Diagnostic: "1" logs every poll_downloads call at DEBUG, for the
+# locked-retry storm investigation (HISTORY §63, §66).
+def debug_poll() -> bool:
+    return os.getenv("SEEKER_DEBUG_POLL") == "1"

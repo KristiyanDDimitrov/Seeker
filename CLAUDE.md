@@ -211,11 +211,12 @@ src/seeker/
   diagnostic, the service logs and returns a structured result, and
   `cli.py` does the printing from that result. `main_ui.py` also
   installs `ui/error_hooks.py`: `sys.excepthook`/`threading.excepthook`
-  log at CRITICAL, Qt messages go to `seeker.qt`. A `print` call
-  surviving in a service (`soulseek/download_service.py`'s two) is
-  either opt-in debug output gated on an env var, or genuinely
-  CLI-only code that happens to live there — check the call site
-  before assuming it is a leftover.
+  log at CRITICAL, Qt messages go to `seeker.qt`. No service calls
+  `print` or `input`: interactive prompts (the one-by-one upgrade
+  review included) live in `cli.py`, and diagnostics are
+  `logger.debug`, switched on per logger at the entry points
+  (`SEEKER_DEBUG_POLL=1` for the poll trace).
+  [HISTORY §156](docs/history/151-180.md#156)
 - **`ui/` never reads or writes `Application`'s private
   (underscore-prefixed) attributes** — go through a public method
   (`application.settings`, `application.update_settings(...)`, a
