@@ -27,7 +27,7 @@ from seeker.models.spotify_sync import TrackSyncResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext
 from seeker.ui.tag_result_panel import (
     TagResultPanel,
@@ -49,6 +49,10 @@ class TaggingPanelHost:
     status_label: QLabel
     notice: InlineNotice
     refresh_track_table: Callable[[], None]
+
+    @property
+    def feedback(self) -> FeedbackTarget:
+        return FeedbackTarget(self.status_label, self.notice)
 
 
 class TaggingPanel(QWidget):
@@ -207,8 +211,13 @@ class TaggingPanel(QWidget):
         except ValueError as error:
             raise ValueError("BPM range must be numeric.") from error
 
-    def _render_tag_result(self, result: dict[str, Any]) -> None:
-        self._host.status_label.setText("")
+    def _render_tag_result(
+            self,
+            result: dict[str, Any],
+            feedback: FeedbackTarget | None = None,
+    ) -> None:
+        feedback = feedback or self._host.feedback
+        feedback.status_label.setText("")
 
         self.results_panel.set_result(
             summarize_tag_result(result), result["details"],
@@ -222,9 +231,13 @@ class TaggingPanel(QWidget):
         # above, itself unaffected by that same clearing bug (a real
         # widget, never wired into status_label's plumbing at all)
         # (HISTORY §56 Phase 4.2).
-        self._show_tag_result_notice(result)
+        self._show_tag_result_notice(result, feedback)
 
-    def _show_tag_result_notice(self, result: dict[str, Any]) -> None:
+    def _show_tag_result_notice(
+            self,
+            result: dict[str, Any],
+            feedback: FeedbackTarget,
+    ) -> None:
         # This early return is still correct (nothing was even in
         # scope), but every real outcome AFTER it — including "every
         # selected track was already tagged" — now gets a message via
@@ -241,13 +254,13 @@ class TaggingPanel(QWidget):
         # rather than leaving the user to find "Fix missing cover art"
         # on their own (HISTORY §75).
         if result.get("skipped_already_tagged", 0) > 0:
-            self._host.notice.show_message(
+            feedback.notice.show_message(
                 message, kind=kind,
                 action_text="Fix missing cover art",
-                on_action=self._on_fix_missing_art_clicked,
+                on_action=lambda: self._fix_missing_art(feedback),
             )
         else:
-            self._host.notice.show_message(message, kind=kind)
+            feedback.notice.show_message(message, kind=kind)
 
     # Called directly by the Dashboard's own track_table row
     # Actions-column button (`_build_track_actions`, still in
@@ -259,11 +272,14 @@ class TaggingPanel(QWidget):
             self,
             track_id: str,
             button: QPushButton,
+            feedback: FeedbackTarget | None = None,
     ) -> None:
+        target = feedback or self._host.feedback
+
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self._host.notice.show_message(str(error), kind="error")
+            target.show_error(str(error))
             return
 
         run_worker(
@@ -275,23 +291,29 @@ class TaggingPanel(QWidget):
                 force=force,
             ),
             button=button,
-            status_label=self._host.status_label,
-            on_finished=self._render_tag_result,
+            on_finished=lambda result: self._render_tag_result(result, target),
+            on_error=target.show_error,
         )
 
     # Called directly by the Dashboard's own track_table context menu
     # (`_on_track_table_context_menu`, still in main_window.py) — same
     # cross-widget "private method" call as `_on_tag_track_clicked`.
-    def _on_retag_track_clicked(self, track_id: str) -> None:
+    def _on_retag_track_clicked(
+            self,
+            track_id: str,
+            feedback: FeedbackTarget | None = None,
+    ) -> None:
         # The context menu's "Re-tag" always forces, independent of the
         # tagging panel's own checkbox — right-clicking a specific
         # already-tagged row and choosing "Re-tag" is an explicit,
         # unambiguous request to redo exactly this one file, the same
         # way the CLI's --force does for a whole playlist.
+        target = feedback or self._host.feedback
+
         try:
             analyze_audio, bpm_range, _ = self._resolve_tag_options()
         except ValueError as error:
-            self._host.notice.show_message(str(error), kind="error")
+            target.show_error(str(error))
             return
 
         run_worker(
@@ -302,8 +324,8 @@ class TaggingPanel(QWidget):
                 expected_bpm_range=bpm_range,
                 force=True,
             ),
-            status_label=self._host.status_label,
-            on_finished=self._render_tag_result,
+            on_finished=lambda result: self._render_tag_result(result, target),
+            on_error=target.show_error,
         )
 
     def _on_tag_selected_clicked(self) -> None:
@@ -340,10 +362,13 @@ class TaggingPanel(QWidget):
         )
 
     def _on_tag_playlist_clicked(self) -> None:
+        self._tag_playlist(self._host.feedback)
+
+    def _tag_playlist(self, feedback: FeedbackTarget) -> None:
         playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
-            self._host.notice.show_message(
+            feedback.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -351,7 +376,7 @@ class TaggingPanel(QWidget):
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
-            self._host.notice.show_message(str(error), kind="error")
+            feedback.show_error(str(error))
             return
 
         playlist_name = playlist.name
@@ -364,18 +389,21 @@ class TaggingPanel(QWidget):
                 expected_bpm_range=bpm_range,
                 force=force,
             ),
-            status_label=self._host.status_label,
-            on_finished=self._render_tag_result,
+            on_finished=lambda result: self._render_tag_result(
+                result, feedback,
+            ),
+            on_error=feedback.show_error,
         )
-        self._host.status_label.setText(
-            f"Tagging playlist '{playlist_name}'..."
-        )
+        feedback.show_progress(f"Tagging playlist '{playlist_name}'...")
 
     def _on_fix_missing_art_clicked(self) -> None:
+        self._fix_missing_art(self._host.feedback)
+
+    def _fix_missing_art(self, feedback: FeedbackTarget) -> None:
         playlist = self._context.playlist_selection.playlist
 
         if playlist is None:
-            self._host.notice.show_message(
+            feedback.notice.show_message(
                 "Select a playlist first.", kind="warning",
             )
             return
@@ -386,22 +414,24 @@ class TaggingPanel(QWidget):
             "fix_missing_art", self.fix_missing_art_button,
             lambda: self._context.application.metadata_service
             .fix_missing_art_for_playlist(playlist_name),
-            status_label=self._host.status_label,
-            on_finished=self._render_fix_art_result,
+            on_finished=lambda result: self._render_fix_art_result(
+                result, feedback,
+            ),
+            on_error=feedback.show_error,
         )
-        self._host.status_label.setText(
-            f"Fixing cover art for '{playlist_name}'..."
-        )
+        feedback.show_progress(f"Fixing cover art for '{playlist_name}'...")
 
-    def _render_fix_art_result(self, result: dict[str, Any]) -> None:
-        self._host.status_label.setText("")
-
+    def _render_fix_art_result(
+            self,
+            result: dict[str, Any],
+            feedback: FeedbackTarget,
+    ) -> None:
         self.results_panel.set_result(
             summarize_fix_art_result(result), result["details"],
         )
 
         message, kind = help_text.format_fix_art_result_message(result)
-        self._host.notice.show_message(message, kind=kind)
+        feedback.show_outcome(message, kind=kind)
 
     def _on_fill_missing_art_urls_clicked(self) -> None:
         playlist = self._context.playlist_selection.playlist

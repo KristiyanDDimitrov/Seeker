@@ -1,21 +1,11 @@
 """InlineNotice — a persistent, dismissible banner for anything a user
 needs to read and act on: errors, warnings, results, confirmations.
 
-Why this exists (found live while building Phase 3, not hypothesized):
-`ui/workers.py::run_worker()` clears its target `status_label` to ""
-unconditionally at the START of every call, before the background
-task even runs. `MainWindow._poll_selected_playlist()` — which passes
-`status_label=self.status_label` — runs on both the 2s display-refresh
-timer AND after every real backend poll, completely independent of
-whatever the user was just shown. So any validation error or tag
-result written to that same shared `status_label` had at most ~2
-seconds before the next poll tick silently wiped it, regardless of
-severity — not a rendering bug, a genuine structural one: a single
-shared label was being used for both "ephemeral progress" and
-"something the user needs to read." InlineNotice fixes this
-structurally, not just by extending a timeout: it lives outside the
-poll's reach entirely, and only ever clears when the user dismisses it
-or the caller explicitly replaces/clears it.
+Why this exists: `ui/workers.py::run_worker()` clears its target
+`status_label` at the start of every call, so a label shared with any
+other caller is wiped by that caller's next run; a periodic caller
+wipes it within seconds. InlineNotice lives outside that plumbing: it clears only when
+the user dismisses it or the caller replaces it (HISTORY §47).
 
 `status_label` remains for genuinely transient, disposable progress
 text ("Syncing...", "Tagging 3 selected track(s)...") — nothing a user
@@ -23,9 +13,10 @@ needs to still see a few seconds later belongs there anymore.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from seeker.ui import theme
 from seeker.ui.plain_text import PlainLabel
@@ -140,3 +131,27 @@ class InlineNotice(QWidget):
 
     def text(self) -> str:
         return self._message_label.text()
+
+
+@dataclass(frozen=True)
+class FeedbackTarget:
+    """Where one action reports: the page it was started from. A panel
+    whose actions can be triggered from another page (TaggingPanel's
+    Tag, from a Dashboard row) takes one from its caller, so the outcome
+    lands where the user is looking, not on the panel's own page.
+
+    `status_label` carries in-progress text only; the outcome, success
+    or error, goes to `notice` and clears the label."""
+
+    status_label: QLabel
+    notice: InlineNotice
+
+    def show_progress(self, text: str) -> None:
+        self.status_label.setText(text)
+
+    def show_outcome(self, text: str, kind: str = "info") -> None:
+        self.status_label.setText("")
+        self.notice.show_message(text, kind=kind)
+
+    def show_error(self, message: str) -> None:
+        self.show_outcome(message, kind="error")

@@ -1494,14 +1494,14 @@ class MainWindow(QMainWindow):
         self._run_busy_worker(
             "sync", self._dashboard_page.sync_button,
             self.application.sync_service.refresh_playlists,
-            status_label=self._dashboard_page.status_label,
             on_finished=self._on_sync_finished,
+            on_error=self._dashboard_page.feedback.show_error,
             reports_progress=True,
         )
 
     def _on_sync_finished(self, result: PlaylistRefreshResult) -> None:
         self._dashboard_page._load_playlists()
-        self._dashboard_page.dashboard_notice.show_message(
+        self._dashboard_page.feedback.show_outcome(
             help_text.format_playlist_refresh_message(result),
             kind="warning" if result.local_files_skipped else "success",
         )
@@ -1521,20 +1521,21 @@ class MainWindow(QMainWindow):
             "scan", self._dashboard_page.scan_button,
             self.application.library_service.scan_and_match,
             busy_text="Scanning…",
-            status_label=self._dashboard_page.status_label,
             on_finished=self._on_scan_and_match_finished,
+            on_error=self._dashboard_page.feedback.show_error,
         )
-        self._dashboard_page.status_label.setText(
+        self._dashboard_page.feedback.show_progress(
             "Scanning library, then matching tracks…"
         )
 
     def _on_scan_and_match_finished(self, result: dict[str, int]) -> None:
-        self._dashboard_page.status_label.setText(
+        self._dashboard_page.feedback.show_outcome(
             f"Scanned: {result['added']} added, {result['updated']} "
             f"updated, {result['removed']} removed. "
             f"Matched: {result['auto']} auto, "
             f"{result['needs_review']} needs review, "
-            f"{result['unmatched']} unmatched."
+            f"{result['unmatched']} unmatched.",
+            kind="success",
         )
         self._dashboard_page._poll_selected_playlist()
 
@@ -1542,9 +1543,18 @@ class MainWindow(QMainWindow):
         self._run_busy_worker(
             "match", self._dashboard_page.match_button,
             self.application.track_matcher.match_all,
-            status_label=self._dashboard_page.status_label,
-            on_finished=lambda _: self._dashboard_page._poll_selected_playlist(),
+            on_finished=self._on_match_finished,
+            on_error=self._dashboard_page.feedback.show_error,
         )
+
+    def _on_match_finished(self, result: dict[str, int]) -> None:
+        self._dashboard_page.feedback.show_outcome(
+            f"Matched: {result['auto']} auto, "
+            f"{result['needs_review']} needs review, "
+            f"{result['unmatched']} unmatched.",
+            kind="success",
+        )
+        self._dashboard_page._poll_selected_playlist()
 
     def _set_download_button_busy(self) -> None:
         # Idempotent (BusyActionRegistry.begin() no-ops if already
@@ -1610,7 +1620,7 @@ class MainWindow(QMainWindow):
             on_finished=lambda result: self._open_destination_dialog(
                 playlist_name, result[1], result[0],
             ),
-            on_error=lambda _message: self._reset_download_button(),
+            on_error=self._on_download_error,
         )
 
     def _open_destination_dialog(
@@ -1690,7 +1700,7 @@ class MainWindow(QMainWindow):
             self.thread_pool,
             do_persist,
             on_finished=lambda _: self._start_download(playlist_name),
-            on_error=lambda _message: self._reset_download_button(),
+            on_error=self._on_download_error,
         )
 
     def _start_download(self, playlist_name: str) -> None:
@@ -1701,10 +1711,13 @@ class MainWindow(QMainWindow):
             lambda: self.application.download_service.download_playlist(
                 playlist_name
             ),
-            status_label=self._dashboard_page.status_label,
             on_finished=self._on_download_finished,
-            on_error=lambda _message: self._reset_download_button(),
+            on_error=self._on_download_error,
         )
+
+    def _on_download_error(self, message: str) -> None:
+        self._reset_download_button()
+        self._dashboard_page.feedback.show_error(message)
 
     def _on_download_finished(self, result: dict[str, Any]) -> None:
         self._reset_download_button()
@@ -1717,7 +1730,7 @@ class MainWindow(QMainWindow):
         # them into one generic figure.
         message = help_text.format_download_result_message(result)
         kind = "success" if result["requested"] else "info"
-        self._dashboard_page.dashboard_notice.show_message(message, kind=kind)
+        self._dashboard_page.feedback.show_outcome(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:
         if self._dashboard_page.selected_playlist is None:
@@ -1743,8 +1756,8 @@ class MainWindow(QMainWindow):
 
         self._run_busy_worker(
             "sync_tracks", self._dashboard_page.sync_tracks_button, do_sync,
-            status_label=self._dashboard_page.status_label,
             on_finished=on_finished,
+            on_error=self._dashboard_page.feedback.show_error,
         )
 
     # Round 8 §12.6 — Dashboard's own track-table row actions (a Tag
@@ -1756,14 +1769,23 @@ class MainWindow(QMainWindow):
     # doesn't exist yet at that point (ruff PLW0108 flags the
     # equivalent lambda as an unnecessary wrapper around a call that
     # LOOKS resolvable now but isn't).
+    #
+    # Each passes the Dashboard's own feedback target: the outcome of an
+    # action started here belongs on this page, not on Library's.
     def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
-        self._library_page._tagging_panel._on_tag_track_clicked(track_id, button)
+        self._library_page._tagging_panel._on_tag_track_clicked(
+            track_id, button, feedback=self._dashboard_page.feedback,
+        )
 
     def _on_retag_track_clicked(self, track_id: str) -> None:
-        self._library_page._tagging_panel._on_retag_track_clicked(track_id)
+        self._library_page._tagging_panel._on_retag_track_clicked(
+            track_id, feedback=self._dashboard_page.feedback,
+        )
 
     def _on_tag_playlist_clicked(self) -> None:
-        self._library_page._tagging_panel._on_tag_playlist_clicked()
+        self._library_page._tagging_panel._tag_playlist(
+            self._dashboard_page.feedback,
+        )
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
         # Roadmap item 56 Phase 3 — self.settings_page is a single,

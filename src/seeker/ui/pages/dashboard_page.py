@@ -50,7 +50,7 @@ from seeker.models.track_status import (
 )
 from seeker.ui import help_text, theme
 from seeker.ui.formatting import format_timestamp
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
@@ -376,6 +376,9 @@ class DashboardPage(QWidget):
 
         self.status_label = PlainLabel("")
         right.addWidget(self.status_label)
+        # Every Dashboard action reports through this: progress on the
+        # label, outcome and error on the notice, out of the poll's reach.
+        self.feedback = FeedbackTarget(self.status_label, self.dashboard_notice)
 
         layout.addLayout(right, 3)
 
@@ -569,8 +572,8 @@ class DashboardPage(QWidget):
         run_worker(
             self._context.thread_pool,
             self._context.application.sync_service.list_playlists,
-            status_label=self.status_label,
             on_finished=self._populate_playlists,
+            on_error=self.feedback.show_error,
         )
 
     def _populate_playlists(self, playlists: list[Playlist]) -> None:
@@ -708,7 +711,8 @@ class DashboardPage(QWidget):
             self._context.thread_pool,
             lambda: self._context.application.dashboard_service
             .get_playlist_track_status(playlist_name),
-            status_label=self.status_label,
+            # No status_label: run_worker clears it at submit, and this
+            # runs every 2 s, so it would wipe whatever an action wrote.
             on_finished=self._render_track_statuses,
         )
 

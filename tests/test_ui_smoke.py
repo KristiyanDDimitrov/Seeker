@@ -71,6 +71,7 @@ class FakeSyncService:
         self.refresh_result = PlaylistRefreshResult(
             playlist_count=len(self._playlists), updated_playlist_names=[],
         )
+        self.refresh_error: Exception | None = None
 
     def list_playlists(self) -> list[Playlist]:
         return self._playlists
@@ -84,6 +85,10 @@ class FakeSyncService:
     ) -> PlaylistRefreshResult:
         self.refresh_playlists_calls += 1
         self.refresh_progress = progress
+
+        if self.refresh_error is not None:
+            raise self.refresh_error
+
         return self.refresh_result
 
     def sync_playlist_tracks(self, playlist: Playlist) -> TrackSyncResult:

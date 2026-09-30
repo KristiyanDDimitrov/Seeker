@@ -37,7 +37,12 @@ from seeker.models.track_status import (
 )
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication, _make_track, _make_track_status
+from test_ui_smoke import (
+    _EMPTY_TAG_RESULT,
+    FakeApplication,
+    _make_track,
+    _make_track_status,
+)
 
 
 def _select_first_playlist(window, qtbot) -> None:
@@ -1022,3 +1027,87 @@ def test_track_filter_with_no_matches_shows_empty_state_without_load_button(
     window._dashboard_page._track_filter_buttons["all"].click()
     assert window._dashboard_page.track_table.rowCount() == 1
 
+
+def _run_one_poll_tick(window, qtbot) -> None:
+    # What the 2 s track-status timer does; waits for its render so a
+    # label it cleared at submit time stays cleared.
+    calls = window._dashboard_page._context.application.dashboard_service.calls
+    before = len(calls)
+    window._dashboard_page._poll_selected_playlist()
+    qtbot.waitUntil(lambda: len(calls) > before, timeout=2000)
+    qtbot.wait(50)
+
+
+def test_scan_summary_stays_readable_after_the_next_poll_tick(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Warmup", track_count=1)],
+        locations=_one_location(),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window._dashboard_page.scan_button.click()
+    qtbot.waitUntil(
+        lambda: application.library_service.scan_and_match_calls == 1,
+        timeout=2000,
+    )
+    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=2000)
+    _run_one_poll_tick(window, qtbot)
+
+    notice = window._dashboard_page.dashboard_notice
+    assert not notice.isHidden()
+    assert "Scanned: 0 added" in notice.text()
+    # In-progress text only; nothing left over once the scan is done.
+    assert window._dashboard_page.status_label.text() == ""
+
+
+def test_failed_refresh_playlists_error_stays_readable(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Warmup", track_count=1)],
+        locations=_one_location(),
+    )
+    application.sync_service.refresh_error = RuntimeError(
+        "Spotify is rate-limiting Seeker. Try again in 3h 42m.",
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window._dashboard_page.sync_button.click()
+    qtbot.waitUntil(
+        lambda: application.sync_service.refresh_playlists_calls == 1,
+        timeout=2000,
+    )
+    qtbot.waitUntil(window._dashboard_page.sync_button.isEnabled, timeout=2000)
+    _run_one_poll_tick(window, qtbot)
+
+    notice = window._dashboard_page.dashboard_notice
+    assert not notice.isHidden()
+    assert "rate-limiting" in notice.text()
+
+
+def test_tag_from_a_dashboard_row_reports_on_the_dashboard(qtbot):
+    tag_result = {
+        **_EMPTY_TAG_RESULT,
+        "failed": 1,
+        "details": [{
+            "track_id": "t1", "reason": "failed",
+            "message": "File not found: /music/a.mp3",
+        }],
+    }
+    application = FakeApplication(tag_result=tag_result)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._dashboard_page._render_track_statuses([
+        _make_track_status(track_id="t1", state=IN_LIBRARY),
+    ])
+
+    actions = window._dashboard_page.track_table.cellWidget(0, 3)
+    [button] = actions.findChildren(QPushButton)
+    button.click()
+
+    dashboard_notice = window._dashboard_page.dashboard_notice
+    qtbot.waitUntil(lambda: not dashboard_notice.isHidden(), timeout=2000)
+    assert "failed" in dashboard_notice.text().lower()
+    assert window._library_page.notice.isHidden()
