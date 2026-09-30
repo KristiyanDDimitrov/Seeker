@@ -1141,56 +1141,96 @@ class DownloadService:
         # confirmed locked, so ANY rejection on the retry (any reason)
         # just means stay 'locked' and try again next run — only a real
         # success or in-progress state moves it out of the retry cycle.
-        #
-        # `locked` (the list this is called over) is fetched once at the
-        # start of poll_downloads(), before the main loop runs — if a
-        # DIFFERENT entry for the same track succeeds during that loop
-        # and supersedes this one, this row is no longer really 'locked'
-        # by the time we get here. Re-check its current status first
-        # rather than blindly reactivating (and potentially overwriting
-        # 'superseded' back to 'locked'/'queued') a stale snapshot.
         assert request.id is not None
         assert request.size is not None
+
+        current = self._still_locked(request)
+
+        if current is None or not self._retry_is_due(current):
+            return
+
+        if current.retry_count >= LOCKED_RETRY_MAX_ATTEMPTS:
+            self._mark_retries_exhausted(request.id)
+            return
+
+        attempt = self._attempt_locked_retry(request, current.retry_count)
+
+        if attempt is None:
+            return  # Rejected again at the batch level — stays locked.
+
+        transfer_id, state = attempt
+        status = self._classify_retry_state(request, state, counts)
+        self._persist_retry_outcome(
+            request, transfer_id, status, current.retry_count,
+        )
+
+    def _still_locked(
+            self, request: DownloadRequest,
+    ) -> DownloadRequest | None:
+        """The row as it stands now, or None when it should not be
+        retried.
+
+        `locked` (the list the retry loop runs over) is fetched once at
+        the start of poll_downloads(), before the main loop runs — if a
+        DIFFERENT entry for the same track succeeds during that loop
+        and supersedes this one, this row is no longer really 'locked'
+        by the time we get here. Re-check its current status first
+        rather than blindly reactivating (and potentially overwriting
+        'superseded' back to 'locked'/'queued') a stale snapshot.
+        """
+        assert request.id is not None
 
         with self.database.transaction() as connection:
             current = self.download_requests.get_by_id(request.id, connection)
 
         if current is None or current.status != DownloadStatus.LOCKED:
-            return
+            return None
 
         if self._supersede_stale_duplicates(current):
             # A more recent row for the exact same candidate already
             # exists and just absorbed this one's spot — no point
             # issuing a real, redundant request_download for a stale
             # duplicate against the same real peer.
-            return
+            return None
 
+        return current
+
+    @staticmethod
+    def _retry_is_due(current: DownloadRequest) -> bool:
         # The retry cadence is independent of the poll cadence: a row
         # isn't due for another real attempt until its own
         # next_retry_at (exponential backoff) has passed, however often
         # poll_downloads() itself runs (HISTORY §63, §66).
-        now = datetime.now(UTC)
-        if current.next_retry_at is not None:
-            next_retry_at = datetime.fromisoformat(current.next_retry_at)
-            if now < next_retry_at:
-                return
+        if current.next_retry_at is None:
+            return True
 
-        if current.retry_count >= LOCKED_RETRY_MAX_ATTEMPTS:
-            # Exhausted every real attempt — the file exists but this
-            # peer won't give it up. Terminal, distinct from 'failed'
-            # (the candidate itself was real), and deliberately excluded
-            # from get_requests_blocking_redownload() so a later
-            # download_playlist() run can look for the same track from a
-            # different peer.
-            with self.database.transaction() as connection:
-                self.download_requests.mark_status(
-                    request.id, DownloadStatus.UNAVAILABLE, connection,
-                    failure_reason=(
-                        "Peer kept refusing after "
-                        f"{LOCKED_RETRY_MAX_ATTEMPTS} attempts"
-                    ),
-                )
-            return
+        return datetime.now(UTC) >= datetime.fromisoformat(
+            current.next_retry_at,
+        )
+
+    def _mark_retries_exhausted(self, request_id: int) -> None:
+        # Exhausted every real attempt — the file exists but this peer
+        # won't give it up. Terminal, distinct from 'failed' (the
+        # candidate itself was real), and deliberately excluded from
+        # get_requests_blocking_redownload() so a later
+        # download_playlist() run can look for the same track from a
+        # different peer.
+        with self.database.transaction() as connection:
+            self.download_requests.mark_status(
+                request_id, DownloadStatus.UNAVAILABLE, connection,
+                failure_reason=(
+                    "Peer kept refusing after "
+                    f"{LOCKED_RETRY_MAX_ATTEMPTS} attempts"
+                ),
+            )
+
+    def _attempt_locked_retry(
+            self, request: DownloadRequest, retry_count: int,
+    ) -> tuple[str, str] | None:
+        """Re-requests the same file from the same peer: its transfer id
+        and slskd's state for it, or None when the peer rejected it
+        at the batch level (the retry budget already advanced)."""
+        assert request.size is not None
 
         try:
             transfer_id = self.soulseek.request_download(
@@ -1204,8 +1244,8 @@ class DownloadService:
             # client.py's RECOGNIZED_REJECTION_PATTERNS) — a peer that's
             # offline right now hits this branch exactly the same way a
             # file-not-shared rejection always did.
-            self._advance_locked_retry(request, current.retry_count)
-            return  # Rejected again at the batch level — stays locked.
+            self._advance_locked_retry(request, retry_count)
+            return None
         except httpx.TransportError:
             # slskd is down; the peer was never asked, so this is not
             # an attempt against the retry budget.
@@ -1222,7 +1262,7 @@ class DownloadService:
             # Re-raised unchanged so poll_downloads()'s own outer
             # per-request try/except still prints its diagnostic; this
             # is additive bookkeeping, not a change to what's reported.
-            self._advance_locked_retry(request, current.retry_count)
+            self._advance_locked_retry(request, retry_count)
             raise
 
         try:
@@ -1237,61 +1277,69 @@ class DownloadService:
             # of its own at all, so any real failure here (a timeout, a
             # non-404 HTTP error) must still count against the retry
             # budget rather than silently never advancing it.
-            self._advance_locked_retry(request, current.retry_count)
+            self._advance_locked_retry(request, retry_count)
             raise
 
-        if any(marker in state for marker in FAILED_STATE_MARKERS):
-            status = DownloadStatus.LOCKED
-        elif "Succeeded" in state:
-            # role='upgrade' still needs a human's confirmation via
-            # ready_for_review, exactly as before. role='settled' is
-            # only reachable here at all via a human-confirmed
-            # needs-review candidate that turned out to be locked
-            # (find_best_needs_review_candidate never filters on lock
-            # status — HISTORY §26) — that candidate was already
-            # human-confirmed once, so it auto-moves into the library
-            # like an ordinary settled success, not a second
-            # confirmation via ready_for_review.
-            status = (
-                DownloadStatus.READY_FOR_REVIEW
-                if request.role == DownloadRole.UPGRADE
-                else DownloadStatus.COMPLETED
-            )
-        else:
-            status = _in_flight_status(state)
+        return transfer_id, state
 
-        if (
-                status == DownloadStatus.COMPLETED
-                and self._track_already_has_a_matched_file(request.track_id)
-        ):
+    def _classify_retry_state(
+            self, request: DownloadRequest, state: str, counts: PollResult,
+    ) -> DownloadStatus:
+        """What a retried transfer's slskd state makes of the row; a
+        success is placed here, before the status is persisted."""
+        if any(marker in state for marker in FAILED_STATE_MARKERS):
+            return DownloadStatus.LOCKED
+
+        if "Succeeded" not in state:
+            return _in_flight_status(state)
+
+        # role='upgrade' still needs a human's confirmation via
+        # ready_for_review, exactly as before. role='settled' is only
+        # reachable here at all via a human-confirmed needs-review
+        # candidate that turned out to be locked
+        # (find_best_needs_review_candidate never filters on lock
+        # status — HISTORY §26) — that candidate was already
+        # human-confirmed once, so it auto-moves into the library like
+        # an ordinary settled success, not a second confirmation via
+        # ready_for_review.
+        if request.role == DownloadRole.UPGRADE:
+            return DownloadStatus.READY_FOR_REVIEW
+
+        if self._track_already_has_a_matched_file(request.track_id):
             # Same safety net as the main poll_downloads() loop
             # (HISTORY §56 Phase 5.3): even a role='settled' row that's
             # already human-confirmed once must not silently create a
             # second file for a track something else already matched in
             # the meantime.
-            status = DownloadStatus.READY_FOR_REVIEW
-        elif status == DownloadStatus.COMPLETED:
-            # Mirror poll_downloads()'s own main-loop pattern: only
-            # persist 'completed' if the file is genuinely found and
-            # moved. If not, fall back to 'downloading' — the real
-            # transfer stays reported as Succeeded by slskd on every
-            # future poll, so the next run's main pending loop retries
-            # the move instead of this row silently claiming a
-            # completion that never actually happened.
-            move_result = self.placement.move_completed_file(request)
+            return DownloadStatus.READY_FOR_REVIEW
 
-            if move_result is not None:
-                counts.completed += 1
-                # Same indexing gap as poll_downloads()'s main loop
-                # (see DownloadPlacement.index_and_match's own
-                # docstring) — this branch reaches 'completed' for a
-                # role='settled' row too, so it needs the identical fix,
-                # not a second copy of it.
-                self.placement.index_and_match(
-                    request, move_result, counts,
-                )
-            else:
-                status = DownloadStatus.DOWNLOADING
+        # Mirror poll_downloads()'s own main-loop pattern: only persist
+        # 'completed' if the file is genuinely found and moved. If not,
+        # fall back to 'downloading' — the real transfer stays reported
+        # as Succeeded by slskd on every future poll, so the next run's
+        # main pending loop retries the move instead of this row
+        # silently claiming a completion that never actually happened.
+        move_result = self.placement.move_completed_file(request)
+
+        if move_result is None:
+            return DownloadStatus.DOWNLOADING
+
+        counts.completed += 1
+        # Same indexing gap as poll_downloads()'s main loop (see
+        # DownloadPlacement.index_and_match's own docstring) — this
+        # branch reaches 'completed' for a role='settled' row too, so it
+        # needs the identical fix, not a second copy of it.
+        self.placement.index_and_match(request, move_result, counts)
+        return DownloadStatus.COMPLETED
+
+    def _persist_retry_outcome(
+            self,
+            request: DownloadRequest,
+            transfer_id: str,
+            status: DownloadStatus,
+            retry_count: int,
+    ) -> None:
+        assert request.id is not None
 
         with self.database.transaction() as connection:
             self.download_requests.update_transfer_id_and_status(
@@ -1303,7 +1351,7 @@ class DownloadService:
             # schedule. Left alone (not reset) when status moves on to
             # anything else: those rows leave the retry cycle entirely,
             # so their retry_count/next_retry_at stop being consulted.
-            self._advance_locked_retry(request, current.retry_count)
+            self._advance_locked_retry(request, retry_count)
 
         if status == DownloadStatus.READY_FOR_REVIEW:
             self._supersede_others_for_track(request.track_id, request.id)
