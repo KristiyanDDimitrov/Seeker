@@ -10,68 +10,87 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S8 close-out commit (HISTORY §145, two CLAUDE.md rules,
-  S8 ticked, this handoff), pushed. Tree clean apart from the untracked
-  `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-30): `1397 passed, 1 skipped, 6 warnings in 112.85s`
-  (X9 Pro mounted; S8 part 1's 1374 plus 23 new).
+- **HEAD:** the S9 part 1 close-out commit (HISTORY §146, three
+  CLAUDE.md rules, S9 row annotated, this handoff), pushed. Tree clean
+  apart from the untracked `Claude outputs/`.
+- **Local pytest** (offscreen Qt, 2026-09-30): `1436 passed, 1 skipped, 6 warnings in 114.91s`
+  (X9 Pro mounted; S8's 1397 plus 39 new).
 - **`mypy --strict src/`:** clean, 109 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** push `b72c0ad` → run `36681713075`, **success**.
+- **CI:** see the line appended below after the push.
 
 ## 2. Where we are
 
-S1–S8 ticked. **Next: S9, application hardening, including
-peer-string escaping** (BRIEF §9; split point after §9.3). Then S10.
+S1–S8 ticked. **S9 part 1 done; next: S9 part 2, §9.5 (OAuth callback
+page and a cancellable wait) and §9.7 (peer strings render as text)**.
+Both are UI work, and each is about one session's worth. Then S10.
 
-## 3. Session report (S8 part 2)
+## 3. Session report (S9 part 1)
 
-Evidence (the 22 reds, the race repro, the rehearsal counts) is in
-HISTORY §145.
-- `ed94323` §8.3: `failure_reason` and `dismissed_at` on
-  `download_requests`; every failed/unavailable transition records a
-  readable reason; Downloads keeps failures until "Clear finished";
-  reason in the Status cell and tooltip; Downloads and History copy.
-- Close-out: §145, two CLAUDE.md rules, S8 ticked.
+Every red and the GUI `.env` probe are in HISTORY §146.
+- `2dab02d` §9.1: credential temp file 0600 from `os.open(O_EXCL)`,
+  fsync, dir fsync, cleanup on failure.
+- `d5caae5` §9.2: process-wide token lock plus a re-read under it.
+- `653ce64` §9.3: slskd username/transfer id/search id percent-encoded.
+- `5ea0ea7` §9.4: album art only from `*.scdn.co`/`*.spotifycdn.com`
+  over https; release link only into this repo, else the releases page.
+- `207a44e` §9.8: 429 with an empty body or an HTTP-date Retry-After.
+- `01f96c7` §9.6: generic, type-checked `load_config`; `.env` loaded by
+  the entry points, not at import.
+- Close-out: §146, CLAUDE.md rules, S9 row annotated.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §146**: `docs/history/121-150.md` plus its
+- **Your HISTORY entry is §147**: `docs/history/121-150.md` plus its
   README line.
-- **The Status cell now shows slskd's own text** (`failure_reason`,
-  from the peer's `exception` string). S9's peer-string escaping must
-  cover it: the cell is a plain `QTableWidgetItem` (not rich text), and
-  the tooltip is set from the same text. Check whether Qt renders a
-  tooltip beginning with `<` as rich text before calling it safe.
-- **`SoulseekDownloadError` now takes `reason=`** (slskd's message
-  without the framing). Both raise sites in `client.py` pass it; S13's
-  exception hierarchy should keep it.
-- **`_classify_failed_transfer` fetches the `exception` text for every
-  failed state**, one extra GET per failure (§145). S22 (performance)
-  may count it.
-- **`run_worker(button=...)` re-enables the button before
-  `on_finished`**, so a render-owned button must not use it (CLAUDE.md,
-  §145). "Clear finished" dismisses, never deletes (CLAUDE.md).
-- **Carried:** nested destination subfolders are real data; a stored
-  unsafe subfolder resolves to `None`; `_repoint_or_clear_match` drops
-  `confirmed_at` (still unowned); the `platformdirs.user_data_dir` /
-  `slskd-data` test hazard; **S9's `_write_atomic` umask fix**; three
-  `LibraryLocationNotFoundError` classes (S13); never touch slskd or
-  real data.
-- **zsh gotcha:** `echo ======` fails; use `echo '---'`. A
-  `--include=*.py` glob fails unquoted; grep the directory instead.
+- **§9.7 must cover the update-check dialog.** `main_window.py`
+  `_on_update_check_finished` (around line 1340) builds a **RichText**
+  `QMessageBox` from `result.latest_version` (GitHub's `tag_name`) and
+  `result.release_url` without `html.escape`. The URL is now
+  prefix-checked (§9.4) but can still hold a `"`; escape both.
+- **§9.7, carried from S8:** Downloads' Status cell and its tooltip
+  show slskd's `failure_reason` (peer text). The cell is a plain
+  `QTableWidgetItem`; the tooltip auto-detects rich text, so escape it.
+- **§9.5 starting points:** `callback_server.serve_until_callback`
+  (returns `code, state, error, timed_out`; closes the server itself),
+  `SpotifyAuthManager._authorize`, the wizard's
+  `_on_connect_spotify_clicked` / `_update_connect_button_state`, and
+  Settings' Re-authorize. `_authorize` now runs **inside**
+  `_TOKEN_LOCK`: a cancel must release it promptly, or a concurrent
+  sync waits the full 300 s.
+- **`config.SPOTIFY_CLIENT_ID` etc. no longer exist**: they are
+  `config.spotify_client_id()` and so on. Tests use
+  `monkeypatch.setenv`/`delenv` (CLAUDE.md).
+- **`load_config` now drops wrongly typed values** with a warning. A
+  new `SeekerConfig` field needs nothing in `load_config`, but its
+  annotation must be a plain type or `X | None`.
+- **Carried:** nested destination subfolders are real data;
+  `_repoint_or_clear_match` drops `confirmed_at` (unowned); the
+  `platformdirs.user_data_dir` / `slskd-data` test hazard; three
+  `LibraryLocationNotFoundError` classes (S13); `SoulseekDownloadError`
+  takes `reason=` (S13 keeps it); one extra GET per failed transfer
+  (S22); never touch slskd or real data.
+- **zsh gotcha:** `echo ======` fails; use `echo '---'`.
 
 ## 5. Decisions made
 
-- **"Clear finished" also dismisses completed rows**, not only
-  failures: the button's name promises it, and a completed row already
-  leaves after 60 seconds.
-- **The 12 identical SELECT column lists in
-  `download_request_repository.py` were extended, not refactored into
-  a constant**: that is a refactor commit, and an f-string SQL constant
-  needs 12 `noqa: S608`. S16 can decide.
-- **Skill divergence:** `focused-fix` and `tdd` not loaded (budget);
-  failing-test-first followed by hand (§145 has every red).
+- **Stopped after §9.6, past the split point**, at an item boundary:
+  the context was near the ceiling, and §9.5 and §9.7 are each a
+  multi-file UI change.
+- **The token lock is module-level, not per manager**: Application
+  replaces the manager on every connect, and all share one file.
+- **`config.py` became five call-time functions** rather than PEP 562
+  `__getattr__`: `monkeypatch.setattr` on a lazy module attribute
+  leaves a real attribute behind on undo, which would freeze it.
+- **The GUI keeps reading a `.env`** in development (`main_ui.main()`
+  calls `load_env_file()` too); a frozen app never does. The brief said
+  "the CLI entry point"; reading it only there would silently drop the
+  GUI's dev fallback.
+- **The wrong-type warning logs the value's type, not the value**
+  (credentials live in the same file).
+- **Skill divergence:** `env-secrets-manager` and `adversarial-reviewer`
+  not loaded (budget). Run `adversarial-reviewer` over all of S9 before
+  part 2's close-out.
 
 ## 6. Blockers
 
@@ -79,7 +98,7 @@ None.
 
 ## 7. Files in progress
 
-None. S8 is complete.
+None mid-edit. Row state: `§9.5` not started; `§9.7` not started.
 
 ## 8. Waiting on Kris
 
@@ -88,36 +107,31 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 
 **Interim cautions:** none.
 
-**Next launch will migrate the real DB:** S8 part 1's (deletes the one
-orphan manual track and its incidental match; adds the two rejection
-tables) and §8.3's (adds `failure_reason` and `dismissed_at`). Both
-rehearsed on a copy (§144, §145). After it, the Downloads page shows
-the 9 historical failures (5 failed, 4 unavailable) without a reason,
-until you click Clear finished.
+**Next launch will migrate the real DB** (S8 part 1 and §8.3, both
+rehearsed on a copy, §144 and §145). S9 part 1 changes no schema.
+
+**Behaviour you may notice:** `uv run seeker-ui` launched from outside
+the checkout no longer reads the project `.env` (from inside it still
+does). Your `config.json` already holds those values, so nothing
+should change.
 
 **Kris's own decision (carried):** keep or discard the repo's
 `./slskd-data` (see HISTORY §140).
 
-**Live checks:** S41's checklist. Carried from S6: edit a loaded
-playlist on Spotify, then Refresh playlists → "Updated tracks for 1".
-Carried from S7: the next real Scan applies the library's drift.
-Carried from S8 part 1: on Review, Reject a local match, Scan, confirm
-it does not come back. New: a real failed download shows its reason on
-Downloads and stays until Clear finished.
+**Live checks:** S41's checklist. Carried: S6's Refresh playlists
+check, S7's drift Scan, S8's Reject-then-Scan and failure reason on
+Downloads.
 
 ## 9. Open questions
 
 - **Carried from S7:** `DestinationDialog`'s unchecked "Remember this
-  for this playlist" drops the typed subfolder (`main_window.py`,
-  `do_persist`'s `else` branch). S19 or S29?
-- Settings → Destinations shows a rejected subfolder on its ephemeral
-  `status_label`, not an `InlineNotice`. S11 should cover it.
+  for this playlist" drops the typed subfolder. S19 or S29?
+- Settings → Destinations shows a rejected subfolder on its
+  `status_label`, not an `InlineNotice`. S11.
 - CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
-  late-worker defect (S11 or S18)? It has failed CI twice
-  (`36570098069`, `36580274797`).
+  late-worker defect (S11 or S18)?
 - Should a rejection be undoable (a "Rejected" list on Review)? S29.
-- Should `seeker downloads status` (CLI) print failure reasons? Not in
-  the brief; S15 (CLI structure) is the natural home.
+- Should `seeker downloads status` print failure reasons? S15.
 
 ---
 

@@ -224,3 +224,4 @@ under their entry and live in the same file, after it.
 - §143 — Round 11 S7 part 2 (§7.5–§7.6): never create dot-led names; the destination subfolder shown is the one used → [121-150.md#143](121-150.md#143)
 - §144 — Round 11 S8 part 1 (§8.1–§8.2): a rejection sticks; a manual search leaves no orphan track → [121-150.md#144](121-150.md#144)
 - §145 — Round 11 S8 part 2 (§8.3): failures stay visible, with a reason, until cleared → [121-150.md#145](121-150.md#145)
+- §146 — Round 11 S9 part 1 (§9.1–§9.4, §9.6, §9.8): credential writes, token lock, encoded slskd paths, outbound URLs, typed config, tolerant 429 → [121-150.md#146](121-150.md#146)

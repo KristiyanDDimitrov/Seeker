@@ -160,9 +160,15 @@ src/seeker/
   `--fix` deletes them all. Confirmed by direct reproduction.
   [HISTORY §115](docs/history/108-120.md#115)
 - **Credential files (config.json, the Spotify token cache) go through
-  `seeker/atomic_file.py::write_text_locked()`** — 0600 + atomic
-  temp-file-then-replace, never a bare `write_text()`.
-  [HISTORY §116](docs/history/108-120.md#116)
+  `seeker/atomic_file.py::write_text_locked()`** — the temp file is
+  0600 from `os.open(O_EXCL)` (never chmod'd after the write), fsync'd,
+  then renamed; never a bare `write_text()`.
+  [HISTORY §116](docs/history/108-120.md#116), [§146](docs/history/121-150.md#146)
+- **`.env` is read only by an entry point.** `config.py`'s values are
+  functions over `os.environ`, read at call time; `main()` in `main.py`
+  and `main_ui.py` calls `config.load_env_file()` (working directory
+  upward; never in a frozen app). Tests set environment variables,
+  never patch `config`. [HISTORY §146](docs/history/121-150.md#146)
 - **Not using the macOS Keychain for the Spotify token — deliberate,
   not an omission.** It would add a dependency, a platform-specific
   path, and a migration, to protect a file that's already 0600 in the
@@ -251,6 +257,11 @@ Each links to the HISTORY entry where the full investigation lives;
 - Spotify rotates PKCE refresh tokens — two installs sharing one
   account/client ID can invalidate each other's stored refresh token.
   [HISTORY §92](docs/history/072-107.md#92)
+- **One token refresh at a time, per process.** `get_valid_token`
+  refreshes under `auth_manager._TOKEN_LOCK` and re-reads the token
+  inside it; two concurrent refreshes would spend the same rotating
+  refresh token and send the loser to the browser.
+  [HISTORY §146](docs/history/121-150.md#146)
 - Playlist track entries come from `entry["item"]`, gated by
   `item["type"] == "track"` (Feb 2026 API migration repurposed the old
   `"track"` key as a type flag).
@@ -328,6 +339,9 @@ Each links to the HISTORY entry where the full investigation lives;
   frozen alike), never the tracked template, and a recreate keeps a
   live container's `/app` data dir. The per-user copy is seeded once
   and never re-seeded. [HISTORY §140](docs/history/121-150.md#140)
+- **Every slskd URL path segment is `quote(…, safe="")`d** — a
+  username is chosen by a remote peer, and a raw `?`, `#` or `../`
+  reaches a different endpoint. [HISTORY §146](docs/history/121-150.md#146)
 - `RECOGNIZED_REJECTION_PATTERNS`/`is_recognized_rejection()` apply
   unconditionally to any `download_requests.role`, not just
   `role='upgrade'`. [HISTORY §13](docs/history/001-024.md#13)
