@@ -1,13 +1,33 @@
 import sqlite3
+from collections.abc import Collection
 from datetime import UTC, datetime
 
 from seeker.database.connection import Database
-from seeker.models.download_request import DownloadRequest
+from seeker.models.download_request import (
+    BLOCKS_REDOWNLOAD,
+    IN_FLIGHT,
+    RETRYING_IN_BACKGROUND,
+    STAMPS_COMPLETED_AT,
+    DownloadRequest,
+    DownloadRole,
+    DownloadStatus,
+)
 
-# Roadmap item 66 (Phase 4.3) — 'unavailable' added: a locked row that
-# exhausted its retry budget is genuinely terminal (no further
-# transitions), same as 'completed'/'failed'.
-TERMINAL_STATUSES = {"completed", "failed", "unavailable"}
+# The statuses a Phase 3 retry treats as the same live candidate.
+_RETRY_DUPLICATE_STATUSES = IN_FLIGHT | {DownloadStatus.LOCKED}
+
+# Still in the running for a track, so a sibling reaching
+# ready_for_review supersedes it.
+_SUPERSEDABLE_STATUSES = IN_FLIGHT | RETRYING_IN_BACKGROUND
+
+
+def _status_in(
+        statuses: Collection[DownloadStatus],
+) -> tuple[str, list[DownloadStatus]]:
+    """`status IN (?, …)` and its parameters, in a fixed order."""
+    values = sorted(statuses)
+
+    return f"status IN ({', '.join('?' for _ in values)})", values
 
 
 class DownloadRequestRepository:
@@ -128,8 +148,9 @@ class DownloadRequestRepository:
             self,
             connection: sqlite3.Connection,
     ) -> list[DownloadRequest]:
+        in_flight, in_flight_params = _status_in(IN_FLIGHT)
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 id,
                 track_id,
@@ -151,8 +172,9 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status IN ('queued', 'downloading')
-            """
+            WHERE {in_flight}
+            """,  # noqa: S608
+            in_flight_params,
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -184,9 +206,10 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status = 'ready_for_review'
+            WHERE status = ?
             ORDER BY requested_at
-            """
+            """,
+            (DownloadStatus.READY_FOR_REVIEW,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -218,9 +241,10 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status = 'locked'
+            WHERE status = ?
             ORDER BY requested_at
-            """
+            """,
+            (DownloadStatus.LOCKED,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -252,9 +276,10 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status = 'shortlisted'
+            WHERE status = ?
             ORDER BY track_id, rank
-            """
+            """,
+            (DownloadStatus.SHORTLISTED,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -286,9 +311,10 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status = 'superseded'
+            WHERE status = ?
             ORDER BY requested_at
-            """
+            """,
+            (DownloadStatus.SUPERSEDED,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -321,9 +347,10 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE status = 'unavailable'
+            WHERE status = ?
             ORDER BY requested_at
-            """
+            """,
+            (DownloadStatus.UNAVAILABLE,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -341,8 +368,13 @@ class DownloadRequestRepository:
         # an earlier request for the same track was still 'locked'
         # created a second, otherwise-identical row instead of
         # recognizing the existing attempt.
+        ended, ended_params = _status_in({
+            DownloadStatus.COMPLETED,
+            DownloadStatus.FAILED,
+            DownloadStatus.SUPERSEDED,
+        })
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 id,
                 track_id,
@@ -365,9 +397,9 @@ class DownloadRequestRepository:
                 dismissed_at
             FROM download_requests
             WHERE track_id = ?
-            AND status NOT IN ('completed', 'failed', 'superseded')
-            """,
-            (track_id,),
+            AND NOT {ended}
+            """,  # noqa: S608
+            (track_id, *ended_params),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -407,8 +439,9 @@ class DownloadRequestRepository:
         parameter on download_playlist(), not a weakening of this
         guard.
         """
+        blocking, blocking_params = _status_in(BLOCKS_REDOWNLOAD)
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 id,
                 track_id,
@@ -431,9 +464,9 @@ class DownloadRequestRepository:
                 dismissed_at
             FROM download_requests
             WHERE track_id = ?
-            AND status NOT IN ('failed', 'superseded', 'unavailable')
-            """,
-            (track_id,),
+            AND {blocking}
+            """,  # noqa: S608
+            (track_id, *blocking_params),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -441,7 +474,7 @@ class DownloadRequestRepository:
     def get_active_candidates(
             self,
             track_id: str,
-            role: str,
+            role: DownloadRole,
             username: str,
             filename: str,
             connection: sqlite3.Connection,
@@ -462,8 +495,9 @@ class DownloadRequestRepository:
         # (_supersede_others_for_track) and are never literal duplicates
         # of a locked candidate by construction (a shortlist candidate
         # is always a distinct real search result).
+        live, live_params = _status_in(_RETRY_DUPLICATE_STATUSES)
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 id,
                 track_id,
@@ -489,9 +523,9 @@ class DownloadRequestRepository:
             AND role = ?
             AND username = ?
             AND filename = ?
-            AND status IN ('locked', 'queued', 'downloading')
-            """,
-            (track_id, role, username, filename),
+            AND {live}
+            """,  # noqa: S608
+            (track_id, role, username, filename, *live_params),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]
@@ -526,11 +560,11 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE track_id = ? AND status = 'shortlisted'
+            WHERE track_id = ? AND status = ?
             ORDER BY rank ASC
             LIMIT 1
             """,
-            (track_id,),
+            (track_id, DownloadStatus.SHORTLISTED),
         ).fetchone()
 
         if row is None:
@@ -550,28 +584,32 @@ class DownloadRequestRepository:
         # dropped as 'superseded', not retried further. Scoped to
         # role='upgrade' defensively — settled-role rows are a separate
         # concept entirely and must never be touched here.
+        supersedable, supersedable_params = _status_in(_SUPERSEDABLE_STATUSES)
         connection.execute(
-            """
+            f"""
             UPDATE download_requests
-            SET status = 'superseded'
+            SET status = ?
             WHERE track_id = ?
             AND id != ?
-            AND role = 'upgrade'
-            AND status IN ('queued', 'downloading', 'locked', 'shortlisted')
-            """,
-            (track_id, keep_id),
+            AND role = ?
+            AND {supersedable}
+            """,  # noqa: S608
+            (
+                DownloadStatus.SUPERSEDED, track_id, keep_id,
+                DownloadRole.UPGRADE, *supersedable_params,
+            ),
         )
 
     def mark_status(
             self,
             download_request_id: int,
-            status: str,
+            status: DownloadStatus,
             connection: sqlite3.Connection,
             failure_reason: str | None = None,
     ) -> None:
         completed_at = (
             datetime.now(UTC).isoformat()
-            if status in TERMINAL_STATUSES
+            if status in STAMPS_COMPLETED_AT
             else None
         )
 
@@ -589,14 +627,15 @@ class DownloadRequestRepository:
             dismissed_at: str,
             connection: sqlite3.Connection,
     ) -> int:
+        finished, finished_params = _status_in(STAMPS_COMPLETED_AT)
         cursor = connection.execute(
-            """
+            f"""
             UPDATE download_requests
             SET dismissed_at = ?
-            WHERE status IN ('completed', 'failed', 'unavailable')
+            WHERE {finished}
             AND dismissed_at IS NULL
-            """,
-            (dismissed_at,),
+            """,  # noqa: S608
+            (dismissed_at, *finished_params),
         )
 
         return cursor.rowcount
@@ -605,7 +644,7 @@ class DownloadRequestRepository:
             self,
             download_request_id: int,
             transfer_id: str,
-            status: str,
+            status: DownloadStatus,
             connection: sqlite3.Connection,
             failure_reason: str | None = None,
     ) -> None:
@@ -616,7 +655,7 @@ class DownloadRequestRepository:
         # need to target the latest attempt, not the stale one.
         completed_at = (
             datetime.now(UTC).isoformat()
-            if status in TERMINAL_STATUSES
+            if status in STAMPS_COMPLETED_AT
             else None
         )
 
@@ -683,8 +722,8 @@ def _row_to_download_request(row: sqlite3.Row) -> DownloadRequest:
         filename=row["filename"],
         format=row["format"],
         quality_descriptor=row["quality_descriptor"],
-        role=row["role"],
-        status=row["status"],
+        role=DownloadRole(row["role"]),
+        status=DownloadStatus(row["status"]),
         transfer_id=row["transfer_id"],
         size=row["size"],
         rank=row["rank"],

@@ -1,6 +1,5 @@
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
-    TERMINAL_STATUSES,
     DownloadRequestRepository,
 )
 from seeker.database.repositories.local_file_repository import (
@@ -14,6 +13,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import most_recent_per_candidate
+from seeker.models.download_request import DownloadStatus
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.models.track import resolve_playlist_label
 from seeker.models.track_match import TrackMatch
@@ -87,9 +87,10 @@ class HistoryService:
         deduplicated_requests = most_recent_per_candidate(requests).values()
 
         for request in deduplicated_requests:
-            if request.status not in TERMINAL_STATUSES:
-                continue
-            if request.status != "completed" or not request.completed_at:
+            if (
+                    request.status != DownloadStatus.COMPLETED
+                    or not request.completed_at
+            ):
                 continue
 
             track = tracks_by_id.get(request.track_id)

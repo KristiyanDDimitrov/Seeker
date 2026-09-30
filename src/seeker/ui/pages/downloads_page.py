@@ -13,7 +13,14 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.models.active_download import ActiveDownload
-from seeker.models.download_request import DownloadRequest
+from seeker.models.download_request import (
+    FAILED_OUTCOMES,
+    IN_FLIGHT,
+    SHOWS_NO_FURTHER_PROGRESS,
+    STAMPS_COMPLETED_AT,
+    DownloadRequest,
+    DownloadStatus,
+)
 from seeker.ui import help_text, theme
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
@@ -31,42 +38,24 @@ from seeker.ui.workers import run_worker
 # text — a "locked" or "shortlisted" row is still actively being chased,
 # just not in a way a non-technical status string conveys.
 _DOWNLOAD_STATUS_LABELS = {
-    "queued": "Queued",
-    "downloading": "Downloading",
-    "locked": "Retrying (locked)",
-    "shortlisted": "Queued as backup",
-    "ready_for_review": "Ready for review",
-    "completed": "Completed",
-    "failed": "Failed",
+    DownloadStatus.QUEUED: "Queued",
+    DownloadStatus.DOWNLOADING: "Downloading",
+    DownloadStatus.LOCKED: "Retrying (locked)",
+    DownloadStatus.SHORTLISTED: "Queued as backup",
+    DownloadStatus.READY_FOR_REVIEW: "Ready for review",
+    DownloadStatus.COMPLETED: "Completed",
+    DownloadStatus.FAILED: "Failed",
     # Exhausted its retry budget against this specific peer; distinct
     # from "Failed" so it reads as "we gave up chasing this one," not
     # "something errored" (HISTORY §66).
-    "unavailable": "Unavailable (gave up retrying)",
+    DownloadStatus.UNAVAILABLE: "Unavailable (gave up retrying)",
 }
 
 # The words a failure's recorded reason follows in the Status cell
 # ("Failed — Timed out").
-_FAILURE_STATUS_LABELS = {"failed": "Failed", "unavailable": "Unavailable"}
-
-# Rows "Clear finished" removes from this page.
-_FINISHED_STATUSES = {"completed", "failed", "unavailable"}
-
-# Statuses where a progress bar means anything at all — a locked/
-# shortlisted row has no real, current transfer to show progress for
-# (a rejection leaves bytes_transferred/total_bytes unset by design,
-# not zeroed). "failed" is deliberately absent too — it gets its own
-# terminal branch below, not this one.
-_PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
-
-# A row in any of these will never report new progress again. Branched
-# on BEFORE ever consulting the ETA tracker, which is the actual fix
-# for "a finished download reads as Stalled" (HISTORY §56 Phase 5.4):
-# the tracker has no concept of "this row is done," so feeding it more
-# identical-bytes samples from a completed/failed/ready_for_review row
-# eventually looks exactly like a genuinely stuck in-progress download
-# to it. 'unavailable' is the same kind of terminal state as 'failed'.
-_DOWNLOAD_TERMINAL_STATUSES = {
-    "completed", "failed", "ready_for_review", "unavailable",
+_FAILURE_STATUS_LABELS = {
+    DownloadStatus.FAILED: "Failed",
+    DownloadStatus.UNAVAILABLE: "Unavailable",
 }
 
 
@@ -85,7 +74,7 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     # gets the same blank treatment as 'failed' — a full bar would
     # misleadingly read as "completed" for something that never
     # actually succeeded.
-    if request.status in ("failed", "unavailable"):
+    if request.status in FAILED_OUTCOMES:
         return QWidget()  # blank, not a misleading full/empty bar
 
     bar = QProgressBar()
@@ -110,7 +99,7 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
 def _progress_sort_key(request: DownloadRequest) -> float:
     # §5.1 — mirrors _build_progress_widget's own branching so the
     # sort order matches what the bar actually shows.
-    if request.status in ("failed", "unavailable"):
+    if request.status in FAILED_OUTCOMES:
         # No real transfer to rank — same "sorts below everything
         # real" sentinel as a Dashboard row with no active transfer.
         return -1.0
@@ -118,7 +107,7 @@ def _progress_sort_key(request: DownloadRequest) -> float:
     if request.total_bytes and request.bytes_transferred is not None:
         return request.bytes_transferred / request.total_bytes
 
-    if request.status in _DOWNLOAD_TERMINAL_STATUSES:
+    if request.status in SHOWS_NO_FURTHER_PROGRESS:
         # completed/ready_for_review with no real bytes recorded
         # (HISTORY §20 says this shouldn't happen) — rendered as a
         # full bar, so it sorts as done.
@@ -134,10 +123,18 @@ def _build_progress_widget(
 ) -> QWidget:
     request = download.request
 
-    if request.status in _DOWNLOAD_TERMINAL_STATUSES:
+    # Branched on BEFORE ever consulting the ETA tracker, which is the
+    # actual fix for "a finished download reads as Stalled" (HISTORY §56
+    # Phase 5.4): the tracker has no concept of "this row is done," so
+    # feeding it more identical-bytes samples from a finished row
+    # eventually looks exactly like a genuinely stuck download to it.
+    if request.status in SHOWS_NO_FURTHER_PROGRESS:
         return _build_terminal_progress_widget(request)
 
-    if request.status not in _PROGRESS_ELIGIBLE_STATUSES:
+    # A locked/shortlisted row has no current transfer to show progress
+    # for (a rejection leaves bytes_transferred/total_bytes unset by
+    # design, not zeroed).
+    if request.status not in IN_FLIGHT:
         return QWidget()
 
     bar = QProgressBar()
@@ -281,7 +278,7 @@ class DownloadsPage(QWidget):
         # while nothing else is visible (HISTORY §90).
         self.active_downloads_count = sum(
             1 for download in downloads
-            if download.request.status == "downloading"
+            if download.request.status == DownloadStatus.DOWNLOADING
         )
 
         # Re-rendering the table (and the nav badge/ETA header, both
@@ -296,7 +293,7 @@ class DownloadsPage(QWidget):
         self._context.update_nav_badge("downloads", len(downloads))
         self.clear_finished_button.setEnabled(
             any(
-                download.request.status in _FINISHED_STATUSES
+                download.request.status in STAMPS_COMPLETED_AT
                 for download in downloads
             )
         )
@@ -329,7 +326,7 @@ class DownloadsPage(QWidget):
                     status_item.setToolTip(plain_tooltip(status_item.text()))
                 self.downloads_table.setItem(row, 3, status_item)
 
-                is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
+                is_terminal = status in SHOWS_NO_FURTHER_PROGRESS
 
                 if is_terminal:
                     # Evicted the moment a terminal status is seen, not
@@ -396,7 +393,7 @@ class DownloadsPage(QWidget):
             (download.request.id, download.request.total_bytes)
             for download in downloads
             if download.request.id is not None
-            and download.request.status not in _DOWNLOAD_TERMINAL_STATUSES
+            and download.request.status not in SHOWS_NO_FURTHER_PROGRESS
         ]
         result = self._eta_tracker.aggregate(pairs)
         self.downloads_eta_label.setText(format_aggregate_header(result))

@@ -56,7 +56,11 @@ from seeker.file_placement import resolve_collision
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
-from seeker.models.download_request import DownloadRequest
+from seeker.models.download_request import (
+    DownloadRequest,
+    DownloadRole,
+    DownloadStatus,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
@@ -183,6 +187,13 @@ class BulkUpgradeReplaceResult:
     replaced: int
     failed: int
     details: list[str]
+
+
+def _in_flight_status(state: str) -> DownloadStatus:
+    return (
+        DownloadStatus.QUEUED if state == "Requested"
+        else DownloadStatus.DOWNLOADING
+    )
 
 
 def _build_search_query(artist: str, title: str) -> str:
@@ -606,7 +617,7 @@ class DownloadService:
                         skipped += 1
                     continue
 
-                self._request_and_record(track, settled, role="settled")
+                self._request_and_record(track, settled, role=DownloadRole.SETTLED)
                 logger.info(
                     "Requested from %s: %s", settled.username,
                     settled.filename,
@@ -702,7 +713,7 @@ class DownloadService:
             self._save_manual_track_and_request(
                 track,
                 lambda: self._request_and_record(
-                    track, chosen, role="settled",
+                    track, chosen, role=DownloadRole.SETTLED,
                 ),
             )
             logger.info(
@@ -745,7 +756,7 @@ class DownloadService:
             self._save_manual_track_and_request(
                 track,
                 lambda: self._request_and_record(
-                    track, settled, role="settled",
+                    track, settled, role=DownloadRole.SETTLED,
                 ),
             )
             logger.info(
@@ -813,7 +824,7 @@ class DownloadService:
         # requested immediately; the rest are persisted but not sent to
         # slskd until poll_downloads' cascade needs them.
         top = upgrade_shortlist[0]
-        self._request_and_record(track, top, role="upgrade", rank=1)
+        self._request_and_record(track, top, role=DownloadRole.UPGRADE, rank=1)
         logger.info(
             "Requested upgrade from %s: %s (rank 1)",
             top.username, top.filename,
@@ -830,7 +841,7 @@ class DownloadService:
             self,
             track: Track,
             file: SoulseekFile,
-            role: str,
+            role: DownloadRole,
             rank: int | None = None,
     ) -> None:
         # No destination is passed here for either role — the file lands
@@ -876,8 +887,8 @@ class DownloadService:
                     filename=file.filename,
                     format=file.extension,
                     quality_descriptor=_quality_descriptor(file),
-                    role="upgrade",
-                    status="shortlisted",
+                    role=DownloadRole.UPGRADE,
+                    status=DownloadStatus.SHORTLISTED,
                     rank=rank,
                     size=file.size,
                     requested_at=datetime.now(UTC).isoformat(),
@@ -1000,7 +1011,7 @@ class DownloadService:
                     filename=candidate.filename,
                     format=derive_extension(candidate.filename),
                     quality_descriptor=candidate.quality_descriptor,
-                    role="settled",
+                    role=DownloadRole.SETTLED,
                     transfer_id=transfer_id,
                     size=candidate.size,
                     requested_at=datetime.now(UTC).isoformat(),
@@ -1140,10 +1151,10 @@ class DownloadService:
                         request.id, status, failure_reason=reason,
                     )
 
-                    if status == "failed":
+                    if status == DownloadStatus.FAILED:
                         counts["failed"] += 1
 
-                    if request.role == "upgrade":
+                    if request.role == DownloadRole.UPGRADE:
                         # Try the next shortlisted candidate for this
                         # track immediately, in this same run, regardless
                         # of why this one was rejected — the exact same
@@ -1174,9 +1185,7 @@ class DownloadService:
                 )
 
                 if "Succeeded" not in state:
-                    new_status = (
-                        "downloading" if state != "Requested" else "queued"
-                    )
+                    new_status = _in_flight_status(state)
 
                     if new_status != request.status:
                         self._update_status(request.id, new_status)
@@ -1184,11 +1193,11 @@ class DownloadService:
                     counts[new_status] += 1
                     continue
 
-                if request.role == "upgrade":
+                if request.role == DownloadRole.UPGRADE:
                     # Leave the file in slskd's own download dir — it
                     # only moves once the user confirms the replacement
                     # below.
-                    self._update_status(request.id, "ready_for_review")
+                    self._update_status(request.id, DownloadStatus.READY_FOR_REVIEW)
                     self._supersede_others_for_track(
                         request.track_id, request.id,
                     )
@@ -1200,7 +1209,7 @@ class DownloadService:
                     # requested before that guard existed, or matched by
                     # some other path in the meantime). By definition
                     # this settled download is now an upgrade candidate.
-                    self._update_status(request.id, "ready_for_review")
+                    self._update_status(request.id, DownloadStatus.READY_FOR_REVIEW)
                     self._supersede_others_for_track(
                         request.track_id, request.id,
                     )
@@ -1209,7 +1218,7 @@ class DownloadService:
                 move_result = self._move_completed_file(request)
 
                 if move_result is not None:
-                    self._update_status(request.id, "completed")
+                    self._update_status(request.id, DownloadStatus.COMPLETED)
                     counts["completed"] += 1
                     self._index_and_match_settled_download(
                         request, move_result, counts,
@@ -1259,7 +1268,7 @@ class DownloadService:
             state: str,
             username: str,
             transfer_id: str,
-    ) -> tuple[str, str | None]:
+    ) -> tuple[DownloadStatus, str | None]:
         """'locked' (no reason: it is retried) for a recognized
         rejection, otherwise 'failed' with a reason a user can read."""
         exception_text = self.soulseek.get_download_exception(
@@ -1267,9 +1276,12 @@ class DownloadService:
         )
 
         if "Rejected" in state and is_recognized_rejection(exception_text):
-            return "locked", None
+            return DownloadStatus.LOCKED, None
 
-        return "failed", describe_transfer_failure(state, exception_text)
+        return (
+            DownloadStatus.FAILED,
+            describe_transfer_failure(state, exception_text),
+        )
 
     def _cascade_upgrade(self, track_id: str, counts: dict[str, int]) -> None:
         # Sequential, not simultaneous: try one candidate, and only move
@@ -1293,22 +1305,25 @@ class DownloadService:
 
             status = self._activate_shortlisted_entry(next_entry)
 
-            if status == "failed":
+            if status == DownloadStatus.FAILED:
                 counts["failed"] += 1
                 continue
 
-            if status == "locked":
+            if status == DownloadStatus.LOCKED:
                 continue
 
-            if status in ("queued", "downloading"):
+            if status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING):
                 counts[status] += 1
                 return
 
-            if status == "ready_for_review":
+            if status == DownloadStatus.READY_FOR_REVIEW:
                 self._supersede_others_for_track(track_id, next_entry.id)
                 return
 
-    def _activate_shortlisted_entry(self, request: DownloadRequest) -> str:
+    def _activate_shortlisted_entry(
+            self,
+            request: DownloadRequest,
+    ) -> DownloadStatus:
         # Submit a fresh request_download for a NEW candidate (never
         # tried before), so a rejection's reason still matters: it gets
         # properly classified locked-vs-failed, exactly like a
@@ -1335,14 +1350,14 @@ class DownloadService:
             # only shows up via the status check below) — see client.py's
             # RECOGNIZED_REJECTION_PATTERNS.
             if is_recognized_rejection(str(error)):
-                self._update_status(request.id, "locked")
-                return "locked"
+                self._update_status(request.id, DownloadStatus.LOCKED)
+                return DownloadStatus.LOCKED
 
             self._update_status(
-                request.id, "failed",
+                request.id, DownloadStatus.FAILED,
                 failure_reason=describe_rejection(error.reason or str(error)),
             )
-            return "failed"
+            return DownloadStatus.FAILED
 
         # An async-shape rejection doesn't raise from request_download
         # itself (confirmed live, 2026-08-27) — it shows up almost
@@ -1361,9 +1376,9 @@ class DownloadService:
                 state, request.username, transfer_id,
             )
         elif "Succeeded" in state:
-            status = "ready_for_review"
+            status = DownloadStatus.READY_FOR_REVIEW
         else:
-            status = "downloading" if state != "Requested" else "queued"
+            status = _in_flight_status(state)
 
         with self.database.transaction() as connection:
             self.download_requests.update_transfer_id_and_status(
@@ -1429,7 +1444,7 @@ class DownloadService:
         with self.database.transaction() as connection:
             current = self.download_requests.get_by_id(request.id, connection)
 
-        if current is None or current.status != "locked":
+        if current is None or current.status != DownloadStatus.LOCKED:
             return
 
         if self._supersede_stale_duplicates(current):
@@ -1458,7 +1473,7 @@ class DownloadService:
             # different peer.
             with self.database.transaction() as connection:
                 self.download_requests.mark_status(
-                    request.id, "unavailable", connection,
+                    request.id, DownloadStatus.UNAVAILABLE, connection,
                     failure_reason=(
                         "Peer kept refusing after "
                         f"{LOCKED_RETRY_MAX_ATTEMPTS} attempts"
@@ -1515,7 +1530,7 @@ class DownloadService:
             raise
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
-            status = "locked"
+            status = DownloadStatus.LOCKED
         elif "Succeeded" in state:
             # role='upgrade' still needs a human's confirmation via
             # ready_for_review, exactly as before. role='settled' is
@@ -1526,12 +1541,16 @@ class DownloadService:
             # human-confirmed once, so it auto-moves into the library
             # like an ordinary settled success, not a second
             # confirmation via ready_for_review.
-            status = "ready_for_review" if request.role == "upgrade" else "completed"
+            status = (
+                DownloadStatus.READY_FOR_REVIEW
+                if request.role == DownloadRole.UPGRADE
+                else DownloadStatus.COMPLETED
+            )
         else:
-            status = "downloading" if state != "Requested" else "queued"
+            status = _in_flight_status(state)
 
         if (
-                status == "completed"
+                status == DownloadStatus.COMPLETED
                 and self._track_already_has_a_matched_file(request.track_id)
         ):
             # Same safety net as the main poll_downloads() loop
@@ -1539,8 +1558,8 @@ class DownloadService:
             # already human-confirmed once must not silently create a
             # second file for a track something else already matched in
             # the meantime.
-            status = "ready_for_review"
-        elif status == "completed":
+            status = DownloadStatus.READY_FOR_REVIEW
+        elif status == DownloadStatus.COMPLETED:
             # Mirror poll_downloads()'s own main-loop pattern: only
             # persist 'completed' if the file is genuinely found and
             # moved. If not, fall back to 'downloading' — the real
@@ -1561,21 +1580,21 @@ class DownloadService:
                     request, move_result, counts,
                 )
             else:
-                status = "downloading"
+                status = DownloadStatus.DOWNLOADING
 
         with self.database.transaction() as connection:
             self.download_requests.update_transfer_id_and_status(
                 request.id, transfer_id, status, connection,
             )
 
-        if status == "locked":
+        if status == DownloadStatus.LOCKED:
             # Real attempt made, still locked — advance the backoff
             # schedule. Left alone (not reset) when status moves on to
             # anything else: those rows leave the retry cycle entirely,
             # so their retry_count/next_retry_at stop being consulted.
             self._advance_locked_retry(request, current.retry_count)
 
-        if status == "ready_for_review":
+        if status == DownloadStatus.READY_FOR_REVIEW:
             self._supersede_others_for_track(request.track_id, request.id)
 
     def _advance_locked_retry(
@@ -1638,13 +1657,13 @@ class DownloadService:
         )
 
         if winner is not None and winner.id != request.id:
-            self._update_status(request.id, "superseded")
+            self._update_status(request.id, DownloadStatus.SUPERSEDED)
             return True
 
         for sibling in group:
             if sibling.id != request.id:
                 assert sibling.id is not None
-                self._update_status(sibling.id, "superseded")
+                self._update_status(sibling.id, DownloadStatus.SUPERSEDED)
 
         return False
 
@@ -1681,7 +1700,7 @@ class DownloadService:
     def _update_status(
             self,
             request_id: int,
-            status: str,
+            status: DownloadStatus,
             failure_reason: str | None = None,
     ) -> None:
         with self.database.transaction() as connection:
@@ -2186,7 +2205,9 @@ class DownloadService:
             ),
             connection,
         )
-        self.download_requests.mark_status(request_id, "completed", connection)
+        self.download_requests.mark_status(
+            request_id, DownloadStatus.COMPLETED, connection,
+        )
 
     def apply_upgrade_decisions_batch(
             self,
@@ -2229,7 +2250,7 @@ class DownloadService:
 
             succeeded = (
                 updated_request is not None
-                and updated_request.status == "completed"
+                and updated_request.status == DownloadStatus.COMPLETED
             )
 
             if succeeded:

@@ -20,7 +20,15 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import most_recent_per_candidate
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.active_download import ActiveDownload
-from seeker.models.download_request import DownloadRequest
+from seeker.models.download_request import (
+    AWAITING_A_HUMAN,
+    FAILED_OUTCOMES,
+    IN_FLIGHT,
+    RETRYING_IN_BACKGROUND,
+    UNRESOLVED,
+    DownloadRequest,
+    DownloadStatus,
+)
 from seeker.models.local_file import LocalFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track, resolve_playlist_label
@@ -36,38 +44,11 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 
-# "Downloading" — an active, actually-transferring request.
-_DOWNLOADING_STATUSES = {"queued", "downloading"}
-# Roadmap item 66 (Phase 4.1) — split from the original, single
-# _AWAITING_REVIEW_STATUSES = {"ready_for_review", "locked", "shortlisted"}.
-# AWAITING_REVIEW now means only what its name says: a real completed
-# download genuinely waiting on a human decision. A locked/shortlisted
-# row is still being retried in the background, not waiting on anyone —
-# see RETRYING below, and models/track_status.py's own docstring for why
-# folding these together produced a real, reported "Awaiting review" <->
-# "Downloading" flicker that looked like a bug in the status itself.
-_AWAITING_REVIEW_STATUSES = {"ready_for_review"}
-_RETRYING_STATUSES = {"locked", "shortlisted"}
-
-# Every download_requests status that still represents real, in-progress
-# work toward an outcome — mirrors `seeker downloads status`'s own scope
-# exactly (see download_service.py's TERMINAL_STATUSES/status state
-# machine in schema.py). Deliberately excludes 'superseded' — that's
-# terminal, a sibling entry already won.
-ACTIVE_DOWNLOAD_STATUSES = {
-    "queued", "downloading", "locked", "shortlisted", "ready_for_review",
-}
-
 # Untuned constant, same convention as every other threshold in this
 # codebase — how long a completed row keeps appearing in the
 # active-downloads view after landing, so a download visibly "lands"
 # rather than vanishing the instant poll_downloads() marks it terminal.
 RECENTLY_FINISHED_WINDOW_SECONDS = 60
-
-# Terminal statuses that stay in the active-downloads view until the
-# user clears them: a failure the user never saw is a failure they
-# cannot act on.
-_KEPT_UNTIL_CLEARED_STATUSES = {"failed", "unavailable"}
 
 
 class DashboardService:
@@ -270,16 +251,18 @@ class DashboardService:
 
 
 def _is_visible(request: DownloadRequest, now: datetime) -> bool:
-    if request.status in ACTIVE_DOWNLOAD_STATUSES:
+    if request.status in UNRESOLVED:
         return True
 
     if request.dismissed_at is not None:
         return False
 
-    if request.status in _KEPT_UNTIL_CLEARED_STATUSES:
+    # A failure the user never saw is a failure they cannot act on, so
+    # it stays until cleared.
+    if request.status in FAILED_OUTCOMES:
         return True
 
-    if request.status == "completed" and request.completed_at:
+    if request.status == DownloadStatus.COMPLETED and request.completed_at:
         completed_at = datetime.fromisoformat(request.completed_at)
         elapsed = (now - completed_at).total_seconds()
 
@@ -307,7 +290,7 @@ def _compute_status(
         )
 
     downloading = next(
-        (r for r in requests if r.status in _DOWNLOADING_STATUSES), None
+        (r for r in requests if r.status in IN_FLIGHT), None
     )
     if downloading is not None:
         return TrackStatus(
@@ -317,7 +300,7 @@ def _compute_status(
             total_bytes=downloading.total_bytes,
         )
 
-    if any(r.status in _AWAITING_REVIEW_STATUSES for r in requests):
+    if any(r.status in AWAITING_A_HUMAN for r in requests):
         return TrackStatus(track=track, state=AWAITING_REVIEW)
 
     # Roadmap item 66 (Phase 4.1) — ranked above NEEDS_REVIEW, preserving
@@ -325,7 +308,7 @@ def _compute_status(
     # ready_for_review one were reachable as the old, single
     # AWAITING_REVIEW before this split, and a real, in-progress retry is
     # a stronger signal than an unconfirmed local needs_review match.
-    if any(r.status in _RETRYING_STATUSES for r in requests):
+    if any(r.status in RETRYING_IN_BACKGROUND for r in requests):
         return TrackStatus(track=track, state=RETRYING)
 
     if match is not None and match.match_method == "needs_review":

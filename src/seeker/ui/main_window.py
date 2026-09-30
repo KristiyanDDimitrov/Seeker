@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
+from seeker.models.download_request import DownloadStatus
 from seeker.models.library_location import LibraryLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.soulseek.client import SlskdUnreachableError
@@ -1887,7 +1888,7 @@ class MainWindow(QMainWindow):
         active = self.application.dashboard_service.get_active_downloads()
         count = sum(
             1 for download in active
-            if download.request.status == "downloading"
+            if download.request.status == DownloadStatus.DOWNLOADING
         )
         if count == 0:
             return True

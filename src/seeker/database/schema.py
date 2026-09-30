@@ -88,101 +88,46 @@ CREATE TABLE IF NOT EXISTS download_requests (
     format TEXT NOT NULL,
     quality_descriptor TEXT,
     role TEXT NOT NULL DEFAULT 'settled',
-    -- status state machine. Nine values total (item 66 Phase 4.3 added
-    -- 'unavailable' — see its own bullet below):
-    --   queued          in slskd's queue, not transferring yet.
-    --   downloading     slskd is actively transferring it.
-    --   completed       role='settled': file moved into the library —
-    --                   either directly from queued/downloading, or
-    --                   (item 26) via a locked role='settled' row whose
-    --                   retry succeeded, auto-moved the same way, no
-    --                   second confirmation. role='upgrade': the user
-    --                   confirmed the replacement via `seeker downloads
-    --                   review`. Terminal.
-    --   failed          rejected/cancelled/errored/timed out/aborted,
-    --                   for EITHER role, for any reason OTHER than the
-    --                   confirmed lock pattern (see 'locked' below).
-    --                   Terminal — never retried.
-    --   locked          rejected specifically for being locked ("File
-    --                   not shared", confirmed live) — NOT terminal,
-    --                   retried automatically on every poll_downloads()
-    --                   run until it succeeds, fails for a different
-    --                   reason, or the track's entry is superseded.
-    --                   Reached almost always via role='upgrade' (the
-    --                   ordinary search pipeline never assigns a locked
-    --                   candidate to 'settled' — see quality.py's
-    --                   select_downloads), but role='settled' CAN also
-    --                   reach it (item 26): confirm_review_candidate
-    --                   requests a human-confirmed needs-review
-    --                   candidate as 'settled', and that tier is never
-    --                   filtered on lock status at all. On a successful
-    --                   retry, role='upgrade' -> ready_for_review as
-    --                   below; role='settled' -> completed directly,
-    --                   the same "already confirmed once" reasoning.
-    --   ready_for_review role='upgrade' only: slskd reports success,
-    --                   but the file sits in slskd's own download dir
-    --                   until a human confirms via `seeker downloads
-    --                   review` — never auto-advances on its own.
-    --   shortlisted     role='upgrade', rank 2/3 only: a known
-    --                   candidate for this track, persisted at
-    --                   `download_playlist()` time but never sent to
-    --                   slskd — activated in place (same row,
-    --                   transfer_id + status updated, not a new row)
-    --                   only once every better-ranked entry for the
-    --                   same track has been rejected.
-    --   superseded      queued/downloading/locked/shortlisted, for a
-    --                   track where a DIFFERENT entry already reached
-    --                   ready_for_review first (or, item 25, an OLDER
-    --                   duplicate row for the exact same real
-    --                   candidate — see seeker/download_dedup.py).
-    --                   Terminal — distinct from 'failed' so a
-    --                   genuinely-dead attempt isn't confused with one
-    --                   abandoned only because a better/newer candidate
-    --                   already won.
-    --   unavailable     (item 66 Phase 4.3) locked, retried
-    --                   retry_count times (exponential backoff via
-    --                   next_retry_at, see those columns below) with no
-    --                   real resolution — the file exists but this peer
-    --                   won't give it up. Terminal, but distinct from
-    --                   'failed': the candidate itself was real, just
-    --                   never became reachable. Bounds items 13/14/25/63's
-    --                   previously-unbounded locked retry loop
-    --                   (roadmap item 63's real production storm: 300+
-    --                   retries of one row in ~18 minutes, still
-    --                   unexplained but now structurally capped
-    --                   regardless of root cause). Excluded from
-    --                   get_requests_blocking_redownload() — a later
-    --                   download_playlist() run should be free to look
-    --                   for the same track from a different peer.
+    -- status: one of models/download_request.py's DownloadStatus
+    -- values; the named status sets beside it say which group what.
+    --   queued           in slskd's queue, not transferring yet.
+    --   downloading      slskd is transferring it.
+    --   completed        settled: the file is in the library. upgrade:
+    --                    a person confirmed the replacement. Final.
+    --   failed           rejected, cancelled, errored or timed out for a
+    --                    reason other than a lock; failure_reason says
+    --                    which. Final, never retried.
+    --   locked           rejected as locked ("File not shared"). Retried
+    --                    on each poll, no sooner than next_retry_at.
+    --                    Mostly upgrades; a settled row gets here from a
+    --                    person-confirmed needs-review candidate, which
+    --                    is never filtered on lock status.
+    --   ready_for_review upgrade only: downloaded, waiting in slskd's
+    --                    folder for a person to confirm the replacement.
+    --   shortlisted      upgrade rank 2/3: a known candidate, never sent
+    --                    to slskd until every better-ranked one for the
+    --                    track is rejected; then activated in place.
+    --   superseded       another entry for the track reached
+    --                    ready_for_review first, or this row is an older
+    --                    duplicate of the same candidate
+    --                    (seeker/download_dedup.py). Final, and distinct
+    --                    from failed: nothing went wrong with it.
+    --   unavailable      locked through LOCKED_RETRY_MAX_ATTEMPTS
+    --                    retries. Final; failure_reason says why. Does
+    --                    not block a later search from another peer.
     --
-    -- Initial value: 'queued' for role='settled' and rank=1 upgrades
-    -- (both requested immediately); 'shortlisted' for rank 2/3.
+    -- Initial value: 'queued' for settled rows and rank-1 upgrades,
+    -- 'shortlisted' for ranks 2 and 3.
     --
-    -- Real transitions (poll_downloads(), see download_service.py):
+    -- Transitions (DownloadService.poll_downloads):
     --   queued/downloading -> completed/failed/ready_for_review/locked
-    --     (status polled from slskd; the locked-pattern check applies
-    --     to EITHER role as of item 26 — see the 'locked' bullet above.
-    --     Only the Phase 4 cascade below stays role='upgrade'-specific)
-    --   shortlisted -> queued/downloading/locked/failed
-    --     (Phase 4 cascade: activated the instant the next-higher-ranked
-    --     entry for the same track is rejected, same poll_downloads() run
-    --     — role='upgrade' only; shortlisted rows are never role='settled')
-    --   locked -> queued/downloading/locked/completed/unavailable
-    --     (Phase 3 retry: re-tried once per poll_downloads() run — no
-    --     more often than next_retry_at allows (item 66 Phase 4.3's
-    --     exponential backoff) — until it moves on, a sibling entry
-    --     supersedes it first, or retry_count reaches
-    --     LOCKED_RETRY_MAX_ATTEMPTS and it becomes 'unavailable'; a
-    --     successful retry goes to 'completed' directly for
-    --     role='settled', or 'ready_for_review' for role='upgrade')
-    --   any of {queued,downloading,locked,shortlisted} -> superseded
-    --     (the instant any OTHER entry for the same track reaches
-    --     ready_for_review — see _supersede_others_for_track; or, item
-    --     25, the instant an OLDER duplicate row for the identical
-    --     candidate is seen by the Phase 3 retry loop's dedup check)
-    --   ready_for_review -> completed
-    --     (seeker downloads review, on user confirmation only — declining
-    --     leaves it at ready_for_review, offered again next review run)
+    --   shortlisted -> queued/downloading/locked/failed (upgrade only)
+    --   locked -> queued/downloading/locked/completed/ready_for_review/
+    --             unavailable (a successful retry: completed for a
+    --             settled row, ready_for_review for an upgrade)
+    --   queued/downloading/locked/shortlisted -> superseded
+    --   ready_for_review -> completed (a person confirms; declining
+    --                       leaves it here, offered again later)
     status TEXT NOT NULL DEFAULT 'queued',
     -- slskd's own transfer UUID (from the batch-enqueue response), needed
     -- because its status endpoint is GET .../{username}/{id} — there's no
