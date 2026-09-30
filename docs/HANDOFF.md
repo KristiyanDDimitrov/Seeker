@@ -10,76 +10,81 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S7 close-out commit (HISTORY §143, CLAUDE.md rule, S7
-  ticked, this handoff), pushed. Tree clean apart from the untracked
+- **HEAD:** the S8 part 1 close-out commit (HISTORY §144, CLAUDE.md
+  rule, this handoff), pushed. Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-30): `1363 passed, 1 skipped, 6 warnings in 114.38s`
-  (X9 Pro mounted; S7 part 1's 1332 plus 31 new). No new `slskd-data`
-  (the repo's own is from Sep 10, untouched).
-- **`mypy --strict src/`:** clean, 108 files. **`ruff check src
+- **Local pytest** (offscreen Qt, 2026-09-30): `1374 passed, 1 skipped, 6 warnings in 112.39s`
+  (X9 Pro mounted; S7's 1363 plus 12 new, minus 1 replaced).
+- **`mypy --strict src/`:** clean, 109 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** S7 part 1's push `d1bcb04` → run `36606608838`, **success**.
-  This push: see `gh run list --limit 1`.
+- **CI:** S7 close-out push → see `gh run list`. This push: see
+  `gh run list --limit 1`.
 
 ## 2. Where we are
 
-S1–S7 ticked. **Next: S8, "Review decisions stick; failures stay
-visible"** (BRIEF §8; split point after §8.2).
+S1–S7 ticked. **S8 stopped at its split point (after §8.2); S8 is not
+ticked.** **Next: S8 part 2, §8.3 "Failures stay visible"** (BRIEF §8).
+Then S9.
 
-## 3. Session report (S7 part 2)
+## 3. Session report (S8 part 1)
 
-Evidence (every red, the real-data checks) is in HISTORY §143.
-- `1fcbcd6` §7.5: `clean_path_component` replaces each leading dot
-  with `_`, so renames and per-playlist folders are never hidden.
-- `8ea78c1` §7.6: `validate_destination_subfolder` is the one rule,
-  used by `set_destination`, resolution, the dialog and (via the
-  service) the CLI and Settings. A stored `../x` no longer moves a
-  download outside its location.
-- Close-out: §143, a CLAUDE.md rule under SoulSeek / slskd, S7 ticked.
+Evidence (every red, the rehearsal counts) is in HISTORY §144.
+- `c905476` §8.1: `rejected_local_matches` / `rejected_soulseek_candidates`
+  + `RejectionRepository`; `match_all` and `download_playlist` skip
+  rejected pairs and fall through; tooltips and CLI help updated.
+- `abf7a93` §8.2: a manual track is saved just before its first
+  request and removed if it fails; `_migrate` deletes `manual:` tracks
+  with no request. Rehearsed on a copy: 1 → 0.
+- Close-out: §144, a CLAUDE.md rule under Database and migrations.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §144**: `docs/history/121-150.md` plus its
-  README line.
-- **Nested destination subfolders are real data**, not a hypothetical:
-  the real DB holds `Music/240KMH` and `Music/Test` (plus `32 Zel`,
-  `Under Pressure (Deluxe)`). All four validate unchanged. Any later
-  change to destination rules must keep them valid.
-- **A stored unsafe subfolder resolves to `None`**, which the UI and
-  CLI treat as "no destination configured". That is deliberate (the
-  set-a-destination dialog is the recovery path), but the CLI's
-  wording is then "no destination is configured". None exists in real
-  data.
-- **S8 starting point (carried):** `_repoint_or_clear_match` drops
-  `confirmed_at`.
-- **Test helpers:** `tests/test_destination_subfolder.py` imports
-  `test_cli`'s `FakeApplication`/`FakeSyncService`/`make_matcher` and
-  `test_download_service`'s `_seed_default_destination_scenario` (bare
-  module names, not `tests.`).
-- **Carried:** the `platformdirs.user_data_dir`/`slskd-data` test
-  hazard (checked clean this run); S9's `_write_atomic` umask fix; three
-  `LibraryLocationNotFoundError` classes (S13); never touch slskd or
-  real data.
-- **zsh gotcha:** `echo ======` fails; use `echo '---'`. `grep
-  --include=*.py` needs quoting in zsh.
+- **Your HISTORY entry is §145**: `docs/history/121-150.md` plus its
+  README line. Tick S8 in SESSION-PLAN only when §8.3 lands.
+- **§8.3 starting points:** the poll classifies slskd state and
+  exception text in `poll_downloads` (`download_service.py`, grep
+  `is_recognized_rejection` / `"failed"`); `FakeSoulseekClient` in
+  `tests/test_download_service.py` already takes `states=` and
+  `exceptions=` per transfer id, so a failure-reason test needs no new
+  fake. Both new columns (`failure_reason`, `dismissed_at`) go through
+  `_add_column_if_missing` in `database/connection.py::_migrate`.
+- **`match_all` matches manual tracks too.** That is why the real
+  orphan had an auto match. Any "is this manual track real" check must
+  key on `download_requests`, never on `track_matches`.
+- **Nothing in `src/` deletes `download_requests` rows.** §8.2's
+  migration relies on it; §8.3's "Clear finished" must set
+  `dismissed_at`, never delete, or completed manual tracks become
+  eligible for that migration.
+- **`DownloadService` and `TrackMatcher` take
+  `rejection_repository=` as an optional keyword** (defaults to a new
+  one on the same database), so the many positional test constructors
+  did not change. `Application` passes it explicitly.
+- **Carried:** nested destination subfolders are real data (`Music/240KMH`,
+  `Music/Test`); a stored unsafe subfolder resolves to `None`;
+  `_repoint_or_clear_match` drops `confirmed_at` (still unowned by a row
+  that touches it; S8's brief did not name it); the
+  `platformdirs.user_data_dir`/`slskd-data` test hazard; S9's
+  `_write_atomic` umask fix; three `LibraryLocationNotFoundError`
+  classes (S13); never touch slskd or real data.
+- **zsh gotcha:** `echo ======` fails; use `echo '---'`.
 
 ## 5. Decisions made
 
-- **Leading dots → `_`, one for one** (not stripped): the name stays
-  recognisable and can never empty out. It runs after the trailing
-  strip, so `"..."` still falls back to `"Untitled"`.
-- **Nested subfolders allowed, every component must already be
-  sanitized; reject, never rewrite.** The error suggests the safe form
-  (`'Bad:Name' … Try 'Bad-Name'`). A trailing `/` and surrounding
-  whitespace are the only normalisation.
-- **Stored invalid values resolve to `None`** rather than raising (four
-  callers, one of them the poll loop) or falling back to the default
-  (that would silently put the file somewhere the user did not pick).
-- **The dialog's default prefill is `sanitize_path_component(playlist
-  name)`**, the default rule's own folder, so a raw `240KM/H` is not
-  offered as a nested path.
-- **Skill divergence:** `focused-fix`, `tdd` not loaded;
-  failing-test-first was followed by hand (§143 has every red).
+- **Orphan predicate is "no `download_requests` row", not the brief's
+  "no requests and no matches".** Evidence in §144: the real orphan has
+  an incidental auto match, and no code deletes requests. The file is
+  never touched; only the orphan's own match cascades.
+- **One `RejectionRepository` for both tables**: one concept (a
+  human's Reject), two shapes; keeps the service constructors to one
+  new keyword each.
+- **A pair rejected while `match_all` computes is stored unmatched**
+  (write-phase re-check, §142's shape), not re-resolved to the next
+  best; the next run falls through.
+- **`reject_review_candidate` with no candidate row still clears
+  silently** (unchanged behaviour); it records nothing.
+- **Skill divergence:** `focused-fix`, `tdd`, `database-designer` not
+  loaded (budget); failing-test-first followed by hand (§144 has every
+  red).
 
 ## 6. Blockers
 
@@ -87,7 +92,7 @@ None.
 
 ## 7. Files in progress
 
-None.
+None: stopped cleanly at the split point. §8.3 has not been started.
 
 ## 8. Waiting on Kris
 
@@ -96,31 +101,33 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 
 **Interim cautions:** none.
 
+**Next launch will migrate the real DB:** deletes the one orphan manual
+track ("Amen Brother" / "The Winstons", no download request) and its
+incidental match; adds the two empty rejection tables. Rehearsed on a
+copy (§144).
+
 **Kris's own decision (carried):** keep or discard the repo's
 `./slskd-data` (see HISTORY §140).
 
 **Live checks:** S41's checklist. Carried from S6: edit a loaded
 playlist on Spotify, then Refresh playlists → "Updated tracks for 1".
-Carried from S7: the real library has drifted since the last scan (a
-copy re-scan found 261 added, 60 updated, 25 removed); the next real
-Scan applies that.
+Carried from S7: the real library has drifted since the last scan; the
+next real Scan applies that. New: on Review, Reject a local match, Scan,
+and confirm it does not come back.
 
 ## 9. Open questions
 
-- **Found in S7, not fixed:** in `DestinationDialog`, unchecking
-  "Remember this for this playlist" makes `MainWindow` save only the
-  app-wide default (per-playlist folders on) and drop the typed
-  subfolder (`main_window.py`, `do_persist`'s `else` branch). The
-  preview can show a folder the download will not use. Which row owns
-  it: S19 (this flow moves to DashboardPage, but that row is
-  behaviour-neutral) or S29 (information architecture)? It needs its own
-  behaviour commit either way.
-- Settings → Destinations shows a rejected subfolder as `Error: …` on
-  its ephemeral `status_label`, not an `InlineNotice`. S11 (readable
-  errors) should cover it.
+- **Carried from S7:** `DestinationDialog`'s unchecked "Remember this
+  for this playlist" drops the typed subfolder (`main_window.py`,
+  `do_persist`'s `else` branch). S19 or S29? Needs its own behaviour
+  commit either way.
+- Settings → Destinations shows a rejected subfolder on its ephemeral
+  `status_label`, not an `InlineNotice`. S11 should cover it.
 - CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
   late-worker defect (S11 or S18)? It has failed CI twice
   (`36570098069`, `36580274797`).
+- Should a rejection be undoable (a "Rejected" list on Review)? Not in
+  the brief; S29 (Review information architecture) is the natural home.
 
 ---
 

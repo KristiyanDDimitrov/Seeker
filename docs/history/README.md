@@ -222,3 +222,4 @@ under their entry and live in the same file, after it.
 - §141 — Round 11 S6 (§6.1–§6.4): Spotify sync survives duplicate tracks and local files; changed playlists refresh their tracks → [121-150.md#141](121-150.md#141)
 - §142 — Round 11 S7 part 1 (§7.1–§7.4, §7.7): delete past SQLite's variable limit; scan and match outside the write lock; resolved location paths → [121-150.md#142](121-150.md#142)
 - §143 — Round 11 S7 part 2 (§7.5–§7.6): never create dot-led names; the destination subfolder shown is the one used → [121-150.md#143](121-150.md#143)
+- §144 — Round 11 S8 part 1 (§8.1–§8.2): a rejection sticks; a manual search leaves no orphan track → [121-150.md#144](121-150.md#144)

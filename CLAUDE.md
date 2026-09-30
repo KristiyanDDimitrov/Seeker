@@ -502,6 +502,13 @@ Each links to the HISTORY entry where the full investigation lives;
   nowhere. Removing a location also clears playlist destinations
   (no `ON DELETE` on that FK) and, via `Application`, the default.
   [HISTORY §139](docs/history/121-150.md#139)
+- **A Reject on the Review page is permanent, per track.** It writes
+  `rejected_local_matches` or `rejected_soulseek_candidates`;
+  `match_all` and `download_playlist` skip those pairs and fall
+  through to the next best. Only a download request makes a
+  `manual:` track real: it is saved just before its first request,
+  and `_migrate` deletes any with no request.
+  [HISTORY §144](docs/history/121-150.md#144)
 - Deleting a local file: DB row first, then the file on disk. Renaming
   one: the opposite order, file then DB row.
   [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)
