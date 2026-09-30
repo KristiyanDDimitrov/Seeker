@@ -5,6 +5,7 @@ from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems
@@ -36,7 +37,12 @@ def make_sync_service(
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 
-    return SpotifySyncService(StubSpotifyClient(spotify_playlists), database)
+    return SpotifySyncService(
+        StubSpotifyClient(spotify_playlists),
+        database,
+        PlaylistRepository(),
+        TrackRepository(),
+    )
 
 
 def test_resolve_playlist_found_locally_returns_immediately(
@@ -48,7 +54,7 @@ def test_resolve_playlist_found_locally_returns_immediately(
     sync_service = make_sync_service(tmp_path, [])
 
     with sync_service.database.transaction() as connection:
-        PlaylistRepository(sync_service.database).save(playlist, connection)
+        PlaylistRepository().save(playlist, connection)
 
     def fail_if_called(prompt):
         raise AssertionError(
@@ -137,7 +143,7 @@ def test_resolve_playlist_does_not_offer_refresh_when_close_match_exists(
     sync_service = make_sync_service(tmp_path, [existing])
 
     with sync_service.database.transaction() as connection:
-        PlaylistRepository(sync_service.database).save(existing, connection)
+        PlaylistRepository().save(existing, connection)
 
     def fail_if_called(prompt):
         raise AssertionError(
@@ -171,7 +177,7 @@ def test_resolve_playlist_test_query_offers_refresh_not_sesh_suggestion(
 
     with sync_service.database.transaction() as connection:
         for playlist in local_playlists:
-            PlaylistRepository(sync_service.database).save(
+            PlaylistRepository().save(
                 playlist, connection
             )
 

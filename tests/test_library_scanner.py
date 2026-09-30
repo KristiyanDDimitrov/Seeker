@@ -28,7 +28,7 @@ def test_scan_raises_when_location_path_does_not_exist(tmp_path):
         added_at="2026-01-01T00:00:00+00:00",
     )
 
-    scanner = LibraryScanner(LocalFileRepository(database), database)
+    scanner = LibraryScanner(LocalFileRepository(), database)
 
     with pytest.raises(LibraryUnavailableError) as exc_info:
         scanner.scan(location)
@@ -46,8 +46,8 @@ def test_scan_skips_appledouble_sidecar_files(tmp_path):
     (library_root / "song.mp3").write_bytes(b"")
     (library_root / "._song.mp3").write_bytes(b"")
 
-    local_files = LocalFileRepository(database)
-    locations = LibraryLocationRepository(database)
+    local_files = LocalFileRepository()
+    locations = LibraryLocationRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -86,8 +86,8 @@ def test_scan_indexes_aiff_files(tmp_path):
     (library_root / "track.aiff").write_bytes(b"")
     (library_root / "track2.aif").write_bytes(b"")
 
-    local_files = LocalFileRepository(database)
-    locations = LibraryLocationRepository(database)
+    local_files = LocalFileRepository()
+    locations = LibraryLocationRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -125,8 +125,8 @@ def test_index_single_file_matches_scan_loop_result(tmp_path):
     library_root.mkdir()
     (library_root / "song.mp3").write_bytes(b"")
 
-    local_files = LocalFileRepository(database)
-    locations = LibraryLocationRepository(database)
+    local_files = LocalFileRepository()
+    locations = LibraryLocationRepository()
 
     with database.transaction() as connection:
         locations.add(

@@ -234,7 +234,7 @@ class DuplicateService:
         # (Phase 6.4 is additive) is unaffected; only record_cleanup()/
         # get_cleanup_totals() need it.
         self.duplicate_cleanups = (
-            duplicate_cleanup_repository or DuplicateCleanupRepository(database)
+            duplicate_cleanup_repository or DuplicateCleanupRepository()
         )
 
     def _get_location_or_raise(

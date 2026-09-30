@@ -1,7 +1,6 @@
 import sqlite3
 from collections.abc import Iterable
 
-from seeker.database.connection import Database
 from seeker.models.local_file import LocalFile
 
 # Ids bound per statement. SQLite's own limit is 32,766 bound parameters
@@ -10,9 +9,6 @@ _ID_CHUNK_SIZE = 500
 
 
 class LocalFileRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def upsert(
             self,
             local_file: LocalFile,

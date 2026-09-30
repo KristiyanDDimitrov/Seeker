@@ -75,11 +75,11 @@ def make_service(tmp_path, get_config=None) -> MetadataService:
 
     return MetadataService(
         database,
-        TrackRepository(database),
-        TrackMatchRepository(database),
-        LocalFileRepository(database),
-        LibraryLocationRepository(database),
-        PlaylistRepository(database),
+        TrackRepository(),
+        TrackMatchRepository(),
+        LocalFileRepository(),
+        LibraryLocationRepository(),
+        PlaylistRepository(),
         # An isolated, per-test cache dir — the default MetadataService()
         # constructor otherwise points at the REAL, persistent
         # platformdirs cache path, which would let one test's cached

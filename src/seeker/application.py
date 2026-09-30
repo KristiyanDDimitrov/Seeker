@@ -638,6 +638,8 @@ class Application:
             self._sync_service = SpotifySyncService(
                 self.spotify,
                 self.database,
+                PlaylistRepository(),
+                TrackRepository(),
             )
 
         return self._sync_service
@@ -647,10 +649,10 @@ class Application:
         if self._library_service is None:
             self._library_service = LibraryService(
                 self.database,
-                LibraryLocationRepository(self.database),
-                LocalFileRepository(self.database),
+                LibraryLocationRepository(),
+                LocalFileRepository(),
                 track_matcher=self.track_matcher,
-                playlist_repo=PlaylistRepository(self.database),
+                playlist_repo=PlaylistRepository(),
             )
 
         return self._library_service
@@ -660,11 +662,11 @@ class Application:
         if self._track_matcher is None:
             self._track_matcher = TrackMatcher(
                 self.database,
-                TrackRepository(self.database),
-                LocalFileRepository(self.database),
-                TrackMatchRepository(self.database),
+                TrackRepository(),
+                LocalFileRepository(),
+                TrackMatchRepository(),
                 get_config=lambda: self._config_store,
-                rejection_repository=RejectionRepository(self.database),
+                rejection_repository=RejectionRepository(),
             )
 
         return self._track_matcher
@@ -734,16 +736,16 @@ class Application:
             self._download_service = DownloadService(
                 self.database,
                 self.soulseek_client if self.soulseek_configured else None,
-                PlaylistRepository(self.database),
-                TrackRepository(self.database),
-                LibraryLocationRepository(self.database),
-                DownloadRequestRepository(self.database),
-                TrackMatchRepository(self.database),
-                LocalFileRepository(self.database),
-                SoulseekReviewCandidateRepository(self.database),
+                PlaylistRepository(),
+                TrackRepository(),
+                LibraryLocationRepository(),
+                DownloadRequestRepository(),
+                TrackMatchRepository(),
+                LocalFileRepository(),
+                SoulseekReviewCandidateRepository(),
                 self.slskd_download_dir,
                 get_config=lambda: self._config_store,
-                rejection_repository=RejectionRepository(self.database),
+                rejection_repository=RejectionRepository(),
             )
 
         return self._download_service
@@ -753,11 +755,11 @@ class Application:
         if self._metadata_service is None:
             self._metadata_service = MetadataService(
                 self.database,
-                TrackRepository(self.database),
-                TrackMatchRepository(self.database),
-                LocalFileRepository(self.database),
-                LibraryLocationRepository(self.database),
-                PlaylistRepository(self.database),
+                TrackRepository(),
+                TrackMatchRepository(),
+                LocalFileRepository(),
+                LibraryLocationRepository(),
+                PlaylistRepository(),
                 get_config=lambda: self._config_store,
             )
 
@@ -768,12 +770,12 @@ class Application:
         if self._dashboard_service is None:
             self._dashboard_service = DashboardService(
                 self.database,
-                PlaylistRepository(self.database),
-                TrackRepository(self.database),
-                TrackMatchRepository(self.database),
-                DownloadRequestRepository(self.database),
-                SoulseekReviewCandidateRepository(self.database),
-                LocalFileRepository(self.database),
+                PlaylistRepository(),
+                TrackRepository(),
+                TrackMatchRepository(),
+                DownloadRequestRepository(),
+                SoulseekReviewCandidateRepository(),
+                LocalFileRepository(),
             )
 
         return self._dashboard_service
@@ -783,9 +785,9 @@ class Application:
         if self._duplicate_service is None:
             self._duplicate_service = DuplicateService(
                 self.database,
-                LibraryLocationRepository(self.database),
-                LocalFileRepository(self.database),
-                TrackMatchRepository(self.database),
+                LibraryLocationRepository(),
+                LocalFileRepository(),
+                TrackMatchRepository(),
             )
 
         return self._duplicate_service
@@ -795,11 +797,11 @@ class Application:
         if self._history_service is None:
             self._history_service = HistoryService(
                 self.database,
-                DownloadRequestRepository(self.database),
-                LocalFileRepository(self.database),
-                TrackMatchRepository(self.database),
-                TrackRepository(self.database),
-                PlaylistRepository(self.database),
+                DownloadRequestRepository(),
+                LocalFileRepository(),
+                TrackMatchRepository(),
+                TrackRepository(),
+                PlaylistRepository(),
             )
 
         return self._history_service
@@ -814,7 +816,7 @@ class Application:
             self._sharing_service = SharingService(
                 self.soulseek_client if self.soulseek_configured else None,
                 self.database,
-                LibraryLocationRepository(self.database),
+                LibraryLocationRepository(),
                 get_config=lambda: self._config_store,
             )
 

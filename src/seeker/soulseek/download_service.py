@@ -361,9 +361,7 @@ class DownloadService:
         self.track_matches = track_match_repository
         self.local_files = local_file_repository
         self.soulseek_review_candidates = soulseek_review_candidate_repository
-        self.rejections = rejection_repository or RejectionRepository(
-            database
-        )
+        self.rejections = rejection_repository or RejectionRepository()
         # See matcher.py's identical get_config comment — a callable,
         # not a snapshot, so a Settings-driven threshold change is
         # visible on the very next download_playlist() call without

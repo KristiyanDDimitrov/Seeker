@@ -60,7 +60,7 @@ class LibraryService:
         self.locations = location_repo
         self.local_files = local_file_repo
         self.scanner = LibraryScanner(local_file_repo, database)
-        self.track_matches = TrackMatchRepository(database)
+        self.track_matches = TrackMatchRepository()
         # Both optional — only scan_and_match()/get_needs_review_matches()
         # etc. need them (roadmap item 56). Every existing caller that
         # constructs a LibraryService without them (tests included) is

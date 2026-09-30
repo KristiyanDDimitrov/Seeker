@@ -69,7 +69,7 @@ def make_service(
     return SharingService(
         client,
         database,
-        LibraryLocationRepository(database),
+        LibraryLocationRepository(),
         compose_path=compose_path or (tmp_path / "docker-compose.yml"),
         get_config=lambda: config,
     )

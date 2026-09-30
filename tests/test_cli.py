@@ -121,9 +121,9 @@ def make_matcher(tmp_path) -> TrackMatcher:
 
     return TrackMatcher(
         database,
-        TrackRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
     )
 
 

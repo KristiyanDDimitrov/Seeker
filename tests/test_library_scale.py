@@ -93,15 +93,15 @@ def scan_tree(tmp_path, relative_paths: list[str]):
         (root / relative_path).write_bytes(b"")
 
     with database.transaction() as connection:
-        LibraryLocationRepository(database).add(
+        LibraryLocationRepository().add(
             LibraryLocation(name="main", path=str(root), added_at="x"),
             connection,
         )
-        location = LibraryLocationRepository(database).get_by_name(
+        location = LibraryLocationRepository().get_by_name(
             "main", connection,
         )
 
-    local_files = LocalFileRepository(database)
+    local_files = LocalFileRepository()
     return database, local_files, LibraryScanner(local_files, database), location
 
 

@@ -1,13 +1,9 @@
 import sqlite3
 
-from seeker.database.connection import Database
 from seeker.models.track import Track
 
 
 class TrackRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def save(self, track: Track, connection: sqlite3.Connection) -> None:
         connection.execute(
             """

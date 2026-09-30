@@ -43,7 +43,7 @@ def register_location(
         path,
         name: str = "Main",
 ) -> LibraryLocation:
-    repo = LibraryLocationRepository(database)
+    repo = LibraryLocationRepository()
     location = LibraryLocation(
         name=name, path=str(path),
         added_at=datetime.now(UTC).isoformat(),
@@ -60,7 +60,7 @@ def add_local_file(
         file_format: str,
         duration_ms: int,
 ) -> LocalFile:
-    repo = LocalFileRepository(database)
+    repo = LocalFileRepository()
     local_file = LocalFile(
         location_id=location.id,
         relative_path=relative_path,
@@ -88,9 +88,9 @@ def _write_tone(path, frequency: float, duration_seconds: float = 3.0):
 def make_service(database: Database) -> DuplicateService:
     return DuplicateService(
         database,
-        LibraryLocationRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        LibraryLocationRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
     )
 
 
@@ -441,7 +441,7 @@ def test_delete_local_files_removes_db_row_and_real_file(tmp_path):
     assert not file_path.exists()
 
     with database.transaction() as connection:
-        assert LocalFileRepository(database).get_by_id(
+        assert LocalFileRepository().get_by_id(
             local_file.id, connection,
         ) is None
 
@@ -459,8 +459,8 @@ def test_delete_local_files_cascades_track_match_to_unmatched(tmp_path):
     file_path.write_bytes(b"fake audio data")
     local_file = add_local_file(database, location, "dupe.wav", "wav", 3000)
 
-    track_repo = TrackRepository(database)
-    match_repo = TrackMatchRepository(database)
+    track_repo = TrackRepository()
+    match_repo = TrackMatchRepository()
     with database.transaction() as connection:
         track_repo.save(
             Track(
@@ -519,8 +519,8 @@ def test_delete_local_files_repoints_match_to_the_kept_file(tmp_path):
             3000,
     )
 
-    track_repo = TrackRepository(database)
-    match_repo = TrackMatchRepository(database)
+    track_repo = TrackRepository()
+    match_repo = TrackMatchRepository()
     original_matched_at = "2020-01-01T00:00:00+00:00"
     with database.transaction() as connection:
         track_repo.save(
@@ -600,7 +600,7 @@ def test_delete_local_files_reports_failure_when_file_already_gone_from_disk(
     assert "gone.wav" in result["details"][0]["message"]
 
     with database.transaction() as connection:
-        assert LocalFileRepository(database).get_by_id(
+        assert LocalFileRepository().get_by_id(
             local_file.id, connection,
         ) is None
 
@@ -724,7 +724,7 @@ def test_delete_local_files_refuses_when_target_is_same_physical_file_as_kept(
     assert aliased_path.exists()
 
     with database.transaction() as connection:
-        assert LocalFileRepository(database).get_by_id(
+        assert LocalFileRepository().get_by_id(
             duplicate_row.id, connection,
         ) is not None
 
@@ -1118,7 +1118,7 @@ def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
     assert result.computed == 1
 
     with database.transaction() as connection:
-        repo = LocalFileRepository(database)
+        repo = LocalFileRepository()
         in_scope = repo.get_by_location_and_relative_path(
             location.id, "InScope/a.wav", connection,
         )
@@ -1170,7 +1170,7 @@ def test_find_duplicate_groups_across_scopes_pools_across_two_real_locations(
     music_dir_b.mkdir()
 
     location_a = register_location(database, music_dir_a)
-    repo = LibraryLocationRepository(database)
+    repo = LibraryLocationRepository()
     with database.transaction() as connection:
         repo.add(
             LibraryLocation(

@@ -215,13 +215,13 @@ def make_service(
         FakeSoulseekClient(
             states, exceptions, retry_results, search_results, progress,
         ),
-        PlaylistRepository(database),
-        TrackRepository(database),
-        LibraryLocationRepository(database),
-        DownloadRequestRepository(database),
-        TrackMatchRepository(database),
-        LocalFileRepository(database),
-        SoulseekReviewCandidateRepository(database),
+        PlaylistRepository(),
+        TrackRepository(),
+        LibraryLocationRepository(),
+        DownloadRequestRepository(),
+        TrackMatchRepository(),
+        LocalFileRepository(),
+        SoulseekReviewCandidateRepository(),
         slskd_download_dir=None,
         get_config=get_config,
     )
@@ -1203,12 +1203,12 @@ def test_settled_completion_indexes_and_matches_the_downloaded_file(
     slskd_dir.mkdir()
     (slskd_dir / "Dom Dolla - Rhyme Dust.mp3").write_bytes(b"not real audio")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1253,7 +1253,7 @@ def test_settled_completion_indexes_and_matches_the_downloaded_file(
         database,
         FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
         playlists, tracks, locations, download_requests, track_matches,
-        local_files, SoulseekReviewCandidateRepository(database),
+        local_files, SoulseekReviewCandidateRepository(),
         str(slskd_dir),
     )
 
@@ -1304,12 +1304,12 @@ def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
         b"a second, differently-named download"
     )
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1385,7 +1385,7 @@ def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
         database,
         FakeSoulseekClient(states={"tx-2": "Completed, Succeeded"}),
         playlists, tracks, locations, download_requests, track_matches,
-        local_files, SoulseekReviewCandidateRepository(database),
+        local_files, SoulseekReviewCandidateRepository(),
         str(slskd_dir),
     )
 
@@ -1438,12 +1438,12 @@ def test_settled_completion_moves_a_filename_with_glob_special_characters(
     filename = "Artist - Title (Mix) [www.dj-promo.org].mp3"
     (slskd_dir / filename).write_bytes(b"not real audio")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1488,7 +1488,7 @@ def test_settled_completion_moves_a_filename_with_glob_special_characters(
         database,
         FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
         playlists, tracks, locations, download_requests, track_matches,
-        local_files, SoulseekReviewCandidateRepository(database),
+        local_files, SoulseekReviewCandidateRepository(),
         str(tmp_path / "slskd_downloads"),
     )
 
@@ -1530,8 +1530,8 @@ def test_get_resolved_destination_resolves_via_the_default(tmp_path):
     lib_root = tmp_path / "music"
     lib_root.mkdir()
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1548,9 +1548,9 @@ def test_get_resolved_destination_resolves_via_the_default(tmp_path):
     service = DownloadService(
         database,
         FakeSoulseekClient(states={}),
-        playlists, TrackRepository(database), locations,
-        DownloadRequestRepository(database), TrackMatchRepository(database),
-        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        playlists, TrackRepository(), locations,
+        DownloadRequestRepository(), TrackMatchRepository(),
+        LocalFileRepository(), SoulseekReviewCandidateRepository(),
         slskd_download_dir=None,
         get_config=lambda: config,
     )
@@ -1593,8 +1593,8 @@ def test_download_playlist_succeeds_with_only_a_default_destination_configured(
     lib_root = tmp_path / "music"
     lib_root.mkdir()
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1613,9 +1613,9 @@ def test_download_playlist_succeeds_with_only_a_default_destination_configured(
     service = DownloadService(
         database,
         FakeSoulseekClient(states={}),
-        playlists, TrackRepository(database), locations,
-        DownloadRequestRepository(database), TrackMatchRepository(database),
-        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        playlists, TrackRepository(), locations,
+        DownloadRequestRepository(), TrackMatchRepository(),
+        LocalFileRepository(), SoulseekReviewCandidateRepository(),
         slskd_download_dir=None,
         get_config=lambda: config,
     )
@@ -1653,9 +1653,9 @@ def _seed_default_destination_scenario(
     slskd_dir.mkdir()
     (slskd_dir / "Artist - Title.mp3").write_bytes(b"not real audio")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -1696,7 +1696,7 @@ def _seed_default_destination_scenario(
         )
         tracks.save_playlist_track("p1", "t1", connection)
 
-        DownloadRequestRepository(database).add(
+        DownloadRequestRepository().add(
             DownloadRequest(
                 track_id="t1",
                 username="peer1",
@@ -1719,9 +1719,9 @@ def _seed_default_destination_scenario(
     service = DownloadService(
         database,
         FakeSoulseekClient(states={"tx-1": "Completed, Succeeded"}),
-        playlists, tracks, locations, DownloadRequestRepository(database),
-        TrackMatchRepository(database), LocalFileRepository(database),
-        SoulseekReviewCandidateRepository(database),
+        playlists, tracks, locations, DownloadRequestRepository(),
+        TrackMatchRepository(), LocalFileRepository(),
+        SoulseekReviewCandidateRepository(),
         str(slskd_dir),
         get_config=lambda: config,
     )
@@ -2164,12 +2164,12 @@ def test_settled_role_locked_request_succeeds_on_retry_auto_moves_without_review
     slskd_dir.mkdir()
     (slskd_dir / "Prdk - One More Night.mp3").write_bytes(b"real audio data")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -2217,7 +2217,7 @@ def test_settled_role_locked_request_succeeds_on_retry_auto_moves_without_review
             retry_results={"Prdk - One More Night.mp3": "new-1"},
         ),
         playlists, tracks, locations, download_requests, track_matches,
-        local_files, SoulseekReviewCandidateRepository(database),
+        local_files, SoulseekReviewCandidateRepository(),
         str(slskd_dir),
     )
 
@@ -2726,7 +2726,7 @@ def test_update_progress_writes_progress_without_disturbing_other_columns(
     # any unrelated column on the row).
     database = Database(tmp_path / "seeker.db")
     database.initialize()
-    repository = DownloadRequestRepository(database)
+    repository = DownloadRequestRepository()
 
     with database.transaction() as connection:
         connection.execute(
@@ -2792,13 +2792,13 @@ def test_poll_downloads_paused_makes_no_real_calls_and_touches_nothing(
     service = DownloadService(
         database,
         TrackingFakeSoulseekClient({"tid1": "InProgress"}),
-        PlaylistRepository(database),
-        TrackRepository(database),
-        LibraryLocationRepository(database),
-        DownloadRequestRepository(database),
-        TrackMatchRepository(database),
-        LocalFileRepository(database),
-        SoulseekReviewCandidateRepository(database),
+        PlaylistRepository(),
+        TrackRepository(),
+        LibraryLocationRepository(),
+        DownloadRequestRepository(),
+        TrackMatchRepository(),
+        LocalFileRepository(),
+        SoulseekReviewCandidateRepository(),
         slskd_download_dir=None,
         get_config=lambda: SeekerConfig(downloads_paused=True),
     )
@@ -2973,12 +2973,12 @@ def _seed_upgrade_scenario(tmp_path):
     slskd_dir.mkdir()
     (slskd_dir / "Dom Dolla - Rhyme Dust.flac").write_bytes(b"new flac data")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -3058,7 +3058,7 @@ def _seed_upgrade_scenario(tmp_path):
         download_requests,
         track_matches,
         local_files,
-        SoulseekReviewCandidateRepository(database),
+        SoulseekReviewCandidateRepository(),
         str(slskd_dir),
     )
 
@@ -3262,12 +3262,12 @@ def _seed_two_upgrade_scenario(tmp_path):
     (slskd_dir / "Artist One - Title One.flac").write_bytes(b"new flac data 1")
     (slskd_dir / "Artist Two - Title Two.flac").write_bytes(b"new flac data 2")
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
-    track_matches = TrackMatchRepository(database)
-    local_files = LocalFileRepository(database)
-    download_requests = DownloadRequestRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
+    track_matches = TrackMatchRepository()
+    local_files = LocalFileRepository()
+    download_requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -3334,7 +3334,7 @@ def _seed_two_upgrade_scenario(tmp_path):
     service = DownloadService(
         database, FakeSoulseekClient({}), playlists, tracks, locations,
         download_requests, track_matches, local_files,
-        SoulseekReviewCandidateRepository(database), str(slskd_dir),
+        SoulseekReviewCandidateRepository(), str(slskd_dir),
     )
 
     return service, lib_root
@@ -3803,7 +3803,7 @@ def _service_with_default_destination(tmp_path, **service_kwargs):
     lib_root = tmp_path / "music"
     lib_root.mkdir()
 
-    locations = LibraryLocationRepository(database)
+    locations = LibraryLocationRepository()
     with database.transaction() as connection:
         locations.add(
             LibraryLocation(
@@ -3823,9 +3823,9 @@ def _service_with_default_destination(tmp_path, **service_kwargs):
             states={}, search_results=search_results,
             retry_results=retry_results,
         ),
-        PlaylistRepository(database), TrackRepository(database), locations,
-        DownloadRequestRepository(database), TrackMatchRepository(database),
-        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        PlaylistRepository(), TrackRepository(), locations,
+        DownloadRequestRepository(), TrackMatchRepository(),
+        LocalFileRepository(), SoulseekReviewCandidateRepository(),
         slskd_download_dir=None,
         get_config=lambda: config,
     )
@@ -4062,7 +4062,7 @@ def test_move_completed_file_falls_back_to_default_for_a_manual_track(
     slskd_dir.mkdir()
     (slskd_dir / "Dom Dolla - Rhyme Dust.mp3").write_bytes(b"not real audio")
 
-    locations = LibraryLocationRepository(database)
+    locations = LibraryLocationRepository()
     with database.transaction() as connection:
         locations.add(
             LibraryLocation(
@@ -4076,9 +4076,9 @@ def test_move_completed_file_falls_back_to_default_for_a_manual_track(
     service = DownloadService(
         database,
         FakeSoulseekClient(states={}),
-        PlaylistRepository(database), TrackRepository(database), locations,
-        DownloadRequestRepository(database), TrackMatchRepository(database),
-        LocalFileRepository(database), SoulseekReviewCandidateRepository(database),
+        PlaylistRepository(), TrackRepository(), locations,
+        DownloadRequestRepository(), TrackMatchRepository(),
+        LocalFileRepository(), SoulseekReviewCandidateRepository(),
         slskd_download_dir=str(slskd_dir),
         get_config=lambda: config,
     )

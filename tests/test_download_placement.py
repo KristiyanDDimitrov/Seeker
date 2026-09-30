@@ -110,9 +110,9 @@ def make_scenario(
     slskd = tmp_path / "slskd"
     slskd.mkdir()
 
-    locations = LibraryLocationRepository(database)
-    playlists = PlaylistRepository(database)
-    tracks = TrackRepository(database)
+    locations = LibraryLocationRepository()
+    playlists = PlaylistRepository()
+    tracks = TrackRepository()
 
     with database.transaction() as connection:
         locations.add(
@@ -138,10 +138,10 @@ def make_scenario(
         playlists,
         tracks,
         locations,
-        DownloadRequestRepository(database),
-        TrackMatchRepository(database),
-        LocalFileRepository(database),
-        SoulseekReviewCandidateRepository(database),
+        DownloadRequestRepository(),
+        TrackMatchRepository(),
+        LocalFileRepository(),
+        SoulseekReviewCandidateRepository(),
         str(slskd),
     )
 

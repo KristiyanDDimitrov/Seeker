@@ -48,21 +48,21 @@ def make_scenario(tmp_path) -> tuple[LibraryService, TrackMatcher]:
 
     matcher = TrackMatcher(
         database,
-        TrackRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
     )
     service = LibraryService(
         database,
-        LibraryLocationRepository(database),
-        LocalFileRepository(database),
+        LibraryLocationRepository(),
+        LocalFileRepository(),
         track_matcher=matcher,
-        playlist_repo=PlaylistRepository(database),
+        playlist_repo=PlaylistRepository(),
     )
     service.add_location("Lib", str(library_root))
 
     with database.transaction() as connection:
-        PlaylistRepository(database).save(
+        PlaylistRepository().save(
             Playlist(id="p1", name="P", track_count=1), connection,
         )
         matcher.tracks.save(
@@ -254,7 +254,7 @@ def test_a_limbo_row_is_not_offered_as_auto_matched(tmp_path):
 # --- §4.4: removing a location -----------------------------------------
 
 def set_destination(matcher: TrackMatcher, playlist_id: str) -> None:
-    playlists = PlaylistRepository(matcher.database)
+    playlists = PlaylistRepository()
 
     with matcher.database.transaction() as connection:
         if playlists.get_by_id(playlist_id, connection) is None:
@@ -273,7 +273,7 @@ def test_removing_a_location_a_playlist_downloads_into_succeeds(tmp_path):
     service.remove_location("Lib")
 
     with matcher.database.transaction() as connection:
-        playlist = PlaylistRepository(matcher.database).get_by_id(
+        playlist = PlaylistRepository().get_by_id(
             "p1", connection,
         )
 

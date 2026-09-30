@@ -1,13 +1,9 @@
 import sqlite3
 
-from seeker.database.connection import Database
 from seeker.models.library_location import LibraryLocation
 
 
 class LibraryLocationRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def add(
             self,
             location: LibraryLocation,

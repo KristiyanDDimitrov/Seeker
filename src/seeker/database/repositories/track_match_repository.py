@@ -1,13 +1,9 @@
 import sqlite3
 
-from seeker.database.connection import Database
 from seeker.models.track_match import TrackMatch
 
 
 class TrackMatchRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def upsert(
             self,
             track_match: TrackMatch,

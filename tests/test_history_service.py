@@ -27,11 +27,11 @@ def make_service(tmp_path) -> HistoryService:
 
     return HistoryService(
         database,
-        DownloadRequestRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
-        TrackRepository(database),
-        PlaylistRepository(database),
+        DownloadRequestRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
+        TrackRepository(),
+        PlaylistRepository(),
     )
 
 

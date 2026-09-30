@@ -1,13 +1,9 @@
 import sqlite3
 
-from seeker.database.connection import Database
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 
 
 class DuplicateCleanupRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def add(
             self,
             cleanup: DuplicateCleanup,

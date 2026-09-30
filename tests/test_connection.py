@@ -402,15 +402,15 @@ def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
 
-    download_requests = DownloadRequestRepository(database)
+    download_requests = DownloadRequestRepository()
     dashboard_service = DashboardService(
         database,
-        PlaylistRepository(database),
-        TrackRepository(database),
-        TrackMatchRepository(database),
+        PlaylistRepository(),
+        TrackRepository(),
+        TrackMatchRepository(),
         download_requests,
-        SoulseekReviewCandidateRepository(database),
-        LocalFileRepository(database),
+        SoulseekReviewCandidateRepository(),
+        LocalFileRepository(),
     )
 
     with database.transaction() as connection:

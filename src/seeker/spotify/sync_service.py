@@ -48,11 +48,13 @@ class SpotifySyncService:
         self,
         spotify_client: SpotifyClient,
         database: Database,
+        playlist_repository: PlaylistRepository,
+        track_repository: TrackRepository,
     ):
         self.spotify = spotify_client
         self.database = database
-        self.playlists = PlaylistRepository(database)
-        self.tracks = TrackRepository(database)
+        self.playlists = playlist_repository
+        self.tracks = track_repository
 
     def sync_playlists(self) -> list[Playlist]:
         logger.info("Synchronizing Spotify playlists...")

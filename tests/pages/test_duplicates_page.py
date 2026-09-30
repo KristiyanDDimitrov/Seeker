@@ -784,9 +784,9 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
 
     db = Database(tmp_path / "seeker.db")
     db.initialize()
-    locations = LibraryLocationRepository(db)
-    local_files = LocalFileRepository(db)
-    track_matches = TrackMatchRepository(db)
+    locations = LibraryLocationRepository()
+    local_files = LocalFileRepository()
+    track_matches = TrackMatchRepository()
 
     with db.transaction() as connection:
         locations.add(

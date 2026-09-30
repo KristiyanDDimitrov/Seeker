@@ -60,10 +60,10 @@ def test_the_schema_comment_describes_every_status():
 def test_a_row_reads_back_as_enums(tmp_path):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
-    requests = DownloadRequestRepository(database)
+    requests = DownloadRequestRepository()
 
     with database.transaction() as connection:
-        TrackRepository(database).save(
+        TrackRepository().save(
             Track(
                 id="track-1", title="Rhyme Dust", artist="Dom Dolla",
                 album="Rhyme Dust", duration_ms=1,

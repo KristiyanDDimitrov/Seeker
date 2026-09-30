@@ -2,6 +2,7 @@ import pytest
 
 from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
+from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems, PlaylistRefreshResult
@@ -34,6 +35,17 @@ class StubSpotifyClient:
         return PlaylistItems(self._tracks, self.local_files_skipped)
 
 
+def make_sync_service(
+        spotify: StubSpotifyClient, database: Database,
+) -> SpotifySyncService:
+    return SpotifySyncService(
+        spotify,
+        database,
+        PlaylistRepository(),
+        TrackRepository(),
+    )
+
+
 def make_track(track_id: str) -> Track:
     return Track(
         id=track_id,
@@ -58,11 +70,11 @@ def test_sync_playlist_tracks_rolls_back_snapshot_id_on_mid_sync_failure(
     )
 
     with database.transaction() as connection:
-        PlaylistRepository(database).save(old_playlist, connection)
+        PlaylistRepository().save(old_playlist, connection)
 
     tracks = [make_track("track1"), make_track("track2")]
     spotify = StubSpotifyClient(tracks)
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
 
     original_save = sync_service.tracks.save
     calls = {"count": 0}
@@ -116,7 +128,7 @@ def test_sync_playlists_never_creates_track_rows(tmp_path):
     ]
 
     spotify = StubSpotifyClient(playlists=spotify_playlists)
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
 
     sync_service.sync_playlists()
 
@@ -142,13 +154,13 @@ def test_sync_playlist_tracks_scopes_to_single_playlist(tmp_path):
     )
 
     with database.transaction() as connection:
-        PlaylistRepository(database).save(playlist_one, connection)
-        PlaylistRepository(database).save(playlist_two, connection)
+        PlaylistRepository().save(playlist_one, connection)
+        PlaylistRepository().save(playlist_two, connection)
 
     spotify = StubSpotifyClient(
         tracks_by_playlist={"playlist1": [make_track("track1")]},
     )
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
 
     target = sync_service.get_playlist_by_name("one")
     sync_service.sync_playlist_tracks(target)
@@ -176,9 +188,9 @@ def test_get_playlist_by_name_raises_with_suggestions_when_not_found(tmp_path):
     )
 
     with database.transaction() as connection:
-        PlaylistRepository(database).save(playlist, connection)
+        PlaylistRepository().save(playlist, connection)
 
-    sync_service = SpotifySyncService(StubSpotifyClient(), database)
+    sync_service = make_sync_service(StubSpotifyClient(), database)
 
     with pytest.raises(PlaylistNotFoundError, match="Deep House Essentials"):
         sync_service.get_playlist_by_name("Deep House Essential")
@@ -218,7 +230,7 @@ def test_sync_playlist_tracks_collapses_a_track_listed_twice(tmp_path):
     spotify = StubSpotifyClient(
         [make_track("track1"), make_track("track2"), make_track("track1")]
     )
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
 
     result = sync_service.sync_playlist_tracks(playlist)
 
@@ -241,7 +253,7 @@ def test_sync_playlist_tracks_reports_skipped_local_files(tmp_path):
     )
     spotify = StubSpotifyClient([make_track("track1")])
     spotify.local_files_skipped = 2
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
 
     result = sync_service.sync_playlist_tracks(playlist)
 
@@ -266,7 +278,7 @@ def test_sync_playlist_tracks_records_the_snapshot_it_loaded(tmp_path):
     playlist = Playlist(
         id="playlist1", name="One", track_count=1, snapshot_id="s1"
     )
-    sync_service = SpotifySyncService(
+    sync_service = make_sync_service(
         StubSpotifyClient([make_track("track1")]), database,
     )
 
@@ -281,7 +293,7 @@ def test_sync_playlist_tracks_leaves_tracks_snapshot_on_failure(tmp_path):
     playlist = Playlist(
         id="playlist1", name="One", track_count=1, snapshot_id="s1"
     )
-    sync_service = SpotifySyncService(
+    sync_service = make_sync_service(
         StubSpotifyClient([make_track("track1")]), database,
     )
 
@@ -308,7 +320,7 @@ def test_sync_playlists_keeps_the_loaded_tracks_snapshot(tmp_path):
         id="playlist1", name="One", track_count=1, snapshot_id="s1"
     )
     spotify = StubSpotifyClient(tracks=[make_track("track1")])
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
     sync_service.sync_playlist_tracks(loaded)
 
     spotify._playlists = [
@@ -345,7 +357,7 @@ def test_refresh_playlists_resyncs_loaded_playlists_that_changed(tmp_path):
             "never": [make_track("unwanted")],
         },
     )
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
     for playlist_id in ("changed", "same"):
         sync_service.sync_playlist_tracks(Playlist(
             id=playlist_id, name=playlist_id.title(), track_count=1,
@@ -389,7 +401,7 @@ def test_refresh_playlists_retries_a_playlist_left_stale_earlier(tmp_path):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
     spotify = StubSpotifyClient(tracks=[make_track("track1")])
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
     sync_service.sync_playlist_tracks(Playlist(
         id="p1", name="One", track_count=1, snapshot_id="s1",
     ))
@@ -408,7 +420,7 @@ def test_refresh_playlists_totals_skipped_local_files(tmp_path):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
     spotify = StubSpotifyClient(tracks=[make_track("track1")])
-    sync_service = SpotifySyncService(spotify, database)
+    sync_service = make_sync_service(spotify, database)
     sync_service.sync_playlist_tracks(Playlist(
         id="p1", name="One", track_count=1, snapshot_id="s1",
     ))

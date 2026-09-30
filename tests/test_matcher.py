@@ -56,9 +56,9 @@ def make_matcher(tmp_path) -> TrackMatcher:
 
     return TrackMatcher(
         database,
-        TrackRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
     )
 
 
@@ -195,9 +195,9 @@ def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
 
     matcher = TrackMatcher(
         database,
-        TrackRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
         get_config=lambda: config_state,
     )
 
@@ -337,7 +337,7 @@ def test_generate_match_report_scopes_to_one_playlist_with_real_data(
     # a scoping bug would show up as real cross-contamination, not just
     # an empty-vs-nonempty difference.
     matcher = make_matcher(tmp_path)
-    playlists = PlaylistRepository(matcher.database)
+    playlists = PlaylistRepository()
 
     with matcher.database.transaction() as connection:
         playlists.save(

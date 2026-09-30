@@ -1,14 +1,10 @@
 import sqlite3
 from datetime import UTC, datetime
 
-from seeker.database.connection import Database
 from seeker.models.playlist import Playlist
 
 
 class PlaylistRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def save(self, playlist: Playlist, connection: sqlite3.Connection) -> None:
         synced_at = datetime.now(UTC).isoformat()
 

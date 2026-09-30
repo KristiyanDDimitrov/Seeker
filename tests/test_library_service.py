@@ -35,8 +35,8 @@ def make_service(tmp_path) -> LibraryService:
 
     return LibraryService(
         database,
-        LibraryLocationRepository(database),
-        LocalFileRepository(database),
+        LibraryLocationRepository(),
+        LocalFileRepository(),
     )
 
 
@@ -46,17 +46,17 @@ def make_service_with_matcher(tmp_path) -> LibraryService:
 
     track_matcher = TrackMatcher(
         database,
-        TrackRepository(database),
-        LocalFileRepository(database),
-        TrackMatchRepository(database),
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
     )
 
     return LibraryService(
         database,
-        LibraryLocationRepository(database),
-        LocalFileRepository(database),
+        LibraryLocationRepository(),
+        LocalFileRepository(),
         track_matcher=track_matcher,
-        playlist_repo=PlaylistRepository(database),
+        playlist_repo=PlaylistRepository(),
     )
 
 

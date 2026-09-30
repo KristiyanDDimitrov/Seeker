@@ -2,7 +2,6 @@ import sqlite3
 from collections.abc import Collection
 from datetime import UTC, datetime
 
-from seeker.database.connection import Database
 from seeker.models.download_request import (
     BLOCKS_REDOWNLOAD,
     IN_FLIGHT,
@@ -31,9 +30,6 @@ def _status_in(
 
 
 class DownloadRequestRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def get_all(self, connection: sqlite3.Connection) -> list[DownloadRequest]:
         # Whole-table fetch, filtered client-side — same pattern as
         # TrackMatchRepository.get_all()/LocalFileRepository.get_all(),

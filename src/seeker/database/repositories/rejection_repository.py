@@ -1,17 +1,12 @@
 import sqlite3
 from collections import defaultdict
 
-from seeker.database.connection import Database
-
 
 class RejectionRepository:
     """What a human rejected on the Review page, for both kinds of
     suggestion: a local file for a track, and a SoulSeek peer's file
     for a track.
     """
-
-    def __init__(self, database: Database):
-        self.database = database
 
     def add_local_match(
             self,

@@ -1,13 +1,9 @@
 import sqlite3
 
-from seeker.database.connection import Database
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 
 
 class SoulseekReviewCandidateRepository:
-    def __init__(self, database: Database):
-        self.database = database
-
     def upsert(
             self,
             candidate: SoulseekReviewCandidate,

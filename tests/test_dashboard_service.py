@@ -44,12 +44,12 @@ def make_service(tmp_path) -> DashboardService:
 
     return DashboardService(
         database,
-        PlaylistRepository(database),
-        TrackRepository(database),
-        TrackMatchRepository(database),
-        DownloadRequestRepository(database),
-        SoulseekReviewCandidateRepository(database),
-        LocalFileRepository(database),
+        PlaylistRepository(),
+        TrackRepository(),
+        TrackMatchRepository(),
+        DownloadRequestRepository(),
+        SoulseekReviewCandidateRepository(),
+        LocalFileRepository(),
     )
 
 

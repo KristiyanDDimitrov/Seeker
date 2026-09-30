@@ -171,9 +171,7 @@ class TrackMatcher:
         self.tracks = track_repository
         self.local_files = local_file_repository
         self.track_matches = track_match_repository
-        self.rejections = rejection_repository or RejectionRepository(
-            database
-        )
+        self.rejections = rejection_repository or RejectionRepository()
         # A callable, not a snapshot SeekerConfig — TrackMatcher itself
         # is constructed once and cached for the app's lifetime
         # (Application.track_matcher), so a plain dataclass value passed
