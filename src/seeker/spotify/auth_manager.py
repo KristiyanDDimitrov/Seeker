@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -21,6 +22,12 @@ from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 
 logger = logging.getLogger(__name__)
+
+# One lock per process, not per manager: Application builds a fresh
+# SpotifyAuthManager on every connect, and all of them share one token
+# file. Held across a refresh (and the browser fallback), so concurrent
+# callers never spend the same rotating refresh token twice.
+_TOKEN_LOCK = threading.Lock()
 
 
 # Spotify rotates the refresh token on every PKCE refresh — the old one
@@ -45,29 +52,46 @@ class SpotifyAuthManager:
         self.token_path = token_path
 
     def get_valid_token(self, force_refresh: bool = False) -> SpotifyToken:
-        token = self._load_token()
+        seen = self._load_token()
 
-        if token is None:
-            return self._authorize()
+        if seen is not None and not force_refresh and not self._is_expired(
+                seen,
+        ):
+            return seen
 
-        if force_refresh or self._is_expired(token):
-            logger.info("Spotify access token expired. Refreshing...")
+        with _TOKEN_LOCK:
+            # Re-read under the lock: another caller may have refreshed
+            # (rotating the refresh token `seen` holds) while this one
+            # waited.
+            token = self._load_token()
 
-            try:
-                token = refresh_access_token(
-                    self.client_id,
-                    token.refresh_token,
-                )
-            except httpx.HTTPStatusError:
-                logger.warning(
-                    "Spotify token refresh failed. Starting a new "
-                    "authorization..."
-                )
+            if token is None:
                 return self._authorize()
 
-            self._save_token(token)
+            refreshed_meanwhile = (
+                seen is not None and token.access_token != seen.access_token
+            )
+            if refreshed_meanwhile and not self._is_expired(token):
+                return token
 
-        return token
+            if force_refresh or self._is_expired(token):
+                logger.info("Spotify access token expired. Refreshing...")
+
+                try:
+                    token = refresh_access_token(
+                        self.client_id,
+                        token.refresh_token,
+                    )
+                except httpx.HTTPStatusError:
+                    logger.warning(
+                        "Spotify token refresh failed. Starting a new "
+                        "authorization..."
+                    )
+                    return self._authorize()
+
+                self._save_token(token)
+
+            return token
 
     def _is_expired(self, token: SpotifyToken) -> bool:
         return time.time() >= token.expires_at - 60

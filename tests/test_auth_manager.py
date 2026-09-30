@@ -1,3 +1,4 @@
+import threading
 import time
 
 import httpx
@@ -269,3 +270,85 @@ def test_get_valid_token_force_refresh_refreshes_a_still_valid_token(
     token = manager.get_valid_token(force_refresh=True)
 
     assert token.access_token == "forced-refresh-access"
+
+
+def _rotating_refresh_endpoint(first_refresh_token):
+    """A fake Spotify token endpoint: each refresh rotates the refresh
+    token, and the old one then fails with a 400, as the real one does."""
+    state = {"current": first_refresh_token, "calls": 0}
+
+    def fake_refresh(client_id, refresh_token):
+        state["calls"] += 1
+        if refresh_token != state["current"]:
+            request = httpx.Request(
+                "POST", "https://accounts.spotify.com/api/token",
+            )
+            raise httpx.HTTPStatusError(
+                "invalid_grant", request=request,
+                response=httpx.Response(400, request=request),
+            )
+        state["current"] = f"refresh-{state['calls'] + 1}"
+        return SpotifyToken(
+            access_token=f"access-{state['calls'] + 1}",
+            refresh_token=state["current"],
+            expires_at=time.time() + 3600,
+        )
+
+    return fake_refresh, state
+
+
+def test_concurrent_callers_share_one_refresh_of_an_expired_token(
+        tmp_path, monkeypatch,
+):
+    # Sync and Refresh tracks can run at once. Without a lock both
+    # refresh; Spotify rotates the refresh token, so the loser's 400
+    # falls back to a surprise browser authorization.
+    manager = make_manager(tmp_path)
+    TokenStore(manager.token_path).save(
+        SpotifyToken(
+            access_token="access-1",
+            refresh_token="refresh-1",
+            expires_at=time.time() - 10,
+        )
+    )
+    fake_refresh, endpoint = _rotating_refresh_endpoint("refresh-1")
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.refresh_access_token", fake_refresh,
+    )
+    monkeypatch.setattr(manager, "_authorize", _fail_if_called)
+
+    # Both threads must have read the expired token before either one
+    # refreshes it: each thread's first load waits for the other's.
+    both_loaded = threading.Barrier(2, timeout=5)
+    first_load_done: set[int] = set()
+    real_load = manager._load_token
+
+    def load_after_both_threads_have_loaded():
+        token = real_load()
+        if threading.get_ident() not in first_load_done:
+            first_load_done.add(threading.get_ident())
+            both_loaded.wait()
+        return token
+
+    monkeypatch.setattr(
+        manager, "_load_token", load_after_both_threads_have_loaded,
+    )
+
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def call():
+        try:
+            results.append(manager.get_valid_token().access_token)
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=call) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+    assert endpoint["calls"] == 1
+    assert results == ["access-2", "access-2"]
