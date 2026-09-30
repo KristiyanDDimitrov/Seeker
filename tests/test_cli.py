@@ -1283,3 +1283,63 @@ def test_sync_reports_playlists_whose_tracks_were_updated(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "Refreshed 2 playlists." in output
     assert "Updated tracks for 1 that changed on Spotify: Peak" in output
+
+
+def _run_sync_raising(monkeypatch, error):
+    def handle_sync(application):
+        raise error
+
+    monkeypatch.setattr(cli, "handle_sync", handle_sync)
+    cli.run(object(), ["sync"])
+
+
+def test_unreachable_slskd_prints_readable_text_not_a_traceback(
+        monkeypatch, capsys,
+):
+    import httpx
+
+    error = httpx.ConnectError(
+        "[Errno 61] Connection refused",
+        request=httpx.Request("GET", "http://127.0.0.1:5030/api/v0/x"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        _run_sync_raising(monkeypatch, error)
+
+    assert exit_info.value.code == 1
+    output = capsys.readouterr().out
+    assert "slskd" in output
+    assert "Docker" in output
+
+
+def test_a_locked_database_prints_readable_text(monkeypatch, capsys):
+    import sqlite3
+
+    with pytest.raises(SystemExit) as exit_info:
+        _run_sync_raising(
+            monkeypatch, sqlite3.OperationalError("database is locked"),
+        )
+
+    assert exit_info.value.code == 1
+    assert "busy" in capsys.readouterr().out
+
+
+def test_other_database_errors_print_their_details(monkeypatch, capsys):
+    import sqlite3
+
+    with pytest.raises(SystemExit):
+        _run_sync_raising(
+            monkeypatch, sqlite3.OperationalError("disk I/O error"),
+        )
+
+    output = capsys.readouterr().out
+    assert "database" in output
+    assert "disk I/O error" in output
+    assert "Open Log Folder" not in output
+
+
+def test_an_unexpected_error_still_tracebacks(monkeypatch):
+    # A bug report needs the traceback; only known failure kinds are
+    # turned into a sentence.
+    with pytest.raises(KeyError):
+        _run_sync_raising(monkeypatch, KeyError("track_id"))

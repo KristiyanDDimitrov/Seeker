@@ -1,9 +1,13 @@
 import argparse
+import sqlite3
 import sys
+
+import httpx
 
 from seeker.application import Application
 from seeker.audio_fingerprint import FingerprintingUnavailableError
 from seeker.destination_resolution import InvalidDestinationSubfolderError
+from seeker.error_text import describe_error
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
 from seeker.library.duplicate_service import (
     LibraryLocationNotFoundError as DuplicateLibraryLocationNotFoundError,
@@ -1222,6 +1226,18 @@ def run(
             LibraryServiceLocationNotFoundError,
             FingerprintingUnavailableError,
             InvalidDestinationSubfolderError,
+            httpx.TransportError,
+            sqlite3.OperationalError,
     ) as error:
-        print(printable(str(error)))
+        print(printable(_describe_for_cli(error)))
         sys.exit(1)
+
+
+def _describe_for_cli(error: Exception) -> str:
+    # The CLI has no log folder to point at, so where the UI says
+    # "details are in the log" the terminal gets the details themselves.
+    details = str(error).strip()
+
+    return describe_error(
+        error, details_hint=f"Details: {details}" if details else "",
+    )
