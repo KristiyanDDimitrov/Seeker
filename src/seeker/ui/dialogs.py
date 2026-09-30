@@ -146,7 +146,7 @@ class DestinationDialog(QDialog):
     """Roadmap item 6 §3 — "no dead end": shown instead of letting
     Download raise NoDestinationConfiguredError. Confirming it always
     persists a real destination somewhere (never a one-time,
-    unpersisted choice — DownloadService._resolve_destination is
+    unpersisted choice — DownloadPlacement.resolve_destination is
     re-evaluated later, on a separate poll cycle, when the file
     actually completes, so nothing durable would be left for it to
     find otherwise) and then the caller continues straight into the

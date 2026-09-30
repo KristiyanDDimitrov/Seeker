@@ -1628,7 +1628,7 @@ class MainWindow(QMainWindow):
 
         # Fetches both the real current fallback (to pre-fill the
         # dialog with the exact path it would already use — shares
-        # DownloadService._resolve_destination with the real move step
+        # DownloadPlacement.resolve_destination with the real move step
         # via get_resolved_destination, so this can never drift into a
         # second, different notion of "resolvable") and every registered
         # location (for the picker), in one round trip.
@@ -1664,7 +1664,7 @@ class MainWindow(QMainWindow):
         # Roadmap item 65 (Phase 3.2) — when the real fallback already
         # resolves (`resolved` given), pre-fill with exactly what it
         # would use: that location, and its real subfolder (already
-        # sanitized by _resolve_destination — never re-sanitized here).
+        # sanitized by resolve_destination — never re-sanitized here).
         # Falls back to the app-wide configured default (item 6 §3's
         # original behavior) only when nothing resolved at all.
         if resolved is not None:

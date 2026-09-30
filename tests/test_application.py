@@ -152,7 +152,10 @@ def test_application_soulseek_config_prefers_store_value_over_env(
     assert app.slskd_base_url == "http://current-store-value:5030"
     assert app.slskd_api_key == "current-store-key"
     assert app.slskd_download_dir == "/current/store/dir"
-    assert app.download_service.slskd_download_dir == "/current/store/dir"
+    assert (
+        app.download_service.placement.slskd_download_dir
+        == "/current/store/dir"
+    )
     assert app.soulseek_client.base_url == "http://current-store-value:5030"
 
 

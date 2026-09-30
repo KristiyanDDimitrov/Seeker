@@ -1203,8 +1203,8 @@ def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
         id=1, name="Main", path=str(tmp_path), added_at="2026-01-01"
     )
     monkeypatch.setattr(
-        service,
-        "_move_completed_file",
+        service.placement,
+        "move_completed_file",
         lambda request: (fake_location, "song.mp3"),
     )
 
@@ -1448,7 +1448,7 @@ def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
 def test_settled_completion_moves_a_filename_with_glob_special_characters(
         tmp_path,
 ):
-    # Real, live-found bug: _move_completed_file's rglob(basename) treats
+    # Real, live-found bug: move_completed_file's rglob(basename) treats
     # the basename as a glob PATTERN, not a literal name. Real Soulseek
     # filenames routinely contain '[' ']' (release tags like
     # "[www.dj-promo.org]"), which fnmatch interprets as a character
@@ -1840,8 +1840,8 @@ def test_settled_completion_index_failure_still_counts_as_completed(
         id=1, name="Main", path=str(tmp_path), added_at="2026-01-01"
     )
     monkeypatch.setattr(
-        service,
-        "_move_completed_file",
+        service.placement,
+        "move_completed_file",
         lambda request: (fake_location, "missing-file-not-on-disk.mp3"),
     )
 
@@ -2896,7 +2896,7 @@ def test_poll_downloads_settled_completion_reaches_total_equals_transferred(
     # what actually lands in the DB once poll_downloads processes it,
     # not just that the client parses it correctly in isolation.
     monkeypatch.setattr(
-        "seeker.soulseek.download_service.DownloadService._move_completed_file",
+        "seeker.soulseek.placement.DownloadPlacement.move_completed_file",
         lambda self, request: (
             LibraryLocation(id=1, name="main", path="/music", added_at="x"),
             "song.flac",
@@ -2980,7 +2980,9 @@ def test_completed_upgrade_transfer_marks_ready_for_review_without_moving(
             "settled-style move must not run for an unconfirmed upgrade"
         )
 
-    monkeypatch.setattr(service, "_move_completed_file", fail_if_called)
+    monkeypatch.setattr(
+        service.placement, "move_completed_file", fail_if_called,
+    )
 
     counts = service.poll_downloads()
 
@@ -4067,7 +4069,7 @@ def test_resolve_destination_manual_uses_default_with_fixed_manual_subfolder(
 ):
     service, location = _service_with_default_destination(tmp_path)
 
-    resolved = service._resolve_destination(None)
+    resolved = service.placement.resolve_destination(None)
 
     assert resolved is not None
     resolved_location, subfolder = resolved
@@ -4079,7 +4081,7 @@ def test_move_completed_file_falls_back_to_default_for_a_manual_track(
         tmp_path,
 ):
     # Roadmap item 82 (P13.2) — a manual track belongs to no playlist at
-    # all, so _move_completed_file's own playlist-iteration loop would
+    # all, so move_completed_file's own playlist-iteration loop would
     # otherwise never run and leave the file stuck in slskd's download
     # dir forever, unlike an ordinary playlist track's (unchanged,
     # deliberate) "no destination -> leave it in place" behavior.
@@ -4129,7 +4131,7 @@ def test_move_completed_file_falls_back_to_default_for_a_manual_track(
         transfer_id="t1", size=len(b"not real audio"),
         requested_at="2026-01-01T00:00:00+00:00",
     )
-    moved = service._move_completed_file(request)
+    moved = service.placement.move_completed_file(request)
 
     assert moved is not None
     moved_location, relative_path = moved
@@ -4177,7 +4179,7 @@ def test_index_and_match_settled_download_backfills_manual_track_duration(
     )
 
     counts = PollResult()
-    service._index_and_match_settled_download(
+    service.placement.index_and_match(
         request, (location, relative_path), counts,
     )
 

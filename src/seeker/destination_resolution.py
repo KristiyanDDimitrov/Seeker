@@ -1,5 +1,5 @@
 """Playlist download-destination resolution — extracted from
-DownloadService._resolve_destination (roadmap item 6/50) so a second
+DownloadPlacement.resolve_destination (roadmap item 6/50) so a second
 consumer doesn't grow its own copy of the same precedence rule. B3.4
 (roadmap item 93) is exactly the situation this split exists to avoid:
 the rename preview needing to know a track's *configured* destination

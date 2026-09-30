@@ -1,12 +1,10 @@
-import glob
 import logging
-import re
 import shutil
 import sqlite3
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -40,7 +38,6 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import (
-    resolve_playlist_destination,
     validate_destination_subfolder,
 )
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
@@ -51,8 +48,6 @@ from seeker.errors import (
     SeekerError,
 )
 from seeker.file_deletion import delete_file, same_file
-from seeker.file_placement import resolve_collision
-from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.download_request import (
@@ -67,10 +62,9 @@ from seeker.models.download_result import (
     TrackFailure,
 )
 from seeker.models.library_location import LibraryLocation
-from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
-from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track, is_manual_track_id
+from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track
 from seeker.models.track_match import TrackMatch
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.client import (
@@ -81,6 +75,7 @@ from seeker.soulseek.client import (
     derive_extension,
     is_recognized_rejection,
 )
+from seeker.soulseek.placement import DownloadPlacement, SettleTarget
 from seeker.soulseek.quality import select_downloads
 
 logger = logging.getLogger(__name__)
@@ -219,104 +214,6 @@ def _quality_descriptor(file: SoulseekFile) -> str:
 
 
 @dataclass(frozen=True)
-class CompletedFileLookup:
-    """Where a finished download sits in slskd's download directory.
-    `path` is None when it cannot be named unambiguously; `problem`
-    then says why (None when the file is simply not there yet)."""
-    path: Path | None
-    problem: str | None = None
-
-
-def _locate_completed_file(
-        download_dir: Path,
-        request: DownloadRequest,
-) -> CompletedFileLookup:
-    """Finds the file slskd wrote for `request`, or refuses to guess.
-
-    slskd writes `<remote parent folder>/<basename>` and, when that
-    name is taken, `<stem>_<UtcNow.Ticks><suffix>` instead
-    (`FileService.MoveFile`, HISTORY §138). So candidates are looked
-    for under the remote parent's name first, with a whole-tree search
-    only as the fallback, and `request.size` (the requested file's
-    exact byte size) narrows them. Several same-size survivors are one
-    file downloaded more than once: the newest wins. With no size to
-    check, more than one candidate is ambiguous and nothing is chosen.
-    """
-    remote = PurePosixPath(request.filename.replace("\\", "/"))
-    basename = remote.name
-
-    if basename in ("", ".", ".."):
-        return CompletedFileLookup(
-            None, f"remote filename {request.filename!r} names no file",
-        )
-
-    stem = PurePosixPath(basename).stem
-    suffix = PurePosixPath(basename).suffix
-    clash_copy = re.compile(
-        re.escape(stem) + r"_\d+" + re.escape(suffix),
-    )
-
-    def is_candidate(path: Path) -> bool:
-        return path.is_file() and (
-            path.name == basename or clash_copy.fullmatch(path.name) is not None
-        )
-
-    def of_requested_size(paths: list[Path]) -> list[Path]:
-        if request.size is None:
-            return paths
-        return [path for path in paths if path.stat().st_size == request.size]
-
-    found: list[Path] = []
-    survivors: list[Path] = []
-    parent_folder = download_dir / remote.parent.name
-
-    if remote.parent.name not in ("", ".", "..") and parent_folder.is_dir():
-        found = [path for path in parent_folder.iterdir() if is_candidate(path)]
-        survivors = of_requested_size(found)
-
-    if not survivors:
-        tree = set(download_dir.rglob(glob.escape(basename)))
-        tree.update(
-            download_dir.rglob(f"{glob.escape(stem)}_*{glob.escape(suffix)}")
-        )
-        found = sorted(path for path in tree if is_candidate(path))
-        survivors = of_requested_size(found)
-
-    if len(survivors) == 1:
-        return CompletedFileLookup(survivors[0])
-
-    if not survivors:
-        if not found:
-            return CompletedFileLookup(None)
-        return CompletedFileLookup(
-            None,
-            f"{len(found)} file(s) named '{basename}' found, none of the "
-            f"requested {request.size} bytes",
-        )
-
-    if request.size is None:
-        return CompletedFileLookup(
-            None,
-            f"{len(survivors)} files named '{basename}' found and the "
-            f"requested size is unknown; not guessing",
-        )
-
-    newest = max(survivors, key=lambda path: path.stat().st_mtime)
-    logger.info(
-        "%d files named '%s' of %d bytes; taking the newest, %s",
-        len(survivors), basename, request.size, newest,
-    )
-    return CompletedFileLookup(newest)
-
-
-@dataclass(frozen=True)
-class _SettleTarget:
-    location: LibraryLocation
-    source: Path
-    proposed_path: Path
-
-
-@dataclass(frozen=True)
 class _MatchedFile:
     local_file_id: int
     location: LibraryLocation
@@ -368,11 +265,16 @@ class DownloadService:
         # visible on the very next download_playlist() call without
         # needing DownloadService itself reconstructed.
         self._get_config = get_config or SeekerConfig
-        self.slskd_download_dir = slskd_download_dir
-        # Request ids whose file could not be located unambiguously
-        # and have been logged at WARNING already: every poll retries
-        # them, but the condition is reported once per process.
-        self._unlocatable_reported: set[int] = set()
+        self.placement = DownloadPlacement(
+            database,
+            playlist_repository,
+            track_repository,
+            library_location_repository,
+            local_file_repository,
+            track_match_repository,
+            slskd_download_dir,
+            self._get_config,
+        )
 
     @property
     def soulseek(self) -> SoulseekClient:
@@ -436,7 +338,7 @@ class DownloadService:
         to the real download; None means show the "set a destination"
         dialog first rather than letting download_playlist() raise
         NoDestinationConfiguredError and dead-end the user. Shares
-        _resolve_destination with the real move step, so this is never
+        DownloadPlacement.resolve_destination with the real move step, so this is never
         a second, drifting notion of "resolvable."
         """
         with self.database.transaction() as connection:
@@ -448,7 +350,7 @@ class DownloadService:
                     f"synced."
                 )
 
-        return self._resolve_destination(playlist)
+        return self.placement.resolve_destination(playlist)
 
     def download_playlist(
             self, playlist_name: str,
@@ -462,7 +364,7 @@ class DownloadService:
                     f"synced."
                 )
 
-            if self._resolve_destination(playlist) is None:
+            if self.placement.resolve_destination(playlist) is None:
                 # Interface-neutral wording, deliberately — this
                 # exception is shared by both the CLI and the UI (a
                 # GUI-facing message must never tell someone to run a
@@ -645,7 +547,7 @@ class DownloadService:
         until something actually downloads" behavior as a playlist
         download (select_downloads), no new ranking logic. A request
         creates a real `tracks` row (id `manual:<uuid4>`, album="",
-        duration_ms=0 — see _index_and_match_settled_download's own
+        duration_ms=0 — see DownloadPlacement.index_and_match's own
         comment on why a placeholder duration doesn't affect the
         immediate post-download match) belonging to no playlist. No
         request, no row: a search that finds nothing or fails, or a
@@ -665,7 +567,7 @@ class DownloadService:
         `--download`, which never has a prior search in hand) to search
         fresh.
         """
-        if self._resolve_destination(None) is None:
+        if self.placement.resolve_destination(None) is None:
             # Checked before creating a track row or running a real
             # 20-45s search — same "no destination configured" contract
             # as download_playlist (the CLI appends its own guidance;
@@ -1180,12 +1082,12 @@ class DownloadService:
                     )
                     continue
 
-                move_result = self._move_completed_file(request)
+                move_result = self.placement.move_completed_file(request)
 
                 if move_result is not None:
                     self._update_status(request.id, DownloadStatus.COMPLETED)
                     counts.completed += 1
-                    self._index_and_match_settled_download(
+                    self.placement.index_and_match(
                         request, move_result, counts,
                     )
                 else:
@@ -1528,16 +1430,16 @@ class DownloadService:
             # future poll, so the next run's main pending loop retries
             # the move instead of this row silently claiming a
             # completion that never actually happened.
-            move_result = self._move_completed_file(request)
+            move_result = self.placement.move_completed_file(request)
 
             if move_result is not None:
                 counts.completed += 1
                 # Same indexing gap as poll_downloads()'s main loop
-                # (see _index_and_match_settled_download's own
+                # (see DownloadPlacement.index_and_match's own
                 # docstring) — this branch reaches 'completed' for a
                 # role='settled' row too, so it needs the identical fix,
                 # not a second copy of it.
-                self._index_and_match_settled_download(
+                self.placement.index_and_match(
                     request, move_result, counts,
                 )
             else:
@@ -1670,247 +1572,6 @@ class DownloadService:
                 request_id, bytes_transferred, total_bytes, connection,
             )
 
-    def _resolve_destination(
-            self,
-            playlist: Playlist | None,
-    ) -> tuple[LibraryLocation, str | None] | None:
-        """A playlist-specific download_location_id/download_subfolder
-        always wins when set. Otherwise falls back to the configured
-        default destination, resolved through _get_config(), not a
-        snapshot, so a Settings-driven change takes effect on the very
-        next call, matching this project's standing rule for every
-        other config-backed threshold. The playlist's own name becomes
-        the subfolder (sanitized — a real playlist name, "240KM/H",
-        contains a literal path separator) only when
-        default_download_subfolder_per_playlist is on. Returns None
-        when neither resolves to a real, still-registered location —
-        the caller's job to report that clearly.
-
-        `playlist=None` is a manual (not-from-Spotify) search-and-
-        download track, which has no playlist at all: always resolves
-        via the configured default (never a playlist-specific override,
-        since there's no playlist), with a fixed "Manual" subfolder —
-        never the per-playlist subfolder rule, which has no meaning
-        here.
-
-        The actual precedence logic lives in destination_resolution.py
-        — shared with MetadataService's rename preview, which needs to
-        know a track's configured destination without a second,
-        drifting copy of this rule.
-        """
-        with self.database.transaction() as connection:
-            return resolve_playlist_destination(
-                playlist, self.locations, self._get_config, connection,
-            )
-
-    def _settle_target(
-            self,
-            request: DownloadRequest,
-    ) -> _SettleTarget | None:
-        """Where `request`'s finished file is now, and the path it
-        would take in its destination folder. None, logged, when either
-        cannot be determined."""
-        if not self.slskd_download_dir:
-            logger.warning(
-                "SLSKD_DOWNLOAD_DIR is not configured; cannot move '%s'.",
-                request.filename,
-            )
-            return None
-
-        with self.database.transaction() as connection:
-            playlists = self.playlists.get_by_track_id(
-                request.track_id,
-                connection,
-            )
-
-        resolved = None
-
-        for playlist in playlists:
-            resolved = self._resolve_destination(playlist)
-
-            if resolved is not None:
-                break
-
-        if not playlists:
-            # A manual (not-from-Spotify) track belongs to no playlist
-            # at all, so the loop above never runs and `resolved` would
-            # otherwise stay None unconditionally, leaving every
-            # completed manual download stuck in slskd's own download
-            # dir forever. Falls back to the same default-destination
-            # resolution _resolve_destination(None) now supports.
-            # Deliberately scoped to "genuinely no playlist" only — an
-            # ordinary playlist track with no resolvable destination
-            # keeps its existing, unchanged "leave it in place" behavior.
-            resolved = self._resolve_destination(None)
-
-        if resolved is None:
-            logger.warning(
-                "No configured destination found for track %s; leaving "
-                "'%s' in place.", request.track_id, request.filename,
-            )
-            return None
-
-        location, subfolder = resolved
-
-        lookup = _locate_completed_file(
-            Path(self.slskd_download_dir), request,
-        )
-
-        if lookup.path is None:
-            self._report_unlocatable(request, lookup.problem)
-            return None
-
-        basename = PurePosixPath(request.filename.replace("\\", "/")).name
-        destination_dir = Path(location.path)
-
-        if subfolder:
-            destination_dir = destination_dir / subfolder
-
-        return _SettleTarget(location, lookup.path, destination_dir / basename)
-
-    def _move_completed_file(
-            self,
-            request: DownloadRequest,
-    ) -> tuple[LibraryLocation, str] | None:
-        target = self._settle_target(request)
-
-        if target is None:
-            return None
-
-        return self._place_without_overwrite(target)
-
-    def _place_without_overwrite(
-            self,
-            target: _SettleTarget,
-    ) -> tuple[LibraryLocation, str]:
-        target.proposed_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Never onto an existing file: shutil.move replaces one silently
-        # (os.rename on one volume, copy-then-unlink across volumes).
-        destination_path = resolve_collision(
-            target.source, target.proposed_path,
-        )
-        shutil.move(str(target.source), str(destination_path))
-
-        logger.info(
-            "Moved '%s' to %s", target.proposed_path.name, destination_path,
-        )
-
-        location = target.location
-        relative_path = str(
-            destination_path.relative_to(Path(location.path))
-        )
-
-        return (location, relative_path)
-
-    def _report_unlocatable(
-            self,
-            request: DownloadRequest,
-            problem: str | None,
-    ) -> None:
-        if problem is None:
-            return
-
-        if request.id is not None and request.id in self._unlocatable_reported:
-            logger.debug("Still cannot locate '%s': %s", request.filename, problem)
-            return
-
-        if request.id is not None:
-            self._unlocatable_reported.add(request.id)
-
-        logger.warning(
-            "Cannot locate the finished download '%s': %s. Leaving it "
-            "for the next poll.", request.filename, problem,
-        )
-
-    def _index_and_match_settled_download(
-            self,
-            request: DownloadRequest,
-            move_result: tuple[LibraryLocation, str],
-            counts: PollResult,
-    ) -> None:
-        # Indexes and matches an ordinary settled download once it's
-        # moved into place — without this, the file was invisible to
-        # the rest of the app (no local_files row, no track_matches
-        # row), and a second download run could re-search and
-        # re-request a file already sitting on disk (HISTORY §45).
-        #
-        # Mirrors apply_upgrade_decision's own index+match tail.
-        # match_method='auto' is set unconditionally, regardless of the
-        # computed fuzzy score: this exact file was searched, filtered
-        # by quality.py, and downloaded FOR this exact track — that
-        # provenance is a stronger signal than filename fuzzy-matching
-        # (HISTORY §26). Unlike apply_upgrade_decision's hardcoded
-        # score=100.0 sentinel, the real find_best_match() score is
-        # computed and stored here so a genuinely bad pairing stays
-        # visible in the data instead of being hidden behind a fake
-        # perfect score.
-        #
-        # Wrapped in its own try/except, per this codebase's standing
-        # per-item batch rule: an indexing/matching failure must not
-        # undo the 'completed' status the caller already set (the file
-        # really did download successfully), and must not abort the
-        # rest of this poll_downloads() run.
-        try:
-            location, relative_path = move_result
-
-            with self.database.transaction() as connection:
-                local_file = index_single_file(
-                    location, relative_path, self.local_files, connection,
-                )
-
-                track = self.tracks.get_by_id(request.track_id, connection)
-                score = None
-
-                if track is not None:
-                    match = find_best_match(track, [local_file])
-                    if match is not None:
-                        score = match[1]
-
-                    # A manual (not-from-Spotify) track is created with
-                    # a placeholder duration_ms=0 (there's no real
-                    # Spotify duration to record). find_best_match()
-                    # above never reads duration at all (matching.py's
-                    # scoring is artist+title only), so this doesn't
-                    # affect THIS match — but a LATER match_all() re-run
-                    # applies its own duration pre-filter
-                    # (DURATION_TOLERANCE_MS, matcher.py) against every
-                    # candidate local file, which a real duration_ms=0
-                    # would fail against almost any real file and could
-                    # demote this match back to unmatched. Backfilled
-                    # here, once, from the real just-downloaded file's
-                    # own read duration — never touches a real Spotify
-                    # track's authoritative duration_ms (HISTORY §82).
-                    if (
-                            is_manual_track_id(track.id)
-                            and local_file.duration_ms is not None
-                    ):
-                        self.tracks.save(
-                            replace(
-                                track, duration_ms=local_file.duration_ms,
-                            ),
-                            connection,
-                        )
-
-                self.track_matches.upsert(
-                    TrackMatch(
-                        track_id=request.track_id,
-                        local_file_id=local_file.id,
-                        match_method="auto",
-                        score=score,
-                        matched_at=datetime.now(UTC).isoformat(),
-                    ),
-                    connection,
-                )
-
-            counts.indexed += 1
-        except Exception as error:
-            counts.index_failed += 1
-            logger.warning(
-                "Downloaded '%s' but failed to index/match it into the "
-                "library: %s", request.filename, error,
-            )
-
     def get_upgrade_review_details(
             self,
             request_id: int,
@@ -2022,7 +1683,7 @@ class DownloadService:
             return "Request not found."
 
         current = self._current_matched_file(request.track_id)
-        target = self._settle_target(request)
+        target = self.placement.settle_target(request)
 
         if target is None:
             return "Could not locate the downloaded file; leaving for review."
@@ -2036,7 +1697,7 @@ class DownloadService:
                 request_id, request.track_id, target, current,
             )
 
-        location, relative_path = self._place_without_overwrite(target)
+        location, relative_path = self.placement.place_without_overwrite(target)
         new_path = Path(location.path) / relative_path
 
         with self.database.transaction() as connection:
@@ -2107,7 +1768,7 @@ class DownloadService:
             self,
             request_id: int,
             track_id: str,
-            target: _SettleTarget,
+            target: SettleTarget,
             current: _MatchedFile,
     ) -> str:
         # Moved next to the old file first so the final step is one

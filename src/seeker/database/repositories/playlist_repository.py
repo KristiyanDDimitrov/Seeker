@@ -115,7 +115,7 @@ class PlaylistRepository:
         # destination resolution) needs every playlist a track belongs
         # to, not just the ones already carrying an explicit override.
         # This filter used to live here; removing it without also
-        # teaching the one real caller (_move_completed_file) to
+        # teaching the one real caller (move_completed_file) to
         # resolve the default itself would have silently broken every
         # default-destination download exactly the way item 45's own
         # indexing gap did — checked and fixed together, not left as a

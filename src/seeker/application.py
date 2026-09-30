@@ -440,7 +440,7 @@ class Application:
     ) -> None:
         """Persist the fallback destination roadmap item 6 adds — used
         once a playlist has no destination of its own (see
-        DownloadService._resolve_destination). No client/service reset
+        DownloadPlacement.resolve_destination). No client/service reset
         needed, unlike persist_soulseek_config's credential change:
         DownloadService already reads config fresh via its own
         get_config callable on every resolution, never a cached
