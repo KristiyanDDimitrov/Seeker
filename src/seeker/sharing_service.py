@@ -67,6 +67,7 @@ from seeker.docker_setup import (
     bring_up_slskd,
     compose_file_path,
 )
+from seeker.errors import SeekerError
 from seeker.filename_sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SoulseekClient
@@ -91,15 +92,15 @@ SHARE_READY_POLL_INTERVAL_SECONDS = 2.0
 BACKUPS_KEPT = 5
 
 
-class SharingWriteNotAllowedError(RuntimeError):
+class SharingWriteNotAllowedError(SeekerError):
     pass
 
 
-class ShareAlreadyExistsError(RuntimeError):
+class ShareAlreadyExistsError(SeekerError):
     pass
 
 
-class SlskdCredentialsMissingError(RuntimeError):
+class SlskdCredentialsMissingError(SeekerError):
     """Raised instead of recreating the slskd container with a blank
     credential — roadmap item R6.3: a recreate that silently
     de-authenticates the container (either from Seeker, or from the
@@ -111,7 +112,7 @@ class SlskdCredentialsMissingError(RuntimeError):
     pass
 
 
-class SlskdUnauthorizedError(RuntimeError):
+class SlskdUnauthorizedError(SeekerError):
     """Raised by get_status() in place of a raw httpx 401 — roadmap
     item R6.4. See this module's own docstring / R6's diagnosis: a
     Sharing recreate that runs with a blank SLSKD_API_KEY (R6's own

@@ -21,9 +21,9 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import LibraryLocationNotFoundError
 from seeker.library.matcher import TrackMatcher
 from seeker.library.service import (
-    LibraryLocationNotFoundError,
     LibraryService,
 )
 from seeker.models.location_removal import LocationRemovalSummary

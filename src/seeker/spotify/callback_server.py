@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from seeker.errors import SeekerError
+
 # Single source of truth for the local callback port — the onboarding
 # wizard displays DEFAULT_REDIRECT_URI (built from this) as the fixed,
 # copy-pasteable value the user registers on Spotify's dashboard, so it
@@ -54,7 +56,7 @@ _FAILED_PAGE = _page(
 )
 
 
-class AuthorizationCancelledError(Exception):
+class AuthorizationCancelledError(SeekerError):
     """The user cancelled a wait for the Spotify callback in Seeker."""
 
     def __init__(self) -> None:

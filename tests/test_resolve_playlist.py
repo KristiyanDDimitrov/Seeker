@@ -5,11 +5,9 @@ from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems
-from seeker.spotify.sync_service import (
-    PlaylistNotFoundError as SyncPlaylistNotFoundError,
-)
 from seeker.spotify.sync_service import (
     SpotifySyncService,
 )
@@ -102,7 +100,7 @@ def test_resolve_playlist_declines_refresh_raises_original_not_found(
 
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
 
-    with pytest.raises(SyncPlaylistNotFoundError):
+    with pytest.raises(PlaylistNotFoundError):
         cli.resolve_playlist_or_offer_sync(
             "Nonexistent Playlist", FakeApplication(sync_service)
         )
@@ -119,7 +117,7 @@ def test_resolve_playlist_errors_after_real_refresh_when_truly_nonexistent(
 
     monkeypatch.setattr("builtins.input", lambda prompt: "y")
 
-    with pytest.raises(SyncPlaylistNotFoundError, match="even after"):
+    with pytest.raises(PlaylistNotFoundError, match="even after"):
         cli.resolve_playlist_or_offer_sync(
             "Nonexistent Playlist", FakeApplication(sync_service)
         )
@@ -148,7 +146,7 @@ def test_resolve_playlist_does_not_offer_refresh_when_close_match_exists(
 
     monkeypatch.setattr("builtins.input", fail_if_called)
 
-    with pytest.raises(SyncPlaylistNotFoundError, match="Did you mean"):
+    with pytest.raises(PlaylistNotFoundError, match="Did you mean"):
         cli.resolve_playlist_or_offer_sync(
             "Deep House Essential", FakeApplication(sync_service)
         )
@@ -186,7 +184,7 @@ def test_resolve_playlist_test_query_offers_refresh_not_sesh_suggestion(
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    with pytest.raises(SyncPlaylistNotFoundError, match="found locally"):
+    with pytest.raises(PlaylistNotFoundError, match="found locally"):
         cli.resolve_playlist_or_offer_sync(
             "Test", FakeApplication(sync_service)
         )

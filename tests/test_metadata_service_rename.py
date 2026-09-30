@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from seeker.library.metadata_service import PlaylistNotFoundError
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track

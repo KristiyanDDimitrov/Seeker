@@ -31,6 +31,7 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
+from seeker.errors import LibraryLocationNotFoundError
 from seeker.file_deletion import delete_file, same_file
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.library_location import LibraryLocation
@@ -39,10 +40,6 @@ from seeker.models.track_match import TrackMatch
 from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
 
 logger = logging.getLogger(__name__)
-
-
-class LibraryLocationNotFoundError(RuntimeError):
-    pass
 
 
 # Roadmap item 68 (Phase 8.2/8.3) — per-file fingerprint-failure reason

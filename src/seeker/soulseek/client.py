@@ -5,10 +5,11 @@ from urllib.parse import quote
 
 import httpx
 
+from seeker.errors import SeekerError
 from seeker.models.soulseek_file import SoulseekFile
 
 
-class SoulseekDownloadError(RuntimeError):
+class SoulseekDownloadError(SeekerError):
     def __init__(self, message: str, reason: str | None = None):
         super().__init__(message)
         # slskd's own words for the rejection, without the "who and
@@ -17,7 +18,7 @@ class SoulseekDownloadError(RuntimeError):
         self.reason = reason
 
 
-class SlskdUnreachableError(RuntimeError):
+class SlskdUnreachableError(SeekerError):
     """slskd itself did not answer: a transport error, not a peer's
     rejection. The message is the sentence the UI and CLI show."""
 

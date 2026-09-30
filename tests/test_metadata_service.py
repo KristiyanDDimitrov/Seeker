@@ -23,10 +23,10 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.library.metadata_service import (
     MAX_ALBUM_ART_BYTES,
     MetadataService,
-    PlaylistNotFoundError,
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile

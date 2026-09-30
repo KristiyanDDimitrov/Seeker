@@ -8,35 +8,15 @@ from seeker.application import Application
 from seeker.audio_fingerprint import FingerprintingUnavailableError
 from seeker.destination_resolution import InvalidDestinationSubfolderError
 from seeker.error_text import describe_error
+from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
-from seeker.library.duplicate_service import (
-    LibraryLocationNotFoundError as DuplicateLibraryLocationNotFoundError,
-)
-from seeker.library.metadata_service import (
-    PlaylistNotFoundError as MetadataPlaylistNotFoundError,
-)
 from seeker.library.scanner import LibraryUnavailableError
-from seeker.library.service import (
-    LibraryLocationNotFoundError as LibraryServiceLocationNotFoundError,
-)
-from seeker.library.service import (
-    PlaylistNotFoundError as LibraryReviewPlaylistNotFoundError,
-)
 from seeker.models.playlist import Playlist
 from seeker.soulseek.client import SlskdUnreachableError, SoulseekDownloadError
-from seeker.soulseek.download_service import (
-    LibraryLocationNotFoundError,
-    NoDestinationConfiguredError,
-    PlaylistNotFoundError,
-)
+from seeker.soulseek.download_service import NoDestinationConfiguredError
 from seeker.soulseek.quality import rank_candidates
 from seeker.spotify.client import SpotifyRateLimitedError
-from seeker.spotify.sync_service import (
-    PlaylistNotFoundError as SyncPlaylistNotFoundError,
-)
-from seeker.spotify.sync_service import (
-    find_close_playlist_matches,
-)
+from seeker.spotify.sync_service import find_close_playlist_matches
 
 # Pure-function formatter, no Qt/PySide6 dependency (see its own
 # docstring) — CLI and UI share the exact same local-time conversion
@@ -88,7 +68,7 @@ def resolve_playlist_or_offer_sync(
     """
     try:
         return application.sync_service.get_playlist_by_name(name)
-    except SyncPlaylistNotFoundError:
+    except PlaylistNotFoundError:
         local_names = [
             playlist.name
             for playlist in application.sync_service.list_playlists()
@@ -110,8 +90,8 @@ def resolve_playlist_or_offer_sync(
 
         try:
             return application.sync_service.get_playlist_by_name(name)
-        except SyncPlaylistNotFoundError:
-            raise SyncPlaylistNotFoundError(
+        except PlaylistNotFoundError:
+            raise PlaylistNotFoundError(
                 f"No playlist named '{name}' found, even after "
                 f"refreshing from Spotify. It doesn't exist on this "
                 f"account."
@@ -1217,14 +1197,9 @@ def run(
         sys.exit(1)
     except (
             PlaylistNotFoundError,
-            SyncPlaylistNotFoundError,
-            MetadataPlaylistNotFoundError,
-            LibraryReviewPlaylistNotFoundError,
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
             SlskdUnreachableError,
-            DuplicateLibraryLocationNotFoundError,
-            LibraryServiceLocationNotFoundError,
             FingerprintingUnavailableError,
             InvalidDestinationSubfolderError,
             httpx.TransportError,

@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 import httpx
 import platformdirs
 
+from seeker.errors import SeekerError
+
 logger = logging.getLogger(__name__)
 
 # /opt/homebrew/bin (Apple Silicon Homebrew) isn't guaranteed to reach
@@ -337,12 +339,12 @@ def check_slskd_web_login(
     return SlskdWebLoginStatus.UNKNOWN
 
 
-class SlskdBringUpError(RuntimeError):
+class SlskdBringUpError(SeekerError):
     """`docker compose up` for slskd exited non-zero; the message
     carries Compose's own stderr."""
 
 
-class SlskdStartRefusedError(RuntimeError):
+class SlskdStartRefusedError(SeekerError):
     """Seeker will not start slskd from here; the message says why and
     what the user can do instead."""
 

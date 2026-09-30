@@ -6,16 +6,13 @@ from rapidfuzz.distance import Levenshtein
 from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track import Track
 from seeker.spotify.client import SpotifyClient
 
 logger = logging.getLogger(__name__)
-
-
-class PlaylistNotFoundError(RuntimeError):
-    pass
 
 
 def find_close_playlist_matches(

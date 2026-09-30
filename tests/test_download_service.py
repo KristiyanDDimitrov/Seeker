@@ -26,6 +26,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.download_request import DownloadRequest
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -42,7 +43,6 @@ from seeker.soulseek.client import (
 from seeker.soulseek.download_service import (
     DownloadService,
     NoDestinationConfiguredError,
-    PlaylistNotFoundError,
     ReviewCandidateMissingSizeError,
     ReviewCandidateNotFoundError,
     UnsupportedDownloadFormatError,

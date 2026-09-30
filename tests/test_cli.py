@@ -9,8 +9,8 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
-from seeker.library.service import LibraryLocationNotFoundError
 from seeker.models.local_file import LocalFile
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -21,9 +21,6 @@ from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.download_service import NoDestinationConfiguredError
-from seeker.spotify.sync_service import (
-    PlaylistNotFoundError as SyncPlaylistNotFoundError,
-)
 
 
 class FakeSyncService:
@@ -39,7 +36,7 @@ class FakeSyncService:
             if playlist.name.lower() == name.lower():
                 return playlist
 
-        raise SyncPlaylistNotFoundError(
+        raise PlaylistNotFoundError(
             f"No playlist named '{name}' found locally."
         )
 
@@ -603,8 +600,6 @@ def test_library_duplicates_reports_real_group_shape(tmp_path, capsys):
 
 
 def test_library_fingerprint_unknown_location_exits_nonzero(tmp_path, capsys):
-    from seeker.library.duplicate_service import LibraryLocationNotFoundError
-
     matcher = make_matcher(tmp_path)
 
     class RaisingDuplicateService:
@@ -1230,7 +1225,9 @@ def test_library_remove_prints_what_was_forgotten(tmp_path, capsys):
 def test_library_remove_unknown_name_exits_with_the_error(tmp_path, capsys):
     application = FakeApplicationRemovingLocations(
         make_matcher(tmp_path),
-        error=LibraryLocationNotFoundError("Nope"),
+        error=LibraryLocationNotFoundError(
+            "No library location named 'Nope' is registered."
+        ),
     )
 
     with pytest.raises(SystemExit) as exit_info:

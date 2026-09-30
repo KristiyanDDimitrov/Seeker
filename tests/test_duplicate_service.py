@@ -17,10 +17,10 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import LibraryLocationNotFoundError
 from seeker.library.duplicate_service import (
     DuplicateFolderScope,
     DuplicateService,
-    LibraryLocationNotFoundError,
     _cluster_by_similarity,
     _path_within_folder,
     _quality_sort_key,

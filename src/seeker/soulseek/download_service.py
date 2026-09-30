@@ -13,7 +13,10 @@ from uuid import uuid4
 
 import httpx
 
-from seeker.audio_formats import is_downloadable_extension
+from seeker.audio_formats import (
+    downloadable_formats_text,
+    is_downloadable_extension,
+)
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -43,6 +46,11 @@ from seeker.destination_resolution import (
     validate_destination_subfolder,
 )
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
+from seeker.errors import (
+    LibraryLocationNotFoundError,
+    PlaylistNotFoundError,
+    SeekerError,
+)
 from seeker.file_deletion import delete_file, same_file
 from seeker.file_placement import resolve_collision
 from seeker.library.matcher import find_best_match
@@ -141,15 +149,11 @@ def describe_transfer_failure(state: str, exception_text: str | None) -> str:
     return f"{label}: {exception_text}" if exception_text else label
 
 
-class PlaylistNotFoundError(RuntimeError):
+class NoDestinationConfiguredError(SeekerError):
     pass
 
 
-class NoDestinationConfiguredError(RuntimeError):
-    pass
-
-
-class UnsupportedDownloadFormatError(RuntimeError):
+class UnsupportedDownloadFormatError(SeekerError):
     """An explicit per-row 'Download this one' pick (download_manual's
     chosen=) bypasses select_downloads' ranking/threshold entirely —
     including the DOWNLOADABLE_EXTENSIONS gate that normally lives
@@ -157,24 +161,17 @@ class UnsupportedDownloadFormatError(RuntimeError):
     click must say so loudly, not do nothing (HISTORY §94)."""
 
     def __init__(self, extension: str):
-        # Fixed, readable order (mp3/flac/wav/aiff/aif/m4a) rather than
-        # DOWNLOADABLE_EXTENSIONS' own set-iteration order.
-        downloadable = "mp3, flac, wav, aiff and m4a"
         super().__init__(
-            f"Seeker only downloads {downloadable} — this one is "
+            f"Seeker only downloads {downloadable_formats_text()} — this one is "
             f".{extension.lower().lstrip('.')}."
         )
 
 
-class LibraryLocationNotFoundError(RuntimeError):
+class ReviewCandidateNotFoundError(SeekerError):
     pass
 
 
-class ReviewCandidateNotFoundError(RuntimeError):
-    pass
-
-
-class ReviewCandidateMissingSizeError(RuntimeError):
+class ReviewCandidateMissingSizeError(SeekerError):
     pass
 
 

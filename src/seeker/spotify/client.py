@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import httpx
 
+from seeker.errors import SeekerError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems
 from seeker.models.track import Track
@@ -79,7 +80,7 @@ def _retry_after_seconds(response: httpx.Response) -> int | None:
     return int(header)
 
 
-class SpotifyRateLimitedError(RuntimeError):
+class SpotifyRateLimitedError(SeekerError):
     def __init__(
         self,
         retry_after_seconds: int | None,
@@ -120,7 +121,7 @@ class SpotifyRateLimitedError(RuntimeError):
         )
 
 
-class SpotifyAuthenticationError(RuntimeError):
+class SpotifyAuthenticationError(SeekerError):
     """Raised when Spotify rejects the current token and a single forced
     refresh-and-retry (B8.3) still 401s — a real, permanently revoked/
     invalid token, not just an expired one get_valid_token() already

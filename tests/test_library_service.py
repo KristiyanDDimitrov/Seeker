@@ -16,12 +16,12 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryUnavailableError
 from seeker.library.service import (
     LibraryLocationPathAlreadyRegisteredError,
     LibraryService,
-    PlaylistNotFoundError,
 )
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist

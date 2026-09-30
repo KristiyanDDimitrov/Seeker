@@ -27,6 +27,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
+from seeker.errors import PlaylistNotFoundError
 from seeker.file_deletion import same_file
 from seeker.file_placement import resolve_collision
 from seeker.filename_format import build_track_filename
@@ -43,10 +44,6 @@ from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
 logger = logging.getLogger(__name__)
-
-
-class PlaylistNotFoundError(RuntimeError):
-    pass
 
 
 # Roadmap item 116 (round 8, §6.4) — album_art_url comes from Spotify's

@@ -18,6 +18,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.download_dedup import most_recent_per_candidate
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.local_file import LocalFile
@@ -34,11 +35,6 @@ from seeker.models.track_status import (
     REVIEW_CANDIDATE,
     TrackStatus,
 )
-
-
-class PlaylistNotFoundError(RuntimeError):
-    pass
-
 
 # "Downloading" — an active, actually-transferring request.
 _DOWNLOADING_STATUSES = {"queued", "downloading"}

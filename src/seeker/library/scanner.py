@@ -13,6 +13,7 @@ from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.errors import SeekerError
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 UPSERT_BATCH_SIZE = 200
 
 
-class LibraryUnavailableError(RuntimeError):
+class LibraryUnavailableError(SeekerError):
     def __init__(self, path: Path):
         message = f"Library path {path} does not exist or is not a directory."
 

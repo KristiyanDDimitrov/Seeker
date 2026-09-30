@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from seeker.dashboard_service import DashboardService, PlaylistNotFoundError
+from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -20,6 +20,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.download_request import DownloadRequest
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist

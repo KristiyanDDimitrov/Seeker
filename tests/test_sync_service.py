@@ -2,11 +2,11 @@ import pytest
 
 from seeker.database.connection import Database
 from seeker.database.repositories.playlist_repository import PlaylistRepository
+from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems, PlaylistRefreshResult
 from seeker.models.track import Track
 from seeker.spotify.sync_service import (
-    PlaylistNotFoundError,
     SpotifySyncService,
     find_close_playlist_matches,
 )

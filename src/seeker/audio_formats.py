@@ -16,12 +16,21 @@ AUDIO_EXTENSIONS = {
 # instances in this project's library); .aifc is OUT (see AUDIO_EXTENSIONS'
 # own comment above); .ogg/.opus/.wma/.ape/.wv are OUT (DJ software rarely
 # reads them). HISTORY §94.
-DOWNLOADABLE_EXTENSIONS = {".mp3", ".flac", ".wav", ".aiff", ".aif", ".m4a"}
+# In the order a message lists them.
+DOWNLOADABLE_EXTENSIONS_IN_ORDER = (".mp3", ".flac", ".wav", ".aiff", ".aif", ".m4a")
+DOWNLOADABLE_EXTENSIONS = set(DOWNLOADABLE_EXTENSIONS_IN_ORDER)
 
 assert DOWNLOADABLE_EXTENSIONS <= AUDIO_EXTENSIONS, (
     "DOWNLOADABLE_EXTENSIONS must never include a format the scanner "
     "wouldn't even index afterward"
 )
+
+
+def downloadable_formats_text() -> str:
+    """"mp3, flac, wav, aiff, aif and m4a" — for a sentence."""
+    names = [extension.lstrip(".") for extension in DOWNLOADABLE_EXTENSIONS_IN_ORDER]
+
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def is_downloadable_extension(extension: str) -> bool:

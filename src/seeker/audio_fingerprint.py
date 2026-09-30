@@ -39,6 +39,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from seeker.errors import SeekerError
+
 logger = logging.getLogger(__name__)
 
 # chromaprint's own default algorithm (matches fpcalc's default and
@@ -65,12 +67,12 @@ _FFMPEG_DECODE_SAMPLE_RATE = 44_100
 _FFMPEG_DECODE_CHANNELS = 1
 
 
-class FingerprintingUnavailableError(RuntimeError):
+class FingerprintingUnavailableError(SeekerError):
     """Raised only when fingerprinting is actually attempted and
     libchromaprint genuinely can't be found — never at import time."""
 
 
-class FingerprintError(RuntimeError):
+class FingerprintError(SeekerError):
     """Raised when a real libchromaprint call itself fails, or when
     neither the primary soundfile decode nor the ffmpeg fallback (item
     68, Phase 8.1) could produce any usable audio from a real,

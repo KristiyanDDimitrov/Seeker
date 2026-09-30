@@ -16,6 +16,11 @@ from seeker.database.repositories.playlist_repository import (
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
+from seeker.errors import (
+    LibraryLocationNotFoundError,
+    PlaylistNotFoundError,
+    SeekerError,
+)
 from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
@@ -25,23 +30,13 @@ from seeker.models.needs_review_match import NeedsReviewMatch
 logger = logging.getLogger(__name__)
 
 
-class LibraryLocationPathAlreadyRegisteredError(RuntimeError):
+class LibraryLocationPathAlreadyRegisteredError(SeekerError):
     def __init__(self, existing: LibraryLocation):
         self.existing = existing
         super().__init__(
             f"'{existing.path}' is already registered as "
             f"'{existing.name}'."
         )
-
-
-class PlaylistNotFoundError(RuntimeError):
-    pass
-
-
-class LibraryLocationNotFoundError(RuntimeError):
-    def __init__(self, name: str):
-        self.name = name
-        super().__init__(f"No library location named '{name}' is registered.")
 
 
 # Untuned constant — how many auto-suffix attempts (" (2)", " (3)", ...)
@@ -258,7 +253,9 @@ class LibraryService:
         location = self.locations.get_by_name(name, connection)
 
         if location is None:
-            raise LibraryLocationNotFoundError(name)
+            raise LibraryLocationNotFoundError(
+                f"No library location named '{name}' is registered."
+            )
 
         return location
 
