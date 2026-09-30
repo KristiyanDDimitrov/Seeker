@@ -13,14 +13,13 @@ nine fields below follow the contract in
 - **HEAD:** the S10 close-out commit (HISTORY §149, S10 ticked,
   CLAUDE.md CI rule, this handoff). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-30): `1460 passed, 1 skipped, 6 warnings in 90.27s`
-  (X9 Pro mounted; unchanged from S9, since S10 adds no tests).
+- **Local pytest** (2026-09-30): `1460 passed, 1 skipped, 6 warnings in 90.27s`
+  (X9 Pro mounted; S10 adds no tests).
 - **`mypy --strict src/`:** clean, 111 files. **`ruff check src
   tests`:** 0 findings, now including E301–E306, G201 and TRY400.
-- **CI:** push `bf3cf9e` (the four item commits), run `36697998670`:
-  **success**, `1432 passed, 29 skipped`, branch coverage 91.47 %
-  against the new 89 % floor. The close-out push's run is recorded
-  under §8 once it is known.
+- **CI:** `bf3cf9e` → run `36697998670`, **success** (branch coverage
+  91.47 %, floor 89). Close-out `c722bf1` → run `36698538324`,
+  **success**, `1432 passed, 29 skipped`, 91.46 %.
 
 ## 2. Where we are
 
@@ -46,16 +45,14 @@ Evidence for all of these is in HISTORY §149.
   `except`, `logger.error(...)` without a traceback fails TRY400, and
   `error(..., exc_info=True)` fails G201. This matters for §11's
   logging work.
-- **Coverage margin is about 2.5 points** (CI 91.47 %, floor 89). A
-  row that deletes well-tested code, or adds a large untested module,
-  can trip it. CI measures fewer statements than a local run (10,599
-  vs 10,844); the cause is not investigated.
+- **Coverage margin is about 2.5 points** (CI 91.47 %, floor 89); a
+  large untested module can trip it. CI counts fewer statements than a
+  local run (10,599 vs 10,844), cause not investigated.
 - **Run deptry with `uv run --with deptry deptry src`**, not bare
   `uvx`: bare `uvx` cannot see the project's environment and reports
   58 false import-name issues.
-- **Held-back minor upgrades** (§149 lists them all: platformdirs 4.12,
-  urllib3 2.8, coverage 7.16, and others) will arrive as Dependabot PRs
-  once this is pushed. Review them one PR at a time.
+- **Held-back minor upgrades** (listed in §149) and the action majors
+  will arrive as Dependabot PRs; nothing merges them automatically.
 - **Carried:** never `QLabel(...)` or `QMessageBox.question(...)` in
   `ui/` (use `PlainLabel`/`RichLabel` and `plain_text.*`); fakes of
   `connect_spotify` and friends accept `cancel=`;
@@ -66,8 +63,7 @@ Evidence for all of these is in HISTORY §149.
   transfer (S22); never touch slskd or real data;
   `config.spotify_client_id()` etc. are functions (tests use
   `monkeypatch.setenv`).
-- **zsh gotcha:** `echo ======` fails; use `echo '---'`. BSD `sed`
-  has no `\b`; use `perl -pi -e`.
+- **zsh:** `echo ======` fails (use `'---'`); BSD `sed` lacks `\b`.
 
 ## 5. Decisions made
 
@@ -82,10 +78,8 @@ Evidence for all of these is in HISTORY §149.
   `duplicate_service.py`) that the brief's count of four missed.
 - **Divergence (§10.3):** stopped the full upgrade as instructed,
   then applied the eight patch-only bumps with `--upgrade-package`.
-- **Skill use:** `ci-cd-pipeline-builder` for its validate-before-merge
-  checklist (the generator targets new pipelines, not this one);
-  `dependency-auditor`'s own advice to pair its offline scan with live
-  `pip-audit`, which is what ran.
+- **Skills:** `ci-cd-pipeline-builder`'s validation checklist
+  (actionlint); `dependency-auditor`'s advice to use live `pip-audit`.
 
 ## 6. Blockers
 
@@ -102,9 +96,6 @@ None. S10 is complete.
 nowhere; S21 package regrouping; S30 visual direction; S39 bundle
 identifier; S42 publishing commands; X1 and X2 (optional).
 
-**Expect Dependabot PRs** after this push: GitHub Actions majors and
-the held-back minors. Nothing merges them automatically.
-
 **Next launch will migrate the real DB** (S8, rehearsed on a copy,
 §144 and §145). S10 changes no schema.
 
@@ -119,27 +110,20 @@ then Connect with the right one.
 ## 9. Open questions
 
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
-  wait; the worker holds port 8888 and the token lock for up to 300 s.
-  Cancel on the widget's destruction? S11 or S20.
-- Should `printable()` also strip bidi controls? S15 could take it.
-- **Carried from S7:** `DestinationDialog`'s unchecked "Remember this
-  for this playlist" drops the typed subfolder. S19 or S29?
+  wait (port 8888 and the token lock held up to 300 s). S11 or S20?
+- The late-worker defect: `_handle_task_finished` raises on a button
+  destroyed mid-task; a 0.3 s fake delay reproduces it (§148
+  addendum). S11 or S18? CLAUDE.md items 63, 70, 125 stay open.
 - Settings → Destinations shows a rejected subfolder on its
   `status_label`, not an `InlineNotice`. S11.
-- CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
-  late-worker defect (S11 or S18)? `_handle_task_finished` raises on a
-  button destroyed mid-task; delaying a fake by 0.3 s reproduces it
-  every run (§148 addendum).
-- Should a rejection be undoable (a "Rejected" list on Review)? S29.
-- Should `seeker downloads status` print failure reasons? S15.
+- S15 (CLI): should `printable()` strip bidi controls, and should
+  `seeker downloads status` print failure reasons?
+- S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the
+  typed subfolder. S29: should a rejection be undoable?
 
 ---
 
-**Read discipline (still why sessions blow their budget):** never read
-a whole `docs/history/*.md` file, `main_window.py` or
-`test_ui_smoke.py`; `grep -n`, then read a range. Report only pytest's
-summary line plus named failures. Read only BRIEF §0 plus your row's §.
-
-**Ending a session:** follow `SESSION-PLAN.md` → "Session protocol" →
-"Ending" (HISTORY entry, commit, three numbers, tick, rewrite this file,
-push, record CI).
+**Read discipline:** never read a whole `docs/history/*.md`,
+`main_window.py` or `test_ui_smoke.py`; `grep -n`, then a range.
+pytest: summary line plus named failures. BRIEF: §0 plus your row.
+**Ending:** `SESSION-PLAN.md` → "Session protocol" → "Ending".
