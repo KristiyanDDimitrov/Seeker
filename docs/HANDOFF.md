@@ -17,8 +17,7 @@ nine fields below follow the contract in
   (X9 Pro mounted; part 1's 1436 plus 8 new).
 - **`mypy --strict src/`:** clean, 110 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** push `35b14a7` + close-out → run pending (recorded by the
-  follow-up handoff commit).
+- **CI:** push `bbcdeee` → run `36686689743`, **success**.
 
 ## 2. Where we are
 
