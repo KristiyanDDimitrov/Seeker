@@ -69,10 +69,11 @@ def _rate_limit_reason(response: httpx.Response) -> str | None:
 
 def _retry_after_seconds(response: httpx.Response) -> int | None:
     # Retry-After may also be an HTTP-date; that form, like any
-    # unparseable value, is treated as no header at all.
-    header = response.headers.get("Retry-After")
+    # unparseable value, is treated as no header at all. ASCII only:
+    # str.isdigit() also accepts "²", which int() rejects.
+    header = (response.headers.get("Retry-After") or "").strip()
 
-    if header is None or not header.strip().isdigit():
+    if not (header.isascii() and header.isdigit()):
         return None
 
     return int(header)

@@ -414,3 +414,23 @@ def test_a_429_with_an_http_date_retry_after_counts_as_no_header(
 
     assert exc_info.value.retry_after_seconds is None
     assert "unknown amount of time" in str(exc_info.value)
+
+
+def test_a_429_with_a_non_ascii_digit_retry_after_counts_as_no_header(
+        monkeypatch,
+):
+    # "²" (latin-1 0xB2) passes str.isdigit() but int() rejects it.
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "²".encode("latin-1")},
+            json={"error": {"status": 429}},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(SpotifyRateLimitedError) as exc_info:
+        SpotifyClient("token").get_current_user_playlists()
+
+    assert exc_info.value.retry_after_seconds is None
