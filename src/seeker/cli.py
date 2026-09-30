@@ -1,6 +1,7 @@
 import argparse
 import sqlite3
 import sys
+from collections import Counter
 
 import httpx
 
@@ -8,6 +9,7 @@ from seeker.application import Application
 from seeker.error_text import describe_error
 from seeker.errors import PlaylistNotFoundError, SeekerError
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
+from seeker.library.metadata_service import RenamePlan
 from seeker.models.playlist import Playlist
 from seeker.soulseek.download_service import NoDestinationConfiguredError
 from seeker.soulseek.quality import rank_candidates
@@ -101,26 +103,30 @@ def build_parser() -> argparse.ArgumentParser:
             "match them against a local music library."
         ),
     )
+    parser.set_defaults(handler=None)
 
     subparsers = parser.add_subparsers(
         dest="command",
     )
 
-    subparsers.add_parser(
+    sync_parser = subparsers.add_parser(
         "sync",
         help="Synchronize Spotify playlist metadata (no tracks).",
     )
+    sync_parser.set_defaults(handler=handle_sync)
 
     sync_tracks_parser = subparsers.add_parser(
         "sync-tracks",
         help="Synchronize tracks for a single playlist.",
     )
+    sync_tracks_parser.set_defaults(handler=handle_sync_tracks)
     sync_tracks_parser.add_argument("playlist_name")
 
     playlists_parser = subparsers.add_parser(
         "playlists",
         help="List locally stored Spotify playlists.",
     )
+    playlists_parser.set_defaults(handler=handle_playlists_list)
 
     playlists_subparsers = playlists_parser.add_subparsers(
         dest="playlists_command",
@@ -130,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
         "set-destination",
         help="Configure where a playlist's downloads should land.",
     )
+    set_destination_parser.set_defaults(handler=handle_playlists_set_destination)
     set_destination_parser.add_argument("playlist_name")
     set_destination_parser.add_argument("location_name")
     set_destination_parser.add_argument(
@@ -142,6 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="Check Spotify tracks against the local library.",
     )
+    check_parser.set_defaults(handler=handle_check)
     check_parser.add_argument(
         "playlist_name",
         nargs="?",
@@ -165,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
             "candidates)."
         ),
     )
+    review_parser.set_defaults(handler=handle_review)
     review_parser.add_argument(
         "playlist_name",
         nargs="?",
@@ -192,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         "download",
         help="Download a playlist's unmatched tracks via SoulSeek.",
     )
+    download_parser.set_defaults(handler=handle_download)
     download_parser.add_argument("playlist_name")
 
     # Roadmap item 82 (P13.6) — a track that isn't in any Spotify
@@ -205,6 +215,7 @@ def build_parser() -> argparse.ArgumentParser:
             "playlist."
         ),
     )
+    search_parser.set_defaults(handler=handle_search)
     search_parser.add_argument("artist")
     search_parser.add_argument("title")
     search_parser.add_argument(
@@ -226,22 +237,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
-    downloads_subparsers.add_parser(
+    downloads_status_parser = downloads_subparsers.add_parser(
         "status",
         help=(
             "Poll pending downloads and update their status. "
             "Non-interactive — safe to automate."
         ),
     )
+    downloads_status_parser.set_defaults(handler=handle_downloads_status)
 
-    review_parser = downloads_subparsers.add_parser(
+    downloads_review_parser = downloads_subparsers.add_parser(
         "review",
         help=(
             "Interactively confirm or decline pending upgrade "
             "replacements."
         ),
     )
-    review_parser.add_argument(
+    downloads_review_parser.set_defaults(handler=handle_downloads_review)
+    downloads_review_parser.add_argument(
         "--all",
         action="store_true",
         help=(
@@ -259,6 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
             "existing data — not a permanent log (see --help)."
         ),
     )
+    history_parser.set_defaults(handler=handle_history)
     history_parser.add_argument(
         "--limit",
         type=int,
@@ -287,24 +301,28 @@ def build_parser() -> argparse.ArgumentParser:
         "add",
         help="Register a new library location.",
     )
+    add_parser.set_defaults(handler=handle_library_add)
     add_parser.add_argument("name")
     add_parser.add_argument("path")
 
-    library_subparsers.add_parser(
+    list_parser = library_subparsers.add_parser(
         "list",
         help="List registered library locations.",
     )
+    list_parser.set_defaults(handler=handle_library_list)
 
     remove_parser = library_subparsers.add_parser(
         "remove",
         help="Remove a registered library location.",
     )
+    remove_parser.set_defaults(handler=handle_library_remove)
     remove_parser.add_argument("name")
 
     scan_parser = library_subparsers.add_parser(
         "scan",
         help="Scan all registered library locations.",
     )
+    scan_parser.set_defaults(handler=handle_library_scan)
     scan_parser.add_argument(
         "--match",
         action="store_true",
@@ -316,10 +334,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    library_subparsers.add_parser(
+    match_parser = library_subparsers.add_parser(
         "match",
         help="Match Spotify tracks against scanned local files.",
     )
+    match_parser.set_defaults(handler=handle_library_match)
 
     tag_parser = library_subparsers.add_parser(
         "tag",
@@ -328,6 +347,7 @@ def build_parser() -> argparse.ArgumentParser:
             "auto-matched track in a playlist."
         ),
     )
+    tag_parser.set_defaults(handler=handle_library_tag)
     tag_parser.add_argument("playlist_name")
     tag_parser.add_argument(
         "--analyze-audio",
@@ -368,6 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
             "'tag --force'."
         ),
     )
+    fix_art_parser.set_defaults(handler=handle_library_fix_art)
     fix_art_parser.add_argument("playlist_name")
 
     fingerprint_parser = library_subparsers.add_parser(
@@ -377,6 +398,7 @@ def build_parser() -> argparse.ArgumentParser:
             "files, for later duplicate detection."
         ),
     )
+    fingerprint_parser.set_defaults(handler=handle_library_fingerprint)
     fingerprint_parser.add_argument("location_name")
     fingerprint_parser.add_argument(
         "--force",
@@ -402,6 +424,7 @@ def build_parser() -> argparse.ArgumentParser:
             "location (run 'fingerprint' on it first)."
         ),
     )
+    duplicates_parser.set_defaults(handler=handle_library_duplicates)
     duplicates_parser.add_argument("location_name")
     duplicates_parser.add_argument(
         "--folder",
@@ -423,6 +446,7 @@ def build_parser() -> argparse.ArgumentParser:
             "and changes nothing unless --apply is given."
         ),
     )
+    rename_parser.set_defaults(handler=handle_library_rename)
     rename_parser.add_argument("playlist_name")
     rename_parser.add_argument(
         "--apply",
@@ -440,31 +464,35 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
-    sharing_subparsers.add_parser(
+    sharing_status_parser = sharing_subparsers.add_parser(
         "status",
         help="Real-time slskd share status and per-location reconciliation.",
     )
+    sharing_status_parser.set_defaults(handler=handle_sharing_status)
 
     return parser
 
 
-def handle_playlists(
+def handle_playlists_list(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
-    if parsed.playlists_command == "set-destination":
-        playlist = resolve_playlist_or_offer_sync(
-            parsed.playlist_name, application
-        )
-
-        application.download_service.set_destination(
-            playlist.name,
-            parsed.location_name,
-            parsed.subfolder,
-        )
-        return
-
     _print_playlists(application.sync_service.list_playlists())
+
+
+def handle_playlists_set_destination(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
+    )
+
+    application.download_service.set_destination(
+        playlist.name,
+        parsed.location_name,
+        parsed.subfolder,
+    )
 
 
 def _print_playlists(playlists: list[Playlist]) -> None:
@@ -477,6 +505,20 @@ def _print_playlists(playlists: list[Playlist]) -> None:
             f"{playlist.name} "
             f"({playlist.track_count} tracks)"
         )
+
+
+def _print_details(heading: str, details: list[dict[str, str]]) -> None:
+    if not details:
+        return
+
+    print(f"\n{heading}")
+
+    for detail in details:
+        print(f"  [{detail['reason']}] {detail['message']}")
+
+
+def _print_progress(stage: str, current: int, total: int) -> None:
+    print(f"  {stage}: {current}/{total}", end="\r")
 
 
 def handle_download(
@@ -511,28 +553,7 @@ def handle_search(
         parsed: argparse.Namespace,
 ) -> None:
     if parsed.download:
-        result = application.download_service.download_manual(
-            parsed.artist, parsed.title,
-        )
-
-        if not result.requested:
-            print(
-                f"No candidates found for '{parsed.artist} - "
-                f"{parsed.title}'."
-            )
-            return
-
-        if result.settled:
-            print(
-                f"Requested from {printable(result.username or '')}: "
-                f"{printable(result.filename or '')}"
-            )
-        else:
-            print(
-                "No practical candidate — requested a locked/upgrade-"
-                "only candidate; check 'seeker downloads status' for "
-                "progress."
-            )
+        _download_manual(application, parsed.artist, parsed.title)
         return
 
     files = application.download_service.search_manual(
@@ -554,33 +575,56 @@ def handle_search(
         )
 
 
-def handle_downloads(
+def _download_manual(
+        application: Application, artist: str, title: str,
+) -> None:
+    result = application.download_service.download_manual(artist, title)
+
+    if not result.requested:
+        print(f"No candidates found for '{artist} - {title}'.")
+        return
+
+    if result.settled:
+        print(
+            f"Requested from {printable(result.username or '')}: "
+            f"{printable(result.filename or '')}"
+        )
+    else:
+        print(
+            "No practical candidate — requested a locked/upgrade-"
+            "only candidate; check 'seeker downloads status' for "
+            "progress."
+        )
+
+
+def handle_downloads_status(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
-    if parsed.downloads_command == "status":
-        counts = application.download_service.poll_downloads()
+    counts = application.download_service.poll_downloads()
 
-        print(
-            f"Queued: {counts.queued}, "
-            f"Downloading: {counts.downloading}, "
-            f"Completed: {counts.completed}, "
-            f"Failed: {counts.failed}, "
-            f"Ready for review: {counts.ready_for_review}, "
-            f"Locked (retrying): {counts.locked}, "
-            f"Shortlisted (pending): {counts.shortlisted}, "
-            f"Superseded: {counts.superseded}, "
-            f"Unavailable: {counts.unavailable}."
-        )
+    print(
+        f"Queued: {counts.queued}, "
+        f"Downloading: {counts.downloading}, "
+        f"Completed: {counts.completed}, "
+        f"Failed: {counts.failed}, "
+        f"Ready for review: {counts.ready_for_review}, "
+        f"Locked (retrying): {counts.locked}, "
+        f"Shortlisted (pending): {counts.shortlisted}, "
+        f"Superseded: {counts.superseded}, "
+        f"Unavailable: {counts.unavailable}."
+    )
+
+
+def handle_downloads_review(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.all:
+        _handle_downloads_review_all(application)
         return
 
-    if parsed.downloads_command == "review":
-        if getattr(parsed, "all", False):
-            _handle_downloads_review_all(application)
-            return
-
-        application.download_service.review_pending_upgrades()
-        return
+    application.download_service.review_pending_upgrades()
 
 
 def _handle_downloads_review_all(application: Application) -> None:
@@ -623,7 +667,10 @@ def _handle_downloads_review_all(application: Application) -> None:
         print(f"  {printable(detail)}")
 
 
-def handle_sync(application: Application) -> None:
+def handle_sync(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
     result = application.sync_service.refresh_playlists()
 
     print()
@@ -667,274 +714,282 @@ def handle_sync_tracks(
         )
 
 
-def handle_library(
+def handle_library_add(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
-    if parsed.library_command == "add":
-        application.library_service.add_location(
-            parsed.name,
-            parsed.path,
+    application.library_service.add_location(
+        parsed.name,
+        parsed.path,
+    )
+
+
+def handle_library_list(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    locations = application.library_service.list_locations()
+
+    if not locations:
+        print("No library locations registered.")
+        return
+
+    for location, is_reachable in locations:
+        status = "reachable" if is_reachable else "unreachable"
+
+        print(
+            f"{location.name}: {location.path} ({status})"
         )
 
-    elif parsed.library_command == "list":
-        locations = application.library_service.list_locations()
 
-        if not locations:
-            print("No library locations registered.")
-            return
+def handle_library_remove(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    summary = application.remove_location(parsed.name)
+    print(f"Removed '{summary.location_name}'.")
+    print(f"  Forgot {summary.files_forgotten:,} indexed files and "
+          f"{summary.matches_cleared:,} matches "
+          f"({summary.confirmed_matches_cleared:,} you confirmed).")
 
-        for location, is_reachable in locations:
-            status = "reachable" if is_reachable else "unreachable"
+    if summary.playlists_affected:
+        print(f"  {summary.playlists_affected:,} playlists downloaded "
+              "here and need a new destination "
+              "('seeker playlists set-destination').")
 
+    if summary.was_default:
+        print("  It was the default download location, now unset.")
+
+    print("  Files on disk were not touched.")
+
+
+def handle_library_scan(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.match:
+        application.library_service.scan_and_match()
+    else:
+        application.library_service.scan_all()
+
+
+def handle_library_match(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    application.track_matcher.match_all()
+
+
+def handle_library_tag(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    if parsed.bpm_range and not parsed.analyze_audio:
+        print("--bpm-range requires --analyze-audio.")
+        return
+
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
+    )
+
+    expected_bpm_range = (
+        tuple(parsed.bpm_range) if parsed.bpm_range else None
+    )
+
+    result = application.metadata_service.tag_playlist(
+        playlist.name,
+        analyze_audio=parsed.analyze_audio,
+        expected_bpm_range=expected_bpm_range,
+        force=parsed.force,
+    )
+
+    print(
+        f"Tagged: {result.tagged} "
+        f"({result.tagged_without_art} without cover art), "
+        f"Skipped (no match): {result.skipped_no_match}, "
+        f"Skipped (unsupported format): "
+        f"{result.skipped_format_unsupported}, "
+        f"Skipped (already tagged): "
+        f"{result.skipped_already_tagged}, "
+        f"Skipped (already analyzed): "
+        f"{result.skipped_already_analyzed}, "
+        f"Failed: {result.failed}."
+    )
+
+    _print_details(
+        "Details (skipped, failed, or tagged without art):",
+        result.details,
+    )
+
+
+def handle_library_fix_art(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
+    )
+
+    result = application.metadata_service.fix_missing_art_for_playlist(
+        playlist.name
+    )
+
+    print(
+        f"Fixed: {result.fixed}, "
+        f"Already correct: {result.already_correct}, "
+        f"No art URL: {result.no_url}, "
+        f"Download failed: {result.download_failed}, "
+        f"Embed failed: {result.embed_failed}, "
+        f"Unsupported format: {result.format_unsupported}, "
+        f"Skipped (no match): {result.skipped_no_match}, "
+        f"Failed: {result.failed}."
+    )
+
+    _print_details("Details:", result.details)
+
+
+def handle_library_rename(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    playlist = resolve_playlist_or_offer_sync(
+        parsed.playlist_name, application
+    )
+
+    plans = application.metadata_service.plan_renames(
+        playlist_name=playlist.name
+    )
+    to_rename = _print_rename_plan(playlist.name, plans)
+
+    if not parsed.apply:
+        print("\nDry run only — pass --apply to actually rename.")
+        return
+
+    if not to_rename:
+        print("\nNothing to rename.")
+        return
+
+    answer = input(
+        f"\nRename {to_rename} file(s) on disk? "
+        f"[y/N] "
+    ).strip().lower()
+
+    if answer != "y":
+        print("Cancelled — nothing renamed.")
+        return
+
+    result = application.metadata_service.apply_renames(plans)
+
+    print(
+        f"\nRenamed: {result.renamed} "
+        f"({result.collisions} with a collision), "
+        f"Already correct: {result.already_correct}, "
+        f"Not auto-matched: {result.skipped_not_auto_matched}, "
+        f"No local file: {result.skipped_no_local_file}, "
+        f"Failed: {result.failed}."
+    )
+
+    _print_details("Details:", result.details)
+
+
+def _print_rename_plan(playlist_name: str, plans: list[RenamePlan]) -> int:
+    """Print the plan and its tally; return how many files it renames."""
+    renames = [plan for plan in plans if plan.action == "rename"]
+    collisions = [plan for plan in plans if plan.action == "collision"]
+    actions = Counter(plan.action for plan in plans)
+
+    print(f"Rename plan for '{playlist_name}':\n")
+
+    for plan in [*renames, *collisions]:
+        # Loaded by plan_renames — only 'not_auto_matched'/
+        # 'no_local_file'/'error' plans ever have a None path, and
+        # renames/collisions are filtered to exclude those.
+        assert plan.current_relative is not None
+        assert plan.proposed_relative is not None
+        note = " (needs a numbered suffix)" if plan.action == "collision" else ""
+        print(f"  {plan.current_relative} -> {plan.proposed_relative}{note}")
+        if plan.destination_note:
+            print(f"    warning: {plan.destination_note}")
+
+    print(
+        f"\n{len(renames) + len(collisions)} to rename "
+        f"({len(collisions)} with a collision), "
+        f"{actions['already_correct']} already correct, "
+        f"{actions['not_auto_matched']} not auto-matched, "
+        f"{actions['no_local_file'] + actions['error']} no local file."
+    )
+
+    return len(renames) + len(collisions)
+
+
+def handle_library_fingerprint(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    result = application.duplicate_service.compute_fingerprints(
+        parsed.location_name, force=parsed.force,
+        folders=parsed.folders, progress=_print_progress,
+    )
+    print()
+
+    print(
+        f"Fingerprinted: {result.computed}, "
+        f"Skipped (already computed): "
+        f"{result.skipped_already_computed}, "
+        f"Failed: {result.failed}."
+    )
+
+    _print_details("Failed:", result.details)
+
+
+def handle_library_duplicates(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    # The Duplicates page's milestone, and like it hidden at zero: an
+    # empty milestone is worse than none.
+    files_deleted, bytes_freed = (
+        application.duplicate_service.get_cleanup_totals()
+    )
+    if files_deleted > 0 or bytes_freed > 0:
+        print(
+            f"You've reclaimed {format_file_size(bytes_freed)} "
+            f"across {files_deleted} "
+            f"file{'s' if files_deleted != 1 else ''}.\n"
+        )
+
+    groups = application.duplicate_service.find_duplicate_groups(
+        parsed.location_name, folders=parsed.folders,
+        progress=_print_progress,
+    )
+    print()
+
+    if not groups:
+        print(
+            "No duplicates found. (Run 'library fingerprint "
+            f"{parsed.location_name}' first if you haven't yet.)"
+        )
+        return
+
+    print(f"Found {len(groups)} duplicate group(s):\n")
+
+    for group in groups:
+        print(f"Similarity: {group.similarity:.1%}")
+
+        for duplicate_file in group.files:
+            local_file = duplicate_file.local_file
+            quality = duplicate_file.quality
+            bitrate = (
+                f"{quality.bitrate_kbps}kbps"
+                if quality.bitrate_kbps
+                else "unknown bitrate"
+            )
             print(
-                f"{location.name}: {location.path} ({status})"
+                f"  - {local_file.relative_path} "
+                f"({local_file.format}, {bitrate})"
             )
 
-    elif parsed.library_command == "remove":
-        summary = application.remove_location(parsed.name)
-        print(f"Removed '{summary.location_name}'.")
-        print(f"  Forgot {summary.files_forgotten:,} indexed files and "
-              f"{summary.matches_cleared:,} matches "
-              f"({summary.confirmed_matches_cleared:,} you confirmed).")
-
-        if summary.playlists_affected:
-            print(f"  {summary.playlists_affected:,} playlists downloaded "
-                  "here and need a new destination "
-                  "('seeker playlists set-destination').")
-
-        if summary.was_default:
-            print("  It was the default download location, now unset.")
-
-        print("  Files on disk were not touched.")
-
-    elif parsed.library_command == "scan":
-        if parsed.match:
-            application.library_service.scan_and_match()
-        else:
-            application.library_service.scan_all()
-
-    elif parsed.library_command == "match":
-        application.track_matcher.match_all()
-
-    elif parsed.library_command == "tag":
-        if parsed.bpm_range and not parsed.analyze_audio:
-            print("--bpm-range requires --analyze-audio.")
-            return
-
-        playlist = resolve_playlist_or_offer_sync(
-            parsed.playlist_name, application
-        )
-
-        expected_bpm_range = (
-            tuple(parsed.bpm_range) if parsed.bpm_range else None
-        )
-
-        tag_result = application.metadata_service.tag_playlist(
-            playlist.name,
-            analyze_audio=parsed.analyze_audio,
-            expected_bpm_range=expected_bpm_range,
-            force=parsed.force,
-        )
-
-        print(
-            f"Tagged: {tag_result.tagged} "
-            f"({tag_result.tagged_without_art} without cover art), "
-            f"Skipped (no match): {tag_result.skipped_no_match}, "
-            f"Skipped (unsupported format): "
-            f"{tag_result.skipped_format_unsupported}, "
-            f"Skipped (already tagged): "
-            f"{tag_result.skipped_already_tagged}, "
-            f"Skipped (already analyzed): "
-            f"{tag_result.skipped_already_analyzed}, "
-            f"Failed: {tag_result.failed}."
-        )
-
-        if tag_result.details:
-            print("\nDetails (skipped, failed, or tagged without art):")
-
-            for detail in tag_result.details:
-                print(f"  [{detail['reason']}] {detail['message']}")
-
-    elif parsed.library_command == "fix-art":
-        playlist = resolve_playlist_or_offer_sync(
-            parsed.playlist_name, application
-        )
-
-        art_result = application.metadata_service.fix_missing_art_for_playlist(
-            playlist.name
-        )
-
-        print(
-            f"Fixed: {art_result.fixed}, "
-            f"Already correct: {art_result.already_correct}, "
-            f"No art URL: {art_result.no_url}, "
-            f"Download failed: {art_result.download_failed}, "
-            f"Embed failed: {art_result.embed_failed}, "
-            f"Unsupported format: {art_result.format_unsupported}, "
-            f"Skipped (no match): {art_result.skipped_no_match}, "
-            f"Failed: {art_result.failed}."
-        )
-
-        if art_result.details:
-            print("\nDetails:")
-
-            for detail in art_result.details:
-                print(f"  [{detail['reason']}] {detail['message']}")
-
-    elif parsed.library_command == "rename":
-        playlist = resolve_playlist_or_offer_sync(
-            parsed.playlist_name, application
-        )
-
-        plans = application.metadata_service.plan_renames(
-            playlist_name=playlist.name
-        )
-
-        renames = [plan for plan in plans if plan.action == "rename"]
-        collisions = [plan for plan in plans if plan.action == "collision"]
-        already_correct = sum(
-            1 for plan in plans if plan.action == "already_correct"
-        )
-        not_auto_matched = sum(
-            1 for plan in plans if plan.action == "not_auto_matched"
-        )
-        no_local_file = sum(
-            1 for plan in plans if plan.action in ("no_local_file", "error")
-        )
-
-        print(f"Rename plan for '{playlist.name}':\n")
-
-        for plan in [*renames, *collisions]:
-            # Loaded by plan_renames — only 'not_auto_matched'/
-            # 'no_local_file'/'error' plans ever have a None path, and
-            # renames/collisions are filtered to exclude those.
-            assert plan.current_relative is not None
-            assert plan.proposed_relative is not None
-            note = " (needs a numbered suffix)" if plan.action == "collision" else ""
-            print(f"  {plan.current_relative} -> {plan.proposed_relative}{note}")
-            if plan.destination_note:
-                print(f"    warning: {plan.destination_note}")
-
-        print(
-            f"\n{len(renames) + len(collisions)} to rename "
-            f"({len(collisions)} with a collision), "
-            f"{already_correct} already correct, "
-            f"{not_auto_matched} not auto-matched, "
-            f"{no_local_file} no local file."
-        )
-
-        if not parsed.apply:
-            print("\nDry run only — pass --apply to actually rename.")
-            return
-
-        if not renames and not collisions:
-            print("\nNothing to rename.")
-            return
-
-        answer = input(
-            f"\nRename {len(renames) + len(collisions)} file(s) on disk? "
-            f"[y/N] "
-        ).strip().lower()
-
-        if answer != "y":
-            print("Cancelled — nothing renamed.")
-            return
-
-        rename_result = application.metadata_service.apply_renames(plans)
-
-        print(
-            f"\nRenamed: {rename_result.renamed} "
-            f"({rename_result.collisions} with a collision), "
-            f"Already correct: {rename_result.already_correct}, "
-            f"Not auto-matched: {rename_result.skipped_not_auto_matched}, "
-            f"No local file: {rename_result.skipped_no_local_file}, "
-            f"Failed: {rename_result.failed}."
-        )
-
-        if rename_result.details:
-            print("\nDetails:")
-
-            for detail in rename_result.details:
-                print(f"  [{detail['reason']}] {detail['message']}")
-
-    elif parsed.library_command == "fingerprint":
-        def print_fingerprint_progress(
-                stage: str, current: int, total: int,
-        ) -> None:
-            print(f"  {stage}: {current}/{total}", end="\r")
-
-        fingerprint_result = application.duplicate_service.compute_fingerprints(
-            parsed.location_name, force=parsed.force,
-            folders=parsed.folders, progress=print_fingerprint_progress,
-        )
         print()
-
-        print(
-            f"Fingerprinted: {fingerprint_result.computed}, "
-            f"Skipped (already computed): "
-            f"{fingerprint_result.skipped_already_computed}, "
-            f"Failed: {fingerprint_result.failed}."
-        )
-
-        if fingerprint_result.details:
-            print("\nFailed:")
-
-            for detail in fingerprint_result.details:
-                print(f"  [{detail['reason']}] {detail['message']}")
-
-    elif parsed.library_command == "duplicates":
-        # Roadmap item 56 Phase 6.4 — CLI parity with the Duplicates
-        # page's own milestone; hidden entirely at zero, same "an empty
-        # milestone is worse than no milestone" rule.
-        files_deleted, bytes_freed = (
-            application.duplicate_service.get_cleanup_totals()
-        )
-        if files_deleted > 0 or bytes_freed > 0:
-            print(
-                f"You've reclaimed {format_file_size(bytes_freed)} "
-                f"across {files_deleted} "
-                f"file{'s' if files_deleted != 1 else ''}.\n"
-            )
-
-        def print_duplicates_progress(
-                stage: str, current: int, total: int,
-        ) -> None:
-            print(f"  {stage}: {current}/{total}", end="\r")
-
-        groups = application.duplicate_service.find_duplicate_groups(
-            parsed.location_name, folders=parsed.folders,
-            progress=print_duplicates_progress,
-        )
-        print()
-
-        if not groups:
-            print(
-                "No duplicates found. (Run 'library fingerprint "
-                f"{parsed.location_name}' first if you haven't yet.)"
-            )
-            return
-
-        print(f"Found {len(groups)} duplicate group(s):\n")
-
-        for group in groups:
-            print(f"Similarity: {group.similarity:.1%}")
-
-            for duplicate_file in group.files:
-                local_file = duplicate_file.local_file
-                quality = duplicate_file.quality
-                bitrate = (
-                    f"{quality.bitrate_kbps}kbps"
-                    if quality.bitrate_kbps
-                    else "unknown bitrate"
-                )
-                print(
-                    f"  - {local_file.relative_path} "
-                    f"({local_file.format}, {bitrate})"
-                )
-
-            print()
-
 
 
 def handle_check(
@@ -1069,7 +1124,7 @@ def handle_history(
         )
 
 
-def handle_sharing(
+def handle_sharing_status(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
@@ -1114,52 +1169,17 @@ def run(
     parser = build_parser()
     parsed = parser.parse_args(args)
 
-    if parsed.command is None:
+    if parsed.handler is None:
         parser.print_help()
         return
 
     try:
-        if parsed.command == "sync":
-            handle_sync(application)
-
-        elif parsed.command == "sync-tracks":
-            handle_sync_tracks(application, parsed)
-
-        elif parsed.command == "playlists":
-            handle_playlists(application, parsed)
-
-        elif parsed.command == "check":
-            handle_check(application, parsed)
-
-        elif parsed.command == "library":
-            handle_library(application, parsed)
-
-        elif parsed.command == "review":
-            handle_review(application, parsed)
-
-        elif parsed.command == "download":
-            handle_download(application, parsed)
-
-        elif parsed.command == "search":
-            handle_search(application, parsed)
-
-        elif parsed.command == "downloads":
-            handle_downloads(application, parsed)
-
-        elif parsed.command == "history":
-            handle_history(application, parsed)
-
-        elif parsed.command == "sharing":
-            handle_sharing(application, parsed)
+        parsed.handler(application, parsed)
     except NoDestinationConfiguredError as error:
-        # The exception's own message is deliberately interface-neutral
-        # (shared with the UI, which must never be told to run a shell
-        # command — roadmap item 6 §2) — the CLI appends its own
-        # command-line guidance here instead of baking it into the
-        # shared message. Roadmap item 82 (P13) — a manual search has
-        # no playlist to set a per-playlist destination for at all, so
-        # 'search' gets its own guidance pointing at the app-wide
-        # default (Settings-only — there's no CLI command for it yet).
+        # The message is shared with the UI, which must never tell the
+        # user to run a shell command, so the CLI adds its own guidance.
+        # A manual search has no playlist to set a destination for; it
+        # needs the app-wide default, which only Settings can set.
         if parsed.command == "search":
             print(f"{error} Set a default download location in Settings first.")
         else:

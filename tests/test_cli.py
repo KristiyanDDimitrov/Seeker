@@ -1285,7 +1285,7 @@ def test_sync_reports_playlists_whose_tracks_were_updated(tmp_path, capsys):
         make_matcher(tmp_path), sync_service=sync_service,
     )
 
-    cli.handle_sync(application)
+    cli.handle_sync(application, cli.build_parser().parse_args(["sync"]))
 
     output = capsys.readouterr().out
     assert "Refreshed 2 playlists." in output
@@ -1293,7 +1293,7 @@ def test_sync_reports_playlists_whose_tracks_were_updated(tmp_path, capsys):
 
 
 def _run_sync_raising(monkeypatch, error):
-    def handle_sync(application):
+    def handle_sync(application, parsed):
         raise error
 
     monkeypatch.setattr(cli, "handle_sync", handle_sync)
