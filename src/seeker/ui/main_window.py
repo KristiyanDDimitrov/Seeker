@@ -1745,7 +1745,12 @@ class MainWindow(QMainWindow):
         self._dashboard_page._poll_selected_playlist()
 
         message = help_text.format_download_result_message(result)
-        kind = "success" if result.requested else "info"
+        if result.failures:
+            kind = "warning"
+        elif result.requested:
+            kind = "success"
+        else:
+            kind = "info"
         self._dashboard_page.feedback.show_outcome(message, kind=kind)
 
     def _on_sync_tracks_clicked(self) -> None:

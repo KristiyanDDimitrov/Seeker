@@ -17,6 +17,7 @@ from typing import Any
 from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
+    TrackFailure,
 )
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.spotify_sync import PlaylistRefreshResult
@@ -207,6 +208,8 @@ def format_download_result_message(result: PlaylistDownloadResult) -> str:
         )
     if no_candidate_count > 0:
         parts.append(f"{no_candidate_count} no candidate found")
+    if result.failures:
+        parts.append(f"{result.failed} failed")
 
     if parts:
         message += " — " + ", ".join(parts)
@@ -216,7 +219,26 @@ def format_download_result_message(result: PlaylistDownloadResult) -> str:
     if needs_review:
         message += " Check the Review page for new candidates."
 
+    if result.failures:
+        message += " Failed: " + _list_failures(result.failures)
+
     return message
+
+
+_MAX_LISTED_FAILURES = 5
+
+
+def _list_failures(failures: list[TrackFailure]) -> str:
+    listed = "; ".join(
+        f"{failure.track}: {failure.reason}"
+        for failure in failures[:_MAX_LISTED_FAILURES]
+    )
+    hidden = len(failures) - _MAX_LISTED_FAILURES
+
+    if hidden > 0:
+        listed += f"; and {hidden} more (details in the log)"
+
+    return listed
 
 # --- Destination dialog (roadmap item 6 §3 — "no dead end") ---------------
 

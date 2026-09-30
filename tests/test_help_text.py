@@ -1,3 +1,4 @@
+from seeker.models.download_result import PlaylistDownloadResult, TrackFailure
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.ui import help_text
 from seeker.ui.help_text import SHARING_FRAMING_BODY
@@ -26,3 +27,32 @@ def test_remove_location_confirm_body_names_everything_it_forgets():
         "matches (3 you confirmed). 2 playlists download here and will "
         "need a new destination. Files on disk are not touched."
     )
+
+
+def test_download_result_message_lists_each_failed_track_with_its_reason():
+    result = PlaylistDownloadResult(
+        requested=1,
+        total=3,
+        failures=[
+            TrackFailure("A - One", "Couldn't reach slskd."),
+            TrackFailure("B - Two", "Search timed out."),
+        ],
+    )
+
+    message = help_text.format_download_result_message(result)
+
+    assert "2 failed" in message
+    assert "A - One: Couldn't reach slskd." in message
+    assert "B - Two: Search timed out." in message
+
+
+def test_download_result_message_caps_the_failure_list():
+    failures = [TrackFailure(f"Artist - Title {n}", "Oops.") for n in range(7)]
+
+    message = help_text.format_download_result_message(
+        PlaylistDownloadResult(total=7, failures=failures),
+    )
+
+    assert "Artist - Title 4" in message
+    assert "Artist - Title 5" not in message
+    assert "and 2 more" in message

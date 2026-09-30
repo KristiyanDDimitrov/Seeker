@@ -28,7 +28,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.download_request import DownloadRequest
-from seeker.models.download_result import PollResult
+from seeker.models.download_result import PollResult, TrackFailure
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
@@ -420,6 +420,27 @@ def test_download_playlist_mid_batch_exception_does_not_abort_remaining_tracks(
     # All three tracks were actually searched — the loop kept going past
     # the failure, it didn't just silently stop.
     assert service.soulseek.search_calls == [query_t1, query_t2, query_t3]
+
+
+def test_download_playlist_failure_carries_its_track_and_readable_reason(
+        tmp_path,
+):
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={
+            "Dom Dolla Title t1": RuntimeError("simulated network failure"),
+            "Dom Dolla Title t2": [],
+        },
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1", "t2"])
+
+    result = service.download_playlist("Test")
+
+    assert result.failures == [
+        TrackFailure("Dom Dolla - Title t1", "simulated network failure"),
+    ]
+    assert result.failed == 1
 
 
 def test_download_playlist_requests_locked_only_candidate_as_upgrade(

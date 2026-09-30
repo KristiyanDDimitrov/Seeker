@@ -45,6 +45,7 @@ from seeker.destination_resolution import (
     validate_destination_subfolder,
 )
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
+from seeker.error_text import describe_error
 from seeker.errors import (
     LibraryLocationNotFoundError,
     PlaylistNotFoundError,
@@ -64,6 +65,7 @@ from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
     PollResult,
+    TrackFailure,
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
@@ -618,7 +620,10 @@ class DownloadService:
                 if upgrade_shortlist:
                     self._request_upgrade_shortlist(track, upgrade_shortlist)
             except Exception as error:
-                result.failed += 1
+                result.failures.append(TrackFailure(
+                    f"{track.artist} - {track.title}",
+                    describe_error(error, details_hint=""),
+                ))
                 logger.warning(
                     "Failed: %s - %s: %s", track.artist, track.title, error,
                 )

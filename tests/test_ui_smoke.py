@@ -25,6 +25,7 @@ from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
     PollResult,
+    TrackFailure,
 )
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
@@ -1319,7 +1320,7 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
         playlists=playlists,
         resolved_destination=(location, "Test"),
         download_playlist_result=PlaylistDownloadResult(
-            requested=2, skipped=3, failed=0, total=5,
+            requested=2, skipped=3, total=5,
             already_in_progress=[
                 "Artist A - Title A", "Artist B - Title B", "Artist C - Title C",
             ],
@@ -1342,6 +1343,38 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     )
 
 
+def test_download_result_notice_warns_and_lists_failed_tracks(qtbot):
+    playlists = [
+        Playlist(
+            id="p1", name="Test", track_count=1, download_location_id=1,
+        ),
+    ]
+    location = LibraryLocation(
+        id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=playlists,
+        resolved_destination=(location, "Test"),
+        download_playlist_result=PlaylistDownloadResult(
+            requested=1, total=2,
+            failures=[TrackFailure("Artist A - Title A", "Search timed out.")],
+        ),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window._dashboard_page.download_button.click()
+
+    notice = window._dashboard_page.dashboard_notice
+    qtbot.waitUntil(
+        lambda: not notice.isHidden() and "1 failed" in notice.text(),
+        timeout=2000,
+    )
+    assert "Artist A - Title A: Search timed out." in notice.text()
+    assert notice.property("variant") == "warning"
+
+
 def test_download_result_notice_reports_needs_review_separately_from_skipped(
         qtbot,
 ):
@@ -1360,7 +1393,7 @@ def test_download_result_notice_reports_needs_review_separately_from_skipped(
         playlists=playlists,
         resolved_destination=(location, "Test"),
         download_playlist_result=PlaylistDownloadResult(
-            requested=4, skipped=6, failed=0, total=10,
+            requested=4, skipped=6, total=10,
             already_in_progress=[],
             needs_review=[
                 "Prdk - ONE MORE NIGHT", "Zigi SC, A-Cray - Bit Perfect",

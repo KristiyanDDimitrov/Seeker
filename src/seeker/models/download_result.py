@@ -3,11 +3,17 @@ from dataclasses import dataclass, field
 from seeker.models.download_request import DownloadStatus
 
 
+@dataclass(frozen=True)
+class TrackFailure:
+    track: str  # "Artist - Title"
+    reason: str
+
+
 @dataclass
 class PlaylistDownloadResult:
     """What one `download_playlist` run did with a playlist's unmatched
     tracks. Every track lands in exactly one of requested, skipped or
-    failed.
+    failures.
 
     `skipped` is the combined total of three different outcomes: the
     two named lists, plus tracks with no candidate at all
@@ -15,11 +21,15 @@ class PlaylistDownloadResult:
     """
     requested: int = 0
     skipped: int = 0
-    failed: int = 0
     total: int = 0
     # "Artist - Title" labels.
     already_in_progress: list[str] = field(default_factory=list)
     needs_review: list[str] = field(default_factory=list)
+    failures: list[TrackFailure] = field(default_factory=list)
+
+    @property
+    def failed(self) -> int:
+        return len(self.failures)
 
     @property
     def no_candidate(self) -> int:
