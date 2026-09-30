@@ -226,3 +226,4 @@ under their entry and live in the same file, after it.
 - §145 — Round 11 S8 part 2 (§8.3): failures stay visible, with a reason, until cleared → [121-150.md#145](121-150.md#145)
 - §146 — Round 11 S9 part 1 (§9.1–§9.4, §9.6, §9.8): credential writes, token lock, encoded slskd paths, outbound URLs, typed config, tolerant 429 → [121-150.md#146](121-150.md#146)
 - §147 — Round 11 S9 part 2 (§9.5): an honest OAuth callback page; a cancellable Spotify wait → [121-150.md#147](121-150.md#147)
+- §148 — Round 11 S9 part 3 (§9.7): peer strings render as text; the S9-wide adversarial review → [121-150.md#148](121-150.md#148)

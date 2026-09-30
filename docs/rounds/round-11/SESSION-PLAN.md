@@ -41,7 +41,7 @@ explicit yes.
 | ☑ S7 | Scale: big locations, short transactions, real and visible paths (HISTORY §142, §143) | §7 | ~140 K | After §7.1 and §7.4–§7.6 (limits and paths); §7.2, §7.3 and §7.7 (transaction shape and timing) can stand alone |
 | ☑ S8 | Review decisions stick; failures stay visible | §8 | ~130 K | After §8.2 |
 | **Phase D — Security** | | | | |
-| ☐ S9 | Application hardening, including peer-string escaping (**part 1 done:** §9.1–§9.4, §9.6, §9.8; **part 2 done:** §9.5; **part 3 left:** §9.7) | §9 | ~130 K | After §9.3; §9.4–§9.8 can stand alone |
+| ☑ S9 | Application hardening, including peer-string escaping | §9 | ~130 K | After §9.3; §9.4–§9.8 can stand alone |
 | ☐ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
 | **Phase E — Observability** | | | | |
 | ☐ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |

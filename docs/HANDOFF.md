@@ -10,81 +10,71 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S9 part 2 close-out commit (HISTORY §147, S9 row
-  annotated, this handoff), pushed. Tree clean apart from the untracked
-  `Claude outputs/`.
-- **Local pytest** (offscreen Qt, 2026-09-30): `1444 passed, 1 skipped, 6 warnings in 88.98s`
-  (X9 Pro mounted; part 1's 1436 plus 8 new).
-- **`mypy --strict src/`:** clean, 110 files. **`ruff check src
+- **HEAD:** the S9 part 3 close-out commit (HISTORY §148, S9 ticked,
+  CLAUDE.md rule, this handoff), pushed. Tree clean apart from the
+  untracked `Claude outputs/`.
+- **Local pytest** (offscreen Qt, 2026-09-30): `1460 passed, 1 skipped, 6 warnings in 89.90s`
+  (X9 Pro mounted; part 2's 1444 plus 16 new).
+- **`mypy --strict src/`:** clean, 111 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** push `bbcdeee` → run `36686689743`, **success**.
+- **CI:** see the follow-up commit recording the run for this push.
 
 ## 2. Where we are
 
-S1–S8 ticked. S9 parts 1 and 2 done. **Next: S9 part 3, §9.7 (peer
-strings render as text), then the S9-wide `adversarial-reviewer` pass,
-then tick S9.** Then S10.
+S1–S9 ticked. **Next: S10, CI and supply chain (BRIEF §10).**
 
-## 3. Session report (S9 part 2)
+## 3. Session report (S9 part 3)
 
-Reds and the HEAD probe are in HISTORY §147.
-- `35b14a7` §9.5: the callback page tells cancelled/failed apart from
-  complete, with no-store/CSP/no-referrer headers on every response;
-  `serve_until_callback(cancel=)`; `SpotifyAuthorizationWait` (Cancel,
-  hint, trigger kept disabled) shared by the wizard and Settings.
-- Close-out: §147, S9 row annotated, this handoff.
+Reds and evidence are in HISTORY §148.
+- `2f1e866` §9.7: `ui/plain_text.py` (`PlainLabel`, `RichLabel`,
+  `plain_tooltip`, `question`/`information`/`warning`); all 81 labels
+  converted; 8 dynamic tooltips wrapped; the update check escaped;
+  `cli.printable()`. Three `ast` sweeps in `tests/test_plain_text.py`.
+- `9e3c6ea` review fix: `Retry-After: ²` crashed §9.8's parser.
+- `bfd0248` review follow-up: a fourth sweep for hand-built
+  `QMessageBox(...)`; two docstrings reflowed.
+- Close-out: §148, S9 ticked, CLAUDE.md rule, this handoff.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §148**: `docs/history/121-150.md` plus its
-  README line.
-- **§9.7 survey, done this session (not yet acted on):** 81 `QLabel(`
-  constructions across 17 files in `src/seeker/ui/`; 26 start empty
-  (dynamic by construction). Only deliberately rich labels set a format
-  today (`dialogs.py` About, `pages/static_pages.py`,
-  `pages/sharing_page.py`'s framing label, the update-check box in
-  `main_window.py` ~line 1348). Everything else is `AutoText`.
-  Recommended shape: a runtime sweep test over the constructed windows
-  (MainWindow's pages, SettingsPage, the wizard) that fails on any
-  `QLabel` left at `AutoText`, then explicit formats everywhere. Labels
-  `QFormLayout.addRow("literal", w)` creates are `AutoText` and never
-  hold dynamic text; a sweep that excludes them must say why in a
-  comment (working agreement 5).
-- **§9.7 targets already located:** `InlineNotice`'s `_message_label`
-  (`ui/notice.py` ~line 70); the update-check RichText `QMessageBox`
-  (`main_window.py` `_on_update_check_finished`, `latest_version` and
-  `release_url` unescaped); Downloads' Status tooltip (slskd's
-  `failure_reason`); the wizard's `soulseek_status_label.setToolTip(
-  result.detail)` (`wizard.py` ~lines 625 and 661, slskd log text);
-  Review's runner-up filename tooltip; `cli.handle_search` prints
-  `file.username`/`file.filename` raw.
-- **`connect_spotify` and friends now take `cancel=`**: any new fake of
+- **Your HISTORY entry is §149**: `docs/history/121-150.md` plus its
+  README line. §150 is this file's last; §151 opens `151-180.md`
+  (`docs/history/README.md` says how).
+- **New UI rule (CLAUDE.md):** never `QLabel(...)` in `ui/`; use
+  `PlainLabel`/`RichLabel`. Never `QMessageBox.question(...)`; use
+  `plain_text.question(...)`. Tests that fake a confirmation patch
+  `plain_text.question`/`information`, not `QMessageBox`. A dynamic
+  tooltip's test compares against `plain_tooltip(expected)` or decodes
+  it with `QTextDocument.setHtml(...).toPlainText()`.
+- **`from PySide6.QtGui import Qt`** is needed for
+  `Qt.convertFromPlainText` under mypy (QtCore's `Qt` stub lacks it).
+- **`connect_spotify` and friends take `cancel=`**: any new fake of
   `connect_spotify`, `get_valid_token`, `_authorize` or
   `serve_until_callback` must accept it (`**kwargs` is fine).
 - **Carried:** nested destination subfolders are real data;
   `_repoint_or_clear_match` drops `confirmed_at` (unowned); the
   `platformdirs.user_data_dir` / `slskd-data` test hazard; three
   `LibraryLocationNotFoundError` classes (S13; add
-  `AuthorizationCancelledError` to that hierarchy too); `SoulseekDownloadError`
-  takes `reason=` (S13 keeps it); one extra GET per failed transfer
-  (S22); never touch slskd or real data; `config.spotify_client_id()`
-  etc. are functions; tests use `monkeypatch.setenv`.
-- **zsh gotcha:** `echo ======` fails; use `echo '---'`.
+  `AuthorizationCancelledError` to that hierarchy too);
+  `SoulseekDownloadError` takes `reason=` (S13 keeps it); one extra GET
+  per failed transfer (S22); never touch slskd or real data;
+  `config.spotify_client_id()` etc. are functions; tests use
+  `monkeypatch.setenv`.
+- **zsh gotcha:** `echo ======` fails; use `echo '---'`. BSD `sed`
+  has no `\b`; use `perl -pi -e`.
 
 ## 5. Decisions made
 
-- **Stopped after §9.5 at an item boundary**: §9.7 touches ~17 UI files
-  plus the CLI and needs a sweep test; it would not fit alongside a
-  close-out in the remaining budget.
-- **The cancel is a `threading.Event` passed down**, not a method on the
-  auth manager: `Application` replaces the manager on every connect.
-- **The cancel raises `AuthorizationCancelledError`** rather than a 5th
-  tuple element, so `serve_until_callback`'s return shape is unchanged
-  and the exception unwinds `_TOKEN_LOCK` on its own.
-- **`SpotifyAuthorizationWait` does not use `run_worker`'s `button=`**
-  (HISTORY §145 rule): it owns the trigger's enabled state.
-- **Skill divergence:** `adversarial-reviewer` deferred to S9 part 3 so
-  it reviews all of S9 once.
+- **`ast` sweeps, not a runtime widget sweep**, for §9.7: labels built
+  at render time (table cells, notices) are covered, and a new file
+  is covered without anyone registering it.
+- **`plain_tooltip` converts, it does not just escape**: Qt's rich-text
+  guess treats an early `&lt;` as HTML, so escaping alone renders
+  inconsistently (HISTORY §148).
+- **`printable()` strips C0/C1 only**, as the brief scoped it; bidi
+  controls are recorded in §148 as a known, low-risk gap.
+- **Skill use:** `adversarial-reviewer` ran once over all of S9, as
+  planned; two findings fixed, three recorded.
 
 ## 6. Blockers
 
@@ -92,7 +82,7 @@ None.
 
 ## 7. Files in progress
 
-None mid-edit. Row state: `§9.7` not started.
+None. S9 is complete.
 
 ## 8. Waiting on Kris
 
@@ -104,24 +94,25 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 **Next launch will migrate the real DB** (S8 part 1 and §8.3, both
 rehearsed on a copy, §144 and §145). S9 changes no schema.
 
-**Behaviour you may notice:** Connect (wizard) and Re-authorize
-(Settings) now show "Waiting for approval in your browser…" with a
-Cancel button; the browser tab after a Cancel on Spotify's page says
-the authorization was cancelled.
+**Behaviour you may notice:** tooltips built from data (a failure
+reason, a runner-up filename) now wrap like rich text instead of
+running on one line.
 
 **Kris's own decision (carried):** keep or discard the repo's
 `./slskd-data` (see HISTORY §140).
 
 **Live checks:** S41's checklist. Carried: S6's Refresh playlists
 check, S7's drift Scan, S8's Reject-then-Scan and failure reason on
-Downloads. New: a real Connect with a mistyped Client ID, then Cancel,
+Downloads, S9 part 2's Connect with a mistyped Client ID, then Cancel,
 then Connect with the right one.
 
 ## 9. Open questions
 
-- **New:** closing the wizard or Settings mid-wait does not cancel it;
-  the worker holds port 8888 and the token lock for up to 300 s.
+- Closing the wizard or Settings mid-wait does not cancel the Spotify
+  wait; the worker holds port 8888 and the token lock for up to 300 s.
   Cancel on the widget's destruction? S11 or S20.
+- Should `printable()` also strip bidi controls? Cheap; S15 (CLI) could
+  take it.
 - **Carried from S7:** `DestinationDialog`'s unchecked "Remember this
   for this playlist" drops the typed subfolder. S19 or S29?
 - Settings → Destinations shows a rejected subfolder on its

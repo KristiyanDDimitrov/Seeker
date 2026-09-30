@@ -70,7 +70,7 @@ src/seeker/
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       formatting.py, download_eta.py, upload_eta.py,
-│       library_location_picker.py
+│       library_location_picker.py, plain_text.py
 ├── models/                     # dataclasses — playlist, track, track_match,
 │                              #   local_file, library_location, soulseek_file,
 │                              #   download_request, soulseek_review_candidate,
@@ -230,6 +230,15 @@ src/seeker/
   own `InlineNotice`, never on its `status_label` — a real bug this
   round (`sharing_page.py`'s confirmation was wiped before it could be
   read) was exactly that mistake. [HISTORY §120](docs/history/108-120.md#120)
+- **No widget in `ui/` guesses whether its text is HTML.** Labels are
+  `PlainLabel`, or `RichLabel` for Seeker's own markup with any data
+  inside `html.escape`d; message boxes go through `plain_text.question`
+  /`information`/`warning` or set `setTextFormat` by hand; a tooltip
+  built from data goes through `plain_tooltip()`. Peer filenames,
+  usernames and slskd text otherwise render as markup. Four `ast`
+  sweeps in `tests/test_plain_text.py` fail the build. The CLI passes
+  peer strings through `cli.printable()`.
+  [HISTORY §148](docs/history/121-150.md#148)
 
 ## Commands
 
