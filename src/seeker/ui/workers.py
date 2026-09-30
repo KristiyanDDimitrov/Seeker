@@ -16,7 +16,11 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QAbstractButton, QLabel
 
+from seeker.error_text import DETAILS_HINT, describe_error
+
 logger = logging.getLogger(__name__)
+
+RENDER_FAILED_TEXT = f"Couldn't display the result. {DETAILS_HINT}"
 
 # Plain, non-Qt correlation ids for in-flight tasks. The dispatcher
 # signal carries this, never the Worker/QRunnable instance itself — see
@@ -215,7 +219,7 @@ class Worker(QRunnable):
             # plain pre-check can't close.
             #
             # §1.3 (round 10) — the traceback only exists on this worker
-            # thread; task_error only ever carries str(error), so every
+            # thread; task_error only ever carries text, so every
             # failed background task since logging handlers were last
             # configured left no trace anywhere (Defect B, brief §1).
             # logging is thread-safe and this call touches neither
@@ -225,7 +229,9 @@ class Worker(QRunnable):
             logger.warning(
                 "Background task %d failed", self.task_id, exc_info=True,
             )
-            _emit_or_drop(_dispatcher.task_error, self.task_id, str(error))
+            _emit_or_drop(
+                _dispatcher.task_error, self.task_id, describe_error(error),
+            )
         else:
             _emit_or_drop(_dispatcher.task_finished, self.task_id, result)
 
@@ -458,11 +464,11 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
         # for the full reasoning (unchanged from before this redesign).
         try:
             on_finished(result)
-        except Exception as error:
+        except Exception:
             logger.exception("Error handling worker result")
 
             if status_label is not None:
-                status_label.setText(f"Error: {error}")
+                status_label.setText(RENDER_FAILED_TEXT)
 
     _schedule_native_delete(worker)
 

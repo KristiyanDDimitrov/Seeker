@@ -1941,6 +1941,51 @@ def test_run_worker_error_sets_status_label_and_reenables_button(qtbot):
     assert button.isEnabled() is True
 
 
+def test_run_worker_error_shows_readable_text_for_a_connection_error(qtbot):
+    # A transport error's own text is `[Errno 61] Connection refused`;
+    # the label must say which service and what to do instead.
+    import httpx
+    from PySide6.QtWidgets import QLabel
+
+    label = QLabel("")
+    qtbot.addWidget(label)
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def boom():
+        raise httpx.ConnectError(
+            "[Errno 61] Connection refused",
+            request=httpx.Request("GET", "http://127.0.0.1:5030/api/v0/x"),
+        )
+
+    run_worker(SynchronousPool(), boom, status_label=label)
+
+    assert "Errno" not in label.text()
+    assert "slskd" in label.text()
+
+
+def test_run_worker_error_names_a_bare_assertion_error(qtbot):
+    # str(AssertionError()) is "" — the label must not go blank.
+    from PySide6.QtWidgets import QLabel
+
+    label = QLabel("")
+    qtbot.addWidget(label)
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    def boom():
+        raise AssertionError
+
+    run_worker(SynchronousPool(), boom, status_label=label)
+
+    assert "AssertionError" in label.text()
+    assert "Open Log Folder" in label.text()
+
+
 def test_run_worker_registry_releases_worker_on_both_success_and_error():
     # _callbacks (see workers.py's own comment) holds each in-flight
     # task's callback entry, keyed by task_id, until that task's own
@@ -2003,7 +2048,9 @@ def test_run_worker_on_finished_exception_surfaces_to_status_label(qtbot):
         on_finished=render_that_raises,
     )
 
-    assert "malformed render data" in label.text()
+    # The render bug's own text is for the log, not the user.
+    assert "malformed render data" not in label.text()
+    assert label.text().startswith("Couldn't display the result")
 
 
 def test_run_worker_on_finished_exception_without_status_label_still_safe(
