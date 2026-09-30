@@ -27,6 +27,9 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.rejection_repository import (
+    RejectionRepository,
+)
 from seeker.database.repositories.soulseek_review_candidate_repository import (
     SoulseekReviewCandidateRepository,
 )
@@ -607,6 +610,7 @@ class Application:
                 LocalFileRepository(self.database),
                 TrackMatchRepository(self.database),
                 get_config=lambda: self._config_store,
+                rejection_repository=RejectionRepository(self.database),
             )
 
         return self._track_matcher
@@ -685,6 +689,7 @@ class Application:
                 SoulseekReviewCandidateRepository(self.database),
                 self.slskd_download_dir,
                 get_config=lambda: self._config_store,
+                rejection_repository=RejectionRepository(self.database),
             )
 
         return self._download_service

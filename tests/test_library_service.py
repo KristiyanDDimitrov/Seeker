@@ -485,21 +485,97 @@ def test_confirm_match_stamps_confirmed_at_without_a_100_score_sentinel(
     assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
 
 
-def test_reject_match_deletes_the_row_no_blacklist(tmp_path):
+def _add_exact_file(service: LibraryService) -> int:
+    """A second file for seed_needs_review_track_and_file's track, whose
+    tags match it exactly, so it outscores the needs-review file."""
+    track_matcher = service.track_matcher
+    assert track_matcher is not None
+
+    with service.database.transaction() as connection:
+        location_id = connection.execute(
+            "SELECT id FROM library_locations WHERE name = 'Main'"
+        ).fetchone()[0]
+        track_matcher.local_files.upsert(
+            LocalFile(
+                location_id=location_id,
+                relative_path="exact.mp3",
+                filename="exact.mp3",
+                format="mp3",
+                size_bytes=1_000,
+                mtime=1.0,
+                scanned_at="2026-01-01T00:00:00+00:00",
+                tag_artist="The Weeknd",
+                tag_title="Blinding Lights",
+                duration_ms=200_000,
+            ),
+            connection,
+        )
+        return int(
+            connection.execute(
+                "SELECT id FROM local_files WHERE filename = 'exact.mp3'"
+            ).fetchone()[0]
+        )
+
+
+def _stored_match(service: LibraryService, track_id: str):
+    assert service.track_matcher is not None
+    with service.database.transaction() as connection:
+        return service.track_matcher.track_matches.get_by_track_id(
+            track_id, connection
+        )
+
+
+def test_reject_match_unmatches_the_track(tmp_path):
     service = make_service_with_matcher(tmp_path)
     seed_needs_review_track_and_file(service)
     service.track_matcher.match_all()
 
     service.reject_match("track1")
 
-    with service.database.transaction() as connection:
-        stored = service.track_matcher.track_matches.get_by_track_id(
-            "track1", connection
-        )
+    assert _stored_match(service, "track1") is None
 
-    assert stored is None
 
-    # No blacklist — the same candidate can resurface on a later match
-    # run (item 26's deliberate non-feature, mirrored here).
+def test_a_rejected_match_is_not_suggested_again(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+
+    service.reject_match("track1")
     counts = service.track_matcher.match_all()
-    assert counts["needs_review"] == 1
+
+    assert counts == {"auto": 0, "needs_review": 0, "unmatched": 1}
+    assert _stored_match(service, "track1").local_file_id is None
+
+
+def test_a_rejected_match_falls_through_to_the_next_best_file(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    exact_id = _add_exact_file(service)
+    service.track_matcher.match_all()
+    assert _stored_match(service, "track1").local_file_id == exact_id
+
+    service.reject_match("track1")
+    counts = service.track_matcher.match_all()
+
+    assert counts == {"auto": 0, "needs_review": 1, "unmatched": 0}
+    fallback = _stored_match(service, "track1")
+    assert fallback.local_file_id != exact_id
+    assert fallback.match_method == "needs_review"
+
+
+def test_a_rejection_goes_when_its_file_is_deleted(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+    rejected_file_id = _stored_match(service, "track1").local_file_id
+
+    service.reject_match("track1")
+    with service.database.transaction() as connection:
+        service.track_matcher.local_files.delete_by_id(
+            rejected_file_id, connection,
+        )
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM rejected_local_matches"
+        ).fetchone()[0]
+
+    assert remaining == 0

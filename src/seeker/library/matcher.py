@@ -10,6 +10,9 @@ from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.rejection_repository import (
+    RejectionRepository,
+)
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
@@ -161,11 +164,15 @@ class TrackMatcher:
         local_file_repository: LocalFileRepository,
         track_match_repository: TrackMatchRepository,
         get_config: Callable[[], SeekerConfig] | None = None,
+        rejection_repository: RejectionRepository | None = None,
     ):
         self.database = database
         self.tracks = track_repository
         self.local_files = local_file_repository
         self.track_matches = track_match_repository
+        self.rejections = rejection_repository or RejectionRepository(
+            database
+        )
         # A callable, not a snapshot SeekerConfig — TrackMatcher itself
         # is constructed once and cached for the app's lifetime
         # (Application.track_matcher), so a plain dataclass value passed
@@ -209,11 +216,15 @@ class TrackMatcher:
             tracks = self.tracks.get_all(connection)
             local_files = self.local_files.get_all(connection)
             existing_matches = self.track_matches.get_all(connection)
+            rejected = self.rejections.get_rejected_local_file_ids(
+                connection
+            )
 
         results = self._compute_matches(
             tracks,
             local_files,
             {match.track_id: match for match in existing_matches},
+            rejected,
             resolved_auto_threshold,
             resolved_needs_review_threshold,
         )
@@ -227,18 +238,22 @@ class TrackMatcher:
                 if _is_confirmed(match)
             }
             file_ids = self.local_files.get_ids(connection)
+            rejected = self.rejections.get_rejected_local_file_ids(
+                connection
+            )
 
             for result in results:
                 if result.track_id in confirmed:
                     counts["auto"] += 1
                     continue
 
-                if (
-                        result.local_file_id is not None
-                        and result.local_file_id not in file_ids
+                if result.local_file_id is not None and (
+                        result.local_file_id not in file_ids
+                        or result.local_file_id
+                        in rejected.get(result.track_id, ())
                 ):
-                    # Deleted while computing: a match pointing at no
-                    # file is unmatched (HISTORY §139).
+                    # Deleted or rejected while computing: a match
+                    # pointing at no file is unmatched (HISTORY §139).
                     result.local_file_id = None
                     result.match_method = None
                     result.score = None
@@ -258,6 +273,7 @@ class TrackMatcher:
             tracks: list[Track],
             local_files: list[LocalFile],
             existing_matches: dict[str, TrackMatch],
+            rejected: dict[str, set[int]],
             auto_threshold: float,
             needs_review_threshold: float,
     ) -> list[TrackMatch]:
@@ -265,7 +281,7 @@ class TrackMatcher:
         human already confirmed: those survive a re-match untouched
         (HISTORY §56), but only while their file is still indexed, since
         a confirmation of a file that is gone confirms nothing (HISTORY
-        §139).
+        §139). A file rejected for a track is never a candidate for it.
         """
         by_duration = _DurationIndex(local_files)
         results = []
@@ -276,9 +292,16 @@ class TrackMatcher:
             if existing is not None and _is_confirmed(existing):
                 continue
 
-            match = find_best_match(
-                track, by_duration.candidates(track.duration_ms),
-            )
+            candidates = by_duration.candidates(track.duration_ms)
+            rejected_ids = rejected.get(track.id)
+
+            if rejected_ids:
+                candidates = [
+                    candidate for candidate in candidates
+                    if candidate.id not in rejected_ids
+                ]
+
+            match = find_best_match(track, candidates)
 
             match_method = None
             local_file_id = None

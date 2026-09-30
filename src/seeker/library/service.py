@@ -460,11 +460,9 @@ class LibraryService:
             )
 
     def reject_match(self, track_id: str) -> None:
-        """Deletes the track_matches row entirely — the track returns to
-        unmatched and becomes eligible for download. No blacklist,
-        matching reject_review_candidate's deliberate non-feature (item
-        26): the same candidate can resurface on a later match run, and
-        that is fine.
+        """The track returns to unmatched and becomes eligible for
+        download, and its file is never suggested for it again: later
+        match runs fall through to the next best file.
         """
         if self.track_matcher is None:
             raise RuntimeError(
@@ -473,4 +471,16 @@ class LibraryService:
             )
 
         with self.database.transaction() as connection:
+            match = self.track_matcher.track_matches.get_by_track_id(
+                track_id, connection,
+            )
+
+            if match is not None and match.local_file_id is not None:
+                self.track_matcher.rejections.add_local_match(
+                    track_id,
+                    match.local_file_id,
+                    datetime.now(UTC).isoformat(),
+                    connection,
+                )
+
             self.track_matcher.track_matches.delete(track_id, connection)

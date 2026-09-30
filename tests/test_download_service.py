@@ -1047,6 +1047,72 @@ def test_reject_review_candidate_deletes_and_requests_nothing(tmp_path):
     assert request_count == 0
 
 
+def _review_candidate_count(service: DownloadService) -> int:
+    with service.database.transaction() as connection:
+        return connection.execute(
+            "SELECT COUNT(*) FROM soulseek_review_candidates"
+        ).fetchone()[0]
+
+
+def test_a_rejected_review_candidate_is_not_suggested_again(tmp_path):
+    query = "Dom Dolla Title t1"
+    # Scores ~78: needs-review, never auto (see
+    # test_download_playlist_clears_stale_review_candidate_once_settled).
+    needs_review_candidate = make_soulseek_file(
+        filename="Dom Dolla - Title t1 (Clean).flac",
+    )
+    service = make_service(
+        tmp_path, states={}, search_results={query: [needs_review_candidate]},
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+    service.download_playlist("Test")
+    assert _review_candidate_count(service) == 1
+
+    service.reject_review_candidate("t1")
+    result = service.download_playlist("Test")
+
+    assert _review_candidate_count(service) == 0
+    assert result["needs_review"] == []
+    assert result["skipped"] == 1
+
+
+def test_a_rejected_candidate_is_never_auto_requested(tmp_path):
+    query = "Dom Dolla Title t1"
+    auto_candidate = make_soulseek_file(filename="Dom Dolla - Title t1.flac")
+    service = make_service(
+        tmp_path, states={}, search_results={query: [auto_candidate]},
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+    seed_review_candidate(
+        service, track_id="t1", username=auto_candidate.username,
+        filename=auto_candidate.filename,
+    )
+
+    service.reject_review_candidate("t1")
+    result = service.download_playlist("Test")
+
+    assert result["requested"] == 0
+    assert service.soulseek.request_download_calls == []
+
+
+def test_a_rejection_is_per_track(tmp_path):
+    query = "Dom Dolla Title t2"
+    candidate = make_soulseek_file(filename="Dom Dolla - Title t2.flac")
+    service = make_service(
+        tmp_path, states={}, search_results={query: [candidate]},
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1", "t2"])
+    seed_review_candidate(
+        service, track_id="t1", username=candidate.username,
+        filename=candidate.filename,
+    )
+
+    service.reject_review_candidate("t1")
+    result = service.download_playlist("Test")
+
+    assert result["requested"] == 1
+
+
 def test_confirm_review_candidate_raises_when_no_candidate_found(tmp_path):
     service = make_service(tmp_path, states={})
 

@@ -26,6 +26,9 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
+from seeker.database.repositories.rejection_repository import (
+    RejectionRepository,
+)
 from seeker.database.repositories.soulseek_review_candidate_repository import (
     SoulseekReviewCandidateRepository,
 )
@@ -287,6 +290,7 @@ class DownloadService:
         soulseek_review_candidate_repository: SoulseekReviewCandidateRepository,
         slskd_download_dir: str | None,
         get_config: Callable[[], SeekerConfig] | None = None,
+        rejection_repository: RejectionRepository | None = None,
     ):
         self.database = database
         # None only when SoulSeek genuinely isn't configured — Settings
@@ -307,6 +311,9 @@ class DownloadService:
         self.track_matches = track_match_repository
         self.local_files = local_file_repository
         self.soulseek_review_candidates = soulseek_review_candidate_repository
+        self.rejections = rejection_repository or RejectionRepository(
+            database
+        )
         # See matcher.py's identical get_config comment — a callable,
         # not a snapshot, so a Settings-driven threshold change is
         # visible on the very next download_playlist() call without
@@ -494,8 +501,11 @@ class DownloadService:
 
                 logger.info("Searching: %s - %s", track.artist, track.title)
 
-                files = self.soulseek.search(
-                    _build_search_query(track.artist, track.title)
+                files = self._without_rejected(
+                    track.id,
+                    self.soulseek.search(
+                        _build_search_query(track.artist, track.title)
+                    ),
                 )
                 settled, upgrade_shortlist, needs_review = select_downloads(
                     track, files, auto_match_threshold, needs_review_threshold,
@@ -931,12 +941,39 @@ class DownloadService:
         self._clear_review_candidate(track_id)
 
     def reject_review_candidate(self, track_id: str) -> None:
-        # No request made — just removes the candidate from view. Note,
-        # not built: nothing stops the same or a similar candidate from
-        # resurfacing on a later `download` run if it's still the
-        # best-scoring real match (no blacklist concept exists here);
-        # that's out of scope for this action.
-        self._clear_review_candidate(track_id)
+        """Removes the candidate without requesting it, and never
+        suggests or requests that peer's file for this track again.
+        """
+        with self.database.transaction() as connection:
+            candidate = self.soulseek_review_candidates.get_by_track_id(
+                track_id, connection,
+            )
+
+            if candidate is not None:
+                self.rejections.add_soulseek_candidate(
+                    track_id,
+                    candidate.username,
+                    candidate.filename,
+                    datetime.now(UTC).isoformat(),
+                    connection,
+                )
+
+            self.soulseek_review_candidates.delete(track_id, connection)
+
+    def _without_rejected(
+            self,
+            track_id: str,
+            files: list[SoulseekFile],
+    ) -> list[SoulseekFile]:
+        with self.database.transaction() as connection:
+            rejected = self.rejections.get_rejected_soulseek_candidates(
+                track_id, connection,
+            )
+
+        return [
+            file for file in files
+            if (file.username, file.filename) not in rejected
+        ]
 
     def poll_downloads(self) -> dict[str, int]:
         # Diagnostic — a real, timestamped call-frequency log for the

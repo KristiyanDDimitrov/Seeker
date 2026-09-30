@@ -276,4 +276,28 @@ CREATE TABLE IF NOT EXISTS duplicate_cleanups (
     location_id INTEGER,
     FOREIGN KEY (location_id) REFERENCES library_locations(id) ON DELETE SET NULL
 );
+
+-- A human's Reject on the Review page: the matcher never suggests this
+-- file for this track again, and falls through to the next best. Goes
+-- with either parent.
+CREATE TABLE IF NOT EXISTS rejected_local_matches (
+    track_id TEXT NOT NULL,
+    local_file_id INTEGER NOT NULL,
+    rejected_at TEXT NOT NULL,
+    PRIMARY KEY (track_id, local_file_id),
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+    FOREIGN KEY (local_file_id) REFERENCES local_files(id) ON DELETE CASCADE
+);
+
+-- The SoulSeek equivalent: this peer's file is never suggested or
+-- requested for this track again. A peer's file has no row of its own
+-- to cascade from, so only the track's delete removes it.
+CREATE TABLE IF NOT EXISTS rejected_soulseek_candidates (
+    track_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    rejected_at TEXT NOT NULL,
+    PRIMARY KEY (track_id, username, filename),
+    FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+);
 """

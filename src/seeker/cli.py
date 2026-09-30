@@ -189,8 +189,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--reject",
         metavar="TRACK_ID",
         default=None,
-        help="Reject a needs-review match (no blacklist — it can "
-             "resurface on a later match run).",
+        help="Reject a needs-review match; that file is never "
+             "suggested for that track again.",
     )
 
     download_parser = subparsers.add_parser(

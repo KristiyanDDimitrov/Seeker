@@ -494,8 +494,7 @@ TOOLTIP_CONFIRM_REVIEW_CANDIDATE = (
     "confirmation is treated as stronger than the algorithm's own score."
 )
 TOOLTIP_REJECT_REVIEW_CANDIDATE = (
-    "Discard this candidate. It isn't blacklisted — a later search can "
-    "surface it again."
+    "Seeker won't suggest this file for this track again."
 )
 TOOLTIP_REPLACE_UPGRADE = (
     "Replace the file currently in your library with this "
@@ -514,8 +513,7 @@ TOOLTIP_CONFIRM_LOCAL_MATCH = (
     "recomputed by a future re-match."
 )
 TOOLTIP_REJECT_LOCAL_MATCH = (
-    "Discard this match. It isn't blacklisted — a later match run can "
-    "surface it again."
+    "Seeker won't suggest this file for this track again."
 )
 TOOLTIP_DOUBLE_CLICK_TO_REVIEW = "Double-click to review this track."
 
