@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS download_requests (
 -- not appended) holding only the single best-scoring such candidate.
 -- Originally purely informational (surfaced read-only via `seeker
 -- check`) — item 26 adds a real confirm action
--- (DownloadService.confirm_review_candidate), which needs `size` to
+-- (ReviewService.confirm_review_candidate), which needs `size` to
 -- call request_download; a size-less legacy row (from before this
 -- column existed) can't be confirmed until download_playlist() next
 -- refreshes it. Cleared by download_playlist() the moment a later run

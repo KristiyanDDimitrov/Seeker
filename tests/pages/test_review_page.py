@@ -126,10 +126,10 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
     buttons["Confirm"].click()
 
     qtbot.waitUntil(
-        lambda: application.download_service.confirm_review_candidate_calls == ["t7"],
+        lambda: application.review_service.confirm_review_candidate_calls == ["t7"],
         timeout=2000,
     )
-    assert application.download_service.reject_review_candidate_calls == []
+    assert application.review_service.reject_review_candidate_calls == []
 
 
 def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
@@ -148,7 +148,7 @@ def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
     # render on a real thread pool — settles on the same row rather
     # than wiping it back to empty.
     application = FakeApplication(review_candidates=candidates)
-    application.download_service._confirm_review_candidate_error = (
+    application.review_service._confirm_review_candidate_error = (
         Exception("User X appears to be offline")
     )
     window = MainWindow(application)
@@ -187,10 +187,10 @@ def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
     buttons["Reject"].click()
 
     qtbot.waitUntil(
-        lambda: application.download_service.reject_review_candidate_calls == ["t9"],
+        lambda: application.review_service.reject_review_candidate_calls == ["t9"],
         timeout=2000,
     )
-    assert application.download_service.confirm_review_candidate_calls == []
+    assert application.review_service.confirm_review_candidate_calls == []
 
 
 def test_review_tab_renders_pending_upgrades_with_delete_checkbox_when_old_file_exists(
@@ -247,7 +247,7 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
     buttons["Replace"].click()
 
     qtbot.waitUntil(
-        lambda: application.download_service.apply_upgrade_decision_calls
+        lambda: application.review_service.apply_upgrade_decision_calls
         == [(42, True, True)],
         timeout=2000,
     )
@@ -327,7 +327,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     # §1.2 — baseline before the click, since MainWindow's own startup
     # sequence already calls get_pending_upgrade_reviews once.
     baseline_reviews_calls = (
-        application.download_service.get_pending_upgrade_reviews_calls
+        application.review_service.get_pending_upgrade_reviews_calls
     )
 
     actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
@@ -335,7 +335,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     buttons["Decline"].click()
 
     qtbot.waitUntil(
-        lambda: application.download_service.apply_upgrade_decision_calls
+        lambda: application.review_service.apply_upgrade_decision_calls
         == [(99, False, False)],
         timeout=2000,
     )
@@ -347,7 +347,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     # or not anything happened yet (today's vacuous version of this
     # test).
     qtbot.waitUntil(
-        lambda: application.download_service.get_pending_upgrade_reviews_calls
+        lambda: application.review_service.get_pending_upgrade_reviews_calls
         > baseline_reviews_calls,
         timeout=2000,
     )
@@ -407,11 +407,11 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     window._review_page.replace_all_upgrades_button.click()
 
     qtbot.waitUntil(
-        lambda: application.download_service.apply_upgrade_decisions_batch_calls
+        lambda: application.review_service.apply_upgrade_decisions_batch_calls
         != [],
         timeout=2000,
     )
-    assert application.download_service.apply_upgrade_decisions_batch_calls == [
+    assert application.review_service.apply_upgrade_decisions_batch_calls == [
         ([1, 2], True),
     ]
 
@@ -433,15 +433,15 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
 
     window._review_page.replace_all_upgrades_button.click()
 
-    assert application.download_service.apply_upgrade_decisions_batch_calls == []
+    assert application.review_service.apply_upgrade_decisions_batch_calls == []
 
 
 def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
-    from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+    from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 
     details = [_make_upgrade_details(request_id=1)]
     application = FakeApplication()
-    application.download_service.apply_upgrade_decisions_batch_result = (
+    application.review_service.apply_upgrade_decisions_batch_result = (
         BulkUpgradeReplaceResult(
             replaced=1, failed=0, details=["Artist - Title: Replaced with x"],
         )

@@ -620,7 +620,7 @@ def handle_downloads_review(
         _handle_downloads_review_all(application)
         return
 
-    upgrades = application.download_service.get_pending_upgrade_reviews()
+    upgrades = application.review_service.get_pending_upgrade_reviews()
 
     if not upgrades:
         print("Nothing to review.")
@@ -631,7 +631,7 @@ def handle_downloads_review(
 
 
 def _confirm_upgrade(application: Application, request_id: int) -> None:
-    service = application.download_service
+    service = application.review_service
     # Resolved again at its own prompt: replacing an earlier row can
     # change which file is this row's current one.
     details = service.get_upgrade_review_details(request_id)
@@ -665,7 +665,7 @@ def _handle_downloads_review_all(application: Application) -> None:
     # Same explicit-decision service method the UI uses
     # (apply_upgrade_decisions_batch), so the two never drift onto
     # different mutation logic.
-    upgrades = application.download_service.get_pending_upgrade_reviews()
+    upgrades = application.review_service.get_pending_upgrade_reviews()
 
     if not upgrades:
         print("Nothing to review.")
@@ -691,7 +691,7 @@ def _handle_downloads_review_all(application: Application) -> None:
         "Also delete the old files? [y/n] "
     ).strip().lower() == "y"
 
-    result = application.download_service.apply_upgrade_decisions_batch(
+    result = application.review_service.apply_upgrade_decisions_batch(
         [details.request_id for details in upgrades], delete_old,
     )
 
@@ -1068,7 +1068,7 @@ def handle_check(
     # must keep working without it, so this section is simply omitted
     # rather than erroring when it isn't set up.
     if application.soulseek_configured:
-        soulseek_review = application.download_service.get_review_candidates(
+        soulseek_review = application.review_service.get_review_candidates(
             playlist_id
         )
         print(

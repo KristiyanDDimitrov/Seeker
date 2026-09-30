@@ -55,7 +55,7 @@ from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.notice import InlineNotice
@@ -315,7 +315,7 @@ class ReviewPage(QWidget):
                 NeedsReviewCandidates, PendingUpgrades,
                 list[NeedsReviewMatch],
         ]:
-            service = self._context.application.download_service
+            service = self._context.application.review_service
             return (
                 service.get_review_candidates(),
                 service.get_pending_upgrade_reviews(),
@@ -456,7 +456,7 @@ class ReviewPage(QWidget):
         # long-running action, never called directly on the main thread.
         run_worker(
             self._context.thread_pool,
-            lambda: self._context.application.download_service
+            lambda: self._context.application.review_service
             .confirm_review_candidate(track_id),
             button=button,
             on_error=lambda message: self.notice.show_message(
@@ -472,7 +472,7 @@ class ReviewPage(QWidget):
     ) -> None:
         run_worker(
             self._context.thread_pool,
-            lambda: self._context.application.download_service
+            lambda: self._context.application.review_service
             .reject_review_candidate(track_id),
             button=button,
             on_error=lambda message: self.notice.show_message(
@@ -622,7 +622,7 @@ class ReviewPage(QWidget):
     ) -> None:
         run_worker(
             self._context.thread_pool,
-            lambda: self._context.application.download_service
+            lambda: self._context.application.review_service
             .apply_upgrade_decision(request_id, replace, delete_old),
             button=button,
             on_finished=self._on_upgrade_decision_finished,
@@ -655,7 +655,7 @@ class ReviewPage(QWidget):
 
         run_worker(
             self._context.thread_pool,
-            lambda: self._context.application.download_service
+            lambda: self._context.application.review_service
             .apply_upgrade_decisions_batch(request_ids, delete_old),
             button=self.replace_all_upgrades_button,
             on_error=lambda message: self.notice.show_message(

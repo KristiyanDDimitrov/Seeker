@@ -59,6 +59,7 @@ from seeker.models.slskd_start import SlskdStartResult
 from seeker.sharing_service import SharingService
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
+from seeker.soulseek.review_service import ReviewService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.spotify.client import SpotifyClient
@@ -124,6 +125,7 @@ class Application:
         self._track_matcher: TrackMatcher | None = None
         self._soulseek_client: SoulseekClient | None = None
         self._download_service: DownloadService | None = None
+        self._review_service: ReviewService | None = None
         self._metadata_service: MetadataService | None = None
         self._dashboard_service: DashboardService | None = None
         self._duplicate_service: DuplicateService | None = None
@@ -293,6 +295,7 @@ class Application:
         # reset too, it would keep raising on any SoulSeek-dependent
         # method forever, even after real credentials just landed.
         self._download_service = None
+        self._review_service = None
         self._sharing_service = None
 
     def start_slskd(
@@ -669,9 +672,8 @@ class Application:
             # the latter raises immediately when unconfigured, which
             # would make DownloadService itself unconstructable even
             # for methods that never touch SoulSeek at all
-            # (set_destination, get_review_candidates,
-            # get_pending_upgrade_reviews — Settings needs all three
-            # usable regardless of SoulSeek setup, since it's the
+            # (set_destination — Settings needs it usable regardless
+            # of SoulSeek setup, since it's the
             # wizard's own optional, skippable step). DownloadService's
             # own `soulseek` property raises the same clear error, just
             # deferred to the point a method that genuinely needs it is
@@ -693,6 +695,30 @@ class Application:
             )
 
         return self._download_service
+
+    @property
+    def review_service(self) -> ReviewService:
+        if self._review_service is None:
+            # Shares the download service's placement, and reaches
+            # slskd through its `soulseek` property: listing and
+            # upgrade decisions work without SoulSeek configured, and
+            # confirming a candidate raises the same clear error a
+            # download does.
+            download_service = self.download_service
+            self._review_service = ReviewService(
+                self.database,
+                lambda: download_service.soulseek,
+                download_service.placement,
+                TrackRepository(),
+                LibraryLocationRepository(),
+                DownloadRequestRepository(),
+                TrackMatchRepository(),
+                LocalFileRepository(),
+                SoulseekReviewCandidateRepository(),
+                RejectionRepository(),
+            )
+
+        return self._review_service
 
     @property
     def metadata_service(self) -> MetadataService:

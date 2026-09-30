@@ -46,6 +46,7 @@ from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.download_service import DownloadService
+from service_seams import review_service_for
 from test_download_service import FakeSoulseekClient
 
 
@@ -229,7 +230,7 @@ def test_same_name_upgrade_with_delete_old_keeps_the_new_file(tmp_path):
             scenario.location.id, "P/Artist - Song.mp3", connection,
         ).id
 
-    message = scenario.service.apply_upgrade_decision(
+    message = review_service_for(scenario.service).apply_upgrade_decision(
         scenario.request_id(), replace=True, delete_old=True,
     )
 
@@ -268,7 +269,7 @@ def test_same_name_swap_clears_analysis_measured_on_the_old_content(
         )
         scenario.service.local_files.mark_tagged(row.id, "x", connection)
 
-    scenario.service.apply_upgrade_decision(
+    review_service_for(scenario.service).apply_upgrade_decision(
         scenario.request_id(), replace=True, delete_old=True,
     )
 
@@ -285,7 +286,7 @@ def test_same_name_upgrade_without_delete_old_keeps_both_files(tmp_path):
         tmp_path, "Artist - Song.mp3", "Artist - Song.mp3",
     )
 
-    message = scenario.service.apply_upgrade_decision(
+    message = review_service_for(scenario.service).apply_upgrade_decision(
         scenario.request_id(), replace=True, delete_old=False,
     )
 
@@ -305,7 +306,7 @@ def test_differently_named_upgrade_with_delete_old_removes_row_then_file(
         tmp_path, "old.mp3", "Artist - Song.flac",
     )
 
-    message = scenario.service.apply_upgrade_decision(
+    message = review_service_for(scenario.service).apply_upgrade_decision(
         scenario.request_id(), replace=True, delete_old=True,
     )
 
@@ -327,7 +328,7 @@ def test_upgrade_never_overwrites_an_unrelated_same_named_file(tmp_path):
     )
     unrelated = write(scenario.destination / "Artist - Song.flac", "OTHER")
 
-    scenario.service.apply_upgrade_decision(
+    review_service_for(scenario.service).apply_upgrade_decision(
         scenario.request_id(), replace=True, delete_old=True,
     )
 

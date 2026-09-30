@@ -33,7 +33,7 @@ def delete_file(path: Path) -> str | None:
     (same "one bad item must not abort a batch" precedent as
     `tag_tracks`/`compute_fingerprints`).
 
-    Shared by `DownloadService.apply_upgrade_decision` (deleting a
+    Shared by `ReviewService.apply_upgrade_decision` (deleting a
     superseded local file after an upgrade replace, roadmap item 26)
     and `DuplicateService.delete_local_files` (deleting a duplicate
     group's lower-ranked copies, roadmap item 40) — one real deletion

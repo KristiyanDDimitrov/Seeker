@@ -6,7 +6,7 @@ from seeker.models.track import Track
 @dataclass
 class UpgradeReviewDetails:
     """Read-only display info for one ready_for_review upgrade request —
-    built once by DownloadService.get_upgrade_review_details() and used
+    built once by ReviewService.get_upgrade_review_details() and used
     to render both the CLI's two input() prompts and the Review
     screen's UI without either caller needing to re-derive the
     track/current-file lookups itself."""

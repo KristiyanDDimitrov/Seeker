@@ -67,6 +67,7 @@ class FakeApplication:
             track_matcher: TrackMatcher,
             soulseek_configured: bool = False,
             download_service=None,
+            review_service=None,
             sync_service=None,
             duplicate_service=None,
             history_service=None,
@@ -76,6 +77,7 @@ class FakeApplication:
         self.track_matcher = track_matcher
         self.soulseek_configured = soulseek_configured
         self.download_service = download_service
+        self.review_service = review_service
         self.sync_service = sync_service
         self.duplicate_service = duplicate_service
         self.history_service = history_service
@@ -215,7 +217,7 @@ def test_check_verbose_lists_each_auto_matched_track(tmp_path, capsys):
         assert ".mp3" in line
 
 
-class FakeDownloadServiceForReview:
+class FakeReviewServiceForCheck:
     def __init__(self, review_candidates):
         self._review_candidates = review_candidates
         self.get_review_candidates_calls = []
@@ -225,7 +227,7 @@ class FakeDownloadServiceForReview:
         return self._review_candidates
 
 
-class FakeDownloadServiceForBulkReview:
+class FakeReviewServiceForBulkReview:
     # Roadmap item R3.1/R3.4 — CLI parity for "Replace all."
     def __init__(self, pending_upgrades, batch_result=None):
         self._pending_upgrades = pending_upgrades
@@ -310,13 +312,13 @@ def test_check_lists_soulseek_review_candidates_distinct_from_unmatched(
         found_at="2026-08-27T00:00:00+00:00",
     )
 
-    download_service = FakeDownloadServiceForReview([(track, candidate)])
+    review_service = FakeReviewServiceForCheck([(track, candidate)])
 
     cli.run(
         FakeApplication(
             matcher,
             soulseek_configured=True,
-            download_service=download_service,
+            review_service=review_service,
         ),
         ["check"],
     )
@@ -404,19 +406,19 @@ def test_check_playlist_scoped_passes_playlist_id_to_review_candidates(
     sync_service = FakeSyncService(
         [Playlist(id="pA", name="PlaylistA", track_count=0)]
     )
-    download_service = FakeDownloadServiceForReview([])
+    review_service = FakeReviewServiceForCheck([])
 
     cli.run(
         FakeApplication(
             matcher,
             soulseek_configured=True,
-            download_service=download_service,
+            review_service=review_service,
             sync_service=sync_service,
         ),
         ["check", "PlaylistA"],
     )
 
-    assert download_service.get_review_candidates_calls == ["pA"]
+    assert review_service.get_review_candidates_calls == ["pA"]
 
 
 class FakeDuplicateService:
@@ -1086,7 +1088,7 @@ def test_downloads_review_all_replaces_every_pending_upgrade(
 ):
     from seeker.models.track import Track
     from seeker.models.upgrade_review import UpgradeReviewDetails
-    from seeker.soulseek.download_service import BulkUpgradeReplaceResult
+    from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 
     track = Track(
         id="t1", title="Title", artist="Artist", album="Album",
@@ -1098,7 +1100,7 @@ def test_downloads_review_all_replaces_every_pending_upgrade(
             current_description="mp3", old_file_path="/music/old.mp3",
         ),
     ]
-    download_service = FakeDownloadServiceForBulkReview(
+    review_service = FakeReviewServiceForBulkReview(
         upgrades,
         batch_result=BulkUpgradeReplaceResult(
             replaced=1, failed=0, details=["Artist - Title: Replaced with x"],
@@ -1108,11 +1110,11 @@ def test_downloads_review_all_replaces_every_pending_upgrade(
     monkeypatch.setattr("builtins.input", lambda prompt="": "y")
 
     cli.run(
-        FakeApplication(matcher, download_service=download_service),
+        FakeApplication(matcher, review_service=review_service),
         ["downloads", "review", "--all"],
     )
 
-    assert download_service.apply_upgrade_decisions_batch_calls == [
+    assert review_service.apply_upgrade_decisions_batch_calls == [
             ([1], True)
     ]
     output = capsys.readouterr().out
@@ -1135,23 +1137,23 @@ def test_downloads_review_all_declined_at_first_prompt_calls_nothing(
             current_description="mp3", old_file_path=None,
         ),
     ]
-    download_service = FakeDownloadServiceForBulkReview(upgrades)
+    review_service = FakeReviewServiceForBulkReview(upgrades)
     matcher = make_matcher(tmp_path)
     monkeypatch.setattr("builtins.input", lambda prompt="": "n")
 
     cli.run(
-        FakeApplication(matcher, download_service=download_service),
+        FakeApplication(matcher, review_service=review_service),
         ["downloads", "review", "--all"],
     )
 
-    assert download_service.apply_upgrade_decisions_batch_calls == []
+    assert review_service.apply_upgrade_decisions_batch_calls == []
     assert "Cancelled" in capsys.readouterr().out
 
 
 def test_downloads_review_all_empty_prints_nothing_to_review(
         tmp_path, capsys, monkeypatch,
 ):
-    download_service = FakeDownloadServiceForBulkReview([])
+    review_service = FakeReviewServiceForBulkReview([])
     matcher = make_matcher(tmp_path)
     monkeypatch.setattr(
         "builtins.input", lambda prompt="": (_ for _ in ()).throw(
@@ -1160,11 +1162,11 @@ def test_downloads_review_all_empty_prints_nothing_to_review(
     )
 
     cli.run(
-        FakeApplication(matcher, download_service=download_service),
+        FakeApplication(matcher, review_service=review_service),
         ["downloads", "review", "--all"],
     )
 
-    assert download_service.apply_upgrade_decisions_batch_calls == []
+    assert review_service.apply_upgrade_decisions_batch_calls == []
     assert "Nothing to review." in capsys.readouterr().out
 
 
@@ -1579,7 +1581,7 @@ def test_library_fix_art_prints_counts_and_details(tmp_path, capsys):
     )
 
 
-class FakeDownloadServiceForCliRouting:
+class FakeServiceForCliRouting:
     def __init__(self):
         self.calls: list[tuple] = []
 
@@ -1603,7 +1605,7 @@ def test_playlists_without_a_subcommand_lists_playlists(tmp_path, capsys):
 
 def test_playlists_set_destination_resolves_the_playlist(tmp_path):
     application = _metadata_application(tmp_path, None)
-    application.download_service = FakeDownloadServiceForCliRouting()
+    application.download_service = FakeServiceForCliRouting()
 
     cli.run(
         application,
@@ -1619,11 +1621,11 @@ def test_downloads_review_without_all_runs_the_interactive_review(
         tmp_path, capsys,
 ):
     application = _metadata_application(tmp_path, None)
-    application.download_service = FakeDownloadServiceForCliRouting()
+    application.review_service = FakeServiceForCliRouting()
 
     cli.run(application, ["downloads", "review"])
 
-    assert application.download_service.calls == [
+    assert application.review_service.calls == [
         ("get_pending_upgrade_reviews",),
     ]
     assert capsys.readouterr().out == "Nothing to review.\n"

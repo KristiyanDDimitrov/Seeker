@@ -412,20 +412,80 @@ class FakeSharingService:
         )
 
 
-class FakeDownloadService:
+class FakeReviewService:
     def __init__(
             self,
             review_candidates: list | None = None,
             pending_upgrades: list | None = None,
+            confirm_review_candidate_error: Exception | None = None,
+    ):
+        self._review_candidates = review_candidates or []
+        self._pending_upgrades = pending_upgrades or []
+        self._confirm_review_candidate_error = confirm_review_candidate_error
+        self.confirm_review_candidate_calls: list[str] = []
+        self.reject_review_candidate_calls: list[str] = []
+        # Proves a re-poll (_poll_review_items, called from
+        # on_finished) has actually run, rather than asserting on a
+        # notice's text/visibility immediately after a click, which
+        # would pass whether or not anything happened yet.
+        self.get_pending_upgrade_reviews_calls = 0
+        self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
+        self.apply_upgrade_decision_result: str | None = (
+                "Replaced with /new/path"
+        )
+        self.apply_upgrade_decisions_batch_calls: list[
+            tuple[list[int], bool]
+        ] = []
+        from seeker.soulseek.review_service import BulkUpgradeReplaceResult
+        self.apply_upgrade_decisions_batch_result = BulkUpgradeReplaceResult(
+            replaced=0, failed=0, details=[],
+        )
+
+    def get_review_candidates(self) -> list:
+        return self._review_candidates
+
+    def get_pending_upgrade_reviews(self) -> list:
+        self.get_pending_upgrade_reviews_calls += 1
+        return self._pending_upgrades
+
+    def confirm_review_candidate(self, track_id: str) -> None:
+        if self._confirm_review_candidate_error is not None:
+            raise self._confirm_review_candidate_error
+
+        self.confirm_review_candidate_calls.append(track_id)
+
+    def reject_review_candidate(self, track_id: str) -> None:
+        self.reject_review_candidate_calls.append(track_id)
+
+    def apply_upgrade_decision(
+            self,
+            request_id: int,
+            replace: bool,
+            delete_old: bool = False,
+    ) -> str | None:
+        self.apply_upgrade_decision_calls.append(
+                (request_id, replace, delete_old)
+        )
+        return self.apply_upgrade_decision_result if replace else None
+
+    def apply_upgrade_decisions_batch(
+            self, request_ids: list[int], delete_old: bool,
+    ):
+        self.apply_upgrade_decisions_batch_calls.append(
+                (request_ids, delete_old)
+        )
+        return self.apply_upgrade_decisions_batch_result
+
+
+class FakeDownloadService:
+    def __init__(
+            self,
             resolved_destination: tuple | None = None,
             download_playlist_result: PlaylistDownloadResult | None = None,
             search_manual_results: list | None = None,
             download_manual_result: ManualDownloadResult | None = None,
             download_manual_error: Exception | None = None,
-            confirm_review_candidate_error: Exception | None = None,
     ):
-        self._review_candidates = review_candidates or []
-        self._pending_upgrades = pending_upgrades or []
         # Roadmap item 82 (P13) — manual (not-from-Spotify) search/
         # download.
         self._search_manual_results = search_manual_results or []
@@ -434,28 +494,8 @@ class FakeDownloadService:
             reason="no_candidate_found",
         )
         self._download_manual_error = download_manual_error
-        self._confirm_review_candidate_error = confirm_review_candidate_error
         self.search_manual_calls: list[tuple[str, str]] = []
         self.download_manual_calls: list[tuple] = []
-        self.confirm_review_candidate_calls: list[str] = []
-        self.reject_review_candidate_calls: list[str] = []
-        # §1.2 (round 10) — proves a re-poll (_poll_review_items, called
-        # from on_finished) has actually run, rather than asserting on a
-        # notice's text/visibility immediately after a click, which
-        # would pass whether or not anything happened yet.
-        self.get_pending_upgrade_reviews_calls = 0
-        self.apply_upgrade_decision_calls: list[tuple[int, bool, bool]] = []
-        self.apply_upgrade_decision_result: str | None = (
-                "Replaced with /new/path"
-        )
-        # Roadmap item R3.1 — "Replace all".
-        self.apply_upgrade_decisions_batch_calls: list[
-            tuple[list[int], bool]
-        ] = []
-        from seeker.soulseek.download_service import BulkUpgradeReplaceResult
-        self.apply_upgrade_decisions_batch_result = BulkUpgradeReplaceResult(
-            replaced=0, failed=0, details=[],
-        )
         # None means "no resolvable destination" — the roadmap item 6
         # §3 dead-end case the DestinationDialog exists to close.
         self._resolved_destination = resolved_destination
@@ -496,41 +536,6 @@ class FakeDownloadService:
 
     def poll_downloads(self) -> PollResult:
         return PollResult()
-
-    def get_review_candidates(self) -> list:
-        return self._review_candidates
-
-    def get_pending_upgrade_reviews(self) -> list:
-        self.get_pending_upgrade_reviews_calls += 1
-        return self._pending_upgrades
-
-    def confirm_review_candidate(self, track_id: str) -> None:
-        if self._confirm_review_candidate_error is not None:
-            raise self._confirm_review_candidate_error
-
-        self.confirm_review_candidate_calls.append(track_id)
-
-    def reject_review_candidate(self, track_id: str) -> None:
-        self.reject_review_candidate_calls.append(track_id)
-
-    def apply_upgrade_decision(
-            self,
-            request_id: int,
-            replace: bool,
-            delete_old: bool = False,
-    ) -> str | None:
-        self.apply_upgrade_decision_calls.append(
-                (request_id, replace, delete_old)
-        )
-        return self.apply_upgrade_decision_result if replace else None
-
-    def apply_upgrade_decisions_batch(
-            self, request_ids: list[int], delete_old: bool,
-    ):
-        self.apply_upgrade_decisions_batch_calls.append(
-                (request_ids, delete_old)
-        )
-        return self.apply_upgrade_decisions_batch_result
 
     def search_manual(self, artist: str, title: str) -> list:
         self.search_manual_calls.append((artist, title))
@@ -652,8 +657,10 @@ class FakeApplication:
         self.spotify_configured = spotify_configured
         self.track_matcher = FakeTrackMatcher()
         self.download_service = FakeDownloadService(
-            review_candidates, pending_upgrades, resolved_destination,
-            download_playlist_result,
+            resolved_destination, download_playlist_result,
+        )
+        self.review_service = FakeReviewService(
+            review_candidates, pending_upgrades,
         )
         self.metadata_service = FakeMetadataService(
             tag_result, fix_art_result, rename_plans, rename_result,

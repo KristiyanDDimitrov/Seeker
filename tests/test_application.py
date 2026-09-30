@@ -767,6 +767,43 @@ def test_persist_soulseek_config_resets_cached_download_service(
     assert app.download_service.soulseek is not None  # must not raise
 
 
+def test_review_service_works_without_soulseek_and_shares_placement(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.delenv("SLSKD_BASE_URL", raising=False)
+    monkeypatch.delenv("SLSKD_API_KEY", raising=False)
+    app._config_store = SeekerConfig()
+
+    review_service = app.review_service  # must not raise
+
+    assert review_service.placement is app.download_service.placement
+    assert review_service.get_review_candidates() == []
+    assert review_service.get_pending_upgrade_reviews() == []
+
+
+def test_persist_soulseek_config_resets_cached_review_service(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    monkeypatch.delenv("SLSKD_BASE_URL", raising=False)
+    monkeypatch.delenv("SLSKD_API_KEY", raising=False)
+    app._config_store = SeekerConfig()
+    unconfigured = app.review_service
+
+    app.persist_soulseek_config(
+        "http://localhost:5030",
+        "real-api-key",
+        "/data/downloads",
+        "real-username",
+        "real-password",
+    )
+
+    assert app.review_service is not unconfigured
+    assert app.review_service.placement is app.download_service.placement
+    assert app.review_service.placement.slskd_download_dir == "/data/downloads"
+
+
 # --- UI polish pass: onboarding_complete's actual boolean correctness
 # was previously exercised only via a subprocess smoke test asserting
 # it doesn't raise (test_lazy_spotify_config.py) — real, but coverage.py

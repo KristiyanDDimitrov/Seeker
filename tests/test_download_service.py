@@ -48,11 +48,14 @@ from seeker.soulseek.client import (
 from seeker.soulseek.download_service import (
     DownloadService,
     NoDestinationConfiguredError,
-    ReviewCandidateMissingSizeError,
-    ReviewCandidateNotFoundError,
     UnsupportedDownloadFormatError,
     _build_search_query,
 )
+from seeker.soulseek.review_service import (
+    ReviewCandidateMissingSizeError,
+    ReviewCandidateNotFoundError,
+)
+from service_seams import review_service_for
 
 
 def test_single_source_of_truth_for_recognized_rejection_patterns():
@@ -767,7 +770,7 @@ def test_download_playlist_records_real_prdk_and_zigi_sc_as_needs_review(
     assert 70.0 <= row["score"] < 90.0
     assert row["quality_descriptor"] == "mp3 320kbps"
 
-    review_candidates = service.get_review_candidates()
+    review_candidates = review_service_for(service).get_review_candidates()
     assert len(review_candidates) == 1
     track, candidate = review_candidates[0]
     assert track.artist == "Prdk"
@@ -985,7 +988,7 @@ def test_review_candidate_runner_up_fields_round_trip_through_the_database(
             connection,
         )
 
-    review_candidates = service.get_review_candidates()
+    review_candidates = review_service_for(service).get_review_candidates()
     assert len(review_candidates) == 1
     _track, candidate = review_candidates[0]
     assert candidate.runner_up_username == "runner_up_seeder"
@@ -999,7 +1002,7 @@ def test_confirm_review_candidate_requests_settled_download_and_clears_row(
     service = make_service(tmp_path, states={})
     seed_review_candidate(service, track_id="t1", size=2_000_000)
 
-    service.confirm_review_candidate("t1")
+    review_service_for(service).confirm_review_candidate("t1")
 
     assert service.soulseek.request_download_calls == [
         (
@@ -1047,7 +1050,7 @@ def test_confirm_review_candidate_locked_rejection_uses_existing_classification(
     )
     seed_review_candidate(service, track_id="t1", size=2_000_000)
 
-    service.confirm_review_candidate("t1")
+    review_service_for(service).confirm_review_candidate("t1")
     counts = service.poll_downloads()
 
     assert counts.failed == 0
@@ -1090,7 +1093,7 @@ def test_reject_review_candidate_deletes_and_requests_nothing(tmp_path):
     service = make_service(tmp_path, states={})
     seed_review_candidate(service, track_id="t1", size=2_000_000)
 
-    service.reject_review_candidate("t1")
+    review_service_for(service).reject_review_candidate("t1")
 
     assert service.soulseek.request_download_calls == []
 
@@ -1127,7 +1130,7 @@ def test_a_rejected_review_candidate_is_not_suggested_again(tmp_path):
     service.download_playlist("Test")
     assert _review_candidate_count(service) == 1
 
-    service.reject_review_candidate("t1")
+    review_service_for(service).reject_review_candidate("t1")
     result = service.download_playlist("Test")
 
     assert _review_candidate_count(service) == 0
@@ -1147,7 +1150,7 @@ def test_a_rejected_candidate_is_never_auto_requested(tmp_path):
         filename=auto_candidate.filename,
     )
 
-    service.reject_review_candidate("t1")
+    review_service_for(service).reject_review_candidate("t1")
     result = service.download_playlist("Test")
 
     assert result.requested == 0
@@ -1166,7 +1169,7 @@ def test_a_rejection_is_per_track(tmp_path):
         filename=candidate.filename,
     )
 
-    service.reject_review_candidate("t1")
+    review_service_for(service).reject_review_candidate("t1")
     result = service.download_playlist("Test")
 
     assert result.requested == 1
@@ -1176,7 +1179,7 @@ def test_confirm_review_candidate_raises_when_no_candidate_found(tmp_path):
     service = make_service(tmp_path, states={})
 
     with pytest.raises(ReviewCandidateNotFoundError):
-        service.confirm_review_candidate("missing-track")
+        review_service_for(service).confirm_review_candidate("missing-track")
 
 
 def test_confirm_review_candidate_raises_for_legacy_row_without_size(
@@ -1188,7 +1191,7 @@ def test_confirm_review_candidate_raises_for_legacy_row_without_size(
     seed_review_candidate(service, track_id="t1", size=None)
 
     with pytest.raises(ReviewCandidateMissingSizeError):
-        service.confirm_review_candidate("t1")
+        review_service_for(service).confirm_review_candidate("t1")
 
     assert service.soulseek.request_download_calls == []
 
@@ -3098,7 +3101,10 @@ def _seed_upgrade_scenario(tmp_path):
 
 
 def _review_upgrades_in_cli(service: DownloadService) -> None:
-    cli.run(SimpleNamespace(download_service=service), ["downloads", "review"])
+    cli.run(
+        SimpleNamespace(review_service=review_service_for(service)),
+        ["downloads", "review"],
+    )
 
 
 def _ready_for_review_count(service: DownloadService) -> int:
@@ -3197,7 +3203,7 @@ def test_get_upgrade_review_details_resolves_current_file_and_old_path(
     service, lib_root = _seed_upgrade_scenario(tmp_path)
     request_id = _get_ready_for_review_request_id(service)
 
-    details = service.get_upgrade_review_details(request_id)
+    details = review_service_for(service).get_upgrade_review_details(request_id)
 
     assert details is not None
     assert details.track.id == "t1"
@@ -3208,7 +3214,7 @@ def test_get_upgrade_review_details_resolves_current_file_and_old_path(
 def test_get_upgrade_review_details_none_for_missing_request(tmp_path):
     service = make_service(tmp_path, {})
 
-    assert service.get_upgrade_review_details(999) is None
+    assert review_service_for(service).get_upgrade_review_details(999) is None
 
 
 def test_get_pending_upgrade_reviews_lists_ready_for_review_details(tmp_path):
@@ -3217,7 +3223,7 @@ def test_get_pending_upgrade_reviews_lists_ready_for_review_details(tmp_path):
     # does per-row, just fetching every ready_for_review row up front.
     service, lib_root = _seed_upgrade_scenario(tmp_path)
 
-    results = service.get_pending_upgrade_reviews()
+    results = review_service_for(service).get_pending_upgrade_reviews()
 
     assert len(results) == 1
     assert results[0].track.id == "t1"
@@ -3228,7 +3234,7 @@ def test_get_pending_upgrade_reviews_lists_ready_for_review_details(tmp_path):
 def test_get_pending_upgrade_reviews_empty_when_nothing_ready(tmp_path):
     service = make_service(tmp_path, {})
 
-    assert service.get_pending_upgrade_reviews() == []
+    assert review_service_for(service).get_pending_upgrade_reviews() == []
 
 
 def test_apply_upgrade_decision_replace_and_delete_old(tmp_path):
@@ -3237,7 +3243,7 @@ def test_apply_upgrade_decision_replace_and_delete_old(tmp_path):
     service, lib_root = _seed_upgrade_scenario(tmp_path)
     request_id = _get_ready_for_review_request_id(service)
 
-    message = service.apply_upgrade_decision(
+    message = review_service_for(service).apply_upgrade_decision(
         request_id, replace=True, delete_old=True,
     )
 
@@ -3253,7 +3259,7 @@ def test_apply_upgrade_decision_replace_and_keep_old(tmp_path):
     service, lib_root = _seed_upgrade_scenario(tmp_path)
     request_id = _get_ready_for_review_request_id(service)
 
-    message = service.apply_upgrade_decision(
+    message = review_service_for(service).apply_upgrade_decision(
         request_id, replace=True, delete_old=False,
     )
 
@@ -3269,7 +3275,9 @@ def test_apply_upgrade_decision_decline_is_a_no_op(tmp_path):
     service, lib_root = _seed_upgrade_scenario(tmp_path)
     request_id = _get_ready_for_review_request_id(service)
 
-    message = service.apply_upgrade_decision(request_id, replace=False)
+    message = review_service_for(service).apply_upgrade_decision(
+        request_id, replace=False,
+    )
 
     assert message is None
     assert _ready_for_review_count(service) == 1
@@ -3375,11 +3383,12 @@ def _seed_two_upgrade_scenario(tmp_path):
 def test_apply_upgrade_decisions_batch_replaces_all_successfully(tmp_path):
     service, lib_root = _seed_two_upgrade_scenario(tmp_path)
     request_ids = [
-        details.request_id for details in service.get_pending_upgrade_reviews()
+        details.request_id
+        for details in review_service_for(service).get_pending_upgrade_reviews()
     ]
     assert len(request_ids) == 2
 
-    result = service.apply_upgrade_decisions_batch(
+    result = review_service_for(service).apply_upgrade_decisions_batch(
             request_ids,
             delete_old=True,
     )
@@ -3401,11 +3410,12 @@ def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pen
     # visible and pending, not silently dropped or marked done.
     service, lib_root = _seed_two_upgrade_scenario(tmp_path)
     real_request_ids = [
-        details.request_id for details in service.get_pending_upgrade_reviews()
+        details.request_id
+        for details in review_service_for(service).get_pending_upgrade_reviews()
     ]
     request_ids = [*real_request_ids, 999_999]
 
-    result = service.apply_upgrade_decisions_batch(
+    result = review_service_for(service).apply_upgrade_decisions_batch(
             request_ids,
             delete_old=False,
     )
@@ -3425,7 +3435,9 @@ def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pen
 def test_apply_upgrade_decisions_batch_empty_list_is_a_no_op(tmp_path):
     service, _ = _seed_two_upgrade_scenario(tmp_path)
 
-    result = service.apply_upgrade_decisions_batch([], delete_old=False)
+    result = review_service_for(service).apply_upgrade_decisions_batch(
+        [], delete_old=False,
+    )
 
     assert result.replaced == 0
     assert result.failed == 0

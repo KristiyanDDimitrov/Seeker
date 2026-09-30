@@ -391,7 +391,7 @@ def _build_soulseek_file(
 
 
 # Public (not _-prefixed) since item 26 reuses this for
-# DownloadService.confirm_review_candidate — a persisted
+# ReviewService.confirm_review_candidate — a persisted
 # SoulseekReviewCandidate only has a filename, not a SoulseekFile with
 # its own .extension already derived, so it needs the same logic
 # _build_soulseek_file below already uses.
