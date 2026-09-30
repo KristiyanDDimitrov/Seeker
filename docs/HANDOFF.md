@@ -17,7 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted; S12 part 2 adds 10 tests).
 - **`mypy --strict src/`:** clean, 114 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the line appended below after the push.
+- **CI:** close-out `89e7e8d` → run `36722319500`, **success**,
+  `1488 passed, 29 skipped`, branch coverage 91.68 % (floor 89).
 
 ## 2. Where we are
 
@@ -52,7 +53,7 @@ Evidence for both is in HISTORY §152.
   the text from `begin`; with the Dashboard's shared next-step button
   that can show a stale label for up to one 2 s tick (HISTORY §152).
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
-  Coverage margin about 2.5 points (CI 91.63 %, floor 89). deptry: `uv
+  Coverage margin about 2.7 points (CI 91.68 %, floor 89). deptry: `uv
   run --with deptry deptry src`. Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; fakes of `connect_spotify`
   accept `cancel=`; `FakeApplication.restart_slskd` has
