@@ -13,6 +13,11 @@ from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
 from seeker.models.download_result import ManualDownloadResult
 from seeker.models.fingerprint_result import FingerprintResult
+from seeker.models.library_result import (
+    MatchResult,
+    ScanAndMatchResult,
+    ScanResult,
+)
 from seeker.models.local_file import LocalFile
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -83,16 +88,15 @@ class FakeLibraryServiceForCli:
         self.confirm_match_calls: list[str] = []
         self.reject_match_calls: list[str] = []
 
-    def scan_all(self) -> dict:
+    def scan_all(self) -> ScanResult:
         self.scan_all_calls += 1
-        return {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}
+        return ScanResult()
 
-    def scan_and_match(self) -> dict:
+    def scan_and_match(self) -> ScanAndMatchResult:
         self.scan_and_match_calls += 1
-        return {
-            "added": 1, "updated": 0, "removed": 0, "unchanged": 0,
-            "auto": 1, "needs_review": 0, "unmatched": 0,
-        }
+        return ScanAndMatchResult(
+            scan=ScanResult(added=1), match=MatchResult(auto=1),
+        )
 
     def get_needs_review_matches(
             self, playlist_name: str | None = None,
