@@ -4,7 +4,7 @@ import sys
 from seeker import config
 from seeker.application import Application
 from seeker.cli import dispatch, parse_args
-from seeker.soulseek import download_service
+from seeker.soulseek import poller
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> None:
     _configure_logging()
     config.load_env_file()
     if config.debug_poll():
-        download_service.logger.setLevel(logging.DEBUG)
+        poller.logger.setLevel(logging.DEBUG)
 
     # Before Application: constructing it opens the database and
     # migrates config, which `--help` or a mistyped command must not.

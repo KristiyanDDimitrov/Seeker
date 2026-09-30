@@ -65,17 +65,14 @@ def test_single_source_of_truth_for_recognized_rejection_patterns():
     # LOCK_REJECTION_PATTERNS/_is_lock_rejection — now moved down to
     # client.py (below download_service.py in the layering) as
     # RECOGNIZED_REJECTION_PATTERNS/is_recognized_rejection, with
-    # download_service.py importing it rather than keeping a second
-    # copy that could silently diverge.
-    import seeker.soulseek.download_service as download_service_module
+    # the poller (which now does the classifying) importing it rather
+    # than keeping a second copy that could silently diverge.
+    import seeker.soulseek.poller as poller_module
     from seeker.soulseek.client import is_recognized_rejection
 
-    assert not hasattr(download_service_module, "LOCK_REJECTION_PATTERNS")
-    assert not hasattr(download_service_module, "_is_lock_rejection")
-    assert (
-        download_service_module.is_recognized_rejection
-        is is_recognized_rejection
-    )
+    assert not hasattr(poller_module, "LOCK_REJECTION_PATTERNS")
+    assert not hasattr(poller_module, "_is_lock_rejection")
+    assert poller_module.is_recognized_rejection is is_recognized_rejection
 
 
 def test_soulseek_property_raises_clear_error_when_client_is_none(tmp_path):
@@ -1979,7 +1976,7 @@ def test_a_locked_rejection_records_no_failure_reason(tmp_path):
 
 
 def test_an_exhausted_locked_retry_records_why_it_gave_up(tmp_path):
-    from seeker.soulseek.download_service import LOCKED_RETRY_MAX_ATTEMPTS
+    from seeker.soulseek.poller import LOCKED_RETRY_MAX_ATTEMPTS
 
     service = make_service(tmp_path, states={})
     seed_pending_request(
@@ -2407,7 +2404,7 @@ def test_locked_retry_sets_exponential_backoff_after_each_attempt(tmp_path):
 
 
 def test_locked_retry_becomes_unavailable_after_max_attempts(tmp_path):
-    from seeker.soulseek.download_service import LOCKED_RETRY_MAX_ATTEMPTS
+    from seeker.soulseek.poller import LOCKED_RETRY_MAX_ATTEMPTS
 
     service = make_service(
         tmp_path,
@@ -3190,7 +3187,7 @@ def test_cli_upgrade_review_no_leaves_ready_for_review(
 
 
 def _get_ready_for_review_request_id(service: DownloadService) -> int:
-    request = service._get_ready_for_review()[0]
+    request = service.poller._get_ready_for_review()[0]
     assert request.id is not None
     return request.id
 
@@ -3459,7 +3456,7 @@ def test_poll_downloads_traces_each_call_at_debug(tmp_path, caplog):
     service = make_service(tmp_path, {})
 
     with caplog.at_level(
-            "DEBUG", logger="seeker.soulseek.download_service",
+            "DEBUG", logger="seeker.soulseek.poller",
     ):
         service.poll_downloads()
 

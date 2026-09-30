@@ -5,7 +5,7 @@ import platformdirs
 import pytest
 
 from seeker import main
-from seeker.soulseek import download_service
+from seeker.soulseek import poller
 
 
 @pytest.fixture
@@ -25,11 +25,11 @@ def unwritable_data_dir(tmp_path, monkeypatch):
 
     seeker_logger = logging.getLogger("seeker")
     handlers, level = list(seeker_logger.handlers), seeker_logger.level
-    poll_level = download_service.logger.level
+    poll_level = poller.logger.level
     yield locked
     seeker_logger.handlers[:] = handlers
     seeker_logger.setLevel(level)
-    download_service.logger.setLevel(poll_level)
+    poller.logger.setLevel(poll_level)
     locked.chmod(0o700)
 
 
@@ -55,7 +55,7 @@ def test_help_and_usage_errors_never_touch_user_data(
     ("setting", "level"),
     [("1", logging.DEBUG), ("0", logging.NOTSET), (None, logging.NOTSET)],
 )
-def test_seeker_debug_poll_turns_on_the_download_service_trace(
+def test_seeker_debug_poll_turns_on_the_poll_trace(
         setting, level, unwritable_data_dir, monkeypatch,
 ):
     if setting is None:
@@ -67,4 +67,4 @@ def test_seeker_debug_poll_turns_on_the_download_service_trace(
     with pytest.raises(SystemExit):
         main.main()
 
-    assert download_service.logger.level == level
+    assert poller.logger.level == level
