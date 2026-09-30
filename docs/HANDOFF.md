@@ -17,7 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted).
 - **`mypy --strict src/`:** clean, 123 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the follow-up commit that records the close-out's run.
+- **CI:** run `36778006889` on `ea09832` (the close-out commit):
+  success.
 
 ## 2. Where we are
 
