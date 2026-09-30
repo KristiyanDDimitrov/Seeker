@@ -15,6 +15,7 @@ with the window-side machinery they are actually verifying.
 """
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
@@ -299,6 +300,38 @@ def test_download_notifications_skip_events_before_cutoff(qtbot, monkeypatch):
     window._tray._on_download_notification_events(events)
 
     assert messages == []
+
+
+def test_download_notifications_fire_after_seeding_found_no_history(
+        qtbot,
+        monkeypatch,
+):
+    # A fresh install: history is empty when the cutoff is seeded, so
+    # the first download of the session must still notify.
+    _force_tray_available(monkeypatch, True)
+    application = FakeApplication(history_events=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window._tray._last_notified_download_at is not None,
+        timeout=2000,
+    )
+
+    messages = []
+    monkeypatch.setattr(
+        window._tray._tray_icon, "showMessage",
+        lambda title, msg, *a, **k: messages.append(msg),
+    )
+    application.history_service._events = [
+        _make_history_event(
+            occurred_at=datetime.now(UTC).isoformat(), playlist_name="A",
+        ),
+    ]
+
+    window._tray.check_for_download_notifications()
+
+    qtbot.waitUntil(lambda: len(messages) == 1, timeout=2000)
+    assert "A: 1 track downloaded" in messages[0]
 
 
 def test_resolve_tray_icon_path_dev_mode_points_at_real_repo_file():

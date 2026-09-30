@@ -20,6 +20,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -110,7 +111,8 @@ class TrayController:
         # R7.5 — the newest HistoryEvent.occurred_at already accounted
         # for, seeded once (silently, no notification) right after
         # construction so pre-existing history never floods a first
-        # notification the moment the tray icon appears.
+        # notification the moment the tray icon appears. None means the
+        # seed is still in flight; an empty history seeds "now".
         self._last_notified_download_at: str | None = None
         self._last_error_notification_at: float | None = None
 
@@ -425,8 +427,13 @@ class TrayController:
             self,
             events: list[HistoryEvent],
     ) -> None:
-        if events:
-            self._last_notified_download_at = events[0].occurred_at
+        # Same format as `occurred_at` (download_request_repository), so
+        # the string comparison in _on_download_notification_events
+        # orders them correctly.
+        self._last_notified_download_at = (
+            events[0].occurred_at if events
+            else datetime.now(UTC).isoformat()
+        )
 
     def check_for_download_notifications(self) -> None:
         # Roadmap item R7.5 — batched per playlist, built from
@@ -441,9 +448,9 @@ class TrayController:
             return
 
         if self._last_notified_download_at is None:
-            # Seeding hasn't completed yet (or found nothing) — skip
-            # this cycle rather than risk treating all of history as
-            # "new" the moment it does land.
+            # Seeding hasn't completed yet — skip this cycle rather
+            # than risk treating all of history as "new" the moment it
+            # does land.
             return
 
         run_worker(
