@@ -17,8 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted; S12 part 1 adds 9 tests).
 - **`mypy --strict src/`:** clean, 113 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see §151's close-out push; the run id is recorded in the
-  commit after the close-out, if one was needed.
+- **CI:** close-out `76c7264` → run `36712100708`, **success**,
+  `1478 passed, 29 skipped`, branch coverage 91.63 % (floor 89).
 
 ## 2. Where we are
 
