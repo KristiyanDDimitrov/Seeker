@@ -29,6 +29,11 @@ from seeker.models.download_result import (
 )
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import (
+    MatchResult,
+    ScanAndMatchResult,
+    ScanResult,
+)
 from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
@@ -151,12 +156,9 @@ class FakeLibraryService:
     def scan_all(self) -> None:
         self.scan_all_calls += 1
 
-    def scan_and_match(self) -> dict:
+    def scan_and_match(self) -> ScanAndMatchResult:
         self.scan_and_match_calls += 1
-        return {
-            "added": 0, "updated": 0, "removed": 0, "unchanged": 0,
-            "auto": 0, "needs_review": 0, "unmatched": 0,
-        }
+        return ScanAndMatchResult(scan=ScanResult(), match=MatchResult())
 
     def get_needs_review_matches(
             self, playlist_name: str | None = None,
@@ -319,8 +321,8 @@ class FakeDuplicateService:
 
 
 class FakeTrackMatcher:
-    def match_all(self) -> dict:
-        return {"auto": 0, "needs_review": 0, "unmatched": 0}
+    def match_all(self) -> MatchResult:
+        return MatchResult()
 
 
 class FakeHistoryService:

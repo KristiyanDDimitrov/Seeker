@@ -24,6 +24,7 @@ from seeker.matching import (
     evaluate_match,
     resolve_text_source,
 )
+from seeker.models.library_result import MatchResult
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track, is_manual_track_id
 from seeker.models.track_match import TrackMatch
@@ -188,7 +189,7 @@ class TrackMatcher:
             self,
             auto_match_threshold: float | None = None,
             needs_review_threshold: float | None = None,
-    ) -> dict[str, int]:
+    ) -> MatchResult:
         # Resolved once per call, not cached — a threshold changed via
         # Settings takes effect on the very next match_all() run, no
         # restart needed. An explicit argument (if a caller ever passes
@@ -207,7 +208,7 @@ class TrackMatcher:
             else config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
         )
 
-        counts = {"auto": 0, "needs_review": 0, "unmatched": 0}
+        counts = MatchResult()
 
         # Read, compute and write are separate so the fuzzy pass never
         # holds the write lock (HISTORY §142). The write re-checks what
@@ -229,7 +230,7 @@ class TrackMatcher:
             resolved_needs_review_threshold,
         )
         # Tracks already confirmed are left out of `results`.
-        counts["auto"] += len(tracks) - len(results)
+        counts.auto += len(tracks) - len(results)
 
         with self.database.transaction() as connection:
             confirmed = {
@@ -244,7 +245,7 @@ class TrackMatcher:
 
             for result in results:
                 if result.track_id in confirmed:
-                    counts["auto"] += 1
+                    counts.auto += 1
                     continue
 
                 if result.local_file_id is not None and (
@@ -258,12 +259,12 @@ class TrackMatcher:
                     result.match_method = None
                     result.score = None
 
-                counts[result.match_method or "unmatched"] += 1
+                counts.count(result.match_method)
                 self.track_matches.upsert(result, connection)
 
         logger.info(
             "Matching complete. Auto: %d, Needs review: %d, Unmatched: %d.",
-            counts["auto"], counts["needs_review"], counts["unmatched"],
+            counts.auto, counts.needs_review, counts.unmatched,
         )
 
         return counts

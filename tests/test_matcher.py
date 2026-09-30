@@ -14,6 +14,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.library.matcher import TrackMatcher, find_best_match
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
+from seeker.models.library_result import MatchResult
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -89,7 +90,7 @@ def test_close_match_scores_at_least_90_and_lands_in_auto(tmp_path):
 
     counts = matcher.match_all()
 
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=0)
 
     with matcher.database.transaction() as connection:
         stored = matcher.track_matches.get_by_track_id(track.id, connection)
@@ -112,8 +113,8 @@ def test_large_duration_mismatch_is_not_auto_matched(tmp_path):
 
     counts = matcher.match_all()
 
-    assert counts["auto"] == 0
-    assert counts["needs_review"] + counts["unmatched"] == 1
+    assert counts.auto == 0
+    assert counts.needs_review + counts.unmatched == 1
 
 
 def test_wrong_artist_is_excluded_from_candidacy_despite_title_match():
@@ -158,7 +159,7 @@ def test_match_all_unchanged_behavior_with_no_config_or_override(tmp_path):
 
     counts = matcher.match_all()
 
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=0)
 
 
 def test_match_all_explicit_override_reclassifies_a_real_score(tmp_path):
@@ -176,10 +177,10 @@ def test_match_all_explicit_override_reclassifies_a_real_score(tmp_path):
     seed(matcher, track, local_file)
 
     counts_above = matcher.match_all(auto_match_threshold=real_score + 1)
-    assert counts_above["auto"] == 0
+    assert counts_above.auto == 0
 
     counts_at = matcher.match_all(auto_match_threshold=real_score)
-    assert counts_at["auto"] == 1
+    assert counts_at.auto == 1
 
 
 def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
@@ -210,7 +211,7 @@ def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
     seed(matcher, track, local_file)
 
     counts_before = matcher.match_all()
-    assert counts_before["auto"] == 0
+    assert counts_before.auto == 0
 
     # Reassigning the closed-over variable mirrors
     # `self.application._config_store = updated` — the SAME already-
@@ -219,7 +220,7 @@ def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
     config_state = replace(config_state, auto_match_threshold=real_score)
 
     counts_after = matcher.match_all()
-    assert counts_after["auto"] == 1
+    assert counts_after.auto == 1
 
 
 def test_untagged_file_matches_via_filename_alone():
@@ -277,7 +278,7 @@ def test_match_all_never_recomputes_a_confirmed_row(tmp_path):
 
     counts = matcher.match_all()
 
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=0)
 
     with matcher.database.transaction() as connection:
         stored = matcher.track_matches.get_by_track_id(track.id, connection)

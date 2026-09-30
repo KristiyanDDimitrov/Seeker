@@ -15,6 +15,7 @@ from seeker.database.repositories.local_file_repository import (
 )
 from seeker.errors import SeekerError
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import ScanResult
 from seeker.models.local_file import LocalFile
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class LibraryScanner:
         self.local_files = local_files
         self.database = database
 
-    def scan(self, location: LibraryLocation) -> dict[str, int]:
+    def scan(self, location: LibraryLocation) -> ScanResult:
         # location always comes from LibraryLocationRepository here (the
         # only real caller is LibraryService.scan_all, iterating rows
         # already fetched from the DB), so .id is always populated —
@@ -121,19 +122,14 @@ class LibraryScanner:
 
         removed = len(removed_ids)
 
-        summary = {
-            "added": added,
-            "updated": updated,
-            "removed": removed,
-            "unchanged": unchanged,
-        }
-
         logger.info(
             "Added: %d, Updated: %d, Removed: %d, Unchanged: %d.",
             added, updated, removed, unchanged,
         )
 
-        return summary
+        return ScanResult(
+            added=added, updated=updated, removed=removed, unchanged=unchanged,
+        )
 
     def _write(self, local_files: list[LocalFile]) -> None:
         if not local_files:

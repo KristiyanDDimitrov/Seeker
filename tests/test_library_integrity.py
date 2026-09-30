@@ -26,6 +26,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.service import (
     LibraryService,
 )
+from seeker.models.library_result import MatchResult
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -126,8 +127,8 @@ def test_a_confirmed_match_whose_file_moved_away_becomes_unmatched(
     # unmatched track.
     assert row is not None
     assert (row[0], row[1], row[3]) == (None, None, None)
-    assert result["auto"] == 0
-    assert result["unmatched"] == 1
+    assert result.match.auto == 0
+    assert result.match.unmatched == 1
     assert unmatched_ids(matcher) == ["t1"]
 
 
@@ -221,7 +222,7 @@ def test_match_all_re_evaluates_a_confirmed_row_that_lost_its_file(
 
     [file_id] = local_file_ids(matcher)
     row = match_row(matcher)
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=0)
     assert row is not None
     assert (row[0], row[1], row[3]) == (file_id, "auto", None)
 

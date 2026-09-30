@@ -63,7 +63,7 @@ def test_scan_skips_appledouble_sidecar_files(tmp_path):
     scanner = LibraryScanner(local_files, database)
     summary = scanner.scan(location)
 
-    assert summary["added"] == 1
+    assert summary.added == 1
 
     with database.transaction() as connection:
         scanned = local_files.get_all(connection)
@@ -103,7 +103,7 @@ def test_scan_indexes_aiff_files(tmp_path):
     scanner = LibraryScanner(local_files, database)
     summary = scanner.scan(location)
 
-    assert summary["added"] == 2
+    assert summary.added == 2
 
     with database.transaction() as connection:
         scanned = local_files.get_all(connection)

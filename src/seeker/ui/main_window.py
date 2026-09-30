@@ -47,6 +47,7 @@ from seeker.application import Application
 from seeker.models.download_request import DownloadStatus
 from seeker.models.download_result import PlaylistDownloadResult
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import MatchResult, ScanAndMatchResult
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.ui import help_text, plain_text, theme
@@ -1549,13 +1550,14 @@ class MainWindow(QMainWindow):
             "Scanning library, then matching tracks…"
         )
 
-    def _on_scan_and_match_finished(self, result: dict[str, int]) -> None:
+    def _on_scan_and_match_finished(self, result: ScanAndMatchResult) -> None:
+        scan, match = result.scan, result.match
         self._dashboard_page.feedback.show_outcome(
-            f"Scanned: {result['added']} added, {result['updated']} "
-            f"updated, {result['removed']} removed. "
-            f"Matched: {result['auto']} auto, "
-            f"{result['needs_review']} needs review, "
-            f"{result['unmatched']} unmatched.",
+            f"Scanned: {scan.added} added, {scan.updated} "
+            f"updated, {scan.removed} removed. "
+            f"Matched: {match.auto} auto, "
+            f"{match.needs_review} needs review, "
+            f"{match.unmatched} unmatched.",
             kind="success",
         )
         self._dashboard_page._poll_selected_playlist()
@@ -1568,11 +1570,11 @@ class MainWindow(QMainWindow):
             on_error=self._dashboard_page.feedback.show_error,
         )
 
-    def _on_match_finished(self, result: dict[str, int]) -> None:
+    def _on_match_finished(self, result: MatchResult) -> None:
         self._dashboard_page.feedback.show_outcome(
-            f"Matched: {result['auto']} auto, "
-            f"{result['needs_review']} needs review, "
-            f"{result['unmatched']} unmatched.",
+            f"Matched: {result.auto} auto, "
+            f"{result.needs_review} needs review, "
+            f"{result.unmatched} unmatched.",
             kind="success",
         )
         self._dashboard_page._poll_selected_playlist()

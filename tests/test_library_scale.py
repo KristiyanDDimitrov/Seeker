@@ -18,6 +18,7 @@ from seeker.database.repositories.local_file_repository import (
 )
 from seeker.library.scanner import LibraryScanner, index_single_file
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import MatchResult
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track
 from test_library_integrity import (
@@ -204,7 +205,7 @@ def test_scan_keeps_a_row_another_writer_indexes_mid_scan(
 
     summary = scanner.scan(location)
 
-    assert summary["removed"] == 0
+    assert summary.removed == 0
     assert indexed_paths(database, local_files) == ["a.mp3", "zz-new.mp3"]
 
 
@@ -291,7 +292,7 @@ def test_match_all_keeps_a_confirmation_made_while_it_computes(
     counts = matcher.match_all()
 
     assert match_row(matcher)[3] is not None
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 1}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=1)
 
 
 def test_match_all_survives_a_file_deleted_while_it_computes(
@@ -311,7 +312,7 @@ def test_match_all_survives_a_file_deleted_while_it_computes(
 
     counts = matcher.match_all()
 
-    assert counts == {"auto": 0, "needs_review": 0, "unmatched": 1}
+    assert counts == MatchResult(auto=0, needs_review=0, unmatched=1)
     assert unmatched_ids(matcher) == ["t1"]
 
 

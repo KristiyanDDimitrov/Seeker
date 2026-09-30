@@ -24,6 +24,7 @@ from seeker.errors import (
 from seeker.library.matcher import TrackMatcher
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import ScanAndMatchResult, ScanResult
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 
@@ -294,8 +295,8 @@ class LibraryService:
 
         return self.playlists
 
-    def scan_all(self) -> dict[str, int]:
-        totals = {"added": 0, "updated": 0, "removed": 0, "unchanged": 0}
+    def scan_all(self) -> ScanResult:
+        totals = ScanResult()
 
         with self.database.transaction() as connection:
             locations = self.locations.get_all(connection)
@@ -313,22 +314,14 @@ class LibraryService:
                 )
                 continue
 
-            summary = self.scanner.scan(location)
-
-            for key in totals:
-                totals[key] += summary[key]
+            totals += self.scanner.scan(location)
 
         return totals
 
-    def scan_and_match(self) -> dict[str, int]:
-        """Chains a full scan into a match pass in one call — the
-        guided Dashboard "Scan library" CTA used to call scan_all()
-        alone, leaving newly-scanned files with no track_matches row
-        at all until a separate, non-obvious "Re-match library" click
-        (roadmap item 56). Combines both dicts into one result; a key
-        collision isn't possible since scan_all()'s keys
-        (added/updated/removed/unchanged) and match_all()'s
-        (auto/needs_review/unmatched) are disjoint by construction.
+    def scan_and_match(self) -> ScanAndMatchResult:
+        """Chains a full scan into a match pass in one call, so newly
+        scanned files never sit without a track_matches row until a
+        separate "Re-match library" click.
         """
         if self.track_matcher is None:
             raise RuntimeError(
@@ -336,10 +329,10 @@ class LibraryService:
                 "LibraryService was constructed without one."
             )
 
-        scan_totals = self.scan_all()
-        match_counts = self.track_matcher.match_all()
+        scan = self.scan_all()
+        match = self.track_matcher.match_all()
 
-        return {**scan_totals, **match_counts}
+        return ScanAndMatchResult(scan=scan, match=match)
 
     def get_needs_review_matches(
             self,

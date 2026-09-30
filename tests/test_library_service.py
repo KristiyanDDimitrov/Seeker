@@ -23,6 +23,7 @@ from seeker.library.service import (
     LibraryLocationPathAlreadyRegisteredError,
     LibraryService,
 )
+from seeker.models.library_result import MatchResult, ScanResult
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -333,14 +334,14 @@ def test_scan_all_returns_aggregated_totals_across_locations(tmp_path):
 
     totals = service.scan_all()
 
-    assert totals == {"added": 3, "updated": 0, "removed": 0, "unchanged": 0}
+    assert totals == ScanResult(added=3, updated=0, removed=0, unchanged=0)
 
     # A second scan with nothing changed on disk reports everything as
     # unchanged, still aggregated across both locations.
     totals_again = service.scan_all()
-    assert totals_again == {
-        "added": 0, "updated": 0, "removed": 0, "unchanged": 3,
-    }
+    assert totals_again == ScanResult(
+        added=0, updated=0, removed=0, unchanged=3,
+    )
 
 
 def test_scan_and_match_requires_a_track_matcher(tmp_path):
@@ -375,14 +376,11 @@ def test_scan_and_match_chains_scan_then_match_in_one_call(tmp_path):
 
     result = service.scan_and_match()
 
-    # scan_all()'s keys and match_all()'s keys, combined in one dict —
-    # this is the real regression this chaining fixes: a plain scan_all()
-    # alone would leave "auto"/"needs_review"/"unmatched" entirely absent
-    # (and the track unmatched) until a separate match_all() call.
-    assert result["added"] == 1
-    assert result["auto"] == 1
-    assert result["needs_review"] == 0
-    assert result["unmatched"] == 0
+    # The match half is the regression this chaining fixes: a plain
+    # scan_all() alone would leave the track unmatched until a separate
+    # match_all() call.
+    assert result.scan.added == 1
+    assert result.match == MatchResult(auto=1, needs_review=0, unmatched=0)
 
     with service.database.transaction() as connection:
         stored = service.track_matcher.track_matches.get_by_track_id(
@@ -407,7 +405,7 @@ def test_get_needs_review_matches_returns_real_pairing_context(tmp_path):
     seed_needs_review_track_and_file(service)
 
     counts = service.track_matcher.match_all()
-    assert counts["needs_review"] == 1
+    assert counts.needs_review == 1
 
     results = service.get_needs_review_matches()
 
@@ -482,7 +480,7 @@ def test_confirm_match_stamps_confirmed_at_without_a_100_score_sentinel(
 
     # And it now genuinely survives a re-match, end to end.
     counts = service.track_matcher.match_all()
-    assert counts == {"auto": 1, "needs_review": 0, "unmatched": 0}
+    assert counts == MatchResult(auto=1, needs_review=0, unmatched=0)
 
 
 def _add_exact_file(service: LibraryService) -> int:
@@ -543,7 +541,7 @@ def test_a_rejected_match_is_not_suggested_again(tmp_path):
     service.reject_match("track1")
     counts = service.track_matcher.match_all()
 
-    assert counts == {"auto": 0, "needs_review": 0, "unmatched": 1}
+    assert counts == MatchResult(auto=0, needs_review=0, unmatched=1)
     assert _stored_match(service, "track1").local_file_id is None
 
 
@@ -557,7 +555,7 @@ def test_a_rejected_match_falls_through_to_the_next_best_file(tmp_path):
     service.reject_match("track1")
     counts = service.track_matcher.match_all()
 
-    assert counts == {"auto": 0, "needs_review": 1, "unmatched": 0}
+    assert counts == MatchResult(auto=0, needs_review=1, unmatched=0)
     fallback = _stored_match(service, "track1")
     assert fallback.local_file_id != exact_id
     assert fallback.match_method == "needs_review"
