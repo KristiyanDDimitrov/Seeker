@@ -10,102 +10,74 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S12 part 1 close-out commit (HISTORY §151, CLAUDE.md,
+- **HEAD:** the S12 part 2 close-out commit (HISTORY §152, CLAUDE.md,
   session plan, this handoff). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1506 passed, 1 skipped, 6 warnings`
-  (X9 Pro mounted; S12 part 1 adds 9 tests).
-- **`mypy --strict src/`:** clean, 113 files. **`ruff check src
+- **Local pytest** (2026-09-30): `1516 passed, 1 skipped, 6 warnings`
+  (X9 Pro mounted; S12 part 2 adds 10 tests).
+- **`mypy --strict src/`:** clean, 114 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** close-out `76c7264` → run `36712100708`, **success**,
-  `1478 passed, 29 skipped`, branch coverage 91.63 % (floor 89).
+- **CI:** see the line appended below after the push.
 
 ## 2. Where we are
 
-S1–S11 ticked. **S12 stopped at its split point (after §12.2).** Done:
-§12.1, §12.2, §12.4. **Next: S12 part 2, §12.3 (UI) and §12.5
-(first-session download notifications).** S12 stays unticked until
-then.
+S1–S12 ticked. **Next: S13, one exception hierarchy; typed download
+states (§13).** Phase F starts: behaviour-neutral refactors only.
 
-## 3. Session report (S12 part 1)
+## 3. Session report (S12 part 2)
 
-Evidence for all of these is in HISTORY §151.
-- `ab23d51` §12.1–§12.2: `SlskdUnreachableError`; the poll aborts on a
-  transport error; no locked-retry budget spent.
-- `95a344a` §12.4: `seeker downloads status` prints the sentence and
-  exits 1.
-- `fa4a1e7` §12.2: `Application.restart_slskd()`, refusing through
-  `SlskdStartRefusedError`.
-- Close-out: §151 (opens `docs/history/151-180.md`), CLAUDE.md, plan,
-  this handoff.
+Evidence for both is in HISTORY §152.
+- `1b86ebc` §12.5: an empty history seeds the tray's download cutoff
+  to now, so a fresh install's first download notifies.
+- `c9014cf` §12.3: `ui/slskd_status.py` (`SlskdStatus` on
+  `PageContext`, `start_slskd` helper); Dashboard next step first,
+  Downloads' outage notice, tray once per outage, cleared on the first
+  good poll.
 
 ## 4. Key context
 
-- **Plan for §12.3.** `run_worker`'s `on_error` receives only text, so
-  do not match on the message. In `MainWindow._trigger_backend_poll`,
-  run a worker closure that calls `poll_downloads` and *returns* the
-  caught `SlskdUnreachableError` (or its message). `on_finished` then
-  branches on it. Shared outage state belongs on `PageContext` (a
-  small QObject with `changed`, like `PlaylistSelection`): MainWindow
-  writes it, Dashboard and Downloads read it. Its methods should
-  report the edge (returns True only on up→down / down→up) so the tray
-  notifies once per outage.
-- **Dashboard:** add a `_NextStepFacts` field (say
-  `slskd_unreachable_message: str | None`) and check it **first** in
-  `_decide_next_step`. Add an action key (`"start_slskd"`) to
-  `_on_next_step_action`. Connect the status's `changed` signal to
-  `_poll_next_step` so the notice appears at once, not on the next 2 s
-  tick.
-- **Downloads** has no notice or status label yet. Give it a
-  persistent outage `InlineNotice` driven by the status, plus a
-  `FeedbackTarget` (`status_label` + `notice`) for the Start slskd
-  outcome. The action reports on the page it was started from (the
-  CLAUDE.md rule).
-- **Start slskd** runs `application.restart_slskd` on a worker. Its
-  `SlskdStartRefusedError` / `SlskdBringUpError` messages are already
-  sentences, and `describe_error` keeps them.
-- **The old `on_poll_error` tray text** ("Seeker couldn't reach slskd
-  — check that it's running.") now fires during an outage, still
-  rate-limited by `TrayController.notify_error`'s cooldown. §12.3
-  replaces it with the edge-triggered notice and leaves `on_poll_error`
-  for errors that are not outages (`describe_error` text).
-- **§12.5:** `TrayController.seed_notification_cutoff` /
-  `check_for_download_notifications` in `ui/tray.py`. The brief
-  already has the fix; keep "seeding in flight" distinct from
-  "seeded, empty".
+- **For S13's hierarchy:** `SlskdUnreachableError`
+  (`soulseek/client.py`), `SlskdStartRefusedError` and
+  `SlskdBringUpError` (`docker_setup.py`), three
+  `LibraryLocationNotFoundError`s and `AuthorizationCancelledError`
+  all subclass `RuntimeError` today. `cli.run`'s caught tuple becomes
+  `SeekerError` there. `MainWindow._trigger_backend_poll`'s `poll()`
+  closure catches `SlskdUnreachableError` by type; keep it narrower
+  than any new base class.
+- **Outage state has one writer.** Only `_trigger_backend_poll` calls
+  `SlskdStatus.mark_*`. A second writer (say, a health check) would
+  need to keep the edge semantics, or the tray would notify twice.
+- **`InlineNotice.action_button` is public now**, so a notice's action
+  can be handed to `run_busy_worker`. `BusyActionRegistry.end` restores
+  the text from `begin`; with the Dashboard's shared next-step button
+  that can show a stale label for up to one 2 s tick (HISTORY §152).
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
-  Coverage margin about 2.5 points (CI 91.59 %, floor 89). deptry: `uv
+  Coverage margin about 2.5 points (CI 91.63 %, floor 89). deptry: `uv
   run --with deptry deptry src`. Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; fakes of `connect_spotify`
-  accept `cancel=`; three `LibraryLocationNotFoundError`s,
-  `AuthorizationCancelledError` and now `SlskdUnreachableError` /
-  `SlskdStartRefusedError` go into S13's hierarchy (and `cli.run`'s
-  caught tuple becomes `SeekerError` there); never touch slskd or real
-  data; `config.*()` are functions (tests use `monkeypatch.setenv`).
+  accept `cancel=`; `FakeApplication.restart_slskd` has
+  `restart_slskd_calls`/`restart_slskd_error`; never touch slskd or
+  real data; `config.*()` are functions (tests use
+  `monkeypatch.setenv`).
 - **zsh:** `echo ======` fails (use `'---'`); BSD `sed` lacks `\b`.
-- **Tooling:** the auto-mode Bash safety check failed transiently
-  several times this session; the Read tool worked throughout.
 
 ## 5. Decisions made
 
-- **A transport error to slskd is an outage, including a timeout.**
-  One refusal aborts the whole poll: every later request would fail the
-  same way. Promoted to CLAUDE.md.
-- **Beyond the brief:** a locked retry no longer spends its budget when
-  slskd itself is unreachable. Otherwise, an outage longer than the
-  backoff sum could mark locked files `unavailable`.
-- **`restart_slskd` refuses rather than guesses** when the share cannot
-  be read, when the container is not Seeker's (`is_self_managed`), when
-  Docker is down, or when no login is saved. It does not open Docker
-  Desktop. Settings → Connection stays the place that asks which
-  location to share. Promoted to CLAUDE.md (the bring-up bullet).
-- **Stopped at the split point** because of context budget. §12.4 (a
-  one-line catch) was pulled forward, since without it the §12.2 change
-  would print a traceback in the CLI.
-- **Skills:** `observability-designer` again targets server fleets;
-  what applied was alert discipline: edge-triggered, auto-resolving,
-  actionable (a Start slskd action), with dependent failures suppressed
-  (no per-request "failed" during an outage).
+- **The outage notification bypasses `notify_error`'s cooldown**
+  (`TrayController.notify_outage`): the edge already bounds it to once
+  per outage, and a cooldown shared with other errors could swallow it.
+  It still honours "notify errors".
+- **No tray notification on recovery.** The brief asks for "again only
+  after a recovery"; read as re-arming. The notices clearing is the
+  recovery signal.
+- **Start slskd does not clear the outage.** Its success message says
+  slskd is starting; the next good poll (at most 20 s) clears it,
+  since the container answers only after Compose returns.
+- **Other poll errors now show `describe_error` text** in the tray,
+  not the fixed "couldn't reach slskd" sentence, which would be wrong
+  for them.
+- Promoted to CLAUDE.md: the `SlskdStatus` sentence on the outage
+  bullet, and `slskd_status.py` in the layout tree.
 
 ## 6. Blockers
 
@@ -113,10 +85,7 @@ None.
 
 ## 7. Files in progress
 
-None mid-edit. S12 part 2 is untouched: `ui/main_window.py`
-(`_trigger_backend_poll`), `ui/pages/context.py`,
-`ui/pages/dashboard_page.py`, `ui/pages/downloads_page.py` and
-`ui/tray.py` are all still at HEAD.
+None.
 
 ## 8. Waiting on Kris
 
@@ -125,7 +94,6 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 Private vulnerability reporting: **done** (confirmed enabled).
 
 **Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
-S12 changes no schema.
 
 **Kris's own decision (carried):** keep or discard `./slskd-data`
 (HISTORY §140).
@@ -134,9 +102,10 @@ S12 changes no schema.
 drift Scan, S8's Reject-then-Scan and Downloads failure reason, S9
 part 2's mistyped Client ID → Cancel → correct one, S11's Dashboard
 Scan summary / Docker-stopped Download message / Qt warning in
-`seeker.log` / app menu "Seeker". **New (S12):** with slskd stopped,
+`seeker.log` / app menu "Seeker". **S12:** with slskd stopped,
 `uv run seeker downloads status` prints the outage sentence and exits
-1 (`echo $?`).
+1; in the app, Dashboard and Downloads show it with Start slskd, the
+tray notifies once, and a started container clears it within ~20 s.
 
 ## 9. Open questions
 

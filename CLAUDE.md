@@ -71,7 +71,8 @@ src/seeker/
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       formatting.py, download_eta.py, upload_eta.py,
-│       library_location_picker.py, plain_text.py
+│       library_location_picker.py, plain_text.py,
+│       slskd_status.py (shared outage state + Start slskd)
 ├── models/                     # dataclasses — playlist, track, track_match,
 │                              #   local_file, library_location, soulseek_file,
 │                              #   download_request, soulseek_review_candidate,
@@ -379,7 +380,11 @@ Each links to the HISTORY entry where the full investigation lives;
   row changed, no locked-retry budget spent (a retry re-raises the
   transport error before `_advance_locked_retry`). A new slskd call
   inside the poll keeps that order: `except httpx.TransportError`
-  ahead of `except Exception`. [HISTORY §151](docs/history/151-180.md#151)
+  ahead of `except Exception`. The UI reads it from `SlskdStatus`
+  (`PageContext.slskd_status`), written only by the backend poll and
+  edge-triggered: the tray notifies once per outage, the first good
+  poll clears every notice. [HISTORY §151](docs/history/151-180.md#151),
+  [§152](docs/history/151-180.md#152)
 - **Every slskd URL path segment is `quote(…, safe="")`d** — a
   username is chosen by a remote peer, and a raw `?`, `#` or `../`
   reaches a different endpoint. [HISTORY §146](docs/history/121-150.md#146)
