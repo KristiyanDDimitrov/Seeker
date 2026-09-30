@@ -17,7 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted; S13 adds 12 tests).
 - **`mypy --strict src/`:** clean, 115 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the "Handoff: record S13's close-out CI run" commit.
+- **CI:** close-out `c1c42e7` → run `36732283322`, **success**,
+  `1500 passed, 29 skipped`, branch coverage 91.70 % (floor 89).
 
 ## 2. Where we are
 
