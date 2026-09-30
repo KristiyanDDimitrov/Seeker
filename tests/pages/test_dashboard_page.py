@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
+from seeker.models.tag_result import TagResult
 from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
@@ -38,7 +39,6 @@ from seeker.models.track_status import (
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import (
-    _EMPTY_TAG_RESULT,
     FakeApplication,
     _make_track,
     _make_track_status,
@@ -1088,14 +1088,13 @@ def test_failed_refresh_playlists_error_stays_readable(qtbot):
 
 
 def test_tag_from_a_dashboard_row_reports_on_the_dashboard(qtbot):
-    tag_result = {
-        **_EMPTY_TAG_RESULT,
-        "failed": 1,
-        "details": [{
+    tag_result = TagResult(
+        failed=1,
+        details=[{
             "track_id": "t1", "reason": "failed",
             "message": "File not found: /music/a.mp3",
         }],
-    }
+    )
     application = FakeApplication(tag_result=tag_result)
     window = MainWindow(application)
     qtbot.addWidget(window)

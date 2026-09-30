@@ -39,6 +39,7 @@ from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.models.track_status import (
     DOWNLOADING,
@@ -547,33 +548,6 @@ class FakeDownloadService:
         return self._download_manual_result
 
 
-_EMPTY_TAG_RESULT = {
-    "tagged": 0,
-    "tagged_without_art": 0,
-    "tagged_art_rarely_supported_format": 0,
-    "skipped_no_match": 0,
-    "skipped_format_unsupported": 0,
-    "skipped_already_tagged": 0,
-    "skipped_already_analyzed": 0,
-    "failed": 0,
-    "details": [],
-}
-
-
-_EMPTY_FIX_ART_RESULT = {
-    "fixed": 0,
-    "fixed_wav_rarely_supported": 0,
-    "already_correct": 0,
-    "no_url": 0,
-    "download_failed": 0,
-    "embed_failed": 0,
-    "format_unsupported": 0,
-    "skipped_no_match": 0,
-    "failed": 0,
-    "details": [],
-}
-
-
 class FakeMetadataService:
     def __init__(
             self,
@@ -582,8 +556,8 @@ class FakeMetadataService:
             rename_plans: list | None = None,
             rename_result=None,
     ):
-        self._tag_result = tag_result or dict(_EMPTY_TAG_RESULT)
-        self._fix_art_result = fix_art_result or dict(_EMPTY_FIX_ART_RESULT)
+        self._tag_result = tag_result or TagResult()
+        self._fix_art_result = fix_art_result or FixArtResult()
         self._rename_plans = rename_plans or []
         self._rename_result = rename_result
         self.tag_tracks_calls: list[

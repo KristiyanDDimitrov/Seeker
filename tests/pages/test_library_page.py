@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track_status import IN_LIBRARY
 from seeker.ui import help_text
 from seeker.ui.dialogs import RenamePreviewDialog
@@ -302,16 +303,16 @@ def test_results_panel_renders_summary_and_expandable_details(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    result = {
-        "tagged": 2,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 1,
-        "skipped_format_unsupported": 1,
-        "skipped_already_tagged": 0,
-        "skipped_already_analyzed": 0,
-        "failed": 1,
-        "details": [
+    result = TagResult(
+        tagged=2,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=1,
+        skipped_format_unsupported=1,
+        skipped_already_tagged=0,
+        skipped_already_analyzed=0,
+        failed=1,
+        details=[
             {
                 "track_id": "t1",
                 "reason": "skipped_no_match",
@@ -323,7 +324,7 @@ def test_results_panel_renders_summary_and_expandable_details(qtbot):
                 "message": "Artist B - Title B: disk read error",
             },
         ],
-    }
+    )
 
     window._library_page._tagging_panel._render_tag_result(result)
 
@@ -353,23 +354,23 @@ def test_results_panel_failed_tag_row_offers_a_retry_that_re_tags(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    result = {
-        "tagged": 0,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 0,
-        "skipped_already_analyzed": 0,
-        "failed": 1,
-        "details": [
+    result = TagResult(
+        tagged=0,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=0,
+        skipped_already_analyzed=0,
+        failed=1,
+        details=[
             {
                 "track_id": "t2",
                 "reason": "failed",
                 "message": "Artist B - Title B: disk read error",
             },
         ],
-    }
+    )
     window._library_page._tagging_panel._render_tag_result(result)
 
     results_panel = window._library_page._tagging_panel.results_panel
@@ -398,23 +399,23 @@ def test_results_panel_non_failed_detail_has_no_retry_button(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    result = {
-        "tagged": 0,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 1,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 0,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [
+    result = TagResult(
+        tagged=0,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=1,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=0,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[
             {
                 "track_id": "t1",
                 "reason": "skipped_no_match",
                 "message": "Artist A - Title A: no matched local file",
             },
         ],
-    }
+    )
     window._library_page._tagging_panel._render_tag_result(result)
 
     results_panel = window._library_page._tagging_panel.results_panel
@@ -430,23 +431,23 @@ def test_tag_result_notice_reports_tracks_without_art(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._library_page._tagging_panel._render_tag_result({
-        "tagged": 3,
-        "tagged_without_art": 2,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 0,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [
+    window._library_page._tagging_panel._render_tag_result(TagResult(
+        tagged=3,
+        tagged_without_art=2,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=0,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[
             {
                 "track_id": "t1",
                 "reason": "tagged_without_art_no_url",
                 "message": "Artist A - Title A: no album art URL stored",
             },
         ],
-    })
+    ))
 
     assert not window._library_page.notice.isHidden()
     assert "2 without cover art" in window._library_page.notice.text()
@@ -457,17 +458,17 @@ def test_tag_result_notice_shows_success_when_everything_worked(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._library_page._tagging_panel._render_tag_result({
-        "tagged": 5,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 0,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [],
-    })
+    window._library_page._tagging_panel._render_tag_result(TagResult(
+        tagged=5,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=0,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[],
+    ))
 
     assert not window._library_page.notice.isHidden()
     assert "Tagged 5 tracks" in window._library_page.notice.text()
@@ -485,23 +486,23 @@ def test_tag_result_notice_reports_already_tagged_with_nothing_else_done(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._library_page._tagging_panel._render_tag_result({
-        "tagged": 0,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 4,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [
+    window._library_page._tagging_panel._render_tag_result(TagResult(
+        tagged=0,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=4,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[
             {
                 "track_id": "t1",
                 "reason": "skipped_already_tagged",
                 "message": "Artist A - Title A: already tagged",
             },
         ],
-    })
+    ))
 
     assert not window._library_page.notice.isHidden()
     text = window._library_page.notice.text()
@@ -527,17 +528,17 @@ def test_tag_result_notice_mentions_unchecked_art_even_on_a_mixed_run(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._library_page._tagging_panel._render_tag_result({
-        "tagged": 2,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 3,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [],
-    })
+    window._library_page._tagging_panel._render_tag_result(TagResult(
+        tagged=2,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=3,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[],
+    ))
 
     assert not window._library_page.notice.isHidden()
     text = window._library_page.notice.text()
@@ -555,23 +556,23 @@ def test_tag_result_notice_fix_art_action_triggers_fix_missing_art(
     qtbot.addWidget(window)
     _select_first_playlist(window, qtbot)
 
-    window._library_page._tagging_panel._render_tag_result({
-        "tagged": 0,
-        "tagged_without_art": 0,
-        "tagged_art_rarely_supported_format": 0,
-        "skipped_no_match": 0,
-        "skipped_format_unsupported": 0,
-        "skipped_already_tagged": 1,
-        "skipped_already_analyzed": 0,
-        "failed": 0,
-        "details": [
+    window._library_page._tagging_panel._render_tag_result(TagResult(
+        tagged=0,
+        tagged_without_art=0,
+        tagged_art_rarely_supported_format=0,
+        skipped_no_match=0,
+        skipped_format_unsupported=0,
+        skipped_already_tagged=1,
+        skipped_already_analyzed=0,
+        failed=0,
+        details=[
             {
                 "track_id": "t1",
                 "reason": "skipped_already_tagged",
                 "message": "Artist A - Title A: already tagged",
             },
         ],
-    })
+    ))
 
     window._library_page.notice._action_button.click()
 
@@ -593,24 +594,24 @@ def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
     playlists = [Playlist(id="p1", name="Test", track_count=1)]
     application = FakeApplication(
         playlists=playlists,
-        fix_art_result={
-            "fixed": 3,
-            "fixed_wav_rarely_supported": 0,
-            "already_correct": 2,
-            "no_url": 1,
-            "download_failed": 0,
-            "embed_failed": 0,
-            "format_unsupported": 0,
-            "skipped_no_match": 0,
-            "failed": 0,
-            "details": [
+        fix_art_result=FixArtResult(
+            fixed=3,
+            fixed_wav_rarely_supported=0,
+            already_correct=2,
+            no_url=1,
+            download_failed=0,
+            embed_failed=0,
+            format_unsupported=0,
+            skipped_no_match=0,
+            failed=0,
+            details=[
                 {
                     "track_id": "t1",
                     "reason": "no_url",
                     "message": "Artist A - Title A: no album art URL stored",
                 },
             ],
-        },
+        ),
     )
     window = MainWindow(application)
     qtbot.addWidget(window)

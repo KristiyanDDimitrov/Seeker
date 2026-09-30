@@ -14,6 +14,7 @@ matching.py's two independent copies once did (see CLAUDE.md).
 
 from typing import Any
 
+from seeker.library.metadata_service import RenameResult
 from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
@@ -21,6 +22,7 @@ from seeker.models.download_result import (
 )
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.spotify_sync import PlaylistRefreshResult
+from seeker.models.tag_result import FixArtResult, TagResult
 
 # --- Persistent tab/section subtitles (not hover-dependent) --------------
 # One line under each tab's own header, aimed at someone who never reads
@@ -354,9 +356,9 @@ RENAME_PREVIEW_SECTION_NOT_AUTO_MATCHED = "Not auto-matched (skipped):"
 RENAME_PREVIEW_SECTION_REFUSED = "Refused (no local file / error):"
 
 
-def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
+def format_rename_result_message(result: RenameResult) -> tuple[str, str]:
     """Roadmap item 67 (Phase 6.4) — mirrors format_fix_art_result_
-    message's own shape. `counts` mirrors RenameResult's own fields.
+    message's own shape.
 
     Roadmap item 76 (P2, 2.5) — `collisions` (as of the 2.3 fix in
     apply_renames) now literally means "the real written name differed
@@ -365,9 +367,9 @@ def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
     easy-to-miss capped results panel, is exactly the honest reporting
     this item asks for.
     """
-    renamed = counts["renamed"]
-    collisions = counts["collisions"]
-    failed = counts["failed"]
+    renamed = result.renamed
+    collisions = result.collisions
+    failed = result.failed
 
     message = f"Renamed {renamed} file{'s' if renamed != 1 else ''}"
 
@@ -391,18 +393,18 @@ def format_rename_result_message(counts: dict[str, int]) -> tuple[str, str]:
     return "Nothing was renamed.", "info"
 
 
-def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
+def format_fix_art_result_message(result: FixArtResult) -> tuple[str, str]:
     """Roadmap item 66 (Phase 5.2) — mirrors format_tag_result_notice's
     own shape for the narrower "Fix missing cover art" action."""
-    fixed = result["fixed"]
+    fixed = result.fixed
     # Roadmap item 75 (P6, 6.4) — art WAS embedded here, so this is
     # deliberately NOT folded into `failed` below.
-    fixed_wav = result.get("fixed_wav_rarely_supported", 0)
-    already_correct = result["already_correct"]
-    no_url = result["no_url"]
+    fixed_wav = result.fixed_wav_rarely_supported
+    already_correct = result.already_correct
+    no_url = result.no_url
     failed = (
-        result["download_failed"] + result["embed_failed"]
-        + result["format_unsupported"] + result["failed"]
+        result.download_failed + result.embed_failed
+        + result.format_unsupported + result.failed
     )
 
     message = f"Fixed art for {fixed} track{'s' if fixed != 1 else ''}"
@@ -443,7 +445,7 @@ def format_fix_art_result_message(result: dict[str, Any]) -> tuple[str, str]:
     return message, "info"
 
 
-def format_tag_result_notice(result: dict[str, Any]) -> tuple[str, str]:
+def format_tag_result_notice(result: TagResult) -> tuple[str, str]:
     """Roadmap item 66 (Phase 5.1) — the real fix for a fully-already-
     tagged re-run producing NO prominent notice at all (only the small,
     easy-to-miss results panel): every real outcome now gets a message,
@@ -460,10 +462,10 @@ def format_tag_result_notice(result: dict[str, Any]) -> tuple[str, str]:
     ones at all) — not just the "everything was already tagged"
     all-skip case this function handled before.
     """
-    tagged = result["tagged"]
-    without_art = result["tagged_without_art"]
-    failed = result["failed"]
-    already_tagged = result.get("skipped_already_tagged", 0)
+    tagged = result.tagged
+    without_art = result.tagged_without_art
+    failed = result.failed
+    already_tagged = result.skipped_already_tagged
 
     art_not_checked_note = ""
     if already_tagged:

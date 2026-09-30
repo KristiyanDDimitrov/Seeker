@@ -15,7 +15,6 @@ anything real.
 """
 
 from collections.abc import Callable
-from typing import Any
 
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -26,34 +25,36 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.library.metadata_service import RenameResult
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.ui import theme
 from seeker.ui.plain_text import PlainLabel
 
 
-def summarize_tag_result(result: dict[str, Any]) -> str:
+def summarize_tag_result(result: TagResult) -> str:
     total = (
-        result["tagged"] + result["skipped_no_match"]
-        + result["skipped_format_unsupported"]
-        + result["skipped_already_tagged"]
-        + result["skipped_already_analyzed"] + result["failed"]
+        result.tagged + result.skipped_no_match
+        + result.skipped_format_unsupported
+        + result.skipped_already_tagged
+        + result.skipped_already_analyzed + result.failed
     )
-    line = f"Tagged {result['tagged']} of {total}"
-    if result["failed"]:
-        plural = "s" if result["failed"] != 1 else ""
-        line += f" — {result['failed']} failed{plural}"
+    line = f"Tagged {result.tagged} of {total}"
+    if result.failed:
+        plural = "s" if result.failed != 1 else ""
+        line += f" — {result.failed} failed{plural}"
     return line
 
 
-def summarize_fix_art_result(result: dict[str, Any]) -> str:
+def summarize_fix_art_result(result: FixArtResult) -> str:
     total = (
-        result["fixed"] + result["already_correct"] + result["no_url"]
-        + result["download_failed"] + result["embed_failed"]
-        + result["format_unsupported"] + result["skipped_no_match"]
-        + result["failed"]
+        result.fixed + result.already_correct + result.no_url
+        + result.download_failed + result.embed_failed
+        + result.format_unsupported + result.skipped_no_match
+        + result.failed
     )
-    line = f"Fixed {result['fixed']} of {total}"
+    line = f"Fixed {result.fixed} of {total}"
     real_failures = (
-        result["download_failed"] + result["embed_failed"] + result["failed"]
+        result.download_failed + result.embed_failed + result.failed
     )
     if real_failures:
         plural = "s" if real_failures != 1 else ""
@@ -61,16 +62,16 @@ def summarize_fix_art_result(result: dict[str, Any]) -> str:
     return line
 
 
-def summarize_rename_result(result: dict[str, Any]) -> str:
+def summarize_rename_result(result: RenameResult) -> str:
     total = (
-        result["renamed"] + result["already_correct"]
-        + result["skipped_not_auto_matched"] + result["skipped_no_local_file"]
-        + result["failed"]
+        result.renamed + result.already_correct
+        + result.skipped_not_auto_matched + result.skipped_no_local_file
+        + result.failed
     )
-    line = f"Renamed {result['renamed']} of {total}"
-    if result["failed"]:
-        plural = "s" if result["failed"] != 1 else ""
-        line += f" — {result['failed']} failed{plural}"
+    line = f"Renamed {result.renamed} of {total}"
+    if result.failed:
+        plural = "s" if result.failed != 1 else ""
+        line += f" — {result.failed} failed{plural}"
     return line
 
 
@@ -123,7 +124,7 @@ class TagResultPanel(QWidget):
     def set_result(
             self,
             summary: str,
-            details: list[dict[str, Any]],
+            details: list[dict[str, str]],
             retryable_reason: str | None = None,
     ) -> None:
         self.summary_label.setText(summary)

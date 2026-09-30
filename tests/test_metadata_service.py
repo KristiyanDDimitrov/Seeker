@@ -161,10 +161,10 @@ def test_tag_tracks_track_not_found_reports_clear_failure(tmp_path):
 
     counts = service.tag_tracks(["nonexistent-track"])
 
-    assert counts["tagged"] == 0
-    assert counts["failed"] == 1
-    assert counts["details"][0]["reason"] == "failed"
-    assert "not found" in counts["details"][0]["message"]
+    assert counts.tagged == 0
+    assert counts.failed == 1
+    assert counts.details[0]["reason"] == "failed"
+    assert "not found" in counts.details[0]["message"]
 
 
 def test_tag_playlist_raises_when_playlist_not_synced(tmp_path):
@@ -209,8 +209,8 @@ def test_tag_playlist_tags_only_auto_matched_tracks(tmp_path, monkeypatch):
 
     counts = service.tag_playlist("Test Playlist")
 
-    assert counts["tagged"] == 1
-    tagged_ids = {d["track_id"] for d in counts["details"]}
+    assert counts.tagged == 1
+    tagged_ids = {d["track_id"] for d in counts.details}
     assert "unmatched-track" not in tagged_ids
 
 
@@ -245,10 +245,10 @@ def test_tag_tracks_mid_batch_exception_does_not_abort_remaining_tracks(
     counts = service.tag_tracks(["bad-track", "good-track"])
 
     assert call_count["n"] == 2
-    assert counts["failed"] == 1
-    assert counts["tagged"] == 1
+    assert counts.failed == 1
+    assert counts.tagged == 1
     failed_detail = next(
-        d for d in counts["details"] if d["track_id"] == "bad-track"
+        d for d in counts.details if d["track_id"] == "bad-track"
     )
     assert failed_detail["reason"] == "failed"
     assert "simulated failure" in failed_detail["message"]
@@ -274,9 +274,9 @@ def test_tag_tracks_skips_when_mutagen_cannot_identify_file(tmp_path):
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 0
-    assert counts["skipped_format_unsupported"] == 1
-    assert counts["details"][0]["reason"] == "skipped_format_unsupported"
+    assert counts.tagged == 0
+    assert counts.skipped_format_unsupported == 1
+    assert counts.details[0]["reason"] == "skipped_format_unsupported"
 
 
 def test_tag_tracks_album_art_failure_does_not_block_text_tags(
@@ -306,14 +306,14 @@ def test_tag_tracks_album_art_failure_does_not_block_text_tags(
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.failed == 0
     # Roadmap item 56 Phase 4.2 — the real fix: this used to be
     # completely invisible (the track just silently counted as plain
     # "tagged", identical to a genuine full success).
-    assert counts["tagged_without_art"] == 1
+    assert counts.tagged_without_art == 1
     art_details = [
-        d for d in counts["details"]
+        d for d in counts.details
         if d["reason"] == "tagged_without_art_download_failed"
     ]
     assert len(art_details) == 1
@@ -342,10 +342,10 @@ def test_tag_tracks_no_album_art_url_reports_actionable_reason(tmp_path):
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 1
-    assert counts["tagged_without_art"] == 1
+    assert counts.tagged == 1
+    assert counts.tagged_without_art == 1
     art_details = [
-        d for d in counts["details"]
+        d for d in counts.details
         if d["reason"] == "tagged_without_art_no_url"
     ]
     assert len(art_details) == 1
@@ -376,8 +376,8 @@ def test_tag_tracks_analyze_audio_failure_does_not_block_text_tags(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
-    assert counts["tagged"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.failed == 0
 
     reopened = MutagenFile(dest)
     assert str(reopened.tags["TIT2"]) == "Test Title"
@@ -407,11 +407,11 @@ def test_tag_tracks_skips_track_with_no_match(tmp_path):
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 0
-    assert counts["skipped_no_match"] == 1
-    assert counts["skipped_format_unsupported"] == 0
-    assert counts["failed"] == 0
-    assert counts["details"][0]["reason"] == "skipped_no_match"
+    assert counts.tagged == 0
+    assert counts.skipped_no_match == 1
+    assert counts.skipped_format_unsupported == 0
+    assert counts.failed == 0
+    assert counts.details[0]["reason"] == "skipped_no_match"
 
 
 def test_tag_tracks_skips_unrecognized_format(tmp_path, monkeypatch):
@@ -441,10 +441,10 @@ def test_tag_tracks_skips_unrecognized_format(tmp_path, monkeypatch):
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 0
-    assert counts["skipped_format_unsupported"] == 1
-    assert counts["failed"] == 0
-    assert counts["details"][0]["reason"] == "skipped_format_unsupported"
+    assert counts.tagged == 0
+    assert counts.skipped_format_unsupported == 1
+    assert counts.failed == 0
+    assert counts.details[0]["reason"] == "skipped_format_unsupported"
 
 
 def _fake_jpeg_response(url, timeout=None):
@@ -484,11 +484,11 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 1
-    assert counts["tagged_without_art"] == 0
-    assert counts["skipped_no_match"] == 0
-    assert counts["skipped_format_unsupported"] == 0
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.tagged_without_art == 0
+    assert counts.skipped_no_match == 0
+    assert counts.skipped_format_unsupported == 0
+    assert counts.failed == 0
 
     reopened = MutagenFile(dest)
     assert str(reopened.tags["TIT2"]) == "Test Title"
@@ -597,8 +597,8 @@ def test_tag_tracks_analyze_audio_false_is_completely_inert(
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.failed == 0
 
     with service.database.transaction() as connection:
         after = service.local_files.get_by_location_and_relative_path(
@@ -647,8 +647,8 @@ def test_tag_tracks_detail_message_names_the_location_relative_path(
 
     result = service.tag_tracks(["t1"])
 
-    assert result["skipped_already_tagged"] == 1
-    message = result["details"][0]["message"]
+    assert result.skipped_already_tagged == 1
+    message = result.details[0]["message"]
     assert "Neuro/Real Artist - Real Title.mp3" in message
     assert "Real Artist - Real Title" in message
 
@@ -692,10 +692,10 @@ def test_tag_tracks_already_tagged_skips_art_download_but_still_analyzes(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
-    assert counts["tagged"] == 0
-    assert counts["skipped_already_tagged"] == 1
-    assert counts["skipped_already_analyzed"] == 0
-    assert counts["failed"] == 0
+    assert counts.tagged == 0
+    assert counts.skipped_already_tagged == 1
+    assert counts.skipped_already_analyzed == 0
+    assert counts.failed == 0
 
     with service.database.transaction() as connection:
         after = service.local_files.get_by_location_and_relative_path(
@@ -754,10 +754,10 @@ def test_tag_tracks_already_analyzed_skips_analysis_but_still_retags(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
-    assert counts["tagged"] == 1
-    assert counts["skipped_already_tagged"] == 0
-    assert counts["skipped_already_analyzed"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.skipped_already_tagged == 0
+    assert counts.skipped_already_analyzed == 1
+    assert counts.failed == 0
 
     with service.database.transaction() as connection:
         after = service.local_files.get_by_location_and_relative_path(
@@ -812,9 +812,9 @@ def test_tag_tracks_force_bypasses_both_skip_checks_independently(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True, force=True)
 
-    assert counts["tagged"] == 1
-    assert counts["skipped_already_tagged"] == 0
-    assert counts["skipped_already_analyzed"] == 0
+    assert counts.tagged == 1
+    assert counts.skipped_already_tagged == 0
+    assert counts.skipped_already_analyzed == 0
     assert art_calls["n"] == 1
 
     with service.database.transaction() as connection:
@@ -883,10 +883,10 @@ def test_tag_tracks_real_already_tagged_track_is_skipped_not_reprocessed(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
-    assert counts["tagged"] == 0
-    assert counts["skipped_already_tagged"] == 1
-    assert counts["skipped_already_analyzed"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 0
+    assert counts.skipped_already_tagged == 1
+    assert counts.skipped_already_analyzed == 1
+    assert counts.failed == 0
 
 
 @requires_x9_pro
@@ -921,8 +921,8 @@ def test_tag_tracks_real_wav_round_trips(tmp_path, monkeypatch):
 
     counts = service.tag_tracks(["t1"])
 
-    assert counts["tagged"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.failed == 0
 
     reopened = MutagenFile(dest)
     assert str(reopened.tags["TIT2"]) == "Get Back"
@@ -962,8 +962,8 @@ def test_tag_tracks_analyze_audio_true_writes_and_persists_real_analysis(
 
     counts = service.tag_tracks(["t1"], analyze_audio=True)
 
-    assert counts["tagged"] == 1
-    assert counts["failed"] == 0
+    assert counts.tagged == 1
+    assert counts.failed == 0
 
     with service.database.transaction() as connection:
         local_file = service.local_files.get_by_location_and_relative_path(
@@ -1020,10 +1020,10 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
     # real (confirmed below via a real re-read), but counted in its own
     # honest bucket, not plain "fixed" — essentially no real DJ
     # software reads embedded art from WAV.
-    assert counts["fixed"] == 0
-    assert counts["fixed_wav_rarely_supported"] == 1
-    assert counts["already_correct"] == 0
-    assert counts["failed"] == 0
+    assert counts.fixed == 0
+    assert counts.fixed_wav_rarely_supported == 1
+    assert counts.already_correct == 0
+    assert counts.failed == 0
 
     reopened = MutagenFile(dest)
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
@@ -1090,8 +1090,8 @@ def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
-    assert counts["fixed"] == 0
-    assert counts["already_correct"] == 1
+    assert counts.fixed == 0
+    assert counts.already_correct == 1
 
     reopened = MutagenFile(dest)
     # Text tag is exactly what was seeded, NOT the real Spotify title --
@@ -1113,9 +1113,9 @@ def test_fix_missing_art_reports_no_url(tmp_path):
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
-    assert counts["fixed"] == 0
-    assert counts["no_url"] == 1
-    assert counts["details"][0]["reason"] == "no_url"
+    assert counts.fixed == 0
+    assert counts.no_url == 1
+    assert counts.details[0]["reason"] == "no_url"
 
 
 def test_fix_missing_art_only_touches_auto_matched_tracks(tmp_path):
@@ -1154,10 +1154,10 @@ def test_fix_missing_art_only_touches_auto_matched_tracks(tmp_path):
 
     counts = service.fix_missing_art_for_playlist("Test Playlist")
 
-    assert counts["fixed"] == 0
-    assert counts["no_url"] == 0
-    assert counts["skipped_no_match"] == 0
-    assert counts["details"] == []
+    assert counts.fixed == 0
+    assert counts.no_url == 0
+    assert counts.skipped_no_match == 0
+    assert counts.details == []
 
 
 @pytest.mark.parametrize("url", [

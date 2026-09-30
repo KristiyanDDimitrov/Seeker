@@ -3,7 +3,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -41,6 +40,7 @@ from seeker.metadata import (
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 
 logger = logging.getLogger(__name__)
@@ -311,7 +311,7 @@ class MetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
             force: bool = False,
-    ) -> dict[str, Any]:
+    ) -> TagResult:
         # Only auto-matched tracks — a needs_review match hasn't been
         # confirmed by a human yet, and writing Spotify's canonical
         # metadata onto a possibly-wrong file would be actively harmful.
@@ -342,42 +342,22 @@ class MetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
             force: bool = False,
-    ) -> dict[str, Any]:
-        counts: dict[str, int] = {
-            "tagged": 0,
-            # Roadmap item 56 Phase 4.2 — a subset of "tagged" (text
-            # tags DID get written), broken out because art is
-            # currently a silent best-effort best-case: without this,
-            # a CDN hiccup or a never-synced album_art_url makes the
-            # UI report unqualified success with no way to tell.
-            "tagged_without_art": 0,
-            # Roadmap item 75 (P6, 6.4) — art WAS embedded, but the
-            # format (WAV) means essentially no real DJ software will
-            # ever show it — a distinct, honest bucket, not folded into
-            # either "tagged" plain success or "tagged_without_art".
-            "tagged_art_rarely_supported_format": 0,
-            "skipped_no_match": 0,
-            "skipped_format_unsupported": 0,
-            "skipped_already_tagged": 0,
-            "skipped_already_analyzed": 0,
-            "failed": 0,
-        }
-        details: list[dict[str, str]] = []
+    ) -> TagResult:
+        result = TagResult()
 
         for track_id in track_ids:
             # One bad file must not abort the batch.
             try:
                 self._tag_one_track(
                     track_id,
-                    counts,
-                    details,
+                    result,
                     analyze_audio,
                     expected_bpm_range,
                     force,
                 )
             except Exception as error:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -386,13 +366,12 @@ class MetadataService:
                 )
                 logger.warning("Failed to tag track %s: %s", track_id, error)
 
-        return {**counts, "details": details}
+        return result
 
     def _tag_one_track(
             self,
             track_id: str,
-            counts: dict[str, int],
-            details: list[dict[str, str]],
+            result: TagResult,
             analyze_audio: bool,
             expected_bpm_range: tuple[float, float] | None,
             force: bool = False,
@@ -406,8 +385,8 @@ class MetadataService:
                 # clear message rather than falling into the generic
                 # "failed" handler in tag_tracks() with a raw
                 # AttributeError.
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -419,8 +398,8 @@ class MetadataService:
             match = self.track_matches.get_by_track_id(track_id, connection)
 
             if match is None or match.local_file_id is None:
-                counts["skipped_no_match"] += 1
-                details.append(
+                result.skipped_no_match += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "skipped_no_match",
@@ -437,8 +416,8 @@ class MetadataService:
             )
 
             if local_file is None:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -456,8 +435,8 @@ class MetadataService:
             )
 
             if location is None:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -486,8 +465,8 @@ class MetadataService:
         needs_analysis = analyze_audio and not skip_analysis
 
         if skip_tag_write:
-            counts["skipped_already_tagged"] += 1
-            details.append(
+            result.skipped_already_tagged += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "skipped_already_tagged",
@@ -500,8 +479,8 @@ class MetadataService:
             )
 
         if skip_analysis:
-            counts["skipped_already_analyzed"] += 1
-            details.append(
+            result.skipped_already_analyzed += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "skipped_already_analyzed",
@@ -520,8 +499,8 @@ class MetadataService:
         mutagen_file = MutagenFile(file_path)
 
         if mutagen_file is None:
-            counts["skipped_format_unsupported"] += 1
-            details.append(
+            result.skipped_format_unsupported += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "skipped_format_unsupported",
@@ -542,8 +521,8 @@ class MetadataService:
                     mutagen_file, track.artist, track.title, track.album
                 )
             except ValueError as error:
-                counts["skipped_format_unsupported"] += 1
-                details.append(
+                result.skipped_format_unsupported += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "skipped_format_unsupported",
@@ -664,15 +643,15 @@ class MetadataService:
                 connection,
             )
 
-        counts["tagged"] += 1
+        result.tagged += 1
 
         if art_outcome == "written_wav_rarely_supported":
             # Roadmap item 75 (P6, 6.4) — art WAS written (not the same
             # thing as "no art" below), but honestly, not as "tagged"
             # plain success either — see the outcome's own comment
             # above for why.
-            counts["tagged_art_rarely_supported_format"] += 1
-            details.append(
+            result.tagged_art_rarely_supported_format += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "tagged_art_rarely_supported_format",
@@ -689,8 +668,8 @@ class MetadataService:
                 _describe_track_file(track, local_file),
             )
         elif art_outcome != "written":
-            counts["tagged_without_art"] += 1
-            details.append(
+            result.tagged_without_art += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": f"tagged_without_art_{art_outcome}",
@@ -711,7 +690,7 @@ class MetadataService:
     def fix_missing_art_for_playlist(
             self,
             playlist_name: str,
-    ) -> dict[str, Any]:
+    ) -> FixArtResult:
         """Roadmap item 66 (Phase 5.2) — a narrower, safer repair action
         than a forced full re-tag: re-embeds art ONLY, never touches
         text tags, for auto-matched tracks whose embedded art is
@@ -734,29 +713,14 @@ class MetadataService:
                 playlist.id, connection
             )
 
-        counts: dict[str, int] = {
-            "fixed": 0,
-            # Roadmap item 75 (P6, 6.4) — same honest distinction as
-            # tag_tracks' own "tagged_art_rarely_supported_format": art
-            # WAS embedded, but essentially no real DJ software reads
-            # embedded art from WAV.
-            "fixed_wav_rarely_supported": 0,
-            "already_correct": 0,
-            "no_url": 0,
-            "download_failed": 0,
-            "embed_failed": 0,
-            "format_unsupported": 0,
-            "skipped_no_match": 0,
-            "failed": 0,
-        }
-        details: list[dict[str, str]] = []
+        result = FixArtResult()
 
         for track in tracks:
             try:
-                self._fix_one_track_art(track.id, counts, details)
+                self._fix_one_track_art(track.id, result)
             except Exception as error:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track.id,
                         "reason": "failed",
@@ -767,20 +731,19 @@ class MetadataService:
                     "Failed to fix art for track %s: %s", track.id, error,
                 )
 
-        return {**counts, "details": details}
+        return result
 
     def _fix_one_track_art(
             self,
             track_id: str,
-            counts: dict[str, int],
-            details: list[dict[str, str]],
+            result: FixArtResult,
     ) -> None:
         with self.database.transaction() as connection:
             track = self.tracks.get_by_id(track_id, connection)
 
             if track is None:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -792,8 +755,8 @@ class MetadataService:
             match = self.track_matches.get_by_track_id(track_id, connection)
 
             if match is None or match.local_file_id is None:
-                counts["skipped_no_match"] += 1
-                details.append(
+                result.skipped_no_match += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "skipped_no_match",
@@ -810,8 +773,8 @@ class MetadataService:
             )
 
             if local_file is None:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -829,8 +792,8 @@ class MetadataService:
             )
 
             if location is None:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "track_id": track_id,
                         "reason": "failed",
@@ -844,8 +807,8 @@ class MetadataService:
                 return
 
         if not track.album_art_url:
-            counts["no_url"] += 1
-            details.append(
+            result.no_url += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "no_url",
@@ -862,8 +825,8 @@ class MetadataService:
         mutagen_file = MutagenFile(file_path)
 
         if mutagen_file is None:
-            counts["format_unsupported"] += 1
-            details.append(
+            result.format_unsupported += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "format_unsupported",
@@ -887,8 +850,8 @@ class MetadataService:
                 track.album_art_url
             )
         except Exception as error:
-            counts["download_failed"] += 1
-            details.append(
+            result.download_failed += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "download_failed",
@@ -904,14 +867,14 @@ class MetadataService:
         existing_art = read_embedded_art(mutagen_file)
 
         if existing_art is not None and existing_art == image_bytes:
-            counts["already_correct"] += 1
+            result.already_correct += 1
             return
 
         try:
             embedded = embed_album_art(mutagen_file, image_bytes, mime_type)
         except Exception as error:
-            counts["embed_failed"] += 1
-            details.append(
+            result.embed_failed += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "embed_failed",
@@ -921,8 +884,8 @@ class MetadataService:
             return
 
         if not embedded:
-            counts["format_unsupported"] += 1
-            details.append(
+            result.format_unsupported += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "format_unsupported",
@@ -937,8 +900,8 @@ class MetadataService:
         save_tags(mutagen_file)
 
         if local_file.format == "wav":
-            counts["fixed_wav_rarely_supported"] += 1
-            details.append(
+            result.fixed_wav_rarely_supported += 1
+            result.details.append(
                 {
                     "track_id": track_id,
                     "reason": "fixed_wav_rarely_supported",
@@ -955,7 +918,7 @@ class MetadataService:
                 _describe_track_file(track, local_file),
             )
         else:
-            counts["fixed"] += 1
+            result.fixed += 1
             logger.info(
                 "Fixed art: %s", _describe_track_file(track, local_file),
             )

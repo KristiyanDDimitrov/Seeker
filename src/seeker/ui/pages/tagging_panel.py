@@ -10,7 +10,6 @@ selection state.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -22,8 +21,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seeker.library.metadata_service import RenamePlan
+from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.spotify_sync import TrackSyncResult
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
@@ -213,14 +213,14 @@ class TaggingPanel(QWidget):
 
     def _render_tag_result(
             self,
-            result: dict[str, Any],
+            result: TagResult,
             feedback: FeedbackTarget | None = None,
     ) -> None:
         feedback = feedback or self._host.feedback
         feedback.status_label.setText("")
 
         self.results_panel.set_result(
-            summarize_tag_result(result), result["details"],
+            summarize_tag_result(result), result.details,
             retryable_reason="failed",
         )
 
@@ -235,7 +235,7 @@ class TaggingPanel(QWidget):
 
     def _show_tag_result_notice(
             self,
-            result: dict[str, Any],
+            result: TagResult,
             feedback: FeedbackTarget,
     ) -> None:
         # This early return is still correct (nothing was even in
@@ -243,7 +243,7 @@ class TaggingPanel(QWidget):
         # selected track was already tagged" — now gets a message via
         # help_text.format_tag_result_notice, not just tagged/without_
         # art/failed (HISTORY §75).
-        if result["tagged"] == 0 and not result["details"]:
+        if result.tagged == 0 and not result.details:
             return
 
         message, kind = help_text.format_tag_result_notice(result)
@@ -253,7 +253,7 @@ class TaggingPanel(QWidget):
         # docstring); offer the real next action right on the notice
         # rather than leaving the user to find "Fix missing cover art"
         # on their own (HISTORY §75).
-        if result.get("skipped_already_tagged", 0) > 0:
+        if result.skipped_already_tagged > 0:
             feedback.notice.show_message(
                 message, kind=kind,
                 action_text="Fix missing cover art",
@@ -423,11 +423,11 @@ class TaggingPanel(QWidget):
 
     def _render_fix_art_result(
             self,
-            result: dict[str, Any],
+            result: FixArtResult,
             feedback: FeedbackTarget,
     ) -> None:
         self.results_panel.set_result(
-            summarize_fix_art_result(result), result["details"],
+            summarize_fix_art_result(result), result.details,
         )
 
         message, kind = help_text.format_fix_art_result_message(result)
@@ -520,25 +520,13 @@ class TaggingPanel(QWidget):
         self._context.busy_actions.end("rename_files")
         self._context.render_activity_strip()
 
-    def _on_rename_files_finished(self, result: Any) -> None:
+    def _on_rename_files_finished(self, result: RenameResult) -> None:
         self._reset_rename_files_button()
         self._host.refresh_track_table()
 
-        counts = {
-            "renamed": result.renamed,
-            "collisions": result.collisions,
-            "failed": result.failed,
-        }
         self.results_panel.set_result(
-            summarize_rename_result({
-                "renamed": result.renamed,
-                "already_correct": result.already_correct,
-                "skipped_not_auto_matched": result.skipped_not_auto_matched,
-                "skipped_no_local_file": result.skipped_no_local_file,
-                "failed": result.failed,
-            }),
-            result.details,
+            summarize_rename_result(result), result.details,
         )
 
-        message, kind = help_text.format_rename_result_message(counts)
+        message, kind = help_text.format_rename_result_message(result)
         self._host.notice.show_message(message, kind=kind)

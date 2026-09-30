@@ -729,7 +729,7 @@ def handle_library(
             tuple(parsed.bpm_range) if parsed.bpm_range else None
         )
 
-        result = application.metadata_service.tag_playlist(
+        tag_result = application.metadata_service.tag_playlist(
             playlist.name,
             analyze_audio=parsed.analyze_audio,
             expected_bpm_range=expected_bpm_range,
@@ -737,22 +737,22 @@ def handle_library(
         )
 
         print(
-            f"Tagged: {result['tagged']} "
-            f"({result['tagged_without_art']} without cover art), "
-            f"Skipped (no match): {result['skipped_no_match']}, "
+            f"Tagged: {tag_result.tagged} "
+            f"({tag_result.tagged_without_art} without cover art), "
+            f"Skipped (no match): {tag_result.skipped_no_match}, "
             f"Skipped (unsupported format): "
-            f"{result['skipped_format_unsupported']}, "
+            f"{tag_result.skipped_format_unsupported}, "
             f"Skipped (already tagged): "
-            f"{result['skipped_already_tagged']}, "
+            f"{tag_result.skipped_already_tagged}, "
             f"Skipped (already analyzed): "
-            f"{result['skipped_already_analyzed']}, "
-            f"Failed: {result['failed']}."
+            f"{tag_result.skipped_already_analyzed}, "
+            f"Failed: {tag_result.failed}."
         )
 
-        if result["details"]:
+        if tag_result.details:
             print("\nDetails (skipped, failed, or tagged without art):")
 
-            for detail in result["details"]:
+            for detail in tag_result.details:
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "fix-art":
@@ -760,25 +760,25 @@ def handle_library(
             parsed.playlist_name, application
         )
 
-        result = application.metadata_service.fix_missing_art_for_playlist(
+        art_result = application.metadata_service.fix_missing_art_for_playlist(
             playlist.name
         )
 
         print(
-            f"Fixed: {result['fixed']}, "
-            f"Already correct: {result['already_correct']}, "
-            f"No art URL: {result['no_url']}, "
-            f"Download failed: {result['download_failed']}, "
-            f"Embed failed: {result['embed_failed']}, "
-            f"Unsupported format: {result['format_unsupported']}, "
-            f"Skipped (no match): {result['skipped_no_match']}, "
-            f"Failed: {result['failed']}."
+            f"Fixed: {art_result.fixed}, "
+            f"Already correct: {art_result.already_correct}, "
+            f"No art URL: {art_result.no_url}, "
+            f"Download failed: {art_result.download_failed}, "
+            f"Embed failed: {art_result.embed_failed}, "
+            f"Unsupported format: {art_result.format_unsupported}, "
+            f"Skipped (no match): {art_result.skipped_no_match}, "
+            f"Failed: {art_result.failed}."
         )
 
-        if result["details"]:
+        if art_result.details:
             print("\nDetails:")
 
-            for detail in result["details"]:
+            for detail in art_result.details:
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "rename":
