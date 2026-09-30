@@ -82,12 +82,35 @@ def filter_candidates(
     return candidates
 
 
+# The best needs-review file, its score, and the runner-up file and
+# score when there is one.
+NeedsReviewCandidate = tuple[
+    SoulseekFile, float, tuple[SoulseekFile, float] | None,
+]
+
+
+@dataclass(frozen=True)
+class DownloadSelection:
+    """What `select_downloads` picked for one track.
+
+    `settled` is the file to request now (unlocked; practical when any
+    candidate is). `upgrade_shortlist` ranks up to
+    `MAX_UPGRADE_SHORTLIST` better-or-equal files to chase later; when
+    `settled` is None it holds every locked candidate instead.
+    `needs_review` is independent of both: the best below-auto-threshold
+    candidate, for a human to judge.
+    """
+    settled: SoulseekFile | None
+    upgrade_shortlist: list[SoulseekFile]
+    needs_review: NeedsReviewCandidate | None
+
+
 def find_best_needs_review_candidate(
         track: Track,
         files: list[SoulseekFile],
         needs_review_threshold: float = NEEDS_REVIEW_THRESHOLD,
         auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
-) -> tuple[SoulseekFile, float, tuple[SoulseekFile, float] | None] | None:
+) -> NeedsReviewCandidate | None:
     # The Soulseek equivalent of library/matcher.py's needs_review tier:
     # a real, artist-matching candidate that's plausible but not
     # confident enough to auto-download (70 <= score < 90 by default).
@@ -225,11 +248,7 @@ def select_downloads(
         files: list[SoulseekFile],
         auto_match_threshold: float = AUTO_MATCH_THRESHOLD,
         needs_review_threshold: float = NEEDS_REVIEW_THRESHOLD,
-) -> tuple[
-    SoulseekFile | None,
-    list[SoulseekFile],
-    tuple[SoulseekFile, float, tuple[SoulseekFile, float] | None] | None,
-]:
+) -> DownloadSelection:
     # needs_review is computed independently of the auto-tier logic below
     # and included unchanged in every return point — the settled/upgrade
     # ranking never considers it, it's purely extra information for
@@ -241,7 +260,7 @@ def select_downloads(
     )
 
     if not filtered:
-        return (None, [], needs_review)
+        return DownloadSelection(None, [], needs_review)
 
     ranked = rank_candidates(filtered)
     top = ranked[0]
@@ -250,7 +269,7 @@ def select_downloads(
     # downloaded at all right now, which is a harder blocker than a long
     # queue, so it's checked separately from is_practical().
     if not top.locked and is_practical(top):
-        return (top, [], needs_review)
+        return DownloadSelection(top, [], needs_review)
 
     settled_eligible = [
         file for file in ranked if not file.locked and is_practical(file)
@@ -272,7 +291,9 @@ def select_downloads(
         # Every filtered candidate is locked — nothing downloadable
         # right now, but the whole ranked list is upgrade-shortlist
         # material for the Phase 3/4 retry cycle.
-        return (None, ranked[:MAX_UPGRADE_SHORTLIST], needs_review)
+        return DownloadSelection(
+            None, ranked[:MAX_UPGRADE_SHORTLIST], needs_review,
+        )
 
     # Everything ranked ahead of settled (by the same tiebreak-aware key)
     # is genuinely better-or-equal and worth chasing as an upgrade;
@@ -280,7 +301,7 @@ def select_downloads(
     settled_index = next(i for i, f in enumerate(ranked) if f is settled)
     shortlist = ranked[:settled_index][:MAX_UPGRADE_SHORTLIST]
 
-    return (settled, shortlist, needs_review)
+    return DownloadSelection(settled, shortlist, needs_review)
 
 
 # --- Local-file quality analysis ---------------------------------------

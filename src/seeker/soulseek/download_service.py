@@ -554,9 +554,12 @@ class DownloadService:
                         _build_search_query(track.artist, track.title)
                     ),
                 )
-                settled, upgrade_shortlist, needs_review = select_downloads(
+                selection = select_downloads(
                     track, files, auto_match_threshold, needs_review_threshold,
                 )
+                settled = selection.settled
+                upgrade_shortlist = selection.upgrade_shortlist
+                needs_review = selection.needs_review
 
                 if settled is not None or upgrade_shortlist:
                     # Something real and auto-tier exists for this track
@@ -729,9 +732,11 @@ class DownloadService:
             else self.soulseek.search(_build_search_query(artist, title))
         )
 
-        settled, upgrade_shortlist, _needs_review = select_downloads(
+        selection = select_downloads(
             track, search_results, auto_match_threshold, needs_review_threshold,
         )
+        settled = selection.settled
+        upgrade_shortlist = selection.upgrade_shortlist
 
         if settled is None and not upgrade_shortlist:
             return ManualDownloadResult(

@@ -170,9 +170,9 @@ def test_select_downloads_prefers_shorter_queue_on_quality_tie():
 
     # Input order deliberately puts the slow one first, so a pass would
     # only happen via the real tiebreak, not incidental list order.
-    settled, _, _ = select_downloads(track, [slow_flac, fast_flac])
+    selection = select_downloads(track, [slow_flac, fast_flac])
 
-    assert settled is fast_flac
+    assert selection.settled is fast_flac
 
 
 def test_select_downloads_returns_none_settled_when_nothing_matches():
@@ -185,20 +185,20 @@ def test_select_downloads_returns_none_settled_when_nothing_matches():
         bit_depth=None,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(track, [wrong_artist])
+    selection = select_downloads(track, [wrong_artist])
 
-    assert settled is None
-    assert upgrade_shortlist == []
+    assert selection.settled is None
+    assert selection.upgrade_shortlist == []
 
 
 def test_select_downloads_returns_no_upgrade_when_top_pick_is_practical():
     track = make_track()
     practical_flac = make_file(queue_length=2)
 
-    settled, upgrade_shortlist, _ = select_downloads(track, [practical_flac])
+    selection = select_downloads(track, [practical_flac])
 
-    assert settled is practical_flac
-    assert upgrade_shortlist == []
+    assert selection.settled is practical_flac
+    assert selection.upgrade_shortlist == []
 
 
 def test_select_downloads_returns_practical_settled_and_impractical_upgrade():
@@ -218,12 +218,12 @@ def test_select_downloads_returns_practical_settled_and_impractical_upgrade():
         queue_length=2,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(
+    selection = select_downloads(
         track, [impractical_flac, practical_mp3]
     )
 
-    assert settled is practical_mp3
-    assert upgrade_shortlist == [impractical_flac]
+    assert selection.settled is practical_mp3
+    assert selection.upgrade_shortlist == [impractical_flac]
 
 
 def test_select_downloads_falls_back_to_phase_one_when_none_practical():
@@ -243,12 +243,12 @@ def test_select_downloads_falls_back_to_phase_one_when_none_practical():
         queue_length=800,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(
+    selection = select_downloads(
         track, [impractical_flac, impractical_mp3]
     )
 
-    assert settled is impractical_flac
-    assert upgrade_shortlist == []
+    assert selection.settled is impractical_flac
+    assert selection.upgrade_shortlist == []
 
 
 def test_select_downloads_never_settles_on_a_locked_candidate():
@@ -263,10 +263,10 @@ def test_select_downloads_never_settles_on_a_locked_candidate():
         locked=True,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(track, [locked_flac])
+    selection = select_downloads(track, [locked_flac])
 
-    assert settled is None
-    assert upgrade_shortlist == [locked_flac]
+    assert selection.settled is None
+    assert selection.upgrade_shortlist == [locked_flac]
 
 
 def test_select_downloads_locked_upgrade_takes_precedence_when_higher_quality():
@@ -290,12 +290,12 @@ def test_select_downloads_locked_upgrade_takes_precedence_when_higher_quality():
         queue_length=800,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(
+    selection = select_downloads(
         track, [locked_flac, impractical_mp3]
     )
 
-    assert settled is impractical_mp3
-    assert upgrade_shortlist == [locked_flac]
+    assert selection.settled is impractical_mp3
+    assert selection.upgrade_shortlist == [locked_flac]
 
 
 def test_select_downloads_prefers_unlocked_over_locked_on_quality_tie():
@@ -321,12 +321,12 @@ def test_select_downloads_prefers_unlocked_over_locked_on_quality_tie():
         queue_length=2,
     )
 
-    settled, upgrade_shortlist, _ = select_downloads(
+    selection = select_downloads(
         track, [locked_mp3, practical_mp3]
     )
 
-    assert settled is practical_mp3
-    assert upgrade_shortlist == []
+    assert selection.settled is practical_mp3
+    assert selection.upgrade_shortlist == []
 
 
 def test_select_downloads_shortlist_capped_at_three_and_ranked():
@@ -360,13 +360,13 @@ def test_select_downloads_shortlist_capped_at_three_and_ranked():
         for i, queue_length in enumerate([300, 10, 200, 50])
     ]
 
-    settled, upgrade_shortlist, _ = select_downloads(
+    selection = select_downloads(
         track, [settled_practical, *rank_candidates]
     )
 
-    assert settled is settled_practical
-    assert len(upgrade_shortlist) == 3
-    assert [f.queue_length for f in upgrade_shortlist] == [10, 50, 200]
+    assert selection.settled is settled_practical
+    assert len(selection.upgrade_shortlist) == 3
+    assert [f.queue_length for f in selection.upgrade_shortlist] == [10, 50, 200]
 
 
 # Real search data captured live (2026-08-27) for two of the real "Test"
@@ -430,12 +430,12 @@ def test_find_best_needs_review_candidate_classifies_real_prdk_data():
     assert 70.0 <= score < 90.0
     assert runner_up is None
 
-    settled, upgrade_shortlist, needs_review = select_downloads(
+    selection = select_downloads(
         track, [REAL_PRDK_CANDIDATE]
     )
-    assert settled is None
-    assert upgrade_shortlist == []
-    assert needs_review == result
+    assert selection.settled is None
+    assert selection.upgrade_shortlist == []
+    assert selection.needs_review == result
 
 
 def test_find_best_needs_review_candidate_classifies_real_zigi_sc_data():
@@ -455,12 +455,12 @@ def test_find_best_needs_review_candidate_classifies_real_zigi_sc_data():
     assert 70.0 <= score < 90.0
     assert runner_up is None
 
-    settled, upgrade_shortlist, needs_review = select_downloads(
+    selection = select_downloads(
         track, [REAL_ZIGI_SC_CANDIDATE]
     )
-    assert settled is None
-    assert upgrade_shortlist == []
-    assert needs_review == result
+    assert selection.settled is None
+    assert selection.upgrade_shortlist == []
+    assert selection.needs_review == result
 
 
 # --- Step 8: threshold overrides ------------------------------------
@@ -579,11 +579,11 @@ def test_find_best_needs_review_candidate_runner_up_is_none_with_one_match(
 def test_select_downloads_real_prdk_data_settles_with_lowered_threshold():
     track = make_track(id="prdk1", title="ONE MORE NIGHT", artist="Prdk")
 
-    settled, _upgrade_shortlist, _needs_review = select_downloads(
+    selection = select_downloads(
         track, [REAL_PRDK_CANDIDATE], auto_match_threshold=70.0,
     )
 
-    assert settled is REAL_PRDK_CANDIDATE
+    assert selection.settled is REAL_PRDK_CANDIDATE
 
 
 # --- Local-file quality analysis (roadmap item 5) ------------------------
