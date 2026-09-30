@@ -863,23 +863,23 @@ def handle_library(
         ) -> None:
             print(f"  {stage}: {current}/{total}", end="\r")
 
-        result = application.duplicate_service.compute_fingerprints(
+        fingerprint_result = application.duplicate_service.compute_fingerprints(
             parsed.location_name, force=parsed.force,
             folders=parsed.folders, progress=print_fingerprint_progress,
         )
         print()
 
         print(
-            f"Fingerprinted: {result['computed']}, "
+            f"Fingerprinted: {fingerprint_result.computed}, "
             f"Skipped (already computed): "
-            f"{result['skipped_already_computed']}, "
-            f"Failed: {result['failed']}."
+            f"{fingerprint_result.skipped_already_computed}, "
+            f"Failed: {fingerprint_result.failed}."
         )
 
-        if result["details"]:
+        if fingerprint_result.details:
             print("\nFailed:")
 
-            for detail in result["details"]:
+            for detail in fingerprint_result.details:
                 print(f"  [{detail['reason']}] {detail['message']}")
 
     elif parsed.library_command == "duplicates":

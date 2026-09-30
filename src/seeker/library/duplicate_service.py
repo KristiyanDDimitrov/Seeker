@@ -34,6 +34,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.errors import LibraryLocationNotFoundError
 from seeker.file_deletion import delete_file, same_file
 from seeker.models.duplicate_cleanup import DuplicateCleanup
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.track_match import TrackMatch
@@ -255,7 +256,7 @@ class DuplicateService:
             force: bool = False,
             folders: list[str] | None = None,
             progress: Callable[[str, int, int], None] | None = None,
-    ) -> dict[str, Any]:
+    ) -> FingerprintResult:
         """Compute and persist a fingerprint for every file at this
         location that doesn't already have one (or every file,
         regardless, if force=True) — mirrors MetadataService.tag_tracks'
@@ -299,22 +300,17 @@ class DuplicateService:
                 )
             ]
 
-        counts: dict[str, int] = {
-            "computed": 0,
-            "skipped_already_computed": 0,
-            "failed": 0,
-        }
-        details: list[dict[str, str]] = []
+        result = FingerprintResult()
         total = len(local_files)
 
         for index, local_file in enumerate(local_files, start=1):
             try:
                 self._compute_one(
-                    location, local_file, force, counts, details,
+                    location, local_file, force, result,
                 )
             except Exception as error:
-                counts["failed"] += 1
-                details.append(
+                result.failed += 1
+                result.details.append(
                     {
                         "local_file_id": str(local_file.id),
                         "reason": _classify_fingerprint_failure(error),
@@ -328,18 +324,17 @@ class DuplicateService:
             if progress is not None:
                 progress("Fingerprinting", index, total)
 
-        return {**counts, "details": details}
+        return result
 
     def _compute_one(
             self,
             location: LibraryLocation,
             local_file: LocalFile,
             force: bool,
-            counts: dict[str, int],
-            details: list[dict[str, str]],
+            result: FingerprintResult,
     ) -> None:
         if local_file.fingerprint is not None and not force:
-            counts["skipped_already_computed"] += 1
+            result.skipped_already_computed += 1
             return
 
         file_path = Path(location.path) / local_file.relative_path
@@ -367,7 +362,7 @@ class DuplicateService:
                 connection,
             )
 
-        counts["computed"] += 1
+        result.computed += 1
         logger.debug("Fingerprinted: %s", local_file.filename)
 
     def resolve_folder_scopes(

@@ -27,6 +27,7 @@ from seeker.library.duplicate_service import (
     DuplicateGroup,
     GroupResolutionPlan,
 )
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
@@ -472,7 +473,7 @@ class DuplicatesPage(QWidget):
             folders: list[str],
             progress: Callable[[str, int, int], None],
             preferred_location_id: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> FingerprintResult:
         # compute_fingerprints() is itself scoped to one library
         # location per call; folder mode can span more than one
         # (find_duplicate_groups_across_scopes' own cross-location
@@ -493,12 +494,7 @@ class DuplicatesPage(QWidget):
                 scope.location.name, [],
             ).append(scope.folder_relative_path)
 
-        combined: dict[str, Any] = {
-            "computed": 0,
-            "skipped_already_computed": 0,
-            "failed": 0,
-            "details": [],
-        }
+        combined = FingerprintResult()
         completed_before = 0
 
         for location_name, relative_folders in folders_by_location.items():
@@ -511,21 +507,16 @@ class DuplicatesPage(QWidget):
             result = service.compute_fingerprints(
                 location_name, folders=relative_folders, progress=report,
             )
-            combined["computed"] += result["computed"]
-            combined["skipped_already_computed"] += (
-                result["skipped_already_computed"]
-            )
-            combined["failed"] += result["failed"]
-            combined["details"].extend(result["details"])
+            combined += result
             completed_before += (
-                result["computed"]
-                + result["skipped_already_computed"]
-                + result["failed"]
+                result.computed
+                + result.skipped_already_computed
+                + result.failed
             )
 
         return combined
 
-    def _render_fingerprint_result(self, result: dict[str, Any]) -> None:
+    def _render_fingerprint_result(self, result: FingerprintResult) -> None:
         self.duplicates_status_label.setText(
             help_text.format_fingerprint_result_message(result)
         )

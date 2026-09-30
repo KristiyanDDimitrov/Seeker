@@ -27,6 +27,7 @@ from seeker.models.download_result import (
     PollResult,
     TrackFailure,
 )
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import (
@@ -190,10 +191,10 @@ class FakeDuplicateService:
             scope_file_count: int = 0,
             folder_scopes: list | None = None,
     ):
-        self._fingerprint_result = fingerprint_result or {
-            "computed": 0, "skipped_already_computed": 0, "failed": 0,
-            "details": [],
-        }
+        self._fingerprint_result = fingerprint_result or FingerprintResult(
+            computed=0, skipped_already_computed=0, failed=0,
+            details=[],
+        )
         self._groups = groups or []
         self._delete_result = delete_result or {
             "deleted": 0, "failed": 0, "details": [],

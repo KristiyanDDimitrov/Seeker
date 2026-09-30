@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
 )
 
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
@@ -167,10 +168,10 @@ def test_compute_fingerprints_in_folder_mode_calls_service_per_location(
         DuplicateFolderScope(location=location_b, folder_relative_path=""),
     ]
     application = FakeApplication(
-        fingerprint_result={
-            "computed": 1, "skipped_already_computed": 0, "failed": 0,
-            "details": [],
-        },
+        fingerprint_result=FingerprintResult(
+            computed=1, skipped_already_computed=0, failed=0,
+            details=[],
+        ),
     )
     application.duplicate_service._folder_scopes = scopes
     application.duplicate_service._scope_file_count = 2
@@ -350,10 +351,10 @@ def test_compute_fingerprints_without_selection_shows_message(qtbot):
 
 def test_compute_fingerprints_calls_service_with_selected_location(qtbot):
     application = FakeApplication(
-        fingerprint_result={
-            "computed": 3, "skipped_already_computed": 1, "failed": 0,
-            "details": [],
-        },
+        fingerprint_result=FingerprintResult(
+            computed=3, skipped_already_computed=1, failed=0,
+            details=[],
+        ),
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -380,14 +381,14 @@ def test_compute_fingerprints_result_shows_failure_reason_breakdown(qtbot):
     # Roadmap item 68 (Phase 8.2) — a real per-reason breakdown, not
     # just an opaque "Failed: N".
     application = FakeApplication(
-        fingerprint_result={
-            "computed": 1, "skipped_already_computed": 0, "failed": 3,
-            "details": [
+        fingerprint_result=FingerprintResult(
+            computed=1, skipped_already_computed=0, failed=3,
+            details=[
                 {"local_file_id": "1", "reason": "decode_unsupported", "message": "a"},
                 {"local_file_id": "2", "reason": "decode_unsupported", "message": "b"},
                 {"local_file_id": "3", "reason": "empty_file", "message": "c"},
             ],
-        },
+        ),
     )
     window = MainWindow(application)
     qtbot.addWidget(window)

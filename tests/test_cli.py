@@ -12,6 +12,7 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
 from seeker.models.download_result import ManualDownloadResult
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.local_file import LocalFile
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -417,10 +418,10 @@ class FakeDuplicateService:
             groups=None,
             cleanup_totals=(0, 0),
     ):
-        self._fingerprint_result = fingerprint_result or {
-            "computed": 0, "skipped_already_computed": 0, "failed": 0,
-            "details": [],
-        }
+        self._fingerprint_result = fingerprint_result or FingerprintResult(
+            computed=0, skipped_already_computed=0, failed=0,
+            details=[],
+        )
         self._groups = groups or []
         self._cleanup_totals = cleanup_totals
         self.compute_fingerprints_calls = []
@@ -450,10 +451,10 @@ def test_library_fingerprint_calls_compute_fingerprints_and_reports_counts(
 ):
     matcher = make_matcher(tmp_path)
     duplicate_service = FakeDuplicateService(
-        fingerprint_result={
-            "computed": 2, "skipped_already_computed": 1, "failed": 0,
-            "details": [],
-        },
+        fingerprint_result=FingerprintResult(
+            computed=2, skipped_already_computed=1, failed=0,
+            details=[],
+        ),
     )
 
     cli.run(
@@ -486,16 +487,16 @@ def test_library_fingerprint_force_flag_is_passed_through(tmp_path):
 def test_library_fingerprint_reports_failure_details(tmp_path, capsys):
     matcher = make_matcher(tmp_path)
     duplicate_service = FakeDuplicateService(
-        fingerprint_result={
-            "computed": 0, "skipped_already_computed": 0, "failed": 1,
-            "details": [
+        fingerprint_result=FingerprintResult(
+            computed=0, skipped_already_computed=0, failed=1,
+            details=[
                 {
                     "local_file_id": "1",
                     "reason": "failed",
                     "message": "a.mp3: real decode error",
                 },
             ],
-        },
+        ),
     )
 
     cli.run(

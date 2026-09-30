@@ -20,6 +20,7 @@ from seeker.models.download_result import (
     PlaylistDownloadResult,
     TrackFailure,
 )
+from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.spotify_sync import PlaylistRefreshResult
 from seeker.models.tag_result import FixArtResult, TagResult
@@ -622,7 +623,7 @@ _FINGERPRINT_FAILURE_REASON_LABELS = {
 }
 
 
-def format_fingerprint_result_message(result: dict[str, Any]) -> str:
+def format_fingerprint_result_message(result: FingerprintResult) -> str:
     """Roadmap item 68 (Phase 8.2) — the aggregate line PLUS, when
     there's at least one failure, a real per-reason breakdown (never
     just one lumped "Failed: N") — mirrors the CLI's own per-file
@@ -635,17 +636,17 @@ def format_fingerprint_result_message(result: dict[str, Any]) -> str:
     in this app that could ever reach one.
     """
     base = (
-        f"Fingerprinted: {result['computed']}, "
+        f"Fingerprinted: {result.computed}, "
         f"Skipped (already computed): "
-        f"{result['skipped_already_computed']}, "
-        f"Failed: {result['failed']}."
+        f"{result.skipped_already_computed}, "
+        f"Failed: {result.failed}."
     )
 
-    if result["failed"] == 0:
+    if result.failed == 0:
         return base
 
     counts: dict[str, int] = {}
-    for detail in result["details"]:
+    for detail in result.details:
         reason = detail.get("reason", "error")
         counts[reason] = counts.get(reason, 0) + 1
 

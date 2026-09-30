@@ -115,8 +115,8 @@ def test_compute_and_find_duplicates_real_audio_end_to_end(tmp_path):
     service = make_service(database)
 
     result = service.compute_fingerprints("Main")
-    assert result["computed"] == 3
-    assert result["failed"] == 0
+    assert result.computed == 3
+    assert result.failed == 0
 
     groups = service.find_duplicate_groups("Main")
 
@@ -136,11 +136,11 @@ def test_compute_fingerprints_skips_already_computed_files(tmp_path):
 
     service = make_service(database)
     first = service.compute_fingerprints("Main")
-    assert first["computed"] == 1
+    assert first.computed == 1
 
     second = service.compute_fingerprints("Main")
-    assert second["computed"] == 0
-    assert second["skipped_already_computed"] == 1
+    assert second.computed == 0
+    assert second.skipped_already_computed == 1
 
 
 def test_compute_fingerprints_force_recomputes(tmp_path):
@@ -155,8 +155,8 @@ def test_compute_fingerprints_force_recomputes(tmp_path):
     service.compute_fingerprints("Main")
 
     result = service.compute_fingerprints("Main", force=True)
-    assert result["computed"] == 1
-    assert result["skipped_already_computed"] == 0
+    assert result.computed == 1
+    assert result.skipped_already_computed == 0
 
 
 def test_compute_fingerprints_classifies_a_missing_file(tmp_path):
@@ -172,8 +172,8 @@ def test_compute_fingerprints_classifies_a_missing_file(tmp_path):
     service = make_service(database)
     result = service.compute_fingerprints("Main")
 
-    assert result["failed"] == 1
-    assert result["details"][0]["reason"] == "file_missing"
+    assert result.failed == 1
+    assert result.details[0]["reason"] == "file_missing"
 
 
 def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
@@ -190,8 +190,8 @@ def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
     service = make_service(database)
     result = service.compute_fingerprints("Main")
 
-    assert result["failed"] == 1
-    assert result["details"][0]["reason"] == "empty_file"
+    assert result.failed == 1
+    assert result.details[0]["reason"] == "empty_file"
 
 
 def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
@@ -208,8 +208,8 @@ def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
     service = make_service(database)
     result = service.compute_fingerprints("Main")
 
-    assert result["failed"] == 1
-    assert result["details"][0]["reason"] == "decode_unsupported"
+    assert result.failed == 1
+    assert result.details[0]["reason"] == "decode_unsupported"
 
 
 def test_compute_fingerprints_unknown_location_raises(tmp_path):
@@ -1115,7 +1115,7 @@ def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
     service = make_service(database)
     result = service.compute_fingerprints("Main", folders=["InScope"])
 
-    assert result["computed"] == 1
+    assert result.computed == 1
 
     with database.transaction() as connection:
         repo = LocalFileRepository(database)
