@@ -94,6 +94,7 @@ src/seeker/
 ├── audio_formats.py             # AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 ├── error_text.py                # describe_error() — readable text for any
 │                              #   task error, shared by UI workers and CLI
+├── errors.py                    # SeekerError root + errors >1 module raises
 ├── dashboard_service.py, history_service.py, sharing_service.py
 ├── config_store.py              # SeekerConfig — the UI-editable JSON store;
 │                              #   .env/config.py is the fallback when unset
@@ -254,6 +255,17 @@ src/seeker/
   error) gets a branch there, never ad hoc text at a call site. Your
   own exception's message is kept as written, so write it as a
   sentence. [HISTORY §150](docs/history/121-150.md#150)
+- **Every public error is a `SeekerError`** (`seeker/errors.py`), which
+  `cli.run` catches as one. An error raised by more than one module
+  lives in `errors.py`, defined once; any other stays beside its module
+  and subclasses `SeekerError`. `tests/test_errors.py` sweeps `src/`
+  and fails the build. [HISTORY §153](docs/history/151-180.md#153)
+- **Download states are `DownloadStatus`/`DownloadRole`**
+  (`models/download_request.py`, `StrEnum`, equal to the stored
+  strings). Group them only through its named sets (`IN_FLIGHT`,
+  `UNRESOLVED`, `STAMPS_COMPLETED_AT`, …); a new grouping is a new
+  named set there, never a literal set at the call site. SQL takes the
+  values as parameters. [HISTORY §153](docs/history/151-180.md#153)
 - **No widget in `ui/` guesses whether its text is HTML.** Labels are
   `PlainLabel`, or `RichLabel` for Seeker's own markup with any data
   inside `html.escape`d; message boxes go through `plain_text.question`

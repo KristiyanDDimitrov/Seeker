@@ -10,48 +10,48 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S12 part 2 close-out commit (HISTORY §152, CLAUDE.md,
-  session plan, this handoff). Tree clean apart from the untracked
+- **HEAD:** the S13 close-out commit (HISTORY §153, CLAUDE.md, session
+  plan, this handoff). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1516 passed, 1 skipped, 6 warnings`
-  (X9 Pro mounted; S12 part 2 adds 10 tests).
-- **`mypy --strict src/`:** clean, 114 files. **`ruff check src
+- **Local pytest** (2026-09-30): `1528 passed, 1 skipped, 6 warnings`
+  (X9 Pro mounted; S13 adds 12 tests).
+- **`mypy --strict src/`:** clean, 115 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** close-out `89e7e8d` → run `36722319500`, **success**,
-  `1488 passed, 29 skipped`, branch coverage 91.68 % (floor 89).
+- **CI:** see the "Handoff: record S13's close-out CI run" commit.
 
 ## 2. Where we are
 
-S1–S12 ticked. **Next: S13, one exception hierarchy; typed download
-states (§13).** Phase F starts: behaviour-neutral refactors only.
+S1–S13 ticked. **Next: S14, typed service results (§14).** Phase F
+continues: behaviour-neutral refactors only.
 
-## 3. Session report (S12 part 2)
+## 3. Session report (S13)
 
-Evidence for both is in HISTORY §152.
-- `1b86ebc` §12.5: an empty history seeds the tray's download cutoff
-  to now, so a fresh install's first download notifies.
-- `c9014cf` §12.3: `ui/slskd_status.py` (`SlskdStatus` on
-  `PageContext`, `start_slskd` helper); Dashboard next step first,
-  Downloads' outage notice, tray once per outage, cleared on the first
-  good poll.
+Evidence for all three is in HISTORY §153.
+- `e943858` §13.1 (refactor): `seeker/errors.py` (`SeekerError`, one
+  `PlaylistNotFoundError`, one `LibraryLocationNotFoundError`); every
+  public error subclasses it; the format list derives from
+  `DOWNLOADABLE_EXTENSIONS_IN_ORDER`.
+- `244eda4` §13.1 (behaviour): `cli.run` catches `SeekerError`.
+- `71d9943` §13.2 (refactor): `DownloadStatus`/`DownloadRole` and eight
+  named status sets in `models/download_request.py`; SQL takes status
+  values as parameters.
 
 ## 4. Key context
 
-- **For S13's hierarchy:** `SlskdUnreachableError`
-  (`soulseek/client.py`), `SlskdStartRefusedError` and
-  `SlskdBringUpError` (`docker_setup.py`), three
-  `LibraryLocationNotFoundError`s and `AuthorizationCancelledError`
-  all subclass `RuntimeError` today. `cli.run`'s caught tuple becomes
-  `SeekerError` there. `MainWindow._trigger_backend_poll`'s `poll()`
-  closure catches `SlskdUnreachableError` by type; keep it narrower
-  than any new base class.
-- **Outage state has one writer.** Only `_trigger_backend_poll` calls
-  `SlskdStatus.mark_*`. A second writer (say, a health check) would
-  need to keep the edge semantics, or the tray would notify twice.
-- **`InlineNotice.action_button` is public now**, so a notice's action
-  can be handed to `run_busy_worker`. `BusyActionRegistry.end` restores
-  the text from `begin`; with the Dashboard's shared next-step button
-  that can show a stale label for up to one 2 s tick (HISTORY §152).
+- **For S14:** the status words still in `src/` are result-dict keys:
+  `poll_downloads`' `counts` (one key per status, plus `"failed"`
+  bumped by hand), `download_playlist`'s `result["settled"]`/
+  `["failed"]`, metadata and duplicate `counts["failed"]`. Typed
+  results replace them; a per-status count can key on
+  `DownloadStatus`.
+- **`RETRYING_IN_BACKGROUND`, not `RETRYING`:** `track_status.RETRYING`
+  is a Dashboard track state and `dashboard_service` imports both.
+- **`_row_to_download_request` raises on an unknown status/role.** The
+  real DB's 21 rows are all members (checked read-only, §153).
+- **Tests may pass plain strings** to `DownloadRequest(status=…)`:
+  equal and hash-equal to the members.
+- **For S16:** `DownloadRequestRepository.get_active_for_track` has no
+  caller and counts `unavailable` as active. Delete it there.
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
   Coverage margin about 2.7 points (CI 91.68 %, floor 89). deptry: `uv
   run --with deptry deptry src`. Never `QLabel(...)` or
@@ -59,26 +59,23 @@ Evidence for both is in HISTORY §152.
   accept `cancel=`; `FakeApplication.restart_slskd` has
   `restart_slskd_calls`/`restart_slskd_error`; never touch slskd or
   real data; `config.*()` are functions (tests use
-  `monkeypatch.setenv`).
+  `monkeypatch.setenv`). Outage state has one writer
+  (`_trigger_backend_poll`).
 - **zsh:** `echo ======` fails (use `'---'`); BSD `sed` lacks `\b`.
 
 ## 5. Decisions made
 
-- **The outage notification bypasses `notify_error`'s cooldown**
-  (`TrayController.notify_outage`): the edge already bounds it to once
-  per outage, and a cooldown shared with other errors could swallow it.
-  It still honours "notify errors".
-- **No tray notification on recovery.** The brief asks for "again only
-  after a recovery"; read as re-arming. The notices clearing is the
-  recovery signal.
-- **Start slskd does not clear the outage.** Its success message says
-  slskd is starting; the next good poll (at most 20 s) clears it,
-  since the container answers only after Compose returns.
-- **Other poll errors now show `describe_error` text** in the tray,
-  not the fixed "couldn't reach slskd" sentence, which would be wrong
-  for them.
-- Promoted to CLAUDE.md: the `SlskdStatus` sentence on the outage
-  bullet, and `slskd_status.py` in the layout tree.
+- **Errors move into `errors.py` only when more than one module raises
+  them.** The brief allowed "moved in or subclassed"; moving all of
+  them would separate each from the code that raises it.
+- **The unsupported-format message now lists "aif".** Derived from the
+  set, as the brief asked; the hand-written list had dropped it.
+- **The rate-limit and library-unavailable CLI branches fold into the
+  `SeekerError` one** (same sentence, now through `printable()`).
+- **SQL status values are parameters** built by `_status_in`, not
+  literals repeated in SQL: the sets are then defined once.
+- Promoted to CLAUDE.md: the `SeekerError` rule, the named-status-set
+  rule, `errors.py` in the layout.
 
 ## 6. Blockers
 
@@ -100,13 +97,11 @@ Private vulnerability reporting: **done** (confirmed enabled).
 (HISTORY §140).
 
 **Live checks:** S41's checklist. Carried: S6's Refresh playlists, S7's
-drift Scan, S8's Reject-then-Scan and Downloads failure reason, S9
-part 2's mistyped Client ID → Cancel → correct one, S11's Dashboard
-Scan summary / Docker-stopped Download message / Qt warning in
-`seeker.log` / app menu "Seeker". **S12:** with slskd stopped,
-`uv run seeker downloads status` prints the outage sentence and exits
-1; in the app, Dashboard and Downloads show it with Start slskd, the
-tray notifies once, and a started container clears it within ~20 s.
+drift Scan, S8's Reject-then-Scan and failure reason, S9 part 2's
+mistyped Client ID → Cancel, S11's Scan summary / Docker-stopped
+Download / Qt warning in `seeker.log` / app menu "Seeker", S12's
+slskd-stopped outage (CLI exit 1; Dashboard, Downloads, tray once;
+cleared within ~20 s of Start slskd). S13 adds none (refactor).
 
 ## 9. Open questions
 
@@ -117,10 +112,9 @@ tray notifies once, and a started container clears it within ~20 s.
   S18?
 - Settings shows results and rejections on status labels, not notices:
   S29.
-- `cli.run` catches `httpx.TransportError` but not
-  `httpx.HTTPStatusError`. S13 or S15?
-- S15 (CLI): should `printable()` strip bidi controls, and should
-  `seeker downloads status` print failure reasons?
+- S15 (CLI): catch `httpx.HTTPStatusError` too (S13 left it: a
+  behaviour change the brief doesn't ask for)? Should `printable()`
+  strip bidi controls, and `downloads status` print failure reasons?
 - S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the
   typed subfolder. S29: should a rejection be undoable?
 - `_activate_shortlisted_entry`: if slskd dies between

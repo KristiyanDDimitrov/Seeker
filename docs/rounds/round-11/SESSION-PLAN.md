@@ -47,7 +47,7 @@ explicit yes.
 | ☑ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |
 | ☑ S12 | Say when slskd is down; first-session download notifications (HISTORY §151, §152) | §12 | ~110 K | After §12.2 |
 | **Phase F — Structure (behaviour-neutral)** | | | | |
-| ☐ S13 | One exception hierarchy; typed download states | §13 | ~130 K | After §13.1 |
+| ☑ S13 | One exception hierarchy; typed download states | §13 | ~130 K | After §13.1 |
 | ☐ S14 | Typed service results | §14 | ~120 K | After the download and poll results |
 | ☐ S15 | CLI structure | §15 | ~110 K | After §15.1 |
 | ☐ S16 | Service-layer cleanup and dead code | §16 | ~120 K | After §16.2 |
