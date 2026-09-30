@@ -1162,17 +1162,30 @@ def handle_sharing_status(
             print(f"  {state.location.name}: not shared")
 
 
-def run(
-    application: Application,
-    args: list[str] | None = None,
-) -> None:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """Parse a command line, exiting on `--help`, a usage error or no
+    command at all; none of those needs an `Application`."""
     parser = build_parser()
     parsed = parser.parse_args(args)
 
     if parsed.handler is None:
         parser.print_help()
-        return
+        parser.exit()
 
+    return parsed
+
+
+def run(
+    application: Application,
+    args: list[str] | None = None,
+) -> None:
+    dispatch(application, parse_args(args))
+
+
+def dispatch(
+    application: Application,
+    parsed: argparse.Namespace,
+) -> None:
     try:
         parsed.handler(application, parsed)
     except NoDestinationConfiguredError as error:
