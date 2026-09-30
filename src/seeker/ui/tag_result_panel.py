@@ -47,7 +47,8 @@ def summarize_tag_result(result: TagResult) -> str:
 
 def summarize_fix_art_result(result: FixArtResult) -> str:
     total = (
-        result.fixed + result.already_correct + result.no_url
+        result.fixed + result.fixed_wav_rarely_supported
+        + result.already_correct + result.no_url
         + result.download_failed + result.embed_failed
         + result.format_unsupported + result.skipped_no_match
         + result.failed
