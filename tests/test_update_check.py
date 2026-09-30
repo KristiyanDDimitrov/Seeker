@@ -50,7 +50,13 @@ def test_update_available_when_latest_tag_is_newer(monkeypatch):
     def fake_get(url, timeout=None):
         return FakeResponse(
             200,
-            {"tag_name": "v1.3.0", "html_url": "https://example.com/v1.3.0"},
+            {
+                "tag_name": "v1.3.0",
+                "html_url": (
+                    "https://github.com/KristiyanDDimitrov/Seeker/"
+                    "releases/tag/v1.3.0"
+                ),
+            },
         )
 
     monkeypatch.setattr(httpx, "get", fake_get)
@@ -59,7 +65,34 @@ def test_update_available_when_latest_tag_is_newer(monkeypatch):
 
     assert result.status == UpdateStatus.UPDATE_AVAILABLE
     assert result.latest_version == "v1.3.0"
-    assert result.release_url == "https://example.com/v1.3.0"
+    assert result.release_url == (
+        "https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v1.3.0"
+    )
+
+
+@pytest.mark.parametrize("html_url", [
+    "https://example.com/v1.3.0",
+    "http://github.com/KristiyanDDimitrov/Seeker/releases/tag/v1.3.0",
+    "https://github.com/KristiyanDDimitrov/Seeker-evil/releases",
+    "https://github.com.evil.example/KristiyanDDimitrov/Seeker/",
+    "javascript:alert(1)",
+    None,
+])
+def test_an_unexpected_release_url_becomes_the_releases_page(
+        monkeypatch, html_url,
+):
+    # The dialog turns release_url into a clickable link; only this
+    # repository's own GitHub pages may be offered.
+    def fake_get(url, timeout=None):
+        return FakeResponse(200, {"tag_name": "v1.3.0", "html_url": html_url})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_for_update()
+
+    assert result.release_url == (
+        "https://github.com/KristiyanDDimitrov/Seeker/releases"
+    )
 
 
 def test_up_to_date_when_latest_tag_is_older(monkeypatch):

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from mutagen import File as MutagenFile
@@ -54,6 +55,22 @@ class PlaylistNotFoundError(RuntimeError):
 # than buffering an unbounded response body. A few MB is generous for
 # real cover art; untuned, no real track's art has ever come close.
 MAX_ALBUM_ART_BYTES = 10 * 1024 * 1024
+
+# Where Spotify serves cover art (every stored URL is i.scdn.co today).
+# The URL is read back from the database, so it is checked before it
+# becomes an outbound request.
+_SPOTIFY_IMAGE_HOST_SUFFIXES = (".scdn.co", ".spotifycdn.com")
+
+
+def is_spotify_image_url(url: str) -> bool:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+
+    return (
+        parts.scheme == "https"
+        and not parts.username
+        and host.endswith(_SPOTIFY_IMAGE_HOST_SUFFIXES)
+    )
 
 # Real magic-byte prefixes, checked instead of trusting the response's
 # Content-Type header (§6.4.2).
@@ -1326,6 +1343,10 @@ class MetadataService:
         )
 
     def _download_album_art(self, url: str) -> tuple[bytes, str]:
+        if not is_spotify_image_url(url):
+            logger.warning("Skipped album art at an unexpected URL: %r", url)
+            raise ValueError(f"not a Spotify image URL: {url!r}")
+
         cached = self.album_art_cache.get(url)
 
         if cached is not None:

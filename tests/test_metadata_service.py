@@ -1158,3 +1158,48 @@ def test_fix_missing_art_only_touches_auto_matched_tracks(tmp_path):
     assert counts["no_url"] == 0
     assert counts["skipped_no_match"] == 0
     assert counts["details"] == []
+
+
+@pytest.mark.parametrize("url", [
+    "http://i.scdn.co/image/fake",
+    "https://evil.example/image.jpg",
+    "https://i.scdn.co.evil.example/image",
+    "https://evilscdn.co/image",
+    "file:///etc/passwd",
+    "https://user@evil.example/@i.scdn.co",
+])
+def test_download_album_art_never_fetches_a_non_spotify_url(
+        tmp_path, monkeypatch, url,
+):
+    # The URL comes from the database; a tampered or unexpected one
+    # must not become an outbound request.
+    def must_not_fetch(*args, **kwargs):
+        raise AssertionError(f"fetched {url}")
+
+    monkeypatch.setattr(httpx, "stream", must_not_fetch)
+    service = make_service(tmp_path)
+
+    with pytest.raises(ValueError, match="not a Spotify image URL"):
+        service._download_album_art(url)
+
+
+@pytest.mark.parametrize("url", [
+    "https://i.scdn.co/image/ab67616d0000b273",
+    "https://mosaic.scdn.co/640/ab67616d",
+    "https://image-cdn-ak.spotifycdn.com/image/ab67616d",
+])
+def test_download_album_art_fetches_spotify_image_hosts(
+        tmp_path, monkeypatch, url,
+):
+    def fake_jpeg(requested_url, timeout=None):
+        return httpx.Response(
+            200, content=FAKE_JPEG_BYTES,
+            request=httpx.Request("GET", requested_url),
+        )
+
+    monkeypatch.setattr(httpx, "stream", _as_stream(fake_jpeg))
+    service = make_service(tmp_path)
+
+    image_bytes, _ = service._download_album_art(url)
+
+    assert image_bytes == FAKE_JPEG_BYTES

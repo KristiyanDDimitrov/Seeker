@@ -24,6 +24,8 @@ from packaging.version import InvalidVersion, Version
 
 REPO = "KristiyanDDimitrov/Seeker"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+RELEASES_PAGE_URL = f"https://github.com/{REPO}/releases"
+_REPO_PAGE_PREFIX = f"https://github.com/{REPO}/"
 
 # Untuned, same convention as every other threshold in this codebase —
 # long enough for a slow real connection, short enough that a hung
@@ -74,6 +76,15 @@ def _installed_version() -> str | None:
         return version("seeker")
     except PackageNotFoundError:
         return None
+
+
+def _trusted_release_url(html_url: object) -> str:
+    """The URL the dialog offers as a link: GitHub's own `html_url`
+    when it points into this repository, the releases page otherwise."""
+    if isinstance(html_url, str) and html_url.startswith(_REPO_PAGE_PREFIX):
+        return html_url
+
+    return RELEASES_PAGE_URL
 
 
 def check_for_update() -> UpdateCheckResult:
@@ -163,7 +174,7 @@ def _check_for_update() -> UpdateCheckResult:
     try:
         payload = response.json()
         tag_name = payload["tag_name"]
-        release_url = payload.get("html_url")
+        release_url = _trusted_release_url(payload.get("html_url"))
     except ValueError:
         return UpdateCheckResult(
             UpdateStatus.UNAVAILABLE,
