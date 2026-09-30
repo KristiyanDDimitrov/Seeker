@@ -17,7 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted; per-commit counts in §158).
 - **`mypy --strict src/`:** clean, 120 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** recorded by the follow-up commit after the close-out push.
+- **CI:** run `36773532276` on `4f3423d` (the close-out commit):
+  success.
 
 ## 2. Where we are
 
