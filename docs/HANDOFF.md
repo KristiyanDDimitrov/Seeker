@@ -17,7 +17,11 @@ nine fields below follow the contract in
   (X9 Pro mounted; S14 part 1 adds 4 tests).
 - **`mypy --strict src/`:** clean, 116 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the close-out push (recorded below once it finishes).
+- **CI:** close-out `79e16cd` → run `36758864929`. Attempt 1
+  **failure**: `1 failed, 1503 passed, 29 skipped`, the one being
+  `tests/pages/test_dashboard_page.py::test_download_button_disabled_with_no_playlist_selected`
+  (`assert not download_button.isEnabled()`). Attempt 2 (failed job
+  rerun) **success**: `1504 passed, 29 skipped`, coverage 91.77 %.
 
 ## 2. Where we are
 
@@ -106,6 +110,13 @@ cleared within ~20 s of Start slskd). S14 adds: a playlist Download
 with one track failing shows a warning notice naming it.
 
 ## 9. Open questions
+
+- **New CI-only flake:** `test_download_button_disabled_with_no_playlist_selected`
+  failed once on CI (run `36758864929` attempt 1), passes locally 5/5
+  and on the rerun. It never clicks Download, so S14's changes are not
+  on its path. It asserts after a bare `qtbot.wait(50)`; a first
+  guess, UNVERIFIED, is a timer-driven render enabling the button. If
+  it recurs, diagnose it (S18's test-infrastructure row fits).
 
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
   wait (port 8888 and the token lock held up to 300 s). S20?

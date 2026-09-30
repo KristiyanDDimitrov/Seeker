@@ -710,6 +710,11 @@ Genuinely open only — no "done" items, no flakes that resolved.
     under CI's headless/offscreen platform — plausible but UNVERIFIED;
     `QApplication.setActiveWindow`/a real `activateWindow()` call before
     the assertion is the next thing to try if it recurs.
+- `test_download_button_disabled_with_no_playlist_selected`
+  (`tests/pages/test_dashboard_page.py`) — failed once on CI (run
+  `36758864929` attempt 1, S14), passed on the rerun and 5/5 locally;
+  not on S14's changed paths. Asserts after a bare `qtbot.wait(50)`.
+  Diagnose any recurrence. [HISTORY §154](docs/history/151-180.md#154)
 - **Closed, round 10 §4: the review replace-button and history-refresh
   flakes were one root cause, not two — a fake's call counter increments
   on the worker thread before `_handle_task_finished` re-enables the
