@@ -342,6 +342,11 @@ class SlskdBringUpError(RuntimeError):
     carries Compose's own stderr."""
 
 
+class SlskdStartRefusedError(RuntimeError):
+    """Seeker will not start slskd from here; the message says why and
+    what the user can do instead."""
+
+
 def bring_up_slskd(
         compose_file: str,
         soulseek_username: str,

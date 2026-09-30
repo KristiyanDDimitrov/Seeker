@@ -40,8 +40,11 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.docker_setup import (
     SLSKD_LOCAL_BASE_URL,
+    DockerState,
+    SlskdStartRefusedError,
     bring_up_slskd,
     compose_file_path,
+    detect_docker_state,
     ensure_full_path_environment,
     generate_api_key,
     slskd_data_dir,
@@ -402,6 +405,51 @@ class Application:
             )
 
         return result
+
+    def restart_slskd(self) -> SlskdStartResult:
+        """Start slskd again after an outage through `start_slskd`,
+        sharing exactly what the stopped container shares and logging
+        in with the saved SoulSeek login. Blocks on Docker, so callers
+        run it on a worker.
+
+        Raises `SlskdStartRefusedError` rather than guess: when Docker
+        is not up, when the container is not one Seeker created (or is
+        gone, so its share cannot be read), or when no login is saved.
+        """
+        docker_state = detect_docker_state()
+
+        if docker_state is DockerState.NOT_INSTALLED:
+            raise SlskdStartRefusedError(
+                "Docker isn't installed, so Seeker can't start slskd."
+            )
+
+        if docker_state is not DockerState.RUNNING:
+            raise SlskdStartRefusedError(
+                "Docker isn't running. Open Docker Desktop, then try again."
+            )
+
+        share_path = (
+            self.sharing_service.current_share_path()
+            if self.sharing_service.is_self_managed() else None
+        )
+
+        if share_path is None:
+            raise SlskdStartRefusedError(
+                "Seeker can't find the slskd container it set up, so it "
+                "won't guess what to share. Start slskd where it runs, or "
+                "set it up again in Settings → Connection."
+            )
+
+        username = self._config_store.slskd_username
+        password = self._config_store.slskd_password
+
+        if not username or not password:
+            raise SlskdStartRefusedError(
+                "Seeker has no saved SoulSeek login. Enter it in "
+                "Settings → Connection."
+            )
+
+        return self.start_slskd(username, password, share_path, persist=True)
 
     def ensure_slskd_web_credentials(self) -> tuple[str, str]:
         """Return the slskd WEB UI login, generating and persisting it

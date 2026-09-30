@@ -16,7 +16,11 @@ from seeker.config_store import (
     save_config,
 )
 from seeker.database.connection import Database
-from seeker.docker_setup import SlskdBringUpError
+from seeker.docker_setup import (
+    DockerState,
+    SlskdBringUpError,
+    SlskdStartRefusedError,
+)
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
@@ -1166,3 +1170,101 @@ def test_set_login_item_enabled_delegates_to_login_item_module(
 
     assert calls == [True]
     assert result is LoginItemStatus.ENABLED
+
+
+def _restartable_slskd(
+        tmp_path, monkeypatch, *, self_managed: bool = True,
+) -> tuple[Application, list[dict]]:
+    """An app whose saved SoulSeek login and self-managed, stopped
+    container make "Start slskd" possible."""
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    app.persist_soulseek_config(
+        "http://127.0.0.1:5030", "old-key", "/dl", "netuser", "netpass",
+    )
+    monkeypatch.setattr(
+        "seeker.application.detect_docker_state", lambda: DockerState.RUNNING,
+    )
+    monkeypatch.setattr(
+        "seeker.sharing_service.SharingService.is_self_managed",
+        lambda self: self_managed,
+    )
+    _fake_live_slskd_mounts(monkeypatch, {
+        "/app": str(tmp_path / "slskd-data"),
+        "/shared/music": "/Volumes/Music/Shared",
+    })
+    return app, calls
+
+
+def test_restart_slskd_keeps_the_live_share_and_the_saved_login(
+        tmp_path, monkeypatch,
+):
+    app, calls = _restartable_slskd(tmp_path, monkeypatch)
+
+    app.restart_slskd()
+
+    assert len(calls) == 1
+    assert calls[0]["library_location_path"] == "/Volumes/Music/Shared"
+    assert calls[0]["soulseek_username"] == "netuser"
+    assert calls[0]["soulseek_password"] == "netpass"
+    assert load_config(resolve_config_path()).slskd_api_key == (
+        "generated-key"
+    )
+
+
+@pytest.mark.parametrize(
+    ("docker_state", "expected"),
+    [
+        (DockerState.INSTALLED_NOT_RUNNING, "Docker isn't running"),
+        (DockerState.NOT_INSTALLED, "Docker isn't installed"),
+    ],
+)
+def test_restart_slskd_without_docker_refuses_and_says_why(
+        tmp_path, monkeypatch, docker_state, expected,
+):
+    app, calls = _restartable_slskd(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "seeker.application.detect_docker_state", lambda: docker_state,
+    )
+
+    with pytest.raises(SlskdStartRefusedError, match=expected):
+        app.restart_slskd()
+
+    assert calls == []
+
+
+def test_restart_slskd_never_recreates_a_container_it_did_not_create(
+        tmp_path, monkeypatch,
+):
+    app, calls = _restartable_slskd(
+        tmp_path, monkeypatch, self_managed=False,
+    )
+
+    with pytest.raises(SlskdStartRefusedError, match="won't guess"):
+        app.restart_slskd()
+
+    assert calls == []
+
+
+def test_restart_slskd_never_guesses_the_share(tmp_path, monkeypatch):
+    app, calls = _restartable_slskd(tmp_path, monkeypatch)
+    _fake_live_slskd_mounts(monkeypatch, {"/app": str(tmp_path / "x")})
+
+    with pytest.raises(SlskdStartRefusedError, match="won't guess"):
+        app.restart_slskd()
+
+    assert calls == []
+
+
+def test_restart_slskd_without_a_saved_login_points_at_settings(
+        tmp_path, monkeypatch,
+):
+    app, calls = _restartable_slskd(tmp_path, monkeypatch)
+    app.persist_soulseek_config(
+        "http://127.0.0.1:5030", "old-key", "/dl", "", "",
+    )
+
+    with pytest.raises(SlskdStartRefusedError, match="Settings"):
+        app.restart_slskd()
+
+    assert calls == []
