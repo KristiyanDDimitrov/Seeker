@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from seeker import cli
@@ -11,6 +13,7 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
 from seeker.library.matcher import TrackMatcher
+from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.download_result import ManualDownloadResult
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_result import (
@@ -25,6 +28,7 @@ from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.download_service import NoDestinationConfiguredError
@@ -1409,3 +1413,215 @@ def test_a_command_group_without_its_subcommand_is_a_usage_error(
     error = " ".join(capsys.readouterr().err.split())
     assert f"seeker {command} [-h] {subcommands}" in error
     assert "the following arguments are required" in error
+
+
+class FakeMetadataServiceForCli:
+    def __init__(self, plans=None):
+        self.plans = plans or []
+        self.tag_calls: list[dict] = []
+        self.applied: list = []
+
+    def tag_playlist(self, playlist_name, **kwargs):
+        self.tag_calls.append({"playlist_name": playlist_name, **kwargs})
+        return TagResult(
+            tagged=2, tagged_without_art=1, failed=1,
+            details=[{"track_id": "t1", "reason": "failed",
+                      "message": "Boom."}],
+        )
+
+    def fix_missing_art_for_playlist(self, playlist_name):
+        return FixArtResult(
+            fixed=1, already_correct=3,
+            details=[{"track_id": "t2", "reason": "no_url",
+                      "message": "No art."}],
+        )
+
+    def plan_renames(self, playlist_name=None):
+        return self.plans
+
+    def apply_renames(self, plans):
+        self.applied.append(plans)
+        return RenameResult(renamed=2, collisions=1, already_correct=1)
+
+
+def _rename_plans() -> list[RenamePlan]:
+    def plan(action, current=None, proposed=None, note=None):
+        return RenamePlan(
+            track_id=action, local_file_id=None, current_path=None,
+            proposed_path=None, action=action,
+            current_relative=Path(current) if current else None,
+            proposed_relative=Path(proposed) if proposed else None,
+            destination_note=note,
+        )
+
+    return [
+        plan("rename", "a.mp3", "A - Song.mp3", note="Not in Warmup."),
+        plan("collision", "b.mp3", "B - Song.mp3"),
+        plan("already_correct"),
+        plan("not_auto_matched"),
+        plan("no_local_file"),
+        plan("error"),
+    ]
+
+
+def _metadata_application(tmp_path, metadata_service):
+    application = FakeApplication(
+        make_matcher(tmp_path),
+        sync_service=FakeSyncService(
+            [Playlist(id="p1", name="Warmup", track_count=6)],
+        ),
+    )
+    application.metadata_service = metadata_service
+    return application
+
+
+def test_library_rename_dry_run_prints_the_plan_and_changes_nothing(
+        tmp_path, capsys,
+):
+    metadata_service = FakeMetadataServiceForCli(_rename_plans())
+
+    cli.run(
+        _metadata_application(tmp_path, metadata_service),
+        ["library", "rename", "warmup"],
+    )
+
+    assert capsys.readouterr().out == (
+        "Rename plan for 'Warmup':\n\n"
+        "  a.mp3 -> A - Song.mp3\n"
+        "    warning: Not in Warmup.\n"
+        "  b.mp3 -> B - Song.mp3 (needs a numbered suffix)\n"
+        "\n2 to rename (1 with a collision), 1 already correct, "
+        "1 not auto-matched, 2 no local file.\n"
+        "\nDry run only — pass --apply to actually rename.\n"
+    )
+    assert metadata_service.applied == []
+
+
+def test_library_rename_apply_confirms_then_renames(
+        tmp_path, capsys, monkeypatch,
+):
+    metadata_service = FakeMetadataServiceForCli(_rename_plans())
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+
+    cli.run(
+        _metadata_application(tmp_path, metadata_service),
+        ["library", "rename", "Warmup", "--apply"],
+    )
+
+    assert metadata_service.applied == [metadata_service.plans]
+    assert capsys.readouterr().out.endswith(
+        "\nRenamed: 2 (1 with a collision), Already correct: 1, "
+        "Not auto-matched: 0, No local file: 0, Failed: 0.\n"
+    )
+
+
+def test_library_rename_apply_with_nothing_to_rename_asks_nothing(
+        tmp_path, capsys,
+):
+    metadata_service = FakeMetadataServiceForCli([])
+
+    cli.run(
+        _metadata_application(tmp_path, metadata_service),
+        ["library", "rename", "Warmup", "--apply"],
+    )
+
+    assert capsys.readouterr().out.endswith("\nNothing to rename.\n")
+
+
+def test_library_tag_prints_counts_and_details(tmp_path, capsys):
+    metadata_service = FakeMetadataServiceForCli()
+
+    cli.run(
+        _metadata_application(tmp_path, metadata_service),
+        ["library", "tag", "Warmup", "--analyze-audio",
+         "--bpm-range", "160", "180"],
+    )
+
+    assert metadata_service.tag_calls == [{
+        "playlist_name": "Warmup", "analyze_audio": True,
+        "expected_bpm_range": (160.0, 180.0), "force": False,
+    }]
+    assert capsys.readouterr().out == (
+        "Tagged: 2 (1 without cover art), Skipped (no match): 0, "
+        "Skipped (unsupported format): 0, Skipped (already tagged): 0, "
+        "Skipped (already analyzed): 0, Failed: 1.\n"
+        "\nDetails (skipped, failed, or tagged without art):\n"
+        "  [failed] Boom.\n"
+    )
+
+
+def test_library_tag_bpm_range_needs_analyze_audio(tmp_path, capsys):
+    metadata_service = FakeMetadataServiceForCli()
+
+    cli.run(
+        _metadata_application(tmp_path, metadata_service),
+        ["library", "tag", "Warmup", "--bpm-range", "160", "180"],
+    )
+
+    assert metadata_service.tag_calls == []
+    assert capsys.readouterr().out == (
+        "--bpm-range requires --analyze-audio.\n"
+    )
+
+
+def test_library_fix_art_prints_counts_and_details(tmp_path, capsys):
+    cli.run(
+        _metadata_application(tmp_path, FakeMetadataServiceForCli()),
+        ["library", "fix-art", "Warmup"],
+    )
+
+    assert capsys.readouterr().out == (
+        "Fixed: 1, Already correct: 3, No art URL: 0, "
+        "Download failed: 0, Embed failed: 0, Unsupported format: 0, "
+        "Skipped (no match): 0, Failed: 0.\n"
+        "\nDetails:\n"
+        "  [no_url] No art.\n"
+    )
+
+
+class FakeDownloadServiceForCliRouting:
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def set_destination(self, playlist_name, location_name, subfolder):
+        self.calls.append(
+            ("set_destination", playlist_name, location_name, subfolder),
+        )
+
+    def review_pending_upgrades(self):
+        self.calls.append(("review_pending_upgrades",))
+
+
+def test_playlists_without_a_subcommand_lists_playlists(tmp_path, capsys):
+    application = _metadata_application(tmp_path, None)
+
+    cli.run(application, ["playlists"])
+
+    assert capsys.readouterr().out == "Warmup (6 tracks)\n"
+
+
+def test_playlists_set_destination_resolves_the_playlist(tmp_path):
+    application = _metadata_application(tmp_path, None)
+    application.download_service = FakeDownloadServiceForCliRouting()
+
+    cli.run(
+        application,
+        ["playlists", "set-destination", "warmup", "Music", "Sets"],
+    )
+
+    assert application.download_service.calls == [
+        ("set_destination", "Warmup", "Music", "Sets"),
+    ]
+
+
+def test_downloads_review_without_all_runs_the_interactive_review(
+        tmp_path,
+):
+    application = _metadata_application(tmp_path, None)
+    application.download_service = FakeDownloadServiceForCliRouting()
+
+    cli.run(application, ["downloads", "review"])
+
+    assert application.download_service.calls == [
+        ("review_pending_upgrades",),
+    ]
