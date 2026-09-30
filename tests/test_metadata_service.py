@@ -711,6 +711,45 @@ def test_tag_tracks_already_tagged_skips_art_download_but_still_analyzes(
     assert reopened.tags.get("TIT2") is None
 
 
+def test_tag_tracks_keeps_a_decided_skip_when_a_later_step_fails(
+        tmp_path, monkeypatch,
+):
+    # A track already tagged but not yet analysed is counted as skipped
+    # before the analysis runs; a failure after that adds "failed"
+    # without losing the skip.
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "song.wav")
+
+    with service.database.transaction() as connection:
+        local_file = service.local_files.get_by_location_and_relative_path(
+            location.id, "song.wav", connection
+        )
+        service.local_files.mark_tagged(
+            local_file.id, "2026-08-27T00:00:00+00:00", connection
+        )
+
+    def fail_to_save(mutagen_file):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        "seeker.library.metadata_service.save_tags", fail_to_save,
+    )
+
+    result = service.tag_tracks(["t1"], analyze_audio=True)
+
+    assert result.skipped_already_tagged == 1
+    assert result.failed == 1
+    assert [detail["reason"] for detail in result.details] == [
+        "skipped_already_tagged", "failed",
+    ]
+    assert result.details[1]["message"] == "disk full"
+
+
 def test_tag_tracks_already_analyzed_skips_analysis_but_still_retags(
         tmp_path, monkeypatch,
 ):

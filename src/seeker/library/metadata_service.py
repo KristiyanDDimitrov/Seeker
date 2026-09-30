@@ -1,8 +1,9 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -40,7 +41,7 @@ from seeker.metadata import (
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
-from seeker.models.tag_result import FixArtResult, TagResult
+from seeker.models.tag_result import FixArtResult, TagOutcome, TagResult
 from seeker.models.track import Track
 
 logger = logging.getLogger(__name__)
@@ -275,6 +276,101 @@ def _rename_sidecar_if_present(current_path: Path, final_path: Path) -> None:
         logger.warning("Could not rename AppleDouble sidecar: %s", error)
 
 
+@dataclass(frozen=True)
+class _TagNote:
+    """One outcome a track adds to a `TagResult`. A `message` becomes a
+    detail row, under `reason` when it is more specific than
+    `outcome`."""
+    outcome: TagOutcome
+    message: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class _TagTarget:
+    track: Track
+    local_file: LocalFile
+    file_path: Path
+
+    @property
+    def description(self) -> str:
+        return _describe_track_file(self.track, self.local_file)
+
+
+@dataclass(frozen=True)
+class _ArtOutcome:
+    # "written", "written_wav_rarely_supported", "no_url",
+    # "download_failed", "embed_failed" or "format_unsupported".
+    outcome: str
+    message: str | None = None
+
+    @property
+    def written(self) -> bool:
+        return self.outcome in ("written", "written_wav_rarely_supported")
+
+
+def _decide_tag_skips(
+        target: _TagTarget,
+        analyze_audio: bool,
+        force: bool,
+) -> tuple[bool, bool, list[_TagNote]]:
+    """Whether to skip the tag write, whether to analyse, and the notes
+    for what was skipped.
+
+    Tag writing and analysis are skipped independently: a file with
+    `tagged_at` set already has its text and art (re-running it would
+    re-download the art every time), and one with `bpm` set is already
+    analysed. `force` bypasses both.
+    """
+    local_file = target.local_file
+    skip_tag_write = local_file.tagged_at is not None and not force
+    skip_analysis = analyze_audio and local_file.bpm is not None and not force
+    notes = []
+
+    if skip_tag_write:
+        notes.append(_TagNote(
+            "skipped_already_tagged",
+            f"{target.description}: already tagged at "
+            f"{local_file.tagged_at}, skipping text/art write",
+        ))
+
+    if skip_analysis:
+        notes.append(_TagNote(
+            "skipped_already_analyzed",
+            f"{target.description}: already analyzed "
+            f"(bpm={local_file.bpm}), skipping audio analysis",
+        ))
+
+    return skip_tag_write, analyze_audio and not skip_analysis, notes
+
+
+def _tagged_notes(target: _TagTarget, art: _ArtOutcome) -> list[_TagNote]:
+    tagged = _TagNote("tagged")
+
+    if art.outcome == "written_wav_rarely_supported":
+        logger.info(
+            "Tagged (art embedded, WAV rarely supported): %s",
+            target.description,
+        )
+        return [tagged, _TagNote(
+            "tagged_art_rarely_supported_format",
+            f"{target.description}: cover art was embedded, but WAV art "
+            f"is rarely read by real DJ software — don't rely on it "
+            f"being visible",
+        )]
+
+    if art.outcome != "written":
+        logger.info("Tagged (no cover art): %s", target.description)
+        return [tagged, _TagNote(
+            "tagged_without_art",
+            f"{target.description}: {art.message}",
+            reason=f"tagged_without_art_{art.outcome}",
+        )]
+
+    logger.info("Tagged: %s", target.description)
+    return [tagged]
+
+
 class MetadataService:
     def __init__(
         self,
@@ -346,24 +442,18 @@ class MetadataService:
         result = TagResult()
 
         for track_id in track_ids:
-            # One bad file must not abort the batch.
+            # One bad file must not abort the batch. Notes are recorded
+            # as they are produced, so a skip already decided still
+            # counts when a later step fails.
             try:
-                self._tag_one_track(
-                    track_id,
-                    result,
-                    analyze_audio,
-                    expected_bpm_range,
-                    force,
-                )
+                for note in self._tag_one_track(
+                        track_id, analyze_audio, expected_bpm_range, force,
+                ):
+                    result.record(
+                        track_id, note.outcome, note.message, note.reason,
+                    )
             except Exception as error:
-                result.failed += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "failed",
-                        "message": str(error),
-                    }
-                )
+                result.record(track_id, "failed", str(error))
                 logger.warning("Failed to tag track %s: %s", track_id, error)
 
         return result
@@ -371,320 +461,213 @@ class MetadataService:
     def _tag_one_track(
             self,
             track_id: str,
-            result: TagResult,
             analyze_audio: bool,
             expected_bpm_range: tuple[float, float] | None,
             force: bool = False,
-    ) -> None:
+    ) -> Iterator[_TagNote]:
+        target = self._resolve_tag_target(track_id)
+
+        if isinstance(target, _TagNote):
+            yield target
+            return
+
+        skip_tag_write, needs_analysis, skip_notes = _decide_tag_skips(
+            target, analyze_audio, force,
+        )
+        yield from skip_notes
+
+        if skip_tag_write and not needs_analysis:
+            return
+
+        mutagen_file = MutagenFile(target.file_path)
+
+        if mutagen_file is None:
+            yield _TagNote(
+                "skipped_format_unsupported",
+                f"{target.description}: mutagen could not open "
+                f"'{target.local_file.filename}'",
+            )
+            return
+
+        art: _ArtOutcome | None = None
+
+        if not skip_tag_write:
+            try:
+                write_text_tags(
+                    mutagen_file,
+                    target.track.artist,
+                    target.track.title,
+                    target.track.album,
+                )
+            except ValueError as error:
+                yield _TagNote(
+                    "skipped_format_unsupported",
+                    f"{target.description}: {error}",
+                )
+                return
+
+            art = self._embed_track_art(mutagen_file, target)
+
+        if needs_analysis:
+            self._analyse_track(mutagen_file, target, expected_bpm_range)
+
+        save_tags(mutagen_file)
+
+        if art is None:
+            logger.info("Re-analyzed (already tagged): %s", target.description)
+            return
+
+        self._mark_tagged(target.local_file)
+        yield from _tagged_notes(target, art)
+
+    def _resolve_tag_target(self, track_id: str) -> _TagTarget | _TagNote:
+        """The track and the file its match points at, or the note
+        explaining why there is nothing to tag."""
         with self.database.transaction() as connection:
             track = self.tracks.get_by_id(track_id, connection)
 
             if track is None:
-                # Genuinely possible (stale track_id, deleted row) —
-                # not just a type-checker formality, so it gets its own
-                # clear message rather than falling into the generic
-                # "failed" handler in tag_tracks() with a raw
-                # AttributeError.
-                result.failed += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "failed",
-                        "message": f"track {track_id} not found",
-                    }
-                )
-                return
+                # A stale id or a deleted row: its own message, rather
+                # than an AttributeError reported by tag_tracks.
+                return _TagNote("failed", f"track {track_id} not found")
 
+            label = f"{track.artist} - {track.title}"
             match = self.track_matches.get_by_track_id(track_id, connection)
 
             if match is None or match.local_file_id is None:
-                result.skipped_no_match += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "skipped_no_match",
-                        "message": (
-                            f"{track.artist} - {track.title}: no "
-                            f"matched local file"
-                        ),
-                    }
+                return _TagNote(
+                    "skipped_no_match", f"{label}: no matched local file",
                 )
-                return
 
             local_file = self.local_files.get_by_id(
                 match.local_file_id, connection
             )
 
             if local_file is None:
-                result.failed += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "failed",
-                        "message": (
-                            f"{track.artist} - {track.title}: matched "
-                            f"local_file_id {match.local_file_id} not "
-                            f"found"
-                        ),
-                    }
+                return _TagNote(
+                    "failed",
+                    f"{label}: matched local_file_id "
+                    f"{match.local_file_id} not found",
                 )
-                return
 
             location = self.locations.get_by_id(
                 local_file.location_id, connection
             )
 
             if location is None:
-                result.failed += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "failed",
-                        "message": (
-                            f"{track.artist} - {track.title}: library "
-                            f"location {local_file.location_id} not "
-                            f"found"
-                        ),
-                    }
+                return _TagNote(
+                    "failed",
+                    f"{label}: library location "
+                    f"{local_file.location_id} not found",
                 )
-                return
 
-        # Two independently-skippable operations, per the ask: a
-        # deterministic tag write (text+art) has already happened once
-        # tagged_at is set — re-running it is a pure waste (most
-        # visibly, a redundant album art re-download every run); an
-        # analysis has already happened once bpm is set. --force
-        # bypasses both checks independently, e.g. for Spotify metadata
-        # having changed or wanting to redo analysis.
-        skip_tag_write = local_file.tagged_at is not None and not force
-        skip_analysis = (
-            analyze_audio
-            and local_file.bpm is not None
-            and not force
+        return _TagTarget(
+            track=track,
+            local_file=local_file,
+            file_path=Path(location.path) / local_file.relative_path,
         )
-        needs_analysis = analyze_audio and not skip_analysis
 
-        if skip_tag_write:
-            result.skipped_already_tagged += 1
-            result.details.append(
-                {
-                    "track_id": track_id,
-                    "reason": "skipped_already_tagged",
-                    "message": (
-                        f"{_describe_track_file(track, local_file)}: already "
-                        f"tagged at {local_file.tagged_at}, skipping "
-                        f"text/art write"
-                    ),
-                }
+    def _embed_track_art(
+            self,
+            mutagen_file: Any,
+            target: _TagTarget,
+    ) -> _ArtOutcome:
+        """Best effort: a failed art step never sinks the text-tag
+        write, but it is reported, never silent (HISTORY §56)."""
+        art = self._try_embed_track_art(mutagen_file, target)
+
+        if not art.written:
+            logger.warning(
+                "Could not embed album art for %s: %s",
+                target.description, art.message,
             )
 
-        if skip_analysis:
-            result.skipped_already_analyzed += 1
-            result.details.append(
-                {
-                    "track_id": track_id,
-                    "reason": "skipped_already_analyzed",
-                    "message": (
-                        f"{_describe_track_file(track, local_file)}: already "
-                        f"analyzed (bpm={local_file.bpm}), skipping "
-                        f"audio analysis"
-                    ),
-                }
+        return art
+
+    def _try_embed_track_art(
+            self,
+            mutagen_file: Any,
+            target: _TagTarget,
+    ) -> _ArtOutcome:
+        url = target.track.album_art_url
+
+        if not url:
+            return _ArtOutcome(
+                "no_url",
+                "no album art URL stored for this track — re-run "
+                "'seeker sync-tracks' for this playlist to populate it",
             )
 
-        if skip_tag_write and not needs_analysis:
-            return
+        try:
+            image_bytes, mime_type = self._download_album_art(url)
+        except Exception as error:
+            return _ArtOutcome("download_failed", str(error))
 
-        file_path = Path(location.path) / local_file.relative_path
-        mutagen_file = MutagenFile(file_path)
+        try:
+            embedded = embed_album_art(mutagen_file, image_bytes, mime_type)
+        except Exception as error:
+            return _ArtOutcome("embed_failed", str(error))
 
-        if mutagen_file is None:
-            result.skipped_format_unsupported += 1
-            result.details.append(
-                {
-                    "track_id": track_id,
-                    "reason": "skipped_format_unsupported",
-                    "message": (
-                        f"{_describe_track_file(track, local_file)}: mutagen could "
-                        f"not open '{local_file.filename}'"
-                    ),
-                }
+        if not embedded:
+            return _ArtOutcome(
+                "format_unsupported",
+                "album art isn't supported for this file format",
             )
-            return
 
-        art_outcome = "written"
-        art_message: str | None = None
+        if target.local_file.format == "wav":
+            # mutagen writes WAV art and reads it back byte-exact, but
+            # almost no DJ software reads it: reported separately, so
+            # an art the user can never see is not counted as plain
+            # success (HISTORY §75).
+            return _ArtOutcome("written_wav_rarely_supported")
 
-        if not skip_tag_write:
-            try:
-                write_text_tags(
-                    mutagen_file, track.artist, track.title, track.album
-                )
-            except ValueError as error:
-                result.skipped_format_unsupported += 1
-                result.details.append(
-                    {
-                        "track_id": track_id,
-                        "reason": "skipped_format_unsupported",
-                        "message": (
-                            f"{_describe_track_file(track, local_file)}: {error}"
-                        ),
-                    }
-                )
-                return
+        return _ArtOutcome("written")
 
-            # Art is best-effort — a download/embed failure shouldn't
-            # sink an otherwise-successful text-tag write — but a
-            # silent one is exactly what made this whole thing
-            # invisible to the UI before (roadmap item 56 Phase 0.4/
-            # 4.2): the track still counted as plain "tagged" with no
-            # record anywhere of what actually happened to the art.
-            if not track.album_art_url:
-                art_outcome = "no_url"
-                art_message = (
-                    "no album art URL stored for this track — re-run "
-                    "'seeker sync-tracks' for this playlist to "
-                    "populate it"
-                )
-            else:
-                try:
-                    image_bytes, mime_type = self._download_album_art(
-                        track.album_art_url
-                    )
-                except Exception as error:
-                    art_outcome = "download_failed"
-                    art_message = str(error)
-                else:
-                    try:
-                        embedded = embed_album_art(
-                            mutagen_file, image_bytes, mime_type
-                        )
-                    except Exception as error:
-                        art_outcome = "embed_failed"
-                        art_message = str(error)
-                    else:
-                        if not embedded:
-                            art_outcome = "format_unsupported"
-                            art_message = (
-                                "album art isn't supported for this "
-                                "file format"
-                            )
-                        elif local_file.format == "wav":
-                            # Roadmap item 75 (P6, 6.4) — mutagen writes
-                            # a real APIC into the RIFF container and
-                            # reads it back byte-exact (embed_album_
-                            # art's own docstring), but essentially
-                            # nothing else in a DJ's real toolchain
-                            # reads embedded art from WAV. A count of
-                            # "written" the user can never actually see
-                            # is exactly the dishonest reporting Phase
-                            # 4.2 (item 56) was built to end — this
-                            # gets its own outcome instead of silently
-                            # joining the same bucket as a real,
-                            # visible MP3/FLAC/M4A embed.
-                            art_outcome = "written_wav_rarely_supported"
-
-            if art_outcome not in ("written", "written_wav_rarely_supported"):
-                logger.warning(
-                    "Could not embed album art for %s: %s",
-                    _describe_track_file(track, local_file), art_message,
-                )
-
-        if needs_analysis:
-            # Fully independent of the text/art tagging above — an
-            # analysis failure (or an unsupported format for the
-            # TBPM/TKEY write specifically) must not undo or block the
-            # text-tag write that already happened; it only prints a
-            # warning and skips the analysis fields, same best-effort
-            # treatment as album art.
-            try:
-                analysis = run_audio_analysis(
-                    file_path, expected_bpm_range=expected_bpm_range
-                )
-
-                write_analysis_tags(
-                    mutagen_file, analysis.bpm, analysis.camelot_key
-                )
-
-                with self.database.transaction() as connection:
-                    # Loaded from the DB via get_by_id above, so .id is
-                    # set.
-                    assert local_file.id is not None
-
-                    self.local_files.update_analysis(
-                        local_file.id,
-                        analysis.bpm,
-                        analysis.camelot_key,
-                        analysis.key_confidence,
-                        connection,
-                    )
-            except Exception as error:
-                logger.warning(
-                    "Could not analyze audio for %s: %s",
-                    _describe_track_file(track, local_file), error,
-                )
-
-        save_tags(mutagen_file)
-
-        if skip_tag_write:
-            logger.info(
-                "Re-analyzed (already tagged): %s",
-                _describe_track_file(track, local_file),
+    def _analyse_track(
+            self,
+            mutagen_file: Any,
+            target: _TagTarget,
+            expected_bpm_range: tuple[float, float] | None,
+    ) -> None:
+        """Best effort and independent of the text tags: a failure (or a
+        format that cannot hold TBPM/TKEY) logs a warning and never
+        undoes or blocks the text-tag write."""
+        try:
+            analysis = run_audio_analysis(
+                target.file_path, expected_bpm_range=expected_bpm_range
             )
-            return
 
+            write_analysis_tags(
+                mutagen_file, analysis.bpm, analysis.camelot_key
+            )
+
+            with self.database.transaction() as connection:
+                # Loaded from the DB by _resolve_tag_target, so .id is
+                # set.
+                assert target.local_file.id is not None
+
+                self.local_files.update_analysis(
+                    target.local_file.id,
+                    analysis.bpm,
+                    analysis.camelot_key,
+                    analysis.key_confidence,
+                    connection,
+                )
+        except Exception as error:
+            logger.warning(
+                "Could not analyze audio for %s: %s",
+                target.description, error,
+            )
+
+    def _mark_tagged(self, local_file: LocalFile) -> None:
         with self.database.transaction() as connection:
-            # Loaded from the DB via get_by_id above, so .id is set.
+            # Loaded from the DB by _resolve_tag_target, so .id is set.
             assert local_file.id is not None
 
             self.local_files.mark_tagged(
                 local_file.id,
                 datetime.now(UTC).isoformat(),
                 connection,
-            )
-
-        result.tagged += 1
-
-        if art_outcome == "written_wav_rarely_supported":
-            # Roadmap item 75 (P6, 6.4) — art WAS written (not the same
-            # thing as "no art" below), but honestly, not as "tagged"
-            # plain success either — see the outcome's own comment
-            # above for why.
-            result.tagged_art_rarely_supported_format += 1
-            result.details.append(
-                {
-                    "track_id": track_id,
-                    "reason": "tagged_art_rarely_supported_format",
-                    "message": (
-                        f"{_describe_track_file(track, local_file)}: cover art "
-                        f"was embedded, but WAV art is rarely read by "
-                        f"real DJ software — don't rely on it being "
-                        f"visible"
-                    ),
-                }
-            )
-            logger.info(
-                "Tagged (art embedded, WAV rarely supported): %s",
-                _describe_track_file(track, local_file),
-            )
-        elif art_outcome != "written":
-            result.tagged_without_art += 1
-            result.details.append(
-                {
-                    "track_id": track_id,
-                    "reason": f"tagged_without_art_{art_outcome}",
-                    "message": (
-                        f"{_describe_track_file(track, local_file)}: {art_message}"
-                    ),
-                }
-            )
-            logger.info(
-                "Tagged (no cover art): %s",
-                _describe_track_file(track, local_file),
-            )
-        else:
-            logger.info(
-                "Tagged: %s", _describe_track_file(track, local_file),
             )
 
     def fix_missing_art_for_playlist(
