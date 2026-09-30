@@ -11,8 +11,9 @@ def write_text_atomic(path: Path, text: str) -> None:
     Writes and fsyncs a sibling temp file (same directory, so
     `os.replace()` is a same-filesystem atomic rename) and renames it
     over `path`, so a crash, full disk or power cut mid-write leaves the
-    old file intact rather than a truncated one. An existing file's permission bits
-    carry over; the temp file is removed if anything fails.
+    old file intact rather than a truncated one. An existing file's
+    permission bits carry over; the temp file is removed if anything
+    fails.
     """
     _write_atomic(path, text, mode=None)
 
@@ -23,9 +24,8 @@ def write_text_locked(path: Path, text: str) -> None:
     Used for files holding credentials (config.json, the Spotify token
     cache): on top of `write_text_atomic`'s guarantees, the file must
     never be readable by anyone but this user, including the temp file
-    mid-write. `chmod` is a no-op on
-    Windows; the suppression mirrors config_store.save_config's own
-    long-standing tolerance for that.
+    mid-write. `chmod` is a no-op on Windows; the suppression mirrors
+    config_store.save_config's own long-standing tolerance for that.
     """
     _write_atomic(path, text, mode=0o600)
 

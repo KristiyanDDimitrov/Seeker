@@ -72,6 +72,41 @@ def test_no_message_box_in_ui_is_left_to_guess_its_text_format():
     )
 
 
+def test_every_hand_built_message_box_sets_its_text_format():
+    # Scoped per function: the box is built and filled in one place,
+    # so a function that constructs one and never calls setTextFormat
+    # left it at AutoText.
+    violations = []
+    for path in sorted(_UI_DIR.rglob("*.py")):
+        if path == _HELPER:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            calls = [
+                node for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+            ]
+            builds_box = any(
+                isinstance(call.func, ast.Name)
+                and call.func.id == "QMessageBox"
+                for call in calls
+            )
+            sets_format = any(
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr == "setTextFormat"
+                for call in calls
+            )
+            if builds_box and not sets_format:
+                violations.append(_where(path, function))
+
+    assert violations == [], (
+        "QMessageBox(...) defaults to AutoText; call setTextFormat:\n"
+        + "\n".join(violations)
+    )
+
+
 def _is_fixed_text(node: ast.expr) -> bool:
     # A string literal, or a module-level UPPER_CASE constant
     # (help_text.X or a bare X): Seeker's own text, never data.
