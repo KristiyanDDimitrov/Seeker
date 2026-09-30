@@ -1,6 +1,8 @@
+import dataclasses
 import json
 import stat
 import sys
+import typing
 
 import pytest
 
@@ -335,9 +337,8 @@ def test_migrate_copies_spotify_env_into_empty_store(
 
 
 def _clear_migration_env(monkeypatch):
-    # This process's real .env may have real SLSKD_*/SPOTIFY_* values
-    # loaded into os.environ already (config.py's load_dotenv() at
-    # import time) — migrate_legacy_env_config reads os.environ live,
+    # The developer's shell may export real SLSKD_*/SPOTIFY_* values —
+    # migrate_legacy_env_config reads os.environ live,
     # so a test that only sets/asserts on a subset of fields must
     # explicitly clear the rest first, rather than relying on however
     # this machine happens to be configured.
@@ -429,3 +430,62 @@ def test_migrate_partial_fields_only_copies_the_missing_ones(
     assert "SLSKD_API_KEY" in caplog.text
     assert "SLSKD_BASE_URL" not in caplog.text
     assert "SLSKD_DOWNLOAD_DIR" not in caplog.text
+
+
+def _non_default_value(field: dataclasses.Field) -> object:
+    if field.name == "theme_mode":
+        return "dark"
+    allowed = typing.get_args(field.type) or (field.type,)
+    if bool in allowed:
+        return not field.default
+    if float in allowed:
+        return 0.42
+    if int in allowed:
+        return 7
+    if str in allowed:
+        return f"value-of-{field.name}"
+    raise AssertionError(f"no non-default value for {field.type!r}")
+
+
+def test_every_field_round_trips_a_non_default_value(tmp_path):
+    # A field load_config forgets would silently reset on every load.
+    path = tmp_path / "config.json"
+    values = {
+        field.name: _non_default_value(field)
+        for field in dataclasses.fields(SeekerConfig)
+    }
+    assert all(
+        values[field.name] != field.default
+        for field in dataclasses.fields(SeekerConfig)
+    )
+
+    save_config(SeekerConfig(**values), path)
+
+    assert dataclasses.asdict(load_config(path)) == values
+
+
+@pytest.mark.parametrize(("key", "raw", "expected"), [
+    ("slskd_base_url", 5030, None),
+    ("downloads_paused", "yes", False),
+    ("notify_errors", 0, True),
+    ("default_download_location_id", "3", None),
+    ("default_download_location_id", True, None),
+    ("auto_match_threshold", "0.9", None),
+    ("auto_match_threshold", 1, 1.0),
+    ("default_download_subfolder_per_playlist", None, True),
+])
+def test_load_config_falls_back_to_the_default_for_a_wrongly_typed_value(
+        tmp_path, caplog, key, raw, expected,
+):
+    # A hand-edited config.json must not put a string where the app
+    # expects a bool (a non-empty "false" string is truthy).
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({key: raw, "slskd_api_key": "kept"}))
+
+    config = load_config(path)
+
+    assert getattr(config, key) == expected
+    assert type(getattr(config, key)) is type(expected)
+    assert config.slskd_api_key == "kept"
+    if raw != expected:
+        assert key in caplog.text

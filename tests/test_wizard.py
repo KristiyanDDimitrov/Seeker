@@ -84,10 +84,8 @@ def test_wizard_starts_at_spotify_step_when_nothing_configured(
     # gap Task 1 already hit once for the SLSKD_* fields.
     monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
     monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     application = make_application(tmp_path, monkeypatch)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -99,13 +97,8 @@ def test_wizard_starts_at_spotify_step_when_nothing_configured(
 def test_wizard_resumes_at_library_step_when_spotify_already_configured(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
 
     application = make_application(tmp_path, monkeypatch)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -120,13 +113,8 @@ def test_wizard_resumes_at_soulseek_step_when_spotify_and_library_done(
     # The real resumability scenario per the task's own spec: Spotify
     # done, library done, SoulSeek not — must land directly on step 3,
     # not restart from step 1.
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     # Docker detection would otherwise run for real on step-3 entry —
     # stub it so this test doesn't depend on the host's real Docker
     # state.
@@ -151,13 +139,8 @@ def test_wizard_soulseek_step_checks_real_docker_state_on_entry(
     # always re-check live on entry, so a docker compose up that
     # already succeeded in a prior session is reflected immediately
     # rather than blindly repeated.
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -178,13 +161,8 @@ def test_wizard_soulseek_step_checks_real_docker_state_on_entry(
 def test_wizard_skip_soulseek_advances_to_dashboard_without_credentials(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -227,10 +205,8 @@ def test_connect_spotify_button_calls_connect_spotify_and_advances(
 ):
     monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
     monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     application = make_application(tmp_path, monkeypatch)
     calls = []
@@ -260,10 +236,8 @@ def test_client_id_return_pressed_connects_when_field_is_non_empty(
 ):
     monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
     monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     application = make_application(tmp_path, monkeypatch)
     calls = []
@@ -288,10 +262,8 @@ def test_client_id_return_pressed_does_nothing_when_field_is_empty(
 ):
     monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
     monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     application = make_application(tmp_path, monkeypatch)
     calls = []
@@ -316,13 +288,8 @@ def test_client_id_return_pressed_does_nothing_when_field_is_empty(
 def test_soulseek_username_return_pressed_triggers_bring_up_validation(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -351,13 +318,8 @@ def test_soulseek_username_return_pressed_triggers_bring_up_validation(
 def test_soulseek_password_return_pressed_calls_bring_up_slskd(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -406,13 +368,8 @@ def test_choose_library_folder_registers_location_and_advances(
 ):
     from PySide6.QtWidgets import QFileDialog
 
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -456,13 +413,8 @@ def test_choose_library_folder_registers_location_and_advances(
 def test_library_folder_step_destination_checkboxes_default_checked(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     application = make_application(tmp_path, monkeypatch)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
     qtbot.addWidget(wizard)
@@ -480,13 +432,8 @@ def test_unchecking_download_into_library_skips_the_default_destination(
 ):
     from PySide6.QtWidgets import QFileDialog
 
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -514,13 +461,8 @@ def test_unchecking_subfolder_per_playlist_persists_false(
 ):
     from PySide6.QtWidgets import QFileDialog
 
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -550,13 +492,8 @@ def test_unchecking_subfolder_per_playlist_persists_false(
 def test_bring_up_soulseek_requires_username_and_password(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -582,13 +519,8 @@ def test_bring_up_soulseek_requires_username_and_password(
 def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -656,13 +588,8 @@ def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
 def test_health_result_healthy_persists_config_and_advances_to_dashboard(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -714,13 +641,8 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
 
 
 def _build_wizard_at_soulseek_step(qtbot, tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -830,13 +752,8 @@ def test_health_result_kicked_shows_distinct_message(
 def test_bring_up_soulseek_blocked_when_docker_not_running(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -870,13 +787,8 @@ def test_bring_up_soulseek_blocked_when_docker_not_running(
 def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -905,13 +817,8 @@ def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
 def test_soulseek_account_mode_radios_default_to_existing_account(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     application = make_application(tmp_path, monkeypatch)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
     qtbot.addWidget(wizard)
@@ -923,13 +830,8 @@ def test_soulseek_account_mode_radios_default_to_existing_account(
 def test_bring_up_soulseek_blocked_when_no_library_location(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -963,13 +865,8 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
 def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -1015,13 +912,8 @@ def test_health_poll_timeout_shows_message_after_elapsed_threshold(
     from seeker.docker_setup import SlskdHealthStatus
     from seeker.ui.wizard import HEALTH_POLL_TIMEOUT_SECONDS
 
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
@@ -1045,13 +937,8 @@ def test_health_poll_timeout_shows_message_after_elapsed_threshold(
 def test_render_docker_state_not_installed_offers_download_link(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.NOT_INSTALLED,
@@ -1077,13 +964,8 @@ def test_render_docker_state_not_installed_offers_download_link(
 def test_render_docker_state_installed_not_running_offers_launch(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
@@ -1107,13 +989,8 @@ def test_render_docker_state_installed_not_running_offers_launch(
 def test_launch_docker_clicked_success_updates_status_and_button(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
@@ -1146,13 +1023,8 @@ def test_launch_docker_clicked_success_updates_status_and_button(
 def test_launch_docker_clicked_failure_shows_manual_instructions(
         qtbot, tmp_path, monkeypatch,
 ):
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "already-set",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://127.0.0.1:8888/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     monkeypatch.setattr("sys.platform", "darwin")
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",

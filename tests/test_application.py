@@ -360,16 +360,9 @@ def test_application_soulseek_config_prefers_store_value_over_env(
     # own migration tests assert, checked here end-to-end through
     # Application's actual resolution properties.
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_BASE_URL",
-        "http://stale-env-value:5030",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_API_KEY", "stale-env-key",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_DOWNLOAD_DIR", "/stale/env/dir",
-    )
+    monkeypatch.setenv("SLSKD_BASE_URL", "http://stale-env-value:5030")
+    monkeypatch.setenv("SLSKD_API_KEY", "stale-env-key")
+    monkeypatch.setenv("SLSKD_DOWNLOAD_DIR", "/stale/env/dir")
 
     data_dir = tmp_path / "platformdirs-data"
     monkeypatch.setattr(
@@ -411,20 +404,6 @@ def test_application_soulseek_config_falls_back_to_env_when_store_empty(
     monkeypatch.setenv("SLSKD_API_KEY", "env-key")
     monkeypatch.delenv("SLSKD_DOWNLOAD_DIR", raising=False)
 
-    # config.py's module-level constants are fixed at import time, not
-    # re-read live from os.environ — patch them directly so the
-    # property-level fallback (which reads config.SLSKD_*) is exercised
-    # against the same values the env-var monkeypatches above represent.
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_BASE_URL", "http://env-value:5030",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_API_KEY", "env-key",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_DOWNLOAD_DIR", None,
-    )
-
     data_dir = tmp_path / "platformdirs-data"
     monkeypatch.setattr(
         "seeker.application.platformdirs.user_data_dir",
@@ -457,13 +436,8 @@ def test_application_spotify_config_prefers_store_value_over_env(
     # Same store-or-env chain as SLSKD_* above, extended to the two new
     # Spotify fields — not a separate mechanism.
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "stale-env-client-id",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI",
-        "http://stale-env-redirect/callback",
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "stale-env-client-id")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://stale-env-redirect/callback")
 
     data_dir = tmp_path / "platformdirs-data"
     monkeypatch.setattr(
@@ -508,12 +482,8 @@ def test_application_spotify_config_falls_back_to_env_then_default(
     # Store and env both empty for redirect_uri — the fixed,
     # app-controlled default (matching callback_server.py's own
     # listening port) must be used instead of None.
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_CLIENT_ID", "env-client-id",
-    )
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "env-client-id")
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     app = Application()
     app._config_store = SeekerConfig()
@@ -537,10 +507,8 @@ def test_application_spotify_not_configured_raises_only_when_auth_manager_used(
         "seeker.application.platformdirs.user_data_dir",
         _fake_user_data_dir(data_dir),
     )
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
 
     app = Application()  # must not raise
     app._config_store = SeekerConfig()
@@ -995,10 +963,8 @@ def test_download_service_constructs_without_soulseek_configured(
     # SoulSeek. SoulSeek is the wizard's own optional, skippable step,
     # so this was a real usability gap, not a hypothetical one.
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_BASE_URL", None,
-    )
-    monkeypatch.setattr("seeker.application.config.SLSKD_API_KEY", None)
+    monkeypatch.delenv("SLSKD_BASE_URL", raising=False)
+    monkeypatch.delenv("SLSKD_API_KEY", raising=False)
     app._config_store = SeekerConfig()
 
     assert app.soulseek_configured is False
@@ -1013,10 +979,8 @@ def test_persist_soulseek_config_resets_cached_download_service(
         tmp_path, monkeypatch,
 ):
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        "seeker.application.config.SLSKD_BASE_URL", None,
-    )
-    monkeypatch.setattr("seeker.application.config.SLSKD_API_KEY", None)
+    monkeypatch.delenv("SLSKD_BASE_URL", raising=False)
+    monkeypatch.delenv("SLSKD_API_KEY", raising=False)
     app._config_store = SeekerConfig()
 
     # Accessed once while genuinely unconfigured — this cached instance
@@ -1049,10 +1013,8 @@ def test_onboarding_complete_false_when_neither_spotify_nor_library_done(
         tmp_path, monkeypatch,
 ):
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
     app._config_store = SeekerConfig()
 
     assert app.onboarding_complete is False
@@ -1077,10 +1039,8 @@ def test_onboarding_complete_false_when_library_done_but_not_spotify(
         tmp_path, monkeypatch,
 ):
     app = _application_with_tmp_config(tmp_path, monkeypatch)
-    monkeypatch.setattr("seeker.application.config.SPOTIFY_CLIENT_ID", None)
-    monkeypatch.setattr(
-        "seeker.application.config.SPOTIFY_REDIRECT_URI", None,
-    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
     app._config_store = SeekerConfig()
     app.library_service.add_location("Main", str(tmp_path))
 

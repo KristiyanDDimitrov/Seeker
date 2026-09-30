@@ -1,6 +1,7 @@
 import logging
 import sys
 
+from seeker import config
 from seeker.application import Application
 from seeker.cli import run
 
@@ -21,6 +22,7 @@ def _configure_logging() -> None:
 
 def main() -> None:
     _configure_logging()
+    config.load_env_file()
 
     # Spotify config is resolved lazily now (config store, falling back
     # to .env) — see Application.auth_manager. A command that doesn't

@@ -1,8 +1,9 @@
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, replace
+from dataclasses import Field, asdict, dataclass, fields, replace
 from pathlib import Path
+from typing import get_args
 
 import platformdirs
 
@@ -128,35 +129,47 @@ def load_config(path: Path) -> SeekerConfig:
 
     # Unknown keys (e.g. a field a later version removed) are ignored,
     # not an error — no migration/tolerance code is needed when a field
-    # goes away. HISTORY §100.
-    return SeekerConfig(
-        slskd_base_url=data.get("slskd_base_url"),
-        slskd_api_key=data.get("slskd_api_key"),
-        slskd_download_dir=data.get("slskd_download_dir"),
-        spotify_client_id=data.get("spotify_client_id"),
-        spotify_redirect_uri=data.get("spotify_redirect_uri"),
-        slskd_username=data.get("slskd_username"),
-        slskd_password=data.get("slskd_password"),
-        slskd_web_username=data.get("slskd_web_username"),
-        slskd_web_password=data.get("slskd_web_password"),
-        auto_match_threshold=data.get("auto_match_threshold"),
-        needs_review_threshold=data.get("needs_review_threshold"),
-        default_download_location_id=data.get("default_download_location_id"),
-        default_download_subfolder_per_playlist=data.get(
-            "default_download_subfolder_per_playlist", True,
-        ),
-        downloads_paused=data.get("downloads_paused", False),
-        tray_hide_notice_shown=data.get("tray_hide_notice_shown", False),
-        notify_downloads_finished=data.get("notify_downloads_finished", True),
-        notify_needs_decision=data.get("notify_needs_decision", True),
-        notify_errors=data.get("notify_errors", True),
-        theme_mode=_resolve_theme_mode(data.get("theme_mode")),
-        window_geometry=data.get("window_geometry"),
-        last_open_page=data.get("last_open_page"),
-        start_hidden_at_login=data.get("start_hidden_at_login", False),
-        review_splitter_state=data.get("review_splitter_state"),
-        window_reopen_filled=data.get("window_reopen_filled", False),
+    # goes away. HISTORY §100. A missing or wrongly typed key takes the
+    # field's default.
+    values = {
+        field.name: _checked_value(field, data[field.name])
+        for field in fields(SeekerConfig)
+        if field.name in data
+    }
+    loaded = SeekerConfig(**values)  # type: ignore[arg-type]
+
+    return replace(loaded, theme_mode=_resolve_theme_mode(loaded.theme_mode))
+
+
+def _checked_value(field: Field[object], raw: object) -> object:
+    """`raw` when it matches the field's annotation, else the field's
+    default. Deliberately narrow: `bool` is never accepted as an int
+    (JSON `true` is not a location id), and an int is widened to float
+    only for a float field."""
+    allowed = get_args(field.type) or (field.type,)
+
+    if raw is None and type(None) in allowed:
+        return None
+
+    if isinstance(raw, bool):
+        matches = bool in allowed
+    elif isinstance(raw, int) and float in allowed and int not in allowed:
+        return float(raw)
+    else:
+        matches = any(
+            isinstance(raw, kind) for kind in allowed
+            if isinstance(kind, type) and kind is not bool
+        )
+
+    if matches:
+        return raw
+
+    # The type, never the value: some of these fields are credentials.
+    logger.warning(
+        "Ignoring config.json's %s: a %s, expected %s; using the default.",
+        field.name, type(raw).__name__, field.type,
     )
+    return field.default
 
 
 def save_config(seeker_config: SeekerConfig, path: Path) -> None:
@@ -187,7 +200,7 @@ def migrate_legacy_env_config(path: Path) -> SeekerConfig:
     # (and no print) when there's nothing to migrate, idempotent on
     # repeat calls. The real .env file itself is never read from or
     # written to directly — only os.environ (already populated by
-    # config.py's load_dotenv()) is read.
+    # config.load_env_file() in the entry point) is read.
     seeker_config = load_config(path)
     migrated_fields = []
 

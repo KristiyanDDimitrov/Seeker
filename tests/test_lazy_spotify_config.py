@@ -8,14 +8,9 @@ SRC_PATH = str(Path(__file__).resolve().parents[1] / "src")
 
 
 def _run_fresh_environment_script(tmp_path: Path, script: str) -> str:
-    # A real subprocess with a genuinely clean environment — python-dotenv's
-    # load_dotenv() walks up from config.py's own file location looking
-    # for a .env file, not from the subprocess's cwd, so it would still
-    # find *this* project's real .env regardless of cwd. Setting the
-    # SPOTIFY_*/SLSKD_* keys to an empty string (not absent) beforehand
-    # is what actually prevents that — load_dotenv()'s default
-    # override=False treats "already present, even empty" as already
-    # set and leaves it alone (confirmed empirically, not assumed).
+    # A real subprocess with a genuinely clean environment: the
+    # SPOTIFY_*/SLSKD_* keys are set empty, which reads as unconfigured
+    # (and which load_dotenv's override=False would leave alone).
     env = {
         key: value
         for key, value in os.environ.items()
@@ -119,3 +114,67 @@ def test_fresh_environment_other_commands_still_work_without_spotify(
     output = _run_fresh_environment_script(tmp_path, script)
 
     assert "OTHER_SERVICES_OK" in output
+
+
+def _run_without_seeker_env(tmp_path: Path, script: str) -> str:
+    # Unlike _run_fresh_environment_script, the keys are absent (not
+    # empty), so any .env load is visible in os.environ.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("SPOTIFY_", "SLSKD_"))
+    }
+    env["HOME"] = str(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(tmp_path), env=env, capture_output=True, text=True,
+        timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_importing_config_reads_no_env_file(tmp_path):
+    # load_dotenv() at import walked up from the installed module's own
+    # directory: this checkout's .env, or a frozen bundle's parents.
+    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    script = textwrap.dedent(f"""
+        import os, sys
+        sys.path.insert(0, {SRC_PATH!r})
+        import seeker.application
+        print(sorted(
+            key for key in os.environ
+            if key.startswith(("SPOTIFY_", "SLSKD_"))
+        ))
+    """)
+
+    assert _run_without_seeker_env(tmp_path, script).strip() == "[]"
+
+
+def test_load_env_file_reads_the_working_directorys_env(tmp_path):
+    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    script = textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {SRC_PATH!r})
+        from seeker import config
+        config.load_env_file()
+        print(config.spotify_client_id())
+    """)
+
+    assert _run_without_seeker_env(tmp_path, script).strip() == (
+        "from-working-dir"
+    )
+
+
+def test_a_frozen_app_never_reads_an_env_file(tmp_path):
+    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    script = textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {SRC_PATH!r})
+        sys.frozen = True
+        from seeker import config
+        config.load_env_file()
+        print(config.spotify_client_id())
+    """)
+
+    assert _run_without_seeker_env(tmp_path, script).strip() == "None"

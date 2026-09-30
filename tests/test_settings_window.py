@@ -32,9 +32,7 @@ def _fake_user_data_dir(data_dir):
 def make_application(tmp_path, monkeypatch) -> Application:
     monkeypatch.chdir(tmp_path)
 
-    # This process's real .env may have real SLSKD_*/SPOTIFY_* values
-    # already loaded into os.environ (config.py's load_dotenv() runs at
-    # import time, against the real project .env) —
+    # The developer's shell may export real SLSKD_*/SPOTIFY_* values —
     # migrate_legacy_env_config reads os.environ live regardless of
     # monkeypatch.chdir(), so every Settings test needs a genuinely
     # unconfigured starting point unless it sets a value itself. Same
@@ -44,18 +42,6 @@ def make_application(tmp_path, monkeypatch) -> Application:
             "SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI",
     ):
         monkeypatch.delenv(env_var, raising=False)
-
-    # config.py's module-level constants are fixed at import time (real
-    # .env values baked in at the start of the whole test session) —
-    # clearing os.environ alone doesn't touch them; the Application
-    # property-level fallback (`self._config_store.X or config.X`)
-    # still reads the frozen value unless patched directly. Same gap
-    # test_application.py's own tests already have to work around.
-    for attr in (
-            "SLSKD_BASE_URL", "SLSKD_API_KEY", "SLSKD_DOWNLOAD_DIR",
-            "SPOTIFY_CLIENT_ID", "SPOTIFY_REDIRECT_URI",
-    ):
-        monkeypatch.setattr(f"seeker.application.config.{attr}", None)
 
     data_dir = tmp_path / "platformdirs-data"
     monkeypatch.setattr(

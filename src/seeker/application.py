@@ -217,7 +217,7 @@ class Application:
         # for a setup that hasn't gone through migration (or is
         # env-only by choice) — same chain as the SLSKD_* properties
         # below. See config_store.py.
-        return self._config_store.spotify_client_id or config.SPOTIFY_CLIENT_ID
+        return self._config_store.spotify_client_id or config.spotify_client_id()
 
     @property
     def _spotify_redirect_uri(self) -> str | None:
@@ -229,7 +229,7 @@ class Application:
         # onboarding wizard offers, not a free-text field.
         return (
             self._config_store.spotify_redirect_uri
-            or config.SPOTIFY_REDIRECT_URI
+            or config.spotify_redirect_uri()
             or DEFAULT_REDIRECT_URI
         )
 
@@ -623,17 +623,17 @@ class Application:
         # §7.1): includes the env fallback `settings.slskd_base_url`
         # alone doesn't, so presentation-layer code that needs the
         # actually-resolved value reads this instead.
-        return self._config_store.slskd_base_url or config.SLSKD_BASE_URL
+        return self._config_store.slskd_base_url or config.slskd_base_url()
 
     @property
     def slskd_api_key(self) -> str | None:
-        return self._config_store.slskd_api_key or config.SLSKD_API_KEY
+        return self._config_store.slskd_api_key or config.slskd_api_key()
 
     @property
     def slskd_download_dir(self) -> str | None:
         return (
             self._config_store.slskd_download_dir
-            or config.SLSKD_DOWNLOAD_DIR
+            or config.slskd_download_dir()
         )
 
     @property
