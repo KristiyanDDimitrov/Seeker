@@ -70,7 +70,7 @@ src/seeker/
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
-│       formatting.py, download_eta.py, upload_eta.py,
+│       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
 │       slskd_status.py (shared outage state + Start slskd)
 ├── models/                     # dataclasses — playlist, track, track_match,
@@ -97,6 +97,8 @@ src/seeker/
 ├── error_text.py                # describe_error() — readable text for any
 │                              #   task error, shared by UI workers and CLI
 ├── errors.py                    # SeekerError root + errors >1 module raises
+├── formatting.py                # format_file_size/format_timestamp/… —
+│                              #   pure, shared by cli.py and ui/
 ├── dashboard_service.py, history_service.py, sharing_service.py
 ├── config_store.py              # SeekerConfig — the UI-editable JSON store;
 │                              #   .env/config.py is the fallback when unset

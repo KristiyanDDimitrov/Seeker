@@ -19,7 +19,7 @@ by convention).
 from dataclasses import dataclass
 from datetime import datetime
 
-from seeker.ui.formatting import format_duration_seconds as format_eta_seconds
+from seeker.formatting import format_duration_seconds as format_eta_seconds
 
 # Same convention/value as DownloadEtaTracker's STALL_SAMPLE_COUNT —
 # consecutive same-bytes samples (each one real BACKEND_POLL_INTERVAL_MS

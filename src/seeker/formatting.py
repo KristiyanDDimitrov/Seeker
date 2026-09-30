@@ -1,13 +1,8 @@
-"""Shared presentation-layer formatting: timestamps, file sizes,
-transfer speeds, durations. One place, per this project's standing
-"shared thing lives in exactly one place" discipline (matching.py,
-download_dedup.py, file_deletion.py) — used by the Dashboard's tagged-
-at display, the History page, and the Downloads tab's ETA/speed
-display.
+"""Presentation formatting shared by the CLI and `ui/`: timestamps,
+file sizes, transfer speeds, durations.
 
-No DB access, no repository imports — pure functions only, safe to
-call from any presentation-layer widget without violating the
-layering rule.
+Pure functions with no Qt, DB or repository imports, so either
+presentation layer can call them without breaking the layering rule.
 """
 
 from datetime import datetime

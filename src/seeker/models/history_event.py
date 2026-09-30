@@ -15,7 +15,7 @@ TAGGED = "tagged"
 class HistoryEvent:
     # ISO 8601 UTC string, same convention as every other stored
     # timestamp in this codebase — formatting (local time) is the
-    # caller's job via ui/formatting.format_timestamp, not baked in here.
+    # caller's job via formatting.format_timestamp, not baked in here.
     occurred_at: str
     event_type: str  # DOWNLOADED or TAGGED
     track_title: str

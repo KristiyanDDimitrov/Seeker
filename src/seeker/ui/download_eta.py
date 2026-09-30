@@ -15,12 +15,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 
-# format_duration_seconds now lives in ui/formatting.py, shared with the
+# format_duration_seconds lives in seeker/formatting.py, shared with the
 # History page and the Downloads tab's other size/speed display — this
 # re-export keeps every existing call site (including this module's own
 # describe() below and every test importing format_eta_seconds from
 # here) byte-for-byte unchanged.
-from seeker.ui.formatting import format_duration_seconds as format_eta_seconds
+from seeker.formatting import format_duration_seconds as format_eta_seconds
 
 
 @dataclass

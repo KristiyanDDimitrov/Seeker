@@ -8,17 +8,13 @@ import httpx
 from seeker.application import Application
 from seeker.error_text import describe_error
 from seeker.errors import PlaylistNotFoundError, SeekerError
+from seeker.formatting import format_file_size, format_timestamp
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
 from seeker.library.metadata_service import RenamePlan
 from seeker.models.playlist import Playlist
 from seeker.soulseek.download_service import NoDestinationConfiguredError
 from seeker.soulseek.quality import rank_candidates
 from seeker.spotify.sync_service import find_close_playlist_matches
-
-# Pure-function formatter, no Qt/PySide6 dependency (see its own
-# docstring) — CLI and UI share the exact same local-time conversion
-# rather than the CLI growing a second copy.
-from seeker.ui.formatting import format_file_size, format_timestamp
 
 
 def printable(text: str) -> str:

@@ -1,6 +1,9 @@
+import ast
 from datetime import datetime
+from pathlib import Path
 
-from seeker.ui.formatting import (
+import seeker
+from seeker.formatting import (
     format_duration_seconds,
     format_file_size,
     format_speed,
@@ -69,3 +72,30 @@ def test_format_duration_seconds_hours_and_minutes():
 
 def test_format_duration_seconds_never_negative():
     assert format_duration_seconds(-5) == "0s"
+
+
+def test_nothing_outside_ui_imports_the_qt_package():
+    """The CLI and the services must run without PySide6's widgets;
+    `main_ui.py` is the GUI's own entry point and the one exception."""
+    source_root = Path(seeker.__file__).parent
+    offenders = []
+
+    for path in sorted(source_root.rglob("*.py")):
+        relative = path.relative_to(source_root)
+        if relative.parts[0] == "ui" or relative.name == "main_ui.py":
+            continue
+
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            elif isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            else:
+                continue
+            if any(
+                    name == "seeker.ui" or name.startswith("seeker.ui.")
+                    for name in names
+            ):
+                offenders.append(str(relative))
+
+    assert offenders == []

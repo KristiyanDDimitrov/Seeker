@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.formatting import format_file_size
 from seeker.library.duplicate_service import (
     BulkDuplicateResolutionResult,
     DuplicateGroup,
@@ -31,7 +32,6 @@ from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
-from seeker.ui.formatting import format_file_size
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.formatting import format_timestamp
 from seeker.models.playlist import Playlist
 from seeker.models.track_status import (
     AWAITING_REVIEW,
@@ -49,7 +50,6 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.ui import help_text, theme
-from seeker.ui.formatting import format_timestamp
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip

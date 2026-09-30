@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.formatting import format_file_size
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
-from seeker.ui.formatting import format_file_size
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
