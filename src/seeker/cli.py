@@ -223,6 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     downloads_subparsers = downloads_parser.add_subparsers(
         dest="downloads_command",
+        required=True,
     )
 
     downloads_subparsers.add_parser(
@@ -279,6 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     library_subparsers = library_parser.add_subparsers(
         dest="library_command",
+        required=True,
     )
 
     add_parser = library_subparsers.add_parser(
@@ -435,6 +437,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sharing_subparsers = sharing_parser.add_subparsers(
         dest="sharing_command",
+        required=True,
     )
 
     sharing_subparsers.add_parser(
@@ -578,8 +581,6 @@ def handle_downloads(
 
         application.download_service.review_pending_upgrades()
         return
-
-    print("Usage: seeker downloads {status,review}")
 
 
 def _handle_downloads_review_all(application: Application) -> None:
@@ -934,11 +935,6 @@ def handle_library(
 
             print()
 
-    else:
-        print(
-            "Usage: seeker library "
-            "{add,list,remove,scan,match,tag,fingerprint,duplicates} ..."
-        )
 
 
 def handle_check(
@@ -1077,10 +1073,6 @@ def handle_sharing(
         application: Application,
         parsed: argparse.Namespace,
 ) -> None:
-    if parsed.sharing_command != "status":
-        print("Usage: seeker sharing status")
-        return
-
     if not application.soulseek_configured:
         print("SoulSeek isn't configured yet — set it up in Settings first.")
         return

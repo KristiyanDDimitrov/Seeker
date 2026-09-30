@@ -1385,3 +1385,27 @@ def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
         "SoulSeek isn't reachable — downloads are paused until slskd is "
         "running.\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("command", "subcommands"),
+    [
+        (
+            "library",
+            "{add,list,remove,scan,match,tag,fix-art,fingerprint,"
+            "duplicates,rename}",
+        ),
+        ("downloads", "{status,review}"),
+        ("sharing", "{status}"),
+    ],
+)
+def test_a_command_group_without_its_subcommand_is_a_usage_error(
+        command, subcommands, capsys,
+):
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(object(), [command])
+
+    assert exit_info.value.code == 2
+    error = " ".join(capsys.readouterr().err.split())
+    assert f"seeker {command} [-h] {subcommands}" in error
+    assert "the following arguments are required" in error
