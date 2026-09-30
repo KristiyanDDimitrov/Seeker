@@ -108,6 +108,12 @@ def _migrate(connection: sqlite3.Connection) -> None:
         connection, "download_requests", "next_retry_at", "TEXT"
     )
     _add_column_if_missing(
+        connection, "download_requests", "failure_reason", "TEXT"
+    )
+    _add_column_if_missing(
+        connection, "download_requests", "dismissed_at", "TEXT"
+    )
+    _add_column_if_missing(
         connection, "soulseek_review_candidates", "runner_up_username", "TEXT"
     )
     _add_column_if_missing(

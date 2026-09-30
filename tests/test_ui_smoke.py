@@ -99,6 +99,7 @@ class FakeDashboardService:
         self._statuses = statuses or []
         self._active_downloads = active_downloads or []
         self.calls: list[str] = []
+        self.clear_finished_calls = 0
 
     def get_playlist_track_status(self, playlist_name: str) -> list:
         self.calls.append(playlist_name)
@@ -106,6 +107,17 @@ class FakeDashboardService:
 
     def get_active_downloads(self) -> list:
         return self._active_downloads
+
+    def clear_finished_downloads(self) -> int:
+        self.clear_finished_calls += 1
+        finished = [
+            download for download in self._active_downloads
+            if download.request.status
+            in ("completed", "failed", "unavailable")
+        ]
+        for download in finished:
+            self._active_downloads.remove(download)
+        return len(finished)
 
 
 class FakeLibraryService:

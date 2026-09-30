@@ -3,8 +3,10 @@
 from datetime import UTC, datetime
 
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QProgressBar,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -40,6 +42,13 @@ _DOWNLOAD_STATUS_LABELS = {
     "unavailable": "Unavailable (gave up retrying)",
 }
 
+# The words a failure's recorded reason follows in the Status cell
+# ("Failed — Timed out").
+_FAILURE_STATUS_LABELS = {"failed": "Failed", "unavailable": "Unavailable"}
+
+# Rows "Clear finished" removes from this page.
+_FINISHED_STATUSES = {"completed", "failed", "unavailable"}
+
 # Statuses where a progress bar means anything at all — a locked/
 # shortlisted row has no real, current transfer to show progress for
 # (a rejection leaves bytes_transferred/total_bytes unset by design,
@@ -57,6 +66,15 @@ _PROGRESS_ELIGIBLE_STATUSES = {"queued", "downloading"}
 _DOWNLOAD_TERMINAL_STATUSES = {
     "completed", "failed", "ready_for_review", "unavailable",
 }
+
+
+def _status_text(request: DownloadRequest) -> str:
+    failure_label = _FAILURE_STATUS_LABELS.get(request.status)
+
+    if failure_label is not None and request.failure_reason:
+        return f"{failure_label} — {request.failure_reason}"
+
+    return _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
 
 
 def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
@@ -166,7 +184,19 @@ class DownloadsPage(QWidget):
         self.downloads_eta_label = QLabel("")
         # QLabel[badge="muted"] in theme.py.
         self.downloads_eta_label.setProperty("badge", "muted")
-        layout.addWidget(self.downloads_eta_label)
+
+        self.clear_finished_button = QPushButton("Clear finished")
+        self.clear_finished_button.setToolTip(
+            help_text.TOOLTIP_DOWNLOADS_CLEAR_FINISHED
+        )
+        self.clear_finished_button.setEnabled(False)
+        self.clear_finished_button.clicked.connect(self._clear_finished)
+
+        header_row = QHBoxLayout()
+        header_row.addWidget(self.downloads_eta_label)
+        header_row.addStretch()
+        header_row.addWidget(self.clear_finished_button)
+        layout.addLayout(header_row)
 
         self.downloads_table = QTableWidget(0, 5)
         self.downloads_table.setHorizontalHeaderLabels(
@@ -232,6 +262,12 @@ class DownloadsPage(QWidget):
             return
 
         self._context.update_nav_badge("downloads", len(downloads))
+        self.clear_finished_button.setEnabled(
+            any(
+                download.request.status in _FINISHED_STATUSES
+                for download in downloads
+            )
+        )
         self._render_aggregate_eta(downloads)
 
         # Round 8 §12.2 — sorting is live on this table; disabled for
@@ -252,13 +288,15 @@ class DownloadsPage(QWidget):
                     QTableWidgetItem(download.request.role.capitalize()),
                 )
 
-                status = download.request.status
-                status_text = _DOWNLOAD_STATUS_LABELS.get(status, status)
-                self.downloads_table.setItem(
-                    row, 3, QTableWidgetItem(status_text),
-                )
-
                 request = download.request
+                status = request.status
+                status_item = QTableWidgetItem(_status_text(request))
+                if request.failure_reason:
+                    # The cell elides a long reason; the tooltip never
+                    # does.
+                    status_item.setToolTip(status_item.text())
+                self.downloads_table.setItem(row, 3, status_item)
+
                 is_terminal = status in _DOWNLOAD_TERMINAL_STATUSES
 
                 if is_terminal:
@@ -293,6 +331,19 @@ class DownloadsPage(QWidget):
             # _build_terminal_progress_widget's bespoke stretch factor).
             self.downloads_table.resizeRowsToContents()
 
+    def _clear_finished(self) -> None:
+        # Not run_worker's button=: it re-enables the button when the
+        # clear finishes, after a display-tick render may already have
+        # shown the cleared list and disabled it. The render alone owns
+        # this button's enabled state.
+        self.clear_finished_button.setEnabled(False)
+        run_worker(
+            self._context.thread_pool,
+            self._context.application.dashboard_service
+            .clear_finished_downloads,
+            on_finished=lambda _cleared: self._poll_active_downloads(),
+        )
+
     def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:
         # No reserved-but-blank strip when there's nothing active — the
         # empty string collapses the label to zero height, matching
@@ -303,12 +354,12 @@ class DownloadsPage(QWidget):
             self.downloads_eta_label.setToolTip("")
             return
 
-        # A terminal row (completed/failed/ready_for_review, still
-        # visible for RECENTLY_FINISHED_WINDOW_SECONDS) has nothing left
-        # to estimate; counting it here previously folded it into the
-        # header's "queued (no estimate)" figure, which reads as
-        # actively waiting rather than already finished (HISTORY §56
-        # Phase 5.4).
+        # A terminal row (a completed one still inside
+        # RECENTLY_FINISHED_WINDOW_SECONDS, a failure not yet cleared,
+        # ready_for_review) has nothing left to estimate; counting it
+        # here previously folded it into the header's "queued (no
+        # estimate)" figure, which reads as actively waiting rather than
+        # already finished (HISTORY §56 Phase 5.4).
         pairs = [
             (download.request.id, download.request.total_bytes)
             for download in downloads

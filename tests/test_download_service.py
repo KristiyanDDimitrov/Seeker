@@ -1860,6 +1860,109 @@ def test_rejected_state_marks_failed(tmp_path):
     assert counts["failed"] == 1
     assert get_status(service, "t1") == "failed"
 
+def _failure_reason(service: DownloadService, filename: str) -> str | None:
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT failure_reason FROM download_requests "
+            "WHERE filename = ?",
+            (filename,),
+        ).fetchone()
+
+    return row["failure_reason"]
+
+
+@pytest.mark.parametrize(
+    ("state", "exception_text", "expected"),
+    [
+        (
+            "Completed, Rejected", "Transfer rejected: Too many requests.",
+            "Peer rejected: too many requests",
+        ),
+        ("Completed, Rejected", None, "Peer rejected the transfer"),
+        ("Completed, TimedOut", None, "Timed out"),
+        ("Cancelled", None, "Cancelled"),
+        ("Completed, Aborted", None, "Aborted"),
+        (
+            "Completed, Errored", "Remote connection closed",
+            "Transfer error: Remote connection closed",
+        ),
+    ],
+)
+def test_a_failed_poll_records_a_readable_reason(
+        tmp_path, state, exception_text, expected,
+):
+    exceptions = {"t1": exception_text} if exception_text else None
+    service = make_service(tmp_path, {"t1": state}, exceptions=exceptions)
+    seed_pending_request(service, "t1")
+
+    service.poll_downloads()
+
+    assert get_status(service, "t1") == "failed"
+    assert _failure_reason(service, "Dom Dolla - Rhyme Dust.mp3") == expected
+
+
+def test_a_locked_rejection_records_no_failure_reason(tmp_path):
+    service = make_service(
+        tmp_path,
+        {"t1": "Completed, Rejected"},
+        exceptions={"t1": "Transfer rejected: File not shared."},
+    )
+    seed_pending_request(service, "t1")
+
+    service.poll_downloads()
+
+    assert get_status(service, "t1") == "locked"
+    assert _failure_reason(service, "Dom Dolla - Rhyme Dust.mp3") is None
+
+
+def test_an_exhausted_locked_retry_records_why_it_gave_up(tmp_path):
+    from seeker.soulseek.download_service import LOCKED_RETRY_MAX_ATTEMPTS
+
+    service = make_service(tmp_path, states={})
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+    set_retry_state(
+        service, "Dom Dolla - Rhyme Dust.mp3",
+        retry_count=LOCKED_RETRY_MAX_ATTEMPTS, next_retry_at=None,
+    )
+
+    service.poll_downloads()
+
+    assert _failure_reason(service, "Dom Dolla - Rhyme Dust.mp3") == (
+        f"Peer kept refusing after {LOCKED_RETRY_MAX_ATTEMPTS} attempts"
+    )
+
+
+def test_a_shortlisted_candidate_rejected_at_enqueue_records_the_reason(
+        tmp_path,
+):
+    service = make_service(
+        tmp_path,
+        states={"active-1": "Completed, Rejected"},
+        exceptions={"active-1": "Transfer rejected: Too many requests."},
+        retry_results={
+            "backup.flac": SoulseekDownloadError(
+                "slskd rejected the download of 'backup.flac' from "
+                "'peer2': Too many files",
+                reason="Too many files",
+            ),
+        },
+    )
+    seed_pending_request(
+        service, "active-1", track_id="t1", role="upgrade", rank=1,
+    )
+    seed_pending_request(
+        service, None, track_id="t1", role="upgrade", status="shortlisted",
+        rank=2, filename="backup.flac", username="peer2",
+    )
+
+    service.poll_downloads()
+
+    assert _failure_reason(service, "backup.flac") == (
+        "Peer rejected: too many files"
+    )
+
 
 def test_rejected_settled_role_with_lock_exception_routes_to_locked_not_failed(
         tmp_path,

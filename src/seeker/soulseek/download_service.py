@@ -94,6 +94,49 @@ FAILED_STATE_MARKERS = (
     "Aborted",
 )
 
+# The label a failed transfer's reason starts with, by state flag.
+# "Rejected" is absent: a rejection is the peer's decision, and
+# describe_rejection() words it as one.
+_FAILED_STATE_LABELS = (
+    ("TimedOut", "Timed out"),
+    ("Errored", "Transfer error"),
+    ("Cancelled", "Cancelled"),
+    ("Aborted", "Aborted"),
+)
+
+_REJECTION_PREFIX = "transfer rejected:"
+
+
+def describe_rejection(text: str | None) -> str:
+    """A peer's rejection as a user reads it: slskd's own words, minus
+    its "Transfer rejected:" framing ("Peer rejected: file not
+    shared")."""
+    detail = (text or "").strip()
+
+    if detail.lower().startswith(_REJECTION_PREFIX):
+        detail = detail[len(_REJECTION_PREFIX):].strip()
+
+    detail = detail.rstrip(".")
+
+    if not detail:
+        return "Peer rejected the transfer"
+
+    return f"Peer rejected: {detail[0].lower()}{detail[1:]}"
+
+
+def describe_transfer_failure(state: str, exception_text: str | None) -> str:
+    """Why a transfer slskd reports as failed (any FAILED_STATE_MARKERS
+    flag) failed, from its state and its `exception` text."""
+    if "Rejected" in state:
+        return describe_rejection(exception_text)
+
+    label = next(
+        (label for marker, label in _FAILED_STATE_LABELS if marker in state),
+        "Transfer failed",
+    )
+
+    return f"{label}: {exception_text}" if exception_text else label
+
 
 class PlaylistNotFoundError(RuntimeError):
     pass
@@ -1090,10 +1133,12 @@ class DownloadService:
                     # file (HISTORY §26). Only the Phase 4 cascade below
                     # stays role-specific, since the shortlist/cascade
                     # mechanism is an upgrade-only concept.
-                    status = self._resolve_rejection_status(
+                    status, reason = self._classify_failed_transfer(
                         state, request.username, request.transfer_id,
                     )
-                    self._update_status(request.id, status)
+                    self._update_status(
+                        request.id, status, failure_reason=reason,
+                    )
 
                     if status == "failed":
                         counts["failed"] += 1
@@ -1202,21 +1247,22 @@ class DownloadService:
 
         return counts
 
-    def _resolve_rejection_status(
+    def _classify_failed_transfer(
             self,
             state: str,
             username: str,
             transfer_id: str,
-    ) -> str:
-        if "Rejected" in state:
-            exception_text = self.soulseek.get_download_exception(
-                username, transfer_id,
-            )
+    ) -> tuple[str, str | None]:
+        """'locked' (no reason: it is retried) for a recognized
+        rejection, otherwise 'failed' with a reason a user can read."""
+        exception_text = self.soulseek.get_download_exception(
+            username, transfer_id,
+        )
 
-            if is_recognized_rejection(exception_text):
-                return "locked"
+        if "Rejected" in state and is_recognized_rejection(exception_text):
+            return "locked", None
 
-        return "failed"
+        return "failed", describe_transfer_failure(state, exception_text)
 
     def _cascade_upgrade(self, track_id: str, counts: dict[str, int]) -> None:
         # Sequential, not simultaneous: try one candidate, and only move
@@ -1281,11 +1327,15 @@ class DownloadService:
             # file not shared, which instead raises nothing here and
             # only shows up via the status check below) — see client.py's
             # RECOGNIZED_REJECTION_PATTERNS.
-            status = (
-                "locked" if is_recognized_rejection(str(error)) else "failed"
+            if is_recognized_rejection(str(error)):
+                self._update_status(request.id, "locked")
+                return "locked"
+
+            self._update_status(
+                request.id, "failed",
+                failure_reason=describe_rejection(error.reason or str(error)),
             )
-            self._update_status(request.id, status)
-            return status
+            return "failed"
 
         # An async-shape rejection doesn't raise from request_download
         # itself (confirmed live, 2026-08-27) — it shows up almost
@@ -1297,8 +1347,10 @@ class DownloadService:
             request.username, transfer_id,
         ).state
 
+        reason = None
+
         if any(marker in state for marker in FAILED_STATE_MARKERS):
-            status = self._resolve_rejection_status(
+            status, reason = self._classify_failed_transfer(
                 state, request.username, transfer_id,
             )
         elif "Succeeded" in state:
@@ -1309,6 +1361,7 @@ class DownloadService:
         with self.database.transaction() as connection:
             self.download_requests.update_transfer_id_and_status(
                 request.id, transfer_id, status, connection,
+                failure_reason=reason,
             )
 
         return status
@@ -1399,6 +1452,10 @@ class DownloadService:
             with self.database.transaction() as connection:
                 self.download_requests.mark_status(
                     request.id, "unavailable", connection,
+                    failure_reason=(
+                        "Peer kept refusing after "
+                        f"{LOCKED_RETRY_MAX_ATTEMPTS} attempts"
+                    ),
                 )
             return
 
@@ -1608,9 +1665,16 @@ class DownloadService:
         with self.database.transaction() as connection:
             return self.download_requests.get_unavailable(connection)
 
-    def _update_status(self, request_id: int, status: str) -> None:
+    def _update_status(
+            self,
+            request_id: int,
+            status: str,
+            failure_reason: str | None = None,
+    ) -> None:
         with self.database.transaction() as connection:
-            self.download_requests.mark_status(request_id, status, connection)
+            self.download_requests.mark_status(
+                request_id, status, connection, failure_reason=failure_reason,
+            )
 
     def _update_progress(
             self,

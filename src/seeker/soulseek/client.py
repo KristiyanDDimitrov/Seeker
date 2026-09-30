@@ -8,7 +8,12 @@ from seeker.models.soulseek_file import SoulseekFile
 
 
 class SoulseekDownloadError(RuntimeError):
-    pass
+    def __init__(self, message: str, reason: str | None = None):
+        super().__init__(message)
+        # slskd's own words for the rejection, without the "who and
+        # what" framing `message` adds — what a user-facing reason
+        # quotes.
+        self.reason = reason
 
 
 # Recognized, known-transient slskd rejection reasons — confirmed live
@@ -170,7 +175,8 @@ class SoulseekClient:
             if is_recognized_rejection(message):
                 raise SoulseekDownloadError(
                     f"slskd rejected the download of '{filename}' from "
-                    f"'{username}': {message}"
+                    f"'{username}': {message}",
+                    reason=message,
                 ) from error
 
             raise
@@ -186,7 +192,8 @@ class SoulseekClient:
 
             raise SoulseekDownloadError(
                 f"slskd rejected the download of '{filename}' from "
-                f"'{username}': {message}"
+                f"'{username}': {message}",
+                reason=message,
             )
 
         return cast(str, transfers[0]["id"])

@@ -218,6 +218,14 @@ CREATE TABLE IF NOT EXISTS download_requests (
     -- treats NULL the same as "due now."
     retry_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
+    -- Why a row became 'failed' or 'unavailable', in words a user can
+    -- read ("Peer rejected: file not shared", "Timed out"). NULL for
+    -- every other status, and for failures recorded before it existed.
+    failure_reason TEXT,
+    -- Set by the Downloads page's "Clear finished": hides a finished
+    -- row from that page without deleting it (a manual track's request
+    -- is what keeps the track, HISTORY §144).
+    dismissed_at TEXT,
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 

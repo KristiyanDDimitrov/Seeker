@@ -293,6 +293,36 @@ def test_request_download_raises_with_slskd_failure_message(monkeypatch):
         client.request_download("peer1", "song.flac", 12345)
 
 
+def test_a_rejection_error_carries_slskds_own_reason(monkeypatch):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeResponse({"failures": [{"message": "File not shared."}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(SoulseekDownloadError) as caught:
+        client.request_download("peer1", "song.flac", 12345)
+
+    assert caught.value.reason == "File not shared."
+
+
+def test_a_synchronous_rejection_error_carries_slskds_own_reason(
+        monkeypatch,
+):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeErrorResponse(404, "User long25 appears to be offline")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(SoulseekDownloadError) as caught:
+        client.request_download("long25", "song.flac", 12345)
+
+    assert caught.value.reason == "User long25 appears to be offline"
+
+
 def test_request_download_wraps_real_peer_offline_404(monkeypatch):
     # Real, captured response (2026-08-28): a direct replay of the exact
     # failing request against the live instance for a peer that wasn't

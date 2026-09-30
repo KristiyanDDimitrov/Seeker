@@ -38,7 +38,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             """
         ).fetchall()
@@ -69,7 +71,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE id = ?
             """,
@@ -143,7 +147,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status IN ('queued', 'downloading')
             """
@@ -174,7 +180,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status = 'ready_for_review'
             ORDER BY requested_at
@@ -206,7 +214,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status = 'locked'
             ORDER BY requested_at
@@ -238,7 +248,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status = 'shortlisted'
             ORDER BY track_id, rank
@@ -270,7 +282,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status = 'superseded'
             ORDER BY requested_at
@@ -303,7 +317,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE status = 'unavailable'
             ORDER BY requested_at
@@ -344,7 +360,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE track_id = ?
             AND status NOT IN ('completed', 'failed', 'superseded')
@@ -408,7 +426,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE track_id = ?
             AND status NOT IN ('failed', 'superseded', 'unavailable')
@@ -461,7 +481,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE track_id = ?
             AND role = ?
@@ -500,7 +522,9 @@ class DownloadRequestRepository:
                 bytes_transferred,
                 total_bytes,
                 retry_count,
-                next_retry_at
+                next_retry_at,
+                failure_reason,
+                dismissed_at
             FROM download_requests
             WHERE track_id = ? AND status = 'shortlisted'
             ORDER BY rank ASC
@@ -543,6 +567,7 @@ class DownloadRequestRepository:
             download_request_id: int,
             status: str,
             connection: sqlite3.Connection,
+            failure_reason: str | None = None,
     ) -> None:
         completed_at = (
             datetime.now(UTC).isoformat()
@@ -553,11 +578,28 @@ class DownloadRequestRepository:
         connection.execute(
             """
             UPDATE download_requests
-            SET status = ?, completed_at = ?
+            SET status = ?, completed_at = ?, failure_reason = ?
             WHERE id = ?
             """,
-            (status, completed_at, download_request_id),
+            (status, completed_at, failure_reason, download_request_id),
         )
+
+    def dismiss_finished(
+            self,
+            dismissed_at: str,
+            connection: sqlite3.Connection,
+    ) -> int:
+        cursor = connection.execute(
+            """
+            UPDATE download_requests
+            SET dismissed_at = ?
+            WHERE status IN ('completed', 'failed', 'unavailable')
+            AND dismissed_at IS NULL
+            """,
+            (dismissed_at,),
+        )
+
+        return cursor.rowcount
 
     def update_transfer_id_and_status(
             self,
@@ -565,6 +607,7 @@ class DownloadRequestRepository:
             transfer_id: str,
             status: str,
             connection: sqlite3.Connection,
+            failure_reason: str | None = None,
     ) -> None:
         # Used by the Phase 3 locked-retry cycle: a new request_download
         # attempt against the same username+filename gets a new
@@ -580,10 +623,14 @@ class DownloadRequestRepository:
         connection.execute(
             """
             UPDATE download_requests
-            SET transfer_id = ?, status = ?, completed_at = ?
+            SET transfer_id = ?, status = ?, completed_at = ?,
+                failure_reason = ?
             WHERE id = ?
             """,
-            (transfer_id, status, completed_at, download_request_id),
+            (
+                transfer_id, status, completed_at, failure_reason,
+                download_request_id,
+            ),
         )
 
     def update_retry_state(
@@ -647,4 +694,6 @@ def _row_to_download_request(row: sqlite3.Row) -> DownloadRequest:
         total_bytes=row["total_bytes"],
         retry_count=row["retry_count"],
         next_retry_at=row["next_retry_at"],
+        failure_reason=row["failure_reason"],
+        dismissed_at=row["dismissed_at"],
     )

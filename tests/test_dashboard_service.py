@@ -571,7 +571,10 @@ def test_get_active_downloads_excludes_long_completed(tmp_path):
     assert downloads == []
 
 
-def test_get_active_downloads_excludes_long_failed(tmp_path):
+@pytest.mark.parametrize("status", ["failed", "unavailable"])
+def test_get_active_downloads_keeps_a_failure_until_it_is_cleared(
+        tmp_path, status,
+):
     service = make_service(tmp_path)
     seed_playlist(service, "p1")
     seed_track(service, "p1", "t1")
@@ -579,12 +582,85 @@ def test_get_active_downloads_excludes_long_failed(tmp_path):
         datetime.now(UTC) - timedelta(hours=1)
     ).isoformat()
     seed_download_request(
-        service, "t1", status="failed", completed_at=stale,
+        service, "t1", status=status, completed_at=stale,
     )
 
     downloads = service.get_active_downloads()
 
-    assert downloads == []
+    assert [download.request.status for download in downloads] == [status]
+
+
+def test_get_active_downloads_carries_the_failure_reason(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="failed",
+        completed_at=datetime.now(UTC).isoformat(),
+    )
+    with service.database.transaction() as connection:
+        connection.execute(
+            "UPDATE download_requests SET failure_reason = 'Timed out'"
+        )
+
+    downloads = service.get_active_downloads()
+
+    assert downloads[0].request.failure_reason == "Timed out"
+
+
+def test_clear_finished_downloads_hides_finished_rows_but_keeps_them(
+        tmp_path,
+):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    now = datetime.now(UTC).isoformat()
+    for track_id, status, completed_at in [
+        ("t1", "failed", now),
+        ("t2", "unavailable", now),
+        ("t3", "completed", now),
+        ("t4", "downloading", None),
+        ("t5", "ready_for_review", None),
+    ]:
+        seed_track(service, "p1", track_id)
+        seed_download_request(
+            service, track_id, status=status, completed_at=completed_at,
+            filename=f"{track_id}.flac",
+        )
+
+    cleared = service.clear_finished_downloads()
+
+    assert cleared == 3
+    assert sorted(
+        download.request.status
+        for download in service.get_active_downloads()
+    ) == ["downloading", "ready_for_review"]
+    # Dismissed, never deleted: a manual track's request is what makes
+    # it real (HISTORY §144), so a cleared row must survive.
+    with service.database.transaction() as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM download_requests"
+        ).fetchone()[0]
+    assert remaining == 5
+
+
+def test_clear_finished_downloads_leaves_a_later_failure_visible(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    seed_download_request(
+        service, "t1", status="failed",
+        completed_at=datetime.now(UTC).isoformat(),
+    )
+    service.clear_finished_downloads()
+    seed_track(service, "p1", "t2")
+    seed_download_request(
+        service, "t2", status="failed",
+        completed_at=datetime.now(UTC).isoformat(), filename="t2.flac",
+    )
+
+    downloads = service.get_active_downloads()
+
+    assert [download.track.id for download in downloads] == ["t2"]
 
 
 def test_get_active_downloads_sorted_most_recent_first(tmp_path):

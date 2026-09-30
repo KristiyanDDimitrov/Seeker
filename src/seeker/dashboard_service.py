@@ -63,10 +63,15 @@ ACTIVE_DOWNLOAD_STATUSES = {
 }
 
 # Untuned constant, same convention as every other threshold in this
-# codebase — how long a completed/failed row keeps appearing in the
+# codebase — how long a completed row keeps appearing in the
 # active-downloads view after landing, so a download visibly "lands"
 # rather than vanishing the instant poll_downloads() marks it terminal.
 RECENTLY_FINISHED_WINDOW_SECONDS = 60
+
+# Terminal statuses that stay in the active-downloads view until the
+# user clears them: a failure the user never saw is a failure they
+# cannot act on.
+_KEPT_UNTIL_CLEARED_STATUSES = {"failed", "unavailable"}
 
 
 class DashboardService:
@@ -198,10 +203,11 @@ class DashboardService:
         confusion, see CLAUDE.md) — so this is deliberately NOT filtered
         by playlist anywhere in this method.
 
-        Also includes a completed/failed row for
+        Also includes a completed row for
         RECENTLY_FINISHED_WINDOW_SECONDS after its completed_at, so a
         download visibly "lands" in the view instead of disappearing the
-        instant poll_downloads() marks it terminal.
+        instant poll_downloads() marks it terminal, and a failed or
+        unavailable row until clear_finished_downloads() dismisses it.
 
         Rows representing the exact same real candidate (same track/
         role/peer/file) are collapsed to the single most-recently-
@@ -256,18 +262,28 @@ class DashboardService:
 
         return results
 
+    def clear_finished_downloads(self) -> int:
+        """Hide every completed, failed and unavailable row from
+        get_active_downloads(). Rows are marked dismissed, never
+        deleted: a manual track is kept only while it has a request
+        (HISTORY §144). Returns how many rows were dismissed."""
+        with self.database.transaction() as connection:
+            return self.download_requests.dismiss_finished(
+                datetime.now(UTC).isoformat(), connection,
+            )
+
 
 def _is_visible(request: DownloadRequest, now: datetime) -> bool:
     if request.status in ACTIVE_DOWNLOAD_STATUSES:
         return True
 
-    # 'unavailable' (item 66 Phase 4.3) gets the same "visibly lands"
-    # treatment as completed/failed — it shouldn't just vanish from the
-    # Downloads page the instant the retry budget is exhausted.
-    if (
-            request.status in ("completed", "failed", "unavailable")
-            and request.completed_at
-    ):
+    if request.dismissed_at is not None:
+        return False
+
+    if request.status in _KEPT_UNTIL_CLEARED_STATUSES:
+        return True
+
+    if request.status == "completed" and request.completed_at:
         completed_at = datetime.fromisoformat(request.completed_at)
         elapsed = (now - completed_at).total_seconds()
 

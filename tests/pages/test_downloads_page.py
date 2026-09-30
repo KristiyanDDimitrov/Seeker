@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.track import Track
-from seeker.ui import theme
+from seeker.ui import help_text, theme
 from seeker.ui.main_window import MainWindow
 from test_ui_smoke import (
     FakeApplication,
@@ -590,3 +590,127 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
     assert window._downloads_page.active_downloads_count == 1
     # ...but the actual table was never touched.
     assert window._downloads_page.downloads_table.rowCount() == 0
+
+
+# --- Failures stay visible ---------------------------------------------------
+
+def test_a_failed_row_shows_its_reason_with_the_full_text_in_a_tooltip(
+        qtbot,
+):
+    download = _make_active_download(
+        status="failed", bytes_transferred=None, total_bytes=None,
+    )
+    download.request.failure_reason = "Peer rejected: too many requests"
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads([download])
+
+    item = window._downloads_page.downloads_table.item(0, 3)
+    assert item.text() == "Failed — Peer rejected: too many requests"
+    assert item.toolTip() == "Failed — Peer rejected: too many requests"
+
+
+def test_an_unavailable_row_shows_its_reason(qtbot):
+    download = _make_active_download(
+        status="unavailable", bytes_transferred=None, total_bytes=None,
+    )
+    download.request.failure_reason = "Peer kept refusing after 8 attempts"
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads([download])
+
+    item = window._downloads_page.downloads_table.item(0, 3)
+    assert item.text() == (
+        "Unavailable — Peer kept refusing after 8 attempts"
+    )
+
+
+def test_a_failure_from_before_reasons_were_stored_shows_the_plain_label(
+        qtbot,
+):
+    download = _make_active_download(
+        status="failed", bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads([download])
+
+    assert window._downloads_page.downloads_table.item(0, 3).text() == (
+        "Failed"
+    )
+
+
+def test_clear_finished_is_disabled_with_nothing_finished(qtbot):
+    downloads = [_make_active_download(status="downloading")]
+    application = FakeApplication(active_downloads=downloads)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads(downloads)
+
+    assert not window._downloads_page.clear_finished_button.isEnabled()
+
+
+def test_clear_finished_dismisses_finished_rows_and_refreshes(qtbot):
+    downloads = [
+        _make_active_download(track_id="t1", status="downloading"),
+        _make_active_download(
+            track_id="t2", status="failed",
+            bytes_transferred=None, total_bytes=None,
+        ),
+    ]
+    application = FakeApplication(active_downloads=downloads)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads(list(downloads))
+    assert page.clear_finished_button.isEnabled()
+
+    page.clear_finished_button.click()
+
+    dashboard_service = application.dashboard_service
+    qtbot.waitUntil(
+        lambda: page.downloads_table.rowCount() == 1, timeout=2000,
+    )
+    assert dashboard_service.clear_finished_calls == 1
+    assert page.downloads_table.item(0, 3).text() == "Downloading"
+    assert not page.clear_finished_button.isEnabled()
+
+
+def test_page_copy_says_failures_stay_until_cleared():
+    assert "Clear finished" in help_text.DOWNLOADS_TAB_SUBTITLE
+    assert "see the Downloads page" not in help_text.HISTORY_PAGE_SUBTITLE
+    assert "Clear finished" in help_text.HISTORY_PAGE_SUBTITLE
+
+
+def test_clear_finished_finishing_never_re_enables_over_a_newer_render(
+        qtbot,
+):
+    # The display tick can render the cleared list before the clear's
+    # own completion is handled. Rendering here, synchronously after
+    # the click, always lands first: the worker's finished signal is
+    # queued until control returns to the event loop.
+    finished = _make_active_download(
+        track_id="t1", status="failed",
+        bytes_transferred=None, total_bytes=None,
+    )
+    active = _make_active_download(track_id="t2", status="downloading")
+    application = FakeApplication(active_downloads=[finished, active])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([finished, active])
+    refreshes: list[int] = []
+    page._poll_active_downloads = lambda: refreshes.append(1)
+
+    page.clear_finished_button.click()
+    page._render_active_downloads([active])
+    qtbot.waitUntil(lambda: refreshes == [1], timeout=2000)
+
+    assert not page.clear_finished_button.isEnabled()

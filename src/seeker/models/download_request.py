@@ -21,3 +21,5 @@ class DownloadRequest:
     # Roadmap item 66 (Phase 4.3) — bounds the locked-retry loop.
     retry_count: int = 0
     next_retry_at: str | None = None
+    failure_reason: str | None = None
+    dismissed_at: str | None = None

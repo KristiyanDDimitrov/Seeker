@@ -41,8 +41,9 @@ SEARCH_TAB_SUBTITLE = (
 )
 DOWNLOADS_TAB_SUBTITLE = (
     "Every SoulSeek transfer currently in progress, across all "
-    "playlists — updates automatically. A finished transfer stays "
-    "visible here for about a minute, then moves to the History page."
+    "playlists — updates automatically. A completed transfer stays "
+    "here for about a minute, then moves to the History page. A failed "
+    "one stays, with its reason, until you click Clear finished."
 )
 REVIEW_TAB_SUBTITLE = (
     "Confirm or reject SoulSeek matches that weren't clean enough to "
@@ -61,8 +62,9 @@ SETTINGS_WINDOW_SUBTITLE = (
 HISTORY_PAGE_SUBTITLE = (
     "Recently downloaded and tagged tracks, in one place. Derived from "
     "current data, not a permanent log — an event disappears if its "
-    "underlying file or match is later removed, and download failures "
-    "aren't shown here (see the Downloads page for those)."
+    "underlying file or match is later removed. Failed downloads stay "
+    "on the Downloads page, with their reason, until you click Clear "
+    "finished there."
 )
 HELP_PAGE_SUBTITLE = (
     "How Seeker works, troubleshooting, and where your data lives."
@@ -837,6 +839,10 @@ NO_UPLOADS_LABEL = "No one is currently downloading from you."
 
 TOOLTIP_HISTORY_FILTER_COMBO = (
     "Show every event, or just downloads / just tagging actions."
+)
+TOOLTIP_DOWNLOADS_CLEAR_FINISHED = (
+    "Remove completed, failed and unavailable downloads from this list. "
+    "Nothing is deleted, and History is unaffected."
 )
 TOOLTIP_HISTORY_REFRESH_BUTTON = (
     "Re-check current data for recently downloaded and tagged tracks."
