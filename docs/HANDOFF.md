@@ -17,7 +17,10 @@ nine fields below follow the contract in
   (X9 Pro mounted; part 2's 1444 plus 16 new).
 - **`mypy --strict src/`:** clean, 111 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the follow-up commit recording the run for this push.
+- **CI:** close-out push `18809d7` → run `36690165564`, **failure**
+  (one Settings test hit a late worker finish; fixed in `245adcb`, see
+  §148's addendum). The push of `245adcb` and this handoff: see the
+  follow-up commit recording its run.
 
 ## 2. Where we are
 
@@ -34,6 +37,8 @@ Reds and evidence are in HISTORY §148.
 - `bfd0248` review follow-up: a fourth sweep for hand-built
   `QMessageBox(...)`; two docstrings reflowed.
 - Close-out: §148, S9 ticked, CLAUDE.md rule, this handoff.
+- `245adcb` CI fix: four Settings credential tests wait for
+  "Credentials updated", not the fake's first call.
 
 ## 4. Key context
 
@@ -118,7 +123,9 @@ then Connect with the right one.
 - Settings → Destinations shows a rejected subfolder on its
   `status_label`, not an `InlineNotice`. S11.
 - CLAUDE.md items 63, 70 and 125 remain open. Which row owns the
-  late-worker defect (S11 or S18)?
+  late-worker defect (S11 or S18)? New evidence (§148 addendum):
+  `_handle_task_finished` raises on a button destroyed mid-task;
+  delaying a fake by 0.3 s reproduces it every run.
 - Should a rejection be undoable (a "Rejected" list on Review)? S29.
 - Should `seeker downloads status` print failure reasons? S15.
 
