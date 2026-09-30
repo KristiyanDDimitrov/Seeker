@@ -173,6 +173,23 @@ class SharingApplyResult:
     became_ready: bool
 
 
+@dataclass
+class _RecreateContext:
+    """What add_location_to_share's preconditions established, for the
+    phases after them."""
+    config: SeekerConfig
+    status_before: ShareStatus
+    data_dir: str
+    share_host_path: str
+    slskd_yml_path: Path
+
+
+@dataclass
+class _OriginalTexts:
+    compose: str
+    slskd_yml: str
+
+
 class SharingService:
     def __init__(
             self,
@@ -356,6 +373,40 @@ class SharingService:
         either, and never mounts anything but read-only (":ro" is not
         optional/configurable here -- see CLAUDE.md's sharing framing).
         """
+        container = self._check_preconditions(location, confirm)
+        plan = self.preview_add_location(location)
+        compose_backup, slskd_yml_backup = self._back_up_both(
+            container.slskd_yml_path
+        )
+        originals = self._edit_both_files(plan, container.slskd_yml_path)
+
+        try:
+            self._recreate(container)
+        except SlskdBringUpError:
+            self._roll_back(originals, container.slskd_yml_path)
+            raise
+
+        became_ready = self._wait_until_share_ready()
+        status_after = self.get_status()
+
+        return SharingApplyResult(
+            location=location,
+            compose_backup_path=compose_backup,
+            slskd_yml_backup_path=slskd_yml_backup,
+            directories_before=container.status_before.directories,
+            files_before=container.status_before.files,
+            directories_after=status_after.directories,
+            files_after=status_after.files,
+            became_ready=became_ready,
+        )
+
+    def _check_preconditions(
+            self,
+            location: LibraryLocation,
+            confirm: bool,
+    ) -> _RecreateContext:
+        """Every refusal add_location_to_share can make, all before any
+        file is touched."""
         if not confirm:
             raise ValueError(
                 "add_location_to_share requires explicit confirm=True."
@@ -369,32 +420,8 @@ class SharingService:
                 "share yourself, using the preview below as a guide."
             )
 
-        # Roadmap item R6 -- checked BEFORE any file is touched. A
-        # recreate must pass all five real credentials/keys every time;
-        # this app's own docker-compose.yml substitutes a MISSING
-        # variable as an empty string, not as unset, which
-        # de-authenticates Seeker's own API access (and, if the
-        # SoulSeek network credentials are the ones missing, logs the
-        # container out of SoulSeek entirely) -- the exact root cause
-        # of the real 401 this item fixes. Refusing here is strictly
-        # safer than a recreate that silently blanks a credential.
         config = self._get_config()
-        missing = [
-            field_name for field_name, value in (
-                ("SoulSeek network username", config.slskd_username),
-                ("SoulSeek network password", config.slskd_password),
-                ("slskd API key", config.slskd_api_key),
-            )
-            if not value
-        ]
-
-        if missing:
-            raise SlskdCredentialsMissingError(
-                "Can't safely recreate the slskd container -- Seeker "
-                "doesn't have a saved " + " and ".join(missing) + ". "
-                "Re-run SoulSeek setup in Settings first, so a recreate "
-                "doesn't blank a real credential."
-            )
+        _require_saved_credentials(config)
 
         status_before = self.get_status()
 
@@ -404,6 +431,21 @@ class SharingService:
                     f"'{location.name}' is already shared."
                 )
 
+        data_dir, share_host_path = self._live_data_dir_and_share()
+        slskd_yml_path = Path(data_dir) / "slskd.yml"
+
+        if not slskd_yml_path.exists():
+            raise RuntimeError(f"{slskd_yml_path} does not exist.")
+
+        return _RecreateContext(
+            config=config,
+            status_before=status_before,
+            data_dir=data_dir,
+            share_host_path=share_host_path,
+            slskd_yml_path=slskd_yml_path,
+        )
+
+    def _live_data_dir_and_share(self) -> tuple[str, str]:
         mounts = _get_live_container_mounts(self._container_name)
         data_dir = mounts.get("/app")
 
@@ -415,11 +457,10 @@ class SharingService:
 
         # The template requires SLSKD_SHARE_PATH, and the recreate passes
         # the live value back unchanged, so a container without this
-        # mount cannot be recreated at all. Refuse before any file is
-        # touched.
-        original_share_host_path = mounts.get(f"{SHARE_MOUNT_ROOT}/music")
+        # mount cannot be recreated at all.
+        share_host_path = mounts.get(f"{SHARE_MOUNT_ROOT}/music")
 
-        if original_share_host_path is None:
+        if share_host_path is None:
             raise RuntimeError(
                 f"The running slskd container has no {SHARE_MOUNT_ROOT}/"
                 "music share, so Seeker can't recreate it without "
@@ -427,13 +468,9 @@ class SharingService:
                 "Settings first."
             )
 
-        slskd_yml_path = Path(data_dir) / "slskd.yml"
+        return data_dir, share_host_path
 
-        if not slskd_yml_path.exists():
-            raise RuntimeError(f"{slskd_yml_path} does not exist.")
-
-        plan = self.preview_add_location(location)
-
+    def _back_up_both(self, slskd_yml_path: Path) -> tuple[Path, Path]:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         compose_backup = self._compose_path.with_name(
             f"{self._compose_path.name}.bak-{timestamp}"
@@ -447,104 +484,111 @@ class SharingService:
         _prune_backups(self._compose_path)
         _prune_backups(slskd_yml_path)
 
-        # Roadmap item 74 (P5.2) — BOTH new file contents are computed
-        # BEFORE either file is written. The old order (write compose,
-        # THEN parse+write slskd.yml) left a real partial-write window:
-        # any failure in the slskd.yml step left docker-compose.yml
-        # already mutated, and a retry would add the same volume line a
-        # SECOND time. Computing first means a parse failure here
-        # leaves both files completely untouched.
-        compose_text = self._compose_path.read_text()
-        updated_compose_text = _insert_compose_volume_line(
-            compose_text, plan.compose_volume_line
-        )
+        return compose_backup, slskd_yml_backup
 
-        slskd_yml_text = slskd_yml_path.read_text()
+    def _edit_both_files(
+            self,
+            plan: SharingPlan,
+            slskd_yml_path: Path,
+    ) -> _OriginalTexts:
+        """Write the new volume line and share directory; return both
+        files' previous text for _roll_back."""
+        # Both new contents are computed before either file is written,
+        # so a parse failure leaves both untouched and a retry can't add
+        # the same volume line twice (HISTORY §74).
+        originals = _OriginalTexts(
+            compose=self._compose_path.read_text(),
+            slskd_yml=slskd_yml_path.read_text(),
+        )
+        updated_compose_text = _insert_compose_volume_line(
+            originals.compose, plan.compose_volume_line
+        )
         updated_slskd_yml_text = _insert_slskd_share_directory(
-            slskd_yml_text, plan.slskd_share_directory_line
+            originals.slskd_yml, plan.slskd_share_directory_line
         )
 
         # Each write is atomic, so a failure leaves that file whole.
-        # Restoring the other keeps the pair consistent: a retry must
-        # not find a volume line with no matching share, or add the
-        # same line twice.
-        def restore_both() -> None:
-            write_text_atomic(self._compose_path, compose_text)
-            write_text_atomic(slskd_yml_path, slskd_yml_text)
-
         write_text_atomic(self._compose_path, updated_compose_text)
 
         try:
             write_text_atomic(slskd_yml_path, updated_slskd_yml_text)
         except Exception:
-            write_text_atomic(self._compose_path, compose_text)
+            write_text_atomic(self._compose_path, originals.compose)
             raise
 
-        # Reuses the CURRENT live-resolved value for the pre-existing
-        # env-var-driven mount (the original share path), not
-        # docker-compose.yml's own hardcoded fallback text -- so a
-        # recreate is idempotent regardless of how the container was
-        # originally brought up (see this module's docstring). The new
-        # line just added has its real host path baked in literally,
-        # no env var needed.
-        #
-        # Roadmap item R6.2 -- routed through the SAME bring_up_slskd
-        # the wizard/Settings use, instead of a second, bespoke
-        # `docker compose up` that only ever knew about two of the five
-        # real variables docker-compose.yml's `environment:` block
-        # substitutes. One code path now knows the full contract; a
-        # future compose variable can't be forgotten in one of two
-        # places again.
-        try:
-            bring_up_slskd(
-                compose_file=str(self._compose_path),
-                soulseek_username=config.slskd_username or "",
-                soulseek_password=config.slskd_password or "",
-                api_key=config.slskd_api_key or "",
-                slskd_data_dir=data_dir,
-                # Saved by whichever bring-up (wizard or Settings) first
-                # shared a location, which this recreate requires. Read,
-                # never generated: this service holds only a read-only
-                # get_config callable.
-                web_username=config.slskd_web_username or "",
-                web_password=config.slskd_web_password or "",
-                library_location_path=original_share_host_path,
-            )
-        except SlskdBringUpError:
-            restore_both()
-            raise
+        return originals
 
+    def _recreate(self, container: _RecreateContext) -> None:
+        # Reuses the live share path, not docker-compose.yml's own
+        # fallback text, so a recreate never changes what is shared; the
+        # new location's line carries its host path literally. The same
+        # bring_up_slskd the wizard and Settings use knows every variable
+        # the Compose file substitutes (HISTORY §84).
+        config = container.config
+        bring_up_slskd(
+            compose_file=str(self._compose_path),
+            soulseek_username=config.slskd_username or "",
+            soulseek_password=config.slskd_password or "",
+            api_key=config.slskd_api_key or "",
+            slskd_data_dir=container.data_dir,
+            # Saved by whichever bring-up (wizard or Settings) first
+            # shared a location, which this recreate requires. Read,
+            # never generated: this service holds only a read-only
+            # get_config callable.
+            web_username=config.slskd_web_username or "",
+            web_password=config.slskd_web_password or "",
+            library_location_path=container.share_host_path,
+        )
+
+    def _roll_back(
+            self,
+            originals: _OriginalTexts,
+            slskd_yml_path: Path,
+    ) -> None:
+        # Restoring both keeps the pair consistent: a retry must not find
+        # a volume line with no matching share, or add the same line
+        # twice.
+        write_text_atomic(self._compose_path, originals.compose)
+        write_text_atomic(slskd_yml_path, originals.slskd_yml)
+
+    def _wait_until_share_ready(self) -> bool:
         deadline = time.monotonic() + SHARE_READY_TIMEOUT_SECONDS
-        became_ready = False
 
         while time.monotonic() < deadline:
             try:
-                status_after = self.get_status()
+                status = self.get_status()
             except httpx.HTTPError:
                 time.sleep(SHARE_READY_POLL_INTERVAL_SECONDS)
                 continue
 
-            if (
-                    status_after.ready
-                    and not status_after.scanning
-                    and not status_after.scan_pending
-            ):
-                became_ready = True
-                break
+            if status.ready and not status.scanning and not status.scan_pending:
+                return True
 
             time.sleep(SHARE_READY_POLL_INTERVAL_SECONDS)
 
-        status_after = self.get_status()
+        return False
 
-        return SharingApplyResult(
-            location=location,
-            compose_backup_path=compose_backup,
-            slskd_yml_backup_path=slskd_yml_backup,
-            directories_before=status_before.directories,
-            files_before=status_before.files,
-            directories_after=status_after.directories,
-            files_after=status_after.files,
-            became_ready=became_ready,
+
+def _require_saved_credentials(config: SeekerConfig) -> None:
+    # The Compose file substitutes a missing variable as an empty
+    # string, not as unset, so a recreate without all of these would
+    # de-authenticate Seeker's own API access or log the container out
+    # of SoulSeek (HISTORY §84). Refusing is strictly safer.
+    missing = [
+        field_name for field_name, value in (
+            ("SoulSeek network username", config.slskd_username),
+            ("SoulSeek network password", config.slskd_password),
+            ("slskd API key", config.slskd_api_key),
+        )
+        if not value
+    ]
+
+    if missing:
+        raise SlskdCredentialsMissingError(
+            "Can't safely recreate the slskd container -- Seeker "
+            "doesn't have a saved " + " and ".join(missing) + ". "
+            "Re-run SoulSeek setup in Settings first, so a recreate "
+            "doesn't blank a real credential."
         )
 
 
