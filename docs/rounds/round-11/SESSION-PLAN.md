@@ -45,7 +45,7 @@ explicit yes.
 | ☑ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
 | **Phase E — Observability** | | | | |
 | ☑ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |
-| ☐ S12 | Say when slskd is down; first-session download notifications | §12 | ~110 K | After §12.2 |
+| ☐ S12 | Say when slskd is down; first-session download notifications. **Part 1 done** (§12.1, §12.2, §12.4; HISTORY §151); part 2 is §12.3 and §12.5 | §12 | ~110 K | After §12.2 |
 | **Phase F — Structure (behaviour-neutral)** | | | | |
 | ☐ S13 | One exception hierarchy; typed download states | §13 | ~130 K | After §13.1 |
 | ☐ S14 | Typed service results | §14 | ~120 K | After the download and poll results |
@@ -212,9 +212,10 @@ the `tc-tracker` handoff format.
 
 - [x] **S1 §1.6** — `Claude outputs/`: delete it, gitignore it, or leave
       it. **Answered 2026-09-29: the default, leave it.**
-- [ ] **S10 §10.2** — turn on the repository's private vulnerability
-      reporting (off today), so `SECURITY.md`'s advisory link works:
-      GitHub → Settings → Security → "Private vulnerability reporting".
+- [x] **S10 §10.2** — turn on the repository's private vulnerability
+      reporting, so `SECURITY.md`'s advisory link works. **Done by Kris
+      2026-09-30; confirmed `{"enabled":true}` via
+      `gh api repos/{owner}/{repo}/private-vulnerability-reporting`.**
 - [ ] **S21** — package regrouping (`seeker/audio/`, `seeker/files/`,
       and slskd code into `soulseek/`): yes or no.
 - [ ] **S30** — the visual direction: "Booth", "Harmonic", a mix, or

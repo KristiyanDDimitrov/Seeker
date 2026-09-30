@@ -363,14 +363,23 @@ Each links to the HISTORY entry where the full investigation lives;
   through `clean_path_component`, which never leaves a leading dot.
   [HISTORY §143](docs/history/121-150.md#143)
 - **One slskd bring-up: `Application.start_slskd(..., persist=)`.**
-  The wizard (saves after its health poll) and Settings (saves at
-  once) both go through it; §12's Start slskd should too. Sharing's
+  The wizard (saves after its health poll), Settings (saves at
+  once) and `restart_slskd()` (Start slskd after an outage: the live
+  share and saved login, else `SlskdStartRefusedError`, never a
+  guess) all go through it. Sharing's
   recreate calls `docker_setup.bring_up_slskd` directly, since it
   reuses the saved key/login and the live `/app` dir. The app only
   ever runs the per-user Compose copy (`compose_file_path()`, dev and
   frozen alike), never the tracked template, and a recreate keeps a
   live container's `/app` data dir. The per-user copy is seeded once
   and never re-seeded. [HISTORY §140](docs/history/121-150.md#140)
+- **slskd being down is an outage, never a per-request failure.**
+  `poll_downloads` turns any `httpx.TransportError` into
+  `SlskdUnreachableError` and aborts: nothing counted as failed, no
+  row changed, no locked-retry budget spent (a retry re-raises the
+  transport error before `_advance_locked_retry`). A new slskd call
+  inside the poll keeps that order: `except httpx.TransportError`
+  ahead of `except Exception`. [HISTORY §151](docs/history/151-180.md#151)
 - **Every slskd URL path segment is `quote(…, safe="")`d** — a
   username is chosen by a remote peer, and a raw `?`, `#` or `../`
   reaches a different endpoint. [HISTORY §146](docs/history/121-150.md#146)

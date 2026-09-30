@@ -13,7 +13,7 @@ heading, so `file#N` lands on it. Link to an entry as
 heading-derived GitHub anchor, which breaks whenever a title changes.
 
 **Adding an entry (every session, per the round brief's §0.6).**
-Append it to the end of the last file, `121-150.md`: a
+Append it to the end of the last file, `151-180.md`: a
 `<a name="N"></a>` line directly above `### N — <title>`, numbering
 continuing from the last entry. Then add its line to that file's list
 below, in the same format. When the next number passes the last
@@ -36,7 +36,8 @@ file under about 150 KB.
 | [`047-071.md`](047-071.md) | §47–§71: design system, the §56 phases, open items 63 and 70 |
 | [`072-107.md`](072-107.md) | §72–§107: rounds 1–5 (the P, R, B and C series) |
 | [`108-120.md`](108-120.md) | §109–§120: rounds 6–8 (toolchain, security, Phase 6) |
-| [`121-150.md`](121-150.md) | §121 onward: rounds 9–11. **New entries go here.** |
+| [`121-150.md`](121-150.md) | §121–§150: rounds 9–11 |
+| [`151-180.md`](151-180.md) | §151 onward: round 11. **New entries go here.** |
 
 No entry was ever written for §37, §57–§61, §97 or §108; those numbers
 are unused, not missing files. §62 exists only as a follow-up heading
@@ -229,3 +230,7 @@ under their entry and live in the same file, after it.
 - §148 — Round 11 S9 part 3 (§9.7): peer strings render as text; the S9-wide adversarial review → [121-150.md#148](121-150.md#148)
 - §149 — Round 11 S10 (§10): CI and supply chain → [121-150.md#149](121-150.md#149)
 - §150 — Round 11 S11 (§11): readable errors, uncaught-exception logging, Dashboard outcomes → [121-150.md#150](121-150.md#150)
+
+### `151-180.md`
+
+- §151 — Round 11 S12 part 1 (§12.1, §12.2, §12.4): the poll says slskd is down; a Start slskd that never guesses → [151-180.md#151](151-180.md#151)

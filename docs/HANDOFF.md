@@ -10,85 +10,102 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S11 close-out commit (HISTORY §150, S11 ticked,
-  CLAUDE.md rules, this handoff). Tree clean apart from the untracked
+- **HEAD:** the S12 part 1 close-out commit (HISTORY §151, CLAUDE.md,
+  session plan, this handoff). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1497 passed, 1 skipped, 6 warnings`
-  (X9 Pro mounted; S11 adds 37 tests).
+- **Local pytest** (2026-09-30): `1506 passed, 1 skipped, 6 warnings`
+  (X9 Pro mounted; S12 part 1 adds 9 tests).
 - **`mypy --strict src/`:** clean, 113 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** close-out `0670e88` → run `36704261752`, **success**,
-  `1469 passed, 29 skipped`, branch coverage 91.59 % (floor 89).
+- **CI:** see §151's close-out push; the run id is recorded in the
+  commit after the close-out, if one was needed.
 
 ## 2. Where we are
 
-S1–S11 ticked. **Next: S12, say when slskd is down; first-session
-download notifications (BRIEF §12).**
+S1–S11 ticked. **S12 stopped at its split point (after §12.2).** Done:
+§12.1, §12.2, §12.4. **Next: S12 part 2, §12.3 (UI) and §12.5
+(first-session download notifications).** S12 stays unticked until
+then.
 
-## 3. Session report (S11)
+## 3. Session report (S12 part 1)
 
-Evidence for all of these is in HISTORY §150.
-- `bf1c2f3` §11.1: `seeker/error_text.py`, `describe_error()`.
-- `2eadc96` §11.2: workers emit it; render bugs show a log pointer.
-- `f0b9b14` §11.3: `ui/error_hooks.py`: excepthooks, Qt message handler.
-- `9499643` §11.4: app name, display name, version.
-- `87968db` §11.4: typed `_OpenWindows` holder (refactor).
-- `a7bfdc2` §11.5: CLI catches transport and database errors.
-- `471b301` §11.6: Dashboard outcomes on `dashboard_notice` via
-  `FeedbackTarget`; cross-page Tag reports on the Dashboard.
-- Close-out: §150, S11 ticked, CLAUDE.md, this handoff.
+Evidence for all of these is in HISTORY §151.
+- `ab23d51` §12.1–§12.2: `SlskdUnreachableError`; the poll aborts on a
+  transport error; no locked-retry budget spent.
+- `95a344a` §12.4: `seeker downloads status` prints the sentence and
+  exits 1.
+- `fa4a1e7` §12.2: `Application.restart_slskd()`, refusing through
+  `SlskdStartRefusedError`.
+- Close-out: §151 (opens `docs/history/151-180.md`), CLAUDE.md, plan,
+  this handoff.
 
 ## 4. Key context
 
-- **Your HISTORY entry is §151, and it opens a new file,
-  `docs/history/151-180.md`.** `121-150.md` is full. Add a section for
-  the new file in `docs/history/README.md` (its "Adding an entry"
-  paragraph says how), and change that paragraph's "last file" name.
-- **For S12:** `describe_error` already names slskd for any transport
-  error to a non-Spotify, non-GitHub host and asks "Is Docker
-  running?". Reuse it rather than writing new slskd-down text. The
-  backend poll's `on_poll_error` (MainWindow `_trigger_backend_poll`)
-  still ignores the message and posts its own tray text.
-- **`FeedbackTarget` (`ui/notice.py`)** is the pattern for any page
-  whose action may be started elsewhere: `show_progress` / 
-  `show_outcome` / `show_error`. `DashboardPage.feedback` exists; S19
-  moving Dashboard flows should keep using it.
-- **Testing an excepthook** needs `@pytest.mark.qt_no_exception_capture`
-  (pytest-qt replaces `sys.excepthook` per test). See
-  `tests/test_error_hooks.py`.
-- **A false lead:** `matcher.py` ~line 396's `"auto_count"` dict is
-  `generate_match_report`, not `match_all`; `match_all` returns
-  `auto`/`needs_review`/`unmatched` counts.
+- **Plan for §12.3.** `run_worker`'s `on_error` receives only text, so
+  do not match on the message. In `MainWindow._trigger_backend_poll`,
+  run a worker closure that calls `poll_downloads` and *returns* the
+  caught `SlskdUnreachableError` (or its message). `on_finished` then
+  branches on it. Shared outage state belongs on `PageContext` (a
+  small QObject with `changed`, like `PlaylistSelection`): MainWindow
+  writes it, Dashboard and Downloads read it. Its methods should
+  report the edge (returns True only on up→down / down→up) so the tray
+  notifies once per outage.
+- **Dashboard:** add a `_NextStepFacts` field (say
+  `slskd_unreachable_message: str | None`) and check it **first** in
+  `_decide_next_step`. Add an action key (`"start_slskd"`) to
+  `_on_next_step_action`. Connect the status's `changed` signal to
+  `_poll_next_step` so the notice appears at once, not on the next 2 s
+  tick.
+- **Downloads** has no notice or status label yet. Give it a
+  persistent outage `InlineNotice` driven by the status, plus a
+  `FeedbackTarget` (`status_label` + `notice`) for the Start slskd
+  outcome. The action reports on the page it was started from (the
+  CLAUDE.md rule).
+- **Start slskd** runs `application.restart_slskd` on a worker. Its
+  `SlskdStartRefusedError` / `SlskdBringUpError` messages are already
+  sentences, and `describe_error` keeps them.
+- **The old `on_poll_error` tray text** ("Seeker couldn't reach slskd
+  — check that it's running.") now fires during an outage, still
+  rate-limited by `TrayController.notify_error`'s cooldown. §12.3
+  replaces it with the edge-triggered notice and leaves `on_poll_error`
+  for errors that are not outages (`describe_error` text).
+- **§12.5:** `TrayController.seed_notification_cutoff` /
+  `check_for_download_notifications` in `ui/tray.py`. The brief
+  already has the fix; keep "seeding in flight" distinct from
+  "seeded, empty".
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
-  Coverage margin about 2.5 points (CI 91.47 %, floor 89). deptry: `uv
+  Coverage margin about 2.5 points (CI 91.59 %, floor 89). deptry: `uv
   run --with deptry deptry src`. Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; fakes of `connect_spotify`
-  accept `cancel=`; three `LibraryLocationNotFoundError`s plus
-  `AuthorizationCancelledError` go into S13's hierarchy (and
-  `cli.run`'s caught tuple becomes `SeekerError` there, §11.5);
-  `SoulseekDownloadError` takes `reason=`; never touch slskd or real
+  accept `cancel=`; three `LibraryLocationNotFoundError`s,
+  `AuthorizationCancelledError` and now `SlskdUnreachableError` /
+  `SlskdStartRefusedError` go into S13's hierarchy (and `cli.run`'s
+  caught tuple becomes `SeekerError` there); never touch slskd or real
   data; `config.*()` are functions (tests use `monkeypatch.setenv`).
 - **zsh:** `echo ======` fails (use `'---'`); BSD `sed` lacks `\b`.
+- **Tooling:** the auto-mode Bash safety check failed transiently
+  several times this session; the Read tool worked throughout.
 
 ## 5. Decisions made
 
-- **Divergence (§11.1):** `describe_error` takes a keyword-only
-  `details_hint`, so the CLI (no log folder) prints "Details: <raw
-  message>" where the UI points at Help → Open Log Folder.
-- **Builtin programming errors hide their raw text** (`KeyError`,
-  `TypeError`, …): none is raised on purpose in `src/` (grep), so on
-  screen one is always a bug; other builtins (`ValueError`,
-  `RuntimeError`) keep domain messages.
-- **Only one Qt message dropped** (offscreen `propagateSizeHints`,
-  reproduced); the offscreen font-alias warning stays logged.
-- **Qt warnings go to the log, not the terminal**, in dev runs too.
-- **Match now reports counts on the notice** (it showed nothing).
-- **Skills:** `observability-designer` is aimed at server fleets
-  (SLOs, dashboards, alert routing); only its log-level discipline
-  applied (uncaught → CRITICAL, nothing unlogged).
-- Promoted to CLAUDE.md: `describe_error` for all failure text;
-  `FeedbackTarget` of the originating page; no `status_label` on a
-  timer-driven worker; the slot-excepthook fact.
+- **A transport error to slskd is an outage, including a timeout.**
+  One refusal aborts the whole poll: every later request would fail the
+  same way. Promoted to CLAUDE.md.
+- **Beyond the brief:** a locked retry no longer spends its budget when
+  slskd itself is unreachable. Otherwise, an outage longer than the
+  backoff sum could mark locked files `unavailable`.
+- **`restart_slskd` refuses rather than guesses** when the share cannot
+  be read, when the container is not Seeker's (`is_self_managed`), when
+  Docker is down, or when no login is saved. It does not open Docker
+  Desktop. Settings → Connection stays the place that asks which
+  location to share. Promoted to CLAUDE.md (the bring-up bullet).
+- **Stopped at the split point** because of context budget. §12.4 (a
+  one-line catch) was pulled forward, since without it the §12.2 change
+  would print a traceback in the CLI.
+- **Skills:** `observability-designer` again targets server fleets;
+  what applied was alert discipline: edge-triggered, auto-resolving,
+  actionable (a Start slskd action), with dependent failures suppressed
+  (no per-request "failed" during an outage).
 
 ## 6. Blockers
 
@@ -96,46 +113,50 @@ None.
 
 ## 7. Files in progress
 
-None. S11 is complete.
+None mid-edit. S12 part 2 is untouched: `ui/main_window.py`
+(`_trigger_backend_poll`), `ui/pages/context.py`,
+`ui/pages/dashboard_page.py`, `ui/pages/downloads_page.py` and
+`ui/tray.py` are all still at HEAD.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** turn on private vulnerability reporting (repo
-Settings → Security) for `SECURITY.md`'s link; S21 package regrouping;
-S30 visual direction; S39 bundle identifier; S42 publishing commands;
-X1 and X2 (optional).
+**Approval gates:** S21 package regrouping; S30 visual direction; S39
+bundle identifier; S42 publishing commands; X1 and X2 (optional).
+Private vulnerability reporting: **done** (confirmed enabled).
 
 **Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
-S11 changes no schema.
+S12 changes no schema.
 
 **Kris's own decision (carried):** keep or discard `./slskd-data`
 (HISTORY §140).
 
 **Live checks:** S41's checklist. Carried: S6's Refresh playlists, S7's
 drift Scan, S8's Reject-then-Scan and Downloads failure reason, S9
-part 2's mistyped Client ID → Cancel → correct one. **New (S11):**
-Scan from the Dashboard and read the summary on the notice; stop
-Docker, click Download, read the slskd/Docker message; confirm
-`seeker.log` records a Qt warning (any) and the app menu says "Seeker".
+part 2's mistyped Client ID → Cancel → correct one, S11's Dashboard
+Scan summary / Docker-stopped Download message / Qt warning in
+`seeker.log` / app menu "Seeker". **New (S12):** with slskd stopped,
+`uv run seeker downloads status` prints the outage sentence and exits
+1 (`echo $?`).
 
 ## 9. Open questions
 
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
   wait (port 8888 and the token lock held up to 300 s). S20?
 - Late-worker defect: `_handle_task_finished` raises on a button
-  destroyed mid-task (0.3 s fake delay reproduces it, §148 addendum).
-  Not taken in S11 (outside §11's scope); since §11.3 the raise is at
-  least logged at CRITICAL. S18?
-- Settings shows results and rejections (e.g. a rejected Destinations
-  subfolder) on status labels, not notices. No timer wipes them there,
-  so it is layout, not data loss: S29.
+  destroyed mid-task (§148 addendum); logged at CRITICAL since §11.3.
+  S18?
+- Settings shows results and rejections on status labels, not notices:
+  S29.
 - `cli.run` catches `httpx.TransportError` but not
-  `httpx.HTTPStatusError` (the brief named only the former);
-  `describe_error` handles both. S13 or S15?
+  `httpx.HTTPStatusError`. S13 or S15?
 - S15 (CLI): should `printable()` strip bidi controls, and should
   `seeker downloads status` print failure reasons?
 - S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the
   typed subfolder. S29: should a rejection be undoable?
+- `_activate_shortlisted_entry`: if slskd dies between
+  `request_download` and `get_download_status`, the enqueued transfer
+  id is never recorded, so the next cascade re-requests it. Rare; not
+  taken. S17 or X1?
 
 ---
 
