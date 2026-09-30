@@ -2,6 +2,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 
 from seeker.config_store import SeekerConfig
@@ -33,7 +34,11 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
-from seeker.soulseek.client import SoulseekDownloadError, TransferStatus
+from seeker.soulseek.client import (
+    SlskdUnreachableError,
+    SoulseekDownloadError,
+    TransferStatus,
+)
 from seeker.soulseek.download_service import (
     DownloadService,
     NoDestinationConfiguredError,
@@ -4110,3 +4115,70 @@ def test_index_and_match_settled_download_backfills_manual_track_duration(
 
     assert track.duration_ms is not None
     assert abs(track.duration_ms - duration_seconds * 1000) < 100
+
+
+class UnreachableSoulseekClient(FakeSoulseekClient):
+    """slskd refusing connections: Docker Desktop not started yet, or
+    the container stopped."""
+
+    base_url = "http://127.0.0.1:5030"
+
+    def get_download_status(
+            self, username: str, transfer_id: str,
+    ) -> TransferStatus:
+        self.get_download_status_calls.append((username, transfer_id))
+        raise httpx.ConnectError("[Errno 61] Connection refused")
+
+    def request_download(self, username: str, filename: str, size: int) -> str:
+        self.request_download_calls.append((username, filename, size))
+        raise httpx.ConnectError("[Errno 61] Connection refused")
+
+
+def make_unreachable_service(tmp_path) -> DownloadService:
+    service = make_service(tmp_path, {})
+    service._soulseek_client = UnreachableSoulseekClient({})
+    return service
+
+
+def test_poll_downloads_reports_unreachable_slskd_instead_of_failures(
+        tmp_path,
+):
+    service = make_unreachable_service(tmp_path)
+    seed_pending_request(service, "t1", track_id="track1")
+    seed_pending_request(service, "t2", track_id="track2")
+
+    with pytest.raises(SlskdUnreachableError) as caught:
+        service.poll_downloads()
+
+    assert caught.value.base_url == "http://127.0.0.1:5030"
+    assert str(caught.value) == (
+        "SoulSeek isn't reachable — downloads are paused until slskd "
+        "is running."
+    )
+    # Aborted at the first refusal: the second request is not polled.
+    assert len(service.soulseek.get_download_status_calls) == 1
+    assert get_status(service, "t1") == "queued"
+    assert get_status(service, "t2") == "queued"
+
+
+def test_poll_downloads_unreachable_slskd_spends_no_locked_retry_budget(
+        tmp_path,
+):
+    service = make_unreachable_service(tmp_path)
+    seed_pending_request(
+        service, "old-1", role="upgrade", status="locked", size=12_345,
+    )
+
+    with pytest.raises(SlskdUnreachableError):
+        service.poll_downloads()
+
+    assert len(service.soulseek.request_download_calls) == 1
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status, retry_count, next_retry_at "
+            "FROM download_requests"
+        ).fetchone()
+
+    assert (row["status"], row["retry_count"], row["next_retry_at"]) == (
+        "locked", 0, None,
+    )

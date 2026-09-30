@@ -11,6 +11,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
+import httpx
+
 from seeker.audio_formats import is_downloadable_extension
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
@@ -55,6 +57,7 @@ from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track, is_manual_track_i
 from seeker.models.track_match import TrackMatch
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.client import (
+    SlskdUnreachableError,
     SoulseekClient,
     SoulseekDownloadError,
     derive_extension,
@@ -1216,6 +1219,11 @@ class DownloadService:
                     )
                 else:
                     counts[request.status] += 1
+            except httpx.TransportError as error:
+                # slskd itself is down, not this request: every later
+                # request would fail the same way, and none of them
+                # has failed as far as the user is concerned.
+                raise SlskdUnreachableError(self.soulseek.base_url) from error
             except Exception as error:
                 counts["failed"] += 1
                 logger.warning(
@@ -1233,6 +1241,8 @@ class DownloadService:
             # rest of the locked shortlist from being retried this run.
             try:
                 self._retry_locked_request(request, counts)
+            except httpx.TransportError as error:
+                raise SlskdUnreachableError(self.soulseek.base_url) from error
             except Exception as error:
                 logger.warning(
                     "Failed to retry locked '%s': %s",
@@ -1473,6 +1483,10 @@ class DownloadService:
             # file-not-shared rejection always did.
             self._advance_locked_retry(request, current.retry_count)
             return  # Rejected again at the batch level — stays locked.
+        except httpx.TransportError:
+            # slskd is down; the peer was never asked, so this is not
+            # an attempt against the retry budget.
+            raise
         except Exception:
             # Live-caught, not theoretical: an unrecognized error
             # (client.py's own request_download deliberately re-raises
@@ -1492,6 +1506,8 @@ class DownloadService:
             state = self.soulseek.get_download_status(
                 request.username, transfer_id,
             ).state
+        except httpx.TransportError:
+            raise
         except Exception:
             # Same reasoning as the request_download branch above —
             # get_download_status (client.py) has no exception wrapping

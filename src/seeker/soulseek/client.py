@@ -17,6 +17,18 @@ class SoulseekDownloadError(RuntimeError):
         self.reason = reason
 
 
+class SlskdUnreachableError(RuntimeError):
+    """slskd itself did not answer: a transport error, not a peer's
+    rejection. The message is the sentence the UI and CLI show."""
+
+    def __init__(self, base_url: str):
+        super().__init__(
+            "SoulSeek isn't reachable — downloads are paused until "
+            "slskd is running."
+        )
+        self.base_url = base_url
+
+
 # Recognized, known-transient slskd rejection reasons — confirmed live
 # against real captured responses, not guessed. Matched case-
 # insensitively by substring since exact wording may vary slightly
