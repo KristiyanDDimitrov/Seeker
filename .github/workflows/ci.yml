@@ -1,27 +1,40 @@
 name: CI
 on: [push, pull_request]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     # The only platform Qt UI tests are proven on (packaging, the
     # stress test, and every "confirmed live" comment in this codebase
     # are all macOS-specific). Verified 2026-09-08: the full suite,
-    # including all 292 Qt widget tests, passes headless under
+    # Qt widget tests included, passes headless under
     # QT_QPA_PLATFORM=offscreen on a real Mac — no test needs a real
     # display, so nothing here is deselected.
     #
-    # Pinned to the concrete image (not macos-latest) for the S1.2-
-    # S1.4 macOS-specific CI diagnosis in docs/rounds/round-09/BRIEF.md
-    # — macos-latest resolved to macos-26-arm64 on 2026-09-09 (confirmed
-    # via `gh run view`'s "Runner Image" section). Revert to
-    # macos-latest once that diagnosis is closed out.
+    # Pinned to a concrete image, not macos-latest, so a runner-image
+    # change arrives as a reviewed commit rather than silently under an
+    # unrelated push. macos-latest resolved to macos-26-arm64 on
+    # 2026-09-09 (`gh run view`'s "Runner Image" section). Dependabot
+    # does not update this line; bump it by hand.
     runs-on: macos-26
+    timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: true
       - run: brew install chromaprint
-      - run: uv sync --all-extras --dev
+      - run: uv sync --locked --all-extras --dev
       - run: uv run ruff check src tests
       - run: uv run mypy --strict src/
-      - run: uv run pytest --cov=seeker --cov-report=term-missing
+      - run: >-
+          uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
+          --cov-fail-under=89
