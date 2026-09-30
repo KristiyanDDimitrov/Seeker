@@ -54,7 +54,8 @@ src/seeker/
 │                              #   download_playlist, poll_downloads)
 ├── library/                     # scanner.py, matcher.py, service.py,
 │                              #   metadata_service.py (writes Spotify tags/art),
-│                              #   duplicate_service.py (fingerprint clustering)
+│                              #   duplicate_service.py (fingerprint clustering),
+│                              #   audio_quality.py (a local file's quality)
 ├── ui/                          # seeker-ui (PySide6)
 │   ├── main_window.py           #   shell only, post-Phase-6: sidebar nav,
 │   │                          #   timers, tray wiring (6,882 -> 1,842 lines)

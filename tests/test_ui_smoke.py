@@ -2733,8 +2733,8 @@ def test_every_table_and_list_widget_is_routed_through_make_card(qtbot):
 
 
 def _make_duplicate_group():
+    from seeker.library.audio_quality import LocalFileQuality
     from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
-    from seeker.soulseek.quality import LocalFileQuality
 
     return DuplicateGroup(
         files=[
@@ -2789,8 +2789,8 @@ def _make_duplicate_group_with_n_files(count: int):
     # already works by construction (one QButtonGroup per group, one
     # radio per file, delete removes every file except the checked
     # one), not just the 2-file case every other test here uses.
+    from seeker.library.audio_quality import LocalFileQuality
     from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
-    from seeker.soulseek.quality import LocalFileQuality
 
     files = [
         DuplicateFile(

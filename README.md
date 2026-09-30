@@ -182,6 +182,7 @@ src/seeker/
 │                             #   poll_downloads (status + file move)
 ├── library/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
+│   ├── audio_quality.py       # bitrate/clipping/loudness of a file on disk
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
 │                             #   + group-resolution delete action
 ├── ui/                         # the seeker-ui GUI (PySide6)

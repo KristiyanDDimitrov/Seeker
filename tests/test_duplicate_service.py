@@ -18,6 +18,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError
+from seeker.library.audio_quality import LocalFileQuality
 from seeker.library.duplicate_service import (
     DuplicateFolderScope,
     DuplicateService,
@@ -29,7 +30,6 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
-from seeker.soulseek.quality import LocalFileQuality
 
 
 def make_database(tmp_path) -> Database:

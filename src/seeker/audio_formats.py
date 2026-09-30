@@ -1,4 +1,4 @@
-# .aifc is indexed (visible) but excluded from quality.LOSSLESS_EXTENSIONS:
+# .aifc is indexed (visible) but excluded from LOSSLESS_EXTENSIONS below:
 # mutagen's own AIFF reader (confirmed live, mutagen 1.48.1) never decodes
 # the COMM chunk's compressionType field, so a compressed .aifc's derived
 # bitrate/lossless status can't be trusted the way an uncompressed .aiff/
@@ -42,3 +42,24 @@ def is_downloadable_extension(extension: str) -> bool:
     download_manual's explicit chosen= pick — three call sites, one
     implementation, so the allowlist can't drift on any one of them."""
     return f".{extension.lower()}" in DOWNLOADABLE_EXTENSIONS
+
+
+# "aiff"/"aif" only, deliberately not "aifc" (see AUDIO_EXTENSIONS'
+# comment above).
+LOSSLESS_EXTENSIONS = {"flac", "wav", "aiff", "aif"}
+LOSSY_EXTENSIONS = {"mp3", "m4a", "aac", "ogg"}
+
+
+def quality_tier_for_format(extension: str) -> int:
+    """Lossless(2)/lossy(1)/unknown(0) for a format with or without
+    its leading dot. The one "is this file better" tiering, shared by
+    SoulSeek ranking and the duplicate finder (HISTORY §5)."""
+    normalized = extension.lower().lstrip(".")
+
+    if normalized in LOSSLESS_EXTENSIONS:
+        return 2
+
+    if normalized in LOSSY_EXTENSIONS:
+        return 1
+
+    return 0

@@ -33,12 +33,15 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.errors import LibraryLocationNotFoundError
 from seeker.file_deletion import delete_file, same_file
+from seeker.library.audio_quality import (
+    LocalFileQuality,
+    analyze_local_file_quality,
+)
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.track_match import TrackMatch
-from seeker.soulseek.quality import LocalFileQuality, analyze_local_file_quality
 
 logger = logging.getLogger(__name__)
 
