@@ -463,6 +463,11 @@ Each links to the HISTORY entry where the full investigation lives;
   from inside its own `itemSelectionChanged`); defer with
   `QTimer.singleShot(0, ...)`, as `_on_shared_selection_changed`
   does. [HISTORY §134](docs/history/121-150.md#134)
+- **A button whose enabled state a render decides is never
+  `run_worker`'s `button=`.** Its finish handler re-enables the button
+  before `on_finished`, over any render that already ran; disable it
+  on click and let the render set it (Downloads' Clear finished,
+  reproduced deterministically). [HISTORY §145](docs/history/121-150.md#145)
 - A page inside `MainWindow`'s `QStackedWidget` has no real geometry
   until first navigated to — restore saved splitter/size state from
   its first real `showEvent`, never its constructor
@@ -509,6 +514,12 @@ Each links to the HISTORY entry where the full investigation lives;
   `manual:` track real: it is saved just before its first request,
   and `_migrate` deletes any with no request.
   [HISTORY §144](docs/history/121-150.md#144)
+- **A `download_requests` row is dismissed, never deleted.** A failed
+  or unavailable row carries a readable `failure_reason` and stays on
+  the Downloads page until "Clear finished" sets `dismissed_at`;
+  deleting one would make a completed manual track an orphan for
+  `_migrate`. Any new failed/unavailable transition passes
+  `failure_reason=`. [HISTORY §145](docs/history/121-150.md#145)
 - Deleting a local file: DB row first, then the file on disk. Renaming
   one: the opposite order, file then DB row.
   [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)

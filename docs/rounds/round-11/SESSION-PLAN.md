@@ -39,7 +39,7 @@ explicit yes.
 | **Phase C — Correctness** | | | | |
 | ☑ S6 | Spotify sync: duplicates, local files, stale tracks | §6 | ~120 K | After §6.2; staleness (§6.3–§6.4) can stand alone |
 | ☑ S7 | Scale: big locations, short transactions, real and visible paths (HISTORY §142, §143) | §7 | ~140 K | After §7.1 and §7.4–§7.6 (limits and paths); §7.2, §7.3 and §7.7 (transaction shape and timing) can stand alone |
-| ☐ S8 | Review decisions stick; failures stay visible | §8 | ~130 K | After §8.2 |
+| ☑ S8 | Review decisions stick; failures stay visible | §8 | ~130 K | After §8.2 |
 | **Phase D — Security** | | | | |
 | ☐ S9 | Application hardening, including peer-string escaping | §9 | ~130 K | After §9.3; §9.4–§9.8 can stand alone |
 | ☐ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
