@@ -42,7 +42,7 @@ explicit yes.
 | ☑ S8 | Review decisions stick; failures stay visible | §8 | ~130 K | After §8.2 |
 | **Phase D — Security** | | | | |
 | ☑ S9 | Application hardening, including peer-string escaping | §9 | ~130 K | After §9.3; §9.4–§9.8 can stand alone |
-| ☐ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
+| ☑ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
 | **Phase E — Observability** | | | | |
 | ☐ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |
 | ☐ S12 | Say when slskd is down; first-session download notifications | §12 | ~110 K | After §12.2 |
@@ -212,6 +212,9 @@ the `tc-tracker` handoff format.
 
 - [x] **S1 §1.6** — `Claude outputs/`: delete it, gitignore it, or leave
       it. **Answered 2026-09-29: the default, leave it.**
+- [ ] **S10 §10.2** — turn on the repository's private vulnerability
+      reporting (off today), so `SECURITY.md`'s advisory link works:
+      GitHub → Settings → Security → "Private vulnerability reporting".
 - [ ] **S21** — package regrouping (`seeker/audio/`, `seeker/files/`,
       and slskd code into `soulseek/`): yes or no.
 - [ ] **S30** — the visual direction: "Booth", "Harmonic", a mix, or
