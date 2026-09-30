@@ -35,6 +35,7 @@ from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
+from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
 
 # Untuned constants, flagged same as every other threshold in this
@@ -179,6 +180,15 @@ class OnboardingWizard(QMainWindow):
         self.spotify_status_label = QLabel("")
         layout.addWidget(self.spotify_status_label)
 
+        self.spotify_authorization_wait = SpotifyAuthorizationWait(
+            self.application,
+            self.thread_pool,
+            self.connect_button,
+            self.spotify_status_label,
+            trigger_enabled=self._has_client_id,
+        )
+        layout.addWidget(self.spotify_authorization_wait)
+
         layout.addStretch()
         return page
 
@@ -187,29 +197,21 @@ class OnboardingWizard(QMainWindow):
         if clipboard is not None:
             clipboard.setText(DEFAULT_REDIRECT_URI)
 
-    def _update_connect_button_state(self, text: str) -> None:
-        self.connect_button.setEnabled(bool(text.strip()))
+    def _has_client_id(self) -> bool:
+        return bool(self.client_id_field.text().strip())
+
+    def _update_connect_button_state(self, _text: str) -> None:
+        if not self.spotify_authorization_wait.is_waiting:
+            self.connect_button.setEnabled(self._has_client_id())
 
     def _on_client_id_return_pressed(self) -> None:
         if self.connect_button.isEnabled():
             self._on_connect_spotify_clicked()
 
     def _on_connect_spotify_clicked(self) -> None:
-        client_id = self.client_id_field.text().strip()
-
-        # connect_spotify() is genuinely long-running (opens the system
-        # browser and waits for the local OAuth callback), hence the
-        # worker. Shared with Settings' "Re-authorize" action (Step 8
-        # §3) — see application.py.
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.connect_spotify(client_id),
-            button=self.connect_button,
-            status_label=self.spotify_status_label,
-            on_finished=lambda _: self._advance_from_spotify(),
-        )
-        self.spotify_status_label.setText(
-            "Opening Spotify authorization page..."
+        self.spotify_authorization_wait.start(
+            self.client_id_field.text().strip(),
+            on_connected=self._advance_from_spotify,
         )
 
     def _advance_from_spotify(self) -> None:

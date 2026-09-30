@@ -1,3 +1,4 @@
+import threading
 from dataclasses import replace
 
 import pytest
@@ -17,6 +18,7 @@ from seeker.docker_setup import (
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
+from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 from seeker.ui.settings_window import SettingsPage
@@ -727,7 +729,7 @@ def test_reauthorize_spotify_calls_connect_spotify_with_force_flag(
     monkeypatch.setattr(
         application,
         "connect_spotify",
-        lambda client_id, force_reauthorize=False: calls.append(
+        lambda client_id, force_reauthorize=False, cancel=None: calls.append(
             (client_id, force_reauthorize)
         ),
     )
@@ -751,7 +753,7 @@ def test_spotify_client_id_return_pressed_calls_connect_spotify(
     monkeypatch.setattr(
         application,
         "connect_spotify",
-        lambda client_id, force_reauthorize=False: calls.append(
+        lambda client_id, force_reauthorize=False, cancel=None: calls.append(
             (client_id, force_reauthorize)
         ),
     )
@@ -1376,3 +1378,46 @@ def test_start_hidden_checkbox_saves_immediately_on_toggle(
     window.start_hidden_at_login_checkbox.setChecked(True)
 
     assert application._config_store.start_hidden_at_login is True
+
+
+def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Enter in the Client ID field bypassed the disabled button and
+    # started a second attempt against the port the first still held.
+    application = make_application(tmp_path, monkeypatch)
+    started = threading.Event()
+    calls: list[str] = []
+
+    def fake_connect_spotify(client_id, force_reauthorize=False, cancel=None):
+        calls.append(client_id)
+        started.set()
+        cancel.wait(timeout=5.0)
+        raise AuthorizationCancelledError()
+
+    monkeypatch.setattr(
+        application, "connect_spotify", fake_connect_spotify,
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    wait = window.spotify_authorization_wait
+    assert wait.isHidden()
+
+    window.spotify_client_id_field.setText("mistyped-client-id")
+    window.reauthorize_spotify_button.click()
+    qtbot.waitUntil(started.is_set, timeout=2000)
+
+    assert not wait.isHidden()
+    assert not window.reauthorize_spotify_button.isEnabled()
+    assert window.spotify_status_label.text() == (
+        "Waiting for approval in your browser…"
+    )
+
+    window.spotify_client_id_field.returnPressed.emit()
+    wait.cancel_button.click()
+
+    qtbot.waitUntil(window.reauthorize_spotify_button.isEnabled, timeout=2000)
+    assert wait.isHidden()
+    assert window.spotify_status_label.text() == "Authorization cancelled."
+    assert calls == ["mistyped-client-id"]

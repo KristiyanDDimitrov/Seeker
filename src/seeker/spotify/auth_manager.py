@@ -51,7 +51,15 @@ class SpotifyAuthManager:
         self.redirect_uri = redirect_uri
         self.token_path = token_path
 
-    def get_valid_token(self, force_refresh: bool = False) -> SpotifyToken:
+    def get_valid_token(
+            self,
+            force_refresh: bool = False,
+            cancel: threading.Event | None = None,
+    ) -> SpotifyToken:
+        """`cancel` only matters when this falls back to the browser:
+        setting it ends the wait for the callback with
+        AuthorizationCancelledError and releases the token lock.
+        """
         seen = self._load_token()
 
         if seen is not None and not force_refresh and not self._is_expired(
@@ -66,7 +74,7 @@ class SpotifyAuthManager:
             token = self._load_token()
 
             if token is None:
-                return self._authorize()
+                return self._authorize(cancel)
 
             refreshed_meanwhile = (
                 seen is not None and token.access_token != seen.access_token
@@ -87,7 +95,7 @@ class SpotifyAuthManager:
                         "Spotify token refresh failed. Starting a new "
                         "authorization..."
                     )
-                    return self._authorize()
+                    return self._authorize(cancel)
 
                 self._save_token(token)
 
@@ -107,7 +115,9 @@ class SpotifyAuthManager:
 
         TokenStore(self.token_path).save(token)
 
-    def _authorize(self) -> SpotifyToken:
+    def _authorize(
+            self, cancel: threading.Event | None = None,
+    ) -> SpotifyToken:
         code_verifier = generate_code_verifier()
         code_challenge = generate_code_challenge(code_verifier)
         state = generate_state()
@@ -132,7 +142,7 @@ class SpotifyAuthManager:
         # serve_until_callback() closes `server` itself in its own
         # finally, whether this returns normally or raises.
         code, returned_state, error, timed_out = serve_until_callback(
-            server
+            server, cancel=cancel,
         )
 
         if timed_out:

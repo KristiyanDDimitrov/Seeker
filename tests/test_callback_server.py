@@ -1,10 +1,13 @@
 import threading
+import time
 from http.server import HTTPServer
 from queue import Queue
 
 import httpx
+import pytest
 
 from seeker.spotify.callback_server import (
+    AuthorizationCancelledError,
     create_callback_server,
     serve_until_callback,
     wait_for_callback,
@@ -168,3 +171,100 @@ def test_two_consecutive_runs_do_not_leak_state_between_them():
     assert second_error is None, (
         "the first run's stale error must not leak into the second run"
     )
+
+
+def _get_in_background(server: HTTPServer, **params: str) -> httpx.Response:
+    port = server.server_address[1]
+    result_queue: Queue = Queue()
+    thread = threading.Thread(
+        target=_serve_in_background, args=(server, result_queue)
+    )
+    thread.start()
+    response = httpx.get(
+        f"http://127.0.0.1:{port}/callback", params=params, timeout=5.0,
+    )
+    thread.join(timeout=5.0)
+    return response
+
+
+def test_error_callback_page_says_authorization_was_cancelled():
+    # Spotify redirects with error=access_denied when the user clicks
+    # Cancel on its consent screen; the page must not claim success.
+    response = _get_in_background(
+        create_callback_server(port=0),
+        error="access_denied", state="state-1",
+    )
+
+    assert response.status_code == 200
+    assert b"authorization complete" not in response.content
+    assert b"Authorization was cancelled" in response.content
+    assert b"Return to Seeker to try again" in response.content
+
+
+def test_callback_responses_are_not_cached_framed_or_referred():
+    response = _get_in_background(
+        create_callback_server(port=0), code="auth-code", state="state-1",
+    )
+
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Content-Security-Policy"] == "default-src 'none'"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_stray_request_404_carries_the_same_security_headers():
+    server = create_callback_server(port=0)
+    port = server.server_address[1]
+    result_queue: Queue = Queue()
+    thread = threading.Thread(
+        target=_serve_in_background, args=(server, result_queue, 0.5)
+    )
+    thread.start()
+
+    response = httpx.get(f"http://127.0.0.1:{port}/favicon.ico", timeout=5.0)
+    thread.join(timeout=5.0)
+
+    assert response.status_code == 404
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Content-Security-Policy"] == "default-src 'none'"
+
+
+def test_cancel_returns_promptly_and_frees_the_port():
+    # A mistyped Client ID leaves Spotify on its own INVALID_CLIENT
+    # page, which never redirects: without a cancel the wait holds the
+    # port for the full CALLBACK_TIMEOUT_SECONDS.
+    server = create_callback_server(port=0)
+    port = server.server_address[1]
+    cancel = threading.Event()
+    raised: Queue = Queue()
+
+    def serve() -> None:
+        try:
+            serve_until_callback(server, timeout_seconds=60.0, cancel=cancel)
+        except AuthorizationCancelledError as error:
+            raised.put(error)
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+
+    started = time.monotonic()
+    cancel.set()
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert time.monotonic() - started < 2.0
+    assert isinstance(raised.get(timeout=1.0), AuthorizationCancelledError)
+
+    # A second attempt after the cancel binds the same port.
+    second = create_callback_server(port=port)
+    second.server_close()
+
+
+def test_already_cancelled_wait_serves_nothing_and_closes_the_socket():
+    server = create_callback_server(port=0)
+    cancel = threading.Event()
+    cancel.set()
+
+    with pytest.raises(AuthorizationCancelledError):
+        serve_until_callback(server, timeout_seconds=60.0, cancel=cancel)
+
+    assert server.socket.fileno() == -1

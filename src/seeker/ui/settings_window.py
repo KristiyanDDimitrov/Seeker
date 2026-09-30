@@ -41,6 +41,7 @@ from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice
+from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
 
 
@@ -637,6 +638,14 @@ class SettingsPage(QWidget):
         self.spotify_status_label = QLabel("")
         spotify_form.addRow("", self.spotify_status_label)
 
+        self.spotify_authorization_wait = SpotifyAuthorizationWait(
+            self.application,
+            self.thread_pool,
+            self.reauthorize_spotify_button,
+            self.spotify_status_label,
+        )
+        spotify_form.addRow("", self.spotify_authorization_wait)
+
         layout.addWidget(spotify_group)
 
         soulseek_group = QGroupBox("SoulSeek")
@@ -893,22 +902,23 @@ class SettingsPage(QWidget):
         self._render_api_key_display()
 
     def _on_reauthorize_spotify_clicked(self) -> None:
+        # Enter in the Client ID field reaches here with the button
+        # disabled, so the wait's own guard is the one that counts.
+        if self.spotify_authorization_wait.is_waiting:
+            return
+
         client_id = self.spotify_client_id_field.text().strip()
 
         if not client_id:
             self.spotify_status_label.setText("Enter a Client ID first.")
             return
 
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.connect_spotify(
-                client_id, force_reauthorize=True,
-            ),
-            button=self.reauthorize_spotify_button,
-            status_label=self.spotify_status_label,
-            on_finished=lambda _: self.spotify_status_label.setText(
+        self.spotify_authorization_wait.start(
+            client_id,
+            on_connected=lambda: self.spotify_status_label.setText(
                 "Re-authorized."
             ),
+            force_reauthorize=True,
         )
 
     def _on_test_connection_clicked(self) -> None:

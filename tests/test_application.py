@@ -559,7 +559,7 @@ def test_connect_spotify_persists_config_and_resets_auth_manager(
     monkeypatch.setattr(
         SpotifyAuthManager,
         "get_valid_token",
-        lambda self, force_refresh=False: triggered.append(True),
+        lambda self, force_refresh=False, cancel=None: triggered.append(True),
     )
 
     app._auth_manager = "stale-sentinel"  # type: ignore[assignment]
@@ -592,7 +592,7 @@ def test_connect_spotify_force_reauthorize_clears_cached_token(
     # get_valid_token() being called directly.
     monkeypatch.setattr(
         SpotifyAuthManager, "get_valid_token",
-        lambda self, force_refresh=False: None,
+        lambda self, force_refresh=False, cancel=None: None,
     )
 
     app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -627,7 +627,7 @@ def test_connect_spotify_without_force_leaves_cached_token_untouched(
     # get_valid_token() being called directly.
     monkeypatch.setattr(
         SpotifyAuthManager, "get_valid_token",
-        lambda self, force_refresh=False: None,
+        lambda self, force_refresh=False, cancel=None: None,
     )
 
     app._spotify_token_path.parent.mkdir(parents=True, exist_ok=True)
@@ -664,7 +664,7 @@ def test_connect_spotify_reruns_authorization_when_client_already_cached(
     monkeypatch.setattr(
         SpotifyAuthManager,
         "get_valid_token",
-        lambda self, force_refresh=False: triggered.append(True),
+        lambda self, force_refresh=False, cancel=None: triggered.append(True),
     )
 
     # Simulate a prior real call having already populated the cache.

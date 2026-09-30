@@ -1,3 +1,5 @@
+import threading
+
 from seeker.application import Application
 from seeker.docker_setup import (
     DockerState,
@@ -6,6 +8,7 @@ from seeker.docker_setup import (
     SlskdHealthStatus,
 )
 from seeker.models.slskd_start import SlskdStartResult
+from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -211,7 +214,9 @@ def test_connect_spotify_button_calls_connect_spotify_and_advances(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", calls.append,
+        application,
+        "connect_spotify",
+        lambda client_id, **kwargs: calls.append(client_id),
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -242,7 +247,9 @@ def test_client_id_return_pressed_connects_when_field_is_non_empty(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", calls.append,
+        application,
+        "connect_spotify",
+        lambda client_id, **kwargs: calls.append(client_id),
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -268,7 +275,9 @@ def test_client_id_return_pressed_does_nothing_when_field_is_empty(
     application = make_application(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(
-        application, "connect_spotify", calls.append,
+        application,
+        "connect_spotify",
+        lambda client_id, **kwargs: calls.append(client_id),
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -1050,3 +1059,62 @@ def test_launch_docker_clicked_failure_shows_manual_instructions(
     wizard._on_launch_docker_clicked()
 
     assert "manually" in wizard.soulseek_status_label.text().lower()
+
+
+def _blocking_connect_spotify(started: threading.Event, calls: list[str]):
+    """A connect_spotify stand-in that waits in the browser the way the
+    real one does, until its cancel event is set."""
+    def fake(client_id, force_reauthorize=False, cancel=None):
+        calls.append(client_id)
+        started.set()
+        cancel.wait(timeout=5.0)
+        raise AuthorizationCancelledError()
+
+    return fake
+
+
+def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Typing in the Client ID field used to re-enable Connect while the
+    # first attempt still held 127.0.0.1:8888; a second click then
+    # failed with a raw "Address already in use".
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    application = make_application(tmp_path, monkeypatch)
+    started = threading.Event()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        application,
+        "connect_spotify",
+        _blocking_connect_spotify(started, calls),
+    )
+
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+    wait = wizard.spotify_authorization_wait
+    assert wait.isHidden()
+
+    wizard.client_id_field.setText("mistyped-client-id")
+    wizard.connect_button.click()
+    qtbot.waitUntil(started.is_set, timeout=2000)
+
+    assert not wait.isHidden()
+    assert wait.cancel_button.isEnabled()
+    assert "Client ID" in wait.hint_label.text()
+    assert wizard.spotify_status_label.text() == (
+        "Waiting for approval in your browser…"
+    )
+    assert not wizard.connect_button.isEnabled()
+
+    wizard.client_id_field.setText("corrected-client-id")
+    assert not wizard.connect_button.isEnabled()
+    wizard.client_id_field.returnPressed.emit()
+
+    wait.cancel_button.click()
+
+    qtbot.waitUntil(wizard.connect_button.isEnabled, timeout=2000)
+    assert wait.isHidden()
+    assert wizard.spotify_status_label.text() == "Authorization cancelled."
+    assert wizard.stack.currentIndex() == 0
+    assert calls == ["mistyped-client-id"]

@@ -1115,6 +1115,15 @@ TOOLTIP_CONNECT_SPOTIFY = (
     "Open a browser window to authorize Seeker against your Spotify "
     "account."
 )
+TOOLTIP_CANCEL_SPOTIFY_AUTHORIZATION = (
+    "Stop waiting for the browser, so you can correct the Client ID "
+    "and try again."
+)
+SPOTIFY_AUTHORIZATION_WAITING = "Waiting for approval in your browser…"
+SPOTIFY_AUTHORIZATION_HINT = (
+    "If Spotify shows an error instead of asking for approval, check "
+    "the Client ID, then Cancel and try again."
+)
 TOOLTIP_CHOOSE_LIBRARY_FOLDER = (
     "Pick the folder Seeker should scan for your existing audio files."
 )

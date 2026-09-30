@@ -4,7 +4,9 @@ import time
 import httpx
 import pytest
 
+from seeker.spotify import auth_manager
 from seeker.spotify.auth_manager import SpotifyAuthManager
+from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 
@@ -106,7 +108,7 @@ def test_get_valid_token_falls_back_to_fresh_login_when_refresh_fails(
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.refresh_access_token", fake_refresh
     )
-    monkeypatch.setattr(manager, "_authorize", lambda: fresh_token)
+    monkeypatch.setattr(manager, "_authorize", lambda cancel=None: fresh_token)
 
     token = manager.get_valid_token()
 
@@ -123,7 +125,7 @@ def test_get_valid_token_authorizes_when_no_token_saved(
         refresh_token="first-time-refresh",
         expires_at=time.time() + 3600,
     )
-    monkeypatch.setattr(manager, "_authorize", lambda: fresh_token)
+    monkeypatch.setattr(manager, "_authorize", lambda cancel=None: fresh_token)
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.refresh_access_token", _fail_if_called
     )
@@ -146,7 +148,7 @@ def test_authorize_raises_actionable_error_on_callback_timeout(
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.serve_until_callback",
-        lambda server: (None, None, None, True),
+        lambda server, cancel=None: (None, None, None, True),
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.webbrowser.open", lambda url: None,
@@ -197,7 +199,7 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
         call_order.append("create")
         return object()
 
-    def fake_serve_until_callback(server):
+    def fake_serve_until_callback(server, cancel=None):
         call_order.append("serve")
         return ("real-code", "fixed-state", None, False)
 
@@ -352,3 +354,35 @@ def test_concurrent_callers_share_one_refresh_of_an_expired_token(
     assert errors == []
     assert endpoint["calls"] == 1
     assert results == ["access-2", "access-2"]
+
+
+def test_cancelled_authorization_raises_and_releases_the_token_lock(
+        tmp_path, monkeypatch,
+):
+    # _authorize runs inside _TOKEN_LOCK: a cancel that left it held
+    # would make a concurrent sync wait out the full callback timeout.
+    manager = make_manager(tmp_path)
+    cancel = threading.Event()
+    forwarded: list[threading.Event | None] = []
+
+    def fake_serve_until_callback(server, cancel=None):
+        forwarded.append(cancel)
+        cancel.set()
+        raise AuthorizationCancelledError()
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.create_callback_server", object,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.serve_until_callback",
+        fake_serve_until_callback,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open", lambda url: None,
+    )
+
+    with pytest.raises(AuthorizationCancelledError):
+        manager.get_valid_token(cancel=cancel)
+
+    assert forwarded == [cancel]
+    assert not auth_manager._TOKEN_LOCK.locked()

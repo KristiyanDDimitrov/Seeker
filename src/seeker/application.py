@@ -1,5 +1,6 @@
 import logging
 import shutil
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -260,6 +261,7 @@ class Application:
             self,
             client_id: str,
             force_reauthorize: bool = False,
+            cancel: threading.Event | None = None,
     ) -> None:
         """Persist client_id to the config store and trigger the OAuth
         flow. Shared by the onboarding wizard's first-time connect and
@@ -273,6 +275,10 @@ class Application:
         which is correct for the wizard's first connect (no token
         exists yet) but would make Settings' "Re-authorize" a no-op
         for an already-connected setup.
+
+        Setting `cancel` from another thread ends the wait for the
+        browser with AuthorizationCancelledError and frees the callback
+        port.
         """
         config_path = resolve_config_path()
         current = load_config(config_path)
@@ -302,7 +308,7 @@ class Application:
         # round 8 §4.8.6): a bare `self.spotify` statement reads as
         # dead code to a linter or a future cleanup and deleting it
         # would silently break first-time Spotify connect.
-        self.auth_manager.get_valid_token()
+        self.auth_manager.get_valid_token(cancel=cancel)
 
     def persist_soulseek_config(
             self,
