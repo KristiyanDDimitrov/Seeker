@@ -79,7 +79,9 @@ src/seeker/
 │                              #   active_download, track_status, upgrade_review,
 │                              #   history_event, data_locations,
 │                              #   duplicate_cleanup, needs_review_match,
-│                              #   location_removal, spotify_sync
+│                              #   location_removal, spotify_sync,
+│                              #   download_result, library_result,
+│                              #   tag_result, fingerprint_result
 ├── matching.py                 # shared fuzzy artist/title matching — used by
 │                              #   BOTH library/matcher.py and soulseek/
 │                              #   quality.py, neither has its own copy
@@ -266,6 +268,13 @@ src/seeker/
   `UNRESOLVED`, `STAMPS_COMPLETED_AT`, …); a new grouping is a new
   named set there, never a literal set at the call site. SQL takes the
   values as parameters. [HISTORY §153](docs/history/151-180.md#153)
+- **A service result is a dataclass, never a string-keyed dict.**
+  One the CLI or `ui/` reads lives in `models/` (`download_result`,
+  `library_result`, `tag_result`, `fingerprint_result`); counts that
+  must agree with a list are derived from it (`failed` is
+  `len(failures)`). Detail rows stay `{track_id, reason, message}`
+  dicts, as in `RenameResult`. [HISTORY §154](docs/history/151-180.md#154),
+  [§155](docs/history/151-180.md#155)
 - **No widget in `ui/` guesses whether its text is HTML.** Labels are
   `PlainLabel`, or `RichLabel` for Seeker's own markup with any data
   inside `html.escape`d; message boxes go through `plain_text.question`
