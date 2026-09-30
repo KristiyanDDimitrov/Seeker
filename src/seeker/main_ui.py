@@ -6,6 +6,10 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 
 from seeker import config
 from seeker.application import Application, resolve_log_dir
+from seeker.ui.error_hooks import (
+    install_exception_hooks,
+    install_qt_message_handler,
+)
 from seeker.ui.main_window import MainWindow
 from seeker.ui.theme import apply_theme
 from seeker.ui.wizard import OnboardingWizard
@@ -32,6 +36,8 @@ def _configure_logging() -> None:
 
 def main() -> None:
     _configure_logging()
+    install_exception_hooks()
+    install_qt_message_handler()
     config.load_env_file()
 
     # Spotify/SoulSeek config is resolved lazily now (config store,
