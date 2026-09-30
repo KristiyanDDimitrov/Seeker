@@ -377,7 +377,7 @@ class FakeSharingService:
     def is_self_managed(self) -> bool:
         return self._self_managed
 
-    def get_reconciliation(self) -> list:
+    def get_reconciliation(self, status) -> list:
         return self._reconciliation
 
     def get_uploads(self) -> list:

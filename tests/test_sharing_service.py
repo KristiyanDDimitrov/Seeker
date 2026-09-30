@@ -1,12 +1,15 @@
+import argparse
 import json
 import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from seeker.cli import handle_sharing_status
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -18,11 +21,10 @@ from seeker.sharing_service import (
     SharingService,
     SharingWriteNotAllowedError,
     SlskdCredentialsMissingError,
-    SlskdUnauthorizedError,
     _insert_compose_volume_line,
     _insert_slskd_share_directory,
 )
-from seeker.soulseek.client import SoulseekClient
+from seeker.soulseek.client import SlskdUnauthorizedError, SoulseekClient
 
 # A fully-populated config -- the real shape a completed wizard/Settings
 # run leaves in the store. Used as make_service's default so every
@@ -239,7 +241,7 @@ def test_get_reconciliation_matches_location_to_share_via_live_mounts(
         ),
     )
 
-    reconciliation = service.get_reconciliation()
+    reconciliation = service.get_reconciliation(service.get_status())
     by_name = {state.location.name: state for state in reconciliation}
 
     assert by_name["Music"].shared is True
@@ -266,9 +268,44 @@ def test_get_reconciliation_all_unshared_when_docker_unreachable(
         lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()),
     )
 
-    reconciliation = service.get_reconciliation()
+    reconciliation = service.get_reconciliation(service.get_status())
 
     assert all(not state.shared for state in reconciliation)
+
+
+def test_sharing_status_fetches_application_state_once(
+        tmp_path, monkeypatch, capsys,
+):
+    # `seeker sharing status` reads the status and the per-location
+    # reconciliation, as a Sharing page refresh does; both come from
+    # one GET of slskd's application state.
+    service = make_service(tmp_path)
+    seed_location(service, "Music", "/Volumes/Drive/Music")
+    requested_urls: list[str] = []
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        requested_urls.append(url)
+
+        if url.endswith("/api/v0/application"):
+            return FakeResponse({"shares": {"ready": True}})
+
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+    application = SimpleNamespace(
+        soulseek_configured=True, sharing_service=service,
+    )
+
+    handle_sharing_status(application, argparse.Namespace())
+
+    assert "Music: not shared" in capsys.readouterr().out
+    assert [
+        url for url in requested_urls if url.endswith("/api/v0/application")
+    ] == ["http://slskd.test/api/v0/application"]
 
 
 def test_is_self_managed_true_when_label_matches_compose_path(

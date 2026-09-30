@@ -3,7 +3,11 @@ import json
 import httpx
 import pytest
 
-from seeker.soulseek.client import SoulseekClient, SoulseekDownloadError
+from seeker.soulseek.client import (
+    SlskdUnauthorizedError,
+    SoulseekClient,
+    SoulseekDownloadError,
+)
 
 
 class FakeResponse:
@@ -363,6 +367,52 @@ def test_request_download_does_not_wrap_unrecognized_error(
 
     with pytest.raises(httpx.HTTPStatusError):
         client.request_download("peer1", "song.flac", 12345)
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get_application", "/api/v0/application"),
+        ("get_shares", "/api/v0/shares"),
+        ("get_uploads", "/api/v0/transfers/uploads"),
+    ],
+)
+def test_sharing_getters_return_the_decoded_body(monkeypatch, method, path):
+    def fake_get(url, headers=None, timeout=None):
+        assert url == f"http://localhost:5030{path}"
+        assert headers == {"X-API-Key": "test-api-key"}
+        return FakeResponse({"from": path})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    assert getattr(client, method)() == {"from": path}
+
+
+@pytest.mark.parametrize(
+    "method", ["get_application", "get_shares", "get_uploads"],
+)
+def test_sharing_getters_turn_401_into_a_readable_error(monkeypatch, method):
+    monkeypatch.setattr(
+        httpx, "get", lambda *a, **k: FakeErrorResponse(401, {}),
+    )
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(SlskdUnauthorizedError, match="Re-run SoulSeek"):
+        getattr(client, method)()
+
+
+def test_sharing_getters_let_other_http_errors_propagate(monkeypatch):
+    monkeypatch.setattr(
+        httpx, "get", lambda *a, **k: FakeErrorResponse(500, {}),
+    )
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(httpx.HTTPStatusError):
+        client.get_application()
 
 
 def test_get_download_status_returns_real_state(monkeypatch):

@@ -111,16 +111,6 @@ class SlskdCredentialsMissingError(SeekerError):
     fields None in the config store forever."""
 
 
-class SlskdUnauthorizedError(SeekerError):
-    """Raised by get_status() in place of a raw httpx 401 — roadmap
-    item R6.4. See this module's own docstring / R6's diagnosis: a
-    Sharing recreate that runs with a blank SLSKD_API_KEY (R6's own
-    root cause, now fixed by routing through bring_up_slskd with real
-    persisted credentials) de-authenticates the container, and the
-    raw httpx.HTTPStatusError text is not an actionable message for a
-    UI panel."""
-
-
 @dataclass
 class ShareEntry:
     id: str
@@ -222,16 +212,8 @@ class SharingService:
 
     def get_status(self) -> ShareStatus:
         client = self.soulseek
-
-        app_response = _get_or_raise_unauthorized(
-            f"{client.base_url}/api/v0/application", client._headers(),
-        )
-        shares_block = app_response.json().get("shares") or {}
-
-        shares_response = _get_or_raise_unauthorized(
-            f"{client.base_url}/api/v0/shares", client._headers(),
-        )
-        raw_shares = (shares_response.json() or {}).get("local") or []
+        shares_block = client.get_application().get("shares") or {}
+        raw_shares = (client.get_shares() or {}).get("local") or []
 
         return ShareStatus(
             ready=bool(shares_block.get("ready")),
@@ -256,20 +238,20 @@ class SharingService:
         # placeInQueue -- the next real populated response seen live
         # (e.g. while using the Sharing page for real) is worth a
         # direct diff against this schema.
-        client = self.soulseek
-
-        response = _get_or_raise_unauthorized(
-            f"{client.base_url}/api/v0/transfers/uploads", client._headers(),
-        )
-        data = response.json()
+        data = self.soulseek.get_uploads()
 
         if not isinstance(data, list):
             return []
 
         return [_parse_upload(entry) for entry in data if isinstance(entry, dict)]
 
-    def get_reconciliation(self) -> list[LocationShareState]:
-        status = self.get_status()
+    def get_reconciliation(
+            self,
+            status: ShareStatus,
+    ) -> list[LocationShareState]:
+        """Which library locations `status`'s shares cover. Takes the
+        status its caller already fetched, so a refresh asks slskd
+        once."""
         mounts = _get_live_container_mounts(self._container_name)
 
         share_by_host_path: dict[str, ShareEntry] = {}
@@ -414,9 +396,9 @@ class SharingService:
                 "doesn't blank a real credential."
             )
 
-        reconciliation = self.get_reconciliation()
+        status_before = self.get_status()
 
-        for state in reconciliation:
+        for state in self.get_reconciliation(status_before):
             if state.location.id == location.id and state.shared:
                 raise ShareAlreadyExistsError(
                     f"'{location.name}' is already shared."
@@ -451,7 +433,6 @@ class SharingService:
             raise RuntimeError(f"{slskd_yml_path} does not exist.")
 
         plan = self.preview_add_location(location)
-        status_before = self.get_status()
 
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         compose_backup = self._compose_path.with_name(
@@ -565,27 +546,6 @@ class SharingService:
             files_after=status_after.files,
             became_ready=became_ready,
         )
-
-
-def _get_or_raise_unauthorized(
-        url: str,
-        headers: dict[str, str],
-) -> httpx.Response:
-    response = httpx.get(url, headers=headers, timeout=10.0)
-
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as error:
-        if response.status_code == 401:
-            raise SlskdUnauthorizedError(
-                "slskd rejected Seeker's API key — the container may "
-                "have been recreated without it. Re-run SoulSeek setup "
-                "in Settings."
-            ) from error
-
-        raise
-
-    return response
 
 
 def _get_live_container_mounts(container_name: str) -> dict[str, str]:

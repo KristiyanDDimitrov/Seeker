@@ -1006,7 +1006,7 @@ class FakeSharingServiceForCli:
     def is_self_managed(self) -> bool:
         return self._self_managed
 
-    def get_reconciliation(self):
+    def get_reconciliation(self, status):
         return self._reconciliation
 
 

@@ -30,6 +30,12 @@ class SlskdUnreachableError(SeekerError):
         self.base_url = base_url
 
 
+class SlskdUnauthorizedError(SeekerError):
+    """slskd answered 401 to Seeker's API key: in practice the
+    container was recreated without it (HISTORY §84). The message is
+    the sentence the UI and CLI show, in place of raw httpx text."""
+
+
 # Recognized, known-transient slskd rejection reasons — confirmed live
 # against real captured responses, not guessed. Matched case-
 # insensitively by substring since exact wording may vary slightly
@@ -93,6 +99,39 @@ class SoulseekClient:
 
     def _headers(self) -> dict[str, str]:
         return {"X-API-Key": self.api_key}
+
+    def _get_json_or_raise_unauthorized(self, path: str) -> Any:
+        response = httpx.get(
+            f"{self.base_url}{path}", headers=self._headers(), timeout=10.0,
+        )
+
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            if response.status_code == 401:
+                raise SlskdUnauthorizedError(
+                    "slskd rejected Seeker's API key — the container may "
+                    "have been recreated without it. Re-run SoulSeek "
+                    "setup in Settings."
+                ) from error
+
+            raise
+
+        return response.json()
+
+    # The three getters below return slskd's decoded JSON unparsed; the
+    # Sharing service owns those shapes.
+
+    def get_application(self) -> Any:
+        return self._get_json_or_raise_unauthorized("/api/v0/application")
+
+    def get_shares(self) -> Any:
+        return self._get_json_or_raise_unauthorized("/api/v0/shares")
+
+    def get_uploads(self) -> Any:
+        return self._get_json_or_raise_unauthorized(
+            "/api/v0/transfers/uploads"
+        )
 
     def _transfer_url(self, username: str, transfer_id: str) -> str:
         # Both are one path segment each. The username is chosen by a

@@ -142,12 +142,13 @@ class SharingPage(QWidget):
             )
 
         service = self._context.application.sharing_service
+        status = service.get_status()
 
         return _SharingSnapshot(
             configured=True,
-            status=service.get_status(),
+            status=status,
             self_managed=service.is_self_managed(),
-            reconciliation=service.get_reconciliation(),
+            reconciliation=service.get_reconciliation(status),
             uploads=service.get_uploads(),
         )
 

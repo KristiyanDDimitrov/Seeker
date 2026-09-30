@@ -1184,7 +1184,7 @@ def handle_sharing_status(
     print()
     print("Library locations:")
 
-    for state in service.get_reconciliation():
+    for state in service.get_reconciliation(status):
         if state.shared and state.share is not None:
             print(
                 f"  {state.location.name}: shared as "
