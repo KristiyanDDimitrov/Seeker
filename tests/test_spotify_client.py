@@ -377,3 +377,40 @@ def test_401_with_no_force_refresh_raises_immediately_without_retry(
         SpotifyClient("token").get_current_user_playlists()
 
     assert calls["n"] == 1
+
+
+def test_a_429_with_an_empty_body_is_a_rate_limit_not_a_crash(monkeypatch):
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return httpx.Response(
+            429, headers={"Retry-After": "7200"},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(SpotifyRateLimitedError) as exc_info:
+        SpotifyClient("token").get_current_user_playlists()
+
+    assert exc_info.value.quota_exceeded is False
+    assert exc_info.value.retry_after_seconds == 7200
+
+
+def test_a_429_with_an_http_date_retry_after_counts_as_no_header(
+        monkeypatch,
+):
+    # RFC 9110 allows Retry-After as an HTTP-date as well as seconds.
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+            json={"error": {"status": 429}},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(SpotifyRateLimitedError) as exc_info:
+        SpotifyClient("token").get_current_user_playlists()
+
+    assert exc_info.value.retry_after_seconds is None
+    assert "unknown amount of time" in str(exc_info.value)

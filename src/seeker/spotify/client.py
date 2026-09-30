@@ -53,6 +53,31 @@ def _format_clock_time(when: datetime) -> str:
     return f"{hour}:{when.minute:02d} {period}"
 
 
+def _rate_limit_reason(response: httpx.Response) -> str | None:
+    # A 429 body is not guaranteed: an empty or non-JSON one is a rate
+    # limit with no stated reason, not a crash.
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+
+    error = data.get("error") if isinstance(data, dict) else None
+    reason = error.get("reason") if isinstance(error, dict) else None
+
+    return reason if isinstance(reason, str) else None
+
+
+def _retry_after_seconds(response: httpx.Response) -> int | None:
+    # Retry-After may also be an HTTP-date; that form, like any
+    # unparseable value, is treated as no header at all.
+    header = response.headers.get("Retry-After")
+
+    if header is None or not header.strip().isdigit():
+        return None
+
+    return int(header)
+
+
 class SpotifyRateLimitedError(RuntimeError):
     def __init__(
         self,
@@ -148,19 +173,10 @@ class SpotifyClient:
             if response.status_code == 429:
                 attempts += 1
 
-                error_data = response.json().get("error", {})
-                quota_exceeded = (
-                    error_data.get("reason") == "QUOTA_EXCEEDED"
+                quota_exceeded = _rate_limit_reason(response) == (
+                    "QUOTA_EXCEEDED"
                 )
-
-                retry_after_header = response.headers.get(
-                    "Retry-After"
-                )
-                retry_after_seconds = (
-                    int(retry_after_header)
-                    if retry_after_header is not None
-                    else None
-                )
+                retry_after_seconds = _retry_after_seconds(response)
 
                 if (
                         quota_exceeded
