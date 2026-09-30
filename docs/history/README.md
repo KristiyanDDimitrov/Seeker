@@ -240,3 +240,4 @@ under their entry and live in the same file, after it.
 - §155 — Round 11 S14 part 2 (§14.1 rest, §14.2, §14.3): typed library, tag and fingerprint results; `_tag_one_track` as named steps → [151-180.md#155](151-180.md#155)
 - §156 — Round 11 S15 (§15.1–§15.4): CLI structure — one handler per subcommand; --help never opens the database; no print or input in a service → [151-180.md#156](151-180.md#156)
 - §157 — Round 11 S16 part 1 (§16.1, §16.2): repositories without a Database; dead code out of `src/` → [151-180.md#157](151-180.md#157)
+- §158 — Round 11 S16 part 2 (§16.3–§16.6): no legacy migrations; Sharing through the client; one GET per status; a freed chromaprint context → [151-180.md#158](151-180.md#158)

@@ -10,50 +10,49 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S16 part-1 close-out commit (HISTORY §157, session
-  plan, this handoff). Tree clean apart from the untracked `Claude
+- **HEAD:** the S16 close-out commit (HISTORY §158, session plan,
+  this handoff). Tree clean apart from the untracked `Claude
   outputs/`.
-- **Local pytest** (2026-09-30): `1557 passed, 1 skipped, 9 warnings`
-  (X9 Pro mounted). 1559 → 1557 is `format_speed`'s two tests,
-  deleted with it.
-- **`mypy --strict src/`:** clean, 119 files. **`ruff check src
+- **Local pytest** (2026-09-30): `1556 passed, 1 skipped, 9 warnings`
+  (X9 Pro mounted; per-commit counts in §158).
+- **`mypy --strict src/`:** clean, 120 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36769570707` on `b56c371` (the close-out commit):
-  success.
+- **CI:** recorded by the follow-up commit after the close-out push.
 
 ## 2. Where we are
 
-S1–S15 ticked; **S16 stopped at its split point** (§16.1–§16.2 done,
-marked ◐ in the session plan). **Next: S16 part 2** — §16.3 legacy
-path migrations, §16.4 `SoulseekClient` getters + Sharing phases +
-one status GET, §16.5 `library/audio_quality.py`, §16.6 the
-fingerprinter as a context manager. Then S17.
+S1–S16 ticked. **Next: S17**, splitting `download_service.py` (BRIEF
+§17, split point after §17.1). Then S18.
 
-## 3. Session report (S16 part 1)
+## 3. Session report (S16 part 2)
 
-Evidence for every line is in HISTORY §157.
-- `05f3349` §16.1: repositories take no `Database`; `SpotifySyncService`
-  receives its repositories.
-- `c13cace` §16.2: dead code deleted (incl. `delete_missing`, not in
-  the brief); four test-only helpers leave `src/`; PIE790, RSE102,
-  FURB161 gated.
+Evidence for every line is in HISTORY §158.
+- `b70d270` §16.3: legacy path migrations and their tests go.
+- `0d3647b` §16.4: client Sharing getters; one status GET per refresh.
+- `a8be33a` §16.4: `add_location_to_share` as phases, D (24) → A (2).
+- `a83a909` §16.4: `TransferStatus.exception`; one GET per rejection.
+- `450b25d` §16.5: `library/audio_quality.py` (refactor).
+- `bf95b33` §16.6: chromaprint context manager; NULL context raises.
 
 ## 4. Key context
 
-- **For S16 part 2:** radon D-or-worse in `src/` is 4:
-  `_insert_slskd_share_directory` D (26),
-  `SharingService.add_location_to_share` D (24, §16.4 targets it),
-  `DownloadService._retry_locked_request` D (24), `_decide_next_step`
-  D (21). vulture/A.9 results are in §157; A.9 is ~50 lines of
-  `tokenize` + `ast`, re-created from BRIEF A.9. Repositories are now built bare (`TrackRepository()`); a
-  test seeding one playlist track uses `tests/db_seed.
-  add_playlist_track` (S18's `tests/fakes.py` may absorb it).
-  Carried from S14: `_fix_one_track_art` (C, 15) still mutates the
-  shared `FixArtResult`; still dicts, not in the brief:
-  `DuplicateService.delete_local_files`,
-  `TrackMatcher.generate_match_report`.
-- **CLI shape** (S15): see HISTORY §156; every handler takes
-  `(application, parsed)`.
+- **For S17:** radon D-or-worse in `src/` is 3:
+  `DownloadService._retry_locked_request` D (24) (S17's file),
+  `_insert_slskd_share_directory` D (26), `_decide_next_step` D (21).
+  `_classify_failed_transfer` is now a `@staticmethod` taking a
+  `TransferStatus`; fakes of `get_download_status` must return
+  `TransferStatus(..., exception=...)` (`FakeSoulseekClient` in
+  `test_download_service.py` reads it from `exceptions=`).
+- **slskd REST:** Sharing's calls go through `SoulseekClient`; a 401
+  there raises `soulseek.client.SlskdUnauthorizedError`.
+  `docker_setup` still calls slskd directly for health and login
+  checks (not in §16's scope).
+- **Test gotcha:** proving something is freed while a traceback is
+  alive needs `pytest.raises(...) as raised`; the unnamed form drops
+  it at once and hides a `__del__`-only cleanup (§158).
+- Carried: `_fix_one_track_art` (C, 15) mutates the shared
+  `FixArtResult`; `DuplicateService.delete_local_files` and
+  `TrackMatcher.generate_match_report` still return dicts.
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
   Coverage margin ~2.7 points (floor 89). Never `QLabel(...)` or
   `QMessageBox.question(...)` in `ui/`; never touch slskd or real data;
@@ -61,21 +60,19 @@ Evidence for every line is in HISTORY §157.
   state has one writer (`_trigger_backend_poll`).
   `RETRYING_IN_BACKGROUND`, not `RETRYING`.
 - **Shell:** zsh `echo ======` and unquoted `--include=*.py` fail;
-  BSD `sed` lacks `\b`/`\|` (`sed -E`); a `cat > file` with no stdin
-  blocks: write edit scripts with the Write tool.
+  BSD `sed` lacks `\b`/`\|`; write edit scripts with the Write tool.
 
 ## 5. Decisions made
 
-- **`delete_missing` deleted, not kept for its tests**: the scanner
-  deletes by id since S7; its tests moved onto `delete_by_ids`, the
-  path the scanner actually takes past SQLite's variable limit.
-- **`format_speed` deleted with its tests** rather than moved: the
-  tests exercised nothing but the function itself.
-- **PIE790, RSE102, FURB161 selected by exact code** so the §16.2
-  fixes stay fixed (explicit-preview-rules; see CLAUDE.md).
-- **Result-dataclass fields only tests read stay** (`index_failed`,
-  `tagged_art_rarely_supported_format`): the §16 acceptance excludes
-  dataclass fields.
+- **`quality_tier_for_format` lives in `audio_formats.py`**, not
+  `soulseek/quality.py`: both rankers import it, and `library/` must
+  not import from `soulseek/`.
+- **The client's Sharing getters return raw JSON**; `sharing_service`
+  owns the shapes.
+- **`get_reconciliation` requires the status**: an optional argument
+  would let the double GET come back silently.
+- **The chromaprint context is allocated in `__enter__`**, so a
+  wrapper that is never entered holds nothing.
 - Carried: help text's "Roadmap item" strings wait for S24.
 
 ## 6. Blockers
@@ -84,8 +81,7 @@ None.
 
 ## 7. Files in progress
 
-None mid-edit. S16 stopped cleanly at its split point; §16.3–§16.6
-not started.
+None.
 
 ## 8. Waiting on Kris
 
@@ -94,8 +90,7 @@ bundle identifier; S42 publishing commands; X1 and X2 (optional).
 
 **Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
 
-**Kris's own decision (carried):** keep or discard `./slskd-data`
-(HISTORY §140).
+**Kris's decision (carried):** keep or discard `./slskd-data` (§140).
 
 **Live checks:** S41's checklist, plus carried: S6 Refresh playlists;
 S7 drift Scan; S8 Reject-then-Scan, failure reason; S9 mistyped Client
@@ -117,12 +112,9 @@ S15 a real `seeker downloads review` prompts as before.
   S18?
 - Settings shows results and rejections on status labels, not notices,
   as does Duplicates' `_render_fingerprint_result`: S28/S29.
-- CLI (not in §15, carried): print `download`'s failed tracks with
-  their reasons, as the Dashboard does? Catch `httpx.HTTPStatusError`
-  too? Should `printable()` strip bidi controls, and `downloads status`
-  print failure reasons? The one-by-one upgrade review prints
-  `apply_upgrade_decision`'s message raw where `--all` uses
-  `printable()`.
+- CLI (carried): print `download`'s failure reasons; catch
+  `httpx.HTTPStatusError`; bidi controls in `printable()`; the
+  one-by-one upgrade review skips `printable()` (see §156).
 - S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the
   typed subfolder. S29: should a rejection be undoable?
 - `_activate_shortlisted_entry`: if slskd dies between
