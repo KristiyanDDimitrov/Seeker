@@ -1227,7 +1227,6 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
     window._duplicates_page._render_duplicates_locations(
         [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
     )
-    window._duplicates_page._current_duplicates_location_name = "Main"
     window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(

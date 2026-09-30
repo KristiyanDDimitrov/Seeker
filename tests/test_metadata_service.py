@@ -7,6 +7,7 @@ import httpx
 import pytest
 from mutagen import File as MutagenFile
 
+from db_seed import add_playlist_track
 from seeker.album_art_cache import AlbumArtCache
 from seeker.audio_analysis import CAMELOT_MAP
 from seeker.database.connection import Database
@@ -202,8 +203,8 @@ def test_tag_playlist_tags_only_auto_matched_tracks(tmp_path, monkeypatch):
             ),
             connection,
         )
-        service.tracks.save_playlist_track("p1", "auto-track", connection)
-        service.tracks.save_playlist_track(
+        add_playlist_track("p1", "auto-track", connection)
+        add_playlist_track(
             "p1", "unmatched-track", connection
         )
 
@@ -1027,7 +1028,7 @@ def _seed_playlist_with_track(service: MetadataService, track_id: str) -> None:
             Playlist(id="p1", name="Test Playlist", track_count=1),
             connection,
         )
-        service.tracks.save_playlist_track("p1", track_id, connection)
+        add_playlist_track("p1", track_id, connection)
 
 
 def test_fix_missing_art_raises_when_playlist_not_synced(tmp_path):
@@ -1177,7 +1178,7 @@ def test_fix_missing_art_only_touches_auto_matched_tracks(tmp_path):
             ),
             connection,
         )
-        service.tracks.save_playlist_track(
+        add_playlist_track(
             "p1", "needs-review-track", connection
         )
         service.track_matches.upsert(

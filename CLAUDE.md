@@ -589,7 +589,7 @@ Each links to the HISTORY entry where the full investigation lives;
   [HISTORY §56](docs/history/047-071.md#56)
 - **A match pointing at no file is unmatched, everywhere.** Every
   `local_files` delete goes through `LocalFileRepository`
-  (`delete_by_id`/`delete_missing`/`delete_all_for_location`), which
+  (`delete_by_id`/`delete_by_ids`/`delete_all_for_location`), which
   resets the dependent matches in the same transaction — never delete
   `local_files` rows with raw SQL, or the `ON DELETE SET NULL`
   cascade leaves a method/score/confirmation on a row pointing

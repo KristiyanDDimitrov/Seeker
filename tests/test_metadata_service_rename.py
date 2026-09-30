@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from db_seed import add_playlist_track
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
@@ -20,7 +21,7 @@ def _seed_playlist_with_track(
             Playlist(id="p1", name="Test Playlist", track_count=1),
             connection,
         )
-        service.tracks.save_playlist_track("p1", track_id, connection)
+        add_playlist_track("p1", track_id, connection)
 
         # PlaylistRepository.save() doesn't persist the destination
         # fields (they're set via the dedicated Settings action) — a

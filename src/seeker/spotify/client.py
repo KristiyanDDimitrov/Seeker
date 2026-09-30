@@ -201,7 +201,7 @@ class SpotifyClient:
 
             if response.status_code == 401:
                 if retried_after_401 or self._force_refresh is None:
-                    raise SpotifyAuthenticationError()
+                    raise SpotifyAuthenticationError
 
                 retried_after_401 = True
                 token = self._force_refresh()

@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from db_seed import add_playlist_track
 from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -80,7 +81,7 @@ def seed_track(
             ),
             connection,
         )
-        service.tracks.save_playlist_track(playlist_id, track_id, connection)
+        add_playlist_track(playlist_id, track_id, connection)
 
 
 def seed_local_file(
@@ -688,8 +689,8 @@ def test_get_active_downloads_collapses_genuine_duplicate_candidate_rows(
 ):
     # Real, live-observed shape (2026-08-28 Step 5 follow-up): three
     # rows for the same track, all rank=1, all the identical peer+file
-    # — stale leftovers from before download_playlist()'s
-    # get_active_for_track guard (item 16) was fully effective, not
+    # — stale leftovers from before download_playlist() stopped
+    # re-requesting an in-progress track, not
     # Phase 4's legitimate multi-candidate shortlist (which always uses
     # distinct peers/files per rank). Only the most-recently-requested
     # of the three should surface.

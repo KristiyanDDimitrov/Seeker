@@ -612,9 +612,9 @@ class DuplicateService:
         deleted FIRST, then the file on disk. These two steps aren't
         atomic. If something interrupts between them, THIS order fails
         in the safer direction — an orphaned-but-still-present file,
-        which `library/scanner.py`'s own reachability logic
-        (`delete_missing`) already self-heals on the next `library
-        scan` by simply rediscovering it as a "new" file. The reverse
+        which `library/scanner.py`'s walk already self-heals on the
+        next `library scan` by simply rediscovering it as a "new"
+        file. The reverse
         order (file first, DB row second) would instead leave a
         `local_files` row pointing at a file that no longer exists, in
         the window before that same next scan repairs it — a state a

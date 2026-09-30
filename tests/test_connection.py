@@ -3,6 +3,7 @@ import threading
 
 import pytest
 
+from db_seed import add_playlist_track
 from seeker.dashboard_service import DashboardService
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -424,7 +425,7 @@ def test_concurrent_progress_writes_and_active_downloads_reads(tmp_path):
             ),
             connection,
         )
-        dashboard_service.tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
         download_requests.add(
             DownloadRequest(
                 track_id="t1",

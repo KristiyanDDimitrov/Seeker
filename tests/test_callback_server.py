@@ -10,7 +10,6 @@ from seeker.spotify.callback_server import (
     AuthorizationCancelledError,
     create_callback_server,
     serve_until_callback,
-    wait_for_callback,
 )
 
 
@@ -20,7 +19,7 @@ def _serve_in_background(
     result_queue.put(serve_until_callback(server, timeout_seconds))
 
 
-def test_wait_for_callback_parses_code_and_state_from_real_request():
+def test_serve_until_callback_parses_code_and_state_from_real_request():
     # Round 9 §1.2: the server is created (bound + listening) on this
     # thread, so it is provably ready before any client connects —
     # only serve_until_callback() itself runs in the background. Port 0
@@ -50,7 +49,7 @@ def test_wait_for_callback_parses_code_and_state_from_real_request():
     assert timed_out is False
 
 
-def test_wait_for_callback_captures_error_param():
+def test_serve_until_callback_captures_error_param():
     server = create_callback_server(port=0)
     port = server.server_address[1]
     result_queue: Queue = Queue()
@@ -75,7 +74,7 @@ def test_wait_for_callback_captures_error_param():
 def test_callback_handler_returns_404_but_keeps_waiting_for_the_real_callback():
     # Round 8 §6.3.3: a stray non-/callback request (a browser's own
     # /favicon.ico fetch is the real-world case) must get its own 404
-    # WITHOUT consuming wait_for_callback()'s one chance to see the real
+    # WITHOUT consuming serve_until_callback()'s one chance to see the real
     # authorization — the old behavior treated any request as "the"
     # request and returned empty-handed from here on.
     server = create_callback_server(port=0)
@@ -91,7 +90,7 @@ def test_callback_handler_returns_404_but_keeps_waiting_for_the_real_callback():
     )
     assert stray_response.status_code == 404
     assert result_queue.empty(), (
-        "a stray non-callback request must not make wait_for_callback "
+        "a stray non-callback request must not make serve_until_callback "
         "return early"
     )
 
@@ -110,14 +109,13 @@ def test_callback_handler_returns_404_but_keeps_waiting_for_the_real_callback():
     assert timed_out is False
 
 
-def test_wait_for_callback_times_out_when_nothing_ever_arrives():
+def test_serve_until_callback_times_out_when_nothing_ever_arrives():
     # Round 8 §6.3.1: the old code called handle_request() with no
     # timeout at all and blocked forever on an abandoned/closed
     # authorization tab. A real (short, test-scoped) timeout must
-    # return a distinct outcome rather than hang. No client ever
-    # connects, so the thin wait_for_callback() wrapper is fine here.
-    code, state, error, timed_out = wait_for_callback(
-        port=0, timeout_seconds=0.2,
+    # return a distinct outcome rather than hang.
+    code, state, error, timed_out = serve_until_callback(
+        create_callback_server(port=0), timeout_seconds=0.2,
     )
 
     assert code is None

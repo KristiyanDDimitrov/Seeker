@@ -594,8 +594,8 @@ class MainWindow(QMainWindow):
         # (`_downloads_page`/`_review_page`/`_dashboard_page`) don't
         # exist yet at this point in construction (this runs before
         # _build_ui()) — TrayController only calls them later, on a
-        # real reopen. `get_hidden_to_tray`/`set_hidden_to_tray`/
-        # `bump_hide_request_id` are genuinely shared mutable state
+        # real reopen. `set_hidden_to_tray`/`bump_hide_request_id`
+        # write genuinely shared mutable state
         # with closeEvent/the hide-to-tray verification below (staying
         # on MainWindow — see tray.py's own module docstring for why),
         # same read-through-a-seam shape as PageContext's
@@ -630,7 +630,6 @@ class MainWindow(QMainWindow):
             poll_next_step=(
                 lambda: self._dashboard_page._poll_next_step()  # noqa: PLW0108
             ),
-            get_hidden_to_tray=lambda: self._hidden_to_tray,
             set_hidden_to_tray=self._set_hidden_to_tray,
             bump_hide_request_id=self._bump_hide_request_id,
             needs_review_count=lambda: self._review_page._needs_review_count,

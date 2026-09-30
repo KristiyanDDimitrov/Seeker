@@ -138,7 +138,7 @@ def test_get_valid_token_authorizes_when_no_token_saved(
 def test_authorize_raises_actionable_error_on_callback_timeout(
         tmp_path, monkeypatch,
 ):
-    # Round 8 §6.3.1: wait_for_callback()'s new distinct `timed_out`
+    # Round 8 §6.3.1: serve_until_callback()'s distinct `timed_out`
     # outcome (an abandoned/closed authorization tab) must surface as a
     # clear, actionable message rather than propagating some other
     # generic failure or hanging.
@@ -368,7 +368,7 @@ def test_cancelled_authorization_raises_and_releases_the_token_lock(
     def fake_serve_until_callback(server, cancel=None):
         forwarded.append(cancel)
         cancel.set()
-        raise AuthorizationCancelledError()
+        raise AuthorizationCancelledError
 
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.create_callback_server", object,

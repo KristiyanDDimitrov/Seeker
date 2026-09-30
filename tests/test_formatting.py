@@ -6,7 +6,6 @@ import seeker
 from seeker.formatting import (
     format_duration_seconds,
     format_file_size,
-    format_speed,
     format_timestamp,
 )
 
@@ -47,15 +46,6 @@ def test_format_file_size_mb():
 
 def test_format_file_size_none():
     assert format_file_size(None) == "?"
-
-
-def test_format_speed_renders_per_second():
-    assert format_speed(1024) == "1.0 KB/s"
-
-
-def test_format_speed_none_or_zero_is_unknown():
-    assert format_speed(None) == "?"
-    assert format_speed(0) == "?"
 
 
 def test_format_duration_seconds_under_a_minute():

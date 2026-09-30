@@ -10,7 +10,7 @@ from seeker.errors import SeekerError
 # Single source of truth for the local callback port — the onboarding
 # wizard displays DEFAULT_REDIRECT_URI (built from this) as the fixed,
 # copy-pasteable value the user registers on Spotify's dashboard, so it
-# must never drift from what wait_for_callback() actually listens on.
+# must never drift from what create_callback_server() listens on.
 CALLBACK_PORT = 8888
 DEFAULT_REDIRECT_URI = f"http://127.0.0.1:{CALLBACK_PORT}/callback"
 
@@ -65,7 +65,7 @@ class AuthorizationCancelledError(SeekerError):
 
 @dataclass
 class _CallbackResult:
-    """Per-run state for one wait_for_callback() call — never a class
+    """Per-run state for one callback server — never a class
     attribute (round 8 §6.3.2): the old SpotifyCallbackHandler stored
     authorization_code/returned_state/error on the CLASS, so a failed
     attempt's stale `error` was still there for the next attempt in the
@@ -173,10 +173,9 @@ class _LoopbackHTTPServer(HTTPServer):
 def create_callback_server(port: int = CALLBACK_PORT) -> HTTPServer:
     """Binds (and starts listening on) the local callback socket and
     returns it, without serving any request yet — the caller decides
-    when to start serving via `serve_until_callback()`. Splitting this
-    out of the old single `wait_for_callback()` is what lets
-    `auth_manager._authorize()` bind the socket *before* opening the
-    browser, instead of after (round 9 §1.2).
+    when to start serving via `serve_until_callback()`. The split is
+    what lets `auth_manager._authorize()` bind the socket *before*
+    opening the browser, instead of after.
     """
     result = _CallbackResult()
     handler_class = _build_handler_class(result)
@@ -209,7 +208,7 @@ def serve_until_callback(
     try:
         while not result.received:
             if cancel is not None and cancel.is_set():
-                raise AuthorizationCancelledError()
+                raise AuthorizationCancelledError
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -237,15 +236,3 @@ def serve_until_callback(
         result.error,
         False,
     )
-
-
-def wait_for_callback(
-        port: int = CALLBACK_PORT,
-        timeout_seconds: float = CALLBACK_TIMEOUT_SECONDS,
-) -> tuple[str | None, str | None, str | None, bool]:
-    """Thin `create_callback_server()` + `serve_until_callback()`
-    wrapper kept for any caller that doesn't need the bind/serve split
-    (round 9 §1.2) — `auth_manager._authorize()` calls the two halves
-    directly instead, so it can open the browser in between.
-    """
-    return serve_until_callback(create_callback_server(port), timeout_seconds)

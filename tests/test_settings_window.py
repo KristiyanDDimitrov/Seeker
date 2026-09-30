@@ -1408,7 +1408,7 @@ def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
         calls.append(client_id)
         started.set()
         cancel.wait(timeout=5.0)
-        raise AuthorizationCancelledError()
+        raise AuthorizationCancelledError
 
     monkeypatch.setattr(
         application, "connect_spotify", fake_connect_spotify,

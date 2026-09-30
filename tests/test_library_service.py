@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from db_seed import add_playlist_track
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -433,7 +434,7 @@ def test_get_needs_review_matches_scoped_to_playlist_excludes_others(
             Playlist(id="p1", name="My Playlist", track_count=1),
             connection,
         )
-        service.track_matcher.tracks.save_playlist_track(
+        add_playlist_track(
             "p1", "track1", connection
         )
         service.playlists.save(

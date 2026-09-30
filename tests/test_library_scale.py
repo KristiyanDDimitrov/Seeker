@@ -32,7 +32,7 @@ from test_library_integrity import (
 OVER_THE_VARIABLE_LIMIT = 32_767
 
 
-def insert_bulk_rows(matcher, count: int) -> set[str]:
+def insert_bulk_rows(matcher, count: int) -> None:
     paths = {f"bulk/{index:05d}.mp3" for index in range(count)}
 
     with matcher.database.transaction() as connection:
@@ -47,38 +47,37 @@ def insert_bulk_rows(matcher, count: int) -> set[str]:
             [(path, path.rsplit("/", 1)[1]) for path in paths],
         )
 
-    return paths
 
+# --- §7.1: delete_by_ids past the variable limit -------------------------
 
-# --- §7.1: delete_missing past the variable limit -------------------------
-
-def test_delete_missing_handles_more_seen_paths_than_sqlite_variables(
-        tmp_path,
-):
+def test_delete_by_ids_keeps_every_row_it_was_not_given(tmp_path):
     service, matcher = make_scenario(tmp_path)
     service.scan_and_match()
     service.confirm_match("t1")
-    seen = insert_bulk_rows(matcher, OVER_THE_VARIABLE_LIMIT)
+    matched_ids = local_file_ids(matcher)
+    insert_bulk_rows(matcher, OVER_THE_VARIABLE_LIMIT)
+    bulk_ids = sorted(set(local_file_ids(matcher)) - set(matched_ids))
 
     with matcher.database.transaction() as connection:
-        matcher.local_files.delete_missing(1, seen, connection)
+        matcher.local_files.delete_by_ids(bulk_ids, connection)
 
-    # The matched file was not seen, so it goes, and so does its match.
-    assert len(local_file_ids(matcher)) == OVER_THE_VARIABLE_LIMIT
-    assert match_row(matcher) == (None, None, None, None)
-    assert unmatched_ids(matcher) == ["t1"]
+    assert local_file_ids(matcher) == matched_ids
+    assert match_row(matcher)[0] == matched_ids[0]
 
 
-def test_delete_missing_removes_more_rows_than_sqlite_variables(tmp_path):
+def test_delete_by_ids_removes_more_rows_than_sqlite_variables(tmp_path):
     service, matcher = make_scenario(tmp_path)
     service.scan_and_match()
+    service.confirm_match("t1")
     insert_bulk_rows(matcher, OVER_THE_VARIABLE_LIMIT)
 
     with matcher.database.transaction() as connection:
-        matcher.local_files.delete_missing(1, set(), connection)
+        matcher.local_files.delete_by_ids(local_file_ids(matcher), connection)
 
+    # The matched file went with the rest, and so did its match.
     assert local_file_ids(matcher) == []
     assert match_row(matcher) == (None, None, None, None)
+    assert unmatched_ids(matcher) == ["t1"]
 
 
 # --- §7.2: the scanner's walk and transaction shape -----------------------

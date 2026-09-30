@@ -49,16 +49,12 @@ class FlowLayout(QLayout):
     def horizontalSpacing(self) -> int:
         if self._h_spacing >= 0:
             return self._h_spacing
-        return self._smart_spacing(
-            QSizePolicy.ControlType.PushButton, Qt.Orientation.Horizontal,
-        )
+        return self._smart_spacing(Qt.Orientation.Horizontal)
 
     def verticalSpacing(self) -> int:
         if self._v_spacing >= 0:
             return self._v_spacing
-        return self._smart_spacing(
-            QSizePolicy.ControlType.PushButton, Qt.Orientation.Vertical,
-        )
+        return self._smart_spacing(Qt.Orientation.Vertical)
 
     def count(self) -> int:
         return len(self._item_list)
@@ -152,10 +148,7 @@ class FlowLayout(QLayout):
 
         return y + line_height - rect.y() + margins.bottom()
 
-    def _smart_spacing(
-            self, control_type: QSizePolicy.ControlType,
-            orientation: Qt.Orientation,
-    ) -> int:
+    def _smart_spacing(self, orientation: Qt.Orientation) -> int:
         parent = self.parent()
         if parent is None:
             return -1

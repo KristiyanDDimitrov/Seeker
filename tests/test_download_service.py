@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from db_seed import add_playlist_track
 from seeker import cli
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
@@ -349,7 +350,7 @@ def _seed_playlist_with_unmatched_tracks(
                 ),
                 connection,
             )
-            service.tracks.save_playlist_track("p1", track_id, connection)
+            add_playlist_track("p1", track_id, connection)
 
 
 def make_soulseek_file(**overrides) -> SoulseekFile:
@@ -516,7 +517,7 @@ def test_download_playlist_requests_locked_only_candidate_as_upgrade(
             ),
             connection,
         )
-        service.tracks.save_playlist_track(
+        add_playlist_track(
             "p1", "jade-venom-track", connection
         )
 
@@ -589,7 +590,7 @@ def _seed_single_unmatched_track(
             ),
             connection,
         )
-        service.tracks.save_playlist_track("p1", track_id, connection)
+        add_playlist_track("p1", track_id, connection)
 
 
 def test_download_playlist_skips_track_with_existing_active_request(
@@ -1231,7 +1232,7 @@ def test_settled_completion_indexes_and_matches_the_downloaded_file(
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         download_requests.add(
             DownloadRequest(
@@ -1332,7 +1333,7 @@ def test_settled_completion_becomes_ready_for_review_when_track_already_matched(
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         # The track is ALREADY matched to a real local file — simulates
         # a prior, independent download or scan+match having already
@@ -1466,7 +1467,7 @@ def test_settled_completion_moves_a_filename_with_glob_special_characters(
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         download_requests.add(
             DownloadRequest(
@@ -1694,7 +1695,7 @@ def _seed_default_destination_scenario(
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         DownloadRequestRepository().add(
             DownloadRequest(
@@ -2192,7 +2193,7 @@ def test_settled_role_locked_request_succeeds_on_retry_auto_moves_without_review
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         download_requests.add(
             DownloadRequest(
@@ -3005,7 +3006,7 @@ def _seed_upgrade_scenario(tmp_path):
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
         local_files.upsert(
             LocalFile(
@@ -3299,7 +3300,7 @@ def _seed_two_upgrade_scenario(tmp_path):
                 ),
                 connection,
             )
-            tracks.save_playlist_track("p1", track_id, connection)
+            add_playlist_track("p1", track_id, connection)
 
             local_files.upsert(
                 LocalFile(

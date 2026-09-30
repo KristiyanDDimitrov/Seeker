@@ -11,7 +11,7 @@ whole app just for existing on a machine without it installed.
 Fingerprinting is an optional feature (same "checked before use, never
 eagerly constructed" precedent as `Application.soulseek_configured` /
 `DownloadService.soulseek`, item 28), so the search happens lazily —
-only `compute_fingerprint()`/`hamming_similarity()` can raise
+only `compute_fingerprint()`/`decode_fingerprint()` can raise
 `FingerprintingUnavailableError`; importing this module never can.
 
 The core `Fingerprinter` ctypes bindings below are adapted from
@@ -449,9 +449,9 @@ def compute_fingerprint(path: str | Path) -> Fingerprint:
 def decode_fingerprint(data: str) -> np.ndarray:
     """Decode a compute_fingerprint() string into its raw uint32
     sub-fingerprint array, for use with similarity_from_decoded().
-    Public (not just an internal hamming_similarity() helper) so a
-    caller comparing one file against MANY others (DuplicateService's
-    O(n^2) clustering) can decode each file's fingerprint once and
+    Separate from similarity_from_decoded() so a caller comparing one
+    file against MANY others (DuplicateService's O(n^2) clustering)
+    can decode each file's fingerprint once and
     reuse the decoded array across every comparison, rather than
     re-decoding it on every pairwise call — confirmed live to matter in
     practice: a real clustering pass over ~3,100 real fingerprinted
@@ -492,7 +492,7 @@ def decode_fingerprint(data: str) -> np.ndarray:
 # library/duplicate_service.py), and a real fingerprint is ~10,000
 # uint32 values long (confirmed live, item 38's spike).
 _POPCOUNT_TABLE = np.array(
-        [bin(i).count("1") for i in range(256)],
+        [i.bit_count() for i in range(256)],
         dtype=np.uint8,
 )
 
@@ -505,8 +505,8 @@ def _popcount_uint32(values: np.ndarray) -> np.ndarray:
 def similarity_from_decoded(a: np.ndarray, b: np.ndarray) -> float:
     """Pure Hamming-distance similarity between two already-decoded
     uint32 sub-fingerprint arrays — no ctypes, no libchromaprint, no
-    I/O. Deliberately factored out from hamming_similarity() below so
-    the clustering logic that calls this (library/duplicate_service.py)
+    I/O. Deliberately separate from decode_fingerprint() so the
+    clustering logic that calls this (library/duplicate_service.py)
     can be unit-tested against synthetic arrays without needing
     libchromaprint installed, per this project's own established
     testing convention for the X9-Pro-drive-dependent tests.
@@ -529,13 +529,3 @@ def similarity_from_decoded(a: np.ndarray, b: np.ndarray) -> float:
     bit_errors = int(_popcount_uint32(xored).sum())
 
     return 1.0 - (bit_errors / (n * 32))
-
-
-def hamming_similarity(fingerprint_a: str, fingerprint_b: str) -> float:
-    """Compare two fingerprints from compute_fingerprint() — decodes
-    both via the real libchromaprint call, then delegates to the pure
-    similarity_from_decoded() above."""
-    a = decode_fingerprint(fingerprint_a)
-    b = decode_fingerprint(fingerprint_b)
-
-    return similarity_from_decoded(a, b)

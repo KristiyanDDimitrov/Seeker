@@ -117,7 +117,6 @@ class SharingPage(QWidget):
         theme.apply_column_floors(self.sharing_uploads_table)
         layout.addWidget(theme.make_card(self.sharing_uploads_table))
 
-        self._current_sharing_reconciliation: list[LocationShareState] = []
         self._current_sharing_self_managed = False
 
         # Lazy-loaded like Duplicates (first real page SHOW, never at
@@ -187,7 +186,6 @@ class SharingPage(QWidget):
         )
 
     def _render_sharing(self, snapshot: _SharingSnapshot) -> None:
-        self._current_sharing_reconciliation = snapshot.reconciliation
         self._current_sharing_self_managed = snapshot.self_managed
 
         if not snapshot.configured:

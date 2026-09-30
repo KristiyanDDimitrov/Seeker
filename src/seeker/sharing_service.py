@@ -109,7 +109,6 @@ class SlskdCredentialsMissingError(SeekerError):
     network-credential fields, or any bring-up whose result was never
     routed through Application.persist_soulseek_config, leaves these
     fields None in the config store forever."""
-    pass
 
 
 class SlskdUnauthorizedError(SeekerError):
@@ -120,7 +119,6 @@ class SlskdUnauthorizedError(SeekerError):
     persisted credentials) de-authenticates the container, and the
     raw httpx.HTTPStatusError text is not an actionable message for a
     UI panel."""
-    pass
 
 
 @dataclass

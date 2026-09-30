@@ -1073,7 +1073,7 @@ def _blocking_connect_spotify(started: threading.Event, calls: list[str]):
         calls.append(client_id)
         started.set()
         cancel.wait(timeout=5.0)
-        raise AuthorizationCancelledError()
+        raise AuthorizationCancelledError
 
     return fake
 

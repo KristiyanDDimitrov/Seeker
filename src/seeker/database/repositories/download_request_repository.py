@@ -351,55 +351,6 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
-    def get_active_for_track(
-            self,
-            track_id: str,
-            connection: sqlite3.Connection,
-    ) -> list[DownloadRequest]:
-        # "Active" = still in progress toward a real outcome — every
-        # status except the three terminal end states (completed, failed,
-        # superseded). Used by download_playlist() to avoid creating a
-        # duplicate request for a track that's already being chased —
-        # confirmed live (2026-08-27): re-running `seeker download` while
-        # an earlier request for the same track was still 'locked'
-        # created a second, otherwise-identical row instead of
-        # recognizing the existing attempt.
-        ended, ended_params = _status_in({
-            DownloadStatus.COMPLETED,
-            DownloadStatus.FAILED,
-            DownloadStatus.SUPERSEDED,
-        })
-        rows = connection.execute(
-            f"""
-            SELECT
-                id,
-                track_id,
-                username,
-                filename,
-                format,
-                quality_descriptor,
-                role,
-                status,
-                transfer_id,
-                size,
-                rank,
-                requested_at,
-                completed_at,
-                bytes_transferred,
-                total_bytes,
-                retry_count,
-                next_retry_at,
-                failure_reason,
-                dismissed_at
-            FROM download_requests
-            WHERE track_id = ?
-            AND NOT {ended}
-            """,  # noqa: S608
-            (track_id, *ended_params),
-        ).fetchall()
-
-        return [_row_to_download_request(row) for row in rows]
-
     def get_requests_blocking_redownload(
             self,
             track_id: str,
@@ -416,10 +367,10 @@ class DownloadRequestRepository:
         find a different peer, not stay permanently blocked by a peer
         that never had it available.
 
-        Distinct from get_active_for_track above, which a completed row
-        does NOT count as "active" for by design (roadmap item 56 Phase
-        5.2, a real bug this closes): two real, differently-named files
-        landed for the same track (Kamäleon - Quadrat, confirmed in the
+        A completed row counts too, by design (roadmap item 56 Phase
+        5.2, a real bug this closes): when only in-progress rows
+        counted, two real, differently-named files landed for the same
+        track (Kamäleon - Quadrat, confirmed in the
         real production DB) because a completed request wasn't
         "active," so nothing stopped download_playlist() from
         re-searching and re-requesting an already-fully-downloaded
@@ -482,12 +433,12 @@ class DownloadRequestRepository:
         # (DownloadService._supersede_stale_duplicates) to find stale
         # sibling rows before re-issuing a real request_download for
         # one of them — confirmed live (2026-08-28): without this,
-        # every duplicate row left over from before download_playlist()'s
-        # get_active_for_track guard (item 16) got retried independently,
-        # every poll cycle, against the same real peer. Deliberately
-        # scoped to queued/downloading/locked, NOT the full
-        # get_active_for_track set — shortlisted/ready_for_review rows
-        # are a different mechanism with their own supersede path
+        # every duplicate row left over from before download_playlist()
+        # stopped re-requesting an in-progress track got retried
+        # independently, every poll cycle, against the same real peer.
+        # Deliberately scoped to queued/downloading/locked, NOT every
+        # non-terminal status — shortlisted/ready_for_review rows are
+        # a different mechanism with their own supersede path
         # (_supersede_others_for_track) and are never literal duplicates
         # of a locked candidate by construction (a shortlist candidate
         # is always a distinct real search result).

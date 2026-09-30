@@ -75,6 +75,9 @@ select = [
     "E301", "E302", "E303", "E304", "E305", "E306",
     "G201",   # logger.exception, not .error(..., exc_info=True)
     "TRY400", # an error logged inside `except` carries its traceback
+    "PIE790", # no `pass` after a docstring
+    "RSE102", # `raise Error`, not `raise Error()`
+    "FURB161", # int.bit_count(), not bin(i).count("1")
 ]
 # A preview-only rule runs only when selected by its exact code above,
 # never through a prefix such as "E" or "RUF". Preview mode can still

@@ -260,7 +260,6 @@ class DuplicatesPage(QWidget):
         # local_file.id or the KEEP_ALL_DUPLICATES_ID sentinel. Pruned
         # to only still-present groups on every render (HISTORY §86).
         self._duplicates_keep_selection: dict[frozenset[int], int] = {}
-        self._current_duplicates_location_name: str | None = None
         self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
         # Resolved by local_file.location_id at render time so the
         # LOCATION column (and the delete flow's own path resolution
@@ -525,11 +524,6 @@ class DuplicatesPage(QWidget):
         folders = self._selected_duplicates_folders()
 
         if folders:
-            # No single location applies to a pooled, possibly
-            # cross-location result — _render_duplicate_groups resolves
-            # each row's location individually via
-            # _duplicates_locations_by_id instead.
-            self._current_duplicates_location_name = None
             preferred_location_id = self._selected_duplicates_location_id()
 
             self._context.run_busy_worker(
@@ -561,15 +555,6 @@ class DuplicatesPage(QWidget):
                 "Select a library location first."
             )
             return
-
-        # The delete-confirmation dialog's full paths need a real
-        # location; captured here rather than re-read from the combo
-        # later, so a combo selection change while this search is still
-        # running can't attach the wrong location name to the results
-        # it eventually renders (HISTORY §56 Phase 6.3). The LOCATION
-        # column itself resolves per-file, not from this — see
-        # HISTORY §68.
-        self._current_duplicates_location_name = location_name
 
         self._context.run_busy_worker(
             "find_duplicates", self.find_duplicates_button,

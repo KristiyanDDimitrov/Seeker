@@ -174,26 +174,6 @@ class TrackRepository:
             (track_id,),
         )
 
-    def save_playlist_track(
-        self,
-        playlist_id: str,
-        track_id: str,
-        connection: sqlite3.Connection,
-    ) -> None:
-        connection.execute(
-            """
-            INSERT OR IGNORE INTO playlist_tracks (
-                playlist_id,
-                track_id
-            )
-            VALUES (?, ?)
-            """,
-            (
-                playlist_id,
-                track_id,
-            ),
-        )
-
     def replace_playlist_tracks(
             self,
             playlist_id: str,

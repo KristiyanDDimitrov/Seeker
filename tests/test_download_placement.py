@@ -18,6 +18,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from db_seed import add_playlist_track
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -130,7 +131,7 @@ def make_scenario(
             ),
             connection,
         )
-        tracks.save_playlist_track("p1", "t1", connection)
+        add_playlist_track("p1", "t1", connection)
 
     service = DownloadService(
         database,

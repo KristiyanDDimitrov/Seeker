@@ -1,3 +1,4 @@
+from db_seed import add_playlist_track
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -60,7 +61,7 @@ def seed_track(
             connection,
         )
         if playlist_id is not None:
-            service.tracks.save_playlist_track(
+            add_playlist_track(
                 playlist_id, track_id, connection,
             )
 

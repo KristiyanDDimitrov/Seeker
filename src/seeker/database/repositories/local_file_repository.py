@@ -362,30 +362,6 @@ class LocalFileRepository:
             (location_id,),
         )
 
-    def delete_missing(
-            self,
-            location_id: int,
-            seen_relative_paths: set[str],
-            connection: sqlite3.Connection,
-    ) -> None:
-        """Deletes every row of the location whose path is not in
-        `seen_relative_paths`. The set is compared in Python, never
-        bound into the SQL, so its size is unbounded.
-        """
-        rows = connection.execute(
-            "SELECT id, relative_path FROM local_files WHERE location_id = ?",
-            (location_id,),
-        ).fetchall()
-
-        self.delete_by_ids(
-            [
-                row["id"]
-                for row in rows
-                if row["relative_path"] not in seen_relative_paths
-            ],
-            connection,
-        )
-
 
 def _release_matches(
         connection: sqlite3.Connection,

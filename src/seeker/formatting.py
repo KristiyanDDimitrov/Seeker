@@ -53,13 +53,6 @@ def format_file_size(size_bytes: int | float | None) -> str:
     return f"{size:.1f} {_SIZE_UNITS[-1]}"  # pragma: no cover - unreachable
 
 
-def format_speed(bytes_per_second: float | None) -> str:
-    if bytes_per_second is None or bytes_per_second <= 0:
-        return "?"
-
-    return f"{format_file_size(bytes_per_second)}/s"
-
-
 def format_duration_seconds(seconds: float) -> str:
     """`42` -> "42s", `125` -> "2m 5s", `3725` -> "1h 2m". Never
     negative — a caller passing a stale/negative remaining-time value

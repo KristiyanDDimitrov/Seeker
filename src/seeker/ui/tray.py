@@ -59,11 +59,11 @@ class TrayHost:
     not as a back door to MainWindow's own private state; `show_
     restored` is itself public precisely so this module can call it.
 
-    `get_hidden_to_tray`/`set_hidden_to_tray`/`bump_hide_request_id` are
-    genuinely shared mutable state with MainWindow's own closeEvent and
-    hide-to-tray verification (staying there per this module's own
-    docstring) — get/set callables, not values captured once, since
-    both sides read AND write them. Same shape as PageContext's own
+    `set_hidden_to_tray`/`bump_hide_request_id` write state shared
+    with MainWindow's own closeEvent and hide-to-tray verification
+    (staying there per this module's own docstring) — callables, not
+    values captured once, since MainWindow reads that state too. Same
+    shape as PageContext's own
     `is_hidden_to_tray`. Round 10 §5 — `window.show_restored()`
     replaces the old `showNormal()` + pre-fullscreen-geometry
     `setGeometry()` pair this class used to run itself; `_reopen_
@@ -93,7 +93,6 @@ class TrayHost:
     poll_active_downloads: Callable[[], None]
     poll_review_items: Callable[[], None]
     poll_next_step: Callable[[], None]
-    get_hidden_to_tray: Callable[[], bool]
     set_hidden_to_tray: Callable[[bool], None]
     bump_hide_request_id: Callable[[], None]
     needs_review_count: Callable[[], int]

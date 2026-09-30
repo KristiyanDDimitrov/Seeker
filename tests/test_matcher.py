@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from db_seed import add_playlist_track
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
@@ -311,7 +312,7 @@ def _seed_track_with_match(
         ),
         connection,
     )
-    matcher.tracks.save_playlist_track(playlist_id, track_id, connection)
+    add_playlist_track(playlist_id, track_id, connection)
     matcher.track_matches.upsert(
         TrackMatch(
             track_id=track_id,

@@ -574,11 +574,6 @@ TOOLTIP_DUPLICATES_ADD_FOLDER = "Add a folder to the scope."
 TOOLTIP_DUPLICATES_REMOVE_FOLDER = (
         "Remove the selected folder(s) from the scope."
 )
-DUPLICATES_FOLDER_NOT_IN_A_LOCATION = (
-    "'{folder}' isn't inside any registered library location — add it "
-    "as a location first, or pick a folder inside one that's already "
-    "registered."
-)
 
 
 def format_duplicates_scope_count(summary: Any) -> str:

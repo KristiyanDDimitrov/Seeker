@@ -10,11 +10,21 @@ from seeker.audio_fingerprint import (
     FingerprintError,
     FingerprintingUnavailableError,
     compute_fingerprint,
-    hamming_similarity,
+    decode_fingerprint,
     similarity_from_decoded,
 )
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
+
+
+def hamming_similarity(fingerprint_a: str, fingerprint_b: str) -> float:
+    """Two compute_fingerprint() strings, compared the way the
+    duplicate finder compares them."""
+    return similarity_from_decoded(
+        decode_fingerprint(fingerprint_a),
+        decode_fingerprint(fingerprint_b),
+    )
+
 
 requires_x9_pro = pytest.mark.skipif(
     not X9_PRO_ROOT.is_dir(),
