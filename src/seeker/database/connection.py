@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from seeker.database.schema import SCHEMA
+from seeker.models.track import MANUAL_TRACK_ID_PREFIX
 
 
 class Database:
@@ -142,6 +143,21 @@ def _migrate(connection: sqlite3.Connection) -> None:
         SET match_method = NULL, score = NULL, confirmed_at = NULL
         WHERE local_file_id IS NULL AND match_method IS NOT NULL
         """
+    )
+    # Only a download request makes a manual track real. Older builds
+    # saved one before searching, so a search that found nothing left
+    # it behind, and a later match run could even match it. Its match
+    # goes with it (ON DELETE CASCADE); the file stays. Idempotent.
+    connection.execute(
+        """
+        DELETE FROM tracks
+        WHERE id LIKE ?
+            AND NOT EXISTS (
+                SELECT 1 FROM download_requests
+                WHERE download_requests.track_id = tracks.id
+            )
+        """,
+        (f"{MANUAL_TRACK_ID_PREFIX}%",),
     )
 
 

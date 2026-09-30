@@ -501,6 +501,67 @@ def test_initialize_repairs_matches_left_pointing_at_no_file(tmp_path):
     ]
 
 
+def test_initialize_removes_manual_tracks_no_request_was_made_for(tmp_path):
+    # A manual search that found nothing used to leave its track behind.
+    # A later match run can still give it a match, as the real database
+    # shows (one such track, auto-matched to a library file), so only a
+    # download request marks a manual track as real.
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+
+    with database.transaction() as connection:
+        for track_id in (
+                "manual:orphan", "manual:matched-orphan", "manual:requested",
+                "spotify-track",
+        ):
+            connection.execute(
+                "INSERT INTO tracks (id, title, artist, album, duration_ms) "
+                "VALUES (?, 'T', 'A', '', 0)",
+                (track_id,),
+            )
+        connection.execute(
+            "INSERT INTO library_locations (name, path, added_at) "
+            "VALUES ('Main', '/music', 'x')"
+        )
+        connection.execute(
+            "INSERT INTO local_files (location_id, relative_path, filename, "
+            "format, size_bytes, mtime, scanned_at) "
+            "VALUES (1, 'a.mp3', 'a.mp3', 'mp3', 1, 1.0, 'x')"
+        )
+        connection.execute(
+            "INSERT INTO track_matches (track_id, local_file_id, "
+            "match_method, score, matched_at) "
+            "VALUES ('manual:matched-orphan', 1, 'auto', 90.9, 'x')"
+        )
+        connection.execute(
+            "INSERT INTO download_requests (track_id, username, filename, "
+            "format, status, requested_at) "
+            "VALUES ('manual:requested', 'peer', 'f.mp3', 'mp3', "
+            "'completed', 'x')"
+        )
+
+    database.initialize()
+    database.initialize()
+
+    with database.transaction() as connection:
+        track_ids = [
+            row["id"] for row in connection.execute(
+                "SELECT id FROM tracks ORDER BY id"
+            )
+        ]
+        match_count = connection.execute(
+            "SELECT COUNT(*) FROM track_matches"
+        ).fetchone()[0]
+        file_count = connection.execute(
+            "SELECT COUNT(*) FROM local_files"
+        ).fetchone()[0]
+
+    assert track_ids == ["manual:requested", "spotify-track"]
+    assert match_count == 0
+    # The file itself is untouched; only the orphan's match went.
+    assert file_count == 1
+
+
 def _create_pre_tracks_snapshot_playlists(db_path) -> None:
     connection = sqlite3.connect(db_path)
     connection.executescript(

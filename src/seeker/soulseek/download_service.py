@@ -608,11 +608,13 @@ class DownloadService:
         """Search for and download a track that isn't in any Spotify
         playlist, reusing the same "best quality available, fall back
         until something actually downloads" behavior as a playlist
-        download (select_downloads), no new ranking logic. Creates a
-        real `tracks` row (id `manual:<uuid4>`, album="", duration_ms=0
-        — see _index_and_match_settled_download's own comment on why a
-        placeholder duration doesn't affect the immediate post-download
-        match) belonging to no playlist.
+        download (select_downloads), no new ranking logic. A request
+        creates a real `tracks` row (id `manual:<uuid4>`, album="",
+        duration_ms=0 — see _index_and_match_settled_download's own
+        comment on why a placeholder duration doesn't affect the
+        immediate post-download match) belonging to no playlist. No
+        request, no row: a search that finds nothing or fails, or a
+        first request that fails, leaves nothing behind.
 
         `chosen`, when given (an explicit per-row "Download this one"
         pick), bypasses select_downloads' ranking/threshold entirely
@@ -652,11 +654,14 @@ class DownloadService:
             album="",
             duration_ms=0,
         )
-        with self.database.transaction() as connection:
-            self.tracks.save(track, connection)
 
         if chosen is not None:
-            self._request_and_record(track, chosen, role="settled")
+            self._save_manual_track_and_request(
+                track,
+                lambda: self._request_and_record(
+                    track, chosen, role="settled",
+                ),
+            )
             logger.info(
                 "Requested from %s: %s", chosen.username, chosen.filename,
             )
@@ -694,7 +699,12 @@ class DownloadService:
             }
 
         if settled is not None:
-            self._request_and_record(track, settled, role="settled")
+            self._save_manual_track_and_request(
+                track,
+                lambda: self._request_and_record(
+                    track, settled, role="settled",
+                ),
+            )
             logger.info(
                 "Requested from %s: %s", settled.username, settled.filename,
             )
@@ -719,13 +729,35 @@ class DownloadService:
             "No practical candidate — requesting locked/upgrade-only "
             "candidate(s)."
         )
-        self._request_upgrade_shortlist(track, upgrade_shortlist)
+        self._save_manual_track_and_request(
+            track,
+            lambda: self._request_upgrade_shortlist(track, upgrade_shortlist),
+        )
         return {
             "track_id": track.id,
             "requested": True,
             "settled": False,
             "reason": "locked_only",
         }
+
+    def _save_manual_track_and_request(
+            self,
+            track: Track,
+            request: Callable[[], None],
+    ) -> None:
+        """Saves a manual track just before its first request. Only a
+        request makes a manual track real, so if that request fails
+        the track goes again.
+        """
+        with self.database.transaction() as connection:
+            self.tracks.save(track, connection)
+
+        try:
+            request()
+        except Exception:
+            with self.database.transaction() as connection:
+                self.tracks.delete_if_unrequested(track.id, connection)
+            raise
 
     def _request_upgrade_shortlist(
             self,

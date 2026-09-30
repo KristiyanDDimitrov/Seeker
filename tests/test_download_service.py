@@ -3698,6 +3698,57 @@ def test_download_manual_zero_results_reports_no_candidate(tmp_path):
         assert service.download_requests.get_all(connection) == []
 
 
+def _manual_track_ids(service: DownloadService) -> list[str]:
+    with service.database.transaction() as connection:
+        return [
+            track.id for track in service.tracks.get_all(connection)
+            if track.id.startswith("manual:")
+        ]
+
+
+def test_download_manual_that_finds_nothing_leaves_no_track(tmp_path):
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": []},
+    )
+
+    service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    assert _manual_track_ids(service) == []
+
+
+def test_download_manual_whose_search_fails_leaves_no_track(tmp_path):
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": RuntimeError("timed out")},
+    )
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        service.download_manual("Dom Dolla", "Rhyme Dust")
+
+    assert _manual_track_ids(service) == []
+
+
+@pytest.mark.parametrize("explicit_pick", [False, True])
+def test_download_manual_whose_request_fails_leaves_no_track(
+        tmp_path, explicit_pick,
+):
+    good_file = make_soulseek_file(filename="Dom Dolla - Rhyme Dust.flac")
+    service, _location = _service_with_default_destination(
+        tmp_path,
+        search_results={"Dom Dolla Rhyme Dust": [good_file]},
+        retry_results={good_file.filename: RuntimeError("peer offline")},
+    )
+
+    with pytest.raises(RuntimeError, match="peer offline"):
+        service.download_manual(
+            "Dom Dolla", "Rhyme Dust",
+            chosen=good_file if explicit_pick else None,
+        )
+
+    assert _manual_track_ids(service) == []
+
+
 def test_download_manual_falls_back_when_every_candidate_is_locked(tmp_path):
     locked_file = make_soulseek_file(
         filename="Dom Dolla - Rhyme Dust.flac", locked=True,

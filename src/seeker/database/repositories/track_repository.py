@@ -160,6 +160,24 @@ class TrackRepository:
 
         return [_row_to_track(row) for row in rows]
 
+    def delete_if_unrequested(
+        self,
+        track_id: str,
+        connection: sqlite3.Connection,
+    ) -> None:
+        """Deletes the track unless a download was requested for it."""
+        connection.execute(
+            """
+            DELETE FROM tracks
+            WHERE id = ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM download_requests
+                    WHERE download_requests.track_id = tracks.id
+                )
+            """,
+            (track_id,),
+        )
+
     def save_playlist_track(
         self,
         playlist_id: str,
