@@ -17,7 +17,8 @@ nine fields below follow the contract in
   (X9 Pro mounted).
 - **`mypy --strict src/`:** clean, 122 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the follow-up commit that records the run id.
+- **CI:** run `36776378850` on `634e7be` (the close-out commit):
+  success.
 
 ## 2. Where we are
 
@@ -46,28 +47,19 @@ HISTORY §159.
   entry (delegating) keeps them unchanged. Grep tests for
   `service\._` before choosing.
 - radon D-or-worse in `src/` is still 3: `_retry_locked_request`
-  D (24) (§17.3's target), `_insert_slskd_share_directory` D (26),
-  `_decide_next_step` D (21). In `soulseek/` the C functions are
-  `poll_downloads` (19), `download_playlist` (15), `select_downloads`
-  (14), `_locate_completed_file` (13), `download_manual` and
-  `apply_upgrade_decision` (12), `request_download` (11).
-- **Seams:** `DownloadService.placement` (public);
-  `ReviewService(soulseek=Callable)`, built by `Application` over the
-  download service's placement and `soulseek` property;
-  `tests/service_seams.py::review_service_for(service)` for tests;
-  `FakeReviewService`/`FakeApplication.review_service` in
-  `test_ui_smoke.py` (S18 moves the fakes).
-- `_classify_failed_transfer` takes a `TransferStatus`; fakes of
-  `get_download_status` return `TransferStatus(..., exception=...)`.
-- **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
-  Coverage margin ~2.7 points (floor 89). Never `QLabel(...)` or
-  `QMessageBox.question(...)` in `ui/`; never touch slskd or real data;
-  `config.*()` are functions (tests use `monkeypatch.setenv`). Outage
-  state has one writer (`_trigger_backend_poll`).
-  `RETRYING_IN_BACKGROUND`, not `RETRYING`. `_fix_one_track_art` (C,
-  15) mutates the shared `FixArtResult`;
-  `DuplicateService.delete_local_files` and
-  `TrackMatcher.generate_match_report` still return dicts.
+  D (24) (§17.3), `_insert_slskd_share_directory` D (26),
+  `_decide_next_step` D (21).
+- **Seams:** `DownloadService.placement`; `Application.review_service`
+  (over that placement and `download_service.soulseek`); tests use
+  `tests/service_seams.py::review_service_for(service)` and the smoke
+  file's `FakeReviewService` (S18 moves the fakes).
+- **Carried:** fakes of `get_download_status` return
+  `TransferStatus(..., exception=...)`. TRY400/G201 lint-enforced.
+  Coverage margin ~2.7 points (floor 89). No `QLabel(...)` or
+  `QMessageBox.question(...)` in `ui/`; never touch slskd or real
+  data; tests `monkeypatch.setenv`. `_fix_one_track_art` mutates the
+  shared `FixArtResult`; `delete_local_files` and
+  `generate_match_report` still return dicts.
 - **Shell:** zsh `echo ======` and unquoted `--include=*.py` fail;
   BSD `sed` lacks `\b`/`\|`; write edit scripts with the Write tool.
 
