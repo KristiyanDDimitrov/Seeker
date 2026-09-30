@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -753,6 +754,31 @@ def test_add_location_to_share_creates_shares_block_when_none_exists(
     )
 
 
+def _fail_temp_file_writes(monkeypatch, is_target):
+    """Make write_text_atomic's temp file for a path matching
+    `is_target` fail after its content is written, before the rename
+    (a full disk or a crash surfacing at fsync)."""
+    real_open = os.open
+    real_fsync = os.fsync
+    target_fds: set[int] = set()
+
+    def recording_open(file, flags, *args, **kwargs):
+        fd = real_open(file, flags, *args, **kwargs)
+        if is_target(Path(file)):
+            target_fds.add(fd)
+        else:
+            target_fds.discard(fd)
+        return fd
+
+    def failing_fsync(fd):
+        if fd in target_fds:
+            raise OSError("disk full (simulated)")
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "open", recording_open)
+    monkeypatch.setattr(os, "fsync", failing_fsync)
+
+
 def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
         tmp_path, monkeypatch,
 ):
@@ -799,15 +825,13 @@ def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
         subprocess, "run", _fake_run_for_add_location(compose_path, data_dir),
     )
 
-    real_write_text = Path.write_text
-
-    def failing_write_text(self, *args, **kwargs):
-        # The write lands in a temp sibling first (write_text_atomic).
-        if self.parent == slskd_yml_path.parent and self.suffix == ".tmp":
-            raise OSError("disk full (simulated)")
-        return real_write_text(self, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", failing_write_text)
+    # The write lands in a temp sibling first (write_text_atomic).
+    _fail_temp_file_writes(
+        monkeypatch,
+        lambda path: (
+            path.parent == slskd_yml_path.parent and path.suffix == ".tmp"
+        ),
+    )
 
     with pytest.raises(OSError):
         service.add_location_to_share(location, confirm=True)
@@ -990,15 +1014,12 @@ def test_add_location_to_share_never_leaves_a_half_written_file(
     service, location, compose_path, slskd_yml_path = _ready_share_scenario(
         tmp_path, monkeypatch,
     )
-    real_write_text = Path.write_text
-
-    def dies_part_way(self, data, *args, **kwargs):
-        if self.name.startswith("slskd.yml") and ".bak-" not in self.name:
-            real_write_text(self, data[:5], *args, **kwargs)
-            raise OSError("disk full (simulated)")
-        return real_write_text(self, data, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", dies_part_way)
+    _fail_temp_file_writes(
+        monkeypatch,
+        lambda path: (
+            path.name.startswith("slskd.yml") and ".bak-" not in path.name
+        ),
+    )
 
     with pytest.raises(OSError, match="disk full"):
         service.add_location_to_share(location, confirm=True)

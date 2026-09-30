@@ -1,6 +1,6 @@
+import os
 import stat
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -66,16 +66,79 @@ def test_write_text_atomic_failure_leaves_the_original_and_no_temp_file(
 ):
     path = tmp_path / "slskd.yml"
     path.write_text("original")
-    real_write_text = Path.write_text
 
-    def dies_part_way(self, data, *args, **kwargs):
-        real_write_text(self, data[:3], *args, **kwargs)
+    def fails(fd):
         raise OSError("disk full (simulated)")
 
-    monkeypatch.setattr(Path, "write_text", dies_part_way)
+    monkeypatch.setattr(os, "fsync", fails)
 
     with pytest.raises(OSError, match="disk full"):
         write_text_atomic(path, "replacement")
 
     assert path.read_text() == "original"
     assert [child.name for child in tmp_path.iterdir()] == ["slskd.yml"]
+
+
+@skip_on_windows
+def test_write_text_locked_creates_the_temp_file_0600_exclusively(
+        tmp_path, monkeypatch,
+):
+    # chmod after the write would leave a window where the credential
+    # is readable at the process umask (0644 by default on macOS).
+    path = tmp_path / "token.json"
+    real_open = os.open
+    created: list[tuple[str, int, int]] = []
+
+    def recording_open(file, flags, mode=0o777, *args, **kwargs):
+        created.append((os.fspath(file), flags, mode))
+        return real_open(file, flags, mode, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", recording_open)
+
+    write_text_locked(path, "secret")
+
+    temp_creates = [
+        (flags, mode) for name, flags, mode in created
+        if name.startswith(f"{path}.") and name.endswith(".tmp")
+    ]
+    assert len(temp_creates) == 1
+    flags, mode = temp_creates[0]
+    assert flags & os.O_CREAT and flags & os.O_EXCL
+    assert mode == 0o600
+
+
+def test_write_text_locked_fsyncs_the_file_before_replacing(
+        tmp_path, monkeypatch,
+):
+    path = tmp_path / "token.json"
+    real_fsync = os.fsync
+    synced_sizes: list[int] = []
+
+    def recording_fsync(fd):
+        real_fsync(fd)
+        if not path.exists():
+            synced_sizes.append(os.fstat(fd).st_size)
+
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+
+    write_text_locked(path, "secret")
+
+    assert synced_sizes == [len("secret")]
+
+
+def test_write_text_locked_failure_leaves_the_original_and_no_temp_file(
+        tmp_path, monkeypatch,
+):
+    path = tmp_path / "token.json"
+    path.write_text("original")
+
+    def fails(fd):
+        raise OSError("disk full (simulated)")
+
+    monkeypatch.setattr(os, "fsync", fails)
+
+    with pytest.raises(OSError, match="disk full"):
+        write_text_locked(path, "replacement")
+
+    assert path.read_text() == "original"
+    assert [child.name for child in tmp_path.iterdir()] == ["token.json"]
