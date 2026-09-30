@@ -10,73 +10,72 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S13 close-out commit (HISTORY §153, CLAUDE.md, session
+- **HEAD:** the S14 part-1 close-out commit (HISTORY §154, session
   plan, this handoff). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-09-30): `1528 passed, 1 skipped, 6 warnings`
-  (X9 Pro mounted; S13 adds 12 tests).
-- **`mypy --strict src/`:** clean, 115 files. **`ruff check src
+- **Local pytest** (2026-09-30): `1532 passed, 1 skipped, 6 warnings`
+  (X9 Pro mounted; S14 part 1 adds 4 tests).
+- **`mypy --strict src/`:** clean, 116 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** close-out `c1c42e7` → run `36732283322`, **success**,
-  `1500 passed, 29 skipped`, branch coverage 91.70 % (floor 89).
+- **CI:** see the close-out push (recorded below once it finishes).
 
 ## 2. Where we are
 
-S1–S13 ticked. **Next: S14, typed service results (§14).** Phase F
-continues: behaviour-neutral refactors only.
+S1–S13 ticked; **S14 half done**, stopped at its named split point
+("after the download and poll results") because context reached the
+150 K ceiling. **Next: S14 part 2** — the rest of §14.1 (scan, match,
+tag, art, fingerprint results), §14.2 `DownloadSelection`, §14.3
+`_tag_one_track`. Then S15.
 
-## 3. Session report (S13)
+## 3. Session report (S14 part 1)
 
-Evidence for all three is in HISTORY §153.
-- `e943858` §13.1 (refactor): `seeker/errors.py` (`SeekerError`, one
-  `PlaylistNotFoundError`, one `LibraryLocationNotFoundError`); every
-  public error subclasses it; the format list derives from
-  `DOWNLOADABLE_EXTENSIONS_IN_ORDER`.
-- `244eda4` §13.1 (behaviour): `cli.run` catches `SeekerError`.
-- `71d9943` §13.2 (refactor): `DownloadStatus`/`DownloadRole` and eight
-  named status sets in `models/download_request.py`; SQL takes status
-  values as parameters.
+Evidence for both is in HISTORY §154.
+- `0033510` §14.1 (refactor): `models/download_result.py` —
+  `PlaylistDownloadResult`, `ManualDownloadResult`, `PollResult`.
+- `ec93642` §14.1 (behaviour, brief's listed exception):
+  `PlaylistDownloadResult.failures` (`TrackFailure(track, reason)`);
+  the Dashboard notice lists up to five and turns into a warning.
 
 ## 4. Key context
 
-- **For S14:** the status words still in `src/` are result-dict keys:
-  `poll_downloads`' `counts` (one key per status, plus `"failed"`
-  bumped by hand), `download_playlist`'s `result["settled"]`/
-  `["failed"]`, metadata and duplicate `counts["failed"]`. Typed
-  results replace them; a per-status count can key on
-  `DownloadStatus`.
-- **`RETRYING_IN_BACKGROUND`, not `RETRYING`:** `track_status.RETRYING`
-  is a Dashboard track state and `dashboard_service` imports both.
-- **`_row_to_download_request` raises on an unknown status/role.** The
-  real DB's 21 rows are all members (checked read-only, §153).
-- **Tests may pass plain strings** to `DownloadRequest(status=…)`:
-  equal and hash-equal to the members.
-- **For S16:** `DownloadRequestRepository.get_active_for_track` has no
-  caller and counts `unavailable` as active. Delete it there.
+- **For S14 part 2, still dicts:** `LibraryService.scan_all`/
+  `scan_and_match` (`library/service.py:297`, `:323`),
+  `LibraryScanner.scan` (`scanner.py:46`, feeds `scan_all`),
+  `TrackMatcher.match_all` (`matcher.py:191`), `MetadataService.
+  tag_tracks` (`:345`) and `fix_missing_art_for_playlist` (`:714`),
+  `DuplicateService.compute_fingerprints` (`:258`). Not in the brief:
+  `metadata_service.py:314`, `generate_match_report`,
+  `duplicate_service.py:596`; `spotify/client.py:160` is raw JSON.
+- **Test churn for part 2:** `test_metadata_service.py` reads
+  `counts["tagged"]`/`["failed"]`/`["details"]` ~60 times;
+  `test_ui_smoke.py:543` has `_EMPTY_TAG_RESULT` as a dict. A regex
+  over `(result|counts)\["key"\]` → `.key` did part 1's 110 sites
+  cleanly; then fix the stragglers the run names.
+- **Placement decision (part 1):** results shared by CLI and UI go in
+  `models/`; `TagResult`/`FixArtResult` may sit beside `RenameResult`
+  in `metadata_service.py` (the brief's precedent). Record whichever.
+- **radon:** `_tag_one_track` E (32), `select_downloads` C (14):
+  `uv run --with radon radon cc -s <file> -n C`.
 - **Carried:** `logger.exception` is lint-enforced (TRY400, G201).
-  Coverage margin about 2.7 points (CI 91.68 %, floor 89). deptry: `uv
-  run --with deptry deptry src`. Never `QLabel(...)` or
-  `QMessageBox.question(...)` in `ui/`; fakes of `connect_spotify`
-  accept `cancel=`; `FakeApplication.restart_slskd` has
-  `restart_slskd_calls`/`restart_slskd_error`; never touch slskd or
-  real data; `config.*()` are functions (tests use
-  `monkeypatch.setenv`). Outage state has one writer
-  (`_trigger_backend_poll`).
+  Coverage margin ~2.7 points (floor 89). Never `QLabel(...)` or
+  `QMessageBox.question(...)` in `ui/`; never touch slskd or real data;
+  `config.*()` are functions (tests use `monkeypatch.setenv`). Outage
+  state has one writer (`_trigger_backend_poll`).
+  `RETRYING_IN_BACKGROUND`, not `RETRYING`. For S16:
+  `DownloadRequestRepository.get_active_for_track` has no caller.
 - **zsh:** `echo ======` fails (use `'---'`); BSD `sed` lacks `\b`.
 
 ## 5. Decisions made
 
-- **Errors move into `errors.py` only when more than one module raises
-  them.** The brief allowed "moved in or subclassed"; moving all of
-  them would separate each from the code that raises it.
-- **The unsupported-format message now lists "aif".** Derived from the
-  set, as the brief asked; the hand-written list had dropped it.
-- **The rate-limit and library-unavailable CLI branches fold into the
-  `SeekerError` one** (same sentence, now through `printable()`).
-- **SQL status values are parameters** built by `_status_in`, not
-  literals repeated in SQL: the sets are then defined once.
-- Promoted to CLAUDE.md: the `SeekerError` rule, the named-status-set
-  rule, `errors.py` in the layout.
+- **Download results live in `models/download_result.py`**, not in
+  `download_service.py`: CLI and UI both import them, and S17 splits
+  the service.
+- **`failed` became a property** (`len(failures)`), so a count and its
+  list cannot disagree.
+- **The Dashboard lists at most five failures**, then "and N more
+  (details in the log)"; any failure makes the notice a warning.
+- **The CLI still prints only the failure count** — parity is S15's
+  call (see open questions).
 
 ## 6. Blockers
 
@@ -84,7 +83,8 @@ None.
 
 ## 7. Files in progress
 
-None.
+None mid-edit. Stopped at a split point: the rest of §14.1, §14.2
+and §14.3 are `not_started`.
 
 ## 8. Waiting on Kris
 
@@ -102,7 +102,8 @@ drift Scan, S8's Reject-then-Scan and failure reason, S9 part 2's
 mistyped Client ID → Cancel, S11's Scan summary / Docker-stopped
 Download / Qt warning in `seeker.log` / app menu "Seeker", S12's
 slskd-stopped outage (CLI exit 1; Dashboard, Downloads, tray once;
-cleared within ~20 s of Start slskd). S13 adds none (refactor).
+cleared within ~20 s of Start slskd). S14 adds: a playlist Download
+with one track failing shows a warning notice naming it.
 
 ## 9. Open questions
 
@@ -113,7 +114,8 @@ cleared within ~20 s of Start slskd). S13 adds none (refactor).
   S18?
 - Settings shows results and rejections on status labels, not notices:
   S29.
-- S15 (CLI): catch `httpx.HTTPStatusError` too (S13 left it: a
+- S15 (CLI): print `download`'s failed tracks with their reasons, as
+  the Dashboard now does? Catch `httpx.HTTPStatusError` too (S13 left it: a
   behaviour change the brief doesn't ask for)? Should `printable()`
   strip bidi controls, and `downloads status` print failure reasons?
 - S19 or S29: `DestinationDialog`'s unchecked "Remember this" drops the

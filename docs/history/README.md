@@ -236,3 +236,4 @@ under their entry and live in the same file, after it.
 - §151 — Round 11 S12 part 1 (§12.1, §12.2, §12.4): the poll says slskd is down; a Start slskd that never guesses → [151-180.md#151](151-180.md#151)
 - §152 — Round 11 S12 part 2 (§12.3, §12.5): the outage on screen; first-session download notifications → [151-180.md#152](151-180.md#152)
 - §153 — Round 11 S13 (§13.1, §13.2): one exception hierarchy; typed download states → [151-180.md#153](151-180.md#153)
+- §154 — Round 11 S14 part 1 (§14.1, downloads): typed download and poll results; a failed playlist track carries its reason → [151-180.md#154](151-180.md#154)
