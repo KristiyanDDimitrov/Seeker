@@ -23,7 +23,7 @@ from seeker.library.service import (
     PlaylistNotFoundError as LibraryReviewPlaylistNotFoundError,
 )
 from seeker.models.playlist import Playlist
-from seeker.soulseek.client import SoulseekDownloadError
+from seeker.soulseek.client import SlskdUnreachableError, SoulseekDownloadError
 from seeker.soulseek.download_service import (
     LibraryLocationNotFoundError,
     NoDestinationConfiguredError,
@@ -1222,6 +1222,7 @@ def run(
             LibraryReviewPlaylistNotFoundError,
             LibraryLocationNotFoundError,
             SoulseekDownloadError,
+            SlskdUnreachableError,
             DuplicateLibraryLocationNotFoundError,
             LibraryServiceLocationNotFoundError,
             FingerprintingUnavailableError,

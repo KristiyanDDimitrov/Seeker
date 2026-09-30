@@ -1343,3 +1343,27 @@ def test_an_unexpected_error_still_tracebacks(monkeypatch):
     # turned into a sentence.
     with pytest.raises(KeyError):
         _run_sync_raising(monkeypatch, KeyError("track_id"))
+
+
+def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
+        capsys,
+):
+    from types import SimpleNamespace
+
+    from seeker.soulseek.client import SlskdUnreachableError
+
+    def poll_downloads():
+        raise SlskdUnreachableError("http://127.0.0.1:5030")
+
+    application = SimpleNamespace(
+        download_service=SimpleNamespace(poll_downloads=poll_downloads),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(application, ["downloads", "status"])
+
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().out == (
+        "SoulSeek isn't reachable — downloads are paused until slskd is "
+        "running.\n"
+    )
