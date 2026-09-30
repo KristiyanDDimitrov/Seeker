@@ -228,3 +228,4 @@ under their entry and live in the same file, after it.
 - §147 — Round 11 S9 part 2 (§9.5): an honest OAuth callback page; a cancellable Spotify wait → [121-150.md#147](121-150.md#147)
 - §148 — Round 11 S9 part 3 (§9.7): peer strings render as text; the S9-wide adversarial review → [121-150.md#148](121-150.md#148)
 - §149 — Round 11 S10 (§10): CI and supply chain → [121-150.md#149](121-150.md#149)
+- §150 — Round 11 S11 (§11): readable errors, uncaught-exception logging, Dashboard outcomes → [121-150.md#150](121-150.md#150)

@@ -44,7 +44,7 @@ explicit yes.
 | ☑ S9 | Application hardening, including peer-string escaping | §9 | ~130 K | After §9.3; §9.4–§9.8 can stand alone |
 | ☑ S10 | CI and supply chain | §10 | ~90 K | After §10.2 |
 | **Phase E — Observability** | | | | |
-| ☐ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |
+| ☑ S11 | Readable errors; logs that catch everything; Dashboard outcomes that stay readable | §11 | ~130 K | After §11.2; §11.6 can stand alone |
 | ☐ S12 | Say when slskd is down; first-session download notifications | §12 | ~110 K | After §12.2 |
 | **Phase F — Structure (behaviour-neutral)** | | | | |
 | ☐ S13 | One exception hierarchy; typed download states | §13 | ~130 K | After §13.1 |

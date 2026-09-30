@@ -69,6 +69,7 @@ src/seeker/
 │   ├── tray.py                     #   tray icon, menu, notifications
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
+│       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       formatting.py, download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py
 ├── models/                     # dataclasses — playlist, track, track_match,
@@ -90,6 +91,8 @@ src/seeker/
 │                              #   Schmuckler key estimate)
 ├── audio_fingerprint.py         # project-owned libchromaprint ctypes binding
 ├── audio_formats.py             # AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
+├── error_text.py                # describe_error() — readable text for any
+│                              #   task error, shared by UI workers and CLI
 ├── dashboard_service.py, history_service.py, sharing_service.py
 ├── config_store.py              # SeekerConfig — the UI-editable JSON store;
 │                              #   .env/config.py is the fallback when unset
@@ -200,7 +203,9 @@ src/seeker/
   `RotatingFileHandler` under `platformdirs.user_log_dir("Seeker")`) —
   never in library code. Where a message is both user-facing and
   diagnostic, the service logs and returns a structured result, and
-  `cli.py` does the printing from that result. A `print` call
+  `cli.py` does the printing from that result. `main_ui.py` also
+  installs `ui/error_hooks.py`: `sys.excepthook`/`threading.excepthook`
+  log at CRITICAL, Qt messages go to `seeker.qt`. A `print` call
   surviving in a service (`soulseek/download_service.py`'s two) is
   either opt-in debug output gated on an env var, or genuinely
   CLI-only code that happens to live there — check the call site
@@ -237,6 +242,17 @@ src/seeker/
   own `InlineNotice`, never on its `status_label` — a real bug this
   round (`sharing_page.py`'s confirmation was wiped before it could be
   read) was exactly that mistake. [HISTORY §120](docs/history/108-120.md#120)
+  An action reports through the `FeedbackTarget` (`ui/notice.py`) of
+  the page it was **started from** — a panel reachable from another
+  page takes one from its caller (TaggingPanel's Tag from a Dashboard
+  row) — and a timer-driven `run_worker` never passes `status_label`.
+  [HISTORY §150](docs/history/121-150.md#150)
+- **Text a user reads about a failure comes from
+  `error_text.describe_error`.** Workers emit it and the CLI prints
+  it; a new external failure kind (a new HTTP peer, a new library's
+  error) gets a branch there, never ad hoc text at a call site. Your
+  own exception's message is kept as written, so write it as a
+  sentence. [HISTORY §150](docs/history/121-150.md#150)
 - **No widget in `ui/` guesses whether its text is HTML.** Labels are
   `PlainLabel`, or `RichLabel` for Seeker's own markup with any data
   inside `html.escape`d; message boxes go through `plain_text.question`
@@ -403,6 +419,11 @@ Each links to the HISTORY entry where the full investigation lives;
   (`ui/main_window.py`) is the reference implementation — reusable for
   any future "confirm before a real quit" need.
   [HISTORY §124](docs/history/121-150.md#124)
+- PySide6 reports an exception raised in a slot through
+  `sys.excepthook` (observed live). pytest-qt swaps in its own hook
+  per test, so a test of Seeker's hook needs
+  `@pytest.mark.qt_no_exception_capture`. [HISTORY
+  §150](docs/history/121-150.md#150)
 - `ui/workers.py`'s `Worker`: one shared, permanently-connected
   dispatcher QObject, never a fresh one per task —
   connect/disconnect cycling through Qt's mutex pool per call caused a
