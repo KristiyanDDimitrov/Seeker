@@ -49,7 +49,7 @@ explicit yes.
 | **Phase F — Structure (behaviour-neutral)** | | | | |
 | ☑ S13 | One exception hierarchy; typed download states | §13 | ~130 K | After §13.1 |
 | ☑ S14 | Typed service results (HISTORY §154, §155) | §14 | ~120 K | After the download and poll results |
-| ☐ S15 | CLI structure | §15 | ~110 K | After §15.1 |
+| ☑ S15 | CLI structure (HISTORY §156) | §15 | ~110 K | After §15.1 |
 | ☐ S16 | Service-layer cleanup and dead code | §16 | ~120 K | After §16.2 |
 | ☐ S17 | Split `download_service.py` | §17 | ~130 K | After §17.1 |
 | ☐ S18 | Test infrastructure | §18 | ~120 K | After §18.2; the smoke-file split can stand alone |
