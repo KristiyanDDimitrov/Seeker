@@ -1,5 +1,4 @@
 import logging
-import shutil
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -68,22 +67,6 @@ from seeker.spotify.token_store import TokenStore
 
 logger = logging.getLogger(__name__)
 
-# Pre-platformdirs location — a real, non-empty database may still exist
-# here from before this migrated to an OS-conventional app-data
-# directory. Relative to the current working directory, matching where
-# it was always created before.
-LEGACY_DATABASE_PATH = Path(".seeker/seeker.db")
-
-# Same pre-platformdirs, CWD-relative story as LEGACY_DATABASE_PATH
-# above — this one was originally left CWD-relative on the (wrong)
-# assumption it was out of scope for that migration. A launch via
-# `uv run seeker-ui` has a writable CWD (the project root), but macOS
-# sets a double-clicked .app's CWD to `/` (the read-only Signed System
-# Volume), so the `.seeker` mkdir in _save_token() fails there — a
-# real bug only a real Finder launch surfaced, never the offscreen
-# harness. See LEGACY_SPOTIFY_TOKEN_PATH below.
-LEGACY_SPOTIFY_TOKEN_PATH = Path(".seeker/spotify_token.json")
-
 
 def _resolve_database_path() -> Path:
     data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
@@ -104,46 +87,12 @@ def resolve_log_dir() -> Path:
 
 def _resolve_spotify_token_path() -> Path:
     # Lives alongside the DB in the same per-user app-data directory —
-    # not CWD-relative, so it works identically whether launched via
-    # `uv run seeker-ui` or a double-clicked .app (see
-    # LEGACY_SPOTIFY_TOKEN_PATH above).
+    # never CWD-relative: macOS starts a double-clicked .app with its
+    # CWD at `/`, the read-only system volume (HISTORY §43).
     data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
     data_dir.mkdir(parents=True, exist_ok=True)
 
     return data_dir / "spotify_token.json"
-
-
-def _migrate_legacy_file(
-        new_path: Path,
-        legacy_path: Path,
-        label: str,
-) -> bool:
-    # Only migrate into a genuinely fresh install — never overwrite a
-    # file that already exists at the new location (e.g. a second run
-    # after the migration already happened once).
-    if new_path.exists() or not legacy_path.exists():
-        return False
-
-    shutil.move(str(legacy_path), str(new_path))
-    logger.info(
-        "Migrated existing %s from %s to %s.", label, legacy_path, new_path
-    )
-
-    return True
-
-
-def _migrate_legacy_database(
-        new_path: Path,
-        legacy_path: Path = LEGACY_DATABASE_PATH,
-) -> bool:
-    return _migrate_legacy_file(new_path, legacy_path, "database")
-
-
-def _migrate_legacy_spotify_token(
-        new_path: Path,
-        legacy_path: Path = LEGACY_SPOTIFY_TOKEN_PATH,
-) -> bool:
-    return _migrate_legacy_file(new_path, legacy_path, "Spotify token")
 
 
 class Application:
@@ -155,20 +104,15 @@ class Application:
         # found even when genuinely installed and running. See item 44.
         ensure_full_path_environment()
 
-        db_path = _resolve_database_path()
-        _migrate_legacy_database(db_path)
-
-        self.database = Database(db_path)
+        self.database = Database(_resolve_database_path())
 
         self.database.initialize()
 
         self._spotify_token_path = _resolve_spotify_token_path()
-        _migrate_legacy_spotify_token(self._spotify_token_path)
 
-        # Same ordering principle as the DB migration above: run before
-        # anything constructs a SoulseekClient, so soulseek_client/
-        # soulseek_configured/download_service below always see the
-        # post-migration config store state.
+        # Runs before anything constructs a SoulseekClient, so
+        # soulseek_client/soulseek_configured/download_service below
+        # always see the post-migration config store state.
         self._config_store: SeekerConfig = migrate_legacy_env_config(
             resolve_config_path()
         )

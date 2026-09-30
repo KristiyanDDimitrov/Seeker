@@ -193,8 +193,7 @@ _ENV_VAR_BY_FIELD = {
 
 
 def migrate_legacy_env_config(path: Path) -> SeekerConfig:
-    # Mirrors application.py's _migrate_legacy_database contract exactly:
-    # never overwrite a value the store already has (guards against a
+    # Never overwrite a value the store already has (guards against a
     # stale env var clobbering a value changed since via a future
     # Settings screen), copy in only fields the store is missing, no-op
     # (and no print) when there's nothing to migrate, idempotent on

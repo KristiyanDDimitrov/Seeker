@@ -297,10 +297,6 @@ OS-conventional per-user app-data directory (via
 [`platformdirs`](https://github.com/tox-dev/platformdirs)), not the
 project folder — e.g. `~/Library/Application Support/Seeker` on macOS,
 `~/.local/share/Seeker` on Linux, `%LOCALAPPDATA%\Seeker` on Windows.
-If a database or token file from an older CWD-relative `.seeker/`
-directory (relative to wherever you ran `seeker` from) is found on
-first run, it's moved into the new location automatically — nothing to
-do by hand.
 
 ### 2. Register a Spotify app
 
