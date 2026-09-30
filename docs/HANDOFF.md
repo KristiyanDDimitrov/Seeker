@@ -19,8 +19,8 @@ nine fields below follow the contract in
   tests`:** 0 findings.
 - **CI:** close-out push `18809d7` → run `36690165564`, **failure**
   (one Settings test hit a late worker finish; fixed in `245adcb`, see
-  §148's addendum). The push of `245adcb` and this handoff: see the
-  follow-up commit recording its run.
+  §148's addendum). Push `4bed21d` → run `36691124789`, **success**
+  (`1432 passed, 29 skipped`).
 
 ## 2. Where we are
 
