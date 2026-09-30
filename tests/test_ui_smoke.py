@@ -698,6 +698,8 @@ class FakeApplication:
         self.set_downloads_paused_calls: list[bool] = []
         self.mark_tray_hide_notice_shown_calls = 0
         self.set_notification_preference_calls: list[tuple[str, bool]] = []
+        self.restart_slskd_calls = 0
+        self.restart_slskd_error: Exception | None = None
         self.set_theme_mode_calls: list[str] = []
         self.update_settings_calls: list[dict] = []
         # Round 9 §3.2 — mirrors the real Application's login_item_*
@@ -740,6 +742,11 @@ class FakeApplication:
             default_download_location_id=location_id,
             default_download_subfolder_per_playlist=subfolder_per_playlist,
         )
+
+    def restart_slskd(self):
+        self.restart_slskd_calls += 1
+        if self.restart_slskd_error is not None:
+            raise self.restart_slskd_error
 
     @property
     def downloads_paused(self) -> bool:

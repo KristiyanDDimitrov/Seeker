@@ -132,6 +132,12 @@ class InlineNotice(QWidget):
     def text(self) -> str:
         return self._message_label.text()
 
+    @property
+    def action_button(self) -> QPushButton:
+        # Public so an action started from the notice can hand its own
+        # button to the busy-action registry.
+        return self._action_button
+
 
 @dataclass(frozen=True)
 class FeedbackTarget:

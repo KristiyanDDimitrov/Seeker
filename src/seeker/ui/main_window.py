@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
+from seeker.soulseek.client import SlskdUnreachableError
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
@@ -80,6 +81,7 @@ from seeker.ui.pages.static_pages import HelpPage, SupportPage
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.playlist_selection import PlaylistSelection
 from seeker.ui.settings_window import SettingsPage
+from seeker.ui.slskd_status import START_SLSKD_KEY, SlskdStatus
 from seeker.ui.tray import (
     TrayController,
     TrayHost,
@@ -138,6 +140,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     "compute_fingerprints": "Computing fingerprints…",
     "find_duplicates": "Searching for duplicates…",
     "sharing_refresh": "Checking sharing status…",
+    START_SLSKD_KEY: "Starting slskd…",
     "history_refresh": "Loading history…",
     "search_manual": "Searching SoulSeek…",
     "download_manual": "Requesting download…",
@@ -322,6 +325,8 @@ class MainWindow(QMainWindow):
         # Host's prior read-only reach into DashboardPage's own
         # attributes.
         self.playlist_selection = PlaylistSelection()
+        # Written only by _trigger_backend_poll.
+        self.slskd_status = SlskdStatus()
         # Roadmap item 65 (Phase 2.2/2.3) — keyed the same as
         # busy_actions; populated by a run_worker(on_progress=...)
         # callback (via _on_activity_progress), consulted by
@@ -682,6 +687,7 @@ class MainWindow(QMainWindow):
             is_hidden_to_tray=lambda: self._hidden_to_tray,
             render_activity_strip=self._render_activity_strip,
             playlist_selection=self.playlist_selection,
+            slskd_status=self.slskd_status,
         )
 
         self._page_indices: dict[str, int] = {}
@@ -1416,8 +1422,23 @@ class MainWindow(QMainWindow):
 
         self._backend_poll_in_progress = True
 
-        def on_poll_finished(_: object) -> None:
+        def poll() -> SlskdUnreachableError | None:
+            # Returned, not raised: on_error only receives text, and an
+            # outage is state to show, not an error to report.
+            try:
+                self.application.download_service.poll_downloads()
+            except SlskdUnreachableError as outage:
+                return outage
+            return None
+
+        def on_poll_finished(outage: SlskdUnreachableError | None) -> None:
             self._backend_poll_in_progress = False
+
+            if outage is None:
+                self.slskd_status.mark_reachable()
+            elif self.slskd_status.mark_unreachable(str(outage)):
+                self._tray.notify_outage(str(outage))
+
             self._downloads_page._sample_download_progress()
             # A settled download completing during this real poll (Phase
             # 1's indexing fix) flips a track straight to IN_LIBRARY —
@@ -1430,15 +1451,13 @@ class MainWindow(QMainWindow):
             # a new timer of its own.
             self._tray.check_for_download_notifications()
 
-        def on_poll_error(_: str) -> None:
+        def on_poll_error(message: str) -> None:
             self._backend_poll_in_progress = False
-            self._tray.notify_error(
-                "Seeker couldn't reach slskd — check that it's running."
-            )
+            self._tray.notify_error(message)
 
         run_worker(
             self.thread_pool,
-            self.application.download_service.poll_downloads,
+            poll,
             on_finished=on_poll_finished,
             on_error=on_poll_error,
         )

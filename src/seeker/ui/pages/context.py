@@ -20,6 +20,7 @@ from seeker.ui import theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.playlist_selection import PlaylistSelection
+from seeker.ui.slskd_status import SlskdStatus
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class PageContext:
     `playlist_selection` (round9 §7.1) was added when Library needed to
     read Dashboard's live playlist/track selection without reaching
     into DashboardPage's own attributes through a Host callable.
+    `slskd_status` carries the backend poll's outage state to every page
+    that shows it.
     """
     application: Application
     thread_pool: QThreadPool
@@ -48,6 +51,7 @@ class PageContext:
     is_hidden_to_tray: Callable[[], bool]
     render_activity_strip: Callable[[], None]
     playlist_selection: PlaylistSelection
+    slskd_status: SlskdStatus
 
 
 def build_subtitle_label(text: str) -> QLabel:

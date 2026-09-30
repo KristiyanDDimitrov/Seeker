@@ -54,6 +54,7 @@ from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
+from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
@@ -102,6 +103,9 @@ class _NextStepFacts:
     # Loaded playlists whose cached tracks predate their Spotify
     # snapshot (Playlist.tracks_are_stale), in playlist-list order.
     stale_playlist_names: list[str] = field(default_factory=list)
+    # SlskdStatus.unreachable_message: set while the backend poll can't
+    # reach slskd.
+    slskd_unreachable_message: str | None = None
 
 
 @dataclass
@@ -121,6 +125,13 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     every global prerequisite already satisfied — the existing empty-
     state panel already covers "pick a playlist" there).
     """
+    # First: while slskd is down, nothing below can finish downloading.
+    if facts.slskd_unreachable_message is not None:
+        return _NextStep(
+            facts.slskd_unreachable_message,
+            "warning", START_SLSKD_TEXT, "start_slskd",
+        )
+
     if not facts.spotify_configured:
         return _NextStep(
             "Connect Spotify to sync your playlists.",
@@ -398,6 +409,9 @@ class DashboardPage(QWidget):
         self._context.playlist_selection.changed.connect(
             self._on_shared_selection_changed
         )
+        # An outage starting or ending shows at once, not on the next
+        # 2 s tick.
+        self._context.slskd_status.changed.connect(self._poll_next_step)
 
     def _on_shared_selection_changed(self) -> None:
         # Deferred, not synchronous: `changed` can fire from inside
@@ -951,6 +965,9 @@ class DashboardPage(QWidget):
                 playlist.name for playlist in playlists
                 if playlist.tracks_are_stale
             ],
+            slskd_unreachable_message=(
+                self._context.slskd_status.unreachable_message
+            ),
         )
 
     def _poll_next_step(self) -> None:
@@ -1053,7 +1070,12 @@ class DashboardPage(QWidget):
             )
 
     def _on_next_step_action(self, action: str) -> None:
-        if action == "settings_connection":
+        if action == "start_slskd":
+            start_slskd(
+                self._context, self.next_step_notice.action_button,
+                self.feedback,
+            )
+        elif action == "settings_connection":
             self._host.open_settings(SETTINGS_TAB_CONNECTION)
         elif action == "settings_locations":
             self._host.open_settings(SETTINGS_TAB_LOCATIONS)

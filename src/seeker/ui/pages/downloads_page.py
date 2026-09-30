@@ -20,8 +20,10 @@ from seeker.ui.download_eta import (
     DownloadEtaTracker,
     format_aggregate_header,
 )
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
+from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
@@ -178,6 +180,19 @@ class DownloadsPage(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Persistent while the backend poll can't reach slskd; shown
+        # and cleared by SlskdStatus.changed, never by this page.
+        self.outage_notice = InlineNotice()
+        layout.addWidget(self.outage_notice)
+        # Start slskd's outcome, when started from this page.
+        self.notice = InlineNotice()
+        layout.addWidget(self.notice)
+        self.status_label = PlainLabel("")
+        layout.addWidget(self.status_label)
+        self.feedback = FeedbackTarget(self.status_label, self.notice)
+        self._context.slskd_status.changed.connect(self._render_outage)
+        self._render_outage()
+
         # Aggregate remaining-time header (HISTORY §53) — text only,
         # empty (no reserved-but-blank strip) whenever there's nothing
         # active to summarize; see _render_aggregate_eta.
@@ -226,6 +241,23 @@ class DownloadsPage(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
+
+    def _render_outage(self) -> None:
+        message = self._context.slskd_status.unreachable_message
+
+        if message is None:
+            self.outage_notice.hide()
+            return
+
+        self.outage_notice.show_message(
+            message,
+            kind="warning",
+            action_text=START_SLSKD_TEXT,
+            on_action=lambda: start_slskd(
+                self._context, self.outage_notice.action_button,
+                self.feedback,
+            ),
+        )
 
     def _poll_active_downloads(self) -> None:
         # Purely observational — a cheap local DB read via

@@ -512,9 +512,23 @@ class TrayController:
 
         self._last_notified_review_count = total
 
+    def notify_outage(self, message: str) -> None:
+        # Not rate-limited like notify_error: the caller notifies only
+        # on the reachable-to-unreachable edge (SlskdStatus), so this
+        # fires once per outage.
+        if self._tray_icon is None:
+            return
+
+        if not self._host.application.settings.notify_errors:
+            return
+
+        self._tray_icon.showMessage(
+            "Seeker", message, QSystemTrayIcon.MessageIcon.Warning,
+        )
+
     def notify_error(self, message: str) -> None:
-        # Roadmap item R7.5 — rate-limited so an unreachable slskd
-        # can't emit a notification every single 20s backend-poll tick.
+        # Roadmap item R7.5 — rate-limited so an error that repeats on
+        # every 20s backend-poll tick can't notify on every one.
         if self._tray_icon is None:
             return
 

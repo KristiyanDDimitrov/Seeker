@@ -190,3 +190,18 @@ def test_another_playlist_being_stale_does_not_hide_the_selected_ones_step():
 
     assert step is not None
     assert step.action == "download"
+
+
+def test_slskd_outage_wins_over_everything_else():
+    step = _decide_next_step(
+        _facts(
+            spotify_configured=False,
+            slskd_unreachable_message="SoulSeek isn't reachable.",
+        )
+    )
+
+    assert step is not None
+    assert step.message == "SoulSeek isn't reachable."
+    assert step.kind == "warning"
+    assert step.action == "start_slskd"
+    assert step.action_text == "Start slskd"
