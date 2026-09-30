@@ -17,8 +17,7 @@ nine fields below follow the contract in
   (X9 Pro mounted; S7's 1363 plus 12 new, minus 1 replaced).
 - **`mypy --strict src/`:** clean, 109 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** S7 close-out push → see `gh run list`. This push: see
-  `gh run list --limit 1`.
+- **CI:** this push `639f771` → run `36679263236`, **success**.
 
 ## 2. Where we are
 
