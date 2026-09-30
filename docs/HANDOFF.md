@@ -18,8 +18,8 @@ nine fields below follow the contract in
   librosa `UserWarning`s from the new metadata test's real analysis).
 - **`mypy --strict src/`:** clean, 119 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the follow-up commit or the session report for the
-  close-out run id and result.
+- **CI:** close-out `86d84e7` → run `36763618382` **success**:
+  `1510 passed, 29 skipped, 9 warnings`, coverage 91.86 %.
 
 ## 2. Where we are
 
