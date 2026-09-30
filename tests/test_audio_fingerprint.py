@@ -151,6 +151,69 @@ def test_compute_fingerprint_raises_the_unavailable_error_not_a_crash(
         compute_fingerprint(path)
 
 
+# --- The native context's lifetime ---------------------------------------
+
+class FakeChromaprint:
+    """Stands in for libchromaprint's C API. `new_context` is what
+    chromaprint_new returns: ctypes turns a NULL c_void_p into None."""
+
+    def __init__(self, new_context: int | None = 1234, feed_result: int = 1):
+        self.new_context = new_context
+        self.feed_result = feed_result
+        self.freed: list[int] = []
+
+    def chromaprint_new(self, algorithm):
+        return self.new_context
+
+    def chromaprint_free(self, ctx):
+        self.freed.append(ctx)
+
+    def chromaprint_start(self, ctx, sample_rate, channels):
+        assert ctx is not None, "a NULL context reached chromaprint_start"
+        return 1
+
+    def chromaprint_feed(self, ctx, data, size):
+        assert ctx is not None, "a NULL context reached chromaprint_feed"
+        return self.feed_result
+
+
+def _write_short_wav(tmp_path) -> Path:
+    import soundfile as sf
+
+    path = tmp_path / "tone.wav"
+    sf.write(str(path), np.zeros(1000, dtype=np.int16), 44100)
+    return path
+
+
+def test_a_null_chromaprint_context_raises_fingerprint_error(
+        monkeypatch, tmp_path,
+):
+    path = _write_short_wav(tmp_path)
+    fake = FakeChromaprint(new_context=None)
+    monkeypatch.setattr(audio_fingerprint, "_get_library", lambda: fake)
+
+    with pytest.raises(FingerprintError, match="context"):
+        audio_fingerprint._compute_fingerprint_via_soundfile(path)
+
+    assert fake.freed == []
+
+
+def test_the_chromaprint_context_is_freed_when_a_call_fails(
+        monkeypatch, tmp_path,
+):
+    # Freed on the way out, not whenever the garbage collector gets to
+    # the wrapper: the raised error's traceback keeps it alive here.
+    path = _write_short_wav(tmp_path)
+    fake = FakeChromaprint(feed_result=0)
+    monkeypatch.setattr(audio_fingerprint, "_get_library", lambda: fake)
+
+    with pytest.raises(FingerprintError) as raised:
+        audio_fingerprint._compute_fingerprint_via_soundfile(path)
+
+    assert raised.traceback  # still holding the failing frames
+    assert fake.freed == [1234]
+
+
 # --- Real integration: real audio, real libchromaprint --------------------
 
 @requires_x9_pro

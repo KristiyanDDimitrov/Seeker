@@ -35,6 +35,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 import numpy as np
 import soundfile as sf
@@ -238,39 +239,61 @@ def _check(result: int) -> None:
 
 
 class _StreamingFingerprinter:
-    """Thin, real ctypes wrapper around one chromaprint context —
-    start() once, feed() repeatedly, finish() once. Not exposed
-    outside this module; compute_fingerprint() below is the public
-    entry point."""
+    """Thin ctypes wrapper around one chromaprint context, used as a
+    context manager: `with` allocates it and frees it on the way out,
+    error or not. Inside, start() once, feed() repeatedly, finish()
+    once. Not exposed outside this module; compute_fingerprint() below
+    is the public entry point."""
 
     def __init__(self, algorithm: int = _ALGORITHM_DEFAULT):
         self._lib = _get_library()
-        self._ctx = self._lib.chromaprint_new(algorithm)
+        self._algorithm = algorithm
+        self._ctx: int | None = None
 
-    def __del__(self) -> None:
-        ctx = getattr(self, "_ctx", None)
+    def __enter__(self) -> Self:
+        # restype c_void_p: ctypes returns None for a NULL pointer.
+        ctx = self._lib.chromaprint_new(self._algorithm)
+
+        if not ctx:
+            raise FingerprintError(
+                "libchromaprint couldn't create a fingerprinting context"
+            )
+
+        self._ctx = ctx
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        ctx, self._ctx = self._ctx, None
+
         if ctx:
             self._lib.chromaprint_free(ctx)
 
+    @property
+    def _context(self) -> int:
+        assert self._ctx is not None, "used outside its `with` block"
+        return self._ctx
+
     def start(self, sample_rate: int, channels: int) -> None:
-        _check(self._lib.chromaprint_start(self._ctx, sample_rate, channels))
+        _check(
+            self._lib.chromaprint_start(self._context, sample_rate, channels)
+        )
 
     def feed(self, pcm_bytes: bytes) -> None:
         # 16-bit PCM -> 2 bytes per sample, matching chromaprint's own
         # real requirement (confirmed live, item 38's spike).
         _check(
             self._lib.chromaprint_feed(
-                self._ctx, pcm_bytes, len(pcm_bytes) // 2,
+                self._context, pcm_bytes, len(pcm_bytes) // 2,
             )
         )
 
     def finish(self) -> bytes:
-        _check(self._lib.chromaprint_finish(self._ctx))
+        _check(self._lib.chromaprint_finish(self._context))
 
         fingerprint_ptr = ctypes.c_char_p()
         _check(
             self._lib.chromaprint_get_fingerprint(
-                self._ctx, ctypes.byref(fingerprint_ptr),
+                self._context, ctypes.byref(fingerprint_ptr),
             )
         )
         result = fingerprint_ptr.value
@@ -295,12 +318,14 @@ def is_available() -> bool:
 
 def _compute_fingerprint_via_soundfile(path: str | Path) -> Fingerprint:
     info = sf.info(str(path))
-    fingerprinter = _StreamingFingerprinter()
-    fingerprinter.start(info.samplerate, info.channels)
-
     chunk_frames = max(int(info.samplerate * _CHUNK_SECONDS), 1)
 
-    with sf.SoundFile(str(path)) as audio_file:
+    with (
+            _StreamingFingerprinter() as fingerprinter,
+            sf.SoundFile(str(path)) as audio_file,
+    ):
+        fingerprinter.start(info.samplerate, info.channels)
+
         while True:
             block = audio_file.read(
                 chunk_frames, dtype="int16", always_2d=True,
@@ -309,7 +334,8 @@ def _compute_fingerprint_via_soundfile(path: str | Path) -> Fingerprint:
                 break
             fingerprinter.feed(block.tobytes())
 
-    fingerprint_bytes = fingerprinter.finish()
+        fingerprint_bytes = fingerprinter.finish()
+
     duration_seconds = (
             info.frames / info.samplerate if info.samplerate else 0.0
     )
@@ -354,7 +380,10 @@ def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
     # real file from the 76-failure set (hung indefinitely). Fixed by
     # giving stderr a real file instead of a pipe — a file write never
     # blocks on a reader keeping up.
-    with tempfile.TemporaryFile() as stderr_file:
+    with (
+            tempfile.TemporaryFile() as stderr_file,
+            _StreamingFingerprinter() as fingerprinter,
+    ):
         process = subprocess.Popen(
             [
                 "ffmpeg", "-v", "error", "-i", str(path),
@@ -368,7 +397,6 @@ def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
         )
         assert process.stdout is not None
 
-        fingerprinter = _StreamingFingerprinter()
         fingerprinter.start(
             _FFMPEG_DECODE_SAMPLE_RATE, _FFMPEG_DECODE_CHANNELS,
         )
@@ -392,18 +420,19 @@ def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
                 "utf-8", errors="replace",
             )
 
-    if total_samples == 0:
-        # A real, non-zero exit with no decoded samples at all (as
-        # opposed to the "decodes with warnings" case above, which
-        # DOES produce usable samples) — genuinely undecodable, not
-        # rescued.
-        detail = stderr_output.strip()
-        raise FingerprintError(
-            f"ffmpeg produced no audio data for {path}"
-            + (f": {detail}" if detail else "")
-        )
+        if total_samples == 0:
+            # A real, non-zero exit with no decoded samples at all (as
+            # opposed to the "decodes with warnings" case above, which
+            # DOES produce usable samples) — genuinely undecodable, not
+            # rescued.
+            detail = stderr_output.strip()
+            raise FingerprintError(
+                f"ffmpeg produced no audio data for {path}"
+                + (f": {detail}" if detail else "")
+            )
 
-    fingerprint_bytes = fingerprinter.finish()
+        fingerprint_bytes = fingerprinter.finish()
+
     duration_seconds = total_samples / _FFMPEG_DECODE_SAMPLE_RATE
 
     return Fingerprint(
