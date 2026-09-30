@@ -74,6 +74,7 @@ def exchange_code_for_token(
         expires_at=time.time() + data["expires_in"],
     )
 
+
 def refresh_access_token(
     client_id: str,
     refresh_token: str,

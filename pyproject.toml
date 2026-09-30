@@ -69,7 +69,18 @@ select = [
     "RUF",    # ruff's own
     "S",      # bandit — security
     "PLC", "PLE", "PLW",  # pylint: convention/error/warning
+    # Blank lines between definitions — preview-only rules. With
+    # explicit-preview-rules each needs its exact code: an "E30"
+    # prefix would select none of them.
+    "E301", "E302", "E303", "E304", "E305", "E306",
+    "G201",   # logger.exception, not .error(..., exc_info=True)
+    "TRY400", # an error logged inside `except` carries its traceback
 ]
+# A preview-only rule runs only when selected by its exact code above,
+# never through a prefix such as "E" or "RUF". Preview mode can still
+# change a stable rule's behaviour on a ruff upgrade.
+preview = true
+explicit-preview-rules = true
 ignore = [
     # Deliberately NOT enabled, each for a reason:
     # PLR    — the "too many X" family. Phase 6 fixes the real

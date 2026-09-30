@@ -133,7 +133,6 @@ def test_initialize_adds_progress_columns_without_losing_existing_data(
     assert row["total_bytes"] is None
 
 
-
 def test_initialize_adds_failure_columns_without_losing_existing_data(
         tmp_path,
 ):
@@ -151,6 +150,7 @@ def test_initialize_adds_failure_columns_without_losing_existing_data(
     assert row["status"] == "downloading"
     assert row["failure_reason"] is None
     assert row["dismissed_at"] is None
+
 
 def _create_pre_migration_local_files_table(path):
     # Simulates a real, existing database from before the fingerprint

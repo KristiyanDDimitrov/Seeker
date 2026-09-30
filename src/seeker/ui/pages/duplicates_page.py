@@ -47,6 +47,7 @@ from seeker.ui.workers import run_worker
 # comparison against a real -1 constant (HISTORY §56 Phase 6.3).
 KEEP_ALL_DUPLICATES_ID = 0
 
+
 # Named constants for the duplicates table's real column layout,
 # replacing literal indices scattered across the render path. Two
 # independent investigations could NOT reproduce a genuine index-vs-

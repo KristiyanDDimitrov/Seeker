@@ -465,6 +465,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
 def handle_playlists(
         application: Application,
         parsed: argparse.Namespace,
@@ -494,6 +495,7 @@ def _print_playlists(playlists: list[Playlist]) -> None:
             f"{playlist.name} "
             f"({playlist.track_count} tracks)"
         )
+
 
 def handle_download(
         application: Application,
@@ -531,6 +533,7 @@ def handle_download(
     )
     if needs_review:
         print("  Run 'seeker review' to see the new candidates.")
+
 
 def handle_search(
         application: Application,
@@ -650,6 +653,7 @@ def _handle_downloads_review_all(application: Application) -> None:
     for detail in result.details:
         print(f"  {printable(detail)}")
 
+
 def handle_sync(application: Application) -> None:
     result = application.sync_service.refresh_playlists()
 
@@ -692,6 +696,7 @@ def handle_sync_tracks(
             f"file(s): they have no Spotify id, so Seeker can't match "
             f"or download them automatically."
         )
+
 
 def handle_library(
         application: Application,
@@ -966,6 +971,7 @@ def handle_library(
             "Usage: seeker library "
             "{add,list,remove,scan,match,tag,fingerprint,duplicates} ..."
         )
+
 
 def handle_check(
         application: Application,

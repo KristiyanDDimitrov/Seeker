@@ -434,7 +434,7 @@ def _handle_task_progress(
     try:
         callback(stage, current, total)
     except Exception:
-        logger.error("Error handling worker progress", exc_info=True)
+        logger.exception("Error handling worker progress")
 
 
 def _handle_task_finished(task_id: int, result: Any) -> None:
@@ -459,7 +459,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
         try:
             on_finished(result)
         except Exception as error:
-            logger.error("Error handling worker result", exc_info=True)
+            logger.exception("Error handling worker result")
 
             if status_label is not None:
                 status_label.setText(f"Error: {error}")
@@ -487,9 +487,7 @@ def _handle_task_error(task_id: int, message: str) -> None:
         try:
             on_error(message)
         except Exception:
-            logger.error(
-                "Error handling worker error callback", exc_info=True,
-            )
+            logger.exception("Error handling worker error callback")
 
     _schedule_native_delete(worker)
 

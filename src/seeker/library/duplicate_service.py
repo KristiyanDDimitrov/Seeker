@@ -672,7 +672,7 @@ class DuplicateService:
                         "message": str(error),
                     }
                 )
-                logger.error(
+                logger.exception(
                     "Failed to delete local file %s: %s",
                     local_file_id, error,
                 )

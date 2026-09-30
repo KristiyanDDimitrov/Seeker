@@ -1860,6 +1860,7 @@ def test_rejected_state_marks_failed(tmp_path):
     assert counts["failed"] == 1
     assert get_status(service, "t1") == "failed"
 
+
 def _failure_reason(service: DownloadService, filename: str) -> str | None:
     with service.database.transaction() as connection:
         row = connection.execute(

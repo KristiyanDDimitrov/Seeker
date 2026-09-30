@@ -161,6 +161,7 @@ def format_build_identity(
 
 # --- MainWindow toolbar ---------------------------------------------------
 
+
 TOOLTIP_SYNC_ALL_PLAYLISTS = (
     "Pull your Spotify playlists' names and track counts into the local "
     "cache (metadata only — no tracks yet)."
@@ -223,6 +224,7 @@ def format_download_result_message(result: dict[str, Any]) -> str:
 
 # --- Destination dialog (roadmap item 6 §3 — "no dead end") ---------------
 
+
 DESTINATION_DIALOG_TITLE = "Set a Download Destination"
 DESTINATION_DIALOG_INTRO = (
     "'{playlist}' doesn't have a download destination yet. Choose "
@@ -256,6 +258,8 @@ def format_destination_preview(
         f"Will download to: {path}  (already exists, "
         f"{audio_file_count} audio file{plural} there now)"
     )
+
+
 TOOLTIP_OPEN_SETTINGS = (
     "Library locations, playlist destinations, connections, and "
     "match thresholds."
@@ -1002,6 +1006,8 @@ def format_remove_location_result(summary: LocationRemovalSummary) -> str:
         text += " The default download location is now unset."
 
     return text
+
+
 TOOLTIP_RENAME_LOCATION = "Give this location a different display name."
 
 # --- Settings: Playlist Destinations tab ----------------------------------

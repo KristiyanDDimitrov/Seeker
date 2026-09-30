@@ -183,7 +183,6 @@ def test_delete_by_id_leaves_matches_to_other_files_alone(tmp_path):
     assert match_row(matcher) == before
 
 
-
 # --- §4.3: a limbo row already in the database is tolerated ------------
 
 def seed_limbo_row(matcher: TrackMatcher) -> None:

@@ -72,6 +72,7 @@ def is_spotify_image_url(url: str) -> bool:
         and host.endswith(_SPOTIFY_IMAGE_HOST_SUFFIXES)
     )
 
+
 # Real magic-byte prefixes, checked instead of trusting the response's
 # Content-Type header (§6.4.2).
 _JPEG_MAGIC = b"\xff\xd8\xff"
@@ -1318,11 +1319,11 @@ class MetadataService:
             try:
                 final_path.rename(current_path)
             except OSError:
-                logger.error(
+                logger.exception(
                     "Renamed %s -> %s on disk, the database update then "
                     "failed (%s), and renaming back also failed — the "
                     "file and the database now disagree on its path.",
-                    current_path, final_path, db_error, exc_info=True,
+                    current_path, final_path, db_error,
                 )
             result.failed += 1
             result.details.append(
