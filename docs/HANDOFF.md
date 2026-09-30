@@ -17,7 +17,7 @@ nine fields below follow the contract in
   (X9 Pro mounted; S8's 1397 plus 39 new).
 - **`mypy --strict src/`:** clean, 109 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the line appended below after the push.
+- **CI:** push `59af866` → run `36684593551`, **success**.
 
 ## 2. Where we are
 
