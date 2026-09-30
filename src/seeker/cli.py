@@ -5,17 +5,12 @@ import sys
 import httpx
 
 from seeker.application import Application
-from seeker.audio_fingerprint import FingerprintingUnavailableError
-from seeker.destination_resolution import InvalidDestinationSubfolderError
 from seeker.error_text import describe_error
-from seeker.errors import LibraryLocationNotFoundError, PlaylistNotFoundError
+from seeker.errors import PlaylistNotFoundError, SeekerError
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
-from seeker.library.scanner import LibraryUnavailableError
 from seeker.models.playlist import Playlist
-from seeker.soulseek.client import SlskdUnreachableError, SoulseekDownloadError
 from seeker.soulseek.download_service import NoDestinationConfiguredError
 from seeker.soulseek.quality import rank_candidates
-from seeker.spotify.client import SpotifyRateLimitedError
 from seeker.spotify.sync_service import find_close_playlist_matches
 
 # Pure-function formatter, no Qt/PySide6 dependency (see its own
@@ -1175,12 +1170,6 @@ def run(
 
         elif parsed.command == "sharing":
             handle_sharing(application, parsed)
-    except SpotifyRateLimitedError as error:
-        print(str(error))
-        sys.exit(1)
-    except LibraryUnavailableError as error:
-        print(str(error))
-        sys.exit(1)
     except NoDestinationConfiguredError as error:
         # The exception's own message is deliberately interface-neutral
         # (shared with the UI, which must never be told to run a shell
@@ -1196,12 +1185,7 @@ def run(
             print(f"{error} Run 'seeker playlists set-destination' first.")
         sys.exit(1)
     except (
-            PlaylistNotFoundError,
-            LibraryLocationNotFoundError,
-            SoulseekDownloadError,
-            SlskdUnreachableError,
-            FingerprintingUnavailableError,
-            InvalidDestinationSubfolderError,
+            SeekerError,
             httpx.TransportError,
             sqlite3.OperationalError,
     ) as error:

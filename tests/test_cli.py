@@ -1335,6 +1335,21 @@ def test_other_database_errors_print_their_details(monkeypatch, capsys):
     assert "Open Log Folder" not in output
 
 
+def test_any_seeker_error_prints_its_sentence_not_a_traceback(
+        monkeypatch, capsys,
+):
+    from seeker.spotify.client import SpotifyAuthenticationError
+
+    with pytest.raises(SystemExit) as exit_info:
+        _run_sync_raising(monkeypatch, SpotifyAuthenticationError())
+
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().out == (
+        "Spotify rejected Seeker's authorization. Re-authorize in "
+        "Settings.\n"
+    )
+
+
 def test_an_unexpected_error_still_tracebacks(monkeypatch):
     # A bug report needs the traceback; only known failure kinds are
     # turned into a sentence.
