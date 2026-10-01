@@ -16,8 +16,9 @@ nine fields below follow the contract in
   warnings, at every S21 commit.
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** pending the push of this close-out (recorded by the next
-  commit).
+- **CI:** run `36831279172` on `effc191` (the close-out commit):
+  success, `1548 passed, 29 skipped`, branch coverage 92.82 % (floor
+  89).
 
 ## 2. Where we are
 
