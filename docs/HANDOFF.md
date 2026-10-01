@@ -16,7 +16,7 @@ nine fields below follow the contract in
   warnings. X9 Pro mounted.
 - **`mypy --strict src/`:** clean, 123 files. **`ruff check src
   tests`:** 0 findings (now including `SLF001`).
-- **CI:** see the push recorded below.
+- **CI:** run `36823511637` on `a503ad1` (the close-out commit): success.
 
 ## 2. Where we are
 
