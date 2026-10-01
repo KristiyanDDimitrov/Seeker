@@ -32,7 +32,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import SeekerError
-from seeker.file_deletion import delete_file, same_file
+from seeker.files.deletion import delete_file, same_file
 from seeker.library.scanner import index_single_file
 from seeker.models.download_request import (
     DownloadRequest,

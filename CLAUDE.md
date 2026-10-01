@@ -118,12 +118,14 @@ src/seeker/
 │                              #   .env/config.py is the fallback when unset
 ├── docker_setup.py              # Docker/slskd detection, bring-up, health
 │                              #   checks — shared by wizard.py/settings_window.py
-├── download_dedup.py, file_deletion.py, file_placement.py,
-│   filename_sanitize.py, filename_format.py, update_check.py,
-│   album_art_cache.py
-├── atomic_file.py               # write_text_atomic() (mode kept) and
-│                              #   write_text_locked() (0600) — credential
-│                              #   files and Sharing's slskd.yml/Compose edits
+├── download_dedup.py, update_check.py, album_art_cache.py
+├── files/                     # atomic.py — write_text_atomic() (mode
+│                              #   kept) and write_text_locked() (0600) for
+│                              #   credential files and Sharing's
+│                              #   slskd.yml/Compose edits; deletion.py,
+│                              #   placement.py (resolve_collision),
+│                              #   sanitize.py, naming.py
+│                              #   (build_track_filename)
 ├── config.py                     # .env-sourced fallback values
 ├── application.py, cli.py
 ├── main.py                       # `seeker` entry point
@@ -191,7 +193,7 @@ src/seeker/
   `--fix` deletes them all. Confirmed by direct reproduction.
   [HISTORY §115](docs/history/108-120.md#115)
 - **Credential files (config.json, the Spotify token cache) go through
-  `seeker/atomic_file.py::write_text_locked()`** — the temp file is
+  `seeker/files/atomic.py::write_text_locked()`** — the temp file is
   0600 from `os.open(O_EXCL)` (never chmod'd after the write), fsync'd,
   then renamed; never a bare `write_text()`.
   [HISTORY §116](docs/history/108-120.md#116), [§146](docs/history/121-150.md#146)
@@ -399,7 +401,7 @@ Each links to the HISTORY entry where the full investigation lives;
   `<stem>_<UtcNow.Ticks><suffix>` on a clash (its `FileService.MoveFile`);
   `_locate_completed_file` accepts only the request's exact byte size
   and refuses an ambiguous match. Placement goes through
-  `file_placement.resolve_collision` — the one collision rule, shared
+  `files.placement.resolve_collision` — the one collision rule, shared
   with renames. [HISTORY §138](docs/history/121-150.md#138)
 - **A destination subfolder is validated, never rewritten.**
   `validate_destination_subfolder` (`destination_resolution.py`)

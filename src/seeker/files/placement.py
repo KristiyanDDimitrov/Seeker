@@ -6,7 +6,7 @@ The one collision rule every file-placing path shares: a rename in
 """
 from pathlib import Path
 
-from seeker.file_deletion import same_file
+from seeker.files.deletion import same_file
 
 
 def resolve_collision(current_path: Path, proposed_path: Path) -> Path:

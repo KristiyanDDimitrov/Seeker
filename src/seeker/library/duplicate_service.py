@@ -32,7 +32,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.errors import LibraryLocationNotFoundError
-from seeker.file_deletion import delete_file, same_file
+from seeker.files.deletion import delete_file, same_file
 from seeker.library.audio_quality import (
     LocalFileQuality,
     analyze_local_file_quality,

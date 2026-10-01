@@ -35,7 +35,7 @@ def clean_path_component(name: str) -> str:
     illegal-character replacement, the Windows trailing-dot/space
     strip, and leading dots replaced so the name is never hidden.
     Factored out (roadmap item 67, Phase 6.1) so
-    filename_format.py::build_track_filename can reuse this exact
+    files/naming.py::build_track_filename can reuse this exact
     cleaning logic under its own, different length rule (255 UTF-8
     BYTES, not this module's MAX_LENGTH characters) without a second
     copy of the illegal-character regex — the same "shared thing lives

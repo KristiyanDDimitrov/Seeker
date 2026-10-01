@@ -6,13 +6,13 @@ Roadmap item 67 (Phase 6.1) — a pure function, no I/O, no Qt, no DB
 access, so it's directly testable and can't grow a second copy the way
 matching.py's own consolidation history (see CLAUDE.md) already
 documents happening once for artist/title matching. Composes with
-filename_sanitize.py's shared character-cleaning logic rather than
+files/sanitize.py's shared character-cleaning logic rather than
 duplicating it.
 """
 
 import re
 
-from seeker.filename_sanitize import clean_path_component
+from seeker.files.sanitize import clean_path_component
 
 # Convention, decided (roadmap item 67): "{artists} - {title}.{ext}".
 # artists is every Spotify artist, in Spotify's own credited order,
@@ -120,5 +120,5 @@ def _truncate_to_byte_budget(base: str, ext: str) -> str:
     # A truncation landing mid-word or right after the separator is
     # still a valid filename either way — no attempt to truncate on a
     # word boundary, matching this codebase's other length caps (e.g.
-    # filename_sanitize.MAX_LENGTH), which don't either.
+    # sanitize.MAX_LENGTH), which don't either.
     return decoded.rstrip(" .-")

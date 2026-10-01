@@ -28,9 +28,9 @@ from seeker.database.repositories.track_match_repository import (
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
 from seeker.errors import PlaylistNotFoundError
-from seeker.file_deletion import same_file
-from seeker.file_placement import resolve_collision
-from seeker.filename_format import build_track_filename
+from seeker.files.deletion import same_file
+from seeker.files.naming import build_track_filename
+from seeker.files.placement import resolve_collision
 from seeker.metadata import (
     embed_album_art,
     read_embedded_art,
@@ -135,7 +135,7 @@ class RenameResult:
 # Roadmap item 67 (Phase 6.2/6.3) — the real, load-bearing check behind
 # both "is this already correct" and "is this a genuine collision or
 # just a case-only rename of itself." Shared with duplicate_service.py
-# (roadmap item 93/R3.3) via file_deletion.py, not a second copy.
+# (roadmap item 93/R3.3) via files/deletion.py, not a second copy.
 _same_file = same_file
 
 

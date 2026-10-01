@@ -28,7 +28,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
-from seeker.file_placement import resolve_collision
+from seeker.files.placement import resolve_collision
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
 from seeker.models.download_request import DownloadRequest

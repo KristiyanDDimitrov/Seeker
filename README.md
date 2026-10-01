@@ -223,8 +223,10 @@ src/seeker/
 ├── audio_fingerprint.py       # libchromaprint ctypes binding (+ an ffmpeg
 │                              #   subprocess fallback for files soundfile
 │                              #   can't decode), used by duplicate_service.py
-├── filename_format.py         # build_track_filename() — Spotify-metadata-
-│                              #   based filenames, used by metadata_service.py
+├── files/                     # atomic.py (atomic/0600 writes), deletion.py
+│                              #   (safe delete), placement.py (collision
+│                              #   rule), sanitize.py (path components),
+│                              #   naming.py (build_track_filename)
 ├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
 ├── sharing_service.py          # live slskd share status/reconciliation + gated share-add write path
 ├── history_service.py         # derived-only view over download_requests/local_files — no new table
@@ -232,8 +234,6 @@ src/seeker/
 ├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
 ├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)
 ├── download_dedup.py          # shared "same real candidate" dedup rule (download service + dashboard)
-├── file_deletion.py            # shared safe-file-delete primitive (download service + duplicate service)
-├── filename_sanitize.py       # sanitize_path_component() — used by download destination resolution
 ├── config.py                  # .env-sourced fallback values (legacy/CLI-only path)
 ├── application.py
 ├── cli.py

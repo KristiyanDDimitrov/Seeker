@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from seeker.atomic_file import write_text_locked
+from seeker.files.atomic import write_text_locked
 from seeker.spotify.token import SpotifyToken
 
 

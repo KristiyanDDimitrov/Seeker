@@ -33,7 +33,7 @@ from seeker.destination_resolution import (
     InvalidDestinationSubfolderError,
     validate_destination_subfolder,
 )
-from seeker.filename_sanitize import sanitize_path_component
+from seeker.files.sanitize import sanitize_path_component
 from seeker.library.duplicate_service import GroupResolutionPlan
 from seeker.library.metadata_service import RenamePlan
 from seeker.models.library_location import LibraryLocation

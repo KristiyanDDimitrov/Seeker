@@ -1,4 +1,4 @@
-from seeker.file_deletion import delete_file
+from seeker.files.deletion import delete_file
 
 
 def test_delete_file_removes_a_real_file_and_returns_none(tmp_path):

@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from seeker.atomic_file import write_text_atomic, write_text_locked
+from seeker.files.atomic import write_text_atomic, write_text_locked
 
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"),

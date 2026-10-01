@@ -22,7 +22,7 @@ from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
 from seeker.errors import SeekerError
-from seeker.filename_sanitize import sanitize_path_component
+from seeker.files.sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 

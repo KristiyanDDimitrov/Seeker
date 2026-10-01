@@ -1,4 +1,4 @@
-from seeker.filename_sanitize import MAX_LENGTH, sanitize_path_component
+from seeker.files.sanitize import MAX_LENGTH, sanitize_path_component
 
 
 def test_leaves_an_ordinary_name_untouched():

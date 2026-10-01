@@ -1,4 +1,4 @@
-from seeker.filename_format import MAX_FILENAME_BYTES, build_track_filename
+from seeker.files.naming import MAX_FILENAME_BYTES, build_track_filename
 
 
 def test_single_artist():

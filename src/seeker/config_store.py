@@ -7,7 +7,7 @@ from typing import get_args
 
 import platformdirs
 
-from seeker.atomic_file import write_text_locked
+from seeker.files.atomic import write_text_locked
 
 logger = logging.getLogger(__name__)
 
