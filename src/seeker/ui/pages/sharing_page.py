@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.models.library_location import LibraryLocation
-from seeker.sharing_service import (
+from seeker.soulseek.sharing_service import (
     LocationShareState,
     ShareStatus,
     SharingApplyResult,

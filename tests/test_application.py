@@ -13,7 +13,7 @@ from seeker.config_store import (
     resolve_config_path,
     save_config,
 )
-from seeker.docker_setup import (
+from seeker.soulseek.docker_setup import (
     DockerState,
     SlskdBringUpError,
     SlskdStartRefusedError,
@@ -529,7 +529,7 @@ def _fake_slskd_bring_up(tmp_path, monkeypatch) -> list[dict]:
 
 def _fake_live_slskd_mounts(monkeypatch, mounts: dict[str, str]) -> None:
     monkeypatch.setattr(
-        "seeker.sharing_service._get_live_container_mounts",
+        "seeker.soulseek.sharing_service._get_live_container_mounts",
         lambda container_name: mounts,
     )
 
@@ -908,7 +908,7 @@ def test_data_locations_resolves_real_paths_in_one_shared_directory(
     for module in (
             "seeker.application.platformdirs",
             "seeker.config_store.platformdirs",
-            "seeker.docker_setup.platformdirs",
+            "seeker.soulseek.docker_setup.platformdirs",
     ):
         monkeypatch.setattr(
             f"{module}.user_data_dir", _fake_user_data_dir(data_dir),
@@ -985,7 +985,7 @@ def _restartable_slskd(
         "seeker.application.detect_docker_state", lambda: DockerState.RUNNING,
     )
     monkeypatch.setattr(
-        "seeker.sharing_service.SharingService.is_self_managed",
+        "seeker.soulseek.sharing_service.SharingService.is_self_managed",
         lambda self: self_managed,
     )
     _fake_live_slskd_mounts(monkeypatch, {

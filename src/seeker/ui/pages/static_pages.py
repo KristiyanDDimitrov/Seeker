@@ -26,7 +26,7 @@ from seeker.ui.plain_text import PlainLabel, RichLabel
 
 def _open_in_file_manager(path: Path) -> None:
     # Cross-platform "reveal in Finder/Explorer" — same
-    # subprocess/best-effort spirit as docker_setup.py's own OS calls,
+    # subprocess/best-effort spirit as soulseek/docker_setup.py's own OS calls,
     # just for the desktop file manager instead of Docker. `path.mkdir`
     # first since a brand-new install's slskd-data subfolder in
     # particular may not exist yet (SoulSeek skipped in the wizard) —

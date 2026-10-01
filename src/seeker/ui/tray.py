@@ -504,7 +504,7 @@ class TrayController:
 
 def _resolve_tray_icon_path() -> Path:
     """Roadmap item R7.2/98 (B9.1) — same sys.frozen/sys._MEIPASS branch
-    as docker_setup.py's compose_template_path(): an ordinary `uv run
+    as soulseek/docker_setup.py's compose_template_path(): an ordinary `uv run
     seeker-ui` dev run resolves against this file's own real location
     in the source tree; a packaged build resolves against the
     icons/ directory seeker.spec bundles as a real PyInstaller `datas`
@@ -561,7 +561,7 @@ def _set_dock_icon_visible(visible: bool) -> None:
 
     # Deferred import is deliberate — matches how this project's other
     # genuine heavy/platform-only dependency deferrals are already
-    # scoped (docker_setup.py's TokenStore-inside-_load_token,
+    # scoped (soulseek/docker_setup.py's TokenStore-inside-_load_token,
     # auth_manager.py's webbrowser-inside-_authorize).
     from AppKit import (  # noqa: PLC0415
         NSApp,

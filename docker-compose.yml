@@ -30,7 +30,7 @@ services:
       - PUID=1000
       - PGID=1000
       # Share directories change only by recreating the container from
-      # this file (sharing_service.py), never through slskd's remote
+      # this file (soulseek/sharing_service.py), never through slskd's remote
       # configuration API.
       - SLSKD_REMOTE_CONFIGURATION=false
       # The Soulseek network login.

@@ -32,7 +32,7 @@ def ensure_full_path_environment() -> None:
     missing /usr/local/bin and /opt/homebrew/bin — confirmed live via
     a real ephemeral LaunchAgent probe, HISTORY §44). Called once at
     Application startup, before anything Docker-related runs — every
-    docker_setup.py subprocess call inherits os.environ already, so
+    soulseek/docker_setup.py subprocess call inherits os.environ already, so
     mutating it here fixes every call site at once.
     """
     try:
@@ -78,7 +78,7 @@ def compose_template_path() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS) / "docker-compose.yml"  # type: ignore[attr-defined]  # noqa: SLF001
 
-    return Path(__file__).resolve().parents[2] / "docker-compose.yml"
+    return Path(__file__).resolve().parents[3] / "docker-compose.yml"
 
 
 def compose_file_path() -> Path:

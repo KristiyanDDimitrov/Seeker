@@ -25,7 +25,7 @@ single-file-distribution requirement exists here).
 
 Docker is explicitly NOT bundled — this spec packages the Python/Qt
 app only. The onboarding wizard's existing Docker detection/bring-up
-flow (docker_setup.py) is unchanged and still expects a real, separate
+flow (soulseek/docker_setup.py) is unchanged and still expects a real, separate
 Docker install.
 
 Code signing / notarization: real notarization is explicitly out of
@@ -78,7 +78,7 @@ else:
     EXE_ICON = None
 
 # Bundled non-Python resources needed at runtime, not just at build
-# time — see seeker/docker_setup.py::compose_file_path(), which
+# time — see seeker/soulseek/docker_setup.py::compose_file_path(), which
 # resolves docker-compose.yml via sys._MEIPASS in a frozen build.
 # Roadmap item R7.2 — the menu-bar tray icon needs the SAME treatment:
 # ICONS_DIR above is otherwise only ever read here, at build time, to

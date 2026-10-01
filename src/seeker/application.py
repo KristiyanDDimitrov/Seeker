@@ -37,7 +37,16 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
-from seeker.docker_setup import (
+from seeker.history_service import HistoryService
+from seeker.library.duplicate_service import DuplicateService
+from seeker.library.matcher import TrackMatcher
+from seeker.library.metadata_service import MetadataService
+from seeker.library.service import LibraryService
+from seeker.models.data_locations import DataLocations
+from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.slskd_start import SlskdStartResult
+from seeker.soulseek.client import SoulseekClient
+from seeker.soulseek.docker_setup import (
     SLSKD_LOCAL_BASE_URL,
     DockerState,
     SlskdStartRefusedError,
@@ -48,18 +57,9 @@ from seeker.docker_setup import (
     generate_api_key,
     slskd_data_dir,
 )
-from seeker.history_service import HistoryService
-from seeker.library.duplicate_service import DuplicateService
-from seeker.library.matcher import TrackMatcher
-from seeker.library.metadata_service import MetadataService
-from seeker.library.service import LibraryService
-from seeker.models.data_locations import DataLocations
-from seeker.models.location_removal import LocationRemovalSummary
-from seeker.models.slskd_start import SlskdStartResult
-from seeker.sharing_service import SharingService
-from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.review_service import ReviewService
+from seeker.soulseek.sharing_service import SharingService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.spotify.client import SpotifyClient

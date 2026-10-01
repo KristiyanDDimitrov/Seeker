@@ -122,7 +122,7 @@ ignore = [
 # ("SLSKD_SLSK_PASSWORD"), never a real password value. S603/S607 (see
 # the shared justification below) also apply to this file's own
 # subprocess calls (docker/docker compose).
-"src/seeker/docker_setup.py" = ["S105", "S603", "S607"]
+"src/seeker/soulseek/docker_setup.py" = ["S105", "S603", "S607"]
 # DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
 # copy (a label and two tooltip strings), never a real credential.
 "src/seeker/ui/help_text.py" = ["S105"]
@@ -137,7 +137,7 @@ ignore = [
 # (`sys.executable` against a real repro script under this same repo,
 # never external/untrusted input) share the identical reasoning.
 "src/seeker/audio/fingerprint.py" = ["S603", "S607"]
-"src/seeker/sharing_service.py" = ["S603", "S607"]
+"src/seeker/soulseek/sharing_service.py" = ["S603", "S607"]
 "src/seeker/ui/pages/static_pages.py" = ["S603", "S607"]
 "src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]

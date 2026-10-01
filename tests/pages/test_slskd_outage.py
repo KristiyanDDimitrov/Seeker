@@ -5,9 +5,9 @@ Start slskd action (HISTORY §151)."""
 from dataclasses import replace
 
 from fakes import FakeApplication, force_tray_available
-from seeker.docker_setup import SlskdStartRefusedError
 from seeker.models.download_result import PollResult
 from seeker.soulseek.client import SlskdUnreachableError
+from seeker.soulseek.docker_setup import SlskdStartRefusedError
 from seeker.ui.main_window import MainWindow
 from seeker.ui.slskd_status import SlskdStatus
 

@@ -178,8 +178,12 @@ src/seeker/
 │   ├── client.py            # slskd REST wrapper — search, request_download,
 │   │                        #   get_download_status
 │   ├── quality.py           # candidate filtering + best-file selection
-│   └── download_service.py  # playlist destinations, download_playlist,
-│                             #   poll_downloads (status + file move)
+│   ├── download_service.py  # playlist destinations, download_playlist,
+│   │                         #   poll_downloads (status + file move)
+│   ├── docker_setup.py      # Docker/slskd detection, bring-up, health
+│   │                        #   checks (wizard + Settings)
+│   └── sharing_service.py   # live slskd share status/reconciliation +
+│                            #   gated share-add write path
 ├── library/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
@@ -227,11 +231,9 @@ src/seeker/
 │                              #   rule), sanitize.py (path components),
 │                              #   naming.py (build_track_filename)
 ├── dashboard_service.py       # playlist-scoped track status + global active downloads (used by ui/)
-├── sharing_service.py          # live slskd share status/reconciliation + gated share-add write path
 ├── history_service.py         # derived-only view over download_requests/local_files — no new table
 ├── update_check.py            # one unauthenticated GitHub-releases GET, user-triggered only
 ├── config_store.py            # SeekerConfig — the UI-editable settings store, config.json
-├── docker_setup.py            # Docker/slskd detection, bring-up, health checks (wizard + Settings)
 ├── download_dedup.py          # shared "same real candidate" dedup rule (download service + dashboard)
 ├── config.py                  # .env-sourced fallback values (legacy/CLI-only path)
 ├── application.py
@@ -535,7 +537,7 @@ platform, plus a real `.app` bundle (`dist/Seeker.app`) on macOS. Both
 are self-contained — `docker-compose.yml` (the one non-Python resource
 file this app needs at runtime, for the wizard/Settings' "bring up
 slskd" flow) is bundled alongside the code and located via
-`sys._MEIPASS` in a frozen build; `seeker/docker_setup.py::
+`sys._MEIPASS` in a frozen build; `seeker/soulseek/docker_setup.py::
 compose_file_path()` is the one place that branches on `sys.frozen` —
 everything else about a frozen run is identical to `uv run seeker-ui`.
 One-folder (not one-file) is a deliberate, verified choice: `librosa`'s
@@ -652,7 +654,7 @@ there** with `QT_QPA_PLATFORM=offscreen` (the same real,
 non-fabricated verification technique from the packaging task's own
 retry — a Qt-level headless platform plugin, not macOS UI automation).
 **17/17 checks passed**, including a new, explicit check of exactly
-the risk a `.dmg` introduces: `docker_setup.py::compose_file_path()`'s
+the risk a `.dmg` introduces: `soulseek/docker_setup.py::compose_file_path()`'s
 `sys._MEIPASS`-based resolution correctly found the bundled
 `docker-compose.yml` at its real, relocated path
 (`/Applications/SeekerVerify.app/Contents/Frameworks/docker-compose.yml`

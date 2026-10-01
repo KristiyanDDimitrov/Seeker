@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
-from seeker.docker_setup import (
+from seeker.login_item import LoginItemStatus
+from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
+from seeker.models.library_location import LibraryLocation
+from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.playlist import Playlist
+from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
     SlskdWebLoginStatus,
@@ -32,11 +37,6 @@ from seeker.docker_setup import (
     check_slskd_web_login,
     is_non_loopback_http_url,
 )
-from seeker.login_item import LoginItemStatus
-from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
-from seeker.models.library_location import LibraryLocation
-from seeker.models.location_removal import LocationRemovalSummary
-from seeker.models.playlist import Playlist
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice

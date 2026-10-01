@@ -2,13 +2,13 @@ import threading
 
 from fakes import wait_for_workers
 from seeker.application import Application
-from seeker.docker_setup import (
+from seeker.models.slskd_start import SlskdStartResult
+from seeker.soulseek.docker_setup import (
     DockerState,
     SlskdBringUpError,
     SlskdHealthCheckResult,
     SlskdHealthStatus,
 )
-from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.ui.plain_text import plain_tooltip
 from seeker.ui.wizard import OnboardingWizard
@@ -31,7 +31,7 @@ def make_application(tmp_path, monkeypatch) -> Application:
     # No container: start_slskd reads the live /app mount, and a test
     # must never reach the real `docker inspect`.
     monkeypatch.setattr(
-        "seeker.sharing_service._get_live_container_mounts",
+        "seeker.soulseek.sharing_service._get_live_container_mounts",
         lambda container_name: {},
     )
     return Application()
@@ -925,7 +925,7 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
 def test_health_poll_timeout_shows_message_after_elapsed_threshold(
         qtbot, tmp_path, monkeypatch,
 ):
-    from seeker.docker_setup import SlskdHealthStatus
+    from seeker.soulseek.docker_setup import SlskdHealthStatus
     from seeker.ui.wizard import HEALTH_POLL_TIMEOUT_SECONDS
 
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")

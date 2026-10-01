@@ -43,7 +43,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.sharing_service import ShareStatus
+from seeker.soulseek.sharing_service import ShareStatus
 from seeker.ui import plain_text
 
 
@@ -367,7 +367,7 @@ class FakeSharingService:
         return self._uploads
 
     def preview_add_location(self, location):
-        from seeker.sharing_service import SharingPlan
+        from seeker.soulseek.sharing_service import SharingPlan
 
         return SharingPlan(
             location=location,
@@ -381,7 +381,7 @@ class FakeSharingService:
     def add_location_to_share(self, location, confirm: bool):
         self.add_location_to_share_calls.append((location, confirm))
 
-        from seeker.sharing_service import SharingApplyResult
+        from seeker.soulseek.sharing_service import SharingApplyResult
 
         return SharingApplyResult(
             location=location,

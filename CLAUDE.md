@@ -42,7 +42,8 @@ the build: `ui/`, `cli.py` and the entry points never import
 
 ## Current layout
 
-Regenerated against the real tree (S14) — Phase 6 (`ui/pages/*`) folded in.
+Regenerated against the real tree (S14); `audio/`, `files/` and the
+slskd moves into `soulseek/` folded in (S21).
 
 ```
 src/seeker/
@@ -61,7 +62,10 @@ src/seeker/
 │                              #   cascade, locked retry), placement.py
 │                              #   (locate/move/index a finished
 │                              #   download), review_service.py
-│                              #   (candidate + upgrade decisions)
+│                              #   (candidate + upgrade decisions),
+│                              #   docker_setup.py (Docker/slskd detection,
+│                              #   bring-up, health checks),
+│                              #   sharing_service.py (slskd shares)
 ├── library/                     # scanner.py, matcher.py, service.py,
 │                              #   metadata_service.py (writes Spotify tags/art),
 │                              #   duplicate_service.py (fingerprint clustering)
@@ -114,11 +118,9 @@ src/seeker/
 ├── errors.py                    # SeekerError root + errors >1 module raises
 ├── formatting.py                # format_file_size/format_timestamp/… —
 │                              #   pure, shared by cli.py and ui/
-├── dashboard_service.py, history_service.py, sharing_service.py
+├── dashboard_service.py, history_service.py
 ├── config_store.py              # SeekerConfig — the UI-editable JSON store;
 │                              #   .env/config.py is the fallback when unset
-├── docker_setup.py              # Docker/slskd detection, bring-up, health
-│                              #   checks — shared by wizard.py/settings_window.py
 ├── download_dedup.py, update_check.py, album_art_cache.py
 ├── files/                     # atomic.py — write_text_atomic() (mode
 │                              #   kept) and write_text_locked() (0600) for

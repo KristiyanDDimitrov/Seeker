@@ -24,7 +24,7 @@ class SeekerConfig:
     slskd_username: str | None = None
     slskd_password: str | None = None
     # The slskd WEB UI login — distinct from slskd_username/password
-    # above, despite the name (docker_setup.py documents this naming
+    # above, despite the name (soulseek/docker_setup.py documents this naming
     # trap). Generated once by Application.ensure_slskd_web_credentials()
     # and never rotated silently afterward. HISTORY §23, §116.
     slskd_web_username: str | None = None

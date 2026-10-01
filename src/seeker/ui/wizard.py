@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
-from seeker.docker_setup import (
+from seeker.models.library_location import LibraryLocation
+from seeker.models.slskd_start import SlskdStartResult
+from seeker.soulseek.docker_setup import (
     SLSKD_LOCAL_BASE_URL,
     DockerState,
     SlskdHealthCheckResult,
@@ -29,8 +31,6 @@ from seeker.docker_setup import (
     check_slskd_health,
     detect_docker_state,
 )
-from seeker.models.library_location import LibraryLocation
-from seeker.models.slskd_start import SlskdStartResult
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text
 from seeker.ui.library_location_picker import pick_and_add_library_location
@@ -342,7 +342,7 @@ class OnboardingWizard(QMainWindow):
         # Roadmap item 8 — the protocol itself can't distinguish "wrong
         # password on my own account" from "that username belongs to
         # someone else" (both converge on the identical INVALIDPASS
-        # rejection — confirmed live, see docker_setup.py's own
+        # rejection — confirmed live, see soulseek/docker_setup.py's own
         # BAD_CREDENTIALS_LOG_PATTERNS comment). Asking which one the
         # user is doing is the only way to give useful copy on a
         # rejection.

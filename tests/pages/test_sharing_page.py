@@ -51,7 +51,11 @@ def test_sharing_renders_the_default_fake_status_like_a_real_one(qtbot):
 
 
 def test_sharing_renders_reconciliation_and_uploads(qtbot):
-    from seeker.sharing_service import LocationShareState, ShareEntry, ShareStatus
+    from seeker.soulseek.sharing_service import (
+        LocationShareState,
+        ShareEntry,
+        ShareStatus,
+    )
 
     location = make_location(1, "Music", "/Volumes/Drive/Music")
     other = make_location(2, "Other", "/Volumes/Drive/Other")
@@ -101,7 +105,7 @@ def test_sharing_uploads_table_clears_stale_span_after_empty_state(qtbot):
     # span, so a transition from empty -> a real upload used to leave
     # the stale span active, visually swallowing the new row's
     # filename/state/progress cells into column 0.
-    from seeker.sharing_service import UploadStatus
+    from seeker.soulseek.sharing_service import UploadStatus
 
     application = FakeApplication()
     window = MainWindow(application)
@@ -125,10 +129,10 @@ def test_sharing_uploads_table_clears_stale_span_after_empty_state(qtbot):
 def test_sharing_add_to_share_button_calls_service_after_confirm(
         qtbot, monkeypatch,
 ):
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     location = make_location(2, "Other", "/Volumes/Drive/Other")
-    from seeker.sharing_service import ShareStatus
+    from seeker.soulseek.sharing_service import ShareStatus
 
     sharing_service = FakeSharingService(
         status=ShareStatus(
@@ -173,7 +177,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
     # status_label.setText("") at the top of every call, before the
     # user could ever read it. Now on sharing_notice (InlineNotice),
     # outside run_worker's status_label plumbing entirely.
-    from seeker.sharing_service import LocationShareState, ShareStatus
+    from seeker.soulseek.sharing_service import LocationShareState, ShareStatus
 
     location = make_location(2, "Other", "/Volumes/Drive/Other")
     sharing_service = FakeSharingService(
@@ -223,10 +227,10 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
 def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
         qtbot, monkeypatch,
 ):
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     location = make_location(2, "Other", "/Volumes/Drive/Other")
-    from seeker.sharing_service import ShareStatus
+    from seeker.soulseek.sharing_service import ShareStatus
 
     sharing_service = FakeSharingService(
         status=ShareStatus(

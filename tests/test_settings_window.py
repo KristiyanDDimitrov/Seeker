@@ -10,14 +10,14 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
-from seeker.docker_setup import (
+from seeker.login_item import LoginItemStatus
+from seeker.models.library_location import LibraryLocation
+from seeker.models.playlist import Playlist
+from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
     SlskdWebLoginStatus,
 )
-from seeker.login_item import LoginItemStatus
-from seeker.models.library_location import LibraryLocation
-from seeker.models.playlist import Playlist
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
@@ -874,7 +874,7 @@ def test_update_credentials_calls_bring_up_and_persists_on_success(
 
 def _fake_live_mounts(monkeypatch, mounts: dict[str, str]) -> None:
     monkeypatch.setattr(
-        "seeker.sharing_service._get_live_container_mounts",
+        "seeker.soulseek.sharing_service._get_live_container_mounts",
         lambda container_name: mounts,
     )
 

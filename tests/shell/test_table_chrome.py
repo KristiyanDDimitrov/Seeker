@@ -82,7 +82,7 @@ def test_every_actions_column_table_has_a_derived_floor_for_row_height_and_width
     # sizeHint().height() ("Replace"/"Decline" sliced off at the
     # bottom) — both derived from the real widget actually built this
     # render, never a magic number.
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     application = FakeApplication()
     window = MainWindow(application)
@@ -213,7 +213,7 @@ def test_no_table_column_clips_its_own_header_label_when_populated(qtbot):
     # C2.3/C2.4 — the same invariant must keep holding once real rows
     # (and real, possibly-narrow Actions widgets) exist, at both the
     # app's real 960x640 minimum and a default-sized window.
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     application = FakeApplication()
     window = MainWindow(application)
@@ -295,7 +295,7 @@ def test_stretch_columns_reach_the_viewport_edge_with_no_dead_band(qtbot):
     # both must hold at once, with zero rows and with real ones, at the
     # app's real 960x640 minimum and a default-sized window.
     from seeker.models.soulseek_file import SoulseekFile
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     application = FakeApplication()
     window = MainWindow(application)
@@ -439,7 +439,7 @@ def test_no_table_ever_hands_a_bare_progress_bar_or_button_to_setcellwidget(
     # a hand-picked list of tables — a fifth call site introduced
     # anywhere in the app fails this automatically.
     from seeker.models.soulseek_file import SoulseekFile
-    from seeker.sharing_service import LocationShareState
+    from seeker.soulseek.sharing_service import LocationShareState
 
     application = FakeApplication()
     window = MainWindow(application)

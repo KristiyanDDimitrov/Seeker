@@ -16,7 +16,8 @@ from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
 from seeker.models.library_location import LibraryLocation
-from seeker.sharing_service import (
+from seeker.soulseek.client import SlskdUnauthorizedError, SoulseekClient
+from seeker.soulseek.sharing_service import (
     ShareAlreadyExistsError,
     SharingService,
     SharingWriteNotAllowedError,
@@ -24,7 +25,6 @@ from seeker.sharing_service import (
     _insert_compose_volume_line,
     _insert_slskd_share_directory,
 )
-from seeker.soulseek.client import SlskdUnauthorizedError, SoulseekClient
 
 # A fully-populated config -- the real shape a completed wizard/Settings
 # run leaves in the store. Used as make_service's default so every

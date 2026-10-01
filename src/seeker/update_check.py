@@ -11,7 +11,7 @@ updates...", see ui/main_window.py). `check_for_update()` itself never
 raises — every real failure mode (network error, timeout, an
 unexpected/malformed response, an unparseable version tag) is caught
 and reported as UNAVAILABLE with a reason, the same "swallow into a
-status enum, don't raise" discipline `docker_setup.py::
+status enum, don't raise" discipline `soulseek/docker_setup.py::
 check_slskd_health`/`detect_docker_state` already established.
 """
 

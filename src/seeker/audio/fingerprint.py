@@ -102,7 +102,7 @@ def _candidate_search_dirs() -> list[Path]:
     dirs: list[Path] = []
 
     # A frozen PyInstaller build's own bundled-resource root — mirrors
-    # docker_setup.py::compose_template_path()'s already-established
+    # soulseek/docker_setup.py::compose_template_path()'s already-established
     # sys._MEIPASS pattern. Checked first so a bundled copy always
     # takes precedence once packaging actually bundles one (not done
     # as of this module's initial version — see CLAUDE.md item 5/38).

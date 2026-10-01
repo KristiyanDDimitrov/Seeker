@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from seeker.docker_setup import (
+from seeker.soulseek.docker_setup import (
     SLSKD_NETWORK_PASSWORD_ENV_VAR,
     SLSKD_NETWORK_USERNAME_ENV_VAR,
     SLSKD_WEB_PASSWORD_ENV_VAR,
@@ -97,7 +97,7 @@ def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(
     # without importing a UI module — same platformdirs directory the
     # DB/config store already live in.
     monkeypatch.setattr(
-        "seeker.docker_setup.platformdirs.user_data_dir",
+        "seeker.soulseek.docker_setup.platformdirs.user_data_dir",
         lambda appname, **kwargs: str(tmp_path),
     )
 
@@ -119,7 +119,7 @@ def test_compose_file_path_seeds_a_per_user_copy_outside_a_frozen_build(
     # edits go to the per-user copy, exactly as in a packaged build.
     data_dir = tmp_path / "data"
     monkeypatch.setattr(
-        "seeker.docker_setup.platformdirs.user_data_dir",
+        "seeker.soulseek.docker_setup.platformdirs.user_data_dir",
         lambda appname, **kwargs: str(data_dir),
     )
     monkeypatch.delattr("sys.frozen", raising=False)
@@ -149,7 +149,7 @@ def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
 
     data_dir = tmp_path / "data"
     monkeypatch.setattr(
-        "seeker.docker_setup.platformdirs.user_data_dir",
+        "seeker.soulseek.docker_setup.platformdirs.user_data_dir",
         lambda appname, **kwargs: str(data_dir),
     )
     monkeypatch.setattr("sys.frozen", True, raising=False)
@@ -178,7 +178,7 @@ def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
     canonical.write_text("services:\n  slskd:\n  # a real edited line\n")
 
     monkeypatch.setattr(
-        "seeker.docker_setup.platformdirs.user_data_dir",
+        "seeker.soulseek.docker_setup.platformdirs.user_data_dir",
         lambda appname, **kwargs: str(data_dir),
     )
     monkeypatch.setattr("sys.frozen", True, raising=False)

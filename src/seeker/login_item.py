@@ -13,7 +13,7 @@ rather than a real, user-manageable Login Items entry.
 identifier — a `uv run seeker-ui` dev process has none, so this is
 gated on `sys.frozen` (the same PyInstaller-bundle signal every other
 frozen-only code path in this project already keys on — see
-docker_setup.py's compose_template_path, tray.py's
+soulseek/docker_setup.py's compose_template_path, tray.py's
 _resolve_tray_icon_path) in addition to `sys.platform`. Confirmed live
 on a real Darwin 25.6.0 dev machine (unbundled `uv run python`):
 `SMAppService.mainAppService().status()` returns
@@ -54,7 +54,7 @@ def get_status() -> LoginItemStatus:
 
     # Deferred import — matches this project's established pattern for
     # its other genuine platform-only dependencies (tray.py's AppKit
-    # import inside _set_dock_icon_visible, docker_setup.py's
+    # import inside _set_dock_icon_visible, soulseek/docker_setup.py's
     # TokenStore-inside-_load_token).
     from ServiceManagement import (  # noqa: PLC0415
         SMAppService,

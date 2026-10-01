@@ -61,16 +61,16 @@ from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
-from seeker.docker_setup import (
-    SlskdBringUpError,
-    bring_up_slskd,
-    compose_file_path,
-)
 from seeker.errors import SeekerError
 from seeker.files.atomic import write_text_atomic
 from seeker.files.sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SoulseekClient
+from seeker.soulseek.docker_setup import (
+    SlskdBringUpError,
+    bring_up_slskd,
+    compose_file_path,
+)
 
 SLSKD_CONTAINER_NAME = "slskd"
 
