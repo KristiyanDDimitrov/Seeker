@@ -1,5 +1,6 @@
 import logging
 import sys
+from types import SimpleNamespace
 
 import platformdirs
 import pytest
@@ -68,3 +69,23 @@ def test_seeker_debug_poll_turns_on_the_poll_trace(
         main.main()
 
     assert poller.logger.level == level
+
+
+def test_a_command_runs_against_a_real_application_instance(
+        unwritable_data_dir, monkeypatch,
+):
+    # Application itself is replaced: constructing the real one opens
+    # the database, which the locked data directory forbids.
+    class RecordingMatcher:
+        match_all_calls = 0
+
+        def match_all(self):
+            self.match_all_calls += 1
+
+    application = SimpleNamespace(track_matcher=RecordingMatcher())
+    monkeypatch.setattr(main, "Application", lambda: application)
+    monkeypatch.setattr(sys, "argv", ["seeker", "library", "match"])
+
+    main.main()
+
+    assert application.track_matcher.match_all_calls == 1
