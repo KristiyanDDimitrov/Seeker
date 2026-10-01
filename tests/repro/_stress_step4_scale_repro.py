@@ -4,8 +4,8 @@ real production DB SCALE (a large `pending`/`locked` backlog) and the
 FULL concurrent-traffic combination (multiple simultaneous
 download_playlist() calls + real fingerprinting + the poll timer, all
 at once) — only reproduce the storm TOGETHER? Not a test module itself
-(leading underscore, matching tests/_workers_*_repro.py and
-tests/_stress_step3_no_locked_repro.py's convention).
+(leading underscore, matching tests/repro/_workers_*_repro.py and
+tests/repro/_stress_step3_no_locked_repro.py's convention).
 
 Fully isolated from production (monkeypatched platformdirs, throwaway
 data dir, fake cached Spotify token seeded up front — see Step 3's

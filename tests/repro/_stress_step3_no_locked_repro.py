@@ -1,7 +1,7 @@
 """Standalone repro script for roadmap item 63, Step 3 (2026-09-02): does
 over-frequent poll_downloads() cadence still happen with ZERO locked
 rows in the table? Not a test module itself (leading underscore,
-matching tests/_workers_*_repro.py's convention) — run directly as a
+matching tests/repro/_workers_*_repro.py's convention) — run directly as a
 subprocess, watched live.
 
 Isolated from production: monkeypatches platformdirs so Application()

@@ -38,10 +38,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-TESTS_DIR = Path(__file__).parent
-DEADLOCK_REPRO = TESTS_DIR / "_workers_deadlock_repro.py"
-CORRECTNESS_REPRO = TESTS_DIR / "_workers_correctness_repro.py"
-TEARDOWN_RACE_REPRO = TESTS_DIR / "_workers_teardown_race_repro.py"
+REPRO_DIR = Path(__file__).parent / "repro"
+DEADLOCK_REPRO = REPRO_DIR / "_workers_deadlock_repro.py"
+CORRECTNESS_REPRO = REPRO_DIR / "_workers_correctness_repro.py"
+TEARDOWN_RACE_REPRO = REPRO_DIR / "_workers_teardown_race_repro.py"
 
 # Matches the exact stress level confirmed live to hang the pre-fix
 # design 43/50 times (see module docstring) -- not tuned down for

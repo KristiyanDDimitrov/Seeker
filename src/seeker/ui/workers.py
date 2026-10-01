@@ -48,7 +48,7 @@ def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
     (item 41's original fix)?** That's check-then-act, and there is a
     real, non-zero gap between confirming validity and actually calling
     `.emit()` where teardown can land — proven live, not assumed
-    (`tests/_workers_teardown_race_repro.py`, which deterministically
+    (`tests/repro/_workers_teardown_race_repro.py`, which deterministically
     forces deletion to land in exactly that gap): the check-then-act
     version raised the same uncaught `RuntimeError` in every single
     forced trial, because the check happening to pass tells you nothing

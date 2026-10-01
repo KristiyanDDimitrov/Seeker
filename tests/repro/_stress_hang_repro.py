@@ -5,7 +5,7 @@ TEST=1` run of `tests/test_stress_e2e.py` hung for 1h37m+ at essentially
 0% CPU immediately after firing sync/scan/match + Compute Fingerprints
 concurrently and waiting for them to settle — the exact scenario this
 script isolates. Not a test module itself (leading underscore, matching
-tests/_workers_*_repro.py and tests/_stress_step3/4_*_repro.py's own
+tests/repro/_workers_*_repro.py and tests/repro/_stress_step3/4_*_repro.py's own
 convention).
 
 Isolated from production: monkeypatches platformdirs so Application()
