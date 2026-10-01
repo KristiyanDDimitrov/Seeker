@@ -17,7 +17,10 @@ nine fields below follow the contract in
   skipped`, no warnings.
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see the line appended below after the push.
+- **CI:** run `36835786591` on `37c5041` (the close-out commit):
+  success, `1551 passed, 29 skipped`, branch coverage 92.83 % (floor
+  89). It took ~25 min to be created after the push; GitHub was slow,
+  not the workflow.
 
 ## 2. Where we are
 
