@@ -179,11 +179,13 @@ src/seeker/
   near-zero on). [HISTORY §115](docs/history/108-120.md#115)
 - **CI enforces what a local run may not.** `uv sync --locked` (a
   `pyproject.toml` dependency change ships with its `uv.lock`); branch
-  coverage at or above 89 % (`--cov-fail-under`; CI measured 91.47 %);
+  coverage at or above 92 % (`--cov-fail-under`, set to the measured
+  value minus one; 93.79 % without the X9 Pro tests, which CI skips);
   actions SHA-pinned with a version comment, bumped by Dependabot.
   A ruff preview rule is selected by its exact code: under
   `explicit-preview-rules` a prefix such as `E30` selects none.
-  [HISTORY §149](docs/history/121-150.md#149)
+  [HISTORY §149](docs/history/121-150.md#149),
+  [§167](docs/history/151-180.md#167)
 - **`assert` in `src/` narrows types/logic invariants; it never
   validates user input or an external response** — `S101` is ignored
   project-wide on this basis, every real finding read individually. A

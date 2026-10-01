@@ -37,4 +37,4 @@ jobs:
       - run: uv run mypy --strict src/
       - run: >-
           uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
-          --cov-fail-under=89
+          --cov-fail-under=92
