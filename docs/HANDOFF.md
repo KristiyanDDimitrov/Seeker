@@ -10,63 +10,62 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S19 close-out commit (HISTORY §162, this handoff, the
-  plan tick). Tree clean apart from the untracked `Claude outputs/`.
+- **HEAD:** the S20 close-out commit (HISTORY §163, this handoff, the
+  plan tick, CLAUDE.md). Tree clean apart from the untracked
+  `Claude outputs/`.
 - **Local pytest** (2026-10-01): `1576 passed, 1 skipped`, no
-  warnings. X9 Pro mounted.
-- **`mypy --strict src/`:** clean, 123 files. **`ruff check src
-  tests`:** 0 findings (now including `SLF001`).
-- **CI:** run `36823511637` on `a503ad1` (the close-out commit): success.
+  warnings; 10 consecutive full runs at
+  `3b951a2`, all `1576 passed, 1 skipped`.
+- **`mypy --strict src/`:** clean, 125 files. **`ruff check src
+  tests`:** 0 findings.
+- **CI:** CI_SUMMARY
 
 ## 2. Where we are
 
-S1–S19 ticked. **Next: S20** (MainWindow II: extract the window
-lifecycle, BRIEF §20; split point after geometry and close move).
+S1–S20 ticked. **Next: S21** — **[ASK]** package regrouping (BRIEF
+§21). It needs Kris's explicit yes before any work; if the answer is
+no or not yet, S22 (Performance) can go first.
 
-## 3. Session report (S19)
+## 3. Session report (S20)
 
-Evidence for every line is in HISTORY §162.
-- `f68834b` §19.1: Dashboard flows → `DashboardPage`; `DashboardHost`
-  10 → 5 callables; flow tests → `tests/pages/test_dashboard_page.py`.
-- `c93baa6` §19.2: the shell calls only public page methods.
-- `184f558` §19.3: `SLF001` enforced over `src/` (46 → 0 in
-  `main_window.py`).
+Evidence for every line is in HISTORY §163.
+- `a3aaa11` §20.1: `WindowLifecycleController` (`ui/window_lifecycle.py`)
+  owns geometry, hide-to-tray, Dock icon, quit; MainWindow delegates.
+- `8e47efd` §20.2: `ThemeToggleButton` → `ui/widgets.py`.
+- `3b951a2` §20.3: `MainWindow.__init__` is 28 lines of named steps.
 
 ## 4. Key context
 
-- **For S20:** its tests are `tests/shell/test_window_lifecycle.py`
-  and `test_quit.py`. `TrayHost` still takes four `poll_*` lambdas
-  (deferred: the tray is built before the pages); now public calls,
-  a candidate to fold into one `refresh_pages` callable if S20 touches
-  it.
-- **`SLF001` is live in `src/`:** a shell or page reaching another
-  object's `_member` fails `ruff check`. Add a public method on the
-  owner instead; tests are exempt.
-- **Shell-facing page API** (HISTORY §162): Dashboard
-  `refresh_playlists`, `poll_selected_playlist`, `poll_next_step`,
-  `load_playlists`; Review `focus_track`, `poll_review_items`,
-  `needs_review_count`; Sharing `on_shown`, `poll_sharing`; Library
-  `tag_track`/`retag_track`/`tag_playlist`; `TrayController.has_icon`.
-- **Test layout:** `tests/fakes.py` (import `from fakes import …`),
-  `tests/pages/`, `tests/shell/` (backend poll now
-  `test_backend_poll.py`), `tests/repro/`. Basenames unique across
-  dirs. `wait_for_workers(window)` before asserting a click called
-  nothing.
-- Carried: radon D-or-worse in `src/` was 2 (not re-measured: radon is
-  not in the env); coverage margin ~2.7 points (floor 89). Never touch
-  slskd or real data.
+- **Lifecycle state lives on `window._lifecycle`** (tests:
+  `window._lifecycle._hidden_to_tray`, `._reopen_filled`,
+  `._hide_request_id`, `.confirm_quit_if_downloads_active`). Pages
+  still read it through `PageContext.is_hidden_to_tray`.
+- **Patch the Dock icon at `seeker.ui.window_lifecycle.
+  _set_dock_icon_visible`**; `main_window` no longer imports it (nor
+  `sys`). The quit log lines come from logger
+  `seeker.ui.window_lifecycle`.
+- **The tray reopens through `MainWindow.reopen()`;** `TrayHost` no
+  longer has `set_hidden_to_tray`/`bump_hide_request_id`/
+  `set_dock_icon_visible`. It still has the four `poll_*` lambdas (the
+  tray is built before the pages).
+- **`main_window.py` is 1,283 lines, not ~1,100:** 390 are comments.
+  S25 (comment hygiene `ui/`) closes the gap; `window_lifecycle.py`
+  carries the moved comments verbatim and is in S25's scope too.
+- Carried: radon not in the env (D-or-worse was 2); coverage margin
+  ~2.7 points (floor 89). Never touch slskd or real data.
 - **Shell:** zsh does not word-split `$var`; BSD `sed` lacks `\b`.
-  Slice moved code by AST ranges in a script (worked again here), then
-  `ruff check --fix` on just the touched files.
+  Slicing moved code by line range in a Python script, then `ruff check
+  --fix` on the touched files, worked again.
 
 ## 5. Decisions made
 
-- **`DashboardHost` shrinks, not disappears:** its five callables all
-  land on another page (Settings tab, Review focus, Library tagging).
-- **Flows live on the page itself**, not a `dashboard_actions.py`:
-  every one drives the page's own buttons and notices.
-- **`SLF001` enforced project-wide** (tests exempt), recorded in
-  CLAUDE.md → Conventions.
+- **Reopen moved from the tray to the lifecycle,** so one class writes
+  the hidden-to-tray state; recorded in CLAUDE.md (Qt section).
+- **`cleanup_before_quit` runs the shell's teardown first**
+  (`release_shell`), then the geometry backstop; the two settings
+  writes touch different keys (HISTORY §163).
+- **Comment text was not trimmed to hit the line target** (S25 owns
+  it).
 
 ## 6. Blockers
 
@@ -78,12 +77,17 @@ None.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** S21 package regrouping; S30 visual direction; S39
-bundle identifier; S42 publishing commands; X1 and X2 (optional).
+**Approval gates:** S21 package regrouping (next row); S30 visual
+direction; S39 bundle identifier; S42 publishing commands; X1 and X2
+(optional).
 
 **Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
 
 **Kris's decision (carried):** keep or discard `./slskd-data` (§140).
+
+**Run the stress test** — CLAUDE.md requires it after any lifecycle
+change, and S20 is one: `SEEKER_RUN_STRESS_TEST=1 uv run pytest
+tests/test_stress_e2e.py` (X9 Pro mounted, Spotify and slskd up).
 
 **Live checks:** S41's checklist, plus carried: S6 Refresh playlists;
 S7 drift Scan; S8 Reject-then-Scan, failure reason; S9 mistyped Client
@@ -91,9 +95,10 @@ ID → Cancel; S11 Scan summary, Docker-stopped Download, Qt warning in
 `seeker.log`, app menu "Seeker"; S12 slskd-stopped outage; S14
 one-failing-track Download notice, Tag and Fix cover art summaries;
 S15 `seeker downloads review`; S17 Review Confirm/Reject/Replace and a
-locked download retrying (`SEEKER_DEBUG_POLL=1`). The stress test
-(`SEEKER_RUN_STRESS_TEST=1`) now imports `fakes`; worth running with
-S20's lifecycle move.
+locked download retrying (`SEEKER_DEBUG_POLL=1`). New for S20: close
+to tray → reopen from the tray and from the Dock; fullscreen close →
+reopen (comes back filled); quit with a download running (the
+confirmation); "start hidden".
 
 ## 9. Open questions
 
@@ -105,7 +110,8 @@ S20's lifecycle move.
   `test_remove_location_cancelled_removes_nothing` (negative after a
   bare wait; wait on completion or `wait_for_workers`).
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
-  wait (port 8888 and the token lock held up to 300 s). S20?
+  wait (port 8888 and the token lock held up to 300 s). Not lifecycle
+  in S20's sense; still unowned.
 - Late-worker defect: `_handle_task_finished` raises on a button
   destroyed mid-task (§148 addendum); logged at CRITICAL since §11.3.
 - Settings shows results and rejections on status labels, not notices,

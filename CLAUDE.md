@@ -67,8 +67,8 @@ src/seeker/
 │                              #   duplicate_service.py (fingerprint clustering),
 │                              #   audio_quality.py (a local file's quality)
 ├── ui/                          # seeker-ui (PySide6)
-│   ├── main_window.py           #   shell only, post-Phase-6: sidebar nav,
-│   │                          #   timers, tray wiring (2,042 lines)
+│   ├── main_window.py           #   shell only: sidebar nav, menus, timers,
+│   │                          #   Qt event overrides (1,283 lines)
 │   ├── pages/                    #   PageContext (context.py) is the seam —
 │   │                          #   dashboard_page.py, tagging_panel.py,
 │   │                          #   search_page.py, downloads_page.py,
@@ -78,8 +78,11 @@ src/seeker/
 │   ├── dialogs.py                 #   About, Destination, RenamePreview,
 │   │                          #   BulkReplaceUpgrades, BulkResolveDuplicates
 │   ├── tray.py                     #   tray icon, menu, notifications
+│   ├── window_lifecycle.py         #   geometry, hide-to-tray, Dock icon,
+│   │                          #   quit (WindowLifecycleController)
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
+│       widgets.py (ThemeToggleButton),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -473,8 +476,9 @@ Each links to the HISTORY entry where the full investigation lives;
   fresh `app.quit()` from inside the filter to "confirm and retry" —
   confirmed live this exits the process silently without `aboutToQuit`
   ever running, skipping all cleanup. `MainWindow.eventFilter`
-  (`ui/main_window.py`) is the reference implementation — reusable for
-  any future "confirm before a real quit" need.
+  (`ui/main_window.py`, deciding through `WindowLifecycleController`)
+  is the reference implementation — reusable for any future "confirm
+  before a real quit" need.
   [HISTORY §124](docs/history/121-150.md#124)
 - PySide6 reports an exception raised in a slot through
   `sys.excepthook` (observed live). pytest-qt swaps in its own hook
@@ -496,6 +500,15 @@ Each links to the HISTORY entry where the full investigation lives;
   otherwise formed is invisible to Python's GC (the Qt/shiboken side
   isn't visible to the tracer), and a manual `disconnect()` from inside
   its own handler mid-emission segfaults. [HISTORY §32](docs/history/032-046.md#32)
+- **The window lifecycle is `WindowLifecycleController`'s alone**
+  (`ui/window_lifecycle.py`): geometry, `_hidden_to_tray`,
+  `_hide_request_id`, `_reopen_filled`, the Dock-icon calls, the quit
+  confirmation and `cleanup_before_quit`. `MainWindow` keeps only what
+  a QObject must own (`closeEvent`, `showEvent`, the QApplication
+  `eventFilter`, the `applicationStateChanged` slot) and delegates;
+  the tray reopens through `MainWindow.reopen()`. A test patching the
+  Dock icon patches `window_lifecycle._set_dock_icon_visible`.
+  [HISTORY §163](docs/history/151-180.md#163)
 - `WA_DeleteOnClose` on a top-level window must be cleared the moment a
   real tray icon exists, or the first close after that deletes the
   window's C++ object and "reopen from tray" breaks permanently.
@@ -512,7 +525,8 @@ Each links to the HISTORY entry where the full investigation lives;
   in-flight runnable, confirmed live via an isolated probe: `quit()`
   itself always returns instantly, but the enclosing process stays
   alive exactly as long as the slowest running task takes once nothing
-  else holds a reference to the pool. `cleanup_before_quit` logs this
+  else holds a reference to the pool. `cleanup_before_quit`
+  (`WindowLifecycleController`, logger `seeker.ui.window_lifecycle`) logs this
   pool's active/max thread count at entry and its own elapsed time at
   exit, specifically to localize a future recurrence of the
   unreproduced "not responding" quit hang. [HISTORY
