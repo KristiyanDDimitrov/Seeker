@@ -4,7 +4,6 @@ from typing import Any
 
 import librosa
 import numpy as np
-import scipy.stats
 
 # Krumhansl-Schmuckler key profiles — standard, well-established empirical
 # pitch-class weightings for major/minor tonality perception. Index 0 is
@@ -72,6 +71,10 @@ def analyze_audio(
     # runtime. HISTORY §11.
     prior: Any = None
     if expected_bpm_range is not None:
+        # Deferred: scipy.stats cost ~280 of ~360 ms of `import
+        # seeker.cli`, for this optional prior alone. HISTORY §166.
+        import scipy.stats  # noqa: PLC0415
+
         low, high = expected_bpm_range
         prior = scipy.stats.uniform(low, high - low)
 

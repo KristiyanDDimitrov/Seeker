@@ -1,7 +1,10 @@
-"""What keeps the polls cheap at production library size (HISTORY
-§165): default reads leave fingerprints out, and the Dashboard reads
-only one playlist's rows."""
+"""What keeps the polls and startup cheap at production library size
+(HISTORY §165, §166): default reads leave fingerprints out, the
+Dashboard reads only one playlist's rows, lookups use indexes, and
+startup leaves scipy.stats unimported."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -148,3 +151,18 @@ def test_lookups_by_a_foreign_key_or_status_use_an_index(
 
     assert f"USING INDEX {index}" in plan
     assert "TEMP B-TREE" not in plan
+
+
+@pytest.mark.parametrize("module", ["seeker.cli", "seeker.main_ui"])
+def test_starting_up_does_not_import_scipy_stats(module):
+    # ~280 ms of a ~360 ms CLI start, only for the optional BPM prior
+    # (HISTORY §165, §166). A fresh interpreter: this one already has it.
+    script = (
+        f"import sys, {module}; print('scipy.stats' in sys.modules)"
+    )
+    result = subprocess.run(  # noqa: S603 — the parametrized module names
+        [sys.executable, "-c", script],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+
+    assert result.stdout.strip() == "False"
