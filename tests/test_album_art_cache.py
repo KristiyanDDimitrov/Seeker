@@ -1,3 +1,5 @@
+import shutil
+
 from seeker.album_art_cache import AlbumArtCache
 
 
@@ -67,3 +69,21 @@ def test_default_cache_dir_is_under_platformdirs_user_cache_not_data():
 
     assert "Seeker" in str(path)
     assert "album_art" in str(path)
+
+
+def test_memory_keeps_only_the_most_recently_used_entries(tmp_path):
+    # The cache lives as long as the app; the disk keeps the rest.
+    cache = AlbumArtCache(tmp_path / "art")
+    urls = [
+        f"https://i.scdn.co/image/{index}"
+        for index in range(AlbumArtCache.MEMORY_ENTRIES + 1)
+    ]
+    for url in urls[:-1]:
+        cache.put(url, url.encode(), "image/jpeg")
+    cache.get(urls[0])  # used again, so urls[1] is now the oldest
+    cache.put(urls[-1], b"last", "image/jpeg")
+    shutil.rmtree(tmp_path / "art")
+
+    assert cache.get(urls[1]) is None
+    assert cache.get(urls[0]) == (urls[0].encode(), "image/jpeg")
+    assert cache.get(urls[-1]) == (b"last", "image/jpeg")

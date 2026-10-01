@@ -1,6 +1,8 @@
 import hashlib
 import json
 import logging
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import platformdirs
@@ -24,8 +26,9 @@ class AlbumArtCache:
     (item 9), and the fetch itself goes to Spotify's CDN, not the Web
     API.
 
-    Two layers: an in-memory dict (covers "the duration of a tagging
-    run" even with no disk access) backed by an on-disk cache under the
+    Two layers: an in-memory LRU of the last `MEMORY_ENTRIES` images
+    (covers a tagging run's repeats with no disk access; it lives as
+    long as the app, so it is bounded) backed by an on-disk cache under the
     platformdirs user CACHE directory — deliberately not the user DATA
     directory (see `application.py`'s `platformdirs.user_data_dir`
     calls for that one): this is disposable, safe to clear at any time,
@@ -35,13 +38,20 @@ class AlbumArtCache:
     logic needed.
     """
 
+    MEMORY_ENTRIES = 64
+
     def __init__(self, cache_dir: Path | None = None):
         self.cache_dir = cache_dir or default_cache_dir()
-        self._memory: dict[str, tuple[bytes, str]] = {}
+        self._memory: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+        # Tagging runs on worker threads, and two can overlap.
+        self._memory_lock = threading.Lock()
 
     def get(self, url: str) -> tuple[bytes, str] | None:
-        if url in self._memory:
-            return self._memory[url]
+        with self._memory_lock:
+            cached = self._memory.get(url)
+            if cached is not None:
+                self._memory.move_to_end(url)
+                return cached
 
         key = self._key_for(url)
         data_path = self.cache_dir / f"{key}.bin"
@@ -60,12 +70,12 @@ class AlbumArtCache:
             return None
 
         result = (image_bytes, mime_type)
-        self._memory[url] = result
+        self._remember(url, result)
 
         return result
 
     def put(self, url: str, image_bytes: bytes, mime_type: str) -> None:
-        self._memory[url] = (image_bytes, mime_type)
+        self._remember(url, (image_bytes, mime_type))
 
         key = self._key_for(url)
 
@@ -83,6 +93,13 @@ class AlbumArtCache:
                 "Failed to write album art cache entry for %s", url,
                 exc_info=True,
             )
+
+    def _remember(self, url: str, entry: tuple[bytes, str]) -> None:
+        with self._memory_lock:
+            self._memory[url] = entry
+            self._memory.move_to_end(url)
+            while len(self._memory) > self.MEMORY_ENTRIES:
+                self._memory.popitem(last=False)
 
     @staticmethod
     def _key_for(url: str) -> str:
