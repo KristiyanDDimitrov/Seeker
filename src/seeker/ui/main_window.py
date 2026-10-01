@@ -31,7 +31,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -45,16 +44,11 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.models.download_request import DownloadStatus
-from seeker.models.download_result import PlaylistDownloadResult
-from seeker.models.library_location import LibraryLocation
-from seeker.models.library_result import MatchResult, ScanAndMatchResult
-from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
-    DestinationDialog,
 )
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.dashboard_page import (
@@ -696,18 +690,25 @@ class MainWindow(QMainWindow):
         self._dashboard_page = DashboardPage(
             page_context,
             DashboardHost(
-                on_download_clicked=self._on_download_clicked,
-                on_sync_clicked=self._on_sync_clicked,
-                on_scan_clicked=self._on_scan_clicked,
-                on_match_clicked=self._on_match_clicked,
-                on_sync_tracks_clicked=self._on_sync_tracks_clicked,
                 open_settings=self._on_settings_clicked,
                 navigate_to_review=lambda track_id: self._show_page(
                     "review", focus_track_id=track_id,
                 ),
-                on_tag_track_clicked=self._on_tag_track_clicked,
-                on_retag_track_clicked=self._on_retag_track_clicked,
-                on_tag_playlist_clicked=self._on_tag_playlist_clicked,
+                # Lambdas, not bound methods: the Library page is built
+                # after this one, so the lookup has to wait for a click.
+                tag_track=lambda track_id, button, feedback: (
+                    self._library_page._tagging_panel._on_tag_track_clicked(
+                        track_id, button, feedback=feedback,
+                    )
+                ),
+                retag_track=lambda track_id, feedback: (
+                    self._library_page._tagging_panel._on_retag_track_clicked(
+                        track_id, feedback=feedback,
+                    )
+                ),
+                tag_playlist=lambda feedback: (  # noqa: PLW0108
+                    self._library_page._tagging_panel._tag_playlist(feedback)
+                ),
             ),
         )
         self._register_page("dashboard", self._dashboard_page)
@@ -1253,7 +1254,11 @@ class MainWindow(QMainWindow):
 
         refresh_action = QAction("Refresh", self)
         refresh_action.setShortcut(QKeySequence("Ctrl+R"))
-        refresh_action.triggered.connect(self._on_sync_clicked)
+        # The pages are built after the menus, so the lookup waits for
+        # the shortcut.
+        refresh_action.triggered.connect(
+            lambda _checked=False: self._dashboard_page.refresh_playlists()
+        )
         view_menu.addAction(refresh_action)
 
         focus_search_action = QAction("Focus Search", self)
@@ -1509,304 +1514,6 @@ class MainWindow(QMainWindow):
                  self._on_activity_progress(key, stage, current, total))
                 if reports_progress else None
             ),
-        )
-
-    def _on_sync_clicked(self) -> None:
-        self._run_busy_worker(
-            "sync", self._dashboard_page.sync_button,
-            self.application.sync_service.refresh_playlists,
-            on_finished=self._on_sync_finished,
-            on_error=self._dashboard_page.feedback.show_error,
-            reports_progress=True,
-        )
-
-    def _on_sync_finished(self, result: PlaylistRefreshResult) -> None:
-        self._dashboard_page._load_playlists()
-        self._dashboard_page.feedback.show_outcome(
-            help_text.format_playlist_refresh_message(result),
-            kind="warning" if result.local_files_skipped else "success",
-        )
-
-    def _on_scan_clicked(self) -> None:
-        # scan_and_match() chains scan_all() + match_all() into one
-        # background call (roadmap item 56) — a plain scan used to leave
-        # newly-found files with no track_matches row at all until a
-        # separate, non-obvious "Re-match library" click. run_worker()'s
-        # single dispatcher gives no safe way to push a genuine live
-        # "now matching..." update partway through one background call
-        # (see ui/workers.py's own docstring on why a per-task signal was
-        # deliberately removed) — this sets an immediate placeholder
-        # instead, replaced by the real combined result once the whole
-        # call finishes.
-        self._run_busy_worker(
-            "scan", self._dashboard_page.scan_button,
-            self.application.library_service.scan_and_match,
-            busy_text="Scanning…",
-            on_finished=self._on_scan_and_match_finished,
-            on_error=self._dashboard_page.feedback.show_error,
-        )
-        self._dashboard_page.feedback.show_progress(
-            "Scanning library, then matching tracks…"
-        )
-
-    def _on_scan_and_match_finished(self, result: ScanAndMatchResult) -> None:
-        scan, match = result.scan, result.match
-        self._dashboard_page.feedback.show_outcome(
-            f"Scanned: {scan.added} added, {scan.updated} "
-            f"updated, {scan.removed} removed. "
-            f"Matched: {match.auto} auto, "
-            f"{match.needs_review} needs review, "
-            f"{match.unmatched} unmatched.",
-            kind="success",
-        )
-        self._dashboard_page._poll_selected_playlist()
-
-    def _on_match_clicked(self) -> None:
-        self._run_busy_worker(
-            "match", self._dashboard_page.match_button,
-            self.application.track_matcher.match_all,
-            on_finished=self._on_match_finished,
-            on_error=self._dashboard_page.feedback.show_error,
-        )
-
-    def _on_match_finished(self, result: MatchResult) -> None:
-        self._dashboard_page.feedback.show_outcome(
-            f"Matched: {result.auto} auto, "
-            f"{result.needs_review} needs review, "
-            f"{result.unmatched} unmatched.",
-            kind="success",
-        )
-        self._dashboard_page._poll_selected_playlist()
-
-    def _set_download_button_busy(self) -> None:
-        # Idempotent (BusyActionRegistry.begin() no-ops if already
-        # running) — safe to call again at every hop of the download
-        # chain below, matching this method's own pre-registry behavior.
-        self.busy_actions.begin(
-            "download", self._dashboard_page.download_button, "Starting download…",
-        )
-        self._render_activity_strip()
-
-    def _reset_download_button(self) -> None:
-        self.busy_actions.end("download")
-        self._render_activity_strip()
-
-    def _on_download_clicked(self) -> None:
-        if self._dashboard_page.selected_playlist is None:
-            self._dashboard_page.dashboard_notice.show_message(
-                "Select a playlist first.", kind="warning",
-            )
-            return
-
-        playlist = self._dashboard_page.selected_playlist
-        playlist_name = playlist.name
-
-        # Roadmap item 56 Phase 5.1 — the button previously gave no
-        # feedback at all that anything had started, across this
-        # entire multi-step chain (resolvability check, maybe a
-        # destination dialog, then the real download). Disabled +
-        # relabeled here and re-asserted at the top of every
-        # continuation below (run_worker's own success-path
-        # `button.setEnabled(True)` would otherwise flip it back on
-        # between hops) so it never reads "enabled but says Starting
-        # download…" at any point in the chain; reset on every real
-        # exit path (cancelled dialog, no locations, real completion,
-        # or a genuine error via on_error).
-        self._set_download_button_busy()
-
-        # Roadmap item 65 (Phase 3.2) — a playlist with its OWN
-        # destination already set (`playlist.download_location_id`,
-        # already loaded on the Playlist itself — no extra query needed)
-        # always skips straight to the real download; the prompt below
-        # is only for a playlist that would otherwise silently fall
-        # through to the configured default (roadmap item 6 §3's own
-        # earlier fallback), so the user gets to see and confirm — or
-        # change — where it's actually going, once per playlist.
-        if playlist.download_location_id is not None:
-            self._start_download(playlist_name)
-            return
-
-        # Fetches both the real current fallback (to pre-fill the
-        # dialog with the exact path it would already use — shares
-        # DownloadPlacement.resolve_destination with the real move step
-        # via get_resolved_destination, so this can never drift into a
-        # second, different notion of "resolvable") and every registered
-        # location (for the picker), in one round trip.
-        run_worker(
-            self.thread_pool,
-            lambda: (
-                self.application.download_service
-                .get_resolved_destination(playlist_name),
-                self.application.library_service.list_locations(),
-            ),
-            on_finished=lambda result: self._open_destination_dialog(
-                playlist_name, result[1], result[0],
-            ),
-            on_error=self._on_download_error,
-        )
-
-    def _open_destination_dialog(
-            self,
-            playlist_name: str,
-            locations: list[tuple[LibraryLocation, bool]],
-            resolved: tuple[LibraryLocation, str | None] | None = None,
-    ) -> None:
-        if not locations:
-            self._reset_download_button()
-            self._dashboard_page.dashboard_notice.show_message(
-                help_text.NO_LOCATIONS_FOR_DESTINATION_DIALOG,
-                kind="warning",
-            )
-            return
-
-        location_objects = [location for location, _ in locations]
-
-        # Roadmap item 65 (Phase 3.2) — when the real fallback already
-        # resolves (`resolved` given), pre-fill with exactly what it
-        # would use: that location, and its real subfolder (already
-        # sanitized by resolve_destination — never re-sanitized here).
-        # Falls back to the app-wide configured default (item 6 §3's
-        # original behavior) only when nothing resolved at all.
-        if resolved is not None:
-            prefill_location, prefill_subfolder = resolved
-            default_location_id: int | None = prefill_location.id
-        else:
-            prefill_subfolder = None
-            default_location_id = (
-                self.application.settings.default_download_location_id
-            )
-
-        dialog = DestinationDialog(
-            self, playlist_name, location_objects, default_location_id,
-            initial_subfolder=prefill_subfolder,
-        )
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            self._reset_download_button()
-            return
-
-        location_id = dialog.selected_location_id()
-
-        if location_id is None:
-            self._reset_download_button()
-            return
-
-        subfolder = dialog.selected_subfolder()
-        remember_for_playlist = dialog.remember_for_playlist()
-
-        def do_persist() -> None:
-            if remember_for_playlist:
-                location = next(
-                    loc for loc in location_objects if loc.id == location_id
-                )
-                self.application.download_service.set_destination(
-                    playlist_name, location.name, subfolder,
-                )
-            else:
-                # Not remembered specifically for this playlist — the
-                # only other real destination concept is the app-wide
-                # default (roadmap item 6 §1), so this becomes that.
-                # Deliberately always True for the subfolder-per-
-                # playlist toggle here: the field was prefilled with
-                # the playlist's own name, so treating this choice as
-                # "per playlist" matches what was actually shown,
-                # even if the text was hand-edited to something else
-                # for this one confirmation.
-                self.application.persist_default_destination(
-                    location_id, True,
-                )
-
-        self._set_download_button_busy()
-
-        run_worker(
-            self.thread_pool,
-            do_persist,
-            on_finished=lambda _: self._start_download(playlist_name),
-            on_error=self._on_download_error,
-        )
-
-    def _start_download(self, playlist_name: str) -> None:
-        self._set_download_button_busy()
-
-        run_worker(
-            self.thread_pool,
-            lambda: self.application.download_service.download_playlist(
-                playlist_name
-            ),
-            on_finished=self._on_download_finished,
-            on_error=self._on_download_error,
-        )
-
-    def _on_download_error(self, message: str) -> None:
-        self._reset_download_button()
-        self._dashboard_page.feedback.show_error(message)
-
-    def _on_download_finished(self, result: PlaylistDownloadResult) -> None:
-        self._reset_download_button()
-        self._dashboard_page._poll_selected_playlist()
-
-        message = help_text.format_download_result_message(result)
-        if result.failures:
-            kind = "warning"
-        elif result.requested:
-            kind = "success"
-        else:
-            kind = "info"
-        self._dashboard_page.feedback.show_outcome(message, kind=kind)
-
-    def _on_sync_tracks_clicked(self) -> None:
-        if self._dashboard_page.selected_playlist is None:
-            return
-
-        playlist = self._dashboard_page.selected_playlist
-
-        def do_sync() -> TrackSyncResult:
-            return self.application.sync_service.sync_playlist_tracks(
-                playlist,
-            )
-
-        def on_finished(result: TrackSyncResult) -> None:
-            self._dashboard_page._poll_selected_playlist()
-
-            if result.local_files_skipped:
-                self._dashboard_page.dashboard_notice.show_message(
-                    help_text.format_skipped_local_files_notice(
-                        playlist.name, result.local_files_skipped,
-                    ),
-                    kind="warning",
-                )
-
-        self._run_busy_worker(
-            "sync_tracks", self._dashboard_page.sync_tracks_button, do_sync,
-            on_finished=on_finished,
-            on_error=self._dashboard_page.feedback.show_error,
-        )
-
-    # Round 8 §12.6 — Dashboard's own track-table row actions (a Tag
-    # button, the context menu's Re-tag) and its "next step" CTA's own
-    # tag_playlist action all reach TaggingPanel through DashboardHost,
-    # now that it lives on the Library page rather than on Dashboard
-    # itself. Thin bound-method wrappers, not lambdas passed directly
-    # at DashboardHost construction time, because self._library_page
-    # doesn't exist yet at that point (ruff PLW0108 flags the
-    # equivalent lambda as an unnecessary wrapper around a call that
-    # LOOKS resolvable now but isn't).
-    #
-    # Each passes the Dashboard's own feedback target: the outcome of an
-    # action started here belongs on this page, not on Library's.
-    def _on_tag_track_clicked(self, track_id: str, button: QPushButton) -> None:
-        self._library_page._tagging_panel._on_tag_track_clicked(
-            track_id, button, feedback=self._dashboard_page.feedback,
-        )
-
-    def _on_retag_track_clicked(self, track_id: str) -> None:
-        self._library_page._tagging_panel._on_retag_track_clicked(
-            track_id, feedback=self._dashboard_page.feedback,
-        )
-
-    def _on_tag_playlist_clicked(self) -> None:
-        self._library_page._tagging_panel._tag_playlist(
-            self._dashboard_page.feedback,
         )
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
