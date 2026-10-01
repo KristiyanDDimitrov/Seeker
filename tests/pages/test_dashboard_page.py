@@ -773,8 +773,7 @@ def test_tag_button_appears_only_for_in_library_tracks(qtbot):
             b.text() for b in in_library_actions.findChildren(QPushButton)
     ] == ["Tag"]
 
-    not_found_actions = window._dashboard_page.track_table.cellWidget(1, 3)
-    assert not_found_actions.findChildren(QPushButton) == []
+    assert window._dashboard_page.track_table.cellWidget(1, 3) is None
 
 
 def test_tagged_track_shows_muted_label_instead_of_tag_button(qtbot):
@@ -1658,3 +1657,111 @@ def test_double_click_after_sorting_the_track_table_navigates_to_the_right_row(
     qtbot.waitUntil(
         lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
     )
+
+
+# --- Re-render cost on the 2-second poll (HISTORY §166) ---------------------
+
+
+_PROBE_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+def _downloading(bytes_transferred: int, total_bytes: int = 1_000):
+    return TrackStatus(
+        track=make_track("t1"), state=DOWNLOADING,
+        bytes_transferred=bytes_transferred, total_bytes=total_bytes,
+    )
+
+
+def test_an_unchanged_poll_leaves_the_rows_alone(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=IN_LIBRARY)],
+    )
+    page.track_table.item(0, 0).setData(_PROBE_ROLE, "first render")
+
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=IN_LIBRARY)],
+    )
+
+    assert page.track_table.item(0, 0).data(_PROBE_ROLE) == "first render"
+
+
+def test_a_progress_only_poll_updates_the_bar_in_place(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    page._render_track_statuses([_downloading(500)])
+    page.track_table.item(0, 0).setData(_PROBE_ROLE, "first render")
+
+    page._render_track_statuses([_downloading(750, total_bytes=1_500)])
+
+    assert page.track_table.item(0, 0).data(_PROBE_ROLE) == "first render"
+    bar = page.track_table.cellWidget(0, 2).findChild(QProgressBar)
+    assert (bar.value(), bar.maximum()) == (750, 1_500)
+    assert page.track_table.item(0, 2).sort_key == 0.5
+
+
+def test_a_state_change_rebuilds_the_row(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    page._render_track_statuses([_downloading(500)])
+
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=IN_LIBRARY)],
+    )
+
+    assert page.track_table.item(0, 1).text() == "In library"
+    assert page.track_table.cellWidget(0, 2) is None
+    assert page.track_table.cellWidget(0, 3).findChildren(QPushButton)
+
+
+def test_a_theme_change_recolors_the_review_link(qtbot, monkeypatch):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    statuses = [make_track_status(track_id="t1", state=NEEDS_REVIEW)]
+    page._render_track_statuses(statuses)
+    monkeypatch.setattr(theme, "ACCENT", "#123456")
+
+    page._render_track_statuses(statuses)
+
+    assert page.track_table.item(0, 1).foreground().color().name() == (
+        "#123456"
+    )
+
+
+def test_a_row_with_nothing_to_show_has_no_cell_widgets(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=NOT_FOUND)],
+    )
+
+    assert page.track_table.cellWidget(0, 2) is None
+    assert page.track_table.cellWidget(0, 3) is None
+
+
+def test_a_progress_only_poll_re_sorts_a_table_sorted_by_progress(qtbot):
+    def downloading(track_id: str, bytes_transferred: int) -> TrackStatus:
+        return TrackStatus(
+            track=make_track(track_id), state=DOWNLOADING,
+            bytes_transferred=bytes_transferred, total_bytes=1_000,
+        )
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    page._render_track_statuses([downloading("a", 100), downloading("b", 900)])
+    page.track_table.sortItems(2, Qt.SortOrder.AscendingOrder)
+
+    page._render_track_statuses([downloading("a", 950), downloading("b", 900)])
+
+    assert [
+        page.track_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        for row in range(2)
+    ] == ["b", "a"]

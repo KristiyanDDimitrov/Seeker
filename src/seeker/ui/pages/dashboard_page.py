@@ -15,7 +15,7 @@ the Library page's TaggingPanel.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
@@ -85,6 +85,46 @@ _STATE_LABELS = {
 _TRACK_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
 )
+
+
+# The accent color baked into the rows, and the visible statuses.
+_RenderedRows = tuple[str, tuple[TrackStatus, ...]]
+
+
+def _has_progress_bar(status: TrackStatus) -> bool:
+    return (
+        status.state == DOWNLOADING
+        and bool(status.total_bytes)
+        and status.bytes_transferred is not None
+    )
+
+
+def _row_layout(status: TrackStatus) -> tuple[TrackStatus, bool]:
+    """A row's status apart from the progress that updates in place,
+    and whether it has a bar to update."""
+    if status.state != DOWNLOADING:
+        return status, False
+
+    return (
+        replace(status, bytes_transferred=None, total_bytes=None),
+        _has_progress_bar(status),
+    )
+
+
+def _differ_only_in_progress(
+        previous: _RenderedRows, current: _RenderedRows,
+) -> bool:
+    previous_accent, previous_rows = previous
+    current_accent, current_rows = current
+
+    return (
+        previous_accent == current_accent
+        and len(previous_rows) == len(current_rows)
+        and all(
+            _row_layout(old) == _row_layout(new)
+            for old, new in zip(previous_rows, current_rows, strict=True)
+        )
+    )
 
 
 @dataclass
@@ -268,6 +308,9 @@ class DashboardPage(QWidget):
         # row-position handler reads instead.
         self._current_track_statuses: list[TrackStatus] = []
         self._track_status_by_id: dict[str, TrackStatus] = {}
+        # What the table's rows were last built from, so a poll tick
+        # that changes nothing (or only progress) skips the rebuild.
+        self._rendered_track_rows: _RenderedRows | None = None
         # Round 8 §12.8 — which segment of _build_track_filter_row is
         # active; "all" shows every status, matching the table's
         # original unfiltered behavior.
@@ -530,13 +573,13 @@ class DashboardPage(QWidget):
             self._selected_track_ids()
         )
 
-    def _build_track_actions(self, status: TrackStatus) -> QWidget:
+    def _build_track_actions(self, status: TrackStatus) -> QWidget | None:
         # No button at all outside IN_LIBRARY — tag_tracks would just
         # report skipped_no_match for anything else, so there's nothing
         # real to offer here (same "blank cell, not a misleading
         # control" precedent as the Downloads tab's progress bars).
         if status.state != IN_LIBRARY:
-            return QWidget()
+            return None
 
         track_id = status.track.id
 
@@ -732,6 +775,7 @@ class DashboardPage(QWidget):
     def _render_no_playlist_selected(self) -> None:
         self._current_track_statuses = []
         self._track_status_by_id = {}
+        self._rendered_track_rows = None
         self.track_table.setRowCount(0)
         self.track_empty_label.setText(
             "Pick a playlist on the left to see its tracks."
@@ -761,6 +805,7 @@ class DashboardPage(QWidget):
         statuses = self._current_track_statuses
 
         if not statuses:
+            self._rendered_track_rows = None
             self.track_table.setRowCount(0)
             playlist_name = (
                 self.selected_playlist.name
@@ -787,6 +832,7 @@ class DashboardPage(QWidget):
             # A real, distinct empty state from "tracks haven't been
             # loaded yet" above — tracks exist, none match the current
             # filter, so no Load-tracks button belongs here.
+            self._rendered_track_rows = None
             self.track_table.setRowCount(0)
             self.track_empty_label.setText(
                 "No tracks match this filter."
@@ -797,6 +843,24 @@ class DashboardPage(QWidget):
 
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
+        # theme.ACCENT is baked into the review-link items, so a theme
+        # switch must rebuild even when the statuses are unchanged.
+        rendered: _RenderedRows = (theme.ACCENT, tuple(visible))
+        previous = self._rendered_track_rows
+
+        if rendered == previous:
+            return
+
+        if previous is not None and _differ_only_in_progress(
+                previous, rendered,
+        ):
+            self._update_progress_in_place()
+        else:
+            self._rebuild_track_rows(visible)
+
+        self._rendered_track_rows = rendered
+
+    def _rebuild_track_rows(self, visible: list[TrackStatus]) -> None:
         # Round 8 §12.2 — sorting is live on this table; disabled for
         # the body of this rebuild (see preserving_sort_order's own
         # docstring for why) and restored afterward.
@@ -847,11 +911,12 @@ class DashboardPage(QWidget):
 
                 self.track_table.setItem(row, 1, status_item)
 
-                if (
-                        status.state == DOWNLOADING
-                        and status.total_bytes
+                if _has_progress_bar(status):
+                    # _has_progress_bar's own conditions, for mypy.
+                    assert (
+                        status.total_bytes
                         and status.bytes_transferred is not None
-                ):
+                    )
                     progress = QProgressBar()
                     progress.setMaximum(status.total_bytes)
                     progress.setValue(status.bytes_transferred)
@@ -876,7 +941,7 @@ class DashboardPage(QWidget):
                         row, 2, SortKeyItem("", fraction),
                     )
                 else:
-                    self.track_table.setCellWidget(row, 2, QWidget())
+                    self.track_table.removeCellWidget(row, 2)
                     # No active transfer — sorts below every real
                     # fraction-complete value (§5.1; SortKeyItem forbids
                     # None as a sort key).
@@ -885,10 +950,40 @@ class DashboardPage(QWidget):
                     )
 
                 track_actions = self._build_track_actions(status)
-                action_widgets.append(track_actions)
-                self.track_table.setCellWidget(row, 3, track_actions)
+                if track_actions is None:
+                    self.track_table.removeCellWidget(row, 3)
+                else:
+                    action_widgets.append(track_actions)
+                    self.track_table.setCellWidget(row, 3, track_actions)
 
         self._size_track_columns(action_widgets)
+
+    def _update_progress_in_place(self) -> None:
+        with preserving_sort_order(self.track_table):
+            for row in range(self.track_table.rowCount()):
+                status = self._track_status_at_row(row)
+                if status is None or not _has_progress_bar(status):
+                    continue
+                # _has_progress_bar's own conditions, for mypy.
+                assert (
+                    status.total_bytes
+                    and status.bytes_transferred is not None
+                )
+                container = self.track_table.cellWidget(row, 2)
+                # The rebuild gave every progress row its bar, and a
+                # progress-only change keeps each row's bar or no-bar.
+                assert container is not None
+                bar = container.findChild(QProgressBar)
+                assert bar is not None
+                bar.setMaximum(status.total_bytes)
+                bar.setValue(status.bytes_transferred)
+                # The key in place: a setItem here costs ~2.4 ms a row
+                # (HISTORY §166). preserving_sort_order re-sorts by it.
+                sort_item = self.track_table.item(row, 2)
+                assert isinstance(sort_item, SortKeyItem)
+                sort_item.sort_key = (
+                    status.bytes_transferred / status.total_bytes
+                )
 
     def _configure_track_columns(self) -> None:
         theme.configure_columns(self.track_table, _TRACK_COLUMNS)
