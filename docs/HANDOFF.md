@@ -18,7 +18,10 @@ nine fields below follow the contract in
   `3b951a2`, all `1576 passed, 1 skipped`.
 - **`mypy --strict src/`:** clean, 125 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** CI_SUMMARY
+- **CI:** run `36828786017` on `dc0e052` (the close-out commit):
+  success, `1548 passed, 29 skipped`, branch coverage 92.80 % (floor
+  89). No failures, so the fullscreen-close pair and
+  `test_view_menu_focus_search_…` (not skip-gated) passed.
 
 ## 2. Where we are
 
@@ -52,7 +55,7 @@ Evidence for every line is in HISTORY §163.
   S25 (comment hygiene `ui/`) closes the gap; `window_lifecycle.py`
   carries the moved comments verbatim and is in S25's scope too.
 - Carried: radon not in the env (D-or-worse was 2); coverage margin
-  ~2.7 points (floor 89). Never touch slskd or real data.
+  ~3.8 points (CI 92.80 %, floor 89). Never touch slskd or real data.
 - **Shell:** zsh does not word-split `$var`; BSD `sed` lacks `\b`.
   Slicing moved code by line range in a Python script, then `ruff check
   --fix` on the touched files, worked again.
