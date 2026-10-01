@@ -104,9 +104,6 @@ def _read_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
                 offset += 2
                 continue
 
-            if offset + 4 > length:
-                return None
-
             segment_length = struct.unpack(
                 ">H", image_bytes[offset + 2:offset + 4]
             )[0]
