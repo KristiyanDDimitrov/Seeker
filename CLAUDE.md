@@ -35,6 +35,11 @@ the dashboard's playlist-scoped track status was a real gap in the
 service layer, not something to assemble ad hoc from Qt code by calling
 multiple repositories directly.
 
+`tests/test_layering.py` sweeps every import in `src/seeker/` and fails
+the build: `ui/`, `cli.py` and the entry points never import
+`seeker.database`; `cli.py` never imports `seeker.ui`; only `ui/` and
+`main_ui.py` import Qt; `models/` imports only `models/`.
+
 ## Current layout
 
 Regenerated against the real tree (S14) — Phase 6 (`ui/pages/*`) folded in.
