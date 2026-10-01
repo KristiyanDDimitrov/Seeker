@@ -244,3 +244,4 @@ under their entry and live in the same file, after it.
 - §159 — Round 11 S17 part 1 (§17.1, §17.2): placement and review leave `download_service.py` → [151-180.md#159](151-180.md#159)
 - §160 — Round 11 S17 part 2 (§17.3, the line ceiling): named retry steps; polling moves to `soulseek/poller.py` → [151-180.md#160](151-180.md#160)
 - §161 — Round 11 S18 (§18.1–§18.6): `tests/fakes.py`, `tests/repro/`, the smoke file split by concern, a layering test, no warnings, vacuous asserts → [151-180.md#161](151-180.md#161)
+- §162 — Round 11 S19 (§19.1–§19.3): Dashboard flows move to `DashboardPage`; the shell calls only public page methods; `SLF001` enforced → [151-180.md#162](151-180.md#162)

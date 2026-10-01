@@ -10,65 +10,63 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S18 close-out commit (HISTORY §161, this handoff,
-  CLAUDE.md). Tree clean apart from the untracked `Claude outputs/`.
-- **Local pytest** (2026-10-01): `1576 passed, 1 skipped` — no
-  warnings now (was 9). X9 Pro mounted.
+- **HEAD:** the S19 close-out commit (HISTORY §162, this handoff, the
+  plan tick). Tree clean apart from the untracked `Claude outputs/`.
+- **Local pytest** (2026-10-01): `1576 passed, 1 skipped`, no
+  warnings. X9 Pro mounted.
 - **`mypy --strict src/`:** clean, 123 files. **`ruff check src
-  tests`:** 0 findings.
-- **CI:** run `36821028629` on `314f137` (the close-out commit):
-  success.
+  tests`:** 0 findings (now including `SLF001`).
+- **CI:** see the push recorded below.
 
 ## 2. Where we are
 
-S1–S18 ticked. **Next: S19** (MainWindow I: Dashboard flows move to
-DashboardPage, BRIEF §19; split point after the sync, scan and match
-flows move).
+S1–S19 ticked. **Next: S20** (MainWindow II: extract the window
+lifecycle, BRIEF §20; split point after geometry and close move).
 
-## 3. Session report (S18)
+## 3. Session report (S19)
 
-Evidence for every line is in HISTORY §161.
-- `d9c179b` §18.1: fakes and shared builders → `tests/fakes.py`.
-- `fb84686` §18.1: `FakeSharingService`'s default is a real `ShareStatus`.
-- `7f7a49a` §18.2: six repro scripts → `tests/repro/`, names kept.
-- `3712928` §18.2: step-4 repro's `sys.path` follows the move.
-- `837a042` §18.3: `test_ui_smoke.py` split by concern (154 tests,
-  names identical).
-- `0a74582` §18.4: `tests/test_layering.py`.
-- `3552077` §18.5: synthetic WAVs analyse without warnings.
-- `bbe6bf4` §18.6: seven vacuous or racy asserts fixed, incl. the CI flake.
+Evidence for every line is in HISTORY §162.
+- `f68834b` §19.1: Dashboard flows → `DashboardPage`; `DashboardHost`
+  10 → 5 callables; flow tests → `tests/pages/test_dashboard_page.py`.
+- `c93baa6` §19.2: the shell calls only public page methods.
+- `184f558` §19.3: `SLF001` enforced over `src/` (46 → 0 in
+  `main_window.py`).
 
 ## 4. Key context
 
-- **For S19:** the Dashboard-flow tests it moves are all in
-  `tests/shell/test_dashboard_flows.py` (scan, download, destination
-  dialog, result notices, backend-poll refresh, double-click to
-  Review); move them to `tests/pages/test_dashboard_page.py` with the
-  code. **For S20:** `tests/shell/test_window_lifecycle.py` and
-  `test_quit.py`.
-- **Test layout:** `tests/fakes.py` (import as `from fakes import …`;
-  builders have no leading underscore: `make_track`, `make_location`,
-  `confirm_yes`, `force_tray_available`, `wait_for_workers`),
-  `tests/pages/`, `tests/shell/`, `tests/repro/`. **Basenames must be
-  unique across test dirs** (no `__init__.py`: "import file mismatch",
-  reproduced). CLAUDE.md → Testing.
-- **`wait_for_workers(window)`** before asserting a click called
-  nothing: `waitForDone` with no event processing. Where a stray worker
-  would end in a modal (`plain_text.information`), stub it too, or the
-  regression hangs instead of failing (seen: SIGALRM).
-- Carried: radon D-or-worse in `src/` is 2; `poll_downloads` C (19).
-  Coverage margin ~2.7 points (floor 89). Never touch slskd or real data.
-- **Shell:** zsh does not word-split `$var`; BSD `sed` lacks `\b`/`\|`.
-  Slice moved code by AST ranges in a script, then `ruff check --fix`
-  on just the new files; never on `docs/screenshots/generate.py`
-  (unlinted; it rewrites its imports).
+- **For S20:** its tests are `tests/shell/test_window_lifecycle.py`
+  and `test_quit.py`. `TrayHost` still takes four `poll_*` lambdas
+  (deferred: the tray is built before the pages); now public calls,
+  a candidate to fold into one `refresh_pages` callable if S20 touches
+  it.
+- **`SLF001` is live in `src/`:** a shell or page reaching another
+  object's `_member` fails `ruff check`. Add a public method on the
+  owner instead; tests are exempt.
+- **Shell-facing page API** (HISTORY §162): Dashboard
+  `refresh_playlists`, `poll_selected_playlist`, `poll_next_step`,
+  `load_playlists`; Review `focus_track`, `poll_review_items`,
+  `needs_review_count`; Sharing `on_shown`, `poll_sharing`; Library
+  `tag_track`/`retag_track`/`tag_playlist`; `TrayController.has_icon`.
+- **Test layout:** `tests/fakes.py` (import `from fakes import …`),
+  `tests/pages/`, `tests/shell/` (backend poll now
+  `test_backend_poll.py`), `tests/repro/`. Basenames unique across
+  dirs. `wait_for_workers(window)` before asserting a click called
+  nothing.
+- Carried: radon D-or-worse in `src/` was 2 (not re-measured: radon is
+  not in the env); coverage margin ~2.7 points (floor 89). Never touch
+  slskd or real data.
+- **Shell:** zsh does not word-split `$var`; BSD `sed` lacks `\b`.
+  Slice moved code by AST ranges in a script (worked again here), then
+  `ruff check --fix` on just the touched files.
 
 ## 5. Decisions made
 
-- **The smoke file is gone, not slimmed:** what isn't the shell went
-  top-level (`test_workers.py`, `test_ui_source_sweeps.py`).
-- **Brief divergence (§18.5):** "long enough" alone cannot clear the
-  tuning warning; the fix is length *and* a tone. Recorded in §161.
+- **`DashboardHost` shrinks, not disappears:** its five callables all
+  land on another page (Settings tab, Review focus, Library tagging).
+- **Flows live on the page itself**, not a `dashboard_actions.py`:
+  every one drives the page's own buttons and notices.
+- **`SLF001` enforced project-wide** (tests exempt), recorded in
+  CLAUDE.md → Conventions.
 
 ## 6. Blockers
 
@@ -76,8 +74,7 @@ None.
 
 ## 7. Files in progress
 
-None. §18.6 stopped at the budget with three candidates read but not
-fixed (Open questions).
+None.
 
 ## 8. Waiting on Kris
 
