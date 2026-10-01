@@ -19,7 +19,9 @@ nine fields below follow the contract in
   tests`:** 0 findings.
 - **Coverage:** 93.79 % branch, measured as CI runs (X9 Pro tests
   deselected). CI floor now 92 %.
-- **CI:** see the push note at the end of this section.
+- **CI:** run `36843176493` (close-out) failed one test, CI-only
+  (offscreen screen size, see §4); coverage there 94.10 %. Fixed in
+  `791fb6c`; the run for this push is noted below.
 
 ## 2. Where we are
 
@@ -29,17 +31,15 @@ split point after the services half).
 ## 3. Session report (S23)
 
 Evidence for every line, with before/after tables, is in HISTORY §167.
-- `39392b8` §23.1: tag tests on generated MP3/FLAC/AIFF/WAV plus the
-  committed `tests/fixtures/silent.m4a` (862 B); `tags.py` 100 % on CI.
-- `9582a8f` §23.1: an unreachable bounds check removed (refactor).
-- `d4d084d` §23.2: CLI subcommands' happy/error paths; cli.py 96 %.
-- `d379add` §23.3: `main_ui` log file, hooks, `main()` paths; 100 %.
-- `6ab9307` §23.4: Review splitter quit/relaunch round trip (3 tests).
+- `39392b8`, `9582a8f` §23.1: generated-file tag tests plus
+  `tests/fixtures/silent.m4a`; `tags.py` 100 % on CI.
+- `d4d084d` §23.2 CLI (96 %); `d379add` §23.3 entry points (100 %);
+  `6ab9307` §23.4 Review splitter round trip.
 - `cf8bfd1` §23.6: FLAC key written to `INITIALKEY` and `KEY`.
 - `8f73b4d` §23.6: a tag save that outgrows the padding goes through
   `files.atomic.rewrite_via_copy`.
-- `9523d38` the three §18.6 leftover tests wait on completion.
-- `9a2b873` `UploadEtaTracker` tests (55 → 100 %).
+- `9523d38` §18.6 leftovers wait on completion; `9a2b873`
+  `UploadEtaTracker` tests (55 → 100 %).
 - `d31e132` §23.5: `--cov-fail-under` 89 → 92.
 
 ## 4. Key context
@@ -52,12 +52,14 @@ Evidence for every line, with before/after tables, is in HISTORY §167.
 - **The first save of an untagged file is a resizing save** (padding
   −39 to −84 bytes), so it takes the copy path, as does the first
   cover embed. Later text/analysis re-saves stay in place.
+- **Local pytest uses Cocoa, CI offscreen (800×800 screen).**
+  Reproduce a CI-only UI failure with `QT_QPA_PLATFORM=offscreen`
+  first (now in CLAUDE.md). The open focus-search CI flake may be the
+  same class; untested.
 - **CI-equivalent coverage:** `pytest -p no_x9` with a 7-line
   `pytest_collection_modifyitems` plugin that deselects items whose
   `skipif` reason mentions x9-pro (§167). Local runs with the drive
   mounted overstate CI by up to a few points per module.
-- `find_close_playlist_matches` uses edit distance, `len // 4`: a
-  transposition counts as two edits.
 - Carried: radon not in the env. Never touch slskd or real data. zsh
   does not word-split `$var`; BSD `sed` lacks `\b`.
 
@@ -69,13 +71,10 @@ Evidence for every line, with before/after tables, is in HISTORY §167.
 - **Copy only on a resizing save, not on every save:** copying a
   50 MB WAV for a text tag that fits the padding is wasted I/O on an
   external drive; the padding callback makes the distinction exact.
-- **The X9 Pro tag tests stay** beside the generated-file ones: they
-  are the only coverage of real files' existing tags.
-- **Floor 92, not 92.79:** measured minus one, rounded down to an
-  integer like the previous floor.
-- **Added `upload_eta` tests and the §18.6 leftovers in this row:**
-  the first is in §23's gap table; the handoff named S23 as the
-  leftovers' home.
+- **The X9 Pro tag tests stay:** the only coverage of real files'
+  existing tags. **Floor 92, not 92.79:** rounded down, as before.
+- **`upload_eta` and the §18.6 leftovers joined this row:** the first
+  is in §23's gap table; the last handoff named S23 for the second.
 
 ## 6. Blockers
 

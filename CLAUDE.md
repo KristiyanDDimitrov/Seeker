@@ -630,6 +630,12 @@ Each links to the HISTORY entry where the full investigation lives;
   `__init__.py`, so **a test file's basename must be unique across
   all of them** — a duplicate fails collection with "import file
   mismatch" (reproduced). [HISTORY §161](docs/history/151-180.md#161)
+- **Local pytest runs on Cocoa; CI runs `QT_QPA_PLATFORM=offscreen`,
+  whose screen is 800×800.** A UI test that passes locally and fails
+  on CI is reproduced first with `QT_QPA_PLATFORM=offscreen uv run
+  pytest <test>`; a window bigger than 800×800 is fitted to the
+  screen when Qt restores its geometry.
+  [HISTORY §167](docs/history/151-180.md#167)
 - **Why one test always skips, and why that is correct:**
   `tests/test_stress_e2e.py` is gated by `requires_stress_opt_in` on
   `SEEKER_RUN_STRESS_TEST != "1"` — it drives the real Spotify/slskd/
