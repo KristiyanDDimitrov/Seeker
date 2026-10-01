@@ -21,7 +21,8 @@ nine fields below follow the contract in
   deselected). CI floor now 92 %.
 - **CI:** run `36843176493` (close-out) failed one test, CI-only
   (offscreen screen size, see §4); coverage there 94.10 %. Fixed in
-  `791fb6c`; the run for this push is noted below.
+  `791fb6c`. Run `36843985049` (at `ea0ff01`): **success**, `1653
+  passed, 29 skipped`, coverage 94.12 % (floor 92 %).
 
 ## 2. Where we are
 
