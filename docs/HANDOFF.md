@@ -16,7 +16,8 @@ nine fields below follow the contract in
   warnings now (was 9). X9 Pro mounted.
 - **`mypy --strict src/`:** clean, 123 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** pending for the close-out push; see the follow-up commit.
+- **CI:** run `36821028629` on `314f137` (the close-out commit):
+  success.
 
 ## 2. Where we are
 
