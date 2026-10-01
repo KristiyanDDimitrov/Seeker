@@ -590,6 +590,14 @@ Each links to the HISTORY entry where the full investigation lives;
   from inside its own `itemSelectionChanged`); defer with
   `QTimer.singleShot(0, ...)`, as `_on_shared_selection_changed`
   does. [HISTORY §134](docs/history/121-150.md#134)
+- **The Dashboard's track table rebuilds only when what its rows were
+  built from changes** (`_RenderedRows`: the visible statuses plus
+  `theme.ACCENT`); a progress-only change updates bars and sort keys
+  in place. Anything new a row bakes in at build time (a color, a
+  setting) must join that key, or a change to it never reaches the
+  table. `QTableWidget.setItem` measured ~2.4 ms a call at 500 rows —
+  mutate an existing item on a hot path. [HISTORY
+  §166](docs/history/151-180.md#166)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it
@@ -724,7 +732,8 @@ Genuinely open only — no "done" items, no flakes that resolved.
   real DB size/content are the untested suspects. A concrete lead
   (UNVERIFIED): until S22 the Dashboard's 2-second poll and the
   20-second history poll each read all ~32 MB of fingerprint text on
-  a worker thread; S41's stress run tests it.
+  a worker thread, and the Dashboard rebuilt every track row on the
+  main thread each tick (§166); S41's stress run tests it.
   [HISTORY §70](docs/history/047-071.md#70),
   [§165](docs/history/151-180.md#165)
 - **Item 125 — a real "not responding" quit hang, reported once,

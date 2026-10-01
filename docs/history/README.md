@@ -248,3 +248,4 @@ under their entry and live in the same file, after it.
 - §163 — Round 11 S20 (§20.1–§20.3): the window lifecycle leaves `MainWindow` (`WindowLifecycleController`); the theme toggle to `ui/widgets.py`; `__init__` as named steps → [151-180.md#163](151-180.md#163)
 - §164 — Round 11 S21 (§21): package regrouping — `audio/`, `files/`, slskd's Docker and sharing code into `soulseek/` → [151-180.md#164](151-180.md#164)
 - §165 — Round 11 S22 part 1 (§22.1–§22.2): default `local_files` reads leave fingerprints out; the Dashboard poll reads one playlist's rows (28 ms → 0.24 ms) → [151-180.md#165](151-180.md#165)
+- §166 — Round 11 S22 part 2 (§22.3–§22.6): four indexes; the history poll reads only tagged files (42 → 1.8 ms); lazy `scipy.stats` (CLI import 360 → 75 ms); a 64-entry art-cache LRU; the Dashboard skips unchanged re-renders (131 → 0.2 ms at 500 tracks) → [151-180.md#166](151-180.md#166)

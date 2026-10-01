@@ -10,70 +10,61 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S22 part 1 close-out commit (HISTORY §165, this
-  handoff, the plan note). Tree clean apart from the untracked
+- **HEAD:** the S22 close-out commit (HISTORY §166, this handoff, the
+  plan tick, CLAUDE.md). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-10-01, at `3f4bb33`): `1579 passed, 1
+- **Local pytest** (2026-10-01, at `c96418f`): `1593 passed, 1
   skipped`, no warnings.
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36835786591` on `37c5041` (the close-out commit):
-  success, `1551 passed, 29 skipped`, branch coverage 92.83 % (floor
-  89). It took ~25 min to be created after the push; GitHub was slow,
-  not the workflow.
+- **CI:** see the push note at the end of this section.
 
 ## 2. Where we are
 
-S1–S21 ticked; **S22 part 1 done** (§22.1–§22.2, the row's named split
-point; the session hit its budget). **Next: S22 part 2** — §22.3
-(indexes), §22.4 (lazy `scipy.stats`), §22.5 (art-cache LRU), §22.6
-(Dashboard re-render). Then S23.
+S1–S22 ticked (S22 part 2: §22.3–§22.6 plus the history poll). **Next:
+S23 — test gaps** (§23; split point after §23.1, `metadata.py`).
 
-## 3. Session report (S22 part 1)
+## 3. Session report (S22 part 2)
 
-Evidence for every line, with the before/after table, is in HISTORY §165.
-- `516ed57` §22.1: default `local_files` reads leave fingerprints out;
-  `get_all_for_location_with_fingerprints` for `duplicate_service`.
-- `3f4bb33` §22.2: the Dashboard poll reads one playlist's rows
-  (`get_all_for_playlist` ×3, `get_matched_in_playlist`): 28.0 ms /
-  40.5 MB → 0.24 ms / 0.03 MB.
+Evidence for every line, with before/after tables, is in HISTORY §166.
+- `b72b650` §22.3: four indexes in `SCHEMA`; `EXPLAIN QUERY PLAN`
+  test.
+- `8a2d65f` history poll: `LocalFileRepository.get_tagged`; 42.2 ms /
+  7.25 MB → 1.83 ms / 0.10 MB, identical events.
+- `99f0ac6` §22.4: lazy `scipy.stats`; `import seeker.cli` ~363 →
+  ~77 ms, `seeker.main_ui` ~558 → ~188 ms.
+- `00db2c7` §22.5: `AlbumArtCache` memory is a 64-entry LRU, locked.
+- `c96418f` §22.6: Dashboard skips unchanged renders; progress updates
+  in place; no blank cell widgets. 500 tracks: 131 → 0.2 ms
+  (unchanged), 4.9 ms (progress-only).
 
 ## 4. Key context
 
-- **Measure with §165's pasted `bench_poll.py`** on a fresh
-  `sqlite3 -readonly … ".backup <scratchpad>/copy.db"` each run
-  (`initialize()` migrates the copy). The before numbers for §22.3 (the
-  `EXPLAIN QUERY PLAN` output) and §22.4 (import times) are already in
-  §165 — measure only the after.
-- **§22.3 test shape, written and run red this session, then dropped
-  to keep the tree clean:** a parametrized test in
-  `tests/test_performance.py` running `EXPLAIN QUERY PLAN` on a fresh
-  `Database` and asserting `USING INDEX idx_<table>_<cols>` and no
-  `TEMP B-TREE`, for the four lookups (`playlist_tracks` one without
-  its `ORDER BY p.name`, which always sorts). All four indexed columns
-  are base columns, so `CREATE INDEX IF NOT EXISTS` in `SCHEMA` is safe
-  on an old DB (it runs before `_migrate`; no migration rebuilds a
-  table).
-- **History is now the expensive poll:** `get_recent_events` (every
-  20 s, even hidden) is an N+1, one `get_by_local_file_id` per local
-  file — 6,921 queries, 49 ms. §22.3's `track_matches(local_file_id)`
-  index helps; only files with `tagged_at` need the lookup. Not in the
-  brief's list: decide in part 2 whether it is §22.3's measurement or
-  its own commit.
-- **A light `LocalFile` has `fingerprint is None`** whether or not one
-  was computed (commented on the model). A test asserting a fingerprint
-  must read through the fingerprint variant, or it passes vacuously.
+- **`QTableWidget.setItem` costs ~2.4 ms a call** at 500 rows (cProfile,
+  offscreen). Any hot-path table update should mutate existing items.
+  The S27–S35 table rows will touch this.
+- **Anything a Dashboard row bakes in must join `_RenderedRows`**
+  (now in CLAUDE.md). The visual refresh (S31–S34) changes colors: a
+  new baked color left out of the key will not repaint on a theme
+  switch. `test_a_theme_change_recolors_the_review_link` guards the
+  accent.
+- Benchmarks: §165's `bench_poll.py`; §166 describes the render
+  script. The §27.0 harness does not exist yet.
 - Carried: radon not in the env; coverage margin ~3.8 points. Never
   touch slskd or real data. zsh does not word-split `$var`; BSD `sed`
   lacks `\b`.
 
 ## 5. Decisions made
 
-- **No whole-table `get_all_with_fingerprints`** (the brief named it):
-  nothing would call it. Only the per-location variant exists.
-- **§22.2 is four scoped queries, not one join:** four model types out
-  of one join would need its own row decoder; each query goes through
-  `playlist_tracks` and stays in its own repository.
+- **The history poll fix is its own commit, not §22.3's measurement:**
+  indexes alone saved only 6.5 of 49 ms; the cost was reading every
+  file to find 27 tagged ones.
+- **§22.6 compares whole `TrackStatus`es, not the brief's (id, state,
+  progress) signature:** the actions cell also depends on `tagged_at`,
+  and the status text on `soulseek_candidate`; dataclass equality is
+  ~3 ms at 500 rows and cannot miss a field.
+- **The in-place sort key is mutated, not replaced** (`setItem`
+  cost); a test checks the re-sort.
 
 ## 6. Blockers
 
@@ -81,8 +72,7 @@ None.
 
 ## 7. Files in progress
 
-None committed half-done; the split point is clean. Part 2 starts
-§22.3 from scratch (see Key context).
+None.
 
 ## 8. Waiting on Kris
 
@@ -122,6 +112,8 @@ confirmation); "start hidden".
   in S20's sense; still unowned.
 - Late-worker defect: `_handle_task_finished` raises on a button
   destroyed mid-task (§148 addendum); logged at CRITICAL since §11.3.
+  Rarer since §166, still reachable when a Dashboard row's state
+  changes while its Tag task runs (the row rebuilds).
 - Settings shows results and rejections on status labels, not notices,
   as does Duplicates' `_render_fingerprint_result`: S28/S29.
 - CLI (carried): print `download`'s failure reasons; catch
@@ -129,7 +121,8 @@ confirmation); "start hidden".
   one-by-one upgrade review skips `printable()` (§156).
 - `DownloadPoller._activate_shortlisted_entry`: if slskd dies between
   `request_download` and `get_download_status`, the transfer id is
-  never recorded; the next cascade re-requests it. S22 part 2 or X1?
+  never recorded; the next cascade re-requests it. Not performance, so
+  not S22; X1 is the natural home.
 
 ---
 

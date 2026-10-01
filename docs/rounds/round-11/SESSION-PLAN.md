@@ -57,7 +57,7 @@ explicit yes.
 | ☑ S20 | MainWindow II: extract the window lifecycle | §20 | ~130 K | After geometry and close move; hide-to-tray can follow |
 | ☑ S21 | **[ASK]** Package regrouping | §21 | ~120 K | After the first package |
 | **Phase G — Performance and tests** | | | | |
-| ☐ S22 | Performance — **part 1 done** (§22.1–§22.2, HISTORY §165); part 2: §22.3–§22.6 | §22 | ~120 K | After §22.1–§22.2 (the poll) |
+| ☑ S22 | Performance (part 1 §22.1–§22.2, HISTORY §165; part 2 §22.3–§22.6, HISTORY §166) | §22 | ~120 K | After §22.1–§22.2 (the poll) |
 | ☐ S23 | Test gaps | §23 | ~120 K | After §23.1 (`metadata.py`) |
 | **Phase H — Hygiene** | | | | |
 | ☐ S24 | Comment and config hygiene: core | §24 | ~130 K | After the services half |
