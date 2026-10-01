@@ -125,7 +125,9 @@ src/seeker/
 ├── files/                     # atomic.py — write_text_atomic() (mode
 │                              #   kept) and write_text_locked() (0600) for
 │                              #   credential files and Sharing's
-│                              #   slskd.yml/Compose edits; deletion.py,
+│                              #   slskd.yml/Compose edits;
+│                              #   rewrite_via_copy() for tag saves;
+│                              #   deletion.py,
 │                              #   placement.py (resolve_collision),
 │                              #   sanitize.py, naming.py
 │                              #   (build_track_filename)
@@ -202,6 +204,13 @@ src/seeker/
   0600 from `os.open(O_EXCL)` (never chmod'd after the write), fsync'd,
   then renamed; never a bare `write_text()`.
   [HISTORY §116](docs/history/108-120.md#116), [§146](docs/history/121-150.md#146)
+- **A tag write is saved by `audio/tags.py::save_tags()`, never
+  mutagen's own `save()`.** Tags that fit the padding save in place;
+  tags that outgrow it go through `files/atomic.py::rewrite_via_copy()`,
+  because mutagen grows a tag by shifting the audio in place and a
+  crash mid-shift corrupts MP3, FLAC and faststart M4A (measured).
+  A FLAC key goes to both `INITIALKEY` and `KEY`.
+  [HISTORY §167](docs/history/151-180.md#167)
 - **`.env` is read only by an entry point.** `config.py`'s values are
   functions over `os.environ`, read at call time; `main()` in `main.py`
   and `main_ui.py` calls `config.load_env_file()` (working directory

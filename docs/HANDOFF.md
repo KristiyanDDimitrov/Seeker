@@ -10,61 +10,72 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S22 close-out commit (HISTORY §166, this handoff, the
+- **HEAD:** the S23 close-out commit (HISTORY §167, this handoff, the
   plan tick, CLAUDE.md). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-10-01, at `c96418f`): `1593 passed, 1
+- **Local pytest** (2026-10-01, at `d31e132`): `1681 passed, 1
   skipped`, no warnings.
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
+- **Coverage:** 93.79 % branch, measured as CI runs (X9 Pro tests
+  deselected). CI floor now 92 %.
 - **CI:** see the push note at the end of this section.
 
 ## 2. Where we are
 
-S1–S22 ticked (S22 part 2: §22.3–§22.6 plus the history poll). **Next:
-S23 — test gaps** (§23; split point after §23.1, `metadata.py`).
+S1–S23 ticked. **Next: S24 — comment and config hygiene: core** (§24;
+split point after the services half).
 
-## 3. Session report (S22 part 2)
+## 3. Session report (S23)
 
-Evidence for every line, with before/after tables, is in HISTORY §166.
-- `b72b650` §22.3: four indexes in `SCHEMA`; `EXPLAIN QUERY PLAN`
-  test.
-- `8a2d65f` history poll: `LocalFileRepository.get_tagged`; 42.2 ms /
-  7.25 MB → 1.83 ms / 0.10 MB, identical events.
-- `99f0ac6` §22.4: lazy `scipy.stats`; `import seeker.cli` ~363 →
-  ~77 ms, `seeker.main_ui` ~558 → ~188 ms.
-- `00db2c7` §22.5: `AlbumArtCache` memory is a 64-entry LRU, locked.
-- `c96418f` §22.6: Dashboard skips unchanged renders; progress updates
-  in place; no blank cell widgets. 500 tracks: 131 → 0.2 ms
-  (unchanged), 4.9 ms (progress-only).
+Evidence for every line, with before/after tables, is in HISTORY §167.
+- `39392b8` §23.1: tag tests on generated MP3/FLAC/AIFF/WAV plus the
+  committed `tests/fixtures/silent.m4a` (862 B); `tags.py` 100 % on CI.
+- `9582a8f` §23.1: an unreachable bounds check removed (refactor).
+- `d4d084d` §23.2: CLI subcommands' happy/error paths; cli.py 96 %.
+- `d379add` §23.3: `main_ui` log file, hooks, `main()` paths; 100 %.
+- `6ab9307` §23.4: Review splitter quit/relaunch round trip (3 tests).
+- `cf8bfd1` §23.6: FLAC key written to `INITIALKEY` and `KEY`.
+- `8f73b4d` §23.6: a tag save that outgrows the padding goes through
+  `files.atomic.rewrite_via_copy`.
+- `9523d38` the three §18.6 leftover tests wait on completion.
+- `9a2b873` `UploadEtaTracker` tests (55 → 100 %).
+- `d31e132` §23.5: `--cov-fail-under` 89 → 92.
 
 ## 4. Key context
 
-- **`QTableWidget.setItem` costs ~2.4 ms a call** at 500 rows (cProfile,
-  offscreen). Any hot-path table update should mutate existing items.
-  The S27–S35 table rows will touch this.
-- **Anything a Dashboard row bakes in must join `_RenderedRows`**
-  (now in CLAUDE.md). The visual refresh (S31–S34) changes colors: a
-  new baked color left out of the key will not repaint on a theme
-  switch. `test_a_theme_change_recolors_the_review_link` guards the
-  accent.
-- Benchmarks: §165's `bench_poll.py`; §166 describes the render
-  script. The §27.0 harness does not exist yet.
-- Carried: radon not in the env; coverage margin ~3.8 points. Never
-  touch slskd or real data. zsh does not word-split `$var`; BSD `sed`
-  lacks `\b`.
+- **mutagen grows a tag by moving the audio in place** (`insert_bytes`
+  → `move_bytes`, same inode). A simulated crash corrupted MP3, FLAC
+  and faststart M4A; WAV, AIFF and `moov`-last M4A keep tags at the
+  end. mutagen's `padding=` callback runs before any write in all six
+  layouts, which is how `save_tags` decides (now in CLAUDE.md).
+- **The first save of an untagged file is a resizing save** (padding
+  −39 to −84 bytes), so it takes the copy path, as does the first
+  cover embed. Later text/analysis re-saves stay in place.
+- **CI-equivalent coverage:** `pytest -p no_x9` with a 7-line
+  `pytest_collection_modifyitems` plugin that deselects items whose
+  `skipif` reason mentions x9-pro (§167). Local runs with the drive
+  mounted overstate CI by up to a few points per module.
+- `find_close_playlist_matches` uses edit distance, `len // 4`: a
+  transposition counts as two edits.
+- Carried: radon not in the env. Never touch slskd or real data. zsh
+  does not word-split `$var`; BSD `sed` lacks `\b`.
 
 ## 5. Decisions made
 
-- **The history poll fix is its own commit, not §22.3's measurement:**
-  indexes alone saved only 6.5 of 49 ms; the cost was reading every
-  file to find 27 tagged ones.
-- **§22.6 compares whole `TrackStatus`es, not the brief's (id, state,
-  progress) signature:** the actions cell also depends on `tagged_at`,
-  and the status text on `soulseek_candidate`; dataclass equality is
-  ~3 ms at 500 rows and cannot miss a field.
-- **The in-place sort key is mutated, not replaced** (`setItem`
-  cost); a test checks the re-sort.
+- **Seams came from the brief, not a new ask.** The `tdd` skill wants
+  seams confirmed with the user; §23 already names them
+  (pre-approved), so the brief's list stood in. Recorded divergence.
+- **Copy only on a resizing save, not on every save:** copying a
+  50 MB WAV for a text tag that fits the padding is wasted I/O on an
+  external drive; the padding callback makes the distinction exact.
+- **The X9 Pro tag tests stay** beside the generated-file ones: they
+  are the only coverage of real files' existing tags.
+- **Floor 92, not 92.79:** measured minus one, rounded down to an
+  integer like the previous floor.
+- **Added `upload_eta` tests and the §18.6 leftovers in this row:**
+  the first is in §23's gap table; the handoff named S23 as the
+  leftovers' home.
 
 ## 6. Blockers
 
@@ -83,9 +94,9 @@ S42 publishing commands; X1 and X2 (optional).
 
 **Kris's decision (carried):** keep or discard `./slskd-data` (§140).
 
-**Run the stress test** — CLAUDE.md requires it after any lifecycle
-change, and S20 is one: `SEEKER_RUN_STRESS_TEST=1 uv run pytest
-tests/test_stress_e2e.py` (X9 Pro mounted, Spotify and slskd up).
+**Run the stress test** (after S20's lifecycle change):
+`SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`
+(X9 Pro mounted, Spotify and slskd up).
 
 **Live checks:** S41's checklist, plus carried: S6 Refresh playlists;
 S7 drift Scan; S8 Reject-then-Scan, failure reason; S9 mistyped Client
@@ -93,27 +104,19 @@ ID → Cancel; S11 Scan summary, Docker-stopped Download, Qt warning in
 `seeker.log`, app menu "Seeker"; S12 slskd-stopped outage; S14
 one-failing-track Download notice, Tag and Fix cover art summaries;
 S15 `seeker downloads review`; S17 Review Confirm/Reject/Replace and a
-locked download retrying (`SEEKER_DEBUG_POLL=1`). New for S20: close
-to tray → reopen from the tray and from the Dock; fullscreen close →
-reopen (comes back filled); quit with a download running (the
-confirmation); "start hidden".
+locked download retrying; S20 tray/Dock reopen, fullscreen close,
+quit with a download running, "start hidden". **New for S23:** Tag a
+FLAC and check its key appears in Rekordbox, Traktor and Serato
+(the field choice rests on TagLib and Mixxx; UNVERIFIED for those
+three, whose docs never name the field); Tag a file with no cover
+yet on the X9 Pro (the copy path on exFAT).
 
 ## 9. Open questions
 
-- **§18.6 leftovers** (S23 is the natural home):
-  `test_next_step_notice_hidden_when_nothing_selected_and_all_set_up`
-  (asserts the initial hidden state 50 ms in; wait on the render, e.g.
-  the Download button's disable); `test_load_tracks_shows_no_notice_
-  when_nothing_was_skipped` and Settings'
-  `test_remove_location_cancelled_removes_nothing` (negative after a
-  bare wait; wait on completion or `wait_for_workers`).
 - Closing the wizard or Settings mid-wait does not cancel the Spotify
-  wait (port 8888 and the token lock held up to 300 s). Not lifecycle
-  in S20's sense; still unowned.
+  wait (port 8888 and the token lock held up to 300 s). Still unowned.
 - Late-worker defect: `_handle_task_finished` raises on a button
   destroyed mid-task (§148 addendum); logged at CRITICAL since §11.3.
-  Rarer since §166, still reachable when a Dashboard row's state
-  changes while its Tag task runs (the row rebuilds).
 - Settings shows results and rejections on status labels, not notices,
   as does Duplicates' `_render_fingerprint_result`: S28/S29.
 - CLI (carried): print `download`'s failure reasons; catch
@@ -121,8 +124,9 @@ confirmation); "start hidden".
   one-by-one upgrade review skips `printable()` (§156).
 - `DownloadPoller._activate_shortlisted_entry`: if slskd dies between
   `request_download` and `get_download_status`, the transfer id is
-  never recorded; the next cascade re-requests it. Not performance, so
-  not S22; X1 is the natural home.
+  never recorded; X1 is the natural home.
+- A leftover `<name>.<uuid>.tmp` beside a track after a real crash is
+  never cleaned up (the scanner ignores it). Rare; X1-adjacent.
 
 ---
 
