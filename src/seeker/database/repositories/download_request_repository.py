@@ -31,10 +31,7 @@ def _status_in(
 
 class DownloadRequestRepository:
     def get_all(self, connection: sqlite3.Connection) -> list[DownloadRequest]:
-        # Whole-table fetch, filtered client-side — same pattern as
-        # TrackMatchRepository.get_all()/LocalFileRepository.get_all(),
-        # used by DashboardService to build a playlist-scoped view
-        # without an N+1 query per track.
+        # One playlist's requests: get_all_for_playlist.
         rows = connection.execute(
             """
             SELECT
@@ -59,6 +56,45 @@ class DownloadRequestRepository:
                 dismissed_at
             FROM download_requests
             """
+        ).fetchall()
+
+        return [_row_to_download_request(row) for row in rows]
+
+    def get_all_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[DownloadRequest]:
+        # In id order, the order get_all() reads them in.
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                track_id,
+                username,
+                filename,
+                format,
+                quality_descriptor,
+                role,
+                status,
+                transfer_id,
+                size,
+                rank,
+                requested_at,
+                completed_at,
+                bytes_transferred,
+                total_bytes,
+                retry_count,
+                next_retry_at,
+                failure_reason,
+                dismissed_at
+            FROM download_requests
+            WHERE track_id IN (
+                SELECT track_id FROM playlist_tracks WHERE playlist_id = ?
+            )
+            ORDER BY id
+            """,
+            (playlist_id,),
         ).fetchall()
 
         return [_row_to_download_request(row) for row in rows]

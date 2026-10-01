@@ -190,6 +190,28 @@ class LocalFileRepository:
 
         return [_row_to_local_file(row) for row in rows]
 
+    def get_matched_in_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[LocalFile]:
+        """The files the playlist's tracks are matched to."""
+        rows = connection.execute(
+            f"""
+            SELECT {_COLUMNS}
+            FROM local_files
+            WHERE id IN (
+                SELECT tm.local_file_id
+                FROM track_matches tm
+                JOIN playlist_tracks pt ON pt.track_id = tm.track_id
+                WHERE pt.playlist_id = ?
+            )
+            """,  # noqa: S608
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_local_file(row) for row in rows]
+
     def get_ids(self, connection: sqlite3.Connection) -> set[int]:
         rows = connection.execute("SELECT id FROM local_files").fetchall()
 

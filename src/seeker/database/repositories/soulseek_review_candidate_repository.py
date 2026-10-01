@@ -112,6 +112,35 @@ class SoulseekReviewCandidateRepository:
 
         return [_row_to_candidate(row) for row in rows]
 
+    def get_all_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[SoulseekReviewCandidate]:
+        rows = connection.execute(
+            """
+            SELECT
+                track_id,
+                username,
+                filename,
+                score,
+                quality_descriptor,
+                found_at,
+                size,
+                runner_up_username,
+                runner_up_filename,
+                runner_up_score
+            FROM soulseek_review_candidates
+            WHERE track_id IN (
+                SELECT track_id FROM playlist_tracks WHERE playlist_id = ?
+            )
+            ORDER BY found_at
+            """,
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_candidate(row) for row in rows]
+
 
 def _row_to_candidate(row: sqlite3.Row) -> SoulseekReviewCandidate:
     return SoulseekReviewCandidate(

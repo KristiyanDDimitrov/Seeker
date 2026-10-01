@@ -125,38 +125,38 @@ class DashboardService:
             tracks = self.tracks.get_all_for_playlist(
                 playlist.id, connection
             )
-            matches = self.track_matches.get_all(connection)
+            # Every read is scoped to this playlist's tracks: this runs
+            # on the Dashboard's 2-second poll (HISTORY §165).
+            matches = self.track_matches.get_all_for_playlist(
+                playlist.id, connection,
+            )
             local_files_by_id = {
                 local_file.id: local_file
-                for local_file in self.local_files.get_all(connection)
+                for local_file in self.local_files.get_matched_in_playlist(
+                    playlist.id, connection,
+                )
             }
-            download_requests = self.download_requests.get_all(connection)
+            download_requests = (
+                self.download_requests.get_all_for_playlist(
+                    playlist.id, connection,
+                )
+            )
             review_candidates = (
-                self.soulseek_review_candidates.get_all(connection)
+                self.soulseek_review_candidates.get_all_for_playlist(
+                    playlist.id, connection,
+                )
             )
 
-        # track_ids scopes every lookup below to just this playlist's
-        # own tracks — a match/request/candidate belonging to some other
-        # playlist's track must never leak into this result.
-        track_ids = {track.id for track in tracks}
-
-        matches_by_track_id = {
-            match.track_id: match
-            for match in matches
-            if match.track_id in track_ids
-        }
+        matches_by_track_id = {match.track_id: match for match in matches}
 
         requests_by_track_id: dict[str, list[DownloadRequest]] = {}
         for request in download_requests:
-            if request.track_id in track_ids:
-                requests_by_track_id.setdefault(
-                    request.track_id, []
-                ).append(request)
+            requests_by_track_id.setdefault(request.track_id, []).append(
+                request,
+            )
 
         candidates_by_track_id = {
-            candidate.track_id: candidate
-            for candidate in review_candidates
-            if candidate.track_id in track_ids
+            candidate.track_id: candidate for candidate in review_candidates
         }
 
         return [

@@ -85,6 +85,30 @@ class TrackMatchRepository:
 
         return [_row_to_track_match(row) for row in rows]
 
+    def get_all_for_playlist(
+            self,
+            playlist_id: str,
+            connection: sqlite3.Connection,
+    ) -> list[TrackMatch]:
+        rows = connection.execute(
+            """
+            SELECT
+                track_id,
+                local_file_id,
+                match_method,
+                score,
+                matched_at,
+                confirmed_at
+            FROM track_matches
+            WHERE track_id IN (
+                SELECT track_id FROM playlist_tracks WHERE playlist_id = ?
+            )
+            """,
+            (playlist_id,),
+        ).fetchall()
+
+        return [_row_to_track_match(row) for row in rows]
+
     def get_by_track_id(
             self,
             track_id: str,

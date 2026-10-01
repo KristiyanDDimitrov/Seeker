@@ -464,6 +464,67 @@ def test_scoping_two_playlists_sharing_no_tracks_never_leak(tmp_path):
     assert statuses_b[0].soulseek_candidate is not None
 
 
+def whole_table_read(*_args: object) -> None:
+    pytest.fail("the Dashboard read a whole table")
+
+
+def test_track_status_reads_only_the_playlists_own_rows(
+        tmp_path, monkeypatch,
+):
+    # The 2-second poll: whole-table reads cost every library's worth of
+    # rows to render one playlist (HISTORY §165).
+    service = make_service(tmp_path)
+    seed_playlist(service, "pA", name="Playlist A")
+    seed_playlist(service, "pB", name="Playlist B")
+    seed_track(service, "pA", "shared")
+    seed_track(service, "pB", "shared")
+    seed_track(service, "pA", "a_review")
+    seed_track(service, "pA", "a_downloading")
+    seed_track(service, "pB", "b_only")
+    local_file_id = seed_local_file(
+        service, filename="shared.mp3", tagged_at="2026-02-01",
+    )
+    seed_match(
+        service, "shared", "auto", local_file_id=local_file_id, score=95.0,
+    )
+    seed_review_candidate(service, "a_review")
+    seed_download_request(
+        service, "a_downloading", "downloading",
+        bytes_transferred=10, total_bytes=100,
+    )
+    seed_download_request(service, "b_only", "downloading")
+    seed_review_candidate(service, "b_only")
+
+    for repository in (
+            service.local_files,
+            service.track_matches,
+            service.download_requests,
+            service.soulseek_review_candidates,
+    ):
+        monkeypatch.setattr(repository, "get_all", whole_table_read)
+
+    statuses = {
+        status.track.id: status
+        for status in service.get_playlist_track_status("Playlist A")
+    }
+
+    assert set(statuses) == {"shared", "a_review", "a_downloading"}
+    assert statuses["shared"].state == IN_LIBRARY
+    assert statuses["shared"].tagged_at == "2026-02-01"
+    assert statuses["a_review"].state == REVIEW_CANDIDATE
+    assert statuses["a_downloading"].state == DOWNLOADING
+    assert statuses["a_downloading"].bytes_transferred == 10
+
+    (b_only, shared_in_b) = sorted(
+        service.get_playlist_track_status("Playlist B"),
+        key=lambda status: status.track.id,
+    )
+    assert (b_only.track.id, b_only.state) == ("b_only", DOWNLOADING)
+    assert (shared_in_b.track.id, shared_in_b.state) == (
+        "shared", IN_LIBRARY,
+    )
+
+
 def test_get_active_downloads_is_global_across_playlists(tmp_path):
     # The exact scoping bug class this project already found once
     # (global-vs-playlist-scoped check/match_all confusion) — this
