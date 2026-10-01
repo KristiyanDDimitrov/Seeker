@@ -43,6 +43,7 @@ from seeker.models.track_status import (
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
+from seeker.sharing_service import ShareStatus
 from seeker.ui import plain_text
 
 
@@ -339,12 +340,15 @@ class FakeHistoryService:
 class FakeSharingService:
     def __init__(
             self,
-            status=None,
+            status: ShareStatus | None = None,
             self_managed: bool = True,
             reconciliation: list | None = None,
             uploads: list | None = None,
     ):
-        self._status = status
+        self._status = status or ShareStatus(
+            ready=True, scanning=False, scan_pending=False, faulted=False,
+            directories=0, files=0, shares=[],
+        )
         self._self_managed = self_managed
         self._reconciliation = reconciliation or []
         self._uploads = uploads or []

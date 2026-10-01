@@ -2,10 +2,8 @@
 verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.2) — the
 mirror of §9.3.1's own Sharing extraction (S6).
 
-`make_location` and `confirm_yes` stay defined in test_ui_smoke.py
-rather than moving here — both are used by structural sweep tests
-(Actions-column floor, header-clipping, stretch-column) and Duplicates'
-own tests that stay there too. Imported from there below.
+`make_location` and `confirm_yes` come from `tests/fakes.py`: the
+structural sweep tests and Duplicates' own tests use them too.
 """
 
 from PySide6.QtWidgets import QPushButton
@@ -33,6 +31,25 @@ def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
     from seeker.ui import help_text
     assert summary_label.text() == help_text.SHARING_UNCONFIGURED_NOTICE
     assert window._sharing_page.sharing_locations_table.rowCount() == 0
+
+
+def test_sharing_renders_the_default_fake_status_like_a_real_one(qtbot):
+    # The real get_status returns a ShareStatus or raises; it never
+    # returns None. A default FakeApplication must honour that, or every
+    # test that shows Sharing with SoulSeek configured exercises an
+    # error path production cannot reach.
+    application = FakeApplication(soulseek_configured=True)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    summary_label = window._sharing_page.sharing_summary_label
+    qtbot.waitUntil(
+        lambda: summary_label.text().startswith("0 directories"),
+        timeout=2000,
+    )
+    assert window._sharing_page.sharing_status_label.text() == ""
 
 
 def test_sharing_renders_reconciliation_and_uploads(qtbot):
