@@ -8,23 +8,23 @@ from datetime import UTC, datetime, timedelta
 from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel, QProgressBar
 
+from fakes import (
+    FakeApplication,
+    force_tray_available,
+    make_active_download,
+    make_track,
+)
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.track import Track
 from seeker.ui import help_text, theme
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import (
-    FakeApplication,
-    _force_tray_available,
-    _make_active_download,
-    _make_track,
-)
 
 
 def test_downloads_tab_renders_rows_across_playlists(qtbot):
     downloads = [
-        _make_active_download(track_id="t1", playlist_name="Playlist A"),
-        _make_active_download(
+        make_active_download(track_id="t1", playlist_name="Playlist A"),
+        make_active_download(
             track_id="t2", status="locked", role="upgrade",
             bytes_transferred=None, total_bytes=None,
             playlist_name="Playlist B",
@@ -100,7 +100,7 @@ def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(
 
 
 def test_downloads_aggregate_header_reports_waiting_with_no_samples(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="queued", bytes_transferred=None, total_bytes=1_000,
     )
     download.request.id = 1
@@ -117,7 +117,7 @@ def test_downloads_aggregate_header_reports_waiting_with_no_samples(qtbot):
 
 
 def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="queued", bytes_transferred=None, total_bytes=None,
     )
     application = FakeApplication()
@@ -160,7 +160,7 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
     # label (Task 2) — the bar itself is a child widget, not the cell
     # widget directly (the indeterminate/queued case above is now
     # wrapped the identical way, roadmap item 96).
-    download = _make_active_download(
+    download = make_active_download(
         status="downloading", bytes_transferred=500, total_bytes=1_000,
     )
     application = FakeApplication()
@@ -190,11 +190,11 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
     # it upward) while a downloading row's own bar, already wrapped in
     # a container, sat centered. Both must now match.
     downloads = [
-        _make_active_download(
+        make_active_download(
             track_id="t1", status="queued",
             bytes_transferred=None, total_bytes=None,
         ),
-        _make_active_download(
+        make_active_download(
             track_id="t2", status="downloading",
             bytes_transferred=500, total_bytes=1_000,
         ),
@@ -282,7 +282,7 @@ def test_downloads_header_shows_a_real_divider_between_columns(qtbot):
     # the stylesheet string can't catch this class of bug at all — it
     # must sample real painted pixels.
     downloads = [
-        _make_active_download(
+        make_active_download(
             track_id="t1", status="downloading",
             bytes_transferred=500, total_bytes=1_000,
         ),
@@ -343,7 +343,7 @@ def test_downloads_header_shows_a_real_divider_between_columns(qtbot):
 def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
     # Locked/shortlisted rows have no real, current transfer — a
     # progress claim there would be misleading.
-    download = _make_active_download(
+    download = make_active_download(
         status="locked", role="upgrade",
         bytes_transferred=None, total_bytes=None,
     )
@@ -368,7 +368,7 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
     # report "Stalled" once _is_stalled's 3-identical-sample threshold
     # was reached; the real fix is that a terminal row's status is
     # never even routed to describe()/the tracker at all.
-    download = _make_active_download(
+    download = make_active_download(
         status="completed", bytes_transferred=1_000, total_bytes=1_000,
     )
     download.request.id = 1
@@ -396,7 +396,7 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
 
 
 def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="completed", bytes_transferred=1_000, total_bytes=1_000,
     )
     application = FakeApplication()
@@ -412,7 +412,7 @@ def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
 
 
 def test_terminal_progress_widget_shows_ready_for_review_label(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="ready_for_review", role="upgrade",
         bytes_transferred=1_000, total_bytes=1_000,
     )
@@ -430,7 +430,7 @@ def test_terminal_progress_widget_shows_ready_for_review_label(qtbot):
 
 
 def test_terminal_progress_widget_for_failed_is_blank_not_a_bar(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="failed", bytes_transferred=None, total_bytes=None,
     )
     application = FakeApplication()
@@ -447,12 +447,12 @@ def test_terminal_progress_widget_for_failed_is_blank_not_a_bar(qtbot):
 def test_aggregate_header_excludes_terminal_rows_from_queued_count(qtbot):
     # Roadmap item 56 Phase 5.4 §4 — a completed row was previously
     # folded into the "queued (no estimate)" figure.
-    completed = _make_active_download(
+    completed = make_active_download(
         track_id="t1", status="completed",
         bytes_transferred=1_000, total_bytes=1_000,
     )
     completed.request.id = 1
-    queued = _make_active_download(
+    queued = make_active_download(
         track_id="t2", status="queued",
         bytes_transferred=None, total_bytes=1_000,
     )
@@ -470,7 +470,7 @@ def test_aggregate_header_excludes_terminal_rows_from_queued_count(qtbot):
 
 
 def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="downloading", bytes_transferred=500, total_bytes=1_000,
     )
     download.request.id = 1
@@ -486,7 +486,7 @@ def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):
 
 
 def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="downloading", bytes_transferred=600, total_bytes=1_000,
     )
     download.request.id = 1
@@ -508,7 +508,7 @@ def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
 
 
 def test_downloads_tab_eta_shows_stalled_after_flat_samples(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="downloading", bytes_transferred=600, total_bytes=1_000,
     )
     download.request.id = 1
@@ -548,7 +548,7 @@ def test_record_eta_samples_evicts_ids_no_longer_active(qtbot):
 
 
 def test_trigger_backend_poll_samples_eta_after_poll_succeeds(qtbot):
-    download = _make_active_download(bytes_transferred=500, total_bytes=1_000)
+    download = make_active_download(bytes_transferred=500, total_bytes=1_000)
     download.request.id = 7
 
     application = FakeApplication(
@@ -568,7 +568,7 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
         qtbot, monkeypatch,
 ):
     # Roadmap item R7.6.
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -576,7 +576,7 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
 
     downloads = [
         ActiveDownload(
-            track=_make_track("t1"),
+            track=make_track("t1"),
             request=DownloadRequest(
                 track_id="t1", username="peer1", filename="a.flac",
                 format="flac", quality_descriptor="flac", role="settled",
@@ -598,7 +598,7 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
 def test_a_failed_row_shows_its_reason_with_the_full_text_in_a_tooltip(
         qtbot,
 ):
-    download = _make_active_download(
+    download = make_active_download(
         status="failed", bytes_transferred=None, total_bytes=None,
     )
     download.request.failure_reason = "Peer rejected: too many requests"
@@ -619,7 +619,7 @@ def test_a_failure_reason_with_markup_renders_literally_in_the_tooltip(
         qtbot,
 ):
     reason = 'Peer said <a href="https://evil.example">update</a>'
-    download = _make_active_download(
+    download = make_active_download(
         status="failed", bytes_transferred=None, total_bytes=None,
     )
     download.request.failure_reason = reason
@@ -635,7 +635,7 @@ def test_a_failure_reason_with_markup_renders_literally_in_the_tooltip(
 
 
 def test_an_unavailable_row_shows_its_reason(qtbot):
-    download = _make_active_download(
+    download = make_active_download(
         status="unavailable", bytes_transferred=None, total_bytes=None,
     )
     download.request.failure_reason = "Peer kept refusing after 8 attempts"
@@ -654,7 +654,7 @@ def test_an_unavailable_row_shows_its_reason(qtbot):
 def test_a_failure_from_before_reasons_were_stored_shows_the_plain_label(
         qtbot,
 ):
-    download = _make_active_download(
+    download = make_active_download(
         status="failed", bytes_transferred=None, total_bytes=None,
     )
     application = FakeApplication()
@@ -669,7 +669,7 @@ def test_a_failure_from_before_reasons_were_stored_shows_the_plain_label(
 
 
 def test_clear_finished_is_disabled_with_nothing_finished(qtbot):
-    downloads = [_make_active_download(status="downloading")]
+    downloads = [make_active_download(status="downloading")]
     application = FakeApplication(active_downloads=downloads)
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -681,8 +681,8 @@ def test_clear_finished_is_disabled_with_nothing_finished(qtbot):
 
 def test_clear_finished_dismisses_finished_rows_and_refreshes(qtbot):
     downloads = [
-        _make_active_download(track_id="t1", status="downloading"),
-        _make_active_download(
+        make_active_download(track_id="t1", status="downloading"),
+        make_active_download(
             track_id="t2", status="failed",
             bytes_transferred=None, total_bytes=None,
         ),
@@ -718,11 +718,11 @@ def test_clear_finished_finishing_never_re_enables_over_a_newer_render(
     # own completion is handled. Rendering here, synchronously after
     # the click, always lands first: the worker's finished signal is
     # queued until control returns to the event loop.
-    finished = _make_active_download(
+    finished = make_active_download(
         track_id="t1", status="failed",
         bytes_transferred=None, total_bytes=None,
     )
-    active = _make_active_download(track_id="t2", status="downloading")
+    active = make_active_download(track_id="t2", status="downloading")
     application = FakeApplication(active_downloads=[finished, active])
     window = MainWindow(application)
     qtbot.addWidget(window)

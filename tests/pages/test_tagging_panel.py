@@ -15,11 +15,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QRect
 
+from fakes import FakeApplication
 from seeker.library.metadata_service import RenamePlan
 from seeker.ui import theme
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication
 
 
 def _make_rename_plan(

@@ -17,22 +17,22 @@ with the window-side machinery they are actually verifying.
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from fakes import (
+    FakeApplication,
+    force_tray_available,
+    make_history_event,
+    make_review_candidate,
+    make_track,
+    make_upgrade_details,
+)
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.ui.main_window import MainWindow
 from seeker.ui.tray import _resolve_tray_icon_path
-from test_ui_smoke import (
-    FakeApplication,
-    _force_tray_available,
-    _make_history_event,
-    _make_review_candidate,
-    _make_track,
-    _make_upgrade_details,
-)
 
 
 def test_tray_icon_not_built_when_unavailable(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, False)
+    force_tray_available(monkeypatch, False)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -41,7 +41,7 @@ def test_tray_icon_not_built_when_unavailable(qtbot, monkeypatch):
 
 
 def test_tray_pause_action_reflects_and_persists_config(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -55,7 +55,7 @@ def test_tray_pause_action_reflects_and_persists_config(qtbot, monkeypatch):
 
 
 def test_tray_menu_status_shows_idle_with_nothing_active(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -67,14 +67,14 @@ def test_tray_menu_status_shows_idle_with_nothing_active(qtbot, monkeypatch):
 
 
 def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
 
     downloads = [
         ActiveDownload(
-            track=_make_track("t1"),
+            track=make_track("t1"),
             request=DownloadRequest(
                 track_id="t1", username="peer1", filename="a.flac",
                 format="flac", quality_descriptor="flac", role="settled",
@@ -90,7 +90,7 @@ def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
 
 
 def test_tray_menu_status_shows_paused_suffix(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     application._config_store = replace(
         application._config_store, downloads_paused=True,
@@ -104,14 +104,14 @@ def test_tray_menu_status_shows_paused_suffix(qtbot, monkeypatch):
 
 
 def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
 
     window._review_page._render_review_items((
-        [(_make_track(), _make_review_candidate())],
-        [_make_upgrade_details(), _make_upgrade_details(request_id=2)],
+        [(make_track(), make_review_candidate())],
+        [make_upgrade_details(), make_upgrade_details(request_id=2)],
         [],
     ))
     window._tray._render_tray_menu()
@@ -123,7 +123,7 @@ def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
 def test_tray_check_now_action_is_named_unambiguously(qtbot, monkeypatch):
     # Roadmap item 98 (B9.5) — "Check now" was ambiguous with the Help
     # menu's own "Check for updates…" (a completely different action).
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -139,7 +139,7 @@ def test_tray_check_now_action_is_named_unambiguously(qtbot, monkeypatch):
 def test_tray_quit_calls_qapplication_quit(qtbot, monkeypatch):
     from PySide6.QtWidgets import QApplication
 
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -158,7 +158,7 @@ def test_needs_decision_notification_fires_only_on_increase(
         qtbot,
         monkeypatch,
 ):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -190,7 +190,7 @@ def test_needs_decision_notification_respects_config_toggle(
         qtbot,
         monkeypatch,
 ):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     application._config_store = replace(
         application._config_store, notify_needs_decision=False,
@@ -210,7 +210,7 @@ def test_needs_decision_notification_respects_config_toggle(
 
 
 def test_error_notification_is_rate_limited(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -228,7 +228,7 @@ def test_error_notification_is_rate_limited(qtbot, monkeypatch):
 
 
 def test_error_notification_respects_config_toggle(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     application._config_store = replace(
         application._config_store, notify_errors=False,
@@ -248,7 +248,7 @@ def test_error_notification_respects_config_toggle(qtbot, monkeypatch):
 
 
 def test_download_notifications_batch_per_playlist(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -264,13 +264,13 @@ def test_download_notifications_batch_per_playlist(qtbot, monkeypatch):
     )
 
     events = [
-        _make_history_event(
+        make_history_event(
             occurred_at="2026-01-02T00:00:02+00:00", playlist_name="A",
         ),
-        _make_history_event(
+        make_history_event(
             occurred_at="2026-01-02T00:00:01+00:00", playlist_name="A",
         ),
-        _make_history_event(
+        make_history_event(
             occurred_at="2026-01-02T00:00:00+00:00", playlist_name="B",
         ),
     ]
@@ -283,7 +283,7 @@ def test_download_notifications_batch_per_playlist(qtbot, monkeypatch):
 
 
 def test_download_notifications_skip_events_before_cutoff(qtbot, monkeypatch):
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -296,7 +296,7 @@ def test_download_notifications_skip_events_before_cutoff(qtbot, monkeypatch):
     )
 
     # Every event is at or before the cutoff -- nothing new.
-    events = [_make_history_event(occurred_at="2026-01-02T00:00:00+00:00")]
+    events = [make_history_event(occurred_at="2026-01-02T00:00:00+00:00")]
     window._tray._on_download_notification_events(events)
 
     assert messages == []
@@ -308,7 +308,7 @@ def test_download_notifications_fire_after_seeding_found_no_history(
 ):
     # A fresh install: history is empty when the cutoff is seeded, so
     # the first download of the session must still notify.
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication(history_events=[])
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -323,7 +323,7 @@ def test_download_notifications_fire_after_seeding_found_no_history(
         lambda title, msg, *a, **k: messages.append(msg),
     )
     application.history_service._events = [
-        _make_history_event(
+        make_history_event(
             occurred_at=datetime.now(UTC).isoformat(), playlist_name="A",
         ),
     ]

@@ -16,7 +16,7 @@ find and download the highest-quality available copy of each track.
 
 Dashboard, Review and Duplicates, plus the dark/light theme pair. All
 captured against invented data (`FakeApplication`, the same test double
-`tests/test_ui_smoke.py` uses) — no real playlist names, library paths or
+the UI tests use, from `tests/fakes.py`) — no real playlist names, library paths or
 SoulSeek usernames.
 
 | | |

@@ -2,7 +2,7 @@
 verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.1) — the
 mirror of §9.3.1's own History extraction (S5).
 
-`_make_history_event` stays defined in test_ui_smoke.py rather than
+`make_history_event` stays defined in test_ui_smoke.py rather than
 moving here — Tray's own download-notification tests (staying there
 until S11.7) use it too, and there is no shared fixtures module yet for
 a factory two future test files both need. Imported from there below.
@@ -13,10 +13,10 @@ import threading
 from PySide6.QtCore import Qt
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
+from fakes import FakeApplication, make_history_event
 from seeker.models.history_event import DOWNLOADED, TAGGED
 from seeker.ui import workers
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication, _make_history_event
 
 
 def test_history_table_sorts_the_when_column_chronologically(qtbot):
@@ -25,8 +25,8 @@ def test_history_table_sorts_the_when_column_chronologically(qtbot):
     # wrong — January is chronologically first). SortKeyItem's real
     # ISO occurred_at sort key is what must actually drive the sort.
     events = [
-        _make_history_event(occurred_at="2026-02-01T00:00:00+00:00"),
-        _make_history_event(occurred_at="2026-01-15T00:00:00+00:00"),
+        make_history_event(occurred_at="2026-02-01T00:00:00+00:00"),
+        make_history_event(occurred_at="2026-01-15T00:00:00+00:00"),
     ]
     application = FakeApplication(history_events=events)
     window = MainWindow(application)
@@ -57,8 +57,8 @@ def test_history_page_has_the_right_table_columns(qtbot):
 
 def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
     events = [
-        _make_history_event(),
-        _make_history_event(
+        make_history_event(),
+        make_history_event(
             event_type=TAGGED, occurred_at="2026-01-01T00:00:00+00:00",
             track_artist="Kamäleon", track_title="Quadrat",
             playlist_name="Test", detail="Tagged with Spotify metadata",
@@ -105,8 +105,8 @@ def test_history_page_empty_state_message(qtbot):
 
 def test_history_filter_combo_filters_by_event_type(qtbot):
     events = [
-        _make_history_event(event_type=DOWNLOADED),
-        _make_history_event(event_type=TAGGED),
+        make_history_event(event_type=DOWNLOADED),
+        make_history_event(event_type=TAGGED),
     ]
     application = FakeApplication(history_events=events)
     window = MainWindow(application)
@@ -145,7 +145,7 @@ def test_history_refresh_button_refetches(qtbot):
     # and the count never reaches 3); the waitUntil after it, on the
     # button itself, is the fix.
     block = threading.Event()
-    application = FakeApplication(history_events=[_make_history_event()])
+    application = FakeApplication(history_events=[make_history_event()])
     application.history_service._block_event = block
     # Roadmap item R7.5 — MainWindow construction fires its own
     # get_recent_events(limit=1) notification-cutoff seed

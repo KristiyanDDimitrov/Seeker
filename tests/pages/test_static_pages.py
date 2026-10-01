@@ -5,9 +5,9 @@ S11.1) — the mirror of §9.3.1's own Help/Support extraction (S5).
 
 from PySide6.QtWidgets import QLabel, QPushButton
 
+from fakes import FakeApplication
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication
 
 
 def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):

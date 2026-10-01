@@ -4,12 +4,12 @@ Start slskd action (HISTORY §151)."""
 
 from dataclasses import replace
 
+from fakes import FakeApplication, force_tray_available
 from seeker.docker_setup import SlskdStartRefusedError
 from seeker.models.download_result import PollResult
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.ui.main_window import MainWindow
 from seeker.ui.slskd_status import SlskdStatus
-from test_ui_smoke import FakeApplication, _force_tray_available
 
 OUTAGE = str(SlskdUnreachableError("http://localhost:5030"))
 
@@ -26,7 +26,7 @@ def _poll(qtbot, window: MainWindow) -> None:
 
 
 def _outage_window(qtbot, monkeypatch) -> tuple[FakeApplication, MainWindow]:
-    _force_tray_available(monkeypatch, True)
+    force_tray_available(monkeypatch, True)
     application = FakeApplication(soulseek_configured=True)
     application.download_service.poll_downloads = _raise_outage
     window = MainWindow(application)

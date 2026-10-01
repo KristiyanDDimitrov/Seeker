@@ -2,7 +2,7 @@
 verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.2) — the
 mirror of §9.3.1's own Sharing extraction (S6).
 
-`_make_location` and `_confirm_yes` stay defined in test_ui_smoke.py
+`make_location` and `confirm_yes` stay defined in test_ui_smoke.py
 rather than moving here — both are used by structural sweep tests
 (Actions-column floor, header-clipping, stretch-column) and Duplicates'
 own tests that stay there too. Imported from there below.
@@ -10,14 +10,14 @@ own tests that stay there too. Imported from there below.
 
 from PySide6.QtWidgets import QPushButton
 
-from seeker.ui import help_text, plain_text
-from seeker.ui.main_window import MainWindow
-from test_ui_smoke import (
+from fakes import (
     FakeApplication,
     FakeSharingService,
-    _confirm_yes,
-    _make_location,
+    confirm_yes,
+    make_location,
 )
+from seeker.ui import help_text, plain_text
+from seeker.ui.main_window import MainWindow
 
 
 def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
@@ -38,8 +38,8 @@ def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
 def test_sharing_renders_reconciliation_and_uploads(qtbot):
     from seeker.sharing_service import LocationShareState, ShareEntry, ShareStatus
 
-    location = _make_location(1, "Music", "/Volumes/Drive/Music")
-    other = _make_location(2, "Other", "/Volumes/Drive/Other")
+    location = make_location(1, "Music", "/Volumes/Drive/Music")
+    other = make_location(2, "Other", "/Volumes/Drive/Other")
     status = ShareStatus(
         ready=True, scanning=False, scan_pending=False, faulted=False,
         directories=1, files=5, shares=[],
@@ -112,7 +112,7 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
 ):
     from seeker.sharing_service import LocationShareState
 
-    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    location = make_location(2, "Other", "/Volumes/Drive/Other")
     from seeker.sharing_service import ShareStatus
 
     sharing_service = FakeSharingService(
@@ -130,7 +130,7 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
 
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
@@ -160,7 +160,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
     # outside run_worker's status_label plumbing entirely.
     from seeker.sharing_service import LocationShareState, ShareStatus
 
-    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    location = make_location(2, "Other", "/Volumes/Drive/Other")
     sharing_service = FakeSharingService(
         status=ShareStatus(
             ready=True, scanning=False, scan_pending=False,
@@ -176,7 +176,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
 
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
@@ -210,7 +210,7 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
 ):
     from seeker.sharing_service import LocationShareState
 
-    location = _make_location(2, "Other", "/Volumes/Drive/Other")
+    location = make_location(2, "Other", "/Volumes/Drive/Other")
     from seeker.sharing_service import ShareStatus
 
     sharing_service = FakeSharingService(

@@ -25,19 +25,63 @@ from PySide6.QtWidgets import (
     QRadioButton,
 )
 
+from fakes import (
+    FakeApplication,
+    confirm_yes,
+    make_duplicate_group,
+)
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
+from seeker.models.local_file import LocalFile
 from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import (
-    FakeApplication,
-    _confirm_yes,
-    _duplicates_column,
-    _make_duplicate_group,
-    _make_duplicate_group_with_n_files,
-    _switch_to_duplicates_tab,
-)
+
+
+def _switch_to_duplicates_tab(window) -> None:
+    window._show_page("duplicates")
+
+
+def _duplicates_column(window, header_text: str) -> int:
+    # Roadmap item 68 (Phase 7.1) — resolves a duplicates_table column
+    # by its real header text, not a literal index that could drift out
+    # of sync with the render code's own literals the way item 61 Phase
+    # 6.2's brief hypothesized (a test sharing the code's own mistake
+    # proves nothing). Used everywhere below instead of a bare column
+    # number.
+    table = window._duplicates_page.duplicates_table
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        if header_item is not None and header_item.text() == header_text:
+            return column
+    raise AssertionError(f"no '{header_text}' column found")
+
+
+def _make_duplicate_group_with_n_files(count: int):
+    # Roadmap item 56 Phase 6.3 — confirms a group larger than two
+    # already works by construction (one QButtonGroup per group, one
+    # radio per file, delete removes every file except the checked
+    # one), not just the 2-file case every other test here uses.
+    from seeker.library.audio_quality import LocalFileQuality
+    from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
+
+    files = [
+        DuplicateFile(
+            local_file=LocalFile(
+                id=200 + i,
+                location_id=1, relative_path=f"copy{i}.mp3",
+                filename=f"copy{i}.mp3", format="mp3", size_bytes=1,
+                mtime=0.0, scanned_at="2026-01-01T00:00:00+00:00",
+            ),
+            quality=LocalFileQuality(
+                tier=1, bitrate_kbps=320 - i, bit_depth=None,
+                sample_rate=44_100, clipping_ratio=0.0,
+                integrated_loudness_lufs=None,
+            ),
+        )
+        for i in range(count)
+    ]
+    return DuplicateGroup(files=files, similarity=0.95)
 
 
 def test_duplicates_tab_has_persistent_subtitle(qtbot):
@@ -444,7 +488,7 @@ def test_render_duplicate_groups_populates_table(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     assert window._duplicates_page.duplicates_table.rowCount() == 2
     assert window._duplicates_page.duplicates_table.item(0, 2).text() == "a.flac"
@@ -462,7 +506,7 @@ def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     keep_radio_0 = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -493,7 +537,7 @@ def test_resolve_all_duplicates_button_disabled_when_no_groups(qtbot):
 def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
         qtbot, monkeypatch,
 ):
-    group_a = _make_duplicate_group()  # ids 101 (flac), 102 (mp3)
+    group_a = make_duplicate_group()  # ids 101 (flac), 102 (mp3)
     group_b = _make_duplicate_group_with_n_files(2)  # ids 200, 201
     application = FakeApplication()
     window = MainWindow(application)
@@ -533,7 +577,7 @@ def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
 
 
 def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
-    group_a = _make_duplicate_group()  # ids 101, 102
+    group_a = make_duplicate_group()  # ids 101, 102
     group_b = _make_duplicate_group_with_n_files(2)  # ids 200, 201
     application = FakeApplication()
     window = MainWindow(application)
@@ -579,7 +623,7 @@ def test_resolve_all_duplicates_cancelled_dialog_calls_nothing(
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     monkeypatch.setattr(
         BulkResolveDuplicatesDialog, "exec",
@@ -599,7 +643,7 @@ def test_resolve_all_duplicates_unconfirmed_checkbox_calls_nothing(
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     monkeypatch.setattr(
         BulkResolveDuplicatesDialog, "exec",
@@ -616,7 +660,7 @@ def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
 ):
     from seeker.library.duplicate_service import BulkDuplicateResolutionResult
 
-    group_a = _make_duplicate_group()
+    group_a = make_duplicate_group()
     group_b = _make_duplicate_group_with_n_files(2)
     application = FakeApplication()
     application.duplicate_service.resolve_groups_result = (
@@ -659,7 +703,7 @@ def test_duplicate_groups_keep_selection_survives_rerender(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    group = _make_duplicate_group()
+    group = make_duplicate_group()
 
     window._duplicates_page._render_duplicate_groups([group])
     keep_column = _duplicates_column(window, "Keep")
@@ -678,7 +722,7 @@ def test_duplicate_groups_keep_all_selection_survives_rerender(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    group = _make_duplicate_group()
+    group = make_duplicate_group()
 
     window._duplicates_page._render_duplicate_groups([group])
     actions = window._duplicates_page.duplicates_table.cellWidget(
@@ -715,7 +759,7 @@ def test_duplicate_groups_keep_selection_pruned_when_group_removed(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    group = _make_duplicate_group()
+    group = make_duplicate_group()
 
     window._duplicates_page._render_duplicate_groups([group])
     keep_column = _duplicates_column(window, "Keep")
@@ -835,7 +879,7 @@ def test_render_duplicate_groups_actions_only_on_group_first_row(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     first_row_actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -863,7 +907,7 @@ def test_duplicates_actions_column_survives_manual_column_resize(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions_column = _duplicates_column(window, "Actions")
     path_column = _duplicates_column(window, "Path")
@@ -894,7 +938,7 @@ def test_duplicates_actions_widget_is_really_visible_at_app_minimum_size(
     window.resize(960, 640)
     window._show_page("duplicates")
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
     qtbot.wait(20)
 
     header = window._duplicates_page.duplicates_table.horizontalHeader()
@@ -973,7 +1017,7 @@ def test_duplicates_actions_column_is_fixed_width_derived_from_sizehint(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     header = window._duplicates_page.duplicates_table.horizontalHeader()
     actions_column = _duplicates_column(window, "Actions")
@@ -1039,7 +1083,7 @@ def test_delete_duplicates_without_confirm_checkbox_does_not_delete(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1057,14 +1101,14 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
 ):
     # a.flac (id 101) is pre-selected to keep (best quality) -- clicking
     # Delete with the checkbox checked must delete only a.mp3 (id 102).
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     application = FakeApplication(
-        duplicate_groups=[_make_duplicate_group()],
+        duplicate_groups=[make_duplicate_group()],
     )
     application.duplicate_service.delete_local_files_calls = []
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1095,13 +1139,13 @@ def test_delete_duplicates_respects_a_changed_keep_selection(
 ):
     # Moving the radio to a.mp3 (id 102) before deleting must delete
     # a.flac (id 101) instead of the pre-selected default.
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     application = FakeApplication(
-        duplicate_groups=[_make_duplicate_group()],
+        duplicate_groups=[make_duplicate_group()],
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     window._duplicates_page.duplicates_table.cellWidget(
             1,
@@ -1136,9 +1180,9 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
     # (docs/HISTORY.md item 39). Resolving groups one at a time must
     # drop each one from the in-memory list this tab already holds
     # instead, with zero additional service calls.
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     application = FakeApplication(
-        duplicate_groups=[_make_duplicate_group()],
+        duplicate_groups=[make_duplicate_group()],
     )
     application.duplicate_service._delete_result = {
         "deleted": 1, "failed": 0, "details": [],
@@ -1148,7 +1192,7 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
     window._duplicates_page._render_duplicates_locations(
         [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
     )
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1177,16 +1221,16 @@ def test_delete_duplicates_partial_failure_keeps_group_visible(
     # A partial failure means the group's real DB/disk state may not
     # actually match "fully resolved" -- it must stay visible rather
     # than being dropped as if it were.
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     application = FakeApplication(
-        duplicate_groups=[_make_duplicate_group()],
+        duplicate_groups=[make_duplicate_group()],
     )
     application.duplicate_service._delete_result = {
         "deleted": 0, "failed": 1, "details": [],
     }
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1221,13 +1265,13 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
 
     monkeypatch.setattr(plain_text, "question", fake_question)
 
-    application = FakeApplication(duplicate_groups=[_make_duplicate_group()])
+    application = FakeApplication(duplicate_groups=[make_duplicate_group()])
     window = MainWindow(application)
     qtbot.addWidget(window)
     window._duplicates_page._render_duplicates_locations(
         [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
     )
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1245,11 +1289,11 @@ def test_delete_duplicates_confirmation_dialog_lists_exact_full_paths(
 def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     # Roadmap item 56 Phase 6.3 — "the same file living in several
     # folders is sometimes deliberate."
-    _confirm_yes(monkeypatch)
-    application = FakeApplication(duplicate_groups=[_make_duplicate_group()])
+    confirm_yes(monkeypatch)
+    application = FakeApplication(duplicate_groups=[make_duplicate_group()])
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._duplicates_page._render_duplicate_groups([_make_duplicate_group()])
+    window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
     actions = window._duplicates_page.duplicates_table.cellWidget(
             0,
@@ -1283,7 +1327,7 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(
         qtbot,
         monkeypatch,
 ):
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     group = _make_duplicate_group_with_n_files(3)
     application = FakeApplication(duplicate_groups=[group])
     window = MainWindow(application)
@@ -1314,7 +1358,7 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(
         qtbot,
         monkeypatch,
 ):
-    _confirm_yes(monkeypatch)
+    confirm_yes(monkeypatch)
     group = _make_duplicate_group_with_n_files(4)
     application = FakeApplication(duplicate_groups=[group])
     window = MainWindow(application)

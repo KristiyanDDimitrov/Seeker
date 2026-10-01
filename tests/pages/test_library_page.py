@@ -19,6 +19,7 @@ from pathlib import Path
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
+from fakes import FakeApplication, make_track_status
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
 from seeker.models.tag_result import FixArtResult, TagResult
@@ -26,7 +27,6 @@ from seeker.models.track_status import IN_LIBRARY
 from seeker.ui import help_text
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication, _make_track_status
 
 
 def _select_first_playlist(window, qtbot) -> None:
@@ -61,7 +61,7 @@ def _make_rename_plan(
 
 def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
     statuses = [
-        _make_track_status(
+        make_track_status(
             track_id="t5", state=IN_LIBRARY,
             tagged_at="2026-08-30T12:00:00+00:00",
         ),
@@ -91,7 +91,7 @@ def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
 
 def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
     statuses = [
-        _make_track_status(
+        make_track_status(
             track_id="t7", state=IN_LIBRARY,
             tagged_at="2026-08-30T12:00:00+00:00",
         ),
@@ -146,7 +146,7 @@ def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
 
 
 def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
-    statuses = [_make_track_status(track_id="t7", state=IN_LIBRARY)]
+    statuses = [make_track_status(track_id="t7", state=IN_LIBRARY)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -167,7 +167,7 @@ def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
 
 
 def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
-    statuses = [_make_track_status(track_id="t9", state=IN_LIBRARY)]
+    statuses = [make_track_status(track_id="t9", state=IN_LIBRARY)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -191,7 +191,7 @@ def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
 
 
 def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
-    statuses = [_make_track_status(track_id="t3", state=IN_LIBRARY)]
+    statuses = [make_track_status(track_id="t3", state=IN_LIBRARY)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -214,9 +214,9 @@ def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
 
 def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
     statuses = [
-        _make_track_status(track_id="s1", state=IN_LIBRARY),
-        _make_track_status(track_id="s2", state=IN_LIBRARY),
-        _make_track_status(track_id="s3", state=IN_LIBRARY),
+        make_track_status(track_id="s1", state=IN_LIBRARY),
+        make_track_status(track_id="s2", state=IN_LIBRARY),
+        make_track_status(track_id="s3", state=IN_LIBRARY),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -251,7 +251,7 @@ def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
 
 
 def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
-    statuses = [_make_track_status(track_id="s1", state=IN_LIBRARY)]
+    statuses = [make_track_status(track_id="s1", state=IN_LIBRARY)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)

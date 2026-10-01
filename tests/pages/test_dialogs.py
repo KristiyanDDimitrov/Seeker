@@ -12,11 +12,11 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QLabel, QPushButton
 
+from fakes import FakeApplication
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text
 from seeker.ui.dialogs import AboutDialog, DestinationDialog
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication
 
 
 def test_destination_dialog_preview_shows_new_folder_when_it_does_not_exist(

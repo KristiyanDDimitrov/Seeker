@@ -17,17 +17,17 @@ existed for this file's own prior residence in test_ui_smoke.py.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
 
+from fakes import (
+    FakeApplication,
+    make_needs_review_match,
+    make_review_candidate,
+    make_track,
+    make_upgrade_details,
+)
 from seeker.ui import plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.main_window import MainWindow
 from seeker.ui.plain_text import plain_tooltip
-from test_ui_smoke import (
-    FakeApplication,
-    _make_needs_review_match,
-    _make_review_candidate,
-    _make_track,
-    _make_upgrade_details,
-)
 
 
 def test_focus_pending_review_row_selects_the_correct_row_after_sorting(qtbot):
@@ -38,12 +38,12 @@ def test_focus_pending_review_row_selects_the_correct_row_after_sorting(qtbot):
     # table's row order once a user has sorted it).
     candidates = [
         (
-            _make_track(track_id="t1"),
-            _make_review_candidate(track_id="t1", score=10.0),
+            make_track(track_id="t1"),
+            make_review_candidate(track_id="t1", score=10.0),
         ),
         (
-            _make_track(track_id="t2"),
-            _make_review_candidate(track_id="t2", score=90.0),
+            make_track(track_id="t2"),
+            make_review_candidate(track_id="t2", score=90.0),
         ),
     ]
     application = FakeApplication()
@@ -68,7 +68,7 @@ def test_focus_pending_review_row_selects_the_correct_row_after_sorting(qtbot):
 
 
 def test_review_tab_renders_needs_review_candidates(qtbot):
-    candidates = [(_make_track(), _make_review_candidate())]
+    candidates = [(make_track(), make_review_candidate())]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -92,8 +92,8 @@ def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
     # beat; the runner-up column shows the competing candidate inline.
     candidates = [
         (
-            _make_track(),
-            _make_review_candidate(
+            make_track(),
+            make_review_candidate(
                 runner_up_username="peer2",
                 runner_up_filename="Artist - Title (alt).mp3",
                 runner_up_score=68.5,
@@ -113,7 +113,7 @@ def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
 
 def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
     candidates = [
-            (_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))
+            (make_track(track_id="t7"), make_review_candidate(track_id="t7"))
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -141,7 +141,7 @@ def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
     # on Review's own notice, and the row must still be there (no
     # on_finished ran, so no re-poll removed it).
     candidates = [
-            (_make_track(track_id="t7"), _make_review_candidate(track_id="t7"))
+            (make_track(track_id="t7"), make_review_candidate(track_id="t7"))
     ]
     # Configured on the fake itself (not just a manual render call
     # below) so MainWindow's own startup poll — which races the manual
@@ -174,7 +174,7 @@ def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
 
 def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
     candidates = [
-            (_make_track(track_id="t9"), _make_review_candidate(track_id="t9"))
+            (make_track(track_id="t9"), make_review_candidate(track_id="t9"))
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -196,7 +196,7 @@ def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
 def test_review_tab_renders_pending_upgrades_with_delete_checkbox_when_old_file_exists(
         qtbot,
 ):
-    details = [_make_upgrade_details(old_file_path="/music/old.mp3")]
+    details = [make_upgrade_details(old_file_path="/music/old.mp3")]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -219,7 +219,7 @@ def test_review_tab_renders_pending_upgrades_without_delete_checkbox_when_no_old
 ):
     # Mirrors the CLI's own guard around its second input() prompt —
     # there's nothing to offer deleting when there's no current file.
-    details = [_make_upgrade_details(old_file_path=None)]
+    details = [make_upgrade_details(old_file_path=None)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -233,7 +233,7 @@ def test_review_tab_renders_pending_upgrades_without_delete_checkbox_when_no_old
 def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag(
         qtbot,
 ):
-    details = [_make_upgrade_details(request_id=42, old_file_path="/music/old.mp3")]
+    details = [make_upgrade_details(request_id=42, old_file_path="/music/old.mp3")]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -272,7 +272,7 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
     # checkboxes from scratch every tick; before this fix, checking the
     # box and letting even one more tick land would silently reset it.
     details = [
-            _make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
+            make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -295,7 +295,7 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
 
 def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
     details = [
-            _make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
+            make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -317,7 +317,7 @@ def test_review_tab_delete_checkbox_state_pruned_when_row_removed(qtbot):
 def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_false(
         qtbot,
 ):
-    details = [_make_upgrade_details(request_id=99)]
+    details = [make_upgrade_details(request_id=99)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -371,8 +371,8 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
         qtbot, monkeypatch,
 ):
     details = [
-        _make_upgrade_details(request_id=1),
-        _make_upgrade_details(request_id=2),
+        make_upgrade_details(request_id=1),
+        make_upgrade_details(request_id=2),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -420,7 +420,7 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
         qtbot,
         monkeypatch,
 ):
-    details = [_make_upgrade_details(request_id=1)]
+    details = [make_upgrade_details(request_id=1)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -439,7 +439,7 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
 def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
     from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 
-    details = [_make_upgrade_details(request_id=1)]
+    details = [make_upgrade_details(request_id=1)]
     application = FakeApplication()
     application.review_service.apply_upgrade_decisions_batch_result = (
         BulkUpgradeReplaceResult(
@@ -471,9 +471,9 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
     # tab's own initial call) so the Review tab isn't empty for the
     # first poll interval either.
     candidates = [
-            (_make_track(track_id="tc"), _make_review_candidate(track_id="tc"))
+            (make_track(track_id="tc"), make_review_candidate(track_id="tc"))
     ]
-    upgrades = [_make_upgrade_details(request_id=5)]
+    upgrades = [make_upgrade_details(request_id=5)]
     application = FakeApplication(
         review_candidates=candidates, pending_upgrades=upgrades,
     )
@@ -487,7 +487,7 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
 
 
 def test_review_tab_renders_local_needs_review_matches(qtbot):
-    matches = [_make_needs_review_match()]
+    matches = [make_needs_review_match()]
     application = FakeApplication(needs_review_matches=matches)
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -504,7 +504,7 @@ def test_review_tab_renders_local_needs_review_matches(qtbot):
 
 def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
     application = FakeApplication(
-        needs_review_matches=[_make_needs_review_match(track_id="tc")]
+        needs_review_matches=[make_needs_review_match(track_id="tc")]
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -525,7 +525,7 @@ def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
 
 def test_review_tab_reject_local_match_calls_reject_match(qtbot):
     application = FakeApplication(
-        needs_review_matches=[_make_needs_review_match(track_id="tc")]
+        needs_review_matches=[make_needs_review_match(track_id="tc")]
     )
     window = MainWindow(application)
     qtbot.addWidget(window)

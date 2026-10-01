@@ -20,7 +20,7 @@ app = QApplication.instance() or QApplication([])
 
 from seeker.ui import theme
 
-from test_ui_smoke import FakeApplication  # noqa: E402
+from fakes import FakeApplication  # noqa: E402
 from seeker.models.playlist import Playlist  # noqa: E402
 from seeker.models.track import Track  # noqa: E402
 from seeker.models.library_location import LibraryLocation  # noqa: E402

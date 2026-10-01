@@ -62,6 +62,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
 )
 
+from fakes import FakeApplication
 from seeker.application import Application
 from seeker.audio_fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
@@ -71,7 +72,6 @@ from seeker.ui.pages.dashboard_page import DashboardPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.sharing_page import SharingPage
 from seeker.ui.workers import _callbacks
-from test_ui_smoke import FakeApplication
 
 X9_PRO_ROOT = Path("/Volumes/X9 Pro")
 

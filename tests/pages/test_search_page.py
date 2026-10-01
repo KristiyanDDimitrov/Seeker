@@ -5,10 +5,10 @@ mirror of §9.3.1's own Search extraction (S6).
 
 from PySide6.QtWidgets import QPushButton
 
+from fakes import FakeApplication
 from seeker.models.download_result import ManualDownloadResult
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import FakeApplication
 
 
 def _search_column(window, header_text: str) -> int:

@@ -23,6 +23,11 @@ structural-sweep tests that also stayed.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
+from fakes import (
+    FakeApplication,
+    make_track,
+    make_track_status,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
@@ -38,11 +43,6 @@ from seeker.models.track_status import (
 )
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
-from test_ui_smoke import (
-    FakeApplication,
-    _make_track,
-    _make_track_status,
-)
 
 
 def _select_first_playlist(window, qtbot) -> None:
@@ -126,7 +126,7 @@ def test_render_next_step_does_not_hide_or_reenable_download_button_mid_download
         has_library_location=True,
         has_cached_playlists=True,
         selected_playlist_name="Test Playlist",
-        track_statuses=[_make_track_status(state=NOT_FOUND)],
+        track_statuses=[make_track_status(state=NOT_FOUND)],
         has_scanned_library=True,
         soulseek_configured=True,
     )
@@ -193,7 +193,7 @@ def test_next_step_says_a_selected_playlist_changed_on_spotify(qtbot):
     )
     application = FakeApplication(
         playlists=[stale], locations=_one_location(),
-        statuses=[_make_track_status(tagged_at="2026-01-01")],
+        statuses=[make_track_status(tagged_at="2026-01-01")],
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -398,8 +398,8 @@ def test_next_step_notice_shows_download_count_and_triggers_download_flow(
         id=1, name="Main", path="/music", added_at="2026-01-01T00:00:00+00:00",
     )
     statuses = [
-        TrackStatus(track=_make_track("t1"), state=NOT_FOUND),
-        TrackStatus(track=_make_track("t2"), state=NOT_FOUND),
+        TrackStatus(track=make_track("t1"), state=NOT_FOUND),
+        TrackStatus(track=make_track("t2"), state=NOT_FOUND),
     ]
     application = FakeApplication(
         # download_location_id=1 -- this playlist already has its own
@@ -449,7 +449,7 @@ def test_action_row_download_button_hides_while_cta_offers_the_same_action(
     application = FakeApplication(
         playlists=[Playlist(id="p1", name="Test", track_count=1)],
         locations=[(location, True)],
-        statuses=[TrackStatus(track=_make_track("t1"), state=NOT_FOUND)],
+        statuses=[TrackStatus(track=make_track("t1"), state=NOT_FOUND)],
         soulseek_configured=True,
     )
     window = MainWindow(application)
@@ -578,7 +578,7 @@ def test_playlist_selected_no_tracks_shows_empty_panel_with_load_button(qtbot):
 def test_playlist_with_tracks_shows_the_real_table(qtbot):
     application = FakeApplication(
         playlists=[Playlist(id="p1", name="Test", track_count=1)],
-        statuses=[TrackStatus(track=_make_track("t1"), state=NOT_FOUND)],
+        statuses=[TrackStatus(track=make_track("t1"), state=NOT_FOUND)],
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -721,8 +721,8 @@ def test_needs_review_status_cell_has_tooltip_other_states_dont(qtbot):
     application = FakeApplication(
         playlists=[Playlist(id="p1", name="Test", track_count=2)],
         statuses=[
-            _make_track_status(track_id="t1", state=NEEDS_REVIEW),
-            _make_track_status(track_id="t2", state=IN_LIBRARY),
+            make_track_status(track_id="t1", state=NEEDS_REVIEW),
+            make_track_status(track_id="t2", state=IN_LIBRARY),
         ],
     )
     window = MainWindow(application)
@@ -743,7 +743,7 @@ def test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style(qtbot):
     # so it needs the identical guard against a regression that skips
     # applying it.
     status = TrackStatus(
-        track=_make_track("t1"), state=DOWNLOADING,
+        track=make_track("t1"), state=DOWNLOADING,
         bytes_transferred=500, total_bytes=1_000,
     )
     application = FakeApplication()
@@ -765,8 +765,8 @@ def test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style(qtbot):
 
 def test_tag_button_appears_only_for_in_library_tracks(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=IN_LIBRARY),
-        _make_track_status(track_id="t2", state=NOT_FOUND),
+        make_track_status(track_id="t1", state=IN_LIBRARY),
+        make_track_status(track_id="t2", state=NOT_FOUND),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -785,7 +785,7 @@ def test_tag_button_appears_only_for_in_library_tracks(qtbot):
 
 def test_tagged_track_shows_muted_label_instead_of_tag_button(qtbot):
     statuses = [
-        _make_track_status(
+        make_track_status(
             track_id="t1", state=IN_LIBRARY,
             tagged_at="2026-08-30T12:00:00+00:00",
         ),
@@ -805,8 +805,8 @@ def test_tagged_track_shows_muted_label_instead_of_tag_button(qtbot):
 
 def test_context_menu_offers_nothing_for_an_untagged_or_missing_row(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
-        _make_track_status(track_id="t2", state=NOT_FOUND),
+        make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
+        make_track_status(track_id="t2", state=NOT_FOUND),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -864,7 +864,7 @@ def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
     # it, proving the shared `_wrap_progress_bar` container now covers
     # both sites.
     status = TrackStatus(
-        track=_make_track("t1"), state=DOWNLOADING,
+        track=make_track("t1"), state=DOWNLOADING,
         bytes_transferred=500, total_bytes=1_000,
     )
     application = FakeApplication()
@@ -919,7 +919,7 @@ def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
 def _visible_track_ids(window) -> set[str]:
     # Reads each row's own UserRole anchor (see _render_track_statuses),
     # not the displayed label — every track in these tests shares the
-    # same "Artist - Title" text (test_ui_smoke.py's _make_track), so
+    # same "Artist - Title" text (test_ui_smoke.py's make_track), so
     # only the id actually distinguishes rows.
     table = window._dashboard_page.track_table
     return {
@@ -930,9 +930,9 @@ def _visible_track_ids(window) -> set[str]:
 
 def test_track_filter_defaults_to_all_and_shows_every_status(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=IN_LIBRARY),
-        _make_track_status(track_id="t2", state=NOT_FOUND),
-        _make_track_status(track_id="t3", state=NEEDS_REVIEW),
+        make_track_status(track_id="t1", state=IN_LIBRARY),
+        make_track_status(track_id="t2", state=NOT_FOUND),
+        make_track_status(track_id="t3", state=NEEDS_REVIEW),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -948,10 +948,10 @@ def test_track_filter_defaults_to_all_and_shows_every_status(qtbot):
 
 def test_track_filter_missing_shows_not_found_and_review_candidate_only(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=IN_LIBRARY),
-        _make_track_status(track_id="t2", state=NOT_FOUND),
-        _make_track_status(track_id="t3", state=REVIEW_CANDIDATE),
-        _make_track_status(track_id="t4", state=NEEDS_REVIEW),
+        make_track_status(track_id="t1", state=IN_LIBRARY),
+        make_track_status(track_id="t2", state=NOT_FOUND),
+        make_track_status(track_id="t3", state=REVIEW_CANDIDATE),
+        make_track_status(track_id="t4", state=NEEDS_REVIEW),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -966,10 +966,10 @@ def test_track_filter_missing_shows_not_found_and_review_candidate_only(qtbot):
 
 def test_track_filter_needs_review_shows_needs_and_awaiting_review_only(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=NEEDS_REVIEW),
-        _make_track_status(track_id="t2", state=AWAITING_REVIEW),
-        _make_track_status(track_id="t3", state=NOT_FOUND),
-        _make_track_status(track_id="t4", state=IN_LIBRARY),
+        make_track_status(track_id="t1", state=NEEDS_REVIEW),
+        make_track_status(track_id="t2", state=AWAITING_REVIEW),
+        make_track_status(track_id="t3", state=NOT_FOUND),
+        make_track_status(track_id="t4", state=IN_LIBRARY),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -984,12 +984,12 @@ def test_track_filter_needs_review_shows_needs_and_awaiting_review_only(qtbot):
 
 def test_track_filter_untagged_shows_untagged_in_library_tracks_only(qtbot):
     statuses = [
-        _make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
-        _make_track_status(
+        make_track_status(track_id="t1", state=IN_LIBRARY, tagged_at=None),
+        make_track_status(
             track_id="t2", state=IN_LIBRARY,
             tagged_at="2026-08-30T12:00:00+00:00",
         ),
-        _make_track_status(track_id="t3", state=NOT_FOUND),
+        make_track_status(track_id="t3", state=NOT_FOUND),
     ]
     application = FakeApplication()
     window = MainWindow(application)
@@ -1005,7 +1005,7 @@ def test_track_filter_untagged_shows_untagged_in_library_tracks_only(qtbot):
 def test_track_filter_with_no_matches_shows_empty_state_without_load_button(
         qtbot,
 ):
-    statuses = [_make_track_status(track_id="t1", state=IN_LIBRARY)]
+    statuses = [make_track_status(track_id="t1", state=IN_LIBRARY)]
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -1099,7 +1099,7 @@ def test_tag_from_a_dashboard_row_reports_on_the_dashboard(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
     window._dashboard_page._render_track_statuses([
-        _make_track_status(track_id="t1", state=IN_LIBRARY),
+        make_track_status(track_id="t1", state=IN_LIBRARY),
     ])
 
     actions = window._dashboard_page.track_table.cellWidget(0, 3)
