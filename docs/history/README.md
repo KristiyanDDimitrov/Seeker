@@ -243,3 +243,4 @@ under their entry and live in the same file, after it.
 - §158 — Round 11 S16 part 2 (§16.3–§16.6): no legacy migrations; Sharing through the client; one GET per status; a freed chromaprint context → [151-180.md#158](151-180.md#158)
 - §159 — Round 11 S17 part 1 (§17.1, §17.2): placement and review leave `download_service.py` → [151-180.md#159](151-180.md#159)
 - §160 — Round 11 S17 part 2 (§17.3, the line ceiling): named retry steps; polling moves to `soulseek/poller.py` → [151-180.md#160](151-180.md#160)
+- §161 — Round 11 S18 (§18.1–§18.6): `tests/fakes.py`, `tests/repro/`, the smoke file split by concern, a layering test, no warnings, vacuous asserts → [151-180.md#161](151-180.md#161)

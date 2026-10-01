@@ -52,7 +52,7 @@ explicit yes.
 | ☑ S15 | CLI structure (HISTORY §156) | §15 | ~110 K | After §15.1 |
 | ☑ S16 | Service-layer cleanup and dead code (HISTORY §157, §158) | §16 | ~120 K | After §16.2 |
 | ☑ S17 | Split `download_service.py` | §17 | ~130 K | After §17.1 |
-| ☐ S18 | Test infrastructure | §18 | ~120 K | After §18.2; the smoke-file split can stand alone |
+| ☑ S18 | Test infrastructure | §18 | ~120 K | After §18.2; the smoke-file split can stand alone |
 | ☐ S19 | MainWindow I: Dashboard flows move to DashboardPage | §19 | ~130 K | After the sync, scan and match flows move |
 | ☐ S20 | MainWindow II: extract the window lifecycle | §20 | ~130 K | After geometry and close move; hide-to-tray can follow |
 | ☐ S21 | **[ASK]** Package regrouping | §21 | ~120 K | After the first package |
