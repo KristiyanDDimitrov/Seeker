@@ -11,7 +11,7 @@ def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
     # target widget AND EVERY DESCENDANT — this is what silently
     # stripped a QProgressBar's border inside make_card() (E3) and was
     # present in two more places (`cell_widget()`'s container,
-    # `_ThemeToggleButton`) that happened not to cause visible harm yet.
+    # `ThemeToggleButton`) that happened not to cause visible harm yet.
     # A real rule always contains a `{` (selector, then a brace, then
     # properties); a bare declaration list like "border: none;" never
     # does — checked structurally via `ast`, not by re-reading these

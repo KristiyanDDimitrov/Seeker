@@ -13,8 +13,8 @@ from seeker.ui import theme
 from seeker.ui.main_window import (
     _THEME_MODE_CYCLE,
     MainWindow,
-    _ThemeToggleButton,
 )
+from seeker.ui.widgets import ThemeToggleButton
 
 # --- Roadmap item E4 (round 7): wordmark, plain QLabel, no brows ------------
 
@@ -173,7 +173,7 @@ def test_apply_theme_with_dark_mode_produces_the_same_stylesheet_as_before(
 
 def test_theme_toggle_button_renders_all_three_modes_without_crashing(qtbot):
     for mode in _THEME_MODE_CYCLE:
-        button = _ThemeToggleButton(mode)
+        button = ThemeToggleButton(mode)
         qtbot.addWidget(button)
         button.show()
         qtbot.wait(10)

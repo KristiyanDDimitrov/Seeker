@@ -1050,7 +1050,7 @@ real selector instead of a universal one. */
 }}
 
 /* Roadmap item E3.6 (round 7) — `cell_widget()`'s container and
-`_ThemeToggleButton` both used to set the exact same shape of
+`ThemeToggleButton` both used to set the exact same shape of
 selector-less per-widget stylesheet as `make_card()`'s own bug above;
 neither was ever observed to cause a real visible defect (the former is
 a background color on a leaf-ish container, the latter a childless
