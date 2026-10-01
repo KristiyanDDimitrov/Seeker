@@ -721,8 +721,12 @@ Genuinely open only — no "done" items, no flakes that resolved.
   starvation, not just a stuck Qt loop. **Answered (round 6): this is a
   separate defect from item 105's pytest-runner stall** — different
   symptom, trigger, and mechanism. Real Spotify sync duration and/or
-  real DB size/content are the untested suspects.
-  [HISTORY §70](docs/history/047-071.md#70)
+  real DB size/content are the untested suspects. A concrete lead
+  (UNVERIFIED): until S22 the Dashboard's 2-second poll and the
+  20-second history poll each read all ~32 MB of fingerprint text on
+  a worker thread; S41's stress run tests it.
+  [HISTORY §70](docs/history/047-071.md#70),
+  [§165](docs/history/151-180.md#165)
 - **Item 125 — a real "not responding" quit hang, reported once,
   still unreproduced.** Kris closed the window (hid to tray correctly)
   then quit from the tray icon; the app reappeared in the Dock marked

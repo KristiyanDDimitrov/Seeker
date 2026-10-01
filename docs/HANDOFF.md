@@ -10,57 +10,67 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S21 close-out commit (HISTORY §164, this handoff, the
-  plan tick). Tree clean apart from the untracked `Claude outputs/`.
-- **Local pytest** (2026-10-01): `1576 passed, 1 skipped`, no
-  warnings, at every S21 commit.
+- **HEAD:** the S22 part 1 close-out commit (HISTORY §165, this
+  handoff, the plan note). Tree clean apart from the untracked
+  `Claude outputs/`.
+- **Local pytest** (2026-10-01, at `3f4bb33`): `1579 passed, 1
+  skipped`, no warnings.
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36831279172` on `effc191` (the close-out commit):
-  success, `1548 passed, 29 skipped`, branch coverage 92.82 % (floor
-  89).
+- **CI:** see the line appended below after the push.
 
 ## 2. Where we are
 
-S1–S21 ticked. **Next: S22** — Performance (BRIEF §22), split point
-after §22.1–§22.2 (the poll).
+S1–S21 ticked; **S22 part 1 done** (§22.1–§22.2, the row's named split
+point; the session hit its budget). **Next: S22 part 2** — §22.3
+(indexes), §22.4 (lazy `scipy.stats`), §22.5 (art-cache LRU), §22.6
+(Dashboard re-render). Then S23.
 
-## 3. Session report (S21)
+## 3. Session report (S22 part 1)
 
-Evidence for every line is in HISTORY §164 (the rewrite script is
-pasted there).
-- `c652138`: `files/{atomic,deletion,placement,sanitize,naming}.py`.
-- `714a12e`: `audio/{analysis,fingerprint,formats,tags,quality}.py`
-  (`metadata.py` → `audio/tags.py`; `library/audio_quality.py` →
-  `audio/quality.py`).
-- `e72f1c1`: `soulseek/docker_setup.py`, `soulseek/sharing_service.py`;
-  `compose_template_path()` now `parents[3]`.
+Evidence for every line, with the before/after table, is in HISTORY §165.
+- `516ed57` §22.1: default `local_files` reads leave fingerprints out;
+  `get_all_for_location_with_fingerprints` for `duplicate_service`.
+- `3f4bb33` §22.2: the Dashboard poll reads one playlist's rows
+  (`get_all_for_playlist` ×3, `get_matched_in_playlist`): 28.0 ms /
+  40.5 MB → 0.24 ms / 0.03 MB.
 
 ## 4. Key context
 
-- **New import paths** (old ones are gone, no shims): `seeker.files.*`,
-  `seeker.audio.*`, `seeker.soulseek.docker_setup`,
-  `seeker.soulseek.sharing_service`. Patch targets follow, e.g.
-  `"seeker.soulseek.docker_setup.platformdirs.user_data_dir"`. The mypy
-  mutagen override is now `module = "seeker.audio.tags"`.
-- **Logger names changed** for `audio/fingerprint.py`, `audio/tags.py`
-  and `soulseek/docker_setup.py` (`__name__`); nothing names them.
-- **Moved comments now say `soulseek/docker_setup.py`, `audio/tags.py`
-  etc.**, including a few self-references inside the moved files; S24
-  (comment hygiene: core) can turn those into "this module".
-- Carried: radon not in the env (D-or-worse was 2); coverage margin
-  ~3.8 points (CI 92.80 %, floor 89). Never touch slskd or real data.
-- **Shell:** zsh does not word-split `$var` and treats a bare `===` as
-  a filename expansion; BSD `sed` lacks `\b`.
+- **Measure with §165's pasted `bench_poll.py`** on a fresh
+  `sqlite3 -readonly … ".backup <scratchpad>/copy.db"` each run
+  (`initialize()` migrates the copy). The before numbers for §22.3 (the
+  `EXPLAIN QUERY PLAN` output) and §22.4 (import times) are already in
+  §165 — measure only the after.
+- **§22.3 test shape, written and run red this session, then dropped
+  to keep the tree clean:** a parametrized test in
+  `tests/test_performance.py` running `EXPLAIN QUERY PLAN` on a fresh
+  `Database` and asserting `USING INDEX idx_<table>_<cols>` and no
+  `TEMP B-TREE`, for the four lookups (`playlist_tracks` one without
+  its `ORDER BY p.name`, which always sorts). All four indexed columns
+  are base columns, so `CREATE INDEX IF NOT EXISTS` in `SCHEMA` is safe
+  on an old DB (it runs before `_migrate`; no migration rebuilds a
+  table).
+- **History is now the expensive poll:** `get_recent_events` (every
+  20 s, even hidden) is an N+1, one `get_by_local_file_id` per local
+  file — 6,921 queries, 49 ms. §22.3's `track_matches(local_file_id)`
+  index helps; only files with `tagged_at` need the lookup. Not in the
+  brief's list: decide in part 2 whether it is §22.3's measurement or
+  its own commit.
+- **A light `LocalFile` has `fingerprint is None`** whether or not one
+  was computed (commented on the model). A test asserting a fingerprint
+  must read through the fingerprint variant, or it passes vacuously.
+- Carried: radon not in the env; coverage margin ~3.8 points. Never
+  touch slskd or real data. zsh does not word-split `$var`; BSD `sed`
+  lacks `\b`.
 
 ## 5. Decisions made
 
-- **Modules drop the package's prefix** (`audio/analysis.py`, not
-  `audio/audio_analysis.py`); `metadata.py` became `audio/tags.py` so
-  it no longer reads as a twin of `library/metadata_service.py`.
-- **`migration-architect` diverged on how:** its scripts target
-  schema/API migrations; the row took its phase-gate-rollback shape
-  only (HISTORY §164).
+- **No whole-table `get_all_with_fingerprints`** (the brief named it):
+  nothing would call it. Only the per-location variant exists.
+- **§22.2 is four scoped queries, not one join:** four model types out
+  of one join would need its own row decoder; each query goes through
+  `playlist_tracks` and stays in its own repository.
 
 ## 6. Blockers
 
@@ -68,7 +78,8 @@ None.
 
 ## 7. Files in progress
 
-None.
+None committed half-done; the split point is clean. Part 2 starts
+§22.3 from scratch (see Key context).
 
 ## 8. Waiting on Kris
 
@@ -115,7 +126,7 @@ confirmation); "start hidden".
   one-by-one upgrade review skips `printable()` (§156).
 - `DownloadPoller._activate_shortlisted_entry`: if slskd dies between
   `request_download` and `get_download_status`, the transfer id is
-  never recorded; the next cascade re-requests it. S22 or X1?
+  never recorded; the next cascade re-requests it. S22 part 2 or X1?
 
 ---
 

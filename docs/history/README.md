@@ -247,3 +247,4 @@ under their entry and live in the same file, after it.
 - §162 — Round 11 S19 (§19.1–§19.3): Dashboard flows move to `DashboardPage`; the shell calls only public page methods; `SLF001` enforced → [151-180.md#162](151-180.md#162)
 - §163 — Round 11 S20 (§20.1–§20.3): the window lifecycle leaves `MainWindow` (`WindowLifecycleController`); the theme toggle to `ui/widgets.py`; `__init__` as named steps → [151-180.md#163](151-180.md#163)
 - §164 — Round 11 S21 (§21): package regrouping — `audio/`, `files/`, slskd's Docker and sharing code into `soulseek/` → [151-180.md#164](151-180.md#164)
+- §165 — Round 11 S22 part 1 (§22.1–§22.2): default `local_files` reads leave fingerprints out; the Dashboard poll reads one playlist's rows (28 ms → 0.24 ms) → [151-180.md#165](151-180.md#165)
