@@ -1,17 +1,10 @@
-"""Tray icon, menu, and notifications — round 8 Phase 6 (§9.3.2).
+"""Tray icon, menu, and notifications.
 
-Moved verbatim off MainWindow, **except** `closeEvent` and the
-hide-to-tray verification (`_confirm_hidden_to_tray`,
-`_is_exposed_at_platform_level`, `_check_hidden_to_tray`,
-`_hide_request_id`, plus the two dock-icon-policy-after-fullscreen-close
-methods, which share that same staying state) — that logic is round 7's
-E1, it is genuinely subtle, and it is about the *window*, not the tray.
-Those stay on MainWindow; see its own module docstring / §9.3.2.
-
-`_show_tray_hide_notice_once` moved here despite being called from the
-staying `closeEvent` — it only ever shows a tray notification message,
-which is squarely this module's own concern, not verification logic.
-MainWindow reaches it through `TrayController.show_hide_notice_once()`.
+Closing and reopening the window, the hide-to-tray verification and
+the Dock icon policy are about the *window*, not the tray: they live in
+`ui/window_lifecycle.py`. The tray reopens the window through
+`MainWindow.reopen()`, and the lifecycle shows the "still running in
+the menu bar" notice through `TrayController.show_hide_notice_once()`.
 """
 
 from __future__ import annotations
@@ -54,47 +47,21 @@ class TrayHost:
     `application`/`thread_pool`/`window` are real, stable references
     (never reassigned) — same direct-reference treatment PageContext
     already gives `application`/`thread_pool` and ReviewHost gives
-    `status_label`. `window` is used only for the handful of operations
-    reopening needs (`show_restored`/raise_/activateWindow/isVisible) —
-    not as a back door to MainWindow's own private state; `show_
-    restored` is itself public precisely so this module can call it.
-
-    `set_hidden_to_tray`/`bump_hide_request_id` write state shared
-    with MainWindow's own closeEvent and hide-to-tray verification
-    (staying there per this module's own docstring) — callables, not
-    values captured once, since MainWindow reads that state too. Same
-    shape as PageContext's own
-    `is_hidden_to_tray`. Round 10 §5 — `window.show_restored()`
-    replaces the old `showNormal()` + pre-fullscreen-geometry
-    `setGeometry()` pair this class used to run itself; `_reopen_
-    filled` stays MainWindow-private, read through that one public
-    method instead of its own get/clear pair.
-
-    `set_dock_icon_visible` is a real seam, not just style: routed
-    through a MainWindow method (bound at construction, resolved by
-    name at call time against main_window.py's own module globals)
-    rather than this module calling its own `_set_dock_icon_visible`
-    import directly, because test_window_lifecycle.py's
-    `test_reopen_restores_the_dock_icon_before_showing` monkeypatches
-    `main_window_module._set_dock_icon_visible` — a patch that can only
-    intercept a call whose bare-name lookup happens in that module's
-    own namespace. Confirmed live: without this indirection the call
-    executes in tray.py's namespace instead and the test's patch never
-    fires.
+    `status_label`. `window` is used only for the tray icon's parent,
+    `WA_DeleteOnClose`, `isVisible` and its public `reopen()` — never
+    as a back door to the window's private state, which the lifecycle
+    controller owns.
     """
     application: Application
     thread_pool: QThreadPool
     window: MainWindow
     navigate: Callable[[str], None]
     render_activity_strip: Callable[[], None]
-    set_dock_icon_visible: Callable[[bool], None]
     trigger_backend_poll: Callable[[], None]
     poll_selected_playlist: Callable[[], None]
     poll_active_downloads: Callable[[], None]
     poll_review_items: Callable[[], None]
     poll_next_step: Callable[[], None]
-    set_hidden_to_tray: Callable[[bool], None]
-    bump_hide_request_id: Callable[[], None]
     needs_review_count: Callable[[], int]
     pending_upgrades_count: Callable[[], int]
     active_downloads_count: Callable[[], int]
@@ -282,25 +249,7 @@ class TrayController:
         self._host.trigger_backend_poll()
 
     def _on_tray_open_seeker(self) -> None:
-        # Roadmap item E1.4 (round 7) — a deliberate reopen invalidates
-        # any still-pending hide-verification check (see
-        # `_hide_request_id`'s own comment at its declaration) — without
-        # this, a check scheduled by an earlier `closeEvent` could still
-        # fire after the user has already reopened the window from here,
-        # see it legitimately exposed, and hide it right back out from
-        # under them.
-        self._host.bump_hide_request_id()
-        self._host.set_hidden_to_tray(False)
-        # Roadmap item 116 (round 8, §14.3.3) — order matters: the
-        # window must be shown by an app that is already Regular, or it
-        # can come up behind other applications.
-        self._host.set_dock_icon_visible(True)
-        # Round 10 §5 — give back the window filled (maximized) or
-        # windowed exactly as the user left it, never re-entering
-        # fullscreen; see MainWindow.show_restored()'s own docstring.
-        self._host.window.show_restored()
-        self._host.window.raise_()
-        self._host.window.activateWindow()
+        self._host.window.reopen()
         # Roadmap item R7.6 — the poll methods skip their own work
         # while hidden; catch up immediately on reopen rather than
         # waiting up to POLL_INTERVAL_MS for the next tick to notice

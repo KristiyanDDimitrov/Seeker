@@ -127,7 +127,7 @@ def main() -> None:
     if not started_hidden:
         # Round 10 §5 — a relaunch honors the same "came back filled or
         # windowed, never fullscreen" decision a live tray reopen does;
-        # MainWindow.show_restored() reads the flag `__init__` already
+        # MainWindow.show_restored() reads the flag its lifecycle already
         # loaded from settings. The wizard-first-run path has no such
         # state at all, so it keeps the plain show().
         if isinstance(window, MainWindow):

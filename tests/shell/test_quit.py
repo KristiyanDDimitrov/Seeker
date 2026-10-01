@@ -46,7 +46,7 @@ def test_cleanup_before_quit_logs_thread_pool_state_and_duration(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    with caplog.at_level(logging.INFO, logger="seeker.ui.main_window"):
+    with caplog.at_level(logging.INFO, logger="seeker.ui.window_lifecycle"):
         window.cleanup_before_quit()
 
     # Deliberately not asserting an exact active-thread count: a
@@ -84,7 +84,7 @@ def test_quit_confirmation_skipped_when_nothing_downloading(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._confirm_quit_if_downloads_active() is True
+    assert window._lifecycle.confirm_quit_if_downloads_active() is True
     assert shown == []
 
 
@@ -104,7 +104,7 @@ def test_quit_confirmation_skipped_for_non_downloading_statuses(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._confirm_quit_if_downloads_active() is True
+    assert window._lifecycle.confirm_quit_if_downloads_active() is True
     assert shown == []
 
 
@@ -125,7 +125,7 @@ def test_quit_confirmation_shown_with_real_count_and_no_word_lose(
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._confirm_quit_if_downloads_active()
+    window._lifecycle.confirm_quit_if_downloads_active()
 
     assert len(shown) == 1
     box = shown[0]
@@ -158,7 +158,7 @@ def test_quit_confirmation_quit_anyway_allows_the_quit(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._confirm_quit_if_downloads_active() is True
+    assert window._lifecycle.confirm_quit_if_downloads_active() is True
 
 
 def test_quit_confirmation_keep_open_cancels_the_quit(qtbot, monkeypatch):
@@ -179,7 +179,7 @@ def test_quit_confirmation_keep_open_cancels_the_quit(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    assert window._confirm_quit_if_downloads_active() is False
+    assert window._lifecycle.confirm_quit_if_downloads_active() is False
 
 
 def test_event_filter_ignores_events_other_than_app_quit(qtbot):

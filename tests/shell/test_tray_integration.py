@@ -38,11 +38,11 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     window._tray._on_tray_open_seeker()
 
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
     assert window.isVisible()
 
 
@@ -52,10 +52,10 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     # the context menu (AppKit's own native behavior) AND restored the
     # window (this code's own `Trigger` handling) — not what a menu bar
     # extra should do. On macOS, `Trigger` must now be a no-op.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import tray as tray_module
 
     force_tray_available(monkeypatch, True)
-    monkeypatch.setattr(main_window_module.sys, "platform", "darwin")
+    monkeypatch.setattr(tray_module.sys, "platform", "darwin")
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -77,11 +77,11 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
-    assert window._hidden_to_tray is True
+    assert window._lifecycle._hidden_to_tray is True
     assert not window.isVisible()
 
 
@@ -91,10 +91,10 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     # D5.1 — the original behavior is kept for the platforms it was
     # actually written for: Trigger is the only signal a left-click
     # produces there at all, so it should still restore the window.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import tray as tray_module
 
     force_tray_available(monkeypatch, True)
-    monkeypatch.setattr(main_window_module.sys, "platform", "win32")
+    monkeypatch.setattr(tray_module.sys, "platform", "win32")
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -116,11 +116,11 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
     assert window.isVisible()
 
 
@@ -178,5 +178,5 @@ def test_tray_quit_from_fullscreen_bypasses_closeevent_entirely(
 
     assert quit_calls == [True]
     # Nothing about the close/hide-to-tray machinery fired.
-    assert window._hidden_to_tray is False
-    assert window._reopen_filled is False
+    assert window._lifecycle._hidden_to_tray is False
+    assert window._lifecycle._reopen_filled is False

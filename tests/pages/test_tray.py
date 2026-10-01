@@ -9,10 +9,11 @@ about the *window*, not the tray. So do the tests that exercise it,
 even where they trigger a TrayController action along the way
 (_on_tray_open_seeker, _on_tray_icon_activated, _on_tray_check_now,
 _on_tray_quit from a fullscreen state, _on_application_state_changed,
-cleanup_before_quit): each of those asserts on MainWindow's own
-_hidden_to_tray/isVisible/_reopen_filled/_app_state_connected/
-poll-timer state, not on anything TrayController owns, so they belong
-with the window-side machinery they are actually verifying.
+cleanup_before_quit): each of those asserts on the window's own
+state (the lifecycle's _hidden_to_tray/_reopen_filled, isVisible,
+_app_state_connected, the poll timers), not on anything TrayController
+owns, so they belong with the window-side machinery they are actually
+verifying.
 """
 
 from dataclasses import replace

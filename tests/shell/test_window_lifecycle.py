@@ -135,7 +135,7 @@ def test_close_event_falls_back_to_real_close_when_no_tray(qtbot, monkeypatch):
 
     window.close()
 
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
 
 
 def test_tray_available_clears_delete_on_close(qtbot, monkeypatch):
@@ -164,7 +164,7 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
     # `_hidden_to_tray` waits on the delayed platform-level confirmation
     # (E1.4, round 7, corrected after review).
     assert window.isHidden()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
 
 def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
@@ -203,8 +203,8 @@ def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
     # `_hidden_to_tray` waits on the delayed platform-level confirmation
     # (E1.4, round 7, corrected after review) — `isHidden()` above is
     # unaffected, since `hide()` itself is never deferred.
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
-    assert window._reopen_filled is True
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    assert window._lifecycle._reopen_filled is True
 
 
 def test_reopening_after_a_fullscreen_close_restores_maximized_not_fullscreen(
@@ -321,7 +321,7 @@ def test_restore_window_geometry_clears_a_fullscreen_flag_and_treats_it_filled(
     qtbot.addWidget(window)
 
     assert not window.isFullScreen()
-    assert window._reopen_filled is True
+    assert window._lifecycle._reopen_filled is True
 
 
 def test_close_to_tray_persists_geometry_for_a_fresh_window_to_restore(
@@ -401,11 +401,11 @@ def test_cleanup_before_quit_does_not_overwrite_geometry_already_hidden(
     qtbot.wait(20)
 
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     calls = []
     monkeypatch.setattr(
-        window, "_persist_window_geometry", lambda: calls.append(True),
+        window._lifecycle, "_persist_window_geometry", lambda: calls.append(True),
     )
     window.cleanup_before_quit()
 
@@ -440,13 +440,13 @@ def test_hidden_to_tray_stays_false_when_platform_window_still_exposed(
     qtbot.addWidget(window)
     window.show()
     monkeypatch.setattr(
-        window, "_is_exposed_at_platform_level", lambda: True,
+        window._lifecycle, "_is_exposed_at_platform_level", lambda: True,
     )
 
     window.close()
 
-    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
-    assert window._hidden_to_tray is False
+    qtbot.wait(window._lifecycle._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
+    assert window._lifecycle._hidden_to_tray is False
 
 
 def test_stale_hide_verification_does_not_rehide_a_reopened_window(
@@ -471,21 +471,21 @@ def test_stale_hide_verification_does_not_rehide_a_reopened_window(
     # after `close()` in this scenario (nothing artificial here) — what
     # matters is that the user reopens before the delayed check fires.
     monkeypatch.setattr(
-        window, "_is_exposed_at_platform_level", lambda: True,
+        window._lifecycle, "_is_exposed_at_platform_level", lambda: True,
     )
 
     window.close()
     window._tray._on_tray_open_seeker()
     assert window.isVisible()
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
 
     # Let the stale check (scheduled by the close, before the reopen)
     # actually fire — it must be a no-op: the window stays visible, and
     # `_hidden_to_tray` stays False (the true, post-reopen state), not
     # flipped True by a check that no longer reflects reality.
-    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
+    qtbot.wait(window._lifecycle._HIDE_TO_TRAY_VERIFY_DELAY_MS + 100)
     assert window.isVisible()
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
 
 
 def test_fullscreen_close_never_arms_hide_verification(qtbot, monkeypatch):
@@ -508,20 +508,20 @@ def test_fullscreen_close_never_arms_hide_verification(qtbot, monkeypatch):
 
     confirm_calls = []
     monkeypatch.setattr(
-        window, "_confirm_hidden_to_tray",
+        window._lifecycle, "_confirm_hidden_to_tray",
         lambda *a, **k: confirm_calls.append((a, k)),
     )
 
     window.close()
 
     assert confirm_calls == []
-    assert window._hidden_to_tray is True
+    assert window._lifecycle._hidden_to_tray is True
 
 
 # --- Roadmap item 116 (round 8, §14.3): the Dock icon while hidden ----
 
 def test_ordinary_hide_drops_the_dock_icon_once_confirmed(qtbot, monkeypatch):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -532,12 +532,12 @@ def test_ordinary_hide_drops_the_dock_icon_once_confirmed(qtbot, monkeypatch):
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     assert dock_calls == [False]
 
@@ -548,7 +548,7 @@ def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
     # §14.3.4 — that state is unrecoverable (no Dock icon, no tray
     # icon either), so the switch is guarded on a real, visible tray
     # icon, same precondition closeEvent's own hide-to-tray branch uses.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -559,7 +559,7 @@ def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
@@ -569,13 +569,13 @@ def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
     # visible) -- patched only now, so it's specifically the LATER
     # confirm-check's own guard being exercised, not closeEvent's.
     monkeypatch.setattr(window._tray._tray_icon, "isVisible", lambda: False)
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     assert dock_calls == []
 
 
 def test_fullscreen_close_schedules_a_policy_only_check(qtbot, monkeypatch):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -586,14 +586,14 @@ def test_fullscreen_close_schedules_a_policy_only_check(qtbot, monkeypatch):
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
     hide_calls = []
     monkeypatch.setattr(window, "hide", lambda: hide_calls.append(1))
 
     window.close()
-    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+    qtbot.wait(window._lifecycle._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
 
     # Never calls hide() itself (nothing to manufacture round 6's bug
     # with) and does drop the Dock icon once the window reads as
@@ -609,7 +609,7 @@ def test_fullscreen_close_policy_check_ignores_a_stale_request(
     # A reopen between the fullscreen close and the deferred check
     # firing must make the check a no-op — same `_hide_request_id`
     # staleness guard `_check_hidden_to_tray` already uses.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -620,14 +620,14 @@ def test_fullscreen_close_policy_check_ignores_a_stale_request(
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
     window.close()
-    window._hide_request_id += 1  # simulates a reopen racing the check
+    window._lifecycle._hide_request_id += 1  # simulates a reopen racing the check
 
-    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+    qtbot.wait(window._lifecycle._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
 
     assert dock_calls == []
 
@@ -653,7 +653,7 @@ def test_organic_application_active_cannot_fire_the_dock_policy(
     # Deterministic repro of the fullscreen-close pair's order-dependent
     # failure (`assert dock_calls == []` → `[True]`) — see
     # `_emit_application_active_during_the_next_wait`.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -664,14 +664,14 @@ def test_organic_application_active_cannot_fire_the_dock_policy(
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
     window.close()
-    window._hide_request_id += 1
+    window._lifecycle._hide_request_id += 1
     _emit_application_active_during_the_next_wait(qapp)
-    qtbot.wait(window._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
+    qtbot.wait(window._lifecycle._HIDE_TO_TRAY_VERIFY_DELAY_MS + 50)
 
     assert dock_calls == []
 
@@ -698,7 +698,7 @@ def test_organic_application_active_cannot_reopen_a_closed_window(
 
 
 def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -707,11 +707,11 @@ def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
     window.show()
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
@@ -721,7 +721,7 @@ def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
 
 
 def test_cleanup_before_quit_restores_the_dock_icon(qtbot, monkeypatch):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -730,7 +730,7 @@ def test_cleanup_before_quit_restores_the_dock_icon(qtbot, monkeypatch):
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible",
+        window_lifecycle_module, "_set_dock_icon_visible",
         dock_calls.append,
     )
 
@@ -740,13 +740,13 @@ def test_cleanup_before_quit_restores_the_dock_icon(qtbot, monkeypatch):
 
 
 def test_set_dock_icon_visible_is_a_no_op_off_macos(monkeypatch):
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
-    monkeypatch.setattr(main_window_module.sys, "platform", "win32")
+    monkeypatch.setattr(window_lifecycle_module.sys, "platform", "win32")
 
     # Must not raise or attempt any AppKit import off-macOS.
-    main_window_module._set_dock_icon_visible(True)
-    main_window_module._set_dock_icon_visible(False)
+    window_lifecycle_module._set_dock_icon_visible(True)
+    window_lifecycle_module._set_dock_icon_visible(False)
 
 
 def test_start_hidden_to_tray_sets_hidden_state_and_drops_dock_icon(
@@ -757,7 +757,7 @@ def test_start_hidden_to_tray_sets_hidden_state_and_drops_dock_icon(
     # shown at all here (unlike the ordinary hide path above, which
     # closes an already-visible window) — the point is skipping that
     # first-frame flash entirely.
-    from seeker.ui import main_window as main_window_module
+    from seeker.ui import window_lifecycle as window_lifecycle_module
 
     force_tray_available(monkeypatch, True)
     application = FakeApplication()
@@ -766,13 +766,13 @@ def test_start_hidden_to_tray_sets_hidden_state_and_drops_dock_icon(
 
     dock_calls = []
     monkeypatch.setattr(
-        main_window_module, "_set_dock_icon_visible", dock_calls.append,
+        window_lifecycle_module, "_set_dock_icon_visible", dock_calls.append,
     )
 
     result = window.start_hidden_to_tray()
 
     assert result is True
-    assert window._hidden_to_tray is True
+    assert window._lifecycle._hidden_to_tray is True
     assert window.isHidden()
     assert dock_calls == [False]
 
@@ -791,7 +791,7 @@ def test_start_hidden_to_tray_returns_false_without_a_tray_icon(
     result = window.start_hidden_to_tray()
 
     assert result is False
-    assert window._hidden_to_tray is False
+    assert window._lifecycle._hidden_to_tray is False
 
 
 def test_close_event_shows_one_off_notice_only_once(qtbot, monkeypatch):

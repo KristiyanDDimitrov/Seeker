@@ -580,7 +580,7 @@ def test_downloads_paged_render_skips_table_population_while_hidden(
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window._hidden_to_tray = True
+    window._lifecycle._hidden_to_tray = True
 
     downloads = [
         ActiveDownload(
