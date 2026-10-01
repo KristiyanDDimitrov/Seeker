@@ -9,6 +9,11 @@ DRAGGED_SIZES = [120, 400, 160]
 
 
 def _open_review(qtbot, application) -> MainWindow:
+    # Each window gets the same explicit size. A saved window geometry
+    # would be restored instead, and Qt fits a restored geometry to the
+    # available screen: offscreen's is 800x800 (CI runs offscreen), so
+    # the second window came up shorter and redistributed the sizes.
+    application.update_settings(window_geometry=None)
     window = MainWindow(application)
     qtbot.addWidget(window)
     window.resize(1200, 900)
