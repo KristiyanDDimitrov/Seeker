@@ -156,82 +156,67 @@ def _build_nav_button(label: str) -> QPushButton:
 class MainWindow(QMainWindow):
     def __init__(self, application: Application):
         super().__init__()
-        # Round 9 §2.3.3 — WA_DeleteOnClose is decided exactly once,
-        # entirely inside `TrayController._build_tray_icon()`
-        # (ui/tray.py), for BOTH branches (tray available or not): True
-        # when no tray icon exists to reopen from (a parentless
-        # top-level QMainWindow's close() only hides it by default,
-        # never actually destroys it, unless this is set — tests
-        # construct and close MainWindow repeatedly and rely on this),
-        # False the moment a real tray icon exists (see that method's
-        # own comment for why a window with a live tray icon to reopen
-        # from must never actually be deleted on close). Previously set
-        # True here unconditionally and then conditionally flipped False
-        # inside `_build_tray_icon` — a real latent bug (round 9 §2.3):
-        # if tray construction ever raised or was skipped, a window
-        # still carrying True from here could be destroyed by a stray
-        # close, leaving `qt_app.aboutToQuit.connect(window.
-        # cleanup_before_quit)` (main_ui.py) bound to a dead object.
-        # Not the reported §2.3 hang (a tray icon clearly existed there)
-        # but worth closing regardless — one decision, one place, both
-        # branches covered unconditionally.
         self.application = application
+        # WA_DeleteOnClose is decided in exactly one place,
+        # TrayController._build_tray_icon(), for both branches — never
+        # here (HISTORY §125).
+        self._init_shared_state()
+        self._tray = self._build_tray_controller()
+        self._lifecycle = self._build_lifecycle_controller()
+        self._connect_application_events()
+
+        self.setWindowTitle("Seeker")
+        self.resize(1180, 760)
+        self.setMinimumSize(960, 640)
+        self._build_ui()
+        # After _build_ui(): restored before the central widget
+        # existed, the first layout activation discarded the geometry
+        # (confirmed live). Even here it lost that race on a CI runner,
+        # so the lifecycle's after_show() re-applies it on the first
+        # real show; this call only avoids a flash at the default size.
+        self._lifecycle.restore_window_geometry()
+        # After _build_ui(), so a scheme change mid-construction can't
+        # reach a half-built UI.
+        self._sync_system_scheme_subscription()
+
+        self._load_initial_page_state()
+        self._start_poll_timers()
+
+    def _init_shared_state(self) -> None:
         self.thread_pool = QThreadPool()
         # Roadmap item 65 (Phase 2.1) — the single source of truth for
         # "is this named action currently running," consulted by every
         # poll-driven render method so it can skip a button whose own
         # action is still in flight instead of fighting run_worker's own
-        # busy-disable (the proven mechanism behind Phase 0's 0.1 bug).
+        # busy-disable.
         self.busy_actions = BusyActionRegistry()
-        # round9 §7.1 — the shared playlist/track selection Dashboard
-        # writes and Library reads, replacing LibraryHost/TaggingPanel
-        # Host's prior read-only reach into DashboardPage's own
-        # attributes.
+        # The shared playlist/track selection Dashboard and Library
+        # both write (HISTORY §133).
         self.playlist_selection = PlaylistSelection()
         # Written only by _trigger_backend_poll.
         self.slskd_status = SlskdStatus()
-        # Roadmap item 65 (Phase 2.2/2.3) — keyed the same as
-        # busy_actions; populated by a run_worker(on_progress=...)
-        # callback (via _on_activity_progress), consulted by
-        # _render_activity_strip. Empty for every action wired in Phase
-        # 2 itself — Phase 7's fingerprinting/duplicate-search progress
-        # is the first real producer.
+        # Keyed the same as busy_actions; populated by a
+        # run_worker(on_progress=...) callback (via
+        # _on_activity_progress), consulted by _render_activity_strip.
         self._activity_progress: dict[str, tuple[str, int, int]] = {}
         self._backend_poll_in_progress = False
-        # The tray menu's status line and "Review (N)"/"Upgrades (N)"
-        # items read ReviewPage's `needs_review_count`/
-        # `pending_upgrades_count` and DownloadsPage's
-        # `active_downloads_count` — built from data each page's own
-        # poll already fetches, never a third source of truth.
 
-        # Roadmap item C5 (round 5) — the persisted mode ("system" by
-        # default); the real resolved Palette is already active by the
-        # time MainWindow is constructed (main_ui.py's own
-        # apply_theme() call happens before any window exists). Read
-        # here, before _build_ui(), so _build_sidebar() can hand the
-        # theme toggle its real starting icon rather than a guess.
-        self._theme_mode = application.theme_mode
+        # The persisted mode ("system" by default); the resolved
+        # Palette is already active (main_ui.py applies the theme
+        # before any window exists). Read before _build_ui() so the
+        # sidebar's theme toggle starts on its real icon.
+        self._theme_mode = self.application.theme_mode
         self._system_scheme_connected = False
-        # Roadmap item D2 (round 6) — re-entrancy guard: `apply_theme`'s
-        # own `setColorScheme()` call emits `colorSchemeChanged`, and
-        # while mode == "system" that signal is connected back to
-        # `_on_system_color_scheme_changed` — without this flag, that
-        # handler re-enters `_apply_theme_mode` DURING the outer call's
-        # own `theme.apply_theme()`, re-resolving and re-applying the
-        # system palette before the outer call's chosen mode ever gets
-        # to apply its own stylesheet. See `_apply_theme_mode` for the
-        # full fix (D2.2/D2.3).
+        # Re-entrancy guard: `apply_theme`'s own `setColorScheme()`
+        # emits `colorSchemeChanged`, which (in "system" mode) is
+        # connected back to `_on_system_color_scheme_changed` — without
+        # this flag that handler re-enters `_apply_theme_mode` before
+        # the outer call's chosen mode applies its stylesheet. See
+        # `_apply_theme_mode`.
         self._applying_theme = False
 
-        # Roadmap item 9.3.2/9.3.3 (round 8, Phase 6) — the tray/
-        # notification group, extracted to ui/tray.py; its own seam
-        # construction is verbose enough (many callables — see
-        # TrayHost's own docstring for why) that it belongs in a
-        # dedicated builder, the same shape __init__ already uses for
-        # _build_ui()/_build_sidebar()/_build_help_menu(), rather than
-        # inline here.
-        self._tray = self._build_tray_controller()
-        self._lifecycle = WindowLifecycleController(WindowLifecycleHost(
+    def _build_lifecycle_controller(self) -> WindowLifecycleController:
+        return WindowLifecycleController(WindowLifecycleHost(
             application=self.application,
             window=self,
             thread_pool=self.thread_pool,
@@ -240,138 +225,59 @@ class MainWindow(QMainWindow):
             release_shell=self._release_for_quit,
         ))
 
-        # Roadmap item 116 (round 8, §14.2) — macOS routes every
-        # "reopen a running app" gesture (Dock icon click, double-click
-        # in Finder/Applications, Spotlight, `open -a Seeker`) through
-        # NSApplicationDelegate's own applicationShouldHandleReopen:
-        # hasVisibleWindows:. Qt's Cocoa platform plugin handles that
-        # selector itself by emitting exactly this signal
-        # (Qt::ApplicationActive, forcePropagate=true so it fires even
-        # when the state is already Active) and returning YES — it
-        # never shows a window on its own. Showing one is this
-        # application's job; this signal is the only notification it
-        # gets. A connection to a GLOBAL object (QApplication), not this
-        # window, so it must be torn down explicitly in
-        # cleanup_before_quit — same shape as _system_scheme_connected
-        # just above.
+    def _connect_application_events(self) -> None:
+        # macOS routes every "reopen a running app" gesture (Dock icon
+        # click, Finder, Spotlight, `open -a Seeker`) through
+        # applicationShouldHandleReopen:hasVisibleWindows:, which Qt's
+        # Cocoa plugin turns into exactly this signal
+        # (ApplicationActive, forcePropagate=true) without showing any
+        # window itself (HISTORY §116). A connection to a GLOBAL
+        # object, so cleanup_before_quit tears it down explicitly.
         #
-        # Gated on a real tray icon existing: with none (not
-        # self._tray.has_icon), closeEvent takes the ordinary real-close path
-        # (super().closeEvent()) rather than hiding — there is no
-        # "hidden but still running" state for a reopen gesture to ever
-        # need to restore, so connecting here would be pure overhead
-        # (and, in this project's own offscreen test suite, needless
-        # extra exposure to a real, confirmed-live subtlety: this
-        # signal DOES fire organically from ordinary show()/close()
-        # calls even under QT_QPA_PLATFORM=offscreen, unlike
-        # colorSchemeChanged — see conftest.py's own
-        # _flush_deferred_widget_deletion for the full story).
+        # Gated on a real tray icon: without one, closeEvent really
+        # closes, so there is no hidden state to reopen from. The signal
+        # does fire organically under offscreen QPA (see conftest.py's
+        # `_ignore_organic_application_state_changes`).
         app = QApplication.instance()
         self._app_state_connected = False
         if app is not None and self._tray.has_icon:
-            # applicationStateChanged is a QGuiApplication signal;
-            # QApplication.instance()'s declared return type is the
-            # narrower QCoreApplication — real at runtime (this app
-            # always constructs a QApplication, itself a QGuiApplication
-            # subclass), just not visible to mypy from the stub alone.
+            # QApplication.instance() is typed as QCoreApplication;
+            # this app always constructs a QApplication.
             assert isinstance(app, QGuiApplication)
-            # Connected to MainWindow's OWN delegating stub
-            # (`_on_application_state_changed` below), not
-            # `self._tray.on_application_state_changed` directly —
-            # confirmed live this is not just style: PySide/Qt only
-            # auto-disconnects a signal from a bound method whose
-            # `__self__` is a real QObject (this window) when that
-            # QObject is destroyed. `TrayController` is a plain Python
-            # object, so a direct connection to its method survives a
-            # torn-down MainWindow in tests that never call
-            # cleanup_before_quit, and a later applicationStateChanged
-            # delivery then hits a deleted C++ object
-            # (`self._host.window.isVisible()` in tray.py) — a real,
-            # reproduced RuntimeError, not a hypothetical one.
+            # Connected to this window's own delegating slot, never to
+            # `self._tray.on_application_state_changed` directly:
+            # PySide only auto-disconnects a bound method whose
+            # `__self__` is a QObject when that QObject is destroyed.
+            # TrayController is a plain Python object, so a direct
+            # connection outlived a torn-down window in tests and then
+            # hit a deleted C++ object (reproduced, a RuntimeError).
             app.applicationStateChanged.connect(
                 self._on_application_state_changed
             )
             self._app_state_connected = True
 
-        # Round 9 §2.2 — the one seam both real quit routes pass
-        # through. Confirmed live (HISTORY §123): tray.py's
-        # `_on_tray_quit()` (`app.quit()`) and the native macOS ⌘Q/Dock
-        # "Quit Seeker" menu item both deliver a `QEvent.Type.Quit` to
-        # the QApplication instance itself, before `aboutToQuit` fires
-        # — `cleanup_before_quit`'s own `aboutToQuit` hook is too late
-        # to cancel anything (nothing about a quit already in progress
-        # can be undone from there), but an installed event filter can
-        # still decide, synchronously, whether THIS Quit event is
-        # allowed to proceed: returning `True` from `eventFilter`
-        # consumes it and no quit happens at all; returning `False`
-        # lets this exact event continue on to `aboutToQuit` unchanged
-        # — no QApplication subclass or re-posted `quit()` call needed.
+        # The one seam both real quit routes pass through (HISTORY
+        # §123, §124): tray Quit's `app.quit()` and the native ⌘Q/Dock
+        # "Quit Seeker" both deliver a `QEvent.Type.Quit` to the
+        # QApplication before `aboutToQuit`. This window's eventFilter
+        # can still cancel that exact event; `aboutToQuit` is too late.
         if app is not None:
             app.installEventFilter(self)
 
-        # Roadmap item 98 (B10) — reversed from item 81 (0.1): a commit
-        # SHA in the one string a user reads most often looked like a
-        # bug even when it wasn't one. Build identity already has its
-        # correct home — Help -> About Seeker (below) already renders
-        # GIT_SHA/GIT_DESCRIBE/BUILT_AT — so the title stays the plain
-        # app name.
-        self.setWindowTitle("Seeker")
-        self.resize(1180, 760)
-        self.setMinimumSize(960, 640)
-
-        self._build_ui()
-        # Round 9 §3.1 — moved from before _build_ui() (round 8 §12.1's
-        # original placement). restoreGeometry() ran against a window
-        # with no central widget/layout yet; layout activation on first
-        # show then resized the window to the layout's own size hint,
-        # discarding the restored geometry and landing the user back on
-        # something close to the resize() default above — confirmed
-        # live as the actual cause of the round-9 report ("reopens at
-        # default size, not the size it was closed at"). This call is a
-        # best-effort default so the window doesn't flash at the
-        # resize() default above before it's ever shown; `showEvent()`
-        # below is what actually wins the race on real hardware — see
-        # its own comment. restoreGeometry() itself still silently
-        # no-ops on a missing/corrupt value, leaving whatever's in
-        # place, so there's nothing to validate here beyond the base64
-        # decode itself.
-        self._lifecycle.restore_window_geometry()
-
-        # Roadmap item C5.6 — subscribes to the OS's own appearance
-        # changes when (and only when) the persisted mode is "system",
-        # so the app follows the Mac flipping at sunset with no
-        # restart. Deliberately after _build_ui(): the toggle/wordmark
-        # already exist by now, so a signal firing mid-construction
-        # (unlikely, but not impossible) can't reach a half-built UI.
-        self._sync_system_scheme_subscription()
+    def _load_initial_page_state(self) -> None:
         self._dashboard_page.load_playlists()
         self._downloads_page.poll_active_downloads()
         self._review_page.poll_review_items()
         self._dashboard_page.poll_next_step()
         self._tray.seed_notification_cutoff()
 
-        # DB-polling pattern for live status: rebuild the visible model
-        # each tick rather than diffing for minimal repaints — an
-        # acceptable v1 simplification, matching this project's habit
-        # of shipping a working real version before optimizing.
-        #
-        # Roadmap item R2 — this tradeoff is now ONLY accepted for pure
-        # DISPLAY state (table contents, labels, nav badges), never for
-        # user INPUT: a rebuild used to destroy every checkbox/radio in
-        # a polled table on every tick, not just "reset one mid-click"
-        # as first assumed — a real reported bug, not a theoretical
-        # edge case. The Review tab's "delete old file" checkbox and
-        # the Duplicates "keep" radio selection now survive a rebuild
-        # via a small state map keyed by stable identity (request_id /
-        # the group's own member file ids — never row index), restored
-        # on render and pruned when the underlying row is gone
-        # (`_upgrade_delete_checked`, `_duplicates_keep_selection`). The
-        # real long-term fix is diffing rows instead of rebuilding them
-        # wholesale; the state map is the honest scoped fix on top of
-        # the existing rebuild-every-tick pattern, not a claim that the
-        # underlying pattern itself is now safe for any future
-        # interactive control added to a polled table without the same
-        # treatment.
+    def _start_poll_timers(self) -> None:
+        # The display poll rebuilds each visible model every tick
+        # rather than diffing. That is accepted for DISPLAY state only,
+        # never user INPUT: an interactive control in a polled table
+        # survives a rebuild only through a state map keyed by stable
+        # identity (`_upgrade_delete_checked`,
+        # `_duplicates_keep_selection`), never row index.
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
         self.poll_timer.timeout.connect(self._dashboard_page.poll_selected_playlist)
@@ -380,26 +286,17 @@ class MainWindow(QMainWindow):
         )
         self.poll_timer.timeout.connect(self._review_page.poll_review_items)
         self.poll_timer.timeout.connect(self._dashboard_page.poll_next_step)
-        # Roadmap item 65 (Phase 2.2) — a periodic safety-net refresh on
-        # top of the explicit begin()/end()-adjacent calls already made
-        # at every busy-action call site; catches nothing new today (all
-        # of those already call _render_activity_strip() synchronously)
-        # but keeps the strip correct even if a future action forgets to.
+        # A safety net: every busy-action call site already renders the
+        # strip itself; this keeps it right if a future one forgets.
         self.poll_timer.timeout.connect(self._render_activity_strip)
-        # Roadmap item R7.3 — the tray menu's live status line/counts;
-        # cheap (reads counts the other poll methods already set, no
-        # new DB/network work of its own) so it stays on the fast 2s
-        # tick like the rest of this timer's display refresh, not the
-        # slow backend one.
+        # Cheap (reads counts the polls above already set), so it rides
+        # the fast tick.
         self.poll_timer.timeout.connect(self._tray.render_tray_menu)
         self.poll_timer.start()
 
-        # Separate, slower timer: the only thing in this app that causes
-        # poll_downloads() (real slskd network calls) to run without an
-        # explicit `seeker downloads status` invocation. poll_downloads()
-        # was built with exactly this kind of unattended calling in mind
-        # (no input() anywhere — see CLAUDE.md's guardrail tests), so
-        # this is safe to fire on a bare timer with no user interaction.
+        # The only thing that runs poll_downloads() (real slskd network
+        # calls) without an explicit `seeker downloads status`. It never
+        # prompts, so it is safe on a bare timer.
         self.backend_poll_timer = QTimer(self)
         self.backend_poll_timer.setInterval(BACKEND_POLL_INTERVAL_MS)
         self.backend_poll_timer.timeout.connect(self._trigger_backend_poll)
