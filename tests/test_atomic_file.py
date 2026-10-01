@@ -4,7 +4,11 @@ import sys
 
 import pytest
 
-from seeker.files.atomic import write_text_atomic, write_text_locked
+from seeker.files.atomic import (
+    rewrite_via_copy,
+    write_text_atomic,
+    write_text_locked,
+)
 
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"),
@@ -142,3 +146,41 @@ def test_write_text_locked_failure_leaves_the_original_and_no_temp_file(
 
     assert path.read_text() == "original"
     assert [child.name for child in tmp_path.iterdir()] == ["token.json"]
+
+
+def test_rewrite_via_copy_replaces_the_file_with_the_rewritten_copy(
+        tmp_path,
+):
+    path = tmp_path / "track.flac"
+    path.write_bytes(b"header" + b"audio" * 1000)
+    path.chmod(0o640)
+    original_inode = path.stat().st_ino
+
+    def rewrite(copy):
+        assert copy.parent == path.parent
+        assert copy.read_bytes() == path.read_bytes()
+        copy.write_bytes(b"bigger header" + copy.read_bytes()[6:])
+
+    rewrite_via_copy(path, rewrite)
+
+    assert path.read_bytes() == b"bigger header" + b"audio" * 1000
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    assert path.stat().st_ino != original_inode
+    assert sorted(tmp_path.iterdir()) == [path]
+
+
+def test_rewrite_via_copy_failure_leaves_the_original_and_no_temp_file(
+        tmp_path,
+):
+    path = tmp_path / "track.flac"
+    path.write_bytes(b"original")
+
+    def half_rewrite(copy):
+        copy.write_bytes(b"half-writ")
+        raise OSError("disk full")
+
+    with pytest.raises(OSError, match="disk full"):
+        rewrite_via_copy(path, half_rewrite)
+
+    assert path.read_bytes() == b"original"
+    assert sorted(tmp_path.iterdir()) == [path]

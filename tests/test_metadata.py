@@ -1,4 +1,5 @@
 import shutil
+import stat
 import struct
 import wave
 import zlib
@@ -659,3 +660,89 @@ def test_flac_without_a_key_writes_no_key_field(generated_audio):
 
     assert "INITIALKEY" not in reopened
     assert "KEY" not in reopened
+
+
+# --- Saving never puts the audio at risk ----------------------------------
+#
+# Tags that outgrow a file's padding make mutagen shift everything after
+# them, in place; for MP3 and FLAC that is the audio itself (HISTORY
+# §167). A crash part-way left a corrupt file. Such a save now goes to
+# a copy that replaces the original only once complete.
+
+
+def _crash_after_first_chunk(monkeypatch):
+    """Stand in for a power cut: mutagen's in-place shift writes its
+    first chunk, then the process dies."""
+    import mutagen._util
+
+    def crashing_move(fobj, dest, src, count, BUFFER_SIZE=2**16):
+        chunk = min(BUFFER_SIZE, count)
+        start = src if src > dest else src + count - chunk
+        target = dest if src > dest else dest + count - chunk
+        fobj.seek(start)
+        data = fobj.read(chunk)
+        fobj.seek(target)
+        fobj.write(data)
+        fobj.flush()
+        raise OSError("simulated power cut")
+
+    monkeypatch.setattr(mutagen._util, "move_bytes", crashing_move)
+
+
+@pytest.mark.parametrize("generated_audio", ["mp3", "flac"], indirect=True)
+def test_a_crash_while_tags_outgrow_the_padding_leaves_the_file_intact(
+        generated_audio, monkeypatch,
+):
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+    before = generated_audio.read_bytes()
+
+    _crash_after_first_chunk(monkeypatch)
+    audio = MutagenFile(generated_audio)
+    embed_album_art(audio, b"\xff\xd8" + bytes(200_000), "image/jpeg")
+    with pytest.raises(Exception, match="simulated power cut"):
+        save_tags(audio)
+
+    assert generated_audio.read_bytes() == before
+    assert sorted(generated_audio.parent.iterdir()) == [generated_audio]
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+def test_tags_that_outgrow_the_padding_are_saved_through_a_copy(
+        generated_audio,
+):
+    generated_audio.chmod(0o640)
+    original_inode = generated_audio.stat().st_ino
+
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    embed_album_art(audio, b"\xff\xd8" + bytes(200_000), "image/jpeg")
+    save_tags(audio)
+
+    assert generated_audio.stat().st_ino != original_inode
+    assert stat.S_IMODE(generated_audio.stat().st_mode) == 0o640
+    assert sorted(generated_audio.parent.iterdir()) == [generated_audio]
+    reopened = MutagenFile(generated_audio)
+    assert _tag_text(reopened, TEXT_TAG_KEYS[generated_audio.suffix[1:]][0]) == (
+        "Title"
+    )
+    assert reopened.info.length == pytest.approx(0.5, abs=0.05)
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+def test_tags_that_fit_the_padding_are_saved_in_place(generated_audio):
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+    inode = generated_audio.stat().st_ino
+
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Retitled", "Album")
+    save_tags(audio)
+
+    assert generated_audio.stat().st_ino == inode
+    reopened = MutagenFile(generated_audio)
+    assert _tag_text(reopened, TEXT_TAG_KEYS[generated_audio.suffix[1:]][0]) == (
+        "Retitled"
+    )

@@ -2,6 +2,7 @@ import contextlib
 import os
 import shutil
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -54,6 +55,36 @@ def _write_atomic(path: Path, text: str, mode: int | None) -> None:
             elif path.exists():
                 shutil.copymode(path, temp_path)
 
+        temp_path.replace(path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    _fsync_directory(path.parent)
+
+
+def rewrite_via_copy(path: Path, rewrite: Callable[[Path], None]) -> None:
+    """Change `path` by rewriting a copy of it, then renaming the copy
+    over it.
+
+    For edits a library performs in place, such as mutagen growing a
+    tag ahead of the audio: `rewrite` gets a sibling copy (same
+    directory, so the rename is atomic), and the original stays
+    untouched until the finished copy replaces it. Permission bits
+    carry over; the copy is removed if anything fails.
+    """
+    temp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+
+    fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle, path.open("rb") as source:
+            shutil.copyfileobj(source, handle)
+        shutil.copymode(path, temp_path)
+
+        rewrite(temp_path)
+
+        with temp_path.open("rb+") as handle:
+            os.fsync(handle.fileno())
         temp_path.replace(path)
     except BaseException:
         temp_path.unlink(missing_ok=True)

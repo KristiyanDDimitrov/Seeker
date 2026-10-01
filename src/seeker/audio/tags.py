@@ -1,10 +1,14 @@
 import logging
 import struct
+from pathlib import Path
 from typing import Any
 
+from mutagen import PaddingInfo
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, TALB, TBPM, TIT2, TKEY, TPE1
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
+
+from seeker.files.atomic import rewrite_via_copy
 
 logger = logging.getLogger(__name__)
 
@@ -258,20 +262,36 @@ def write_analysis_tags(
 
 
 def save_tags(mutagen_file: Any) -> None:
-    """Roadmap item 75 (P6, 6.3) — mutagen's own `save()` defaults to
-    writing ID3v2.4, but real-world DJ software (Rekordbox, Serato,
-    Traktor) and macOS's own metadata importer are all markedly more
-    reliable reading ID3v2.3 — item 66 wrote ID3v2.4 covers that
-    round-tripped byte-exact through mutagen's OWN reader (proving
-    mutagen can read its own write, nothing about a DJ's real
-    toolchain). `save(v2_version=3)` only exists on ID3's own save() —
-    calling it on a FLAC/MP4 object raises, so this dispatches the same
-    way every other format-aware write in this module does. Covers both
-    real ID3 carriers this codebase writes to (MP3 and WAV — `_WaveID3`
-    is a genuine `ID3` subclass, see embed_album_art's own note).
-    """
-    if isinstance(mutagen_file.tags, ID3):
-        mutagen_file.save(v2_version=3)
-        return
+    """Save `mutagen_file`'s tags without putting its audio at risk.
 
-    mutagen_file.save()
+    Tags that fit the file's existing padding are written in place.
+    Tags that outgrow it would make mutagen shift everything after
+    them, in place, which for MP3, FLAC and an M4A whose index comes
+    first is the audio: a crash part-way corrupts the file. Those are
+    saved to a copy that replaces the original once complete.
+    """
+    # ID3v2.3, not mutagen's default v2.4: DJ software and macOS's
+    # metadata importer read v2.3 more reliably. WAV and AIFF carry ID3
+    # too (`_WaveID3` and `_IFFID3` subclass `ID3`).
+    options = {"v2_version": 3} if isinstance(mutagen_file.tags, ID3) else {}
+
+    try:
+        mutagen_file.save(padding=_keep_padding_or_refuse, **options)
+    except _TagsOutgrowPadding:
+        rewrite_via_copy(
+            Path(mutagen_file.filename),
+            lambda copy: mutagen_file.save(copy, **options),
+        )
+
+
+class _TagsOutgrowPadding(Exception):
+    pass
+
+
+def _keep_padding_or_refuse(info: PaddingInfo) -> int:
+    # mutagen asks before writing anything (measured for every format
+    # here, HISTORY §167). Keeping the padding exactly means an
+    # in-place save never moves the bytes after the tags.
+    if info.padding < 0:
+        raise _TagsOutgrowPadding
+    return int(info.padding)
