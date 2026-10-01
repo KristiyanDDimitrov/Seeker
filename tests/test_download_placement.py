@@ -274,7 +274,16 @@ def test_same_name_swap_clears_analysis_measured_on_the_old_content(
     )
 
     with scenario.service.database.transaction() as connection:
-        after = scenario.service.local_files.get_by_id(row.id, connection)
+        (after,) = [
+            local_file
+            for local_file in (
+                scenario.service.local_files
+                .get_all_for_location_with_fingerprints(
+                    scenario.location.id, connection,
+                )
+            )
+            if local_file.id == row.id
+        ]
     assert after.bpm is None
     assert after.camelot_key is None
     assert after.fingerprint is None

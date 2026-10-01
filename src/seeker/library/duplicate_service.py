@@ -290,8 +290,10 @@ class DuplicateService:
             location = self._get_location_or_raise(location_name, connection)
             # Loaded from the DB just above via get_by_name, so .id is set.
             assert location.id is not None
-            local_files = self.local_files.get_all_for_location(
-                location.id, connection,
+            local_files = (
+                self.local_files.get_all_for_location_with_fingerprints(
+                    location.id, connection,
+                )
             )
 
         if folders:
@@ -473,8 +475,10 @@ class DuplicateService:
             location = self._get_location_or_raise(location_name, connection)
             # Loaded from the DB just above via get_by_name, so .id is set.
             assert location.id is not None
-            local_files = self.local_files.get_all_for_location(
-                location.id, connection,
+            local_files = (
+                self.local_files.get_all_for_location_with_fingerprints(
+                    location.id, connection,
+                )
             )
 
         if folders:
@@ -498,8 +502,10 @@ class DuplicateService:
         with self.database.transaction() as connection:
             for scope in scopes:
                 assert scope.location.id is not None
-                all_files = self.local_files.get_all_for_location(
-                    scope.location.id, connection,
+                all_files = (
+                    self.local_files.get_all_for_location_with_fingerprints(
+                        scope.location.id, connection,
+                    )
                 )
                 scoped_files = [
                     f for f in all_files
@@ -564,8 +570,10 @@ class DuplicateService:
                 assert scope.location.id is not None
 
                 if scope.location.id not in files_by_location_id:
-                    all_files = self.local_files.get_all_for_location(
-                        scope.location.id, connection,
+                    all_files = (
+                        self.local_files.get_all_for_location_with_fingerprints(
+                            scope.location.id, connection,
+                        )
                     )
                     files_by_location_id[scope.location.id] = all_files
                     resolved_location_names.append(scope.location.name)

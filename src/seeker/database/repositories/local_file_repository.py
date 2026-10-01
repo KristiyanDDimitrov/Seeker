@@ -7,6 +7,18 @@ from seeker.models.local_file import LocalFile
 # (999 before 3.32), so a big location's deletes go in chunks.
 _ID_CHUNK_SIZE = 500
 
+# Every read leaves the fingerprint columns out unless it asks for them:
+# they hold ~9 KB of text a row on average, and only duplicate
+# detection compares them (HISTORY §165).
+_COLUMNS = """
+    id, location_id, relative_path, filename, format, size_bytes, mtime,
+    tag_artist, tag_title, tag_album, duration_ms, scanned_at, bpm,
+    camelot_key, key_confidence, tagged_at
+"""
+_FINGERPRINT_COLUMNS = """
+    fingerprint, fingerprint_duration, fingerprint_computed_at
+"""
+
 
 class LocalFileRepository:
     def upsert(
@@ -170,29 +182,10 @@ class LocalFileRepository:
 
     def get_all(self, connection: sqlite3.Connection) -> list[LocalFile]:
         rows = connection.execute(
-            """
-            SELECT
-                id,
-                location_id,
-                relative_path,
-                filename,
-                format,
-                size_bytes,
-                mtime,
-                tag_artist,
-                tag_title,
-                tag_album,
-                duration_ms,
-                scanned_at,
-                bpm,
-                camelot_key,
-                key_confidence,
-                tagged_at,
-                fingerprint,
-                fingerprint_duration,
-                fingerprint_computed_at
+            f"""
+            SELECT {_COLUMNS}
             FROM local_files
-            """
+            """  # noqa: S608
         ).fetchall()
 
         return [_row_to_local_file(row) for row in rows]
@@ -208,30 +201,27 @@ class LocalFileRepository:
             connection: sqlite3.Connection,
     ) -> list[LocalFile]:
         rows = connection.execute(
-            """
-            SELECT
-                id,
-                location_id,
-                relative_path,
-                filename,
-                format,
-                size_bytes,
-                mtime,
-                tag_artist,
-                tag_title,
-                tag_album,
-                duration_ms,
-                scanned_at,
-                bpm,
-                camelot_key,
-                key_confidence,
-                tagged_at,
-                fingerprint,
-                fingerprint_duration,
-                fingerprint_computed_at
+            f"""
+            SELECT {_COLUMNS}
             FROM local_files
             WHERE location_id = ?
-            """,
+            """,  # noqa: S608
+            (location_id,),
+        ).fetchall()
+
+        return [_row_to_local_file(row) for row in rows]
+
+    def get_all_for_location_with_fingerprints(
+            self,
+            location_id: int,
+            connection: sqlite3.Connection,
+    ) -> list[LocalFile]:
+        rows = connection.execute(
+            f"""
+            SELECT {_COLUMNS}, {_FINGERPRINT_COLUMNS}
+            FROM local_files
+            WHERE location_id = ?
+            """,  # noqa: S608
             (location_id,),
         ).fetchall()
 
@@ -243,30 +233,11 @@ class LocalFileRepository:
             connection: sqlite3.Connection,
     ) -> LocalFile | None:
         row = connection.execute(
-            """
-            SELECT
-                id,
-                location_id,
-                relative_path,
-                filename,
-                format,
-                size_bytes,
-                mtime,
-                tag_artist,
-                tag_title,
-                tag_album,
-                duration_ms,
-                scanned_at,
-                bpm,
-                camelot_key,
-                key_confidence,
-                tagged_at,
-                fingerprint,
-                fingerprint_duration,
-                fingerprint_computed_at
+            f"""
+            SELECT {_COLUMNS}
             FROM local_files
             WHERE id = ?
-            """,
+            """,  # noqa: S608
             (local_file_id,),
         ).fetchone()
 
@@ -282,30 +253,11 @@ class LocalFileRepository:
             connection: sqlite3.Connection,
     ) -> LocalFile | None:
         row = connection.execute(
-            """
-            SELECT
-                id,
-                location_id,
-                relative_path,
-                filename,
-                format,
-                size_bytes,
-                mtime,
-                tag_artist,
-                tag_title,
-                tag_album,
-                duration_ms,
-                scanned_at,
-                bpm,
-                camelot_key,
-                key_confidence,
-                tagged_at,
-                fingerprint,
-                fingerprint_duration,
-                fingerprint_computed_at
+            f"""
+            SELECT {_COLUMNS}
             FROM local_files
             WHERE location_id = ? AND relative_path = ?
-            """,
+            """,  # noqa: S608
             (location_id, relative_path),
         ).fetchone()
 
@@ -394,6 +346,9 @@ def _release_matches(
 
 
 def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
+    # A Row's own `in` tests its values, not its column names.
+    has_fingerprint = "fingerprint" in row.keys()  # noqa: SIM118
+
     return LocalFile(
         id=row["id"],
         location_id=row["location_id"],
@@ -411,7 +366,11 @@ def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
         camelot_key=row["camelot_key"],
         key_confidence=row["key_confidence"],
         tagged_at=row["tagged_at"],
-        fingerprint=row["fingerprint"],
-        fingerprint_duration=row["fingerprint_duration"],
-        fingerprint_computed_at=row["fingerprint_computed_at"],
+        fingerprint=row["fingerprint"] if has_fingerprint else None,
+        fingerprint_duration=(
+            row["fingerprint_duration"] if has_fingerprint else None
+        ),
+        fingerprint_computed_at=(
+            row["fingerprint_computed_at"] if has_fingerprint else None
+        ),
     )

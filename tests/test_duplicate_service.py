@@ -1118,16 +1118,17 @@ def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
     assert result.computed == 1
 
     with database.transaction() as connection:
-        repo = LocalFileRepository()
-        in_scope = repo.get_by_location_and_relative_path(
-            location.id, "InScope/a.wav", connection,
-        )
-        out_of_scope = repo.get_by_location_and_relative_path(
-            location.id, "OutOfScope/b.wav", connection,
-        )
+        fingerprints = {
+            local_file.relative_path: local_file.fingerprint
+            for local_file in (
+                LocalFileRepository().get_all_for_location_with_fingerprints(
+                    location.id, connection,
+                )
+            )
+        }
 
-    assert in_scope.fingerprint is not None
-    assert out_of_scope.fingerprint is None
+    assert fingerprints["InScope/a.wav"] is not None
+    assert fingerprints["OutOfScope/b.wav"] is None
 
 
 def test_find_duplicate_groups_scoped_to_a_folder_excludes_outside_matches(
