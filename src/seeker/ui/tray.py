@@ -577,7 +577,7 @@ def _resolve_tray_icon_path() -> Path:
             / "packaging" / "icons" / "seeker_menubar_Template.png"
         )
 
-    return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]
+    return Path(sys._MEIPASS) / "icons" / "seeker_menubar_Template.png"  # type: ignore[attr-defined]  # noqa: SLF001
 
 
 def _set_dock_icon_visible(visible: bool) -> None:

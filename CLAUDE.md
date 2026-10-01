@@ -68,7 +68,7 @@ src/seeker/
 │                              #   audio_quality.py (a local file's quality)
 ├── ui/                          # seeker-ui (PySide6)
 │   ├── main_window.py           #   shell only, post-Phase-6: sidebar nav,
-│   │                          #   timers, tray wiring (6,882 -> 1,842 lines)
+│   │                          #   timers, tray wiring (2,042 lines)
 │   ├── pages/                    #   PageContext (context.py) is the seam —
 │   │                          #   dashboard_page.py, tagging_panel.py,
 │   │                          #   search_page.py, downloads_page.py,
@@ -246,6 +246,13 @@ src/seeker/
   `PageContext.playlist_selection` (`ui/playlist_selection.py`),
   never through one page reading another's attributes; Dashboard and
   Library both write it. [HISTORY §133](docs/history/121-150.md#133)
+  A page owns the actions its own buttons start (Dashboard's Sync,
+  Scan, Match, Download, Load tracks), and the shell calls only a
+  page's **public** methods (`poll_*`, `refresh_*`, `on_shown`,
+  `focus_track`). `SLF001` is enforced over `src/` (tests exempt): a
+  new private reach across objects fails `ruff check`. The one `noqa`
+  is PyInstaller's `sys._MEIPASS`.
+  [HISTORY §162](docs/history/151-180.md#162)
 - **Five UI feedback channels, each with exactly one job — never blur
   them.** Activity strip (top): GLOBAL, cross-page, whatever
   `busy_actions` reports running anywhere, auto-hides when idle.

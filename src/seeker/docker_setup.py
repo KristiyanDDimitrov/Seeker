@@ -76,7 +76,7 @@ def compose_template_path() -> Path:
     file in dev. Only ever read — `compose_file_path()` is the copy
     Seeker runs and edits."""
     if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "docker-compose.yml"  # type: ignore[attr-defined]
+        return Path(sys._MEIPASS) / "docker-compose.yml"  # type: ignore[attr-defined]  # noqa: SLF001
 
     return Path(__file__).resolve().parents[2] / "docker-compose.yml"
 

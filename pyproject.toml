@@ -78,6 +78,8 @@ select = [
     "PIE790", # no `pass` after a docstring
     "RSE102", # `raise Error`, not `raise Error()`
     "FURB161", # int.bit_count(), not bin(i).count("1")
+    "SLF001", # no reaching into another object's private members:
+              # the shell calls a page's public methods (HISTORY §162)
 ]
 # A preview-only rule runs only when selected by its exact code above,
 # never through a prefix such as "E" or "RUF". Preview mode can still
@@ -110,7 +112,8 @@ ignore = [
 # findings are checked and scoped separately below, not covered by this
 # blanket ignore. See docs/history/108-120.md#115 (§4.8.2/§4.8.4) for the
 # sampling.
-"tests/*" = ["PLC0415", "S105", "S106"]
+# SLF001: a test inspects the private state it is testing.
+"tests/*" = ["PLC0415", "S105", "S106", "SLF001"]
 # NAME-only false positives (S105 fires on the ASSIGNMENT TARGET name
 # containing "token"/"password", regardless of the value): TOKEN_URL is
 # a URL, not a credential.
