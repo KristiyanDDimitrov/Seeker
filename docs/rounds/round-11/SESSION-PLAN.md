@@ -55,7 +55,7 @@ explicit yes.
 | ☑ S18 | Test infrastructure | §18 | ~120 K | After §18.2; the smoke-file split can stand alone |
 | ☑ S19 | MainWindow I: Dashboard flows move to DashboardPage | §19 | ~130 K | After the sync, scan and match flows move |
 | ☑ S20 | MainWindow II: extract the window lifecycle | §20 | ~130 K | After geometry and close move; hide-to-tray can follow |
-| ☐ S21 | **[ASK]** Package regrouping | §21 | ~120 K | After the first package |
+| ☑ S21 | **[ASK]** Package regrouping | §21 | ~120 K | After the first package |
 | **Phase G — Performance and tests** | | | | |
 | ☐ S22 | Performance | §22 | ~120 K | After §22.1–§22.2 (the poll) |
 | ☐ S23 | Test gaps | §23 | ~120 K | After §23.1 (`metadata.py`) |
@@ -216,8 +216,9 @@ the `tc-tracker` handoff format.
       reporting, so `SECURITY.md`'s advisory link works. **Done by Kris
       2026-09-30; confirmed `{"enabled":true}` via
       `gh api repos/{owner}/{repo}/private-vulnerability-reporting`.**
-- [ ] **S21** — package regrouping (`seeker/audio/`, `seeker/files/`,
-      and slskd code into `soulseek/`): yes or no.
+- [x] **S21** — package regrouping (`seeker/audio/`, `seeker/files/`,
+      and slskd code into `soulseek/`): yes or no. **Answered
+      2026-10-01: yes, all three. Done in S21 (HISTORY §164).**
 - [ ] **S30** — the visual direction: "Booth", "Harmonic", a mix, or
       neither. Also whether the Dashboard shows BPM and key.
 - [ ] **S39 §39.3** — the bundle identifier. Recommended:

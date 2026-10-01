@@ -10,65 +10,56 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S20 close-out commit (HISTORY §163, this handoff, the
-  plan tick, CLAUDE.md). Tree clean apart from the untracked
-  `Claude outputs/`.
+- **HEAD:** the S21 close-out commit (HISTORY §164, this handoff, the
+  plan tick). Tree clean apart from the untracked `Claude outputs/`.
 - **Local pytest** (2026-10-01): `1576 passed, 1 skipped`, no
-  warnings; 10 consecutive full runs at
-  `3b951a2`, all `1576 passed, 1 skipped`.
-- **`mypy --strict src/`:** clean, 125 files. **`ruff check src
+  warnings, at every S21 commit.
+- **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** run `36828786017` on `dc0e052` (the close-out commit):
-  success, `1548 passed, 29 skipped`, branch coverage 92.80 % (floor
-  89). No failures, so the fullscreen-close pair and
-  `test_view_menu_focus_search_…` (not skip-gated) passed.
+- **CI:** pending the push of this close-out (recorded by the next
+  commit).
 
 ## 2. Where we are
 
-S1–S20 ticked. **Next: S21** — **[ASK]** package regrouping (BRIEF
-§21). It needs Kris's explicit yes before any work; if the answer is
-no or not yet, S22 (Performance) can go first.
+S1–S21 ticked. **Next: S22** — Performance (BRIEF §22), split point
+after §22.1–§22.2 (the poll).
 
-## 3. Session report (S20)
+## 3. Session report (S21)
 
-Evidence for every line is in HISTORY §163.
-- `a3aaa11` §20.1: `WindowLifecycleController` (`ui/window_lifecycle.py`)
-  owns geometry, hide-to-tray, Dock icon, quit; MainWindow delegates.
-- `8e47efd` §20.2: `ThemeToggleButton` → `ui/widgets.py`.
-- `3b951a2` §20.3: `MainWindow.__init__` is 28 lines of named steps.
+Evidence for every line is in HISTORY §164 (the rewrite script is
+pasted there).
+- `c652138`: `files/{atomic,deletion,placement,sanitize,naming}.py`.
+- `714a12e`: `audio/{analysis,fingerprint,formats,tags,quality}.py`
+  (`metadata.py` → `audio/tags.py`; `library/audio_quality.py` →
+  `audio/quality.py`).
+- `e72f1c1`: `soulseek/docker_setup.py`, `soulseek/sharing_service.py`;
+  `compose_template_path()` now `parents[3]`.
 
 ## 4. Key context
 
-- **Lifecycle state lives on `window._lifecycle`** (tests:
-  `window._lifecycle._hidden_to_tray`, `._reopen_filled`,
-  `._hide_request_id`, `.confirm_quit_if_downloads_active`). Pages
-  still read it through `PageContext.is_hidden_to_tray`.
-- **Patch the Dock icon at `seeker.ui.window_lifecycle.
-  _set_dock_icon_visible`**; `main_window` no longer imports it (nor
-  `sys`). The quit log lines come from logger
-  `seeker.ui.window_lifecycle`.
-- **The tray reopens through `MainWindow.reopen()`;** `TrayHost` no
-  longer has `set_hidden_to_tray`/`bump_hide_request_id`/
-  `set_dock_icon_visible`. It still has the four `poll_*` lambdas (the
-  tray is built before the pages).
-- **`main_window.py` is 1,283 lines, not ~1,100:** 390 are comments.
-  S25 (comment hygiene `ui/`) closes the gap; `window_lifecycle.py`
-  carries the moved comments verbatim and is in S25's scope too.
+- **New import paths** (old ones are gone, no shims): `seeker.files.*`,
+  `seeker.audio.*`, `seeker.soulseek.docker_setup`,
+  `seeker.soulseek.sharing_service`. Patch targets follow, e.g.
+  `"seeker.soulseek.docker_setup.platformdirs.user_data_dir"`. The mypy
+  mutagen override is now `module = "seeker.audio.tags"`.
+- **Logger names changed** for `audio/fingerprint.py`, `audio/tags.py`
+  and `soulseek/docker_setup.py` (`__name__`); nothing names them.
+- **Moved comments now say `soulseek/docker_setup.py`, `audio/tags.py`
+  etc.**, including a few self-references inside the moved files; S24
+  (comment hygiene: core) can turn those into "this module".
 - Carried: radon not in the env (D-or-worse was 2); coverage margin
   ~3.8 points (CI 92.80 %, floor 89). Never touch slskd or real data.
-- **Shell:** zsh does not word-split `$var`; BSD `sed` lacks `\b`.
-  Slicing moved code by line range in a Python script, then `ruff check
-  --fix` on the touched files, worked again.
+- **Shell:** zsh does not word-split `$var` and treats a bare `===` as
+  a filename expansion; BSD `sed` lacks `\b`.
 
 ## 5. Decisions made
 
-- **Reopen moved from the tray to the lifecycle,** so one class writes
-  the hidden-to-tray state; recorded in CLAUDE.md (Qt section).
-- **`cleanup_before_quit` runs the shell's teardown first**
-  (`release_shell`), then the geometry backstop; the two settings
-  writes touch different keys (HISTORY §163).
-- **Comment text was not trimmed to hit the line target** (S25 owns
-  it).
+- **Modules drop the package's prefix** (`audio/analysis.py`, not
+  `audio/audio_analysis.py`); `metadata.py` became `audio/tags.py` so
+  it no longer reads as a twin of `library/metadata_service.py`.
+- **`migration-architect` diverged on how:** its scripts target
+  schema/API migrations; the row took its phase-gate-rollback shape
+  only (HISTORY §164).
 
 ## 6. Blockers
 
@@ -80,9 +71,8 @@ None.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** S21 package regrouping (next row); S30 visual
-direction; S39 bundle identifier; S42 publishing commands; X1 and X2
-(optional).
+**Approval gates:** S30 visual direction; S39 bundle identifier;
+S42 publishing commands; X1 and X2 (optional).
 
 **Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
 
