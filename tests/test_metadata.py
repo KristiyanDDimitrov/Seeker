@@ -8,11 +8,12 @@ import mutagen.id3
 import pytest
 from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
-from mutagen.mp4 import MP4
+from mutagen.mp4 import MP4, MP4Cover
 
 from seeker.audio.tags import (
     _read_image_dimensions,
     embed_album_art,
+    read_embedded_art,
     save_tags,
     write_analysis_tags,
     write_text_tags,
@@ -441,3 +442,192 @@ def test_embed_album_art_flac_replaces_not_appends_existing_art(tmp_path):
     reopened = FLAC(dest)
     assert len(reopened.pictures) == 1
     assert reopened.pictures[0].width == 200
+
+
+# --- Every format, on files generated per test ---------------------------
+#
+# The x9-pro tests above exercise real files' quirks but skip wherever
+# the drive isn't mounted, CI included. These run everywhere: soundfile
+# writes MP3, FLAC, AIFF and WAV; it has no MP4 writer, so M4A copies
+# `fixtures/silent.m4a` (0.5 s of silent AAC, tag-free, made with
+# ffmpeg — see HISTORY §167). Every file starts with no tags, so the
+# first write also exercises each format's tag creation.
+
+M4A_FIXTURE = Path(__file__).parent / "fixtures" / "silent.m4a"
+
+ALL_FORMATS = ["mp3", "flac", "aiff", "wav", "m4a"]
+ID3_FORMATS = ["mp3", "aiff", "wav"]
+
+# Where each format keeps title, artist and album — the frame and atom
+# names from the ID3v2, Vorbis comment and iTunes MP4 conventions.
+TEXT_TAG_KEYS = {
+    "mp3": ("TIT2", "TPE1", "TALB"),
+    "aiff": ("TIT2", "TPE1", "TALB"),
+    "wav": ("TIT2", "TPE1", "TALB"),
+    "flac": ("title", "artist", "album"),
+    "m4a": ("\xa9nam", "\xa9ART", "\xa9alb"),
+}
+
+
+@pytest.fixture
+def generated_audio(request, tmp_path) -> Path:
+    import numpy as np
+    import soundfile as sf
+
+    extension = request.param
+    path = tmp_path / f"generated.{extension}"
+
+    if extension == "m4a":
+        shutil.copy(M4A_FIXTURE, path)
+    else:
+        sf.write(
+            path, np.zeros(22_050, dtype="float32"), 44_100,
+            format=extension.upper(),
+        )
+
+    return path
+
+
+def _tag_text(audio, key: str) -> str:
+    value = audio.tags[key]
+    if isinstance(value, list):
+        return value[0]
+    return str(value)
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+def test_text_tags_round_trip(generated_audio):
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Test Artist", "Test Title", "Test Album")
+    save_tags(audio)
+
+    reopened = MutagenFile(generated_audio)
+    title_key, artist_key, album_key = TEXT_TAG_KEYS[
+        generated_audio.suffix[1:]
+    ]
+
+    assert _tag_text(reopened, title_key) == "Test Title"
+    assert _tag_text(reopened, artist_key) == "Test Artist"
+    assert _tag_text(reopened, album_key) == "Test Album"
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+def test_untagged_file_has_no_embedded_art(generated_audio):
+    assert read_embedded_art(MutagenFile(generated_audio)) is None
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+@pytest.mark.parametrize(
+    ("image", "mime_type"),
+    [
+        (_make_minimal_jpeg(64, 64), "image/jpeg"),
+        (_make_minimal_png(64, 64), "image/png"),
+    ],
+    ids=["jpeg", "png"],
+)
+def test_album_art_round_trips(generated_audio, image, mime_type):
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    assert embed_album_art(audio, image, mime_type) is True
+    save_tags(audio)
+
+    assert read_embedded_art(MutagenFile(generated_audio)) == image
+
+
+@pytest.mark.parametrize("generated_audio", ["m4a"], indirect=True)
+def test_mp4_cover_records_its_image_format(generated_audio):
+    audio = MutagenFile(generated_audio)
+    embed_album_art(audio, _make_minimal_png(8, 8), "image/png")
+    save_tags(audio)
+
+    cover = MutagenFile(generated_audio).tags["covr"][0]
+    assert cover.imageformat == MP4Cover.FORMAT_PNG
+
+
+# BPM and key: ID3's TBPM/TKEY, the Vorbis comments BPM/KEY, and the
+# MP4 `tmpo` atom plus iTunes' `initialkey` freeform atom.
+def _analysis_values(audio, extension: str) -> tuple[str, str | None]:
+    if extension in ID3_FORMATS:
+        key = audio.tags.get("TKEY")
+        return str(audio.tags["TBPM"]), str(key) if key else None
+    if extension == "flac":
+        return audio["BPM"][0], (audio.get("KEY") or [None])[0]
+    initial_key = audio.tags.get("----:com.apple.iTunes:initialkey")
+    return (
+        str(audio.tags["tmpo"][0]),
+        bytes(initial_key[0]).decode() if initial_key else None,
+    )
+
+
+@pytest.mark.parametrize("generated_audio", ALL_FORMATS, indirect=True)
+@pytest.mark.parametrize("camelot_key", ["8A", None])
+def test_analysis_tags_round_trip(generated_audio, camelot_key):
+    audio = MutagenFile(generated_audio)
+    write_analysis_tags(audio, 127.6, camelot_key)
+    save_tags(audio)
+
+    reopened = MutagenFile(generated_audio)
+
+    assert _analysis_values(reopened, generated_audio.suffix[1:]) == (
+        "128", camelot_key,
+    )
+
+
+@pytest.mark.parametrize("generated_audio", ID3_FORMATS, indirect=True)
+def test_save_tags_writes_id3v23(generated_audio):
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    save_tags(audio)
+
+    assert MutagenFile(generated_audio).tags.version == (2, 3, 0)
+
+
+@pytest.mark.parametrize("generated_audio", ["flac", "m4a"], indirect=True)
+def test_save_tags_keeps_the_audio_readable(generated_audio):
+    # FLAC and MP4 have no ID3 version to choose: save_tags must take
+    # the plain save() and leave a file that still opens as audio.
+    audio = MutagenFile(generated_audio)
+    write_text_tags(audio, "Artist", "Title", "Album")
+    embed_album_art(audio, _make_minimal_jpeg(640, 640), "image/jpeg")
+    save_tags(audio)
+
+    reopened = MutagenFile(generated_audio)
+    assert reopened.info.length == pytest.approx(0.5, abs=0.05)
+
+
+def test_read_image_dimensions_png_without_ihdr_returns_none():
+    png = _make_minimal_png(10, 10)
+    assert _read_image_dimensions(png[:12] + b"JUNK" + png[16:]) is None
+
+
+def test_read_image_dimensions_skips_padding_and_standalone_markers():
+    jpeg = _make_minimal_jpeg(320, 200)
+    # A fill byte and a standalone RST0 marker between SOI and APP0
+    # carry no length field; the reader must step over both.
+    padded = jpeg[:2] + b"\x00" + b"\xff\xd0" + jpeg[2:]
+    assert _read_image_dimensions(padded) == (320, 200)
+
+
+def test_read_image_dimensions_truncated_sof_returns_none():
+    jpeg = _make_minimal_jpeg(320, 200)
+    sof_offset = jpeg.index(b"\xff\xc0")
+    assert _read_image_dimensions(jpeg[:sof_offset + 6]) is None
+
+
+@pytest.mark.parametrize("generated_audio", ["flac"], indirect=True)
+def test_flac_picture_records_dimensions_only_when_readable(
+        generated_audio,
+):
+    audio = MutagenFile(generated_audio)
+    embed_album_art(audio, _make_minimal_jpeg(640, 480), "image/jpeg")
+    save_tags(audio)
+    picture = MutagenFile(generated_audio).pictures[0]
+    assert (picture.type, picture.desc) == (3, "Cover")
+    assert (picture.width, picture.height, picture.depth) == (640, 480, 24)
+
+    audio = MutagenFile(generated_audio)
+    embed_album_art(audio, FAKE_JPEG_BYTES, "image/jpeg")
+    save_tags(audio)
+    pictures = MutagenFile(generated_audio).pictures
+    assert len(pictures) == 1
+    assert (pictures[0].width, pictures[0].height) == (0, 0)
