@@ -23,6 +23,7 @@ from fakes import (
     make_review_candidate,
     make_track,
     make_upgrade_details,
+    wait_for_workers,
 )
 from seeker.ui import plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
@@ -430,8 +431,12 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
         BulkReplaceUpgradesDialog, "exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
+    # A wrongly started replace would end in a modal result dialog;
+    # stubbed so that regression fails below instead of hanging.
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._review_page.replace_all_upgrades_button.click()
+    wait_for_workers(window)
 
     assert application.review_service.apply_upgrade_decisions_batch_calls == []
 

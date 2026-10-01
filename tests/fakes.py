@@ -923,3 +923,14 @@ def force_tray_available(monkeypatch, available: bool) -> None:
     monkeypatch.setattr(
         QSystemTrayIcon, "isSystemTrayAvailable", lambda: available,
     )
+
+
+def wait_for_workers(window) -> None:
+    """Blocks until every worker the window started has returned.
+
+    Use before asserting that a click called nothing: straight after
+    the click, such an assertion passes even when a worker is about to
+    make the call. Events are deliberately not processed, so a result
+    dialog a wrongly started worker would open cannot block the test.
+    """
+    assert window.thread_pool.waitForDone(2000)

@@ -29,6 +29,7 @@ from fakes import (
     FakeApplication,
     confirm_yes,
     make_duplicate_group,
+    wait_for_workers,
 )
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
@@ -629,8 +630,12 @@ def test_resolve_all_duplicates_cancelled_dialog_calls_nothing(
         BulkResolveDuplicatesDialog, "exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
+    # A wrongly started resolve would end in a modal result dialog;
+    # stubbed so that regression fails below instead of hanging.
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._duplicates_page.resolve_all_duplicates_button.click()
+    wait_for_workers(window)
 
     assert application.duplicate_service.resolve_groups_calls == []
 
@@ -649,8 +654,12 @@ def test_resolve_all_duplicates_unconfirmed_checkbox_calls_nothing(
         BulkResolveDuplicatesDialog, "exec",
         lambda self: QDialog.DialogCode.Accepted,
     )
+    # A wrongly started resolve would end in a modal result dialog;
+    # stubbed so that regression fails below instead of hanging.
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
 
     window._duplicates_page.resolve_all_duplicates_button.click()
+    wait_for_workers(window)
 
     assert application.duplicate_service.resolve_groups_calls == []
 
@@ -1320,6 +1329,8 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
         checkbox,
         delete_button,
     )
+    wait_for_workers(window)
+
     assert application.duplicate_service.delete_local_files_calls == []
 
 

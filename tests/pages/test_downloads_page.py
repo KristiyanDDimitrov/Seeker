@@ -51,11 +51,19 @@ def test_downloads_aggregate_header_blank_with_no_active_downloads(qtbot):
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
+    eta_label = window._downloads_page.downloads_eta_label
+    # The label starts blank, so it must show something first for blank
+    # to prove the clear.
+    window._downloads_page._render_active_downloads([
+        make_active_download(status="queued", bytes_transferred=None),
+    ])
+    assert eta_label.text() != ""
+    assert eta_label.toolTip() != ""
 
     window._downloads_page._render_active_downloads([])
 
-    assert window._downloads_page.downloads_eta_label.text() == ""
-    assert window._downloads_page.downloads_eta_label.toolTip() == ""
+    assert eta_label.text() == ""
+    assert eta_label.toolTip() == ""
 
 
 def test_downloads_aggregate_header_shows_estimate_once_a_download_has_samples(

@@ -1,5 +1,6 @@
 import threading
 
+from fakes import wait_for_workers
 from seeker.application import Application
 from seeker.docker_setup import (
     DockerState,
@@ -288,6 +289,7 @@ def test_client_id_return_pressed_does_nothing_when_field_is_empty(
     assert not wizard.connect_button.isEnabled()
 
     wizard.client_id_field.returnPressed.emit()
+    wait_for_workers(wizard)
 
     assert calls == []
     assert wizard.stack.currentIndex() == 0

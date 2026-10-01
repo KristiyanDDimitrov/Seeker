@@ -480,8 +480,10 @@ def test_download_button_disabled_with_no_playlist_selected(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    qtbot.wait(50)
-    assert not window._dashboard_page.download_button.isEnabled()
+    # Enabled is Qt's default; the disable comes from the next-step
+    # facts, fetched on a worker, so wait for it rather than a fixed time.
+    download_button = window._dashboard_page.download_button
+    qtbot.waitUntil(lambda: not download_button.isEnabled(), timeout=2000)
 
 
 def test_sync_button_disabled_when_spotify_not_connected(qtbot):

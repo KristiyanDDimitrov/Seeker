@@ -27,8 +27,6 @@ def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
 
     summary_label = window._sharing_page.sharing_summary_label
     qtbot.waitUntil(lambda: bool(summary_label.text()), timeout=2000)
-    assert "isn't configured" not in summary_label.text() or True
-    from seeker.ui import help_text
     assert summary_label.text() == help_text.SHARING_UNCONFIGURED_NOTICE
     assert window._sharing_page.sharing_locations_table.rowCount() == 0
 
