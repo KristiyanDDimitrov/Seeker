@@ -631,3 +631,31 @@ def test_flac_picture_records_dimensions_only_when_readable(
     pictures = MutagenFile(generated_audio).pictures
     assert len(pictures) == 1
     assert (pictures[0].width, pictures[0].height) == (0, 0)
+
+
+@pytest.mark.parametrize("generated_audio", ["flac"], indirect=True)
+def test_flac_key_is_written_to_initialkey_and_key(generated_audio):
+    # Vorbis comments have no standard key field. INITIALKEY is the
+    # one TagLib-based software maps ID3's TKEY to, and Mixxx's
+    # recommended field; KEY is the alternative Mixxx also reads and
+    # MusicBrainz Picard writes. Both, so every DJ tool finds it.
+    audio = MutagenFile(generated_audio)
+    write_analysis_tags(audio, 124.0, "5A")
+    save_tags(audio)
+
+    reopened = MutagenFile(generated_audio)
+
+    assert reopened["INITIALKEY"] == ["5A"]
+    assert reopened["KEY"] == ["5A"]
+
+
+@pytest.mark.parametrize("generated_audio", ["flac"], indirect=True)
+def test_flac_without_a_key_writes_no_key_field(generated_audio):
+    audio = MutagenFile(generated_audio)
+    write_analysis_tags(audio, 124.0, None)
+    save_tags(audio)
+
+    reopened = MutagenFile(generated_audio)
+
+    assert "INITIALKEY" not in reopened
+    assert "KEY" not in reopened

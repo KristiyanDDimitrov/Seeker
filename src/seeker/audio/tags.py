@@ -234,7 +234,11 @@ def write_analysis_tags(
     if isinstance(mutagen_file, FLAC):
         mutagen_file["BPM"] = [bpm_text]
 
+        # Vorbis comments have no standard key field: INITIALKEY is
+        # what TagLib maps ID3's TKEY to and Mixxx prefers, KEY the
+        # alternative Mixxx and MusicBrainz Picard use (HISTORY §167).
         if camelot_key is not None:
+            mutagen_file["INITIALKEY"] = [camelot_key]
             mutagen_file["KEY"] = [camelot_key]
         return
 
