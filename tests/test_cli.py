@@ -1629,3 +1629,422 @@ def test_downloads_review_without_all_runs_the_interactive_review(
         ("get_pending_upgrade_reviews",),
     ]
     assert capsys.readouterr().out == "Nothing to review.\n"
+
+
+# --- Playlist-name resolution: the refresh offer ----------------------
+
+
+class FakeSyncServiceThatCanRefresh(FakeSyncService):
+    """`sync_playlists` makes `appears_after_refresh` known, as a
+    metadata refresh would for a playlist created on Spotify since."""
+
+    def __init__(self, playlists, appears_after_refresh=None):
+        super().__init__(playlists)
+        self._appears_after_refresh = appears_after_refresh
+        self.sync_playlists_calls = 0
+
+    def sync_playlists(self) -> None:
+        self.sync_playlists_calls += 1
+        if self._appears_after_refresh is not None:
+            self._playlists.append(self._appears_after_refresh)
+
+
+def _refreshing_application(tmp_path, sync_service):
+    return FakeApplication(make_matcher(tmp_path), sync_service=sync_service)
+
+
+def _answer(monkeypatch, *answers: str) -> list[str]:
+    prompts: list[str] = []
+    remaining = list(answers)
+
+    def fake_input(prompt=""):
+        prompts.append(prompt)
+        return remaining.pop(0)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    return prompts
+
+
+def test_a_close_playlist_name_fails_without_offering_a_refresh(
+        tmp_path, capsys, monkeypatch,
+):
+    sync_service = FakeSyncServiceThatCanRefresh(
+        [Playlist(id="p1", name="Warmup", track_count=6)],
+    )
+    prompts = _answer(monkeypatch)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(
+            _refreshing_application(tmp_path, sync_service),
+            ["sync-tracks", "Warmp"],
+        )
+
+    assert exit_info.value.code == 1
+    assert prompts == []
+    assert sync_service.sync_playlists_calls == 0
+    assert "Warmp" in capsys.readouterr().out
+
+
+def test_declining_the_refresh_offer_reports_the_missing_playlist(
+        tmp_path, capsys, monkeypatch,
+):
+    sync_service = FakeSyncServiceThatCanRefresh([])
+    prompts = _answer(monkeypatch, "n")
+
+    with pytest.raises(SystemExit):
+        cli.run(
+            _refreshing_application(tmp_path, sync_service),
+            ["sync-tracks", "Brand New"],
+        )
+
+    assert len(prompts) == 1
+    assert sync_service.sync_playlists_calls == 0
+    assert (
+        "No playlist named 'Brand New' found locally."
+        in capsys.readouterr().out
+    )
+
+
+def test_accepting_the_refresh_offer_finds_a_new_playlist(
+        tmp_path, capsys, monkeypatch,
+):
+    sync_service = FakeSyncServiceThatCanRefresh(
+        [], appears_after_refresh=Playlist(
+            id="p9", name="Brand New", track_count=4,
+        ),
+    )
+    sync_service.track_sync_result = TrackSyncResult(tracks_saved=4)
+    _answer(monkeypatch, "y")
+
+    cli.run(
+        _refreshing_application(tmp_path, sync_service),
+        ["sync-tracks", "brand new"],
+    )
+
+    assert sync_service.sync_playlists_calls == 1
+    assert (
+        capsys.readouterr().out == "Saved 4 tracks for 'Brand New'.\n"
+    )
+
+
+def test_a_playlist_missing_even_after_refreshing_says_so(
+        tmp_path, capsys, monkeypatch,
+):
+    sync_service = FakeSyncServiceThatCanRefresh([])
+    _answer(monkeypatch, "y")
+
+    with pytest.raises(SystemExit):
+        cli.run(
+            _refreshing_application(tmp_path, sync_service),
+            ["sync-tracks", "Brand New"],
+        )
+
+    assert "even after refreshing from Spotify" in capsys.readouterr().out
+
+
+# --- download --------------------------------------------------------
+
+
+class FakeDownloadServiceForPlaylist:
+    def __init__(self, result=None, error=None):
+        self._result = result
+        self._error = error
+        self.download_playlist_calls: list[str] = []
+
+    def download_playlist(self, playlist_name):
+        self.download_playlist_calls.append(playlist_name)
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+
+def _download_application(tmp_path, download_service):
+    application = _metadata_application(tmp_path, None)
+    application.download_service = download_service
+    return application
+
+
+def test_download_names_every_kind_of_skip(tmp_path, capsys):
+    from seeker.models.download_result import (
+        PlaylistDownloadResult,
+        TrackFailure,
+    )
+
+    download_service = FakeDownloadServiceForPlaylist(
+        PlaylistDownloadResult(
+            requested=2, skipped=4, total=7,
+            already_in_progress=["A - One"],
+            needs_review=["B - Two", "C - Three"],
+            failures=[TrackFailure(track="D - Four", reason="search failed")],
+        ),
+    )
+
+    cli.run(
+        _download_application(tmp_path, download_service),
+        ["download", "warmup"],
+    )
+
+    assert download_service.download_playlist_calls == ["Warmup"]
+    assert capsys.readouterr().out == (
+        "Requested 2 download(s), skipped 4 (2 sent to review, "
+        "1 already in progress, 1 no candidate found), failed 1 "
+        "(of 7 unmatched tracks).\n"
+        "  Run 'seeker review' to see the new candidates.\n"
+    )
+
+
+def test_download_without_a_destination_points_at_set_destination(
+        tmp_path, capsys,
+):
+    download_service = FakeDownloadServiceForPlaylist(
+        error=NoDestinationConfiguredError("Warmup"),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(
+            _download_application(tmp_path, download_service),
+            ["download", "Warmup"],
+        )
+
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().out.rstrip().endswith(
+        "Run 'seeker playlists set-destination' first."
+    )
+
+
+# --- downloads status ------------------------------------------------
+
+
+class FakeDownloadServiceForPoll:
+    def __init__(self, result):
+        self._result = result
+
+    def poll_downloads(self):
+        return self._result
+
+
+def test_downloads_status_prints_every_count(tmp_path, capsys):
+    from seeker.models.download_result import PollResult
+
+    application = FakeApplication(
+        make_matcher(tmp_path),
+        download_service=FakeDownloadServiceForPoll(
+            PollResult(
+                queued=1, downloading=2, completed=3, failed=4,
+                ready_for_review=5, locked=6, shortlisted=7,
+                superseded=8, unavailable=9,
+            ),
+        ),
+    )
+
+    cli.run(application, ["downloads", "status"])
+
+    assert capsys.readouterr().out == (
+        "Queued: 1, Downloading: 2, Completed: 3, Failed: 4, "
+        "Ready for review: 5, Locked (retrying): 6, "
+        "Shortlisted (pending): 7, Superseded: 8, Unavailable: 9.\n"
+    )
+
+
+# --- downloads review, one at a time ---------------------------------
+
+
+class FakeReviewServiceForOneByOne:
+    def __init__(self, details_by_id, message="Replaced."):
+        self._details_by_id = details_by_id
+        self._message = message
+        self.decisions: list[tuple[int, bool, bool]] = []
+
+    def get_pending_upgrade_reviews(self):
+        return [
+            details for details in self._details_by_id.values()
+            if details is not None
+        ] + [
+            self._listed_only(request_id)
+            for request_id, details in self._details_by_id.items()
+            if details is None
+        ]
+
+    def _listed_only(self, request_id):
+        from seeker.models.upgrade_review import UpgradeReviewDetails
+
+        return UpgradeReviewDetails(
+            request_id=request_id,
+            track=Track(
+                id="gone", title="Gone", artist="Gone", album="",
+                duration_ms=0,
+            ),
+            quality_descriptor=None, current_description="",
+            old_file_path=None,
+        )
+
+    def get_upgrade_review_details(self, request_id):
+        return self._details_by_id[request_id]
+
+    def apply_upgrade_decision(self, request_id, replace, delete_old):
+        self.decisions.append((request_id, replace, delete_old))
+        return self._message if replace else None
+
+
+def _upgrade(request_id, old_file_path="/music/old.mp3"):
+    from seeker.models.upgrade_review import UpgradeReviewDetails
+
+    return UpgradeReviewDetails(
+        request_id=request_id,
+        track=Track(
+            id=f"t{request_id}", title=f"Title {request_id}",
+            artist="Artist", album="Album", duration_ms=200_000,
+        ),
+        quality_descriptor="flac 1000kbps", current_description="mp3",
+        old_file_path=old_file_path,
+    )
+
+
+def test_downloads_review_asks_per_upgrade_and_applies_each_answer(
+        tmp_path, capsys, monkeypatch,
+):
+    review_service = FakeReviewServiceForOneByOne(
+        {1: _upgrade(1), 2: _upgrade(2), 3: _upgrade(3, old_file_path=None)},
+    )
+    # 1: replace, delete the old file. 2: decline. 3: replace; no old
+    # file, so no delete question.
+    prompts = _answer(monkeypatch, "y", "y", "n", "y")
+
+    cli.run(
+        FakeApplication(make_matcher(tmp_path), review_service=review_service),
+        ["downloads", "review"],
+    )
+
+    assert review_service.decisions == [
+        (1, True, True), (2, False, False), (3, True, False),
+    ]
+    assert len(prompts) == 4
+    assert "Delete old file at /music/old.mp3?" in prompts[1]
+    assert capsys.readouterr().out == "  Replaced.\n  Replaced.\n"
+
+
+def test_downloads_review_skips_an_upgrade_resolved_meanwhile(
+        tmp_path, monkeypatch,
+):
+    review_service = FakeReviewServiceForOneByOne({7: None})
+    prompts = _answer(monkeypatch)
+
+    cli.run(
+        FakeApplication(make_matcher(tmp_path), review_service=review_service),
+        ["downloads", "review"],
+    )
+
+    assert prompts == []
+    assert review_service.decisions == []
+
+
+# --- library add, list, match ----------------------------------------
+
+
+class FakeLibraryServiceForLocations:
+    def __init__(self, locations=None, add_error=None):
+        self._locations = locations or []
+        self._add_error = add_error
+        self.add_location_calls: list[tuple[str, str]] = []
+
+    def add_location(self, name, path):
+        self.add_location_calls.append((name, path))
+        if self._add_error is not None:
+            raise self._add_error
+
+    def list_locations(self):
+        return self._locations
+
+
+def test_library_add_registers_the_location(tmp_path):
+    library_service = FakeLibraryServiceForLocations()
+
+    cli.run(
+        FakeApplication(
+            make_matcher(tmp_path), library_service=library_service,
+        ),
+        ["library", "add", "Music", "/music"],
+    )
+
+    assert library_service.add_location_calls == [("Music", "/music")]
+
+
+def test_library_add_of_a_missing_path_exits_with_the_reason(
+        tmp_path, capsys,
+):
+    from seeker.library.scanner import LibraryUnavailableError
+
+    library_service = FakeLibraryServiceForLocations(
+        add_error=LibraryUnavailableError(Path("/Volumes/Gone/Music")),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(
+            FakeApplication(
+                make_matcher(tmp_path), library_service=library_service,
+            ),
+            ["library", "add", "Music", "/Volumes/Gone/Music"],
+        )
+
+    assert exit_info.value.code == 1
+    assert "may not be connected" in capsys.readouterr().out
+
+
+def test_library_list_shows_each_location_and_whether_it_is_reachable(
+        tmp_path, capsys,
+):
+    from seeker.models.library_location import LibraryLocation
+
+    library_service = FakeLibraryServiceForLocations([
+        (LibraryLocation("Music", "/music", "2026-01-01", id=1), True),
+        (LibraryLocation("X9", "/Volumes/X9", "2026-01-01", id=2), False),
+    ])
+
+    cli.run(
+        FakeApplication(
+            make_matcher(tmp_path), library_service=library_service,
+        ),
+        ["library", "list"],
+    )
+
+    assert capsys.readouterr().out == (
+        "Music: /music (reachable)\n"
+        "X9: /Volumes/X9 (unreachable)\n"
+    )
+
+
+def test_library_list_with_no_locations_says_so(tmp_path, capsys):
+    cli.run(
+        FakeApplication(
+            make_matcher(tmp_path),
+            library_service=FakeLibraryServiceForLocations(),
+        ),
+        ["library", "list"],
+    )
+
+    assert capsys.readouterr().out == "No library locations registered.\n"
+
+
+def test_library_match_runs_the_matcher(tmp_path):
+    class RecordingMatcher:
+        match_all_calls = 0
+
+        def match_all(self):
+            self.match_all_calls += 1
+
+    matcher = RecordingMatcher()
+
+    cli.run(FakeApplication(matcher), ["library", "match"])
+
+    assert matcher.match_all_calls == 1
+
+
+# --- no command ------------------------------------------------------
+
+
+def test_no_command_prints_help_and_exits_cleanly(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        cli.parse_args([])
+
+    assert exit_info.value.code == 0
+    assert "usage:" in capsys.readouterr().out
