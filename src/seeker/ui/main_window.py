@@ -332,20 +332,11 @@ class MainWindow(QMainWindow):
         # is the first real producer.
         self._activity_progress: dict[str, tuple[str, int, int]] = {}
         self._backend_poll_in_progress = False
-        # Roadmap item R7 — menu-bar background operation. The tray
-        # menu's own status line and "Review (N)"/"Upgrades (N)" items
-        # read `self._review_page._needs_review_count`/
-        # `_pending_upgrades_count` directly (their own delegating
-        # properties deleted at the test-split session, S11.5, §9.3.4)
-        # — real ReviewPage state (round 8 Phase 6), built from data
-        # its own poll already fetches, never a third source of truth
-        # (R7.3's own explicit instruction). `_pending_review_focus_track_id`/
-        # `selected_playlist`/`_current_track_statuses`/the next-step
-        # dismissal keys all moved to page modules with the rest of
-        # their own pages the same way. The downloading count itself
-        # lives on DownloadsPage; read via `self._downloads_page.
-        # active_downloads_count` directly (its own delegating property
-        # was deleted at the test-split session, S11.3, §9.3.4).
+        # The tray menu's status line and "Review (N)"/"Upgrades (N)"
+        # items read ReviewPage's `needs_review_count`/
+        # `pending_upgrades_count` and DownloadsPage's
+        # `active_downloads_count` — built from data each page's own
+        # poll already fetches, never a third source of truth.
         # R7.1 — set once the window is genuinely hidden-to-tray
         # (closeEvent), not just "not the active window"; R7.6 reads
         # this to skip re-render work while nobody can see it.
@@ -426,8 +417,8 @@ class MainWindow(QMainWindow):
         # cleanup_before_quit — same shape as _system_scheme_connected
         # just above.
         #
-        # Gated on a real tray icon existing: with none (self._tray.
-        # _tray_icon is None), closeEvent takes the ordinary real-close path
+        # Gated on a real tray icon existing: with none (not
+        # self._tray.has_icon), closeEvent takes the ordinary real-close path
         # (super().closeEvent()) rather than hiding — there is no
         # "hidden but still running" state for a reopen gesture to ever
         # need to restore, so connecting here would be pure overhead
@@ -439,7 +430,7 @@ class MainWindow(QMainWindow):
         # _flush_deferred_widget_deletion for the full story).
         app = QApplication.instance()
         self._app_state_connected = False
-        if app is not None and self._tray._tray_icon is not None:
+        if app is not None and self._tray.has_icon:
             # applicationStateChanged is a QGuiApplication signal;
             # QApplication.instance()'s declared return type is the
             # narrower QCoreApplication — real at runtime (this app
@@ -515,11 +506,10 @@ class MainWindow(QMainWindow):
         # already exist by now, so a signal firing mid-construction
         # (unlikely, but not impossible) can't reach a half-built UI.
         self._sync_system_scheme_subscription()
-        self._dashboard_page._render_no_playlist_selected()
-        self._dashboard_page._load_playlists()
-        self._downloads_page._poll_active_downloads()
-        self._review_page._poll_review_items()
-        self._dashboard_page._poll_next_step()
+        self._dashboard_page.load_playlists()
+        self._downloads_page.poll_active_downloads()
+        self._review_page.poll_review_items()
+        self._dashboard_page.poll_next_step()
         self._tray.seed_notification_cutoff()
 
         # DB-polling pattern for live status: rebuild the visible model
@@ -546,12 +536,12 @@ class MainWindow(QMainWindow):
         # treatment.
         self.poll_timer = QTimer(self)
         self.poll_timer.setInterval(POLL_INTERVAL_MS)
-        self.poll_timer.timeout.connect(self._dashboard_page._poll_selected_playlist)
+        self.poll_timer.timeout.connect(self._dashboard_page.poll_selected_playlist)
         self.poll_timer.timeout.connect(
-            self._downloads_page._poll_active_downloads
+            self._downloads_page.poll_active_downloads
         )
-        self.poll_timer.timeout.connect(self._review_page._poll_review_items)
-        self.poll_timer.timeout.connect(self._dashboard_page._poll_next_step)
+        self.poll_timer.timeout.connect(self._review_page.poll_review_items)
+        self.poll_timer.timeout.connect(self._dashboard_page.poll_next_step)
         # Roadmap item 65 (Phase 2.2) — a periodic safety-net refresh on
         # top of the explicit begin()/end()-adjacent calls already made
         # at every busy-action call site; catches nothing new today (all
@@ -563,7 +553,7 @@ class MainWindow(QMainWindow):
         # new DB/network work of its own) so it stays on the fast 2s
         # tick like the rest of this timer's display refresh, not the
         # slow backend one.
-        self.poll_timer.timeout.connect(self._tray._render_tray_menu)
+        self.poll_timer.timeout.connect(self._tray.render_tray_menu)
         self.poll_timer.start()
 
         # Separate, slower timer: the only thing in this app that causes
@@ -576,7 +566,7 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer.setInterval(BACKEND_POLL_INTERVAL_MS)
         self.backend_poll_timer.timeout.connect(self._trigger_backend_poll)
         self.backend_poll_timer.timeout.connect(
-            self._sharing_page._trigger_sharing_poll
+            self._sharing_page.poll_sharing
         )
         self.backend_poll_timer.start()
 
@@ -613,22 +603,22 @@ class MainWindow(QMainWindow):
             # genuinely deferred attribute lookup, not an unnecessary
             # wrap ruff's PLW0108 would otherwise flag.
             poll_selected_playlist=(
-                lambda: self._dashboard_page._poll_selected_playlist()  # noqa: PLW0108
+                lambda: self._dashboard_page.poll_selected_playlist()  # noqa: PLW0108
             ),
             poll_active_downloads=(
-                lambda: self._downloads_page._poll_active_downloads()  # noqa: PLW0108
+                lambda: self._downloads_page.poll_active_downloads()  # noqa: PLW0108
             ),
             poll_review_items=(
-                lambda: self._review_page._poll_review_items()  # noqa: PLW0108
+                lambda: self._review_page.poll_review_items()  # noqa: PLW0108
             ),
             poll_next_step=(
-                lambda: self._dashboard_page._poll_next_step()  # noqa: PLW0108
+                lambda: self._dashboard_page.poll_next_step()  # noqa: PLW0108
             ),
             set_hidden_to_tray=self._set_hidden_to_tray,
             bump_hide_request_id=self._bump_hide_request_id,
-            needs_review_count=lambda: self._review_page._needs_review_count,
+            needs_review_count=lambda: self._review_page.needs_review_count,
             pending_upgrades_count=(
-                lambda: self._review_page._pending_upgrades_count
+                lambda: self._review_page.pending_upgrades_count
             ),
             active_downloads_count=(
                 lambda: self._downloads_page.active_downloads_count
@@ -696,18 +686,14 @@ class MainWindow(QMainWindow):
                 ),
                 # Lambdas, not bound methods: the Library page is built
                 # after this one, so the lookup has to wait for a click.
-                tag_track=lambda track_id, button, feedback: (
-                    self._library_page._tagging_panel._on_tag_track_clicked(
-                        track_id, button, feedback=feedback,
-                    )
+                tag_track=lambda track_id, button, feedback: (  # noqa: PLW0108
+                    self._library_page.tag_track(track_id, button, feedback)
                 ),
-                retag_track=lambda track_id, feedback: (
-                    self._library_page._tagging_panel._on_retag_track_clicked(
-                        track_id, feedback=feedback,
-                    )
+                retag_track=lambda track_id, feedback: (  # noqa: PLW0108
+                    self._library_page.retag_track(track_id, feedback)
                 ),
                 tag_playlist=lambda feedback: (  # noqa: PLW0108
-                    self._library_page._tagging_panel._tag_playlist(feedback)
+                    self._library_page.tag_playlist(feedback)
                 ),
             ),
         )
@@ -715,7 +701,7 @@ class MainWindow(QMainWindow):
         self._library_page = LibraryPage(
             page_context,
             LibraryHost(
-                refresh_track_table=self._dashboard_page._poll_selected_playlist,
+                refresh_track_table=self._dashboard_page.poll_selected_playlist,
             ),
         )
         self._register_page("library", self._library_page)
@@ -726,7 +712,7 @@ class MainWindow(QMainWindow):
         self._review_page = ReviewPage(
             page_context,
             ReviewHost(
-                refresh_track_table=self._dashboard_page._poll_selected_playlist,
+                refresh_track_table=self._dashboard_page.poll_selected_playlist,
                 check_for_needs_decision_notification=(
                     self._tray.check_for_needs_decision_notification
                 ),
@@ -907,12 +893,7 @@ class MainWindow(QMainWindow):
             button.setChecked(True)
 
         if key == "review" and focus_track_id is not None:
-            self._review_page._pending_review_focus_track_id = focus_track_id
-            # The Review tables are already on the standing 2s
-            # poll_timer regardless of which page is visible (item 48's
-            # pattern) — this explicit call just avoids making the user
-            # wait up to 2s to see the row get selected.
-            self._review_page._poll_review_items()
+            self._review_page.focus_track(focus_track_id)
 
     def _on_settings_back_clicked(self) -> None:
         self._show_page(self._previous_page_key)
@@ -925,10 +906,10 @@ class MainWindow(QMainWindow):
         # refresh method; this just calls them immediately on exit
         # rather than waiting for their own standing poll/lazy-load to
         # eventually catch up. Phase 6.1 (Duplicates combo refresh)
-        # later reuses this exact same _refresh_duplicates_locations()
+        # later reuses this exact same refresh_locations()
         # call, not a second one.
-        self._duplicates_page._refresh_duplicates_locations()
-        self._dashboard_page._poll_next_step()
+        self._duplicates_page.refresh_locations()
+        self._dashboard_page.poll_next_step()
 
     def _build_activity_strip(self) -> QWidget:
         # Roadmap item 65 (Phase 2.2) — hidden whenever nothing is
@@ -1226,9 +1207,9 @@ class MainWindow(QMainWindow):
         # regularly (self-healing within ~2s) — but re-running them
         # here too means the switch is correct IMMEDIATELY, not after
         # up to a 2s wait.
-        self._dashboard_page._poll_selected_playlist()
-        self._downloads_page._poll_active_downloads()
-        self._review_page._poll_review_items()
+        self._dashboard_page.poll_selected_playlist()
+        self._downloads_page.poll_active_downloads()
+        self._review_page.poll_review_items()
         self._render_activity_strip()
 
     def _update_nav_badge(self, key: str, count: int) -> None:
@@ -1402,16 +1383,15 @@ class MainWindow(QMainWindow):
         # construction-time hazard. Settings' own exit (§3.3) already
         # calls this same method directly; both paths now land on it.
         if index == self._duplicates_page_index:
-            self._duplicates_page._refresh_duplicates_locations()
-            self._duplicates_page._refresh_duplicates_milestone()
+            self._duplicates_page.refresh_locations()
+            self._duplicates_page.refresh_milestone()
 
         if index == self._sharing_page_index:
-            self._sharing_page._sharing_page_visited = True
-            self._sharing_page._refresh_sharing()
+            self._sharing_page.on_shown()
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True
-            self._history_page._refresh_history()
+            self._history_page.refresh_history()
 
         if index == self._settings_page_index:
             self.settings_page.refresh_login_item_state()
@@ -1446,13 +1426,13 @@ class MainWindow(QMainWindow):
             elif self.slskd_status.mark_unreachable(str(outage)):
                 self._tray.notify_outage(str(outage))
 
-            self._downloads_page._sample_download_progress()
+            self._downloads_page.sample_download_progress()
             # A settled download completing during this real poll (Phase
             # 1's indexing fix) flips a track straight to IN_LIBRARY —
             # refresh the selected playlist's own track table right now
             # rather than waiting up to POLL_INTERVAL_MS for the next
             # 2s display tick to happen to catch it.
-            self._dashboard_page._poll_selected_playlist()
+            self._dashboard_page.poll_selected_playlist()
             # Roadmap item R7.5 — checked on the same real 20s cycle
             # that can actually produce a newly-completed download, not
             # a new timer of its own.
@@ -1689,7 +1669,7 @@ class MainWindow(QMainWindow):
         # whether or not MainWindow itself is visible, since hiding to
         # the tray never destroys either widget. Unconditional, unlike
         # the `_hidden_to_tray` gate just above.
-        self._review_page._persist_splitter_state()
+        self._review_page.persist_splitter_state()
 
         # Roadmap item C5.6 — a real Qt signal connection to a
         # GLOBAL object (QGuiApplication.styleHints(), not this

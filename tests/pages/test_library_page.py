@@ -35,7 +35,7 @@ def _select_first_playlist(window, qtbot) -> None:
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     # Selecting also kicks off the "next step" facts fetch
-    # (_poll_next_step), which independently enables/disables
+    # (poll_next_step), which independently enables/disables
     # download_button — wait for it to actually land rather than
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
@@ -78,7 +78,7 @@ def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
         is False
     )
 
-    window._library_page._tagging_panel._on_retag_track_clicked("t5")
+    window._library_page._tagging_panel.retag_track("t5")
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
@@ -386,7 +386,7 @@ def test_results_panel_failed_tag_row_offers_a_retry_that_re_tags(qtbot):
         lambda: application.metadata_service.tag_tracks_calls != [],
         timeout=2000,
     )
-    # _on_retag_track_clicked always forces, regardless of the panel's
+    # retag_track always forces, regardless of the panel's
     # own checkbox — same "guaranteed real retry" semantics as the row-
     # level context menu's own Re-tag action.
     assert application.metadata_service.tag_tracks_calls == [

@@ -43,7 +43,7 @@ def _select_first_playlist(window, qtbot) -> None:
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     # Selecting also kicks off the "next step" facts fetch
-    # (_poll_next_step), which independently enables/disables
+    # (poll_next_step), which independently enables/disables
     # download_button — wait for it to actually land rather than
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
@@ -823,7 +823,7 @@ def test_context_menu_offers_nothing_for_an_untagged_or_missing_row(qtbot):
 def test_dashboard_notice_survives_the_2s_poll_that_used_to_wipe_it(qtbot):
     # Regression test for the real root cause found while building
     # Phase 3: run_worker() clears its target status_label to "" at the
-    # START of every call, and _poll_selected_playlist() (which passes
+    # START of every call, and poll_selected_playlist() (which passes
     # status_label=self.status_label) runs on both the 2s poll_timer
     # tick and after every real backend poll — so ANY message written
     # to the old shared status_label had at most ~2s, often far less,
@@ -840,7 +840,7 @@ def test_dashboard_notice_survives_the_2s_poll_that_used_to_wipe_it(qtbot):
     )
     assert not window._dashboard_page.dashboard_notice.isHidden()
 
-    window._dashboard_page._poll_selected_playlist()
+    window._dashboard_page.poll_selected_playlist()
     qtbot.wait(50)
 
     assert window._dashboard_page.dashboard_notice.text() == "Something worth reading"
@@ -1027,7 +1027,7 @@ def _run_one_poll_tick(window, qtbot) -> None:
     # label it cleared at submit time stays cleared.
     calls = window._dashboard_page._context.application.dashboard_service.calls
     before = len(calls)
-    window._dashboard_page._poll_selected_playlist()
+    window._dashboard_page.poll_selected_playlist()
     qtbot.waitUntil(lambda: len(calls) > before, timeout=2000)
     qtbot.wait(50)
 

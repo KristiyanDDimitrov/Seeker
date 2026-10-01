@@ -71,7 +71,7 @@ class TaggingPanel(QWidget):
         # call for tag-result failures (see TagResultPanel's own
         # docstring for why fix-art/rename results don't get one).
         self.results_panel = TagResultPanel(
-            on_retry_track=self._on_retag_track_clicked,
+            on_retry_track=self.retag_track,
         )
         layout.addWidget(self.results_panel)
 
@@ -268,7 +268,7 @@ class TaggingPanel(QWidget):
     # "reach the private method on the page/panel object directly"
     # pattern History/Sharing already established for a cross-widget
     # call, not a public rename.
-    def _on_tag_track_clicked(
+    def tag_track(
             self,
             track_id: str,
             button: QPushButton,
@@ -297,8 +297,8 @@ class TaggingPanel(QWidget):
 
     # Called directly by the Dashboard's own track_table context menu
     # (`_on_track_table_context_menu`, still in main_window.py) — same
-    # cross-widget "private method" call as `_on_tag_track_clicked`.
-    def _on_retag_track_clicked(
+    # cross-widget "private method" call as `tag_track`.
+    def retag_track(
             self,
             track_id: str,
             feedback: FeedbackTarget | None = None,
@@ -362,9 +362,9 @@ class TaggingPanel(QWidget):
         )
 
     def _on_tag_playlist_clicked(self) -> None:
-        self._tag_playlist(self._host.feedback)
+        self.tag_playlist(self._host.feedback)
 
-    def _tag_playlist(self, feedback: FeedbackTarget) -> None:
+    def tag_playlist(self, feedback: FeedbackTarget) -> None:
         playlist = self._context.playlist_selection.playlist
 
         if playlist is None:

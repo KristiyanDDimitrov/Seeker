@@ -62,7 +62,7 @@ def test_tray_menu_status_shows_idle_with_nothing_active(qtbot, monkeypatch):
     qtbot.addWidget(window)
 
     window._downloads_page._render_active_downloads([])
-    window._tray._render_tray_menu()
+    window._tray.render_tray_menu()
 
     assert window._tray._tray_status_action.text() == "Idle"
 
@@ -85,7 +85,7 @@ def test_tray_menu_status_shows_downloading_count(qtbot, monkeypatch):
         ),
     ]
     window._downloads_page._render_active_downloads(downloads)
-    window._tray._render_tray_menu()
+    window._tray.render_tray_menu()
 
     assert window._tray._tray_status_action.text() == "1 downloading"
 
@@ -99,7 +99,7 @@ def test_tray_menu_status_shows_paused_suffix(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    window._tray._render_tray_menu()
+    window._tray.render_tray_menu()
 
     assert "(paused)" in window._tray._tray_status_action.text()
 
@@ -115,7 +115,7 @@ def test_tray_menu_review_and_upgrades_counts_are_distinct(qtbot, monkeypatch):
         [make_upgrade_details(), make_upgrade_details(request_id=2)],
         [],
     ))
-    window._tray._render_tray_menu()
+    window._tray.render_tray_menu()
 
     assert window._tray._tray_review_action.text() == "Review (1)"
     assert window._tray._tray_upgrades_action.text() == "Upgrades (2)"

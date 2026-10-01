@@ -343,7 +343,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     # A decline returns None from apply_upgrade_decision — no status
     # message should be surfaced, unlike a real replace. Wait on proof
     # that on_finished (_on_upgrade_decision_finished) has actually run
-    # — it calls _poll_review_items, which re-fetches — rather than
+    # — it calls poll_review_items, which re-fetches — rather than
     # asserting the notice is "" immediately, which would pass whether
     # or not anything happened yet (today's vacuous version of this
     # test).
@@ -472,7 +472,7 @@ def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
 
 
 def test_review_tab_populates_both_sections_on_construction(qtbot):
-    # _poll_review_items() runs once in __init__ (like the Downloads
+    # poll_review_items() runs once in __init__ (like the Downloads
     # tab's own initial call) so the Review tab isn't empty for the
     # first poll interval either.
     candidates = [

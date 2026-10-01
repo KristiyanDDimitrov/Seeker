@@ -737,7 +737,7 @@ def test_clear_finished_finishing_never_re_enables_over_a_newer_render(
     page = window._downloads_page
     page._render_active_downloads([finished, active])
     refreshes: list[int] = []
-    page._poll_active_downloads = lambda: refreshes.append(1)
+    page.poll_active_downloads = lambda: refreshes.append(1)
 
     page.clear_finished_button.click()
     page._render_active_downloads([active])

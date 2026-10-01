@@ -395,6 +395,8 @@ class DashboardPage(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
 
+        self._render_no_playlist_selected()
+
         # round9 §7.2 — Library became a second writer of the shared
         # selection (its own inline picker). Before this, Dashboard
         # never needed to listen to `changed` at all — it only ever
@@ -406,13 +408,13 @@ class DashboardPage(QWidget):
         )
         # An outage starting or ending shows at once, not on the next
         # 2 s tick.
-        self._context.slskd_status.changed.connect(self._poll_next_step)
+        self._context.slskd_status.changed.connect(self.poll_next_step)
 
     def _on_shared_selection_changed(self) -> None:
         # Deferred, not synchronous: `changed` can fire from inside
         # this page's own track_table.itemSelectionChanged handler
         # (_on_track_selection_changed writes track_ids there) — a
-        # synchronous _poll_selected_playlist() re-entrantly mutating
+        # synchronous poll_selected_playlist() re-entrantly mutating
         # that same table's row count, from inside its own selection-
         # changed signal's emission, is confirmed live to segfault.
         # QTimer.singleShot(0, ...) is this codebase's own established
@@ -423,8 +425,8 @@ class DashboardPage(QWidget):
 
     def _reconcile_shared_selection(self) -> None:
         self._sync_playlist_list_highlight()
-        self._poll_selected_playlist()
-        self._poll_next_step()
+        self.poll_selected_playlist()
+        self.poll_next_step()
 
     def _sync_playlist_list_highlight(self) -> None:
         # blockSignals, not a bare setCurrentItem: setCurrentItem would
@@ -579,7 +581,7 @@ class DashboardPage(QWidget):
         menu.addAction(retag_action)
         menu.exec(self.track_table.viewport().mapToGlobal(position))
 
-    def _load_playlists(self) -> None:
+    def load_playlists(self) -> None:
         run_worker(
             self._context.thread_pool,
             self._context.application.sync_service.list_playlists,
@@ -701,10 +703,10 @@ class DashboardPage(QWidget):
             if current is not None
             else None
         )
-        self._poll_selected_playlist()
-        self._poll_next_step()
+        self.poll_selected_playlist()
+        self.poll_next_step()
 
-    def _poll_selected_playlist(self) -> None:
+    def poll_selected_playlist(self) -> None:
         # The Dashboard's own track table has no tray-menu relevance at
         # all; skip entirely while hidden rather than just gating the
         # render half, since the fetch itself has no other consumer
@@ -967,7 +969,7 @@ class DashboardPage(QWidget):
             ),
         )
 
-    def _poll_next_step(self) -> None:
+    def poll_next_step(self) -> None:
         # The Dashboard's own CTA banner has no tray-menu relevance;
         # skip entirely while hidden (HISTORY §90).
         if self._context.is_hidden_to_tray():
@@ -1076,7 +1078,7 @@ class DashboardPage(QWidget):
         )
 
     def _on_sync_finished(self, result: PlaylistRefreshResult) -> None:
-        self._load_playlists()
+        self.load_playlists()
         self.feedback.show_outcome(
             help_text.format_playlist_refresh_message(result),
             kind="warning" if result.local_files_skipped else "success",
@@ -1114,7 +1116,7 @@ class DashboardPage(QWidget):
             f"{match.unmatched} unmatched.",
             kind="success",
         )
-        self._poll_selected_playlist()
+        self.poll_selected_playlist()
 
     def _on_match_clicked(self) -> None:
         self._context.run_busy_worker(
@@ -1131,7 +1133,7 @@ class DashboardPage(QWidget):
             f"{result.unmatched} unmatched.",
             kind="success",
         )
-        self._poll_selected_playlist()
+        self.poll_selected_playlist()
 
     def _set_download_button_busy(self) -> None:
         # Idempotent (BusyActionRegistry.begin() no-ops if already
@@ -1298,7 +1300,7 @@ class DashboardPage(QWidget):
 
     def _on_download_finished(self, result: PlaylistDownloadResult) -> None:
         self._reset_download_button()
-        self._poll_selected_playlist()
+        self.poll_selected_playlist()
 
         message = help_text.format_download_result_message(result)
         if result.failures:
@@ -1321,7 +1323,7 @@ class DashboardPage(QWidget):
             )
 
         def on_finished(result: TrackSyncResult) -> None:
-            self._poll_selected_playlist()
+            self.poll_selected_playlist()
 
             if result.local_files_skipped:
                 self.dashboard_notice.show_message(

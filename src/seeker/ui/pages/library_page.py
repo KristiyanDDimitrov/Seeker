@@ -10,7 +10,7 @@ own list highlight and track table in step with a write that
 originates here). `LibraryHost` still carries only
 `refresh_track_table` — the same cross-page "reach a live seam on an
 already-migrated page" pattern `ReviewHost` still uses for Dashboard's
-status_label/_poll_selected_playlist (main_window.py), since that's an
+status_label/poll_selected_playlist (main_window.py), since that's an
 action, not selection state. TaggingPanel itself (tagging_panel.py) is
 unchanged by this page's context header; only which page constructs
 and hosts it changed back in round 8.
@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 
 from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
 from seeker.ui.plain_text import PlainLabel
@@ -86,6 +86,22 @@ class LibraryPage(QWidget):
             self._render_context_header
         )
         self._render_context_header()
+
+    # The Dashboard's Tag and Re-tag row actions and its next-step
+    # "tag playlist" CTA run here, reporting to the caller's feedback.
+    def tag_track(
+            self,
+            track_id: str,
+            button: QPushButton,
+            feedback: FeedbackTarget,
+    ) -> None:
+        self._tagging_panel.tag_track(track_id, button, feedback=feedback)
+
+    def retag_track(self, track_id: str, feedback: FeedbackTarget) -> None:
+        self._tagging_panel.retag_track(track_id, feedback=feedback)
+
+    def tag_playlist(self, feedback: FeedbackTarget) -> None:
+        self._tagging_panel.tag_playlist(feedback)
 
     def _build_context_header(self) -> QWidget:
         # round9 §7.2 — Kris: "Library section is currently confusing

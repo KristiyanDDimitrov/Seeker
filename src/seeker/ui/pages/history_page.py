@@ -64,7 +64,7 @@ class HistoryPage(QWidget):
         self.history_refresh_button.setToolTip(
             help_text.TOOLTIP_HISTORY_REFRESH_BUTTON
         )
-        self.history_refresh_button.clicked.connect(self._refresh_history)
+        self.history_refresh_button.clicked.connect(self.refresh_history)
         controls.addWidget(self.history_refresh_button)
 
         layout.addLayout(controls)
@@ -96,7 +96,7 @@ class HistoryPage(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
 
-    def _refresh_history(self) -> None:
+    def refresh_history(self) -> None:
         self._context.run_busy_worker(
             "history_refresh", self.history_refresh_button,
             self._context.application.history_service.get_recent_events,

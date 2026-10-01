@@ -256,7 +256,7 @@ class DownloadsPage(QWidget):
             ),
         )
 
-    def _poll_active_downloads(self) -> None:
+    def poll_active_downloads(self) -> None:
         # Purely observational — a cheap local DB read via
         # DashboardService.get_active_downloads(), GLOBAL across every
         # playlist (unlike the Dashboard's own selected-playlist poll).
@@ -370,7 +370,7 @@ class DownloadsPage(QWidget):
             self._context.thread_pool,
             self._context.application.dashboard_service
             .clear_finished_downloads,
-            on_finished=lambda _cleared: self._poll_active_downloads(),
+            on_finished=lambda _cleared: self.poll_active_downloads(),
         )
 
     def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:
@@ -399,7 +399,7 @@ class DownloadsPage(QWidget):
         self.downloads_eta_label.setText(format_aggregate_header(result))
         self.downloads_eta_label.setToolTip(AGGREGATE_ETA_TOOLTIP)
 
-    def _sample_download_progress(self) -> None:
+    def sample_download_progress(self) -> None:
         # Feeds DownloadEtaTracker exactly once per real
         # poll_downloads() cycle (this method is only ever called from
         # MainWindow's own _trigger_backend_poll on_finished callback),

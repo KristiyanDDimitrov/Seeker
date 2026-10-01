@@ -118,6 +118,10 @@ class TrayController:
         self._tray_icon: QSystemTrayIcon | None = None
         self._build_tray_icon()
 
+    @property
+    def has_icon(self) -> bool:
+        return self._tray_icon is not None
+
     def is_icon_visible(self) -> bool:
         return self._tray_icon is not None and self._tray_icon.isVisible()
 
@@ -268,7 +272,7 @@ class TrayController:
 
     def _on_tray_pause_toggled(self, checked: bool) -> None:
         self._host.application.set_downloads_paused(checked)
-        self._render_tray_menu()
+        self.render_tray_menu()
 
     def _on_tray_open_page(self, key: str) -> None:
         self._on_tray_open_seeker()
@@ -354,7 +358,7 @@ class TrayController:
         if app is not None:
             app.quit()
 
-    def _render_tray_menu(self) -> None:
+    def render_tray_menu(self) -> None:
         if self._tray_icon is None:
             return
 

@@ -109,7 +109,7 @@ def _seed(application: Application, tracks_path: Path) -> None:
 
 
 def _seed_fake_spotify_token() -> None:
-    # MainWindow._load_playlists() eagerly evaluates
+    # MainWindow.load_playlists() eagerly evaluates
     # application.sync_service on construction, which eagerly evaluates
     # application.spotify, which calls auth_manager.get_valid_token() —
     # with no cached token in this throwaway data dir, that opens a

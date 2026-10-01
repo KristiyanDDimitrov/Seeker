@@ -117,7 +117,7 @@ SAMPLE_INTERVAL_SECONDS = 15.0
 # within a 2MB band) — the exact "not a leak" shape this comment already
 # described, not the "monotonic, unbounded climb" this ceiling exists to
 # catch. Root cause of the real, legitimate increase: §3.3's settings-
-# exit invalidation (_refresh_duplicates_locations()/_poll_next_step())
+# exit invalidation (refresh_locations()/poll_next_step())
 # now fires two extra real run_worker round-trips per Settings
 # navigation cycle, work this test's interleaved loop didn't exercise at
 # this frequency before Settings became a persistent page. See the new

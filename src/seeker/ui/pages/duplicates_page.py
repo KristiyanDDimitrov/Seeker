@@ -279,14 +279,14 @@ class DuplicatesPage(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
 
-    def _refresh_duplicates_locations(self) -> None:
+    def refresh_locations(self) -> None:
         run_worker(
             self._context.thread_pool,
             self._context.application.library_service.list_locations,
             on_finished=self._render_duplicates_locations,
         )
 
-    def _refresh_duplicates_milestone(self) -> None:
+    def refresh_milestone(self) -> None:
         run_worker(
             self._context.thread_pool,
             self._context.application.duplicate_service.get_cleanup_totals,
@@ -976,7 +976,7 @@ class DuplicatesPage(QWidget):
         # A real deletion just happened (delete_local_files already
         # recorded it) — refresh the milestone total immediately rather
         # than waiting for the next page revisit.
-        self._refresh_duplicates_milestone()
+        self.refresh_milestone()
 
     def _build_group_resolution_plan(
             self, group: DuplicateGroup, keep_id: int,

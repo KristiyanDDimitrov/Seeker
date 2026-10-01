@@ -407,7 +407,7 @@ class FakeReviewService:
         self._confirm_review_candidate_error = confirm_review_candidate_error
         self.confirm_review_candidate_calls: list[str] = []
         self.reject_review_candidate_calls: list[str] = []
-        # Proves a re-poll (_poll_review_items, called from
+        # Proves a re-poll (poll_review_items, called from
         # on_finished) has actually run, rather than asserting on a
         # notice's text/visibility immediately after a click, which
         # would pass whether or not anything happened yet.

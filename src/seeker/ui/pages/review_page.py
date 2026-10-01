@@ -5,7 +5,7 @@ candidates, Phase 2 upgrade replacements, and local-file matches.
 
 Beyond PageContext, this page needs a second, narrower seam —
 `ReviewHost` — for `refresh_track_table` (Dashboard's
-`_poll_selected_playlist`, called after a local-match confirm/reject
+`poll_selected_playlist`, called after a local-match confirm/reject
 changes what's IN_LIBRARY) and `check_for_needs_decision_notification`
 (real MainWindow/tray logic — a de-duplicated notification — that
 stays shell-owned because it also reads `_tray_icon`/
@@ -21,16 +21,9 @@ with no visible error at all. Review now owns its own `self.notice`
 (`InlineNotice`) the same way Library/TaggingPanel do; nothing here
 writes to another page's widget again.
 
-`_pending_review_focus_track_id`/`_focus_pending_review_row` move here
-too — both are genuinely Review-owned state/logic, just previously
-stranded on MainWindow because `_show_page` needed to reach them
-directly (set by a Dashboard double-click via `DashboardHost.
-navigate_to_review`, itself a lambda closing over `self._show_page(
-"review", focus_track_id=...)`). `_show_page` keeps doing exactly
-that, just against `self._review_page` instead of `self` — same
-"reach a moved page's private state directly, from the one shell
-method that legitimately needs to" precedent as `_invalidate_after_
-leaving_settings` calling `self._dashboard_page._poll_next_step()`.
+A Dashboard double-click reaches `focus_track` through the shell's
+`_show_page("review", focus_track_id=...)`; the row is selected once
+this page's data has loaded (`_focus_pending_review_row`).
 """
 
 import base64
@@ -109,9 +102,8 @@ class ReviewPage(QWidget):
         self._context = context
         self._host = host
 
-        # The tray menu's own "Review (N)"/"Upgrades (N)" counts, read
-        # by the shell via the MainWindow delegating properties of the
-        # same private names (HISTORY §90).
+        # The tray menu's "Review (N)"/"Upgrades (N)" counts, exposed
+        # read-only below (HISTORY §90).
         self._needs_review_count = 0
         self._pending_upgrades_count = 0
         # Set by a Dashboard double-click on a NEEDS_REVIEW/AWAITING_
@@ -288,7 +280,23 @@ class ReviewPage(QWidget):
 
         self.review_splitter.restoreState(QByteArray(raw))
 
-    def _persist_splitter_state(self) -> None:
+    @property
+    def needs_review_count(self) -> int:
+        return self._needs_review_count
+
+    @property
+    def pending_upgrades_count(self) -> int:
+        return self._pending_upgrades_count
+
+    def focus_track(self, track_id: str) -> None:
+        """Select `track_id`'s row once this page's data has loaded."""
+        self._pending_review_focus_track_id = track_id
+        # The Review tables are already on the standing 2s poll_timer
+        # regardless of which page is visible — this explicit call just
+        # avoids making the user wait up to 2s to see the row selected.
+        self.poll_review_items()
+
+    def persist_splitter_state(self) -> None:
         # Round 9 §6 — called from MainWindow.cleanup_before_quit, the
         # one real quit path (HISTORY §124), mirroring
         # _persist_window_geometry's own "write once, at quit" pattern
@@ -304,7 +312,7 @@ class ReviewPage(QWidget):
             review_splitter_state=encoded,
         )
 
-    def _poll_review_items(self) -> None:
+    def poll_review_items(self) -> None:
         # All three halves are cheap, local-DB-only reads (like
         # get_active_downloads above) — no real slskd network calls, so
         # this belongs on the 2s display-refresh timer, not the 20s
@@ -462,7 +470,7 @@ class ReviewPage(QWidget):
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),
-            on_finished=lambda _: self._poll_review_items(),
+            on_finished=lambda _: self.poll_review_items(),
         )
 
     def _on_reject_review_candidate(
@@ -478,7 +486,7 @@ class ReviewPage(QWidget):
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),
-            on_finished=lambda _: self._poll_review_items(),
+            on_finished=lambda _: self.poll_review_items(),
         )
 
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
@@ -635,7 +643,7 @@ class ReviewPage(QWidget):
         if message is not None:
             self.notice.show_message(message, kind="success")
 
-        self._poll_review_items()
+        self.poll_review_items()
 
     def _on_replace_all_upgrades_clicked(self) -> None:
         # Built fresh from what's actually on screen right now, never a
@@ -676,7 +684,7 @@ class ReviewPage(QWidget):
         # decision's own contract — see apply_upgrade_decisions_batch's
         # docstring) and are simply offered again by this same refresh,
         # never dropped.
-        self._poll_review_items()
+        self.poll_review_items()
 
     def _render_local_needs_review_matches(
             self,
@@ -786,14 +794,14 @@ class ReviewPage(QWidget):
         )
 
     def _on_local_review_decision_finished(self, _result: None) -> None:
-        self._poll_review_items()
+        self.poll_review_items()
         self._host.refresh_track_table()
 
     def _focus_pending_review_row(self) -> None:
         # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
         # Dashboard cell (HISTORY §56 §2.4, extended by §66 to cover
-        # REVIEW_CANDIDATE too) sets _pending_review_focus_track_id and
-        # switches to this page; once
+        # REVIEW_CANDIDATE too) calls focus_track and switches to this
+        # page; once
         # the real data has actually loaded, this scrolls to and selects
         # the matching row — a track that turns out to have nothing here
         # yet (e.g. a locked/shortlisted RETRYING row, not yet

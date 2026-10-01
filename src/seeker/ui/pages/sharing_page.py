@@ -152,6 +152,11 @@ class SharingPage(QWidget):
             uploads=service.get_uploads(),
         )
 
+    def on_shown(self) -> None:
+        """Refresh now, and join the backend poll from here on."""
+        self._sharing_page_visited = True
+        self._refresh_sharing()
+
     def _refresh_sharing(self) -> None:
         self._context.run_busy_worker(
             "sharing_refresh", self.sharing_refresh_button,
@@ -160,7 +165,7 @@ class SharingPage(QWidget):
             on_finished=self._render_sharing,
         )
 
-    def _trigger_sharing_poll(self) -> None:
+    def poll_sharing(self) -> None:
         if not self._sharing_page_visited:
             return
 
