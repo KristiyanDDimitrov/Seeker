@@ -74,7 +74,7 @@ class TrayHost:
     through a MainWindow method (bound at construction, resolved by
     name at call time against main_window.py's own module globals)
     rather than this module calling its own `_set_dock_icon_visible`
-    import directly, because test_ui_smoke.py's
+    import directly, because test_window_lifecycle.py's
     `test_reopen_restores_the_dock_icon_before_showing` monkeypatches
     `main_window_module._set_dock_icon_visible` — a patch that can only
     intercept a call whose bare-name lookup happens in that module's

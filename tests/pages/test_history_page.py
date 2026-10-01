@@ -2,10 +2,8 @@
 verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.1) — the
 mirror of §9.3.1's own History extraction (S5).
 
-`make_history_event` stays defined in test_ui_smoke.py rather than
-moving here — Tray's own download-notification tests (staying there
-until S11.7) use it too, and there is no shared fixtures module yet for
-a factory two future test files both need. Imported from there below.
+`make_history_event` comes from `tests/fakes.py`: Tray's own
+download-notification tests use it too.
 """
 
 import threading

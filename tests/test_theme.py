@@ -171,7 +171,7 @@ def test_header_section_has_a_right_hand_divider():
     # property being PRESENT in the string is no guarantee it actually
     # PAINTS (an invalid neighboring selector silently poisoned the
     # whole rule for two rounds while this string check kept passing).
-    # The real verification is test_ui_smoke.py's own real
+    # The real verification is test_downloads_page.py's own real
     # window.grab() pixel scan
     # (test_downloads_header_shows_a_real_divider_between_columns) —
     # kept here too only as a cheap sanity pin on the property itself.

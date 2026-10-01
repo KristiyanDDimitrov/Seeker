@@ -6,8 +6,8 @@ Tests that exercise MainWindow's own not-yet-extracted orchestration or
 other pages' state alongside Review's (the Dashboard-double-click-
 navigates-here-and-selects-a-row test, the Downloads/Review nav-badge
 and tray-menu-counts tests, and the four structural sweep tests that
-check every page's tables/buttons at once) stay in test_ui_smoke.py as
-cross-cutting, unmoved.
+check every page's tables/buttons at once) live under tests/shell/ as
+cross-cutting.
 
 BulkReplaceUpgradesDialog is imported from seeker.ui.dialogs directly
 here, not re-exported from seeker.ui.main_window — that re-export only

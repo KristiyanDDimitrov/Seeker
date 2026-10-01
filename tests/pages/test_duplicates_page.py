@@ -2,9 +2,9 @@
 Moved verbatim out of test_ui_smoke.py (round 8, §9.3.4, session
 S11.6) — the mirror of §9.3.1's own Duplicates extraction (S10).
 
-test_every_table_and_list_widget_is_routed_through_make_card stays in
-test_ui_smoke.py as genuinely cross-cutting (it sweeps every page's
-tables/lists in one test) — unmoved, but its own
+test_every_table_and_list_widget_is_routed_through_make_card lives in
+shell/test_table_chrome.py as genuinely cross-cutting (it sweeps
+every page's tables/lists in one test), but its own
 table_and_list_attrs entries for Duplicates still touch
 window._duplicates_page.duplicates_folders_list/duplicates_table directly.
 

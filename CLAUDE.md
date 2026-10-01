@@ -138,9 +138,10 @@ src/seeker/
 - Tests: pytest, mock all external HTTP (Spotify, SoulSeek) — never hit
   real APIs in tests.
 - **Read discipline — never read a large file whole.** A
-  `docs/history/*.md` file (~150 KB each), `tests/test_ui_smoke.py`,
-  `src/seeker/ui/main_window.py` each blow a session's budget alone if read in full — `grep -n` for
-  the symbol/section and read that range instead. `uv run pytest -q`,
+  `docs/history/*.md` file (~150 KB each) and
+  `src/seeker/ui/main_window.py` each blow a session's budget alone if
+  read in full — `grep -n` for the symbol/section and read that range
+  instead. `uv run pytest -q`,
   report only the summary line plus named failures. `git diff --stat`
   by default. Don't re-read a file just edited — Edit/Write error on
   failure already.
@@ -228,7 +229,7 @@ src/seeker/
   (`application.settings`, `application.update_settings(...)`, a
   service) instead, so `Application` can invalidate whatever depends on
   the change. `test_no_private_application_attribute_access_in_ui`
-  (`tests/test_ui_smoke.py`) is an AST sweep enforcing this — it fails
+  (`tests/test_ui_source_sweeps.py`) is an AST sweep enforcing this — it fails
   the build, not just the convention.
 - **Page widgets live in `ui/pages/`, one `QWidget` subclass per page,
   never a `MainWindow` mixin.** Each takes a `PageContext`
@@ -571,6 +572,14 @@ Each links to the HISTORY entry where the full investigation lives;
 
 ### Testing
 
+- **UI tests build over `tests/fakes.py`** (`FakeApplication`, the
+  `Fake*` services, shared builders such as `make_track`); no UI test
+  module imports from another. Page tests live in
+  `tests/pages/`, `MainWindow`'s own in `tests/shell/`, and the six
+  subprocess-only scripts in `tests/repro/`. No test directory has an
+  `__init__.py`, so **a test file's basename must be unique across
+  all of them** — a duplicate fails collection with "import file
+  mismatch" (reproduced). [HISTORY §161](docs/history/151-180.md#161)
 - **Why one test always skips, and why that is correct:**
   `tests/test_stress_e2e.py` is gated by `requires_stress_opt_in` on
   `SEEKER_RUN_STRESS_TEST != "1"` — it drives the real Spotify/slskd/

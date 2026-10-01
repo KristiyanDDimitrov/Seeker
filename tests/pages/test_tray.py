@@ -2,8 +2,9 @@
 verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.7) — the
 mirror of §9.3.2's own tray extraction (S11).
 
-closeEvent and the hide-to-tray verification (round 7's E1) stay in
-test_ui_smoke.py, per tray.py's own module docstring — that logic is
+closeEvent and the hide-to-tray verification (round 7's E1) live in
+shell/test_window_lifecycle.py and shell/test_tray_integration.py,
+per tray.py's own module docstring — that logic is
 about the *window*, not the tray. So do the tests that exercise it,
 even where they trigger a TrayController action along the way
 (_on_tray_open_seeker, _on_tray_icon_activated, _on_tray_check_now,

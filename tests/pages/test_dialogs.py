@@ -2,10 +2,8 @@
 missing-destination prompt. Moved verbatim out of test_ui_smoke.py (round
 8, §9.3.4, session S11.1) — the mirror of §9.3.1's own dialogs.py
 extraction (S5). RenamePreviewDialog/BulkReplaceUpgradesDialog/
-BulkResolveDuplicatesDialog stay in test_ui_smoke.py: each is constructed
-by one specific page (tagging_panel.py/review_page.py/duplicates_page.py
-respectively, not by MainWindow directly), so their tests belong with
-that page's own future test-split session (S11.3/S11.5/S11.6), not here.
+BulkResolveDuplicatesDialog are tested with the page that constructs
+each (tagging_panel.py/review_page.py/duplicates_page.py), not here.
 """
 
 from pathlib import Path

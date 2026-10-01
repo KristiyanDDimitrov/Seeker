@@ -1,6 +1,6 @@
 # Regenerates the README screenshots. Real widget rendering (offscreen
 # Qt, no display needed) against invented data via FakeApplication —
-# the same test double tests/test_ui_smoke.py uses — so there's no real
+# the same double the UI tests use, from tests/fakes.py — so there's no real
 # playlist name, library path or SoulSeek username in these images, and
 # anyone can reproduce them: `uv run python docs/screenshots/generate.py`.
 import os

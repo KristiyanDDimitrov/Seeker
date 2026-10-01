@@ -13,8 +13,8 @@ behavior.
 
 Tests that exercise MainWindow's own not-yet-extracted orchestration
 (the sync/scan/match/download click handlers, _open_destination_dialog,
-the Review-tab-navigates-here-and-selects-a-row assertions) stay in
-test_ui_smoke.py as cross-cutting, even though several of them use
+the Review-tab-navigates-here-and-selects-a-row assertions) live in
+shell/test_dashboard_flows.py, even though several of them use
 Dashboard's buttons as their trigger or dashboard_notice/status_label
 as their assertion target — same precedent as the activity-strip and
 structural-sweep tests that also stayed.
@@ -919,7 +919,7 @@ def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
 def _visible_track_ids(window) -> set[str]:
     # Reads each row's own UserRole anchor (see _render_track_statuses),
     # not the displayed label — every track in these tests shares the
-    # same "Artist - Title" text (test_ui_smoke.py's make_track), so
+    # same "Artist - Title" text (fakes.py's make_track), so
     # only the id actually distinguishes rows.
     table = window._dashboard_page.track_table
     return {

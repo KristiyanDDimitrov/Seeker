@@ -93,7 +93,7 @@ def add_playlist(application: Application, playlist: Playlist) -> None:
 # MainWindow's shared _build_page() wrapper (roadmap item 56 Phase 3
 # §3.2 — routing through the same helper every other page uses is what
 # fixed the real misprinted-header bug) — covered by
-# test_ui_smoke.py::test_settings_page_shows_its_subtitle_via_build_page
+# shell/test_shell_navigation.py::test_settings_page_shows_its_subtitle_via_build_page
 # now, not here, since SettingsPage on its own no longer renders one.
 
 
