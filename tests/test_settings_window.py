@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from fakes import wait_for_workers
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
@@ -330,7 +331,7 @@ def test_remove_location_cancelled_removes_nothing(
     click_remove_location(window, qtbot)
 
     qtbot.waitUntil(lambda: len(asked) == 1, timeout=2000)
-    qtbot.wait(50)
+    wait_for_workers(window)
     assert len(application.library_service.list_locations()) == 1
     assert window.locations_table.rowCount() == 1
 

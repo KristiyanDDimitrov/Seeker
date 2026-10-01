@@ -162,7 +162,12 @@ def test_next_step_notice_hidden_when_nothing_selected_and_all_set_up(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    qtbot.wait(50)
+    # The notice starts hidden, so assert only once the first render
+    # has run: with nothing selected, it disables Download.
+    qtbot.waitUntil(
+        lambda: not window._dashboard_page.download_button.isEnabled(),
+        timeout=2000,
+    )
     assert window._dashboard_page.next_step_notice.isHidden()
 
 
@@ -671,11 +676,13 @@ def test_load_tracks_shows_no_notice_when_nothing_was_skipped(qtbot):
 
     window._dashboard_page.sync_tracks_button.click()
 
+    # The busy action ends in the same main-thread call that runs the
+    # finish handler, which is what would show a notice.
     qtbot.waitUntil(
-        lambda: application.sync_service.sync_playlist_tracks_calls != [],
+        lambda: application.sync_service.sync_playlist_tracks_calls != []
+        and not window.busy_actions.is_running("sync_tracks"),
         timeout=2000,
     )
-    qtbot.wait(100)
     assert window._dashboard_page.dashboard_notice.isHidden()
 
 
