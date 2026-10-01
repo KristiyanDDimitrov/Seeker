@@ -1,5 +1,7 @@
 import contextlib
+import math
 import shutil
+import struct
 import wave
 from pathlib import Path
 
@@ -61,13 +63,22 @@ def _as_stream(get_like):
 
 
 def make_synthetic_wav(path: Path) -> None:
-    # A real, valid (if silent) WAV — enough for mutagen to recognize and
-    # write tags into, without depending on any real library file.
+    # A real, valid WAV — enough for mutagen to recognize and write tags
+    # into, without depending on any real library file. Four seconds of
+    # a 440 Hz tone, not silence: librosa's key estimate warns on
+    # silence (no frequencies to estimate tuning from) and on a signal
+    # too short for its lowest CQT octave's FFT window (two seconds
+    # still warns, four do not; measured).
+    rate = 44_100
+    samples = [
+        round(8_000 * math.sin(2 * math.pi * 440 * i / rate))
+        for i in range(4 * rate)
+    ]
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)
         handle.setsampwidth(2)
-        handle.setframerate(44_100)
-        handle.writeframes(b"\x00\x00" * 44_100)
+        handle.setframerate(rate)
+        handle.writeframes(struct.pack(f"<{len(samples)}h", *samples))
 
 
 def make_service(tmp_path, get_config=None) -> MetadataService:
