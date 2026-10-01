@@ -190,6 +190,17 @@ class LocalFileRepository:
 
         return [_row_to_local_file(row) for row in rows]
 
+    def get_tagged(self, connection: sqlite3.Connection) -> list[LocalFile]:
+        rows = connection.execute(
+            f"""
+            SELECT {_COLUMNS}
+            FROM local_files
+            WHERE tagged_at IS NOT NULL
+            """  # noqa: S608
+        ).fetchall()
+
+        return [_row_to_local_file(row) for row in rows]
+
     def get_matched_in_playlist(
             self,
             playlist_id: str,

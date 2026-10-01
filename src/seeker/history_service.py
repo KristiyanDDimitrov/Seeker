@@ -59,9 +59,9 @@ class HistoryService:
     ) -> list[HistoryEvent]:
         with self.database.transaction() as connection:
             requests = self.download_requests.get_all(connection)
-            local_files = self.local_files.get_all(connection)
+            tagged_files = self.local_files.get_tagged(connection)
             track_matches_by_local_file_id: dict[int, list[TrackMatch]] = {}
-            for local_file in local_files:
+            for local_file in tagged_files:
                 if local_file.id is None:
                     continue
                 track_matches_by_local_file_id[local_file.id] = (
@@ -114,7 +114,7 @@ class HistoryService:
                 )
             )
 
-        for local_file in local_files:
+        for local_file in tagged_files:
             if local_file.id is None or local_file.tagged_at is None:
                 continue
 

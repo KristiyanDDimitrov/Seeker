@@ -1,3 +1,5 @@
+import pytest
+
 from db_seed import add_playlist_track
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -96,7 +98,7 @@ def seed_local_file(
         connection.execute(
             "INSERT INTO library_locations (name, path, added_at) "
             "VALUES (?, ?, ?)",
-            (filename, "/music", "2026-01-01T00:00:00+00:00"),
+            (filename, f"/music/{filename}", "2026-01-01T00:00:00+00:00"),
         )
         location_id = connection.execute(
             "SELECT id FROM library_locations WHERE name = ?", (filename,),
@@ -336,3 +338,39 @@ def test_manual_track_shows_manual_not_unknown(tmp_path):
 
     assert len(events) == 1
     assert events[0].playlist_name == "Manual"
+
+
+def test_tagged_events_read_only_the_tagged_files(tmp_path, monkeypatch):
+    # The 20-second backend poll, window hidden or not: a whole-library
+    # read plus one match lookup per file cost ~40 ms at 6,921 files, 27
+    # of them tagged (HISTORY §166).
+    service = make_service(tmp_path)
+    seed_track(service, "t1")
+    seed_track(service, "t2")
+    tagged_id = seed_local_file(
+        service, filename="tagged.mp3",
+        tagged_at="2026-01-03T00:00:00+00:00",
+    )
+    untagged_id = seed_local_file(service, filename="untagged.mp3")
+    seed_match(service, "t1", tagged_id)
+    seed_match(service, "t2", untagged_id)
+
+    def whole_table_read(*_args: object) -> None:
+        pytest.fail("the history poll read every local file")
+
+    looked_up: list[int] = []
+    get_by_local_file_id = service.track_matches.get_by_local_file_id
+
+    def recording_lookup(local_file_id, connection):
+        looked_up.append(local_file_id)
+        return get_by_local_file_id(local_file_id, connection)
+
+    monkeypatch.setattr(service.local_files, "get_all", whole_table_read)
+    monkeypatch.setattr(
+        service.track_matches, "get_by_local_file_id", recording_lookup,
+    )
+
+    events = service.get_recent_events()
+
+    assert [event.event_type for event in events] == [TAGGED]
+    assert looked_up == [tagged_id]
