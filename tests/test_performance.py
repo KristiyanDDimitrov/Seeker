@@ -4,6 +4,8 @@ only one playlist's rows."""
 
 from pathlib import Path
 
+import pytest
+
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -103,3 +105,46 @@ def test_the_fingerprint_read_returns_the_fingerprint_columns(tmp_path):
     assert local_file.fingerprint == "AQAA-fingerprint"
     assert local_file.fingerprint_duration == 180.0
     assert local_file.fingerprint_computed_at == "2026-01-02"
+
+
+@pytest.mark.parametrize(
+    ("query", "index"),
+    [
+        (
+            "SELECT * FROM track_matches WHERE local_file_id = ?",
+            "idx_track_matches_local_file_id",
+        ),
+        (
+            "SELECT * FROM download_requests WHERE track_id = ?",
+            "idx_download_requests_track_id",
+        ),
+        (
+            "SELECT * FROM download_requests WHERE status = ?"
+            " ORDER BY requested_at",
+            "idx_download_requests_status_requested_at",
+        ),
+        # Without PlaylistRepository's `ORDER BY p.name`, which sorts
+        # whatever index finds the rows.
+        (
+            "SELECT p.id FROM playlists p"
+            " JOIN playlist_tracks pt ON pt.playlist_id = p.id"
+            " WHERE pt.track_id = ?",
+            "idx_playlist_tracks_track_id",
+        ),
+    ],
+)
+def test_lookups_by_a_foreign_key_or_status_use_an_index(
+        tmp_path, query, index,
+):
+    database = make_database(tmp_path)
+
+    with database.transaction() as connection:
+        plan = "\n".join(
+            row[3]
+            for row in connection.execute(
+                f"EXPLAIN QUERY PLAN {query}", ("x",),
+            )
+        )
+
+    assert f"USING INDEX {index}" in plan
+    assert "TEMP B-TREE" not in plan

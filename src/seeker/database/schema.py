@@ -253,4 +253,17 @@ CREATE TABLE IF NOT EXISTS rejected_soulseek_candidates (
     PRIMARY KEY (track_id, username, filename),
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
+
+-- Lookups by a foreign key or by status, including the ON DELETE SET
+-- NULL a local_files delete runs against track_matches. Every column
+-- here is in its table's CREATE TABLE above, so these run safely on an
+-- older database before _migrate.
+CREATE INDEX IF NOT EXISTS idx_track_matches_local_file_id
+    ON track_matches (local_file_id);
+CREATE INDEX IF NOT EXISTS idx_download_requests_track_id
+    ON download_requests (track_id);
+CREATE INDEX IF NOT EXISTS idx_download_requests_status_requested_at
+    ON download_requests (status, requested_at);
+CREATE INDEX IF NOT EXISTS idx_playlist_tracks_track_id
+    ON playlist_tracks (track_id);
 """
