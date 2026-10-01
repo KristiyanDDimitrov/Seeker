@@ -59,7 +59,7 @@ from seeker.models.track import Track
 from seeker.ui.main_window import MainWindow
 from seeker.ui.workers import run_worker
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from test_stress_e2e import (
     STRESS_DUPLICATES_LOCATION_NAME,
     _cleanup_stress_duplicate_location,
