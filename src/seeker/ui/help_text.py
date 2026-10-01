@@ -1223,7 +1223,7 @@ ABOUT_DIALOG_LICENSE_LINE = (
 # package's own metadata (not assumed) — not an exhaustive legal NOTICE
 # file, just an honest, correctly-sourced summary for a portfolio
 # project. libchromaprint is dynamically loaded via ctypes at runtime
-# (see audio_fingerprint.py/CLAUDE.md item 38-39), never statically
+# (see audio/fingerprint.py/CLAUDE.md item 38-39), never statically
 # linked or bundled — the correct, low-risk way to use an LGPL library
 # from a closed-source app.
 ABOUT_DIALOG_THIRD_PARTY_NOTICES = (

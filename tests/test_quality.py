@@ -1,5 +1,5 @@
 
-from seeker.audio_formats import AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
+from seeker.audio.formats import AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.quality import (
@@ -67,7 +67,7 @@ def test_downloadable_extensions_is_a_subset_of_audio_extensions():
 def test_filter_candidates_excludes_ogg_even_though_it_is_indexable_audio():
     # .ogg is in AUDIO_EXTENSIONS (the scanner will index one you
     # already own) but NOT in DOWNLOADABLE_EXTENSIONS (nothing in
-    # metadata.py can tag it) — a real distinction, not an oversight.
+    # audio/tags.py can tag it) — a real distinction, not an oversight.
     track = make_track()
     ogg_candidate = make_file(
         filename=(

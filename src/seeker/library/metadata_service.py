@@ -10,7 +10,14 @@ import httpx
 from mutagen import File as MutagenFile
 
 from seeker.album_art_cache import AlbumArtCache
-from seeker.audio_analysis import analyze_audio as run_audio_analysis
+from seeker.audio.analysis import analyze_audio as run_audio_analysis
+from seeker.audio.tags import (
+    embed_album_art,
+    read_embedded_art,
+    save_tags,
+    write_analysis_tags,
+    write_text_tags,
+)
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -31,13 +38,6 @@ from seeker.errors import PlaylistNotFoundError
 from seeker.files.deletion import same_file
 from seeker.files.naming import build_track_filename
 from seeker.files.placement import resolve_collision
-from seeker.metadata import (
-    embed_album_art,
-    read_embedded_art,
-    save_tags,
-    write_analysis_tags,
-    write_text_tags,
-)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist

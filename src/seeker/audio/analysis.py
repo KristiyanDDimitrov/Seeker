@@ -57,7 +57,7 @@ def analyze_audio(
     # librosa.load resamples to a fixed rate regardless of the source
     # format (wav/mp3/flac/m4a all go through the same path via
     # soundfile/audioread), so this needs no per-format branching, unlike
-    # metadata.py's tag writers.
+    # audio/tags.py's tag writers.
     y, sr = librosa.load(str(file_path), sr=22050, mono=True)
 
     # beat_track's `prior` biases its internal tempo search — confirmed

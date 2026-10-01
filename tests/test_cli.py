@@ -564,7 +564,7 @@ def test_library_duplicates_hides_milestone_when_nothing_reclaimed_yet(
 
 
 def test_library_duplicates_reports_real_group_shape(tmp_path, capsys):
-    from seeker.library.audio_quality import LocalFileQuality
+    from seeker.audio.quality import LocalFileQuality
     from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
 
     matcher = make_matcher(tmp_path)

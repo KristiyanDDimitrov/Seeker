@@ -182,7 +182,6 @@ src/seeker/
 │                             #   poll_downloads (status + file move)
 ├── library/
 │   ├── scanner.py, matcher.py, service.py, metadata_service.py
-│   ├── audio_quality.py       # bitrate/clipping/loudness of a file on disk
 │   └── duplicate_service.py   # fingerprint-based duplicate detection
 │                             #   + group-resolution delete action
 ├── ui/                         # the seeker-ui GUI (PySide6)
@@ -213,16 +212,16 @@ src/seeker/
 │           soulseek_file,download_request,soulseek_review_candidate,
 │           active_download,track_status,upgrade_review,history_event,
 │           data_locations,duplicate_cleanup,needs_review_match}.py
-├── audio_formats.py          # AUDIO_EXTENSIONS, shared by scanner + quality
+├── audio/                     # analysis.py (BPM + Camelot key, librosa),
+│                              #   fingerprint.py (libchromaprint ctypes
+│                              #   binding + an ffmpeg fallback), formats.py
+│                              #   (AUDIO_EXTENSIONS), quality.py (bitrate/
+│                              #   clipping/loudness of a file on disk),
+│                              #   tags.py (mutagen tag read/write)
 ├── matching.py                # shared fuzzy artist/title matching, used by
 │                              #   BOTH library/matcher.py and soulseek/quality.py
-├── metadata.py                # mutagen tag read/write, per audio format
 ├── destination_resolution.py  # resolve_playlist_destination(), shared by
 │                              #   metadata_service.py and download_service.py
-├── audio_analysis.py          # BPM + Camelot key detection (librosa)
-├── audio_fingerprint.py       # libchromaprint ctypes binding (+ an ffmpeg
-│                              #   subprocess fallback for files soundfile
-│                              #   can't decode), used by duplicate_service.py
 ├── files/                     # atomic.py (atomic/0600 writes), deletion.py
 │                              #   (safe delete), placement.py (collision
 │                              #   rule), sanitize.py (path components),

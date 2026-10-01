@@ -11,7 +11,7 @@ from mutagen import File as MutagenFile
 
 from db_seed import add_playlist_track
 from seeker.album_art_cache import AlbumArtCache
-from seeker.audio_analysis import CAMELOT_MAP
+from seeker.audio.analysis import CAMELOT_MAP
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,

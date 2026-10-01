@@ -8,15 +8,19 @@ from typing import Any
 
 import numpy as np
 
-from seeker.audio_fingerprint import (
+from seeker.audio.fingerprint import (
     FingerprintError,
     FingerprintingUnavailableError,
     compute_fingerprint,
     decode_fingerprint,
     similarity_from_decoded,
 )
-from seeker.audio_fingerprint import (
+from seeker.audio.fingerprint import (
     is_available as fingerprinting_is_available,
+)
+from seeker.audio.quality import (
+    LocalFileQuality,
+    analyze_local_file_quality,
 )
 from seeker.database.connection import Database
 from seeker.database.repositories.duplicate_cleanup_repository import (
@@ -33,10 +37,6 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.errors import LibraryLocationNotFoundError
 from seeker.files.deletion import delete_file, same_file
-from seeker.library.audio_quality import (
-    LocalFileQuality,
-    analyze_local_file_quality,
-)
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation

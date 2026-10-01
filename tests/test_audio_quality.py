@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from seeker.library.audio_quality import analyze_local_file_quality
+from seeker.audio.quality import analyze_local_file_quality
 
 
 def _write_wav(

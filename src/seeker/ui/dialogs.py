@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker import _build_info
-from seeker.audio_formats import AUDIO_EXTENSIONS
+from seeker.audio.formats import AUDIO_EXTENSIONS
 from seeker.destination_resolution import (
     InvalidDestinationSubfolderError,
     validate_destination_subfolder,

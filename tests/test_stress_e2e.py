@@ -64,7 +64,7 @@ from PySide6.QtWidgets import (
 
 from fakes import FakeApplication
 from seeker.application import Application
-from seeker.audio_fingerprint import is_available as fingerprinting_is_available
+from seeker.audio.fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.ui.main_window import MainWindow

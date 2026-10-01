@@ -2,7 +2,7 @@ import ast
 import importlib
 from pathlib import Path
 
-from seeker.audio_formats import (
+from seeker.audio.formats import (
     DOWNLOADABLE_EXTENSIONS,
     downloadable_formats_text,
 )

@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from seeker.audio_formats import (
+from seeker.audio.formats import (
     is_downloadable_extension,
     quality_tier_for_format,
 )

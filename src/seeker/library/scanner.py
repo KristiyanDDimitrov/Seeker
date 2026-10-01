@@ -8,7 +8,7 @@ from typing import Any
 
 from mutagen import File as MutagenFile
 
-from seeker.audio_formats import AUDIO_EXTENSIONS
+from seeker.audio.formats import AUDIO_EXTENSIONS
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,

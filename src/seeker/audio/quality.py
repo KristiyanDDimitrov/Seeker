@@ -10,7 +10,7 @@ from typing import Any
 import mutagen
 import numpy as np
 
-from seeker.audio_formats import quality_tier_for_format
+from seeker.audio.formats import quality_tier_for_format
 
 # Untuned heuristic threshold, flagged the same as every other constant
 # in this codebase — a sample at or above this fraction of full-scale
@@ -45,7 +45,7 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
     sample_rate: int | None = None
 
     # mutagen ships no type annotations at all (no py.typed marker, no
-    # types-mutagen package on PyPI — same real gap metadata.py's own
+    # types-mutagen package on PyPI — same real gap audio/tags.py's own
     # module docstring already documents); mutagen_file/info are typed
     # Any here rather than scattering per-line ignores across this one
     # small, self-contained function.

@@ -1,4 +1,4 @@
-from seeker.audio_formats import AUDIO_EXTENSIONS, quality_tier_for_format
+from seeker.audio.formats import AUDIO_EXTENSIONS, quality_tier_for_format
 
 
 def test_audio_extensions_includes_aiff_variants():

@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from seeker.audio_formats import (
+from seeker.audio.formats import (
     downloadable_formats_text,
     is_downloadable_extension,
 )

@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seeker import audio_fingerprint
-from seeker.audio_fingerprint import (
+from seeker.audio import fingerprint as audio_fingerprint
+from seeker.audio.fingerprint import (
     Fingerprint,
     FingerprintError,
     FingerprintingUnavailableError,

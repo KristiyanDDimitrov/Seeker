@@ -865,7 +865,7 @@ def make_track_status(
 
 
 def make_duplicate_group():
-    from seeker.library.audio_quality import LocalFileQuality
+    from seeker.audio.quality import LocalFileQuality
     from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
 
     return DuplicateGroup(

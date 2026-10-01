@@ -8,7 +8,7 @@ custom hidden-import/collect-all directives here — `pyinstaller-hooks-
 contrib` (a declared dev dependency) already ships hooks for all four
 that PyInstaller auto-discovers via entry points, confirmed live by
 building a minimal frozen binary that actually calls
-`audio_analysis.analyze_audio()` against a real WAV and got the exact
+`seeker.audio.analysis.analyze_audio()` against a real WAV and got the exact
 same BPM/key/confidence numbers as the unfrozen run. Don't add
 `--collect-all`-equivalent directives for these back in speculatively —
 the spike confirmed they're not needed and only bloat the build

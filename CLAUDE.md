@@ -64,8 +64,16 @@ src/seeker/
 │                              #   (candidate + upgrade decisions)
 ├── library/                     # scanner.py, matcher.py, service.py,
 │                              #   metadata_service.py (writes Spotify tags/art),
-│                              #   duplicate_service.py (fingerprint clustering),
-│                              #   audio_quality.py (a local file's quality)
+│                              #   duplicate_service.py (fingerprint clustering)
+├── audio/                     # analysis.py (librosa BPM + Krumhansl-
+│                              #   Schmuckler key), fingerprint.py (project-
+│                              #   owned libchromaprint ctypes binding),
+│                              #   formats.py (AUDIO_EXTENSIONS,
+│                              #   DOWNLOADABLE_EXTENSIONS), quality.py (a
+│                              #   local file's quality), tags.py
+│                              #   (write_text_tags/embed_album_art/
+│                              #   write_analysis_tags — ID3/FLAC/MP4
+│                              #   dispatch, used by metadata_service.py)
 ├── ui/                          # seeker-ui (PySide6)
 │   ├── main_window.py           #   shell only: sidebar nav, menus, timers,
 │   │                          #   Qt event overrides (1,283 lines)
@@ -99,15 +107,8 @@ src/seeker/
 ├── matching.py                 # shared fuzzy artist/title matching — used by
 │                              #   BOTH library/matcher.py and soulseek/
 │                              #   quality.py, neither has its own copy
-├── metadata.py                  # write_text_tags/embed_album_art/
-│                              #   write_analysis_tags — format dispatch
-│                              #   (ID3/FLAC/MP4), used by metadata_service.py
 ├── destination_resolution.py    # resolve_playlist_destination — shared by
 │                              #   metadata_service.py and download_service.py
-├── audio_analysis.py            # analyze_audio (librosa BPM + Krumhansl-
-│                              #   Schmuckler key estimate)
-├── audio_fingerprint.py         # project-owned libchromaprint ctypes binding
-├── audio_formats.py             # AUDIO_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 ├── error_text.py                # describe_error() — readable text for any
 │                              #   task error, shared by UI workers and CLI
 ├── errors.py                    # SeekerError root + errors >1 module raises

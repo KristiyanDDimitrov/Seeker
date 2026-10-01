@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from seeker.audio_analysis import (
+from seeker.audio.analysis import (
     CAMELOT_MAP,
     analyze_audio,
     correct_octave_error,

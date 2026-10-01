@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from seeker.audio_fingerprint import FingerprintingUnavailableError
+from seeker.audio.fingerprint import FingerprintingUnavailableError
+from seeker.audio.quality import LocalFileQuality
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
@@ -18,7 +19,6 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError
-from seeker.library.audio_quality import LocalFileQuality
 from seeker.library.duplicate_service import (
     DuplicateFolderScope,
     DuplicateService,

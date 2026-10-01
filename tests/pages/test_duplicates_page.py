@@ -63,7 +63,7 @@ def _make_duplicate_group_with_n_files(count: int):
     # already works by construction (one QButtonGroup per group, one
     # radio per file, delete removes every file except the checked
     # one), not just the 2-file case every other test here uses.
-    from seeker.library.audio_quality import LocalFileQuality
+    from seeker.audio.quality import LocalFileQuality
     from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
 
     files = [
@@ -806,7 +806,7 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
     import numpy as np
     import soundfile as sf
 
-    from seeker import audio_fingerprint
+    from seeker.audio import fingerprint as audio_fingerprint
     from seeker.database.connection import Database
     from seeker.database.repositories.library_location_repository import (
         LibraryLocationRepository,

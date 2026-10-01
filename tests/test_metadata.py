@@ -10,7 +10,7 @@ from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
 from mutagen.mp4 import MP4
 
-from seeker.metadata import (
+from seeker.audio.tags import (
     _read_image_dimensions,
     embed_album_art,
     save_tags,
@@ -339,7 +339,7 @@ def test_write_analysis_tags_mp4_round_trips(tmp_path):
 @requires_x9_pro
 def test_write_analysis_tags_omits_tkey_when_key_is_none(tmp_path):
     # camelot_key is None for near-silent/noise-only audio (see
-    # audio_analysis.py) — TKEY/KEY/initialkey must simply be absent,
+    # audio/analysis.py) — TKEY/KEY/initialkey must simply be absent,
     # not written as a literal "None".
     dest = tmp_path / "test.mp3"
     shutil.copy(REAL_MP3, dest)
