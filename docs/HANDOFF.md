@@ -18,7 +18,8 @@ nine fields below follow the contract in
   on CI (with it mounted the count is `1681 passed, 1 skipped`).
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **CI:** see §3's last line (the run for this push).
+- **CI:** run `37459977454` (at `028e73f`): **success**, `1653
+  passed, 29 skipped`, coverage 94.10 % (floor 92 %).
 
 ## 2. Where we are
 
@@ -50,9 +51,8 @@ Evidence, with the before/after counts, is in HISTORY §168.
   the tree, blank every docstring, compare `ast.dump` (~15 lines).
   The tech-debt-tracker scanner has no category for this debt; the
   A.10 count is the measure.
-- **Partial-line replacements leave ragged or overlong lines**; ruff
-  E501 catches the long ones, the ragged ones need a rewrap. Grep the
-  diff for `:: ` and `/ ` join artefacts after any automatic rewrap.
+- **Partial-line edits leave ragged or overlong lines**: ruff E501
+  finds the long ones; grep the diff for `:: `/`/ ` after a rewrap.
 - Carried: radon not in the env. Never touch slskd or real data. zsh
   does not word-split `$var`; BSD `sed` lacks `\b`. CI runs
   offscreen (800×800); reproduce CI-only UI failures with
@@ -75,19 +75,12 @@ None.
 
 ## 7. Files in progress
 
-S24 part 2, all `partially_done` as a row (none edited yet): the 72
-leftover references are in `audio/` (`fingerprint.py` 9, `tags.py`,
-`quality.py`), `models/` (`track_status.py` 6 and 6 others),
-`main_ui.py` 6, `main.py`, `cli.py` 4, `files/` (`naming.py` 5,
-`sanitize.py`, `deletion.py`), `database/` (`schema.py` 5,
-`local_file_repository.py` 5, `download_request_repository.py` 4,
-`connection.py`, `playlist_repository.py`,
-`track_match_repository.py`), `_build_info.py` 3. Also §24's config
-files: `pyproject.toml`, `packaging/seeker.spec`,
-`docker-compose.yml`, `packaging/build_dmg.py`,
-`packaging/build_windows_installer.py`, `packaging/seeker.iss`.
-Narrative without a number needs a wider grep than A.10's:
-`grep -nE "20[0-9]{2}-[0-9]{2}-[0-9]{2}|[Cc]onfirmed live|real bug|Phase [0-9]|CLAUDE\\.md|[Bb]rief|[Rr]oadmap"`.
+S24 part 2 (`partially_done`, none edited yet): the 72 leftovers in
+`audio/`, `models/`, `database/`, `files/`, `cli.py`, `main.py`,
+`main_ui.py`, `_build_info.py` (top five in HISTORY §168; the rest 1–5 each), and
+§24's config files (`pyproject.toml`, `packaging/*`,
+`docker-compose.yml`). Narrative without a number needs a wider grep:
+`grep -nE "20[0-9]{2}-[0-9]{2}-[0-9]{2}|[Cc]onfirmed live|real bug|Phase [0-9]|CLAUDE\.md|[Bb]rief|[Rr]oadmap"`.
 
 ## 8. Waiting on Kris
 
