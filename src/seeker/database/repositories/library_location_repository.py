@@ -77,29 +77,6 @@ class LibraryLocationRepository:
 
         return _row_to_location(row)
 
-    def get_by_path(
-            self,
-            path: str,
-            connection: sqlite3.Connection,
-    ) -> LibraryLocation | None:
-        row = connection.execute(
-            """
-            SELECT
-                id,
-                name,
-                path,
-                added_at
-            FROM library_locations
-            WHERE path = ?
-            """,
-            (path,),
-        ).fetchone()
-
-        if row is None:
-            return None
-
-        return _row_to_location(row)
-
     def update_name(
             self,
             location_id: int,

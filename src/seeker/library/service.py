@@ -22,6 +22,7 @@ from seeker.errors import (
     SeekerError,
 )
 from seeker.library.matcher import TrackMatcher
+from seeker.library.nesting import is_within, same_directory
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import ScanAndMatchResult, ScanResult
@@ -38,6 +39,30 @@ class LibraryLocationPathAlreadyRegisteredError(SeekerError):
             f"'{existing.path}' is already registered as "
             f"'{existing.name}'."
         )
+
+
+class LibraryLocationOverlapError(SeekerError):
+    """A new location would sit inside, or contain, `existing`."""
+
+    def __init__(self, path: str, existing: LibraryLocation, *, inside: bool):
+        self.existing = existing
+
+        if inside:
+            message = (
+                f"'{path}' is inside the library location "
+                f"'{existing.name}' ({existing.path}), which already "
+                f"scans it. Keep using '{existing.name}', or remove it "
+                "first and add the folders you want one by one."
+            )
+        else:
+            message = (
+                f"'{path}' contains the library location "
+                f"'{existing.name}' ({existing.path}), so its files "
+                f"would be indexed twice. Remove '{existing.name}' "
+                f"first, then add '{path}'."
+            )
+
+        super().__init__(message)
 
 
 # Untuned constant — how many auto-suffix attempts (" (2)", " (3)", ...)
@@ -80,6 +105,7 @@ class LibraryService:
         )
 
         with self.database.transaction() as connection:
+            self._refuse_overlap(resolved_path, connection)
             self.locations.add(location, connection)
             saved = self.locations.get_by_name(name, connection)
 
@@ -108,13 +134,7 @@ class LibraryService:
         resolved_path_str = str(resolved_path)
 
         with self.database.transaction() as connection:
-            existing = self.locations.get_by_path(
-                    resolved_path_str,
-                    connection,
-            )
-
-            if existing is not None:
-                raise LibraryLocationPathAlreadyRegisteredError(existing)
+            self._refuse_overlap(resolved_path, connection)
 
             base_name = resolved_path.name
             name = base_name
@@ -147,6 +167,30 @@ class LibraryService:
         )
 
         return saved
+
+    def _refuse_overlap(
+            self,
+            resolved_path: Path,
+            connection: sqlite3.Connection,
+    ) -> None:
+        """Raises when `resolved_path` is already a location, or sits
+        inside or around one.
+        """
+        for existing in self.locations.get_all(connection):
+            existing_path = Path(existing.path)
+
+            if same_directory(resolved_path, existing_path):
+                raise LibraryLocationPathAlreadyRegisteredError(existing)
+
+            if is_within(resolved_path, existing_path):
+                raise LibraryLocationOverlapError(
+                    str(resolved_path), existing, inside=True,
+                )
+
+            if is_within(existing_path, resolved_path):
+                raise LibraryLocationOverlapError(
+                    str(resolved_path), existing, inside=False,
+                )
 
     def rename_location(
             self,

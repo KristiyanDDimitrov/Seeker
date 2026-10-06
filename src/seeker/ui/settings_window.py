@@ -157,9 +157,9 @@ class SettingsPage(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Persistent, dismissible — for the one real error this tab can
-        # produce that's worth more than a transient status line: "this
-        # path is already registered as X".
+        # Persistent, dismissible — for errors worth more than a
+        # transient status line: a folder already registered, or one
+        # inside or around a registered location.
         self.locations_notice = InlineNotice()
         layout.addWidget(self.locations_notice)
 
