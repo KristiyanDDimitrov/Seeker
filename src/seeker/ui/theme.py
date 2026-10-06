@@ -35,7 +35,9 @@ re-polishes every widget matching a rule automatically on re-apply, so
 it needs no theme-change handler code at all.
 """
 
+import sys
 from dataclasses import dataclass, fields
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
@@ -240,6 +242,22 @@ RADIUS_CARD = 10
 # can never drift apart.
 PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
+
+
+def _icons_dir() -> Path:
+    """`packaging/icons/` in a source tree; the `icons/` directory
+    `seeker.spec` bundles in a frozen build."""
+    if not getattr(sys, "frozen", False):
+        return Path(__file__).resolve().parents[3] / "packaging" / "icons"
+    return Path(sys._MEIPASS) / "icons"  # type: ignore[attr-defined]  # noqa: SLF001
+
+
+def combo_chevron_path(palette: Palette) -> Path:
+    """The drop-down chevron drawn in `palette.TEXT_MUTED`. A QSS
+    `image:` takes a file, not a color, so each palette has its own
+    bundled SVG; `test_theme.py` fails if one drifts from its token."""
+    name = "light" if palette == LIGHT else "dark"
+    return _icons_dir() / f"combo_chevron_{name}.svg"
 
 
 def set_dynamic_property(widget: QWidget, name: str, value: str | None) -> None:
@@ -918,8 +936,21 @@ QPlainTextEdit:focus {{
     border: 1px solid {palette.ACCENT};
 }}
 
+QComboBox {{
+    padding-right: 24px;
+}}
+
 QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 24px;
     border: none;
+}}
+
+QComboBox::down-arrow {{
+    image: url("{combo_chevron_path(palette).as_posix()}");
+    width: 10px;
+    height: 6px;
 }}
 
 QComboBox QAbstractItemView {{

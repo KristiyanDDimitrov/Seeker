@@ -2,6 +2,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QLabel,
     QListWidget,
@@ -362,3 +363,46 @@ def test_controls_on_a_card_show_the_card_surface(qtbot, applied_palette):
     for control in (checkbox, radio):
         corner = control.rect().topRight() + QPoint(-1, 1)
         assert at(control, corner) == surface, type(control).__name__
+
+
+# --- Combo boxes show a drop-down chevron (§27.2) ---------------------------
+
+
+def test_a_combo_box_shows_a_chevron_in_its_drop_down(
+        qtbot, applied_palette,
+):
+    # A combo with no arrow reads as a text field. Somewhere in the
+    # drop-down band (the right-hand 24 px, inside the border) a pixel
+    # reaches the 3:1 UI-component floor against the field itself.
+    combo = QComboBox()
+    combo.addItems(["All locations", "Music"])
+    form = QWidget()
+    layout = QVBoxLayout(form)
+    layout.addWidget(combo)
+    layout.addStretch()
+    at = _grab_card(qtbot, form)
+
+    field = at(combo, QPoint(6, combo.height() // 2))
+    band = [
+        at(combo, QPoint(x, y))
+        for x in range(combo.width() - 24, combo.width() - 3)
+        for y in range(3, combo.height() - 3)
+    ]
+    field_hex = "#{:02X}{:02X}{:02X}".format(*field)
+    best = max(
+        theme.contrast_ratio("#{:02X}{:02X}{:02X}".format(*pixel), field_hex)
+        for pixel in band
+    )
+    assert best >= 3.0
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+def test_the_combo_chevron_is_drawn_in_the_palettes_muted_text(palette):
+    path = theme.combo_chevron_path(palette)
+    assert path.is_file()
+    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
+    assert path.as_posix() in theme.build_stylesheet(palette)
