@@ -10,13 +10,14 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S28 part-1 close-out commit, after `17226bd`
-  (§28.2). Tree clean apart from the untracked `Claude outputs/`.
-- **Local** (at `17226bd`): pytest `1761 passed, 29 skipped`;
+- **HEAD:** the Duplicates CI fix, after the S28 part-1 close-out
+  `c8cbb80`. Tree clean apart from the untracked `Claude outputs/`.
+- **Local:** pytest `1761 passed, 29 skipped` (offscreen too);
   `mypy --strict src/` clean, 132 files; `ruff check src tests tools`
   0.
-- **CI:** see the close-out commit's run (recorded in the final
-  message of the session that pushed it; `gh run list -L 1`).
+- **CI:** `c8cbb80`'s run `37517187829` failed (Duplicates' Path 145
+  px under offscreen fonts); the fix commit's run is the latest in
+  `gh run list -L 1`.
 
 ## 2. Where we are
 
@@ -58,9 +59,9 @@ Evidence in HISTORY §176.
 - **Testing a tooltip:** send a `QHelpEvent(ToolTip)` to the viewport
   and read `QToolTip.text()`. `plain_tooltip` wraps the text in `<p>`,
   so assert containment (`test_elided_text.py`'s `_tooltip_at`).
-- **Duplicates at 960 is over-full** (every fit column at its header
-  floor, "MP3, …"). The fix is a stacked group Actions cell, but a
-  two-row span is ~76 px against ~92 px needed. That's for S35a.
+- **Duplicates' group Actions cell is two lines** (CI fix: offscreen
+  fonts left Path 145 < 160). A group's first row now stands taller
+  than the rest, and Quality still elides at 960. Both are for S35a.
 - **For S31:** a palette change must update the chevron SVGs; white on
   dark's ACCENT is 4.35:1 (palette test floor 4.3).
 - Carried: `MainWindow` does not apply the theme, `main_ui.py` does;

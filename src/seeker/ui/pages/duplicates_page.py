@@ -829,14 +829,23 @@ class DuplicatesPage(QWidget):
         )
         _update_delete_enabled()
 
-        return theme.cell_widget(
-                keep_all_radio,
-                confirm_checkbox,
-                delete_button,
-                row_label=(
-                    f"duplicates of {group.files[0].local_file.relative_path}"
-                ),
+        row_label = f"duplicates of {group.files[0].local_file.relative_path}"
+        # Two lines, not one: a group spans at least two rows, and one
+        # line was the widest cell in the table, leaving Path too
+        # little at 960 wide (HISTORY §176).
+        container = QWidget()
+        container.setObjectName("cellWidgetContainer")
+        lines = QVBoxLayout(container)
+        lines.setContentsMargins(0, 0, 0, 0)
+        lines.setSpacing(0)
+        lines.addWidget(
+            theme.cell_widget(
+                keep_all_radio, confirm_checkbox, row_label=row_label,
+            ),
         )
+        lines.addWidget(theme.cell_widget(delete_button, row_label=row_label))
+        lines.addStretch()
+        return container
 
     def _on_delete_duplicates_clicked(
             self,
