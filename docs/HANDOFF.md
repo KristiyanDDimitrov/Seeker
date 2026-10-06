@@ -15,8 +15,8 @@ nine fields below follow the contract in
 - **Local** (at `8eb8859`): pytest `1748 passed, 29 skipped`;
   `mypy --strict src/` clean, 131 files; `ruff check src tests tools`
   0.
-- **CI:** part 2's close-out run `37508982327` green. This push: see
-  the next session's report if not recorded below.
+- **CI:** the close-out commit `9e8c4a8`'s run `37512975028` green
+  (part 2's `37508982327` green too).
 
 ## 2. Where we are
 
