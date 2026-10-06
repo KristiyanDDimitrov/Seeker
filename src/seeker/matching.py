@@ -218,11 +218,10 @@ def evaluate_match(
     artist_matches()/score_title() directly (soulseek/quality.py keeps
     doing that, unaffected by this function's existence).
 
-    Softens the old hard artist gate: previously, ANY artist_matches()
-    == False rejected a candidate outright, at every threshold — real
-    bug, confirmed live against three real Bring Me The Horizon files
-    whose artist tag matched perfectly but whose TITLE text drifted from
-    Spotify's own stylization enough to land in needs_review or below
+    A hard artist gate (ANY artist_matches() == False rejects a
+    candidate outright, at every threshold) loses real matches: files
+    whose artist tag matched perfectly but whose TITLE text drifted
+    from Spotify's own stylization landed in needs_review or below
     (HISTORY §56). This function narrows that: the gate is
     still hard when a real, populated tag actively disagrees (genuine
     negative evidence), but a merely-unconfirmable fallback source (no

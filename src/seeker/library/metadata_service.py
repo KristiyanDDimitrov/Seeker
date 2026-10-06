@@ -47,11 +47,11 @@ from seeker.models.track import Track
 logger = logging.getLogger(__name__)
 
 
-# Roadmap item 116 (round 8, §6.4) — album_art_url comes from Spotify's
-# own CDN at sync time, so it's trusted in practice, but it's read back
-# out of a local SQLite file and _download_album_art streams rather
-# than buffering an unbounded response body. A few MB is generous for
-# real cover art; untuned, no real track's art has ever come close.
+# album_art_url comes from Spotify's own CDN at sync time, so it's
+# trusted in practice, but it's read back out of a local SQLite file
+# and _download_album_art streams rather than buffering an unbounded
+# response body. A few MB is generous for real cover art; untuned, no
+# real track's art has ever come close. See HISTORY §116.
 MAX_ALBUM_ART_BYTES = 10 * 1024 * 1024
 
 # Where Spotify serves cover art (every stored URL is i.scdn.co today).
@@ -72,7 +72,7 @@ def is_spotify_image_url(url: str) -> bool:
 
 
 # Real magic-byte prefixes, checked instead of trusting the response's
-# Content-Type header (§6.4.2).
+# Content-Type header.
 _JPEG_MAGIC = b"\xff\xd8\xff"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -89,10 +89,10 @@ def _sniff_image_mime_type(image_bytes: bytes) -> str:
 
 @dataclass
 class RenamePlan:
-    """Roadmap item 67 (Phase 6.3) — one track's rename decision, pure
-    planning, zero writes. `current_path`/`proposed_path` are None only
-    when `action` is 'not_auto_matched' (nothing to resolve a path for
-    at all) or 'no_local_file'/'error' before a path could be computed.
+    """One track's rename decision: pure planning, zero writes.
+    `current_path`/`proposed_path` are None only when `action` is
+    'not_auto_matched' (nothing to resolve a path for at all) or
+    'no_local_file'/'error' before a path could be computed.
     """
     track_id: str
     local_file_id: int | None
@@ -102,18 +102,18 @@ class RenamePlan:
     # 'no_local_file' / 'error'
     action: str
     message: str | None = None
-    # Roadmap item 93 (B3.2) — current_path/proposed_path are absolute;
-    # a preview showing only the basename made an "Already correct" row
-    # for a duplicate file elsewhere in the same library location
-    # indistinguishable from the file the user was actually looking at
-    # (the real bug behind B3's "nothing was renamed" report). None
-    # exactly when the matching absolute path is also None.
+    # current_path/proposed_path are absolute; these are the
+    # location-relative forms the preview shows, since a basename alone
+    # makes an "Already correct" row for a duplicate file elsewhere in
+    # the same location indistinguishable from the file the user meant
+    # (HISTORY §93). None exactly when the matching absolute path is
+    # also None.
     current_relative: Path | None = None
     proposed_relative: Path | None = None
-    # Roadmap item 93 (B3.4) — set only when plan_renames() was called
-    # with a playlist_name (so a real destination can be resolved) AND
-    # the matched file's real location/folder disagrees with it. None
-    # otherwise, including whenever there's nothing to compare against.
+    # Set only when plan_renames() was called with a playlist_name (so a
+    # real destination can be resolved) AND the matched file's real
+    # location/folder disagrees with it. None otherwise, including
+    # whenever there's nothing to compare against.
     destination_note: str | None = None
 
 
@@ -124,28 +124,27 @@ class RenameResult:
     skipped_not_auto_matched: int = 0
     skipped_no_local_file: int = 0
     # A SUBSET of `renamed` (like tagged_without_art is a subset of
-    # tagged, item 56 Phase 4.2) — how many of the real renames needed
-    # a numbered " (2)" suffix because the target name was already
-    # taken by a genuinely different file.
+    # tagged) — how many of the real renames needed a numbered " (2)"
+    # suffix because the target name was already taken by a genuinely
+    # different file.
     collisions: int = 0
     failed: int = 0
     details: list[dict[str, str]] = field(default_factory=list)
 
 
-# Roadmap item 67 (Phase 6.2/6.3) — the real, load-bearing check behind
-# both "is this already correct" and "is this a genuine collision or
-# just a case-only rename of itself." Shared with duplicate_service.py
-# (roadmap item 93/R3.3) via files/deletion.py, not a second copy.
+# The load-bearing check behind both "is this already correct" and "is
+# this a genuine collision or just a case-only rename of itself."
+# Shared with duplicate_service.py via files/deletion.py, not a second
+# copy.
 _same_file = same_file
 
 
 def _describe_track_file(track: Track, local_file: LocalFile) -> str:
-    """Roadmap item 93 (B3.3) — a per-track tagging/art-fix outcome
-    named only by artist/title made a run against a duplicate file
-    elsewhere in the library indistinguishable from the file the user
-    actually cared about (the same real B3 story as B3.2's rename
-    preview, applied here). `local_file.relative_path` is already
-    location-relative — no location object needed to display it."""
+    """Names a per-track tagging/art-fix outcome by its file as well as
+    artist/title: by artist/title alone, a run against a duplicate file
+    elsewhere in the library is indistinguishable from one against the
+    file the user meant (HISTORY §93). `local_file.relative_path` is
+    already location-relative — no location object needed."""
     return f"{local_file.relative_path} ({track.artist} - {track.title})"
 
 
@@ -154,12 +153,12 @@ def _destination_note(
         local_file: LocalFile,
         destination: tuple[LibraryLocation, str | None] | None,
 ) -> str | None:
-    """Roadmap item 93 (B3.4) — the actual B3 story: Seeker was
-    renaming/tagging the right file, but a track whose matched file
-    lives outside the playlist's own configured destination never said
-    so anywhere. `destination` is None when the playlist has no
-    resolvable destination at all — nothing to compare against, so no
-    note (not an error; plenty of playlists have never had one set)."""
+    """Notes when a track's matched file lives outside the playlist's
+    own configured destination — otherwise a rename or tag of the
+    right file reads as acting on the wrong one (HISTORY §93).
+    `destination` is None when the playlist has no resolvable
+    destination at all — nothing to compare against, so no note (not an
+    error; plenty of playlists have never had one set)."""
     if destination is None:
         return None
 
@@ -185,14 +184,13 @@ def _destination_note(
 
 
 def _rename_via_temp(source: Path, destination: Path) -> None:
-    # Roadmap item 67 (Phase 6.2) — macOS's default APFS volume is
-    # case-insensitive: a naive Path.rename() between two names
-    # differing only by case either no-ops or raises depending on the
-    # exact names, because the filesystem already treats them as the
-    # same entry. A two-step rename through a unique temporary name in
-    # the SAME directory (so it's still on the same filesystem/volume —
-    # required for a plain rename rather than a real copy) sidesteps
-    # this reliably.
+    # macOS's default APFS volume is case-insensitive: a naive
+    # Path.rename() between two names differing only by case either
+    # no-ops or raises depending on the exact names, because the
+    # filesystem already treats them as the same entry. A two-step
+    # rename through a unique temporary name in the SAME directory (so
+    # it's still on the same filesystem/volume — required for a plain
+    # rename rather than a real copy) sidesteps this reliably.
     temp_path = source.with_name(f".{source.name}.seeker-rename-tmp")
     counter = 0
 
@@ -209,16 +207,15 @@ def _rename_via_temp(source: Path, destination: Path) -> None:
 def _mark_within_batch_collisions(
         plans: list[RenamePlan],
 ) -> list[RenamePlan]:
-    """Roadmap item 76 (P2, 2.2) — a real, CONFIRMED gap:
-    _plan_one_rename plans every track independently against the
+    """_plan_one_rename plans every track independently against the
     filesystem as it is BEFORE any rename runs, so two plans can target
     the identical final name (a track duplicated in the playlist, two
     remixes normalizing to the same string, or an already-correct file
     whose name a later plan also targets) with neither individually
-    reading as a collision at plan time — the preview showed both as
-    clean renames. At apply time the first one wins the name and the
-    second silently becomes a numbered suffix. Marking this at PLAN
-    time makes the preview honest about it upfront.
+    reading as a collision at plan time. At apply time the first one
+    wins the name and the second becomes a numbered suffix, so this
+    marks it at PLAN time and the preview says so upfront.
+    See HISTORY §76.
     """
     target_counts: dict[Path, int] = {}
 
@@ -253,13 +250,13 @@ def _mark_within_batch_collisions(
 
 
 def _rename_sidecar_if_present(current_path: Path, final_path: Path) -> None:
-    # Roadmap item 67 (Phase 6.3) — item 2's own AppleDouble filter
-    # (`._<name>`, same directory) means the scanner never indexes
-    # these, but a real one sitting next to a renamed file would
-    # silently become orphaned (pointing nowhere useful) if left
-    # behind. Best-effort: a failure here must never fail the real
-    # rename it's riding along with. Deliberately NOT handled: .cue,
-    # .lrc, or folder art — out of scope, noted rather than half-done.
+    # The scanner's AppleDouble filter (`._<name>`, same directory)
+    # means it never indexes these, but a real one sitting next to a
+    # renamed file would silently become orphaned (pointing nowhere
+    # useful) if left behind. Best-effort: a failure here must never
+    # fail the real rename it's riding along with. Deliberately NOT
+    # handled: .cue, .lrc, or folder art — out of scope, noted rather
+    # than half-done.
     sidecar = current_path.parent / f"._{current_path.name}"
 
     if not sidecar.exists():
@@ -389,16 +386,15 @@ class MetadataService:
         self.local_files = local_file_repository
         self.locations = library_location_repository
         self.playlists = playlist_repository
-        # Roadmap item 56 Phase 4.3 — MetadataService is a cached
-        # singleton for the app's whole lifetime (Application.
-        # metadata_service, same pattern as track_matcher/dashboard_
-        # service — item 33), so the default instance here persists
-        # across tagging runs too, not just within one.
+        # MetadataService is a cached singleton for the app's whole
+        # lifetime (Application.metadata_service, same pattern as
+        # track_matcher/dashboard_service), so the default instance
+        # here persists across tagging runs too, not just within one.
         self.album_art_cache = album_art_cache or AlbumArtCache()
-        # Roadmap item R4.2 — same callable-not-snapshot discipline as
-        # DownloadService/TrackMatcher/SharingService (item 28) — a
-        # Settings toggle change takes effect on the very next tagging
-        # run, no restart or service-reconstruction needed.
+        # Same callable-not-snapshot discipline as
+        # DownloadService/TrackMatcher/SharingService — a Settings
+        # toggle change takes effect on the very next tagging run, no
+        # restart or service-reconstruction needed.
         self._get_config = get_config or SeekerConfig
 
     def tag_playlist(
@@ -674,14 +670,11 @@ class MetadataService:
             self,
             playlist_name: str,
     ) -> FixArtResult:
-        """Roadmap item 66 (Phase 5.2) — a narrower, safer repair action
-        than a forced full re-tag: re-embeds art ONLY, never touches
-        text tags, for auto-matched tracks whose embedded art is
-        missing or doesn't match the real current album_art_url. Built
-        for exactly the scenario Phase 0.4's investigation found: a
-        track already tagged (tagged_at set) before Phase 4's own art
-        fixes landed, whose text tags are already correct and don't
-        need rewriting, but whose art was never fixed retroactively.
+        """A narrower, safer repair action than a forced full re-tag:
+        re-embeds art ONLY, never touches text tags, for auto-matched
+        tracks whose embedded art is missing or doesn't match the
+        current album_art_url — a track tagged before its art could be
+        written has correct text tags that need no rewrite.
         """
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
@@ -845,8 +838,8 @@ class MetadataService:
 
         # The actual point of this action: skip the write entirely (no
         # file touched at all) if the currently-embedded art already
-        # byte-matches the real current CDN bytes — the same
-        # authoritative comparison Phase 0.4's own investigation used.
+        # byte-matches the real current CDN bytes — the authoritative
+        # comparison.
         existing_art = read_embedded_art(mutagen_file)
 
         if existing_art is not None and existing_art == image_bytes:
@@ -911,7 +904,7 @@ class MetadataService:
             playlist_name: str | None = None,
             track_ids: list[str] | None = None,
     ) -> list[RenamePlan]:
-        """Roadmap item 67 (Phase 6.3) — pure planning, zero writes.
+        """Pure planning, zero writes.
         Exactly one of playlist_name/track_ids must be given. Unlike
         tag_playlist/fix_missing_art_for_playlist, this deliberately
         does NOT pre-filter to auto-matched tracks — a needs_review or
@@ -1059,30 +1052,28 @@ class MetadataService:
         )
 
     def apply_renames(self, plans: list[RenamePlan]) -> RenameResult:
-        """Roadmap item 67 (Phase 6.3) — 'rename' AND 'collision' plans
-        both do real work; every other action is just counted (the plan
-        already described it correctly, nothing to act on). 'collision'
-        is informational at PLAN time (so a preview can show "this will
-        need a suffix" before the user confirms) but is NOT refused at
-        apply time — _apply_one_rename resolves it for real, via a
-        fresh resolve_collision() call against the real filesystem
-        state (which may have changed since planning), appending
-        " (2)", " (3)", ... Real user files — never called without the
-        caller's own explicit confirmation gate (item 27's "no gate for
-        tag-writing" precedent does NOT extend here: renaming moves/
-        replaces a file, tag-writing never does).
+        """'rename' AND 'collision' plans both do real work; every other
+        action is just counted (the plan already described it correctly,
+        nothing to act on). 'collision' is informational at PLAN time
+        (so a preview can show "this will need a suffix" before the user
+        confirms) but is NOT refused at apply time — _apply_one_rename
+        resolves it for real, via a fresh resolve_collision() call
+        against the real filesystem state (which may have changed since
+        planning), appending " (2)", " (3)", ... Real user files — never
+        called without the caller's own explicit confirmation gate
+        (tag-writing needs no gate, but renaming moves a file, which
+        tag-writing never does).
 
-        Roadmap item 76 (P2, 2.4) — a real, CONFIRMED gap: a modal
-        preview dialog's exec() keeps processing timer events, so the
-        2s poll timer and the 20s backend-poll timer both keep firing
-        while the user is looking at the preview — including a real
-        SoulSeek download landing and writing a NEW local_files row
+        A modal preview dialog's exec() keeps processing timer events,
+        so the 2s poll timer and the 20s backend-poll timer both keep
+        firing while the user is looking at the preview — including a
+        real SoulSeek download landing and writing a NEW local_files row
         mid-preview. Re-plans FRESH from the exact same track ids right
         before doing any real work and refuses (as a real per-track
         'failed' outcome, not a silent skip) any track whose fresh plan
         disagrees with what the user actually confirmed — safer than
         merely blocking the timers, since it also closes the "left the
-        dialog open for ten minutes" window the brief itself calls out.
+        dialog open for ten minutes" window. See HISTORY §76.
         """
         result = RenameResult()
 
@@ -1200,27 +1191,25 @@ class MetadataService:
         final_path = resolve_collision(current_path, plan.proposed_path)
 
         if _same_file(current_path, final_path):
-            # Roadmap item 67 (Phase 6.2) — a case-only rename of the
-            # SAME real file (macOS's default APFS volume is case-
-            # insensitive) needs the two-step temp-name path; a plain
-            # Path.rename() either no-ops or raises depending on the
-            # exact names involved.
+            # A case-only rename of the SAME real file (macOS's default
+            # APFS volume is case-insensitive) needs the two-step
+            # temp-name path; a plain Path.rename() either no-ops or
+            # raises depending on the exact names involved.
             _rename_via_temp(current_path, final_path)
         else:
             current_path.rename(final_path)
 
         _rename_sidecar_if_present(current_path, final_path)
 
-        # Roadmap item 76 (P2, 2.3) — the honest-preview fix: the
-        # preview shows plan.proposed_path.name, but this real, fresh
-        # resolve_collision() call (real filesystem state at WRITE
-        # time, which can differ from the plan's own snapshot) can
-        # legitimately return a different name. Silence here is
-        # EXACTLY what made "preview said X, disk got Y" invisible —
-        # covers both a plan already flagged 'collision' at plan time
-        # (almost always resolves to a different, suffixed name) and
-        # the more alarming case: a plan previewed as a clean 'rename'
-        # that hits a genuinely NEW collision only discovered now.
+        # The preview shows plan.proposed_path.name, but this fresh
+        # resolve_collision() call (filesystem state at WRITE time,
+        # which can differ from the plan's own snapshot) can
+        # legitimately return a different name, and the user must hear
+        # that "preview said X, disk got Y". Covers both a plan already
+        # flagged 'collision' at plan time (almost always resolves to a
+        # different, suffixed name) and the more alarming case: a plan
+        # previewed as a clean 'rename' that hits a genuinely NEW
+        # collision only discovered now.
         if final_path.name != plan.proposed_path.name:
             result.collisions += 1
             result.details.append(
@@ -1241,17 +1230,15 @@ class MetadataService:
             final_path.relative_to(Path(location.path))
         )
 
-        # Roadmap item 67 (Phase 6.3) — deliberately the OPPOSITE
-        # ordering from item 40's delete rule (file first there, DB
-        # first here would be wrong for the identical reason item 40's
-        # own comment already gives, just inverted): a failed rename
-        # (caught above, before this point) leaves the DB untouched and
-        # consistent; renaming the file FIRST and updating the DB
-        # SECOND means the only failure window left is a DB-write
-        # failure after a successful rename — handled by renaming back
-        # and reporting an error, rather than leaving a local_files row
-        # pointing at a path that never existed (which item 40's own
-        # ordering exists to avoid on the delete side).
+        # Deliberately the OPPOSITE ordering from the delete rule (DB
+        # row first there, file first here, for the same reason
+        # inverted): a failed rename (caught above, before this point)
+        # leaves the DB untouched and consistent; renaming the file
+        # FIRST and updating the DB SECOND means the only failure window
+        # left is a DB-write failure after a successful rename — handled
+        # by renaming back and reporting an error, rather than leaving a
+        # local_files row pointing at a path that never existed. See
+        # HISTORY §40, HISTORY §67.
         try:
             with self.database.transaction() as connection:
                 self.local_files.update_relative_path(
@@ -1296,12 +1283,11 @@ class MetadataService:
         if cached is not None:
             return cached
 
-        # Roadmap item 116 (round 8, §6.4.1) — streamed rather than
-        # httpx.get()'s implicit full-body buffering, so a response
-        # larger than MAX_ALBUM_ART_BYTES is caught without ever
-        # holding the whole thing in memory. httpx doesn't follow
-        # redirects by default — deliberately left that way, do not
-        # add follow_redirects=True here.
+        # Streamed rather than httpx.get()'s implicit full-body
+        # buffering, so a response larger than MAX_ALBUM_ART_BYTES is
+        # caught without ever holding the whole thing in memory. httpx
+        # doesn't follow redirects by default — deliberately left that
+        # way, do not add follow_redirects=True here.
         with httpx.stream("GET", url, timeout=15.0) as response:
             response.raise_for_status()
 
@@ -1318,7 +1304,7 @@ class MetadataService:
                 chunks.append(chunk)
 
         image_bytes = b"".join(chunks)
-        # §6.4.2 — the real image bytes decide the MIME type, not the
+        # The real image bytes decide the MIME type, not the
         # Content-Type header a response could set to anything.
         mime_type = _sniff_image_mime_type(image_bytes)
 

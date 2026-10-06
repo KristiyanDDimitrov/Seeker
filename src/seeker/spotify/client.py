@@ -20,8 +20,7 @@ BASE_URL = "https://api.spotify.com/v1"
 # Application.spotify passes in, bound to auth_manager.get_valid_token(),
 # so a request made after the cached SpotifyClient has outlived the
 # token's 1-hour lifetime still gets one get_valid_token() has already
-# refreshed, instead of the frozen string this class used to store
-# (roadmap item 92 / B8.2).
+# refreshed, never a frozen string (HISTORY §92).
 TokenSource = str | Callable[[], str]
 
 # Bounds _get's 429-retry loop. Without this, a server that kept returning
@@ -123,7 +122,7 @@ class SpotifyRateLimitedError(SeekerError):
 
 class SpotifyAuthenticationError(SeekerError):
     """Raised when Spotify rejects the current token and a single forced
-    refresh-and-retry (B8.3) still 401s — a real, permanently revoked/
+    refresh-and-retry still 401s — a real, permanently revoked/
     invalid token, not just an expired one get_valid_token() already
     would have refreshed."""
 

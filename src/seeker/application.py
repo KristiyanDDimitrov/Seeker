@@ -79,7 +79,7 @@ def _resolve_database_path() -> Path:
 def resolve_log_dir() -> Path:
     # Shared by main_ui.py's RotatingFileHandler setup and
     # data_locations below — one resolved path, never a second,
-    # drifting copy (§7.2.3).
+    # drifting copy.
     log_dir = Path(platformdirs.user_log_dir("Seeker", appauthor=False))
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -102,7 +102,8 @@ class Application:
         # detect_docker_state/bring_up_slskd) — a GUI-launched .app
         # gets launchd's minimal PATH, which doesn't include
         # /usr/local/bin or /opt/homebrew/bin, so `docker` can't be
-        # found even when genuinely installed and running. See item 44.
+        # found even when genuinely installed and running. See
+        # HISTORY §44.
         ensure_full_path_environment()
 
         self.database = Database(_resolve_database_path())
@@ -136,7 +137,7 @@ class Application:
     def settings(self) -> SeekerConfig:
         """Read-only view of the persisted config store — the public
         surface presentation-layer code reads instead of reaching into
-        `self.application._config_store` directly (round 8 §7.1).
+        `self.application._config_store` directly.
         """
         return self._config_store
 
@@ -145,11 +146,8 @@ class Application:
         the in-memory config store — the generic counterpart to the
         domain-specific setters below (persist_default_destination,
         set_notification_preference, etc.) for presentation-layer code
-        saving fields that don't need their own single-purpose method
-        (round 8 §7.1 — replaces a direct
-        `self.application._config_store = updated` write from
-        settings_window.py, which bypassed this class entirely). A
-        change that also requires cache invalidation (a client_id or
+        saving fields that don't need their own single-purpose method.
+        A change that also requires cache invalidation (a client_id or
         SoulSeek credential change) still goes through
         connect_spotify/persist_soulseek_config, not this.
         """
@@ -214,9 +212,8 @@ class Application:
     ) -> None:
         """Persist client_id to the config store and trigger the OAuth
         flow. Shared by the onboarding wizard's first-time connect and
-        Settings' "Re-authorize" action (Step 8 §3) — extracted from
-        the wizard's own inline do_connect() closure so both call the
-        identical logic instead of two copies that could drift.
+        Settings' "Re-authorize" action, so both call the identical
+        logic instead of two copies that could drift.
 
         force_reauthorize additionally clears any cached token first:
         get_valid_token() would otherwise just silently return an
@@ -239,12 +236,12 @@ class Application:
         save_config(updated, config_path)
         self._config_store = updated
         self._auth_manager = None
-        # B8.1 — a cached SpotifyClient (or a SpotifySyncService built on
-        # top of one) from an earlier call in this same session must not
-        # survive a new client_id/re-authorize: without this, `self.spotify`
+        # A cached SpotifyClient (or a SpotifySyncService built on top
+        # of one) from an earlier call in this same session must not
+        # survive a new client_id/re-authorize: otherwise `self.spotify`
         # below short-circuits on the already-non-None cache and never
-        # calls auth_manager.get_valid_token() at all, so Settings'
-        # "Re-authorize" was a silent no-op that kept the dead token.
+        # calls auth_manager.get_valid_token() at all, and Settings'
+        # "Re-authorize" silently keeps the dead token (HISTORY §92).
         self._spotify = None
         self._sync_service = None
 
@@ -253,10 +250,10 @@ class Application:
 
         # Triggers the existing OAuth flow — opens the system browser
         # and waits for the local callback. An explicit call, not a
-        # bare property access relied on for its side effect (B018,
-        # round 8 §4.8.6): a bare `self.spotify` statement reads as
-        # dead code to a linter or a future cleanup and deleting it
-        # would silently break first-time Spotify connect.
+        # bare property access relied on for its side effect (B018):
+        # a bare `self.spotify` statement reads as dead code to a linter
+        # or a future cleanup and deleting it would silently break
+        # first-time Spotify connect.
         self.auth_manager.get_valid_token(cancel=cancel)
 
     def persist_soulseek_config(
@@ -269,12 +266,8 @@ class Application:
     ) -> None:
         """Persist real SoulSeek connection details to the config
         store. Shared by the onboarding wizard's first bring-up and
-        Settings' "Update SoulSeek credentials" action (Step 8 §3) —
-        extracted from the wizard's own _persist_soulseek_config so
-        both write the identical shape, including the network
-        username/password this method is what first started
-        persisting at all (see config_store.py — item 19 deliberately
-        left them out, pending exactly this real consumer).
+        Settings' "Update SoulSeek credentials" action, so both write
+        the identical shape, including the network username/password.
         """
         config_path = resolve_config_path()
         current = load_config(config_path)
@@ -402,15 +395,15 @@ class Application:
         """Return the slskd WEB UI login, generating and persisting it
         once if it doesn't exist yet.
 
-        Roadmap item 116 (round 8, §6.1.2) — Seeker never set this
-        before this item, leaving slskd's web UI at its own vendor
-        default ("slskd"/"slskd"). If both fields are already set,
+        Without one, slskd's web UI keeps its vendor default
+        ("slskd"/"slskd"). If both fields are already set,
         return them unchanged — never rotate a real, working login
         silently. This is the upgrade path for an existing install:
         nothing changes until the next real `bring_up_slskd` call
         (wizard bring-up, "Update SoulSeek credentials," or a Sharing
         add-location recreate), at which point it gets a real generated
-        password instead of the vendor default, exactly once.
+        password instead of the vendor default, exactly once. See
+        HISTORY §116.
         """
         if (
                 self._config_store.slskd_web_username
@@ -441,8 +434,8 @@ class Application:
             location_id: int,
             subfolder_per_playlist: bool,
     ) -> None:
-        """Persist the fallback destination roadmap item 6 adds — used
-        once a playlist has no destination of its own (see
+        """Persist the fallback destination — used once a playlist has
+        no destination of its own (see
         DownloadPlacement.resolve_destination). No client/service reset
         needed, unlike persist_soulseek_config's credential change:
         DownloadService already reads config fresh via its own
@@ -486,12 +479,11 @@ class Application:
         return self._config_store.downloads_paused
 
     def set_downloads_paused(self, paused: bool) -> None:
-        """Roadmap item R7.4 — persisted so pause/resume survives a
-        restart, and read fresh by DownloadService.poll_downloads()
-        itself on every call (via its own get_config callable) so
-        pausing is authoritative regardless of which caller —
-        menu-bar toggle or the main window's own mirrored control —
-        set it last."""
+        """Persisted so pause/resume survives a restart, and read fresh
+        by DownloadService.poll_downloads() itself on every call (via
+        its own get_config callable) so pausing is authoritative
+        regardless of which caller — menu-bar toggle or the main
+        window's own mirrored control — set it last."""
         config_path = resolve_config_path()
         current = load_config(config_path)
         updated = replace(current, downloads_paused=paused)
@@ -503,10 +495,10 @@ class Application:
         return self._config_store.theme_mode
 
     def set_theme_mode(self, mode: str) -> None:
-        """Roadmap item C5 (round 5) — persisted so the choice survives
-        a restart; read fresh by `main_ui.py` at startup and updated
-        live by `MainWindow`'s own theme toggle/Settings control, same
-        shape as `set_downloads_paused`."""
+        """Persisted so the choice survives a restart; read fresh by
+        `main_ui.py` at startup and updated live by `MainWindow`'s own
+        theme toggle/Settings control, same shape as
+        `set_downloads_paused`."""
         config_path = resolve_config_path()
         current = load_config(config_path)
         updated = replace(current, theme_mode=mode)
@@ -514,8 +506,8 @@ class Application:
         self._config_store = updated
 
     def mark_tray_hide_notice_shown(self) -> None:
-        """Roadmap item R7.1 — the one-off "still running in the menu
-        bar" notification's own shown-once flag."""
+        """The one-off "still running in the menu bar" notification's
+        own shown-once flag."""
         config_path = resolve_config_path()
         current = load_config(config_path)
         updated = replace(current, tray_hide_notice_shown=True)
@@ -527,8 +519,8 @@ class Application:
             field_name: str,
             enabled: bool,
     ) -> None:
-        """Roadmap item R7.5 — one setter for all three per-category
-        toggles (notify_downloads_finished/notify_needs_decision/
+        """One setter for all three per-category toggles
+        (notify_downloads_finished/notify_needs_decision/
         notify_errors), keyed by field name the same way
         migrate_legacy_env_config already does for its own field set,
         rather than three near-identical methods."""
@@ -540,7 +532,7 @@ class Application:
 
     @property
     def login_item_supported(self) -> bool:
-        """macOS-and-packaged-build-only (round 9 §3.2) — Settings uses
+        """macOS-and-packaged-build-only — Settings uses
         this to show the "only available in the packaged app" state
         rather than silently no-opping the toggle under `uv run`."""
         return login_item.is_supported()
@@ -562,12 +554,12 @@ class Application:
     @property
     def spotify(self) -> SpotifyClient:
         if self._spotify is None:
-            # A bound callable, not a frozen token string (roadmap item
-            # 92 / B8.2) — a SpotifyClient built early in a long-running
-            # session and used again after the access token's 1-hour
-            # lifetime now gets a token get_valid_token() has already
-            # refreshed, instead of replaying the same dead one forever.
-            # force_refresh is the B8.3 safety net for a 401 the clock
+            # A bound callable, not a frozen token string — a
+            # SpotifyClient built early in a long-running session and
+            # used again after the access token's 1-hour lifetime gets a
+            # token get_valid_token() has already refreshed, instead of
+            # replaying the same dead one forever (HISTORY §92).
+            # force_refresh is the safety net for a 401 the clock
             # didn't predict (get_valid_token(force_refresh=True) skips
             # the expiry check entirely).
             self._spotify = SpotifyClient(
@@ -622,10 +614,10 @@ class Application:
     def slskd_base_url(self) -> str | None:
         # Config store value takes precedence — env is only a fallback
         # for a setup that hasn't gone through migration (or is
-        # env-only by choice). See config_store.py. Public (round 8
-        # §7.1): includes the env fallback `settings.slskd_base_url`
-        # alone doesn't, so presentation-layer code that needs the
-        # actually-resolved value reads this instead.
+        # env-only by choice). See config_store.py. Public: includes
+        # the env fallback `settings.slskd_base_url` alone doesn't, so
+        # presentation-layer code that needs the actually-resolved value
+        # reads this instead.
         return self._config_store.slskd_base_url or config.slskd_base_url()
 
     @property

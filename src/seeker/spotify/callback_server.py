@@ -14,10 +14,9 @@ from seeker.errors import SeekerError
 CALLBACK_PORT = 8888
 DEFAULT_REDIRECT_URI = f"http://127.0.0.1:{CALLBACK_PORT}/callback"
 
-# Untuned (round 8 §6.3.1) — long enough for a human to read the real
-# Spotify consent screen and click Allow, short enough that an
-# abandoned/closed-tab authorization doesn't block a worker thread
-# forever.
+# Untuned — long enough for a human to read the real Spotify consent
+# screen and click Allow, short enough that an abandoned/closed-tab
+# authorization doesn't block a worker thread forever.
 CALLBACK_TIMEOUT_SECONDS = 300.0
 
 
@@ -66,11 +65,10 @@ class AuthorizationCancelledError(SeekerError):
 @dataclass
 class _CallbackResult:
     """Per-run state for one callback server — never a class
-    attribute (round 8 §6.3.2): the old SpotifyCallbackHandler stored
-    authorization_code/returned_state/error on the CLASS, so a failed
-    attempt's stale `error` was still there for the next attempt in the
-    same process to read first, raising "Spotify authorization failed"
-    even after a real, successful second try.
+    attribute: state stored on a handler CLASS outlives its attempt, so
+    a failed attempt's stale `error` would still be there for the next
+    attempt in the same process to read first, raising "Spotify
+    authorization failed" even after a real, successful second try.
     """
     authorization_code: str | None = None
     returned_state: str | None = None
@@ -82,15 +80,14 @@ def _build_handler_class(
         result: _CallbackResult,
 ) -> type[BaseHTTPRequestHandler]:
     # A fresh handler class per call, closing over this call's own
-    # _CallbackResult — this is what actually kills the class-level
-    # state (§6.3.2): there is no shared class left to leak between
-    # authorization attempts.
+    # _CallbackResult — so there is no class-level state: no shared
+    # class left to leak between authorization attempts.
     class _Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parsed_url = urlparse(self.path)
 
             if parsed_url.path != "/callback":
-                # §6.3.3 — a stray request (a browser's own /favicon.ico
+                # A stray request (a browser's own /favicon.ico
                 # fetch is the common real case) gets a 404 but does
                 # NOT set `received`, so the caller's wait loop below
                 # keeps waiting for the real callback instead of
@@ -137,7 +134,7 @@ def _build_handler_class(
 
 class _LoopbackHTTPServer(HTTPServer):
     """HTTPServer that skips the reverse-DNS lookup its own server_bind()
-    would otherwise do (round 9 §1.2).
+    would otherwise do. See HISTORY §136.
 
     Stdlib `http.server.HTTPServer.server_bind()` calls
     `socket.getfqdn(host)` to populate `server_name`, and
@@ -189,10 +186,9 @@ def serve_until_callback(
 ) -> tuple[str | None, str | None, str | None, bool]:
     """Blocks until the real /callback request lands on `server` or
     `timeout_seconds` elapses. Returns (code, state, error, timed_out) —
-    `timed_out` is the "distinct outcome" §6.3.1 asks for, so a caller
-    can tell "the user abandoned the consent screen" apart from every
-    other failure shape and show something actionable instead of
-    hanging forever.
+    `timed_out` is its own outcome, so a caller can tell "the user
+    abandoned the consent screen" apart from every other failure shape
+    and show something actionable instead of hanging forever.
 
     Setting `cancel` ends the wait within `_CANCEL_POLL_SECONDS` by
     raising AuthorizationCancelledError; either way `server` is closed
@@ -217,7 +213,7 @@ def serve_until_callback(
             # HTTPServer.timeout (via socketserver.BaseServer) bounds a
             # SINGLE handle_request() call, not the whole wait — reset
             # it each iteration from the real remaining budget, so a
-            # stray non-callback request (§6.3.3) can't silently reset
+            # stray non-callback request can't silently reset
             # the clock to a fresh full timeout_seconds.
             server.timeout = (
                 remaining if cancel is None

@@ -48,14 +48,13 @@ def _resolve_artist_evidence(
     fallback should be allowed to override.
 
     When tag_artist is null, tries filename stem -> parent directory
-    name -> grandparent directory name in order (roadmap item 56): a
-    real Artist/Album/Track.ext library layout puts the artist name in
-    the path, not just the filename, and this used to be ignored
-    entirely. The first source that actually contains the artist name
-    wins; evaluate_match() re-confirms it and treats it as confirmed
-    (a folder name is real, human-curated evidence, same as a tag).
-    If nothing matches, the filename stem is still returned as the
-    nominal source (for evaluate_match's "not confirmed, not a tag"
+    name -> grandparent directory name in order: a real
+    Artist/Album/Track.ext library layout puts the artist name in the
+    path, not just the filename. The first source that actually contains
+    the artist name wins; evaluate_match() re-confirms it and treats it
+    as confirmed (a folder name is real, human-curated evidence, same as
+    a tag). If nothing matches, the filename stem is still returned as
+    the nominal source (for evaluate_match's "not confirmed, not a tag"
     capped-score branch), not as any evidence in itself.
     """
     if candidate.tag_artist:
@@ -279,8 +278,9 @@ class TrackMatcher:
         """One unsaved result per track, except tracks whose match a
         human already confirmed: those survive a re-match untouched
         (HISTORY §56), but only while their file is still indexed, since
-        a confirmation of a file that is gone confirms nothing (HISTORY
-        §139). A file rejected for a track is never a candidate for it.
+        a confirmation of a file that is gone confirms nothing
+        (HISTORY §139). A file rejected for a track is never a candidate
+        for it.
         """
         by_duration = _DurationIndex(local_files)
         results = []
@@ -338,15 +338,14 @@ class TrackMatcher:
                     playlist_id, connection
                 )
             else:
-                # Roadmap item 82 (P13.7) — a manual (not-from-Spotify)
-                # search-and-download track belongs to no playlist at
-                # all, so it can never appear in a playlist-scoped
-                # report above — but the GLOBAL report reads every
-                # `tracks` row, and would otherwise show a manual
-                # track sitting in "unmatched" the moment a routine
-                # match run gives it a track_matches row, muddying a
-                # report whose whole point is "how much of my Spotify
-                # library is present locally."
+                # A manual (not-from-Spotify) search-and-download track
+                # belongs to no playlist at all, so it can never appear
+                # in a playlist-scoped report above — but the GLOBAL
+                # report reads every `tracks` row, and would otherwise
+                # show a manual track sitting in "unmatched" the moment
+                # a routine match run gives it a track_matches row,
+                # muddying a report whose whole point is "how much of my
+                # Spotify library is present locally."
                 tracks = [
                     track for track in self.tracks.get_all(connection)
                     if not is_manual_track_id(track.id)

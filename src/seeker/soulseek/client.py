@@ -41,17 +41,16 @@ class SlskdUnauthorizedError(SeekerError):
 # insensitively by substring since exact wording may vary slightly
 # across peers/slskd versions:
 #   "not shared" — the file is genuinely there, but the peer isn't
-#     sharing it right now (2026-08-27, "Transfer rejected: File not
-#     shared.") — arrives via the ASYNC shape: request_download's own
+#     sharing it right now ("Transfer rejected: File not shared.") —
+#     arrives via the ASYNC shape: request_download's own
 #     POST succeeds (200, a real transfer_id comes back), and the
 #     rejection only shows up moments later via get_download_status
 #     ("Completed, Rejected", with the reason in its `exception`).
 #   "appears to be offline" — the peer isn't currently reachable at all
-#     (2026-08-28, "User long25 appears to be offline") — arrives via a
+#     ("User <name> appears to be offline") — arrives via a
 #     completely different, SYNCHRONOUS shape: slskd refuses the
 #     request outright with a 404 straight off the enqueue POST, before
-#     any transfer record exists at all. Confirmed live via a direct
-#     replay of the exact failing request against the live instance.
+#     any transfer record exists at all. See HISTORY §13, §21.
 # Both are "worth retrying later" in the exact same way — a peer being
 # briefly offline or not sharing a file right now isn't permanent — so
 # both route through the identical SoulseekDownloadError contract
@@ -79,7 +78,7 @@ def is_recognized_rejection(text: str | None) -> bool:
 class TransferStatus:
     state: str
     # Real slskd field names, confirmed live against
-    # GET /api/v0/transfers/downloads/{username}/{id} (2026-08-28):
+    # GET /api/v0/transfers/downloads/{username}/{id}:
     # "bytesTransferred" and "size" — "size" matches the same convention
     # SoulseekFile already uses for total bytes, so this follows that
     # rather than introducing a "total_bytes" vs "size" inconsistency at
@@ -92,7 +91,7 @@ class TransferStatus:
     size: int | None
     # A rejected transfer's real reason ("Transfer rejected: File not
     # shared.") lives in the record's "exception" field, not in "state",
-    # which only says "Completed, Rejected" (confirmed live 2026-08-27).
+    # which only says "Completed, Rejected" (confirmed live).
     # None for a 404, and for any transfer slskd gives no reason for.
     exception: str | None = None
 
@@ -229,7 +228,7 @@ class SoulseekClient:
         except httpx.HTTPStatusError as error:
             # A recognized rejection can arrive synchronously as a
             # non-2xx response right here (confirmed live: a 404 with
-            # body "User long25 appears to be offline" for an offline
+            # body "User <name> appears to be offline" for an offline
             # peer), not only via the accepted-then-rejected async
             # shape below — see RECOGNIZED_REJECTION_PATTERNS. Wrapped
             # into the same SoulseekDownloadError either shape already
@@ -335,11 +334,11 @@ def _parse_search_response(data: dict[str, Any]) -> list[SoulseekFile]:
                 results.append(candidate)
 
         # Real slskd responses carry locked files in a separate
-        # "lockedFiles" array, confirmed live (2026-08-27) — a real
-        # entry there still reports its own "isLocked" as False, so
-        # array membership is the actual signal, not that field.
-        # Previously dropped entirely; now included (locked=True) so
-        # the Phase 3 retry cycle has something to track.
+        # "lockedFiles" array, confirmed live — a real entry there
+        # still reports its own "isLocked" as False, so array
+        # membership is the actual signal, not that field. Included
+        # (locked=True) so the locked-retry cycle has something to
+        # track.
         for file in response.get("lockedFiles", []):
             candidate = _build_soulseek_file(
                 file,
@@ -390,7 +389,7 @@ def _build_soulseek_file(
     )
 
 
-# Public (not _-prefixed) since item 26 reuses this for
+# Public (not _-prefixed) since it is reused by
 # ReviewService.confirm_review_candidate — a persisted
 # SoulseekReviewCandidate only has a filename, not a SoulseekFile with
 # its own .extension already derived, so it needs the same logic

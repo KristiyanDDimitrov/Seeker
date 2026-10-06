@@ -46,15 +46,12 @@ from seeker.models.track_match import TrackMatch
 logger = logging.getLogger(__name__)
 
 
-# Roadmap item 68 (Phase 8.2/8.3) — per-file fingerprint-failure reason
-# codes, surfaced in compute_fingerprints()'s `details` (already printed
-# per-line by both the CLI and consumable by the UI) instead of one
-# generic "failed" for everything. `_EmptyFileError` in particular
-# exists to satisfy Phase 8.3: a genuinely 0-byte file is flagged
-# distinctly from a real decode failure — it can never succeed a
-# fingerprint attempt (nothing to decode), so it can also never enter a
-# duplicate group; nothing here ever offers to delete it, matching the
-# brief's own "never offer to delete" scope.
+# Per-file fingerprint-failure reason codes, surfaced in
+# compute_fingerprints()'s `details` (printed per line by the CLI, read
+# by the UI) instead of one generic "failed" for everything.
+# `_EmptyFileError` keeps a 0-byte file distinct from a decode failure:
+# it can never be fingerprinted (nothing to decode), so it can never
+# enter a duplicate group, and nothing here ever offers to delete it.
 _REASON_FILE_MISSING = "file_missing"
 _REASON_EMPTY_FILE = "empty_file"
 _REASON_DECODE_UNSUPPORTED = "decode_unsupported"
@@ -66,15 +63,15 @@ class _FileMissingError(RuntimeError):
 
 
 class _SamePhysicalFileError(RuntimeError):
-    """Roadmap item 93 (R3.3) — overlapping registered library locations
-    (item 77) can index the SAME real file twice, as two different
-    local_files rows. find_duplicate_groups is deliberately content-
-    based and location-agnostic, so a group built from exactly that
-    pair is a real, valid cluster — but deleting "the other" row would
-    delete the very file the caller asked to keep. Raised by
-    _delete_one_local_file before either the DB row or the disk file is
-    touched; caught by delete_local_files and counted separately from
-    an ordinary failure."""
+    """Overlapping registered library locations can index the SAME
+    real file twice, as two different local_files rows.
+    find_duplicate_groups is deliberately content-based and
+    location-agnostic, so a group built from exactly that pair is a
+    real, valid cluster — but deleting "the other" row would delete the
+    very file the caller asked to keep. Raised by _delete_one_local_file
+    before either the DB row or the disk file is touched; caught by
+    delete_local_files and counted separately from an ordinary failure.
+    See HISTORY §93."""
 
 
 class _EmptyFileError(RuntimeError):
@@ -91,13 +88,11 @@ def _classify_fingerprint_failure(error: Exception) -> str:
     return _REASON_ERROR
 
 
-# Untuned threshold, flagged same as every other constant in this
-# codebase — Hamming-distance similarity at or above this counts as a
-# real duplicate. Confirmed live (item 5's Phase 0 spike, see
-# docs/HISTORY.md §38): real duplicate pairs — including a real
-# cross-format FLAC/MP3 transcode — scored 99.87-99.98% similarity,
-# while an unrelated real pair scored ~58%. 0.95 sits with a wide, real
-# margin on both sides of that gap without needing tuning yet.
+# Hamming-distance similarity at or above this counts as a duplicate.
+# Real duplicate pairs, including a cross-format FLAC/MP3 transcode,
+# score 99.87-99.98 % similarity, while an unrelated pair scores
+# ~58 %; 0.95 leaves a wide margin on both sides of that gap without
+# tuning. See HISTORY §38.
 DUPLICATE_SIMILARITY_THRESHOLD = 0.95
 
 # Cheap pre-filter before the real (comparatively expensive) fingerprint
@@ -130,13 +125,13 @@ class DuplicateGroup:
 
 @dataclass
 class DuplicateFolderScope:
-    """Roadmap item 68 (Phase 7.2) — one real, resolved folder to
-    include in a pooled duplicate search: a registered library location
-    plus the folder's path relative to that location's root (empty
-    string means the whole location). Built by resolve_folder_scopes()
-    from real absolute paths (e.g. a folder picker) — never constructed
-    directly by a caller that hasn't gone through that resolution, so a
-    scope can never silently point outside every registered location.
+    """One resolved folder to include in a pooled duplicate search: a
+    registered library location plus the folder's path relative to that
+    location's root (empty string means the whole location). Built by
+    resolve_folder_scopes() from real absolute paths (e.g. a folder
+    picker) — never constructed directly by a caller that hasn't gone
+    through that resolution, so a scope can never silently point outside
+    every registered location.
     """
     location: LibraryLocation
     folder_relative_path: str
@@ -144,9 +139,9 @@ class DuplicateFolderScope:
 
 @dataclass
 class ScopeSummary:
-    """Roadmap item 77 (P8.3/8.4) — the honest scope-count result:
-    not just a bare number, but which real location(s) it resolved to
-    and which of those have never been scanned at all."""
+    """The scope-count result: not just a bare number, but which
+    location(s) it resolved to and which of those have never been
+    scanned at all."""
     file_count: int
     resolved_location_names: list[str]
     empty_locations: list[str]
@@ -154,12 +149,11 @@ class ScopeSummary:
 
 @dataclass
 class GroupResolutionPlan:
-    """Roadmap item R3.2 — one group's already-decided resolution,
-    computed by the caller (the UI, from the user's own kept-radio
-    selection — see main_window's `_duplicates_keep_selection`) and
-    trusted here exactly the same way `delete_local_files` already
-    trusts an explicit `local_file_ids`/`keep_local_file_id` pair —
-    this dataclass doesn't re-derive or re-validate the choice against
+    """One group's already-decided resolution, computed by the caller
+    (the UI, from the user's own kept-radio selection) and trusted here
+    exactly the same way `delete_local_files` already trusts an explicit
+    `local_file_ids`/`keep_local_file_id` pair — this dataclass doesn't
+    re-derive or re-validate the choice against
     `find_duplicate_groups`'s own clustering."""
     delete_local_file_ids: list[int]
     keep_local_file_id: int
@@ -168,25 +162,24 @@ class GroupResolutionPlan:
 
 @dataclass
 class BulkDuplicateResolutionResult:
-    """Roadmap item R3.2 — the real per-group/per-file outcome of a
-    "Resolve all groups" batch, same honest-reporting shape as
+    """The per-group/per-file outcome of a "Resolve all groups" batch,
+    same reporting shape as
     `BulkUpgradeReplaceResult`/`format_rename_result_message`: counts
     for the headline, plus one detail line per group that had any real
     failure. `plan_outcomes` (same order/length as the input `plans`)
     lets a caller that also tracks per-group UI state (e.g. dropping a
-    fully-resolved group from an in-memory list without a full
-    re-fetch) know exactly which plans actually succeeded, rather than
-    inferring it from the aggregate counts alone."""
+    fully-resolved group from an in-memory list without a full re-fetch)
+    know exactly which plans actually succeeded, rather than inferring
+    it from the aggregate counts alone."""
     groups_resolved: int
     groups_failed: int
     files_deleted: int
     files_failed: int
-    # Roadmap item 93 (R3.3) — a SUBSET of files that were neither
-    # deleted nor counted as failed: refused by the same-physical-file
-    # guard (an overlapping registered location indexed the exact file
-    # being kept a second time). Not a failure — the safety check did
-    # exactly what it should — but not silently folded into
-    # files_deleted either.
+    # Files that were neither deleted nor counted as failed: refused by
+    # the same-physical-file guard (an overlapping registered location
+    # indexed the exact file being kept a second time). Not a failure —
+    # the safety check did exactly what it should — but not silently
+    # folded into files_deleted either.
     files_skipped_same_physical_file: int
     bytes_freed: int
     details: list[str]
@@ -197,11 +190,10 @@ def _path_within_folder(
         file_relative_path: str,
         folder_relative_path: str,
 ) -> bool:
-    # Roadmap item 68 (Phase 7.2) — path-prefix matching that respects
-    # separator boundaries: "Trance" must never match "TranceX". A bare
-    # str.startswith() check would get this wrong; PurePath.is_relative_to
-    # (via Path here, a pure logical operation — no filesystem I/O) does
-    # not.
+    # Path-prefix matching that respects separator boundaries: "Trance"
+    # must never match "TranceX". A bare str.startswith() check would
+    # get this wrong; PurePath.is_relative_to (via Path here, a pure
+    # logical operation — no filesystem I/O) does not.
     if not folder_relative_path:
         return True  # "" means the whole location.
 
@@ -210,15 +202,14 @@ def _path_within_folder(
 
 class DuplicateService:
     """Per-library-location fingerprint computation and duplicate
-    clustering (roadmap item 5), plus the group-resolution delete action
-    (roadmap item 40) — deliberately scoped to one `library_locations`
-    row at a time, the same unit `library add`/`list`/`remove` already
-    use, not merged across every registered location.
-    `compute_fingerprints`/`find_duplicate_groups` are read-only, per
-    item 5's own build-order note; `delete_local_files` is the one
-    filesystem-destructive method here, and is never called without an
-    explicit, caller-confirmed list of ids (see CLAUDE.md item 40 for
-    the UI's own double-confirm flow before it's ever invoked)."""
+    clustering, plus the group-resolution delete action — scoped to one
+    `library_locations` row at a time, the same unit `library add`/
+    `list`/`remove` use, unless a caller pools folder scopes
+    explicitly. `compute_fingerprints`/`find_duplicate_groups` are
+    read-only; `delete_local_files` is the one filesystem-destructive
+    method here, and is never called without an explicit,
+    caller-confirmed list of ids (the UI confirms twice first). See
+    HISTORY §39, HISTORY §40."""
 
     def __init__(
         self,
@@ -232,10 +223,8 @@ class DuplicateService:
         self.locations = location_repository
         self.local_files = local_file_repository
         self.track_matches = track_match_repository
-        # Optional, defaulted rather than required — every existing
-        # caller/test that constructs a DuplicateService without one
-        # (Phase 6.4 is additive) is unaffected; only record_cleanup()/
-        # get_cleanup_totals() need it.
+        # Optional, defaulted rather than required: only
+        # record_cleanup()/get_cleanup_totals() need it.
         self.duplicate_cleanups = (
             duplicate_cleanup_repository or DuplicateCleanupRepository()
         )
@@ -265,19 +254,17 @@ class DuplicateService:
         regardless, if force=True) — mirrors MetadataService.tag_tracks'
         own skip-already-done/force/per-item-try-except shape.
 
-        Roadmap item 68 (Phase 7.2) — `folders`, when given, scopes this
-        to only the files whose relative_path falls under one of these
-        (location-relative) folder paths — fingerprinting one real
-        folder instead of a whole multi-thousand-file location is the
-        bigger practical win of the two scoped operations (Phase 7.2's
-        own brief). `progress` (Phase 7.3), when given, is called as
-        `progress(stage, current, total)` — a single stage here
+        `folders`, when given, scopes this to only the files whose
+        relative_path falls under one of these (location-relative)
+        folder paths — fingerprinting one folder instead of a whole
+        multi-thousand-file location. `progress`, when given, is called
+        as `progress(stage, current, total)` — a single stage here
         ("Fingerprinting"), `total` = files actually in scope.
         """
         if not fingerprinting_is_available():
             # One clear failure, not N per-file ones, for a single root
             # cause — same "checked before use" precedent as
-            # Application.soulseek_configured (item 28).
+            # Application.soulseek_configured.
             raise FingerprintingUnavailableError(
                 "libchromaprint isn't installed or couldn't be found. "
                 "Install it to use duplicate detection — e.g. "
@@ -344,10 +331,10 @@ class DuplicateService:
 
         file_path = Path(location.path) / local_file.relative_path
 
-        # Roadmap item 68 (Phase 8.2/8.3) — checked BEFORE
-        # compute_fingerprint() so these two real, distinct causes get
-        # their own reason codes instead of surfacing as whatever
-        # message soundfile/ffmpeg happen to raise for "nothing here."
+        # Checked BEFORE compute_fingerprint() so these two distinct
+        # causes get their own reason codes instead of surfacing as
+        # whatever message soundfile/ffmpeg happen to raise for "nothing
+        # here."
         if not file_path.is_file():
             raise _FileMissingError(f"{file_path} does not exist")
         if file_path.stat().st_size == 0:
@@ -375,31 +362,23 @@ class DuplicateService:
             folder_paths: list[str],
             preferred_location_id: int | None = None,
     ) -> list[DuplicateFolderScope]:
-        """Roadmap item 68 (Phase 7.2) — resolves real, absolute folder
-        paths (e.g. from a folder picker) against every registered
-        library location. Each folder must resolve inside a registered
-        location; anything else is rejected with a clear message —
-        fingerprints only exist for indexed files, and an unregistered
-        folder was never scanned at all.
+        """Resolves absolute folder paths (e.g. from a folder picker)
+        against every registered library location. Each folder must
+        resolve inside a registered location; anything else is rejected
+        with a clear message — fingerprints only exist for indexed
+        files, and an unregistered folder was never scanned at all.
 
-        Roadmap item 77 (P8) — MOST-SPECIFIC-WINS: a folder can be
-        "inside" more than one registered location at once (a location
-        registered at a parent path, and another registered at a
-        nested child path both cover the same real folder), and the
-        previous code took the first alphabetical-by-name match
-        (get_all()'s own ORDER BY name), not the best one. Confirmed
-        live against this project's own real production DB: a folder
-        equal to the "Test" location's own path (nested under "Music",
-        which is itself nested under "x9-pro") alphabetically matched
-        "Music" first — a location with ZERO scanned files — giving a
-        false "0 files in scope" even though "Test" had real
-        fingerprinted files at that exact path. Now every candidate
-        location the folder resolves inside is scored by its own
-        resolved path length and the LONGEST (most specific) one wins.
-        `preferred_location_id`, when given (the UI's own selected
-        location combo — see P9), breaks a genuine tie only; it can
-        never override a strictly-more-specific match, so "prefer this
-        location" never silently widens a folder's real scope.
+        MOST-SPECIFIC-WINS: a folder can be "inside" more than one
+        registered location at once (a location registered at a parent
+        path, and another at a nested child path, both cover the same
+        folder). Taking the first match by name can pick an unscanned
+        parent and report a false "0 files in scope", so every
+        candidate location is scored by its resolved path length and
+        the LONGEST (most specific) one wins. `preferred_location_id`,
+        when given (the UI's selected location combo), breaks a
+        genuine tie only; it can never override a strictly-more-specific
+        match, so "prefer this location" never silently widens a
+        folder's real scope. See HISTORY §78.
         """
         with self.database.transaction() as connection:
             locations = self.locations.get_all(connection)
@@ -459,17 +438,15 @@ class DuplicateService:
     ) -> list[DuplicateGroup]:
         """Cluster this location's already-fingerprinted files by
         Hamming distance — computed fresh from cached fingerprints on
-        every call, never persisted as its own table (see CLAUDE.md
-        item 5: persisting group membership would go stale the moment
-        a file moves or gets rescanned). Files with no fingerprint yet
+        every call, never persisted as its own table (persisted group
+        membership would go stale the moment a file moves or gets
+        rescanned). Files with no fingerprint yet
         (compute_fingerprints() hasn't run for them) are silently
         excluded, not treated as an error — a partial fingerprint
         coverage is a completely normal, expected state.
 
-        Roadmap item 68 (Phase 7.2) — `folders`, when given (location-
-        relative paths), scopes this to only files under one of them.
-        Unchanged single-location behavior when omitted, for the CLI
-        and every existing caller.
+        `folders`, when given (location-relative paths), scopes this to
+        only files under one of them; omitted, the whole location.
         """
         with self.database.transaction() as connection:
             location = self._get_location_or_raise(location_name, connection)
@@ -524,14 +501,13 @@ class DuplicateService:
             scopes: list[DuplicateFolderScope],
             progress: Callable[[str, int, int], None] | None = None,
     ) -> list[DuplicateGroup]:
-        """Roadmap item 68 (Phase 7.2) — pools every given folder (each
-        already resolved via resolve_folder_scopes) into ONE set,
-        compared together — including across different real library
-        locations, deliberately allowed: the clustering itself is
-        purely content-based (Hamming distance over decoded audio
-        fingerprints) and location-agnostic, so there's no reason two
-        folders living in different registered locations couldn't hold
-        the same real recording.
+        """Pools every given folder (each already resolved via
+        resolve_folder_scopes) into ONE set, compared together —
+        including across different real library locations, deliberately
+        allowed: the clustering itself is purely content-based (Hamming
+        distance over decoded audio fingerprints) and location-agnostic,
+        so there's no reason two folders living in different registered
+        locations couldn't hold the same real recording.
         """
         return _cluster_duplicate_groups(
             self._files_for_scopes(scopes), progress,
@@ -540,25 +516,22 @@ class DuplicateService:
     def count_files_for_scopes(
             self, scopes: list[DuplicateFolderScope],
     ) -> int:
-        """Roadmap item 68 (Phase 7.2) — a real file count BEFORE
-        starting a real, potentially ~10-minute-at-real-scale operation
-        (item 39's own real number), so the scope control is worth
-        having — the user sees what a scope actually covers first."""
+        """A file count BEFORE starting a potentially ~10-minute
+        operation at real library scale, so the user sees what a scope
+        actually covers first. See HISTORY §39."""
         return len(self._files_for_scopes(scopes))
 
     def summarize_scopes(
             self, scopes: list[DuplicateFolderScope],
     ) -> "ScopeSummary":
-        """Roadmap item 77 (P8.3/8.4) — the honest version of
-        count_files_for_scopes(): a bare "0 files in scope" gives no
-        way to tell "this folder really is empty" apart from "this
-        resolved to the wrong (unscanned) location", which is exactly
-        what made the reported bug unreadable. Also reports which
-        location(s) the folders actually resolved to (P8.3) and which
-        of those have NO scanned files at all, location-wide, not just
-        within the folder (P8.4) — a location with zero total
-        local_files rows was never scanned, so "run a scan" is the
-        real fix, not something more fingerprinting could ever solve.
+        """count_files_for_scopes() with its context: a bare "0 files
+        in scope" gives no way to tell "this folder really is empty"
+        apart from "this resolved to an unscanned location". Also
+        reports which location(s) the folders resolved to and which of
+        those have NO scanned files at all, location-wide, not just
+        within the folder — a location with zero total local_files rows
+        was never scanned, so "run a scan" is the real fix, not
+        something more fingerprinting could ever solve.
         """
         file_count = 0
         resolved_location_names: list[str] = []
@@ -604,12 +577,11 @@ class DuplicateService:
         and the real file on disk — used to resolve a duplicate group by
         removing every member except whichever one the caller decided to
         keep. Deliberately has no notion of "groups" itself beyond
-        `keep_local_file_id`: the caller (the UI, per its own double-
-        confirm flow — see CLAUDE.md item 40) decides which specific ids
-        to delete; this method trusts that decision rather than
-        re-deriving or re-validating it against `find_duplicate_groups`'
-        own clustering. Per-item try/except, same batch-safety shape as
-        `compute_fingerprints`.
+        `keep_local_file_id`: the caller (the UI, after confirming
+        twice) decides which specific ids to delete; this method trusts
+        that decision rather than re-deriving or re-validating it
+        against `find_duplicate_groups`' own clustering. Per-item
+        try/except, same batch-safety shape as `compute_fingerprints`.
 
         `keep_local_file_id`, when given, is the surviving file within
         the same group — see `_repoint_or_clear_match`'s own docstring
@@ -632,14 +604,13 @@ class DuplicateService:
         matcher or tagger run in that window could act on and fail
         against, which is worse than a merely-orphaned file.
 
-        `location_id` (roadmap item 56 Phase 6.4), when given, is
-        recorded on the resulting `duplicate_cleanups` row — purely
-        informational provenance for the reclaimed-space milestone, not
-        used to scope or validate the deletion itself. A real,
-        non-zero `bytes_freed` is recorded whenever at least one file
-        was actually deleted; a batch that deleted nothing (all
-        failed) records nothing at all, matching "an empty milestone
-        is worse than no milestone."
+        `location_id`, when given, is recorded on the resulting
+        `duplicate_cleanups` row — purely informational provenance for
+        the reclaimed-space milestone, not used to scope or validate the
+        deletion itself. A real, non-zero `bytes_freed` is recorded
+        whenever at least one file was actually deleted; a batch that
+        deleted nothing (all failed) records nothing at all, matching
+        "an empty milestone is worse than no milestone."
         """
         # Resolved ONCE, up front — every deletion attempt below compares
         # against this same real path, not a per-file re-read of a row
@@ -690,15 +661,14 @@ class DuplicateService:
     def resolve_groups(
             self, plans: list[GroupResolutionPlan],
     ) -> BulkDuplicateResolutionResult:
-        """Roadmap item R3.2 — "Resolve all groups". Applies
-        `delete_local_files()` per plan (one per group the caller
-        decided to resolve — a "Keep all" group is never turned into a
-        plan at all, decided by the UI before this is ever called, not
-        filtered here). Per-plan try/except (item 15's standing
-        batch-loop pattern) so one group's total failure can't abort
-        the rest — `delete_local_files` already has its own per-FILE
-        try/except underneath this, so a failure here means the whole
-        group call raised, not just one file within it.
+        """"Resolve all groups". Applies `delete_local_files()` per plan
+        (one per group the caller decided to resolve — a "Keep all"
+        group is never turned into a plan at all, decided by the UI
+        before this is ever called, not filtered here). Per-plan
+        try/except, so one group's total failure can't abort the rest —
+        `delete_local_files` already has its own per-FILE try/except
+        underneath this, so a failure here means the whole group call
+        raised, not just one file within it.
         """
         groups_resolved = 0
         groups_failed = 0
@@ -830,11 +800,11 @@ class DuplicateService:
                 if location is not None else None
             )
 
-            # Roadmap item 93 (R3.3) — checked before anything else
-            # touches the DB row or disk. See _SamePhysicalFileError's
-            # own docstring for why this is reachable at all: two
-            # overlapping registered locations can each hold their own
-            # local_files row for the identical real file.
+            # Checked before anything else touches the DB row or disk.
+            # See _SamePhysicalFileError's own docstring for why this is
+            # reachable at all: two overlapping registered locations can
+            # each hold their own local_files row for the identical real
+            # file.
             if (
                     local_file_id != keep_local_file_id
                     and file_path is not None
@@ -847,10 +817,9 @@ class DuplicateService:
                     f"deleted"
                 )
 
-            # Roadmap item 56 Phase 6.4 — measured from the real file
-            # via stat() BEFORE either the DB row or the file itself is
-            # deleted (item 40's own standing ordering rule still
-            # applies below: DB row first, then file). Falls back to
+            # Measured from the real file via stat() BEFORE either the
+            # DB row or the file itself is deleted (the deletion order
+            # below is DB row first, then file). Falls back to
             # the stored size_bytes column if the real file is already
             # gone from disk — still a real, previously-recorded size,
             # not a guess.
@@ -925,13 +894,12 @@ def _cluster_duplicate_groups(
         files_with_locations: list[tuple[LocalFile, LibraryLocation]],
         progress: Callable[[str, int, int], None] | None = None,
 ) -> list[DuplicateGroup]:
-    """Roadmap item 68 (Phase 7.2/7.3) — the real clustering core shared
-    by find_duplicate_groups (single location) and
-    find_duplicate_groups_across_scopes (pooled, possibly cross-
-    location) — each file carries its OWN location here (not one shared
-    location) specifically so quality analysis resolves the right real
-    path for every file regardless of which location it actually lives
-    in.
+    """The clustering core shared by find_duplicate_groups (single
+    location) and find_duplicate_groups_across_scopes (pooled, possibly
+    cross-location) — each file carries its OWN location here (not one
+    shared location) specifically so quality analysis resolves the right
+    real path for every file regardless of which location it actually
+    lives in.
     """
     location_by_id = {
         local_file.id: location for local_file, location in files_with_locations
@@ -942,10 +910,9 @@ def _cluster_duplicate_groups(
     ]
 
     # Decoded once per file and reused across every pairwise comparison
-    # below (item 5's own live-verified optimization — see
-    # docs/HISTORY.md). Staged progress (Phase 7.3): "Decoding
-    # fingerprints" is real, honest per-file progress — n steps, not a
-    # fake single bar covering both real stages.
+    # below (see HISTORY §39). Progress is staged: "Decoding
+    # fingerprints" is per-file progress — n steps, not one bar
+    # covering both stages.
     decoded_by_id: dict[int, np.ndarray] = {}
     total = len(fingerprinted)
     for index, local_file in enumerate(fingerprinted, start=1):
@@ -959,25 +926,18 @@ def _cluster_duplicate_groups(
     clusters = _cluster_by_similarity(fingerprinted, decoded_by_id, progress)
 
     groups = []
-    # Roadmap item 93 (B3.5/R3.3) — a real, previously-uncaught crash:
-    # a file can have a cached fingerprint (so it clusters here) while
+    # A file can have a cached fingerprint (so it clusters here) while
     # its local_files row no longer resolves to a real file on disk — a
     # stale row left behind by a rename that updated one overlapping
-    # location's copy but not another's (item 76's own documented drift
-    # class). analyze_local_file_quality() opens the real file via
-    # mutagen, so this is the one place in clustering that touches disk
-    # at all. Per-file try/except, this codebase's own standing "one bad
-    # item must not abort a batch" pattern (item 15) — every OTHER batch
-    # method here already has this; clustering didn't. Two distinct,
-    # separately-counted reasons, not one generic "failed": a row whose
-    # path doesn't exist at all (stale index — self-heals on the next
-    # `library scan`) vs. a real file mutagen/the OS still can't open
-    # (a genuinely bad file). Reported via logger.warning() (§7.2),
-    # matching this codebase's own reporting idiom for skipped-in-a-
-    # batch items (e.g. compute_fingerprints/tag_tracks) — surfacing this in
-    # the UI's own result panel is a real follow-up, not done here (see
-    # CLAUDE.md roadmap item 93 for why the return type stayed
-    # unchanged: list[DuplicateGroup], not a (groups, skipped) tuple).
+    # location's copy but not another's. analyze_local_file_quality()
+    # opens the real file via mutagen, so this is the one place in
+    # clustering that touches disk at all, and one bad file must not
+    # abort the batch. Two separately-counted reasons, not one generic
+    # "failed": a row whose path doesn't exist at all (stale index —
+    # self-heals on the next `library scan`) vs. a real file mutagen/
+    # the OS still can't open. Reported via logger.warning(), like the
+    # other batch methods' skipped items; the return type stays
+    # list[DuplicateGroup]. See HISTORY §93.
     skipped_missing = 0
     skipped_other = 0
 
@@ -1063,15 +1023,14 @@ def _cluster_by_similarity(
         if root_i != root_j:
             parent[root_i] = root_j
 
-    # A genuine O(n^2) sweep over every pair — even with a cheap
-    # per-pair skip check — was confirmed live (item 5's verification
-    # against ~3,100 real fingerprinted files, see docs/HISTORY.md) to
-    # take several real minutes purely from Python-loop overhead at
-    # that scale, independent of fingerprint-decode caching. Sorting
-    # by duration first turns it into a bounded sliding window: once
-    # two files (in duration order) are more than DURATION_TOLERANCE_MS
-    # apart, every file further along is even further apart, so the
-    # inner loop can break instead of scanning the rest of the list.
+    # An O(n^2) sweep over every pair — even with a cheap per-pair skip
+    # check — takes several minutes at ~3,100 fingerprinted files
+    # purely from Python-loop overhead, independent of
+    # fingerprint-decode caching (see HISTORY §39). Sorting by duration
+    # first turns it into a bounded sliding window: once two files (in
+    # duration order) are more than DURATION_TOLERANCE_MS apart, every
+    # file further along is even further apart, so the inner loop can
+    # break instead of scanning the rest of the list.
     def _duration_ms(i: int) -> int:
         duration = files[i].duration_ms
         assert duration is not None
@@ -1082,10 +1041,9 @@ def _cluster_by_similarity(
         key=_duration_ms,
     )
 
-    # Roadmap item 68 (Phase 7.3) — Stage 2's own real progress: the
-    # OUTER loop here is n steps (matching the brief's own "Comparing
-    # 900/3,142" example), not the inner window (which has no fixed
-    # size to report against meaningfully).
+    # Stage 2's progress counts the OUTER loop (n steps, "Comparing
+    # 900/3,142"), not the inner window, which has no fixed size to
+    # report against.
     comparison_total = len(with_duration)
 
     for a_pos in range(len(with_duration)):

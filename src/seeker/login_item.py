@@ -1,4 +1,4 @@
-"""macOS "start at login" integration (round 9 §3.2).
+"""macOS "start at login" integration.
 
 `SMAppService` (ServiceManagement.framework, macOS 13+) is Apple's
 current-generation login-item API — it registers *this bundle's*
@@ -14,15 +14,15 @@ identifier — a `uv run seeker-ui` dev process has none, so this is
 gated on `sys.frozen` (the same PyInstaller-bundle signal every other
 frozen-only code path in this project already keys on — see
 soulseek/docker_setup.py's compose_template_path, tray.py's
-_resolve_tray_icon_path) in addition to `sys.platform`. Confirmed live
-on a real Darwin 25.6.0 dev machine (unbundled `uv run python`):
+_resolve_tray_icon_path) in addition to `sys.platform`. Observed on
+macOS (Darwin 25.6.0, unbundled `uv run python`):
 `SMAppService.mainAppService().status()` returns
 `SMAppServiceStatusNotFound` (3) rather than raising, and
 `registerAndReturnError_`/`unregisterAndReturnError_` are real bound
 methods on the returned object — but `is_supported()` never lets a dev
 run reach those calls at all, so what actually registering/
-unregistering does against a genuine `.app` bundle is unverified here
-and must be confirmed on a real packaged build.
+unregistering does against a genuine `.app` bundle is UNVERIFIED and
+must be confirmed on a real packaged build. See HISTORY §131.
 """
 
 import enum
@@ -45,10 +45,9 @@ def is_supported() -> bool:
 
 
 def get_status() -> LoginItemStatus:
-    """The REAL, live status — never a mirrored `config.json` boolean
-    (round 9 §3.2's own "honest state reporting" requirement: a user
-    revoking the login item in System Settings must not leave Seeker's
-    own checkbox still claiming it's on)."""
+    """The REAL, live status — never a mirrored `config.json` boolean:
+    a user revoking the login item in System Settings must not leave
+    Seeker's own checkbox still claiming it's on."""
     if not is_supported():
         return LoginItemStatus.NOT_SUPPORTED
 

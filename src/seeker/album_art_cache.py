@@ -18,13 +18,12 @@ def default_cache_dir() -> Path:
 
 
 class AlbumArtCache:
-    """Caches downloaded album art bytes by URL — roadmap item 56 Phase
-    4.3. A playlist drawn from a handful of albums re-downloads the
-    same image once per track without this; this is purely a
-    bandwidth/latency win, not a Spotify API quota one — the URL comes
-    from `tracks.album_art_url`, already captured at sync time
-    (item 9), and the fetch itself goes to Spotify's CDN, not the Web
-    API.
+    """Caches downloaded album art bytes by URL. A playlist drawn from a
+    handful of albums re-downloads the same image once per track without
+    this; this is purely a bandwidth/latency win, not a Spotify API
+    quota one — the URL comes from `tracks.album_art_url`, already
+    captured at sync time, and the fetch itself goes to Spotify's CDN,
+    not the Web API.
 
     Two layers: an in-memory LRU of the last `MEMORY_ENTRIES` images
     (covers a tagging run's repeats with no disk access; it lives as

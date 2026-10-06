@@ -1,19 +1,15 @@
-"""SoulSeek sharing/uploads service — roadmap item 62 (Phase 7).
+"""SoulSeek sharing/uploads service.
 
-Real API shapes below were confirmed live (2026-09-01) against a
-disposable throwaway slskd container (SLSKD_SWAGGER=true), never the
-real production one, per this project's standing "verify live, never
-assume" rule (see docs/HISTORY.md item 62 for the full investigation):
+Real API shapes below were confirmed live against a disposable
+throwaway slskd container (SLSKD_SWAGGER=true), never the real
+production one (see HISTORY §56's Phase 7 and HISTORY §62):
 
-  GET /api/v0/shares -> {"local": [share, ...]}  -- NOT a bare array,
-    a NEW finding not previously documented anywhere in this codebase.
+  GET /api/v0/shares -> {"local": [share, ...]}  -- NOT a bare array.
     Each share: id, alias, isExcluded, localPath (the CONTAINER-side
     path, e.g. "/shared/music"), raw, remotePath, directories, files.
   GET /api/v0/application's "shares" block: ready, scanning,
     scanPending, faulted, cancelled, scanProgress, hosts, directories,
-    files -- CLAUDE.md item 53 already documented ready/scanning/
-    directories/files; scanPending/faulted/cancelled/scanProgress/hosts
-    are new findings from this same live check.
+    files.
   PUT /api/v0/shares -> real HTTP 200, triggers a rescan. Confirmed via
     a real file added to the shared dir: files count 0 -> 1 after.
   GET /api/v0/transfers/uploads -> a flat array (unlike downloads,
@@ -30,18 +26,18 @@ assume" rule (see docs/HISTORY.md item 62 for the full investigation):
     disk and recreating the container, which is what
     add_location_to_share below does.
 
-Real, confirmed-live finding about *this* dev machine's specific
-slskd.yml (not a general slskd fact): the shipped docker-compose.yml's
-default `${SLSKD_DATA_DIR:-./slskd-data}` template is a fully
-commented-out reference block near the top of slskd.yml -- the real,
-active `shares:` section slskd itself writes/reads lives further down,
-uncommented. Never assume the data-dir/share-path env var defaults
-baked into docker-compose.yml reflect what's *actually* mounted right
-now (a container could have been brought up with different env values
-than the file's own fallback) -- `docker inspect <container>` is the
-only live-verified source of truth for real host<->container mount
-paths, so every lookup below goes through `_get_live_container_mounts`
-rather than text-parsing docker-compose.yml for paths.
+A finding about one real slskd.yml (not a general slskd fact): the
+shipped docker-compose.yml's default `${SLSKD_DATA_DIR:-./slskd-data}`
+template is a fully commented-out reference block near the top of
+slskd.yml -- the real, active `shares:` section slskd itself
+writes/reads lives further down, uncommented. Never assume the
+data-dir/share-path env var defaults baked into docker-compose.yml
+reflect what's *actually* mounted right now (a container could have been
+brought up with different env values than the file's own fallback) --
+`docker inspect <container>` is the only live-verified source of truth
+for real host<->container mount paths, so every lookup below goes
+through `_get_live_container_mounts` rather than text-parsing
+docker-compose.yml for paths.
 """
 
 import json
@@ -80,8 +76,7 @@ SLSKD_CONTAINER_NAME = "slskd"
 # original rather than an unrelated top-level mount.
 SHARE_MOUNT_ROOT = "/shared"
 
-# Untuned constant, same convention as every other threshold in this
-# codebase (see CLAUDE.md's "flag untuned constants explicitly" rule)
+# Untuned, same convention as every other threshold in this codebase
 # -- generous enough to cover a real container recreate + slskd's own
 # share rescan of a modestly sized new folder.
 SHARE_READY_TIMEOUT_SECONDS = 120.0
@@ -102,13 +97,12 @@ class ShareAlreadyExistsError(SeekerError):
 
 class SlskdCredentialsMissingError(SeekerError):
     """Raised instead of recreating the slskd container with a blank
-    credential — roadmap item R6.3: a recreate that silently
-    de-authenticates the container (either from Seeker, or from the
-    real SoulSeek network) is worse than refusing to recreate. Real,
-    live-confirmed cause: a wizard run predating item 28's SoulSeek
-    network-credential fields, or any bring-up whose result was never
-    routed through Application.persist_soulseek_config, leaves these
-    fields None in the config store forever."""
+    credential: a recreate that silently de-authenticates the container
+    (either from Seeker, or from the real SoulSeek network) is worse
+    than refusing to recreate. An older install's wizard run, or any
+    bring-up whose result was never routed through
+    Application.persist_soulseek_config, leaves these fields None in the
+    config store forever. See HISTORY §84."""
 
 
 @dataclass
@@ -205,21 +199,20 @@ class SharingService:
         self.library_locations = library_location_repository
         self._compose_path = compose_path or compose_file_path()
         # Overridable only for live verification against a disposable
-        # throwaway container (see docs/HISTORY.md item 62's real
-        # add_location_to_share E2E run) -- a second real container
+        # throwaway container (HISTORY §62) -- a second real container
         # can never itself be named "slskd" without colliding with (or
         # requiring touching) the real production one. Every real call
         # site in Application.sharing_service uses the default.
         self._container_name = container_name
         # Same callable-not-snapshot discipline as DownloadService/
-        # TrackMatcher (item 28) -- a Settings credential update takes
+        # TrackMatcher -- a Settings credential update takes
         # effect on the very next add_location_to_share call, no
         # restart or service-reconstruction needed.
         self._get_config = get_config or SeekerConfig
 
     @property
     def soulseek(self) -> SoulseekClient:
-        # Same lazy-raise shape as DownloadService.soulseek (item 28) --
+        # Same lazy-raise shape as DownloadService.soulseek --
         # a caller that only wants is_self_managed()/preview_add_location
         # must not be forced to have SoulSeek configured at all.
         if self._soulseek_client is None:
@@ -243,16 +236,13 @@ class SharingService:
         )
 
     def get_uploads(self) -> list[UploadStatus]:
-        # The real live [] shape and the real slskd.Transfers.Transfer
-        # swagger schema (additionalProperties: false) are both
-        # confirmed (docs/HISTORY.md item 62 follow-up) -- a real
-        # POPULATED transfer object is NOT, since a genuine P2P
-        # connectivity limitation blocked producing one live in that
-        # investigation. _parse_upload's field names match the schema
-        # and are read defensively either way, but this is the same
-        # "confirmed against schema, not a real instance, reverify
-        # opportunistically" flag CLAUDE.md item 53 already gives
-        # placeInQueue -- the next real populated response seen live
+        # The live [] shape and the slskd.Transfers.Transfer swagger
+        # schema (additionalProperties: false) are both confirmed
+        # (HISTORY §62) -- a POPULATED transfer object is NOT, since a
+        # P2P connectivity limitation blocked producing one live.
+        # _parse_upload's field names match the schema and are read
+        # defensively either way: confirmed against the schema, not a
+        # real instance -- the next real populated response seen live
         # (e.g. while using the Sharing page for real) is worth a
         # direct diff against this schema.
         data = self.soulseek.get_uploads()
@@ -310,14 +300,14 @@ class SharingService:
         """True only when the running slskd container was created by
         THIS app's own docker-compose.yml -- never a user's own
         independently-run slskd instance Seeker was merely pointed at.
-        Confirmed live (2026-09-01): docker compose stamps every
-        container it creates with a
-        "com.docker.compose.project.config_files" label naming the
-        exact compose file used -- the only live-verified signal for
-        this, not assumed. Any failure to determine this (Docker not
-        running, container missing, label absent) conservatively
-        returns False -- the write path in add_location_to_share must
-        never touch infrastructure this app doesn't provably own.
+        Confirmed live: docker compose stamps every container it
+        creates with a "com.docker.compose.project.config_files" label
+        naming the exact compose file used -- the only live-verified
+        signal for this, not assumed. Any failure to determine this
+        (Docker not running, container missing, label absent)
+        conservatively returns False -- the write path in
+        add_location_to_share must never touch infrastructure this app
+        doesn't provably own.
         """
         try:
             result = subprocess.run(
@@ -371,7 +361,7 @@ class SharingService:
         Gated end to end: requires explicit confirm=True, requires
         is_self_managed(), backs up both edited files before writing
         either, and never mounts anything but read-only (":ro" is not
-        optional/configurable here -- see CLAUDE.md's sharing framing).
+        optional/configurable here).
         """
         container = self._check_preconditions(location, confirm)
         plan = self.preview_add_location(location)

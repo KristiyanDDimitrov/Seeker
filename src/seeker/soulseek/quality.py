@@ -112,9 +112,9 @@ def find_best_needs_review_candidate(
     # (not just the auto-tier-filtered ones), since a track with zero
     # auto-tier candidates would otherwise have nothing left to search
     # here, plus the runner-up — the second-best-scoring candidate
-    # still within the same band, round 8 §12.10 — so a human deciding
-    # whether to confirm the winner can see what it beat, not just its
-    # own score in isolation. None when only one real candidate exists.
+    # still within the same band — so a human deciding whether to
+    # confirm the winner can see what it beat, not just its own score in
+    # isolation. None when only one real candidate exists.
     #
     # Both thresholds are plain optional parameters, not read from
     # config here — this module stays as decoupled from config/
@@ -169,7 +169,7 @@ def is_practical(
 
 # Untuned starting constant — how many upgrade candidates to shortlist
 # beyond the immediately-requested top one; revisit once real cascade
-# data (Phase 4) shows how often rank 2/3 actually get used.
+# data shows how often rank 2/3 actually get used. See HISTORY §14.
 MAX_UPGRADE_SHORTLIST = 3
 
 
@@ -252,17 +252,17 @@ def select_downloads(
     if settled_eligible:
         settled = settled_eligible[0]
     else:
-        # Nothing practical among the unlocked candidates — Phase 1
-        # fallback, scoped to unlocked only: settle for the best
-        # unlocked candidate (still downloadable, just slow) rather than
-        # a locked top pick (not downloadable at all right now).
+        # Nothing practical among the unlocked candidates — fall back,
+        # among unlocked only: settle for the best unlocked candidate
+        # (still downloadable, just slow) rather than a locked top pick
+        # (not downloadable at all right now).
         unlocked = [file for file in ranked if not file.locked]
         settled = unlocked[0] if unlocked else None
 
     if settled is None:
         # Every filtered candidate is locked — nothing downloadable
         # right now, but the whole ranked list is upgrade-shortlist
-        # material for the Phase 3/4 retry cycle.
+        # material for the locked-retry and upgrade cycle.
         return DownloadSelection(
             None, ranked[:MAX_UPGRADE_SHORTLIST], needs_review,
         )

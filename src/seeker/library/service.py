@@ -62,10 +62,8 @@ class LibraryService:
         self.scanner = LibraryScanner(local_file_repo, database)
         self.track_matches = TrackMatchRepository()
         # Both optional — only scan_and_match()/get_needs_review_matches()
-        # etc. need them (roadmap item 56). Every existing caller that
-        # constructs a LibraryService without them (tests included) is
-        # unaffected; scan_all()/scan a location alone still work with
-        # neither.
+        # etc. need them; scan_all()/scan a location alone still work
+        # with neither.
         self.track_matcher = track_matcher
         self.playlists = playlist_repo
 
@@ -97,11 +95,10 @@ class LibraryService:
 
     def add_location_from_path(self, path: str) -> LibraryLocation:
         """The UI's own "pick a folder, name it later (or never)" flow
-        (roadmap item 5) — derives the name from the folder's own
-        basename rather than prompting for one first, auto-suffixing
-        on a name collision ("Music", "Music (2)", ...). `add_location`
-        above (explicit name + path) stays the CLI's own entry point,
-        unchanged.
+        — derives the name from the folder's own basename rather than
+        prompting for one first, auto-suffixing on a name collision
+        ("Music", "Music (2)", ...). `add_location` above (explicit name
+        + path) is the CLI's own entry point.
         """
         resolved_path = Path(path).expanduser().resolve()
 
@@ -179,17 +176,15 @@ class LibraryService:
         ]
 
     def has_scanned_library(self) -> bool:
-        """Roadmap item 7's Dashboard "next step" CTA needs to
-        distinguish "tracks are cached but the library has never been
-        scanned" from "already scanned, matching just didn't find
-        anything" — but no `last_scanned_at` column exists on
-        `library_locations` (a schema change was explicitly out of
-        scope for that task), so this approximates it: true once at
-        least one `local_files` row exists anywhere. Known, accepted
-        limitation: a real scan of a location that genuinely contains
-        zero matching audio files would be indistinguishable from
-        "never scanned" by this proxy — not solvable without a schema
-        change, so not solved here.
+        """The Dashboard's "next step" CTA needs to distinguish "tracks
+        are cached but the library has never been scanned" from "already
+        scanned, matching just didn't find anything" — but no
+        `last_scanned_at` column exists on `library_locations`, so this
+        approximates it: true once at least one `local_files` row exists
+        anywhere. Known, accepted limitation: a real scan of a location
+        that genuinely contains zero matching audio files would be
+        indistinguishable from "never scanned" by this proxy — not
+        solvable without a schema change, so not solved here.
         """
         with self.database.transaction() as connection:
             return self.local_files.exists_any(connection)
@@ -338,9 +333,8 @@ class LibraryService:
             self,
             playlist_name: str | None = None,
     ) -> list[NeedsReviewMatch]:
-        """Roadmap item 56 Phase 2 — closes item 7's long-outstanding
-        gap: a `review` command/screen for needs_review LOCAL-FILE
-        matches (distinct from the Soulseek-side review candidates
+        """Needs-review LOCAL-FILE matches, for the `review` command
+        and the Review screen (distinct from the Soulseek-side review candidates
         DownloadService already exposes). Resolved with enough context
         for a human to judge the pairing, not just the bare score.
         """
@@ -431,10 +425,9 @@ class LibraryService:
         """A human confirmed a needs_review local-file match — sets
         match_method='auto' and stamps confirmed_at, WITHOUT touching
         local_file_id/score (the real computed score stays visible
-        rather than a 100.0 sentinel — item 45's precedent). No file on
-        disk is touched, so no double-confirm gate — this project's
-        confirmation gate is for file replacement, not DB state (item
-        27's precedent).
+        rather than a 100.0 sentinel). No file on disk is touched, so
+        no double-confirm gate — this project's confirmation gate is
+        for file replacement, not DB state.
         """
         if self.track_matcher is None:
             raise RuntimeError(

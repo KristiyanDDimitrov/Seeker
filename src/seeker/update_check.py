@@ -3,16 +3,16 @@
 A real, unauthenticated external dependency — one GET against
 api.github.com's `/releases/latest` endpoint, subject to GitHub's own
 per-source-IP unauthenticated rate limit (60 requests/hour, confirmed
-live 2026-09-01, see CLAUDE.md item 55). Treated with the same caution
-as this project's other live-dependency checks (Docker/slskd health,
-items 23/44): never called automatically, never on a timer or at
-startup — only from an explicit user action (Help -> "Check for
-updates...", see ui/main_window.py). `check_for_update()` itself never
-raises — every real failure mode (network error, timeout, an
-unexpected/malformed response, an unparseable version tag) is caught
-and reported as UNAVAILABLE with a reason, the same "swallow into a
-status enum, don't raise" discipline `soulseek/docker_setup.py::
-check_slskd_health`/`detect_docker_state` already established.
+live, HISTORY §55). Treated with the same caution as this project's
+other live-dependency checks (Docker/slskd health): never called
+automatically, never on a timer or at startup — only from an explicit
+user action (Help -> "Check for updates...", see ui/main_window.py).
+`check_for_update()` itself never raises — every real failure mode
+(network error, timeout, an unexpected/malformed response, an
+unparseable version tag) is caught and reported as UNAVAILABLE with a
+reason, the same "swallow into a status enum, don't raise" discipline
+`soulseek/docker_setup.py::check_slskd_health`/`detect_docker_state`
+already established.
 """
 
 from dataclasses import dataclass
@@ -37,9 +37,8 @@ class UpdateStatus(Enum):
     UP_TO_DATE = auto()
     UPDATE_AVAILABLE = auto()
     UNAVAILABLE = auto()
-    # Round 9 §4.2a — split out of UNAVAILABLE. A repo with no
-    # published releases (confirmed live 2026-09-09: this repo has
-    # none) has nothing wrong with it; GitHub's own 404 for that case is
+    # Split out of UNAVAILABLE. A repo with no published releases has
+    # nothing wrong with it; GitHub's own 404 for that case is
     # identical to every OTHER 404 shape this module treats as a real
     # failure. UNAVAILABLE's caller (main_window.py) renders a Warning
     # icon and a "Couldn't check for updates:" prefix — both imply a
@@ -65,7 +64,7 @@ class UpdateCheckResult:
 
 
 def _installed_version() -> str | None:
-    # Same mechanism AboutDialog already uses (item 34) — real installed
+    # Same mechanism AboutDialog already uses — real installed
     # package metadata, never a second hardcoded literal that could
     # drift from pyproject.toml. None only when running from source
     # with no installed dist-info (e.g. `uv run` without `uv sync`

@@ -22,12 +22,11 @@ def most_recent_per_candidate(
 
     Shared by both the read-side view
     (DashboardService.get_active_downloads, which never mutates the DB)
-    and the write-side Phase 3 retry loop
-    (DownloadService._retry_locked_request, which does) so both agree
-    on the identical notion of "same real download attempt" — same
-    consolidation reasoning already applied to matching.py and
-    AUDIO_EXTENSIONS elsewhere in this codebase (see CLAUDE.md): one
-    rule, not two independently-drifting copies.
+    and the write-side locked-retry loop
+    (DownloadPoller._retry_locked_request, which does) so both agree on
+    the identical notion of "same real download attempt" — one rule, not
+    two independently-drifting copies, as with matching.py and
+    AUDIO_EXTENSIONS.
 
     Deliberately compares only `requested_at` (a plain ISO 8601 string
     comparison — safe since every row uses the same

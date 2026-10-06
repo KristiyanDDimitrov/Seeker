@@ -36,10 +36,9 @@ _TOKEN_LOCK = threading.Lock()
 # app's real account plus a test account on the same machine) can each
 # invalidate the other's stored refresh token this way — the symptom is
 # a refresh failing and falling back to a real browser re-authorization
-# for no obvious reason. That is a real, separate effect, not the B8
-# 401-after-an-hour bug (which was the cached SpotifyClient never
-# calling get_valid_token() again at all) — recorded here so it isn't
-# re-diagnosed from scratch.
+# for no obvious reason. That is a separate effect from a 401 after an
+# hour (a cached SpotifyClient never calling get_valid_token() again).
+# See HISTORY §92.
 class SpotifyAuthManager:
     def __init__(
         self,
@@ -129,11 +128,11 @@ class SpotifyAuthManager:
             code_challenge=code_challenge,
         )
 
-        # Round 9 §1.2: bind the callback socket BEFORE opening the
-        # browser, not after — a user who already granted access on a
-        # previous run gets redirected straight back with no consent
-        # screen to slow it down, and the callback can otherwise land
-        # before anything is listening for it.
+        # Bind the callback socket BEFORE opening the browser, not after
+        # — a user who already granted access on a previous run gets
+        # redirected straight back with no consent screen to slow it
+        # down, and the callback can otherwise land before anything is
+        # listening for it.
         server = create_callback_server()
 
         logger.info("Opening Spotify authorization page...")

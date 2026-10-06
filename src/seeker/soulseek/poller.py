@@ -36,9 +36,9 @@ from seeker.soulseek.placement import DownloadPlacement
 logger = logging.getLogger(__name__)
 
 
-# Bounds the locked retry loop (HISTORY §63/§66 — a real production
-# storm retried one row 300+ times in ~18 minutes, root cause still
-# unknown but now structurally capped regardless). All three untuned —
+# Bounds the locked retry loop: a production storm once retried one row
+# 300+ times in ~18 minutes, cause still unknown, and this caps that
+# shape regardless (HISTORY §63, §66). All three untuned —
 # real numbers to revisit once real usage data exists, same convention
 # as every other threshold in this codebase.
 LOCKED_RETRY_BASE_SECONDS = 60
@@ -188,7 +188,7 @@ class DownloadPoller:
                     # REJECTION, not of why the download was requested
                     # — a needs-review candidate confirmed as
                     # role='settled' can still be a genuinely locked
-                    # file (HISTORY §26). Only the Phase 4 cascade below
+                    # file (HISTORY §26). Only the upgrade cascade below
                     # stays role-specific, since the shortlist/cascade
                     # mechanism is an upgrade-only concept.
                     status, reason = self._classify_failed_transfer(
@@ -251,7 +251,7 @@ class DownloadPoller:
                     continue
 
                 if self._track_already_has_a_matched_file(request.track_id):
-                    # A real safety net (HISTORY §56 Phase 5.3): closes
+                    # A safety net (HISTORY §56): closes
                     # the gap the dedup guard alone can't (a candidate
                     # requested before that guard existed, or matched by
                     # some other path in the meantime). By definition
@@ -404,7 +404,7 @@ class DownloadPoller:
             return DownloadStatus.FAILED
 
         # An async-shape rejection doesn't raise from request_download
-        # itself (confirmed live, 2026-08-27) — it shows up almost
+        # itself (confirmed live, HISTORY §13) — it shows up almost
         # immediately via the status endpoint instead, so check right
         # away rather than waiting a full poll cycle to find out it
         # failed again. A sync-shape rejection (peer offline) never
@@ -442,7 +442,7 @@ class DownloadPoller:
             )
 
     def _track_already_has_a_matched_file(self, track_id: str) -> bool:
-        """A safety net (HISTORY §56 Phase 5.3): before an automatic
+        """A safety net (HISTORY §56): before an automatic
         completion moves a settled download into place, check whether
         track_matches already points at a real local file for this
         track. By definition, a settled download landing after that is
@@ -588,9 +588,9 @@ class DownloadPoller:
             # anything that isn't a known rejection pattern "loud")
             # must still advance the retry budget — otherwise this
             # exact failure shape retries forever with no bound.
-            # Confirmed live 2026-09-02 against real production slskd,
-            # a genuine `500 Internal Server Error` on
-            # /api/v0/transfers/downloads/batches (HISTORY §66).
+            # Seen live from real production slskd: a `500 Internal
+            # Server Error` on /api/v0/transfers/downloads/batches
+            # (HISTORY §66).
             # Re-raised unchanged so poll_downloads()'s own outer
             # per-request try/except still prints its diagnostic; this
             # is additive bookkeeping, not a change to what's reported.
@@ -639,7 +639,7 @@ class DownloadPoller:
 
         if self._track_already_has_a_matched_file(request.track_id):
             # Same safety net as the main poll_downloads() loop
-            # (HISTORY §56 Phase 5.3): even a role='settled' row that's
+            # (HISTORY §56): even a role='settled' row that's
             # already human-confirmed once must not silently create a
             # second file for a track something else already matched in
             # the meantime.
@@ -719,12 +719,12 @@ class DownloadPoller:
         a retry re-issues a real request_download against the same
         peer — without this, the retry loop would hit slskd
         independently, every poll cycle, for every stale duplicate of
-        the same candidate (confirmed live, 2026-08-28: get_locked()
-        has no per-track/per-candidate collapsing of its own). Mirrors
+        the same candidate (get_locked() has no per-track/per-candidate
+        collapsing of its own; HISTORY §25). Mirrors
         `download_dedup.most_recent_per_candidate`'s exact
         grouping/tiebreak rule rather than reinventing one — the same
-        rule DashboardService.get_active_downloads() already uses on
-        the read side, so display and mutation never drift onto two
+        rule DashboardService.get_active_downloads() already uses on the
+        read side, so display and mutation never drift onto two
         different notions of "duplicate."
 
         Returns True if `request` itself lost to a more recent sibling

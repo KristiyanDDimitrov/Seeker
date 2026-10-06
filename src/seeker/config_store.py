@@ -57,9 +57,9 @@ class SeekerConfig:
     # time (see _resolve_theme_mode below) rather than raising or
     # propagating a bad value into theme.py.
     theme_mode: str = "system"
-    # Round 8 §12.1 — base64 of QMainWindow.saveGeometry()'s QByteArray
-    # (size, position, maximized/fullscreen state). Written once, at
-    # real quit (MainWindow.cleanup_before_quit), never on every
+    # Base64 of QMainWindow.saveGeometry()'s QByteArray (size,
+    # position, maximized/fullscreen state). Written once, at real quit
+    # (WindowLifecycleController.cleanup_before_quit), never on every
     # resize/move — restoreGeometry() tolerates a missing/corrupt value
     # by leaving the window at its hardcoded default, so no validation
     # is needed here.
@@ -69,31 +69,28 @@ class SeekerConfig:
     # is ignored at restore time the same way theme_mode's own garbage
     # value is — falls back to the hardcoded "dashboard" default.
     last_open_page: str | None = None
-    # Round 9 §3.2 — whether "start at login" is on lives entirely in
-    # macOS's own ServiceManagement registration (login_item.py reads
-    # it live, never mirrored here — a user revoking it in System
-    # Settings must not leave a stale True behind). This field is only
-    # the companion "start hidden in the menu bar" preference, which
-    # has no equivalent platform-owned state of its own. Defaulted to
-    # True by the Settings checkbox the moment login-at-startup is
-    # first enabled, but stored independently and always overridable.
+    # Whether "start at login" is on lives entirely in macOS's own
+    # ServiceManagement registration (login_item.py reads it live, never
+    # mirrored here — a user revoking it in System Settings must not
+    # leave a stale True behind). This field is only the companion
+    # "start hidden in the menu bar" preference, which has no equivalent
+    # platform-owned state of its own. Defaulted to True by the Settings
+    # checkbox the moment login-at-startup is first enabled, but stored
+    # independently and always overridable.
     start_hidden_at_login: bool = False
-    # Round 9 §6 — base64 of the Review page's three-section
-    # QSplitter.saveState() (proportions between needs-review/upgrades/
-    # local-matches). Written once, at real quit
-    # (MainWindow.cleanup_before_quit reaching into ReviewPage, same
-    # seam it already uses for other page-owned state), never on every
-    # drag — restoreState() tolerates a missing/corrupt value by
-    # leaving the splitter at its hardcoded first-run proportions, so
-    # no validation is needed here.
+    # Base64 of the Review page's three-section QSplitter.saveState()
+    # (proportions between needs-review/upgrades/local-matches).
+    # Written once, at real quit (through ReviewPage's public
+    # method), never on every drag — restoreState() tolerates a
+    # missing/corrupt value by leaving the splitter at its hardcoded
+    # first-run proportions, so no validation is needed here.
     review_splitter_state: str | None = None
-    # Round 10 §5 — whether the window was closed fullscreen or
-    # maximized/zoomed, so a reopen (Dock/menu-bar icon) or a relaunch
-    # can come back filling the screen as a normal window rather than
-    # re-entering macOS fullscreen (Kris's decision, 2026-09-23: never
-    # re-enter fullscreen on reopen — that transition is round 7's E1).
-    # Mirrors window_geometry's own "written at real close, tolerant of
-    # a missing key" shape; WindowLifecycleController.restore_window_geometry() is
+    # Whether the window was closed fullscreen or maximized/zoomed, so
+    # a reopen (Dock/menu-bar icon) or a relaunch can come back filling
+    # the screen as a normal window rather than re-entering macOS
+    # fullscreen, which a reopen never does (HISTORY §114). Mirrors
+    # window_geometry's own "written at real close, tolerant of a
+    # missing key" shape; WindowLifecycleController.restore_window_geometry() is
     # the actual enforcement point, not this field alone (a saved
     # window_geometry blob from a fullscreen close still carries Qt's
     # own FullScreen state bit and has to be corrected there too).
