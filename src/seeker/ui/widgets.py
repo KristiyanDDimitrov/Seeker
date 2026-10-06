@@ -1,10 +1,16 @@
-"""Small custom-painted widgets shared by the shell."""
+"""Small custom-painted widgets shared by the shell and its pages."""
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPaintEvent
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QProgressBar,
+    QPushButton,
+    QStyle,
+    QStyleOptionProgressBar,
+    QWidget,
+)
 
 from seeker.ui import theme
 from seeker.ui.plain_text import plain_tooltip
@@ -132,3 +138,43 @@ class ThemeToggleButton(QPushButton):
         painter.setBrush(pen_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPath(half)
+
+
+class TwoToneProgressBar(QProgressBar):
+    """A progress bar whose percentage reads on both of its
+    backgrounds: `ON_ACCENT` over the ACCENT fill, `TEXT` over the
+    track. The stylesheet painter draws a styled bar's label in one
+    colour, and no one colour clears both (`TEXT` on the light
+    ACCENT is 3.13:1), so this bar paints its own label twice, each
+    pass clipped to one side of the fill's edge. Indeterminate, it has
+    no label (`text()` is empty) and paints as a plain bar."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setTextVisible(False)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        text = self.text()
+        if not text:
+            return
+
+        option = QStyleOptionProgressBar()
+        self.initStyleOption(option)
+        contents = self.style().subElementRect(
+            QStyle.SubElement.SE_ProgressBarContents, option, self,
+        )
+        span = self.maximum() - self.minimum()
+        filled = round(contents.width() * (self.value() - self.minimum()) / span)
+        split = contents.left() + filled
+        whole = self.rect()
+
+        painter = QPainter(self)
+        for color, side in (
+                (theme.ON_ACCENT, QRect(0, 0, split, whole.height())),
+                (theme.TEXT, QRect(split, 0, whole.width() - split, whole.height())),
+        ):
+            painter.setClipRect(side)
+            painter.setPen(QColor(color))
+            painter.drawText(whole, Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()

@@ -75,10 +75,6 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # layout's bare minimum otherwise, which is a header row with no visible
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
-# Wide enough to comfortably grab with a mouse; matches the QSS handle
-# thickness in theme.py's _misc_qss (kept in sync by hand — no shared
-# constant crosses the theme/page module boundary elsewhere either).
-_REVIEW_SPLITTER_HANDLE_WIDTH = 6
 
 
 @dataclass(frozen=True)
@@ -133,7 +129,7 @@ class ReviewPage(QWidget):
         # QVBoxLayout can't be handed to addWidget() directly, only a
         # widget can.
         self.review_splitter = QSplitter(Qt.Orientation.Vertical)
-        self.review_splitter.setHandleWidth(_REVIEW_SPLITTER_HANDLE_WIDTH)
+        self.review_splitter.setHandleWidth(theme.SPLITTER_GRAB_WIDTH)
         # No pane may be dragged away to nothing and become
         # unrecoverable — paired with each section's own minimumHeight
         # below (setChildrenCollapsible(False) alone still allows a

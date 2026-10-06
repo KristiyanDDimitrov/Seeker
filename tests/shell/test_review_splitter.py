@@ -1,6 +1,10 @@
-"""The Review splitter's sizes survive a quit and relaunch: saved by
-cleanup_before_quit, restored the first time the page is shown."""
+"""The Review splitter: its sizes survive a quit and relaunch (saved by
+cleanup_before_quit, restored the first time the page is shown), and
+each handle draws a 1 px line across a wider grab area."""
+from PySide6.QtCore import QPoint
+
 from fakes import FakeApplication, force_tray_available
+from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
 
 # Far from the 3:2:2 stretch-factor default, so a restore that silently
@@ -85,3 +89,21 @@ def test_an_unreadable_saved_state_keeps_the_default_proportions(
 
     assert _splitter(window).sizes() == default_sizes
     window.cleanup_before_quit()
+
+
+def test_a_handle_is_a_one_pixel_line_in_a_wider_grab_area(qtbot):
+    window = _open_review(qtbot, FakeApplication())
+    handle = _splitter(window).handle(1)
+
+    image = window.grab().toImage()
+    dpr = image.width() / window.width()
+    column = handle.mapTo(window, QPoint(handle.width() // 2, 0))
+    painted = [
+        image.pixelColor(
+            round(column.x() * dpr), round((column.y() + y) * dpr),
+        ).name().upper()
+        for y in range(handle.height())
+    ]
+    assert painted.count(theme.BORDER_STRONG) == 1
+    assert painted.count(theme.BG_APP) == handle.height() - 1
+    assert handle.height() >= 7

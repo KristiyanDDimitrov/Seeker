@@ -252,14 +252,13 @@ def test_faint_text_and_borders_meet_the_decorative_floor(palette):
         ids=["dark", "light"],
 )
 def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
-    # Roadmap item C5 (round 5) — found live via a real screenshot: the
-    # percentage label spans the ACCENT fill AND the plain
-    # BG_SURFACE_2 track at once. TEXT_MUTED (the original color) was
-    # only 1.26:1 against ACCENT in light — a real crop showed it
-    # nearly invisible. TEXT (the fix) must clear the 3:1 UI-component
-    # floor against BOTH.
-    assert theme.contrast_ratio(palette.TEXT, palette.ACCENT) >= 3.0
-    assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE_2) >= 3.0
+    # TwoToneProgressBar's two label colours, each against the ground
+    # it is painted on (tests/shell/test_progress_text.py measures the
+    # pixels). TEXT alone over the fill was 3.13:1 in light. White on
+    # dark's ACCENT is 4.35:1, short of AA's 4.5 for small text; the
+    # 4.3 floor records that, so a palette change cannot make it worse.
+    assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 4.3
+    assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE_2) >= 4.5
 
 
 @pytest.mark.parametrize(

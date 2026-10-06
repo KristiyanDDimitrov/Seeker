@@ -58,6 +58,7 @@ from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
+from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
 _STATE_LABELS = {
@@ -915,7 +916,7 @@ class DashboardPage(QWidget):
                         status.total_bytes
                         and status.bytes_transferred is not None
                     )
-                    progress = QProgressBar()
+                    progress = TwoToneProgressBar()
                     progress.setMaximum(status.total_bytes)
                     progress.setValue(status.bytes_transferred)
                     theme.style_determinate_progress_bar(progress)

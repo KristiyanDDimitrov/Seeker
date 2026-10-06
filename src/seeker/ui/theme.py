@@ -250,6 +250,10 @@ RADIUS_CARD = 10
 PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
 
+# A splitter handle's grab area. Odd, so its 1px line has a centre
+# pixel (see the QSplitter rules in _misc_qss).
+SPLITTER_GRAB_WIDTH = 7
+
 
 def _icons_dir() -> Path:
     """`packaging/icons/` in a source tree; the `icons/` directory
@@ -1185,13 +1189,9 @@ QProgressBar {{
     border: 1px solid {palette.BORDER};
     border-radius: {PROGRESS_BAR_RADIUS}px;
     text-align: center;
-    /* The percentage text sits on TWO different backgrounds at once
-    (the ACCENT fill and the plain BG_SURFACE_2 track). Measured:
-    TEXT_MUTED-on-ACCENT is 1.26:1 in light (near-invisible in a real
-    screenshot) and only 1.57:1 in dark. `TEXT` clears >=3:1 against
-    ACCENT in both palettes AND stays well above 12:1 against
-    BG_SURFACE_2 — the strictly better choice for text that must read on
-    both. */
+    /* The label of a plain QProgressBar. The pages' labelled bars are
+    widgets.TwoToneProgressBar, which paints ON_ACCENT over the fill
+    and TEXT over the track: one colour cannot read on both. */
     color: {palette.TEXT};
     max-height: {PROGRESS_BAR_HEIGHT}px;
 }}
@@ -1254,6 +1254,20 @@ QCheckBox::indicator:checked:focus, QRadioButton::indicator:checked:focus {{
 """
 
 
+def _centred_line(color: str, direction: str) -> str:
+    """A `qlineargradient` that paints one pixel of `color` across the
+    middle of a SPLITTER_GRAB_WIDTH band and leaves the rest clear;
+    `direction` is the gradient's end point, across the band."""
+    start = (SPLITTER_GRAB_WIDTH // 2) / SPLITTER_GRAB_WIDTH
+    end = (SPLITTER_GRAB_WIDTH // 2 + 1) / SPLITTER_GRAB_WIDTH
+    return (
+        f"qlineargradient(x1: 0, y1: 0, {direction}, "
+        f"stop: 0 transparent, stop: {start:.4f} transparent, "
+        f"stop: {start + 0.0001:.4f} {color}, stop: {end - 0.0001:.4f} {color}, "
+        f"stop: {end:.4f} transparent, stop: 1 transparent)"
+    )
+
+
 def _misc_qss(palette: Palette) -> str:
     """QScrollBar and QToolTip."""
     return f"""\
@@ -1297,25 +1311,26 @@ QToolTip {{
     padding: 4px 6px;
 }}
 
-/* The Review page's three-section splitter. BORDER_STRONG
-rather than BORDER for the same reason QHeaderView::section's own
-divider uses it (see _table_header_qss's comment): this handle sits on
-BG_APP, the page background, not a card, with nothing else nearby to
-help the eye find it. */
-QSplitter::handle {{
-    background-color: {palette.BORDER_STRONG};
-}}
-
-QSplitter::handle:hover {{
-    background-color: {palette.ACCENT};
-}}
-
+/* Splitter handles (the Review page's sections): a 1px line centred
+in a SPLITTER_GRAB_WIDTH band that is otherwise transparent, so the
+band can be wide enough to grab without reading as a bar. The line is
+two hard gradient stops: with an odd band, the line's pixel sits
+exactly between them, so it renders crisp at 1x and 2x. ACCENT on
+hover shows what the cursor will move. */
 QSplitter::handle:vertical {{
-    height: 6px;
+    background: {_centred_line(palette.BORDER_STRONG, "x2: 0, y2: 1")};
 }}
 
 QSplitter::handle:horizontal {{
-    width: 6px;
+    background: {_centred_line(palette.BORDER_STRONG, "x2: 1, y2: 0")};
+}}
+
+QSplitter::handle:vertical:hover {{
+    background: {_centred_line(palette.ACCENT, "x2: 0, y2: 1")};
+}}
+
+QSplitter::handle:horizontal:hover {{
+    background: {_centred_line(palette.ACCENT, "x2: 1, y2: 0")};
 }}
 
 """

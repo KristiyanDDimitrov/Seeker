@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -32,6 +31,7 @@ from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
+from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
 # Plain-language notes for statuses that aren't self-explanatory as raw
@@ -76,7 +76,7 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     if request.status in FAILED_OUTCOMES:
         return QWidget()  # blank, not a misleading full/empty bar
 
-    bar = QProgressBar()
+    bar = TwoToneProgressBar()
 
     if request.total_bytes and request.bytes_transferred is not None:
         bar.setRange(0, request.total_bytes)
@@ -136,7 +136,7 @@ def _build_progress_widget(
     if request.status not in IN_FLIGHT:
         return QWidget()
 
-    bar = QProgressBar()
+    bar = TwoToneProgressBar()
 
     if not (request.total_bytes and request.bytes_transferred is not None):
         # No bytes reported yet — indeterminate ("busy") rather than a
