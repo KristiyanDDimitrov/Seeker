@@ -15,7 +15,8 @@ nine fields below follow the contract in
 - **Local** (at `94ac488`, X9 Pro not mounted): pytest `1655 passed,
   29 skipped`; `mypy --strict src/` clean, 127 files; `ruff check src
   tests` 0.
-- **CI:** see section 3's last line for the run id at the close-out.
+- **CI:** run `37490010082` (at `0a30f44`): **success**, `1655
+  passed, 29 skipped`, coverage 94.09 % (floor 92 %).
 
 ## 2. Where we are
 
