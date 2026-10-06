@@ -12,7 +12,7 @@ from seeker.models.download_request import (
     DownloadStatus,
 )
 
-# The statuses a Phase 3 retry treats as the same live candidate.
+# The statuses a locked retry treats as the same live candidate.
 _RETRY_DUPLICATE_STATUSES = IN_FLIGHT | {DownloadStatus.LOCKED}
 
 # Still in the running for a track, so a sibling reaching
@@ -355,7 +355,7 @@ class DownloadRequestRepository:
             self,
             connection: sqlite3.Connection,
     ) -> list[DownloadRequest]:
-        # Roadmap item 66 (Phase 4.3) — mirrors get_superseded() exactly.
+        # Mirrors get_superseded() exactly.
         rows = connection.execute(
             """
             SELECT
@@ -397,24 +397,21 @@ class DownloadRequestRepository:
         downloading/locked/shortlisted/ready_for_review) OR a completed
         row — deliberately excludes failed/superseded/unavailable, the
         three states that genuinely mean "that attempt didn't work, a
-        fresh one is fine." 'unavailable' (item 66 Phase 4.3) is a
-        locked candidate that exhausted its retry budget against ONE
-        specific peer — a later run should be free to search again and
-        find a different peer, not stay permanently blocked by a peer
-        that never had it available.
+        fresh one is fine." 'unavailable' is a locked candidate that
+        exhausted its retry budget against ONE specific peer — a later
+        run should be free to search again and find a different peer,
+        not stay permanently blocked by a peer that never had it
+        available.
 
-        A completed row counts too, by design (roadmap item 56 Phase
-        5.2, a real bug this closes): when only in-progress rows
-        counted, two real, differently-named files landed for the same
-        track (Kamäleon - Quadrat, confirmed in the
-        real production DB) because a completed request wasn't
-        "active," so nothing stopped download_playlist() from
-        re-searching and re-requesting an already-fully-downloaded
-        track. Keyed on track_id alone, deliberately NOT
-        download_dedup.candidate_key — that key includes filename,
-        which is exactly why two differently-named files from two
-        different peers slipped through as "different candidates"
-        before this fix.
+        A completed row counts too, by design: if only in-progress rows
+        counted, a completed request wouldn't be "active," so nothing
+        would stop download_playlist() from re-searching and
+        re-requesting an already-downloaded track — two
+        differently-named files for one track, as happened once in the
+        real DB. Keyed on track_id alone, deliberately NOT
+        download_dedup.candidate_key — that key includes filename, so
+        two differently-named files from two different peers would
+        pass as "different candidates." See HISTORY §56.
 
         Known limitation, not solved here: there is currently no way to
         deliberately re-request a track that already has a completed
@@ -464,14 +461,13 @@ class DownloadRequestRepository:
     ) -> list[DownloadRequest]:
         # Every row for the exact same real candidate (identical
         # track/role/peer/file — see seeker.download_dedup) that's
-        # currently in a live-retry-eligible state. Used by the Phase 3
+        # currently in a live-retry-eligible state. Used by the locked
         # retry loop's dedup-before-retry check
-        # (DownloadService._supersede_stale_duplicates) to find stale
+        # (DownloadPoller._supersede_stale_duplicates) to find stale
         # sibling rows before re-issuing a real request_download for
-        # one of them — confirmed live (2026-08-28): without this,
-        # every duplicate row left over from before download_playlist()
-        # stopped re-requesting an in-progress track got retried
-        # independently, every poll cycle, against the same real peer.
+        # one of them — without it, every duplicate row of one
+        # candidate is retried independently, every poll cycle, against
+        # the same real peer (observed live).
         # Deliberately scoped to queued/downloading/locked, NOT every
         # non-terminal status — shortlisted/ready_for_review rows are
         # a different mechanism with their own supersede path
@@ -631,11 +627,11 @@ class DownloadRequestRepository:
             connection: sqlite3.Connection,
             failure_reason: str | None = None,
     ) -> None:
-        # Used by the Phase 3 locked-retry cycle: a new request_download
-        # attempt against the same username+filename gets a new
-        # transfer_id, whether the retry lands back in 'locked' or moves
-        # on to 'queued'/'downloading' — either way, future status polls
-        # need to target the latest attempt, not the stale one.
+        # Used by the locked-retry cycle: a new request_download attempt
+        # against the same username+filename gets a new transfer_id,
+        # whether the retry lands back in 'locked' or moves on to
+        # 'queued'/'downloading' — either way, future status polls need
+        # to target the latest attempt, not the stale one.
         completed_at = (
             datetime.now(UTC).isoformat()
             if status in STAMPS_COMPLETED_AT
@@ -662,11 +658,10 @@ class DownloadRequestRepository:
             next_retry_at: str | None,
             connection: sqlite3.Connection,
     ) -> None:
-        # Roadmap item 66 (Phase 4.3) — the write side of the bounded
-        # locked-retry loop. Deliberately separate from
-        # update_transfer_id_and_status (called alongside it, not
-        # merged into it): retry bookkeeping is orthogonal to what the
-        # actual attempt's outcome was.
+        # The write side of the bounded locked-retry loop (HISTORY §66).
+        # Deliberately separate from update_transfer_id_and_status
+        # (called alongside it, not merged into it): retry bookkeeping
+        # is orthogonal to what the actual attempt's outcome was.
         connection.execute(
             """
             UPDATE download_requests

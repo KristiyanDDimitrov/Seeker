@@ -43,13 +43,10 @@ class Database:
         # isn't — sqlite3.Connection's own __enter__/__exit__ only
         # manage the transaction (commit on success, rollback on
         # exception); unlike transaction() above, it never closes the
-        # connection. Every initialize() call (once per real
-        # Application() launch, and once per test that builds a fresh
-        # Database) was leaking a real connection, relying on GC to
-        # eventually finalize it — confirmed live via a real
-        # ResourceWarning: unclosed database, found during the UI
-        # polish pass's error-handling audit, not assumed from reading
-        # the diff alone.
+        # connection. Without closing it, every initialize() call (once
+        # per Application() launch, and once per test that builds a
+        # fresh Database) leaks a connection to GC — observed as a real
+        # "ResourceWarning: unclosed database".
         connection = self.connect()
 
         try:
@@ -94,12 +91,10 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "track_matches", "confirmed_at", "TEXT"
     )
-    # Roadmap item 66 (Phase 4.3) — bounds the locked-file retry loop
-    # (items 13/14/25/63). NOT NULL DEFAULT 0 so every pre-existing real
-    # 'locked' row (there are several in production, some untouched
-    # since 2026-08-27/28 — see docs/HISTORY.md item 63) starts its
-    # backoff schedule from attempt 0 on the very next poll, rather than
-    # NULL breaking the `retry_count >= LOCKED_RETRY_MAX_ATTEMPTS` check.
+    # Bounds the locked-file retry loop (HISTORY §63, §66). NOT NULL
+    # DEFAULT 0 so every pre-existing 'locked' row starts its backoff
+    # schedule from attempt 0 on the very next poll, rather than NULL
+    # breaking the `retry_count >= LOCKED_RETRY_MAX_ATTEMPTS` check.
     _add_column_if_missing(
         connection, "download_requests", "retry_count",
         "INTEGER NOT NULL DEFAULT 0",

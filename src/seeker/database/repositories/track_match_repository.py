@@ -46,8 +46,8 @@ class TrackMatchRepository:
         """Stamps confirmed_at and sets match_method='auto' WITHOUT
         touching local_file_id/score/matched_at — a human confirming a
         needs_review candidate keeps the real computed score visible
-        (item 45's precedent: provenance outweighs a sentinel, but a bad
-        pairing must stay visible in the data), it just stops match_all()
+        (provenance outweighs a sentinel, but a bad pairing must stay
+        visible in the data, HISTORY §45), it just stops match_all()
         from recomputing this row on the next run.
         """
         connection.execute(

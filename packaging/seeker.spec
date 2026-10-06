@@ -2,26 +2,25 @@
 """PyInstaller build spec for seeker-ui (the desktop app), one-folder/
 `.app` mode.
 
-De-risked first (see docs/HISTORY.md's packaging entry, roadmap item
-30): librosa/numba/llvmlite/soundfile all freeze cleanly with ZERO
-custom hidden-import/collect-all directives here — `pyinstaller-hooks-
-contrib` (a declared dev dependency) already ships hooks for all four
-that PyInstaller auto-discovers via entry points, confirmed live by
-building a minimal frozen binary that actually calls
-`seeker.audio.analysis.analyze_audio()` against a real WAV and got the exact
-same BPM/key/confidence numbers as the unfrozen run. Don't add
-`--collect-all`-equivalent directives for these back in speculatively —
-the spike confirmed they're not needed and only bloat the build
-(pulling in numba's own test suite, for example).
+librosa/numba/llvmlite/soundfile all freeze cleanly with ZERO custom
+hidden-import/collect-all directives here — `pyinstaller-hooks-contrib`
+(a declared dev dependency) already ships hooks for all four that
+PyInstaller auto-discovers via entry points, confirmed live by building
+a minimal frozen binary that actually calls
+`seeker.audio.analysis.analyze_audio()` against a real WAV and got the
+exact same BPM/key/confidence numbers as the unfrozen run. Don't add
+`--collect-all`-equivalent directives for these speculatively — they are
+not needed and only bloat the build (pulling in numba's own test suite,
+for example). See HISTORY §30.
 
-One-folder (COLLECT), not one-file: verified live, not assumed —
-numba's JIT cache lives in a stable on-disk location and is genuinely
-reused across runs of a one-folder build (a warm second run dropped
-from ~3.5s to ~1.0s wall-clock in the spike). A one-file build
-re-extracts to a fresh temp directory on every launch, so the JIT
-cache never persists — the same spike's one-file build took ~21s cold
-and stayed ~18s warm, 15-20x slower for no benefit to this app (no
-single-file-distribution requirement exists here).
+One-folder (COLLECT), not one-file: verified live, not assumed — numba's
+JIT cache lives in a stable on-disk location and is genuinely reused
+across runs of a one-folder build (a warm second run dropped from ~3.5s
+to ~1.0s wall-clock, measured). A one-file build re-extracts to a fresh
+temp directory on every launch, so the JIT cache never persists — a
+measured one-file build took ~21s cold and stayed ~18s warm, 15-20x
+slower for no benefit to this app (no single-file-distribution
+requirement exists here).
 
 Docker is explicitly NOT bundled — this spec packages the Python/Qt
 app only. The onboarding wizard's existing Docker detection/bring-up
@@ -36,19 +35,18 @@ have). The hook point for a real signing identity is
 built `.app` afterward (`xcrun notarytool` / `stapler`) — left as a
 clear, documented no-op rather than attempted.
 
-**Confirmed live (item 4, packaging polish task): the build is NOT
-fully unsigned even with `codesign_identity=None`.** PyInstaller's own
-`osxutils.sign_binary()` defaults to ad-hoc signing (`codesign -s -`)
-whenever no real identity is given, and applies this to both the
-individual frozen executable (during `EXE`) and the whole `.app`
-bundle, `--deep` (during `BUNDLE`) — verified directly against a real
-build: `codesign -dvvv dist/Seeker.app` shows `flags=0x2(adhoc)` /
-`Signature=adhoc`, and `codesign --verify --deep --strict
-dist/Seeker.app` exits 0. This is real and already happening — no
-extra build step was needed to add it. It does NOT satisfy Gatekeeper
-(`spctl --assess` still reports "rejected", as expected — ad-hoc
-signing isn't notarization), so first-launch-on-another-Mac still needs
-the right-click → Open workaround, which is why `packaging/Read Me
+**Confirmed live: the build is NOT fully unsigned even with
+`codesign_identity=None`.** PyInstaller's own `osxutils.sign_binary()`
+defaults to ad-hoc signing (`codesign -s -`) whenever no real identity
+is given, and applies this to both the individual frozen executable
+(during `EXE`) and the whole `.app` bundle, `--deep` (during `BUNDLE`) —
+verified directly against a real build: `codesign -dvvv dist/Seeker.app`
+shows `flags=0x2(adhoc)` / `Signature=adhoc`, and `codesign --verify
+--deep --strict dist/Seeker.app` exits 0 — no extra build step is needed
+for it (HISTORY §36). It does NOT satisfy Gatekeeper (`spctl --assess`
+still reports "rejected", as expected — ad-hoc signing isn't
+notarization), so first-launch-on-another-Mac still needs the
+right-click → Open workaround, which is why `packaging/Read Me
 First.txt` (bundled into the `.dmg` — see dmg_settings.py) exists.
 """
 
@@ -77,19 +75,18 @@ elif sys.platform == "darwin":
 else:
     EXE_ICON = None
 
-# Bundled non-Python resources needed at runtime, not just at build
-# time — see seeker/soulseek/docker_setup.py::compose_file_path(), which
-# resolves docker-compose.yml via sys._MEIPASS in a frozen build.
-# Roadmap item R7.2 — the menu-bar tray icon needs the SAME treatment:
-# ICONS_DIR above is otherwise only ever read here, at build time, to
-# set EXE()/BUNDLE()'s own icon= (which macOS/Windows apply to the
-# app bundle/executable, not something the running process can read
-# back out) — without this entry, ui/main_window.py's own
-# sys._MEIPASS-gated resolution would find nothing in a real packaged
-# build and fall back to a blank tray icon. Bundled as a whole
-# directory (not a single file, unlike docker-compose.yml above) so
-# both .icns/.ico ship together at "icons/" and resolve with the exact
-# same relative path this repo's own dev-mode tree already has.
+# Bundled non-Python resources needed at runtime, not just at build time
+# — see seeker/soulseek/docker_setup.py::compose_file_path(), which
+# resolves docker-compose.yml via sys._MEIPASS in a frozen build. The
+# menu-bar tray icon needs the SAME treatment: ICONS_DIR above is
+# otherwise only ever read here, at build time, to set EXE()/BUNDLE()'s
+# own icon= (which macOS/Windows apply to the app bundle/executable, not
+# something the running process can read back out) — without this entry,
+# ui/tray.py's own sys._MEIPASS-gated resolution would find nothing in a
+# real packaged build and fall back to a blank tray icon. Bundled as a
+# whole directory (not a single file, unlike docker-compose.yml above)
+# so both .icns/.ico ship together at "icons/" and resolve with the
+# exact same relative path this repo's own dev-mode tree already has.
 datas = [
     (str(PROJECT_ROOT / "docker-compose.yml"), "."),
     (str(ICONS_DIR), "icons"),
@@ -100,12 +97,12 @@ a = Analysis(
     pathex=[str(SRC_DIR)],
     binaries=[],
     datas=datas,
-    # Roadmap item 116 (round 8, §14.3.1) — main_window.py's deferred
-    # `from AppKit import ...` (the Dock-icon-hiding activation-policy
-    # switch) isn't statically visible to PyInstaller's own import
-    # scanner as a top-level import, so it needs to be listed
-    # explicitly or a frozen build would ship without it.
-    # ServiceManagement — same story, round 9 §3.2's login_item.py.
+    # ui/tray.py's deferred `from AppKit import ...` (the
+    # Dock-icon-hiding activation-policy switch) isn't statically
+    # visible to PyInstaller's own import scanner as a top-level
+    # import, so it needs to be listed explicitly or a frozen build
+    # would ship without it. ServiceManagement — same story, for
+    # login_item.py.
     hiddenimports=["AppKit", "Foundation", "objc", "ServiceManagement"],
     hookspath=[],
     hooksconfig={},

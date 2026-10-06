@@ -10,18 +10,17 @@ concurrency:
 
 jobs:
   check:
-    # The only platform Qt UI tests are proven on (packaging, the
-    # stress test, and every "confirmed live" comment in this codebase
-    # are all macOS-specific). Verified 2026-09-08: the full suite,
-    # Qt widget tests included, passes headless under
-    # QT_QPA_PLATFORM=offscreen on a real Mac — no test needs a real
-    # display, so nothing here is deselected.
+    # The only platform Qt UI tests are proven on (packaging, the stress
+    # test, and every "confirmed live" comment in this codebase are all
+    # macOS-specific). The full suite, Qt widget tests included, passes
+    # headless under QT_QPA_PLATFORM=offscreen on a real Mac — no test
+    # needs a real display, so nothing here is deselected.
     #
     # Pinned to a concrete image, not macos-latest, so a runner-image
     # change arrives as a reviewed commit rather than silently under an
-    # unrelated push. macos-latest resolved to macos-26-arm64 on
-    # 2026-09-09 (`gh run view`'s "Runner Image" section). Dependabot
-    # does not update this line; bump it by hand.
+    # unrelated push (`gh run view`'s "Runner Image" section shows what
+    # macos-latest resolves to). Dependabot does not update this line;
+    # bump it by hand.
     runs-on: macos-26
     timeout-minutes: 30
     env:

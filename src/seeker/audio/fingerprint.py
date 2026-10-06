@@ -1,18 +1,18 @@
 """Audio fingerprinting via libchromaprint, for the duplicate/quality
-detector (roadmap item 5). Own, project-owned ctypes binding rather
-than depending on `pyacoustid`'s bundled `chromaprint.py` as-is — see
-CLAUDE.md/docs/HISTORY.md's Phase 0 spike entry for the two real
-reasons why: (1) that binding does a bare `ctypes.CDLL("libchromaprint
-.1.dylib")` with no explicit path, which fails to find a real Homebrew
-install on Apple Silicon (dyld's default fallback search path doesn't
-include `/opt/homebrew/lib`) — confirmed live; (2) it raises at
-*import* time when the library can't be found, which would crash this
-whole app just for existing on a machine without it installed.
-Fingerprinting is an optional feature (same "checked before use, never
-eagerly constructed" precedent as `Application.soulseek_configured` /
-`DownloadService.soulseek`, item 28), so the search happens lazily —
-only `compute_fingerprint()`/`decode_fingerprint()` can raise
-`FingerprintingUnavailableError`; importing this module never can.
+detector. Own, project-owned ctypes binding rather than depending on
+`pyacoustid`'s bundled `chromaprint.py` as-is, for two reasons: (1)
+that binding does a bare `ctypes.CDLL("libchromaprint.1.dylib")` with
+no explicit path, which fails to find a real Homebrew install on Apple
+Silicon (dyld's default fallback search path doesn't include
+`/opt/homebrew/lib`) — confirmed live; (2) it raises at *import* time
+when the library can't be found, which would crash this whole app just
+for existing on a machine without it installed. Fingerprinting is an
+optional feature (same "checked before use, never eagerly constructed"
+precedent as `Application.soulseek_configured` /
+`DownloadService.soulseek`), so the search happens lazily — only
+`compute_fingerprint()`/`decode_fingerprint()` can raise
+`FingerprintingUnavailableError`; importing this module never can. See
+HISTORY §38.
 
 The core `Fingerprinter` ctypes bindings below are adapted from
 pyacoustid's own `chromaprint.py` (Copyright (C) 2011 Lukas Lalinsky,
@@ -56,14 +56,13 @@ _ALGORITHM_DEFAULT = 1
 # file without the overhead of feeding sample-by-sample.
 _CHUNK_SECONDS = 1
 
-# Roadmap item 68 (Phase 8.1) — the fixed format ffmpeg is asked to
-# decode every fallback file to. Chromaprint normalizes internally
-# regardless of the input rate/channel count it's told about (it's not
-# trying to preserve the source audio, just compute a comparable
-# fingerprint) — so this doesn't need to match a file's real native
-# rate to produce a fingerprint that clusters correctly against ones
-# computed via the primary soundfile path. Untuned; 44.1kHz mono is a
-# common, safe default.
+# The fixed format ffmpeg is asked to decode every fallback file to.
+# Chromaprint normalizes internally regardless of the input rate/channel
+# count it's told about (it's not trying to preserve the source audio,
+# just compute a comparable fingerprint) — so this doesn't need to match
+# a file's real native rate to produce a fingerprint that clusters
+# correctly against ones computed via the primary soundfile path.
+# Untuned; 44.1kHz mono is a common, safe default.
 _FFMPEG_DECODE_SAMPLE_RATE = 44_100
 _FFMPEG_DECODE_CHANNELS = 1
 
@@ -75,9 +74,8 @@ class FingerprintingUnavailableError(SeekerError):
 
 class FingerprintError(SeekerError):
     """Raised when a real libchromaprint call itself fails, or when
-    neither the primary soundfile decode nor the ffmpeg fallback (item
-    68, Phase 8.1) could produce any usable audio from a real,
-    non-empty file."""
+    neither the primary soundfile decode nor the ffmpeg fallback could
+    produce any usable audio from a real, non-empty file."""
 
 
 @dataclass
@@ -104,18 +102,17 @@ def _candidate_search_dirs() -> list[Path]:
     # A frozen PyInstaller build's own bundled-resource root — mirrors
     # soulseek/docker_setup.py::compose_template_path()'s already-established
     # sys._MEIPASS pattern. Checked first so a bundled copy always
-    # takes precedence once packaging actually bundles one (not done
-    # as of this module's initial version — see CLAUDE.md item 5/38).
+    # takes precedence if packaging ever bundles one.
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         dirs.append(Path(meipass))
 
     if sys.platform == "darwin":
-        # Homebrew's two real install prefixes. Confirmed live (item
-        # 38's spike) that dyld's own default fallback search path
-        # does NOT include either of these on a real, fully-updated
-        # Homebrew install — a bare ctypes.CDLL(name) call fails
-        # without one of these explicit paths.
+        # Homebrew's two real install prefixes. Confirmed live that
+        # dyld's own default fallback search path does NOT include
+        # either of these on a real, fully-updated Homebrew install —
+        # a bare ctypes.CDLL(name) call fails without one of these
+        # explicit paths (HISTORY §38).
         dirs.append(Path("/opt/homebrew/lib"))  # Apple Silicon
         dirs.append(Path("/usr/local/lib"))  # Intel
 
@@ -280,7 +277,7 @@ class _StreamingFingerprinter:
 
     def feed(self, pcm_bytes: bytes) -> None:
         # 16-bit PCM -> 2 bytes per sample, matching chromaprint's own
-        # real requirement (confirmed live, item 38's spike).
+        # real requirement (confirmed live, HISTORY §38).
         _check(
             self._lib.chromaprint_feed(
                 self._context, pcm_bytes, len(pcm_bytes) // 2,
@@ -351,35 +348,29 @@ def _ffmpeg_available() -> bool:
 
 
 def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
-    # Roadmap item 68 (Phase 8.1) — real, live-verified rescue path for
-    # a real, confirmed soundfile/libsndfile gap: a genuine production
-    # sample showed soundfile failing on real, non-empty, non-corrupt-
-    # looking MP3s with "bad data offset" (libsndfile's MP3 frame-table
-    # parser rejecting files ffmpeg decodes with zero errors) as well as
-    # on genuinely damaged files (a handful of real FLACs/MP3s with mid-
-    # stream frame corruption) where ffmpeg logs decode warnings but
-    # still recovers the large majority of real audio frames — enough
-    # for a usable fingerprint. `librosa` was tried first and ruled
-    # out live: this project's pinned librosa (1.0.0) dropped its old
-    # audioread fallback entirely — `librosa.load` now calls soundfile
-    # directly with no alternate decoder, so it fails identically to
-    # the primary path for every one of these files and would rescue
-    # exactly zero of them. ffmpeg is external and optional (no new
-    # hard dependency, per this item's own scope) — only attempted when
-    # already on PATH.
-    # Real bug caught live building this fallback: a genuinely corrupt
-    # file makes ffmpeg log one "Header missing"/decode-error line PER
-    # bad frame — for a file with sustained corruption, that's easily
-    # tens of thousands of lines. `stderr=subprocess.PIPE` is a
-    # fixed-size OS pipe (64KB on macOS); nothing here was reading it
-    # DURING the stdout-decode loop, so once ffmpeg filled that pipe
-    # writing stderr, it blocked trying to write more — while this
-    # loop was simultaneously blocked reading stdout, which ffmpeg
-    # could never produce more of while stuck on the stderr write.
-    # Classic two-pipe subprocess deadlock, reproduced live against a
-    # real file from the 76-failure set (hung indefinitely). Fixed by
-    # giving stderr a real file instead of a pipe — a file write never
-    # blocks on a reader keeping up.
+    # Rescue path for a confirmed soundfile/libsndfile gap: a genuine
+    # production sample showed soundfile failing on real, non-empty,
+    # non-corrupt-looking MP3s with "bad data offset" (libsndfile's MP3
+    # frame-table parser rejecting files ffmpeg decodes with zero
+    # errors) as well as on genuinely damaged files (a handful of real
+    # FLACs/MP3s with mid-stream frame corruption) where ffmpeg logs
+    # decode warnings but still recovers the large majority of real
+    # audio frames — enough for a usable fingerprint. `librosa` was
+    # tried first and ruled out live: this project's pinned librosa
+    # (1.0.0) dropped its old audioread fallback entirely —
+    # `librosa.load` now calls soundfile directly with no alternate
+    # decoder, so it fails identically to the primary path for every one
+    # of these files and would rescue exactly zero of them. ffmpeg is
+    # external and optional (no new hard dependency) — only attempted
+    # when already on PATH.
+    #
+    # stderr goes to a real file, never `subprocess.PIPE`: a corrupt
+    # file makes ffmpeg log one decode-error line PER bad frame, easily
+    # tens of thousands of lines, and once that fills the fixed-size OS
+    # pipe (64KB on macOS) ffmpeg blocks writing stderr while this loop
+    # blocks reading stdout — a two-pipe deadlock, reproduced live (hung
+    # indefinitely). A file write never blocks on a reader keeping up.
+    # See HISTORY §69.
     with (
             tempfile.TemporaryFile() as stderr_file,
             _StreamingFingerprinter() as fingerprinter,
@@ -446,15 +437,14 @@ def compute_fingerprint(path: str | Path) -> Fingerprint:
     FingerprintingUnavailableError if libchromaprint can't be found, or
     FingerprintError if decoding genuinely fails on every path tried.
 
-    Primary decode is via soundfile (not the fpcalc subprocess path).
-    On ANY soundfile failure, falls back to ffmpeg (roadmap item 68,
-    Phase 8.1) if it's present on PATH — real production files exist
-    that soundfile's libsndfile backend can't open at all but ffmpeg
-    decodes cleanly (or with recoverable warnings; see
-    `_compute_fingerprint_via_ffmpeg`'s own docstring). ffmpeg absent,
-    or itself failing, re-raises the ORIGINAL soundfile error (not the
-    ffmpeg one) when ffmpeg was never attempted, so callers see the
-    same error shape as before this fallback existed.
+    Primary decode is via soundfile (not the fpcalc subprocess path). On
+    ANY soundfile failure, falls back to ffmpeg if it's present on PATH
+    — real production files exist that soundfile's libsndfile backend
+    can't open at all but ffmpeg decodes cleanly (or with recoverable
+    warnings; see `_compute_fingerprint_via_ffmpeg`'s comment).
+    ffmpeg absent, or itself failing, re-raises the ORIGINAL soundfile
+    error (not the ffmpeg one) when ffmpeg was never attempted, so
+    callers see the same error shape as before this fallback existed.
     """
     try:
         return _compute_fingerprint_via_soundfile(path)
@@ -482,11 +472,10 @@ def decode_fingerprint(data: str) -> np.ndarray:
     file against MANY others (DuplicateService's O(n^2) clustering)
     can decode each file's fingerprint once and
     reuse the decoded array across every comparison, rather than
-    re-decoding it on every pairwise call — confirmed live to matter in
-    practice: a real clustering pass over ~3,100 real fingerprinted
-    files was multiple minutes slower and used several GB more memory
-    before this caching was added (item 5's live verification, see
-    docs/HISTORY.md)."""
+    re-decoding it on every pairwise call — measured to matter: a real
+    clustering pass over ~3,100 real fingerprinted files was multiple
+    minutes slower and used several GB more memory without this
+    caching. See HISTORY §39."""
     lib = _get_library()
     encoded = data.encode("ascii")
 
@@ -519,7 +508,7 @@ def decode_fingerprint(data: str) -> np.ndarray:
 # per-subfingerprint Python loop, which matters here: clustering a
 # location's files is an O(n^2) pairwise comparison (see
 # library/duplicate_service.py), and a real fingerprint is ~10,000
-# uint32 values long (confirmed live, item 38's spike).
+# uint32 values long (confirmed live, HISTORY §38).
 _POPCOUNT_TABLE = np.array(
         [i.bit_count() for i in range(256)],
         dtype=np.uint8,
@@ -540,8 +529,8 @@ def similarity_from_decoded(a: np.ndarray, b: np.ndarray) -> float:
     libchromaprint installed, per this project's own established
     testing convention for the X9-Pro-drive-dependent tests.
 
-    Aligned from the start (no offset search) — confirmed live (item
-    38's spike) that this is already sufficient to separate real
+    Aligned from the start (no offset search) — confirmed live
+    (HISTORY §38) that this is already sufficient to separate real
     duplicates (~99.9% similarity, including a real cross-format
     FLAC/MP3 pair) from an unrelated real track pair (~58%) by a wide
     margin. A future revision could add sliding-window offset

@@ -200,10 +200,10 @@ def build_parser() -> argparse.ArgumentParser:
     download_parser.set_defaults(handler=handle_download)
     download_parser.add_argument("playlist_name")
 
-    # Roadmap item 82 (P13.6) — a track that isn't in any Spotify
-    # playlist, reusing the exact same search/ranking/download path as
-    # `download` (DownloadService.search_manual/download_manual) —
-    # never a second copy of that logic.
+    # A track that isn't in any Spotify playlist, reusing the exact
+    # same search/ranking/download path as `download`
+    # (DownloadService.search_manual/download_manual) — never a second
+    # copy of that logic. See HISTORY §82.
     search_parser = subparsers.add_parser(
         "search",
         help=(
@@ -661,7 +661,7 @@ def _confirm_upgrade(application: Application, request_id: int) -> None:
 
 
 def _handle_downloads_review_all(application: Application) -> None:
-    # Roadmap item R3.1/R3.4 — CLI parity for the UI's "Replace all."
+    # CLI parity for the UI's "Replace all."
     # Same explicit-decision service method the UI uses
     # (apply_upgrade_decisions_batch), so the two never drift onto
     # different mutation logic.
@@ -1040,8 +1040,8 @@ def handle_check(
     else:
         # The scope is otherwise ambiguous — every count below is a
         # global total across every synced playlist combined, not just
-        # "whichever playlist I was just looking at." Confirmed live as
-        # a real, easy-to-misread gap (see CLAUDE.md).
+        # "whichever playlist I was just looking at" — easy to misread
+        # without this line.
         print("Across all synced playlists:")
 
     report = application.track_matcher.generate_match_report(playlist_id)

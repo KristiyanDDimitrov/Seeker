@@ -12,14 +12,12 @@ from seeker.files.atomic import rewrite_via_copy
 
 logger = logging.getLogger(__name__)
 
-# Tag-writing helpers for Phase B (writing canonical Spotify metadata onto
-# matched local files). Dispatches on the mutagen object's actual tag type
-# rather than the file extension — confirmed live (mutagen 1.48.1) that
-# WAVE's tag class (`_WaveID3`) is a genuine `ID3` subclass, so a WAV file
-# uses the exact same APIC mechanism as an MP3 and round-trips a real
-# embedded JPEG byte-exact. WAV is therefore NOT excluded from art
-# embedding — it was assumed unsupported before this was checked directly;
-# it isn't. See CLAUDE.md.
+# Tag-writing helpers (writing canonical Spotify metadata onto matched
+# local files). Dispatches on the mutagen object's actual tag type rather
+# than the file extension — confirmed live (mutagen 1.48.1) that WAVE's
+# tag class (`_WaveID3`) is a genuine `ID3` subclass, so a WAV file uses
+# the exact same APIC mechanism as an MP3 and round-trips a real embedded
+# JPEG byte-exact. WAV is therefore NOT excluded from art embedding.
 #
 # `mutagen_file` is typed `Any` throughout, and mypy's disallow_untyped_calls
 # is disabled for this module specifically (see pyproject.toml) — mutagen
@@ -64,13 +62,13 @@ def write_text_tags(
 
 
 def _read_image_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
-    """A minimal, dependency-free JPEG/PNG width/height reader — item
-    56 Phase 4.1's "width/height where derivable" for FLAC Picture
-    fields. No image library is a project dependency (Pillow would be a
-    heavy addition for three metadata fields most players don't even
-    require), and both formats' header layouts are small and stable
-    enough to read directly. Returns None for anything else (or a
-    malformed/truncated header) — best-effort, never raised.
+    """A minimal, dependency-free JPEG/PNG width/height reader, for FLAC
+    Picture fields' "width/height where derivable". No image library is
+    a project dependency (Pillow would be a heavy addition for three
+    metadata fields most players don't even require), and both formats'
+    header layouts are small and stable enough to read directly. Returns
+    None for anything else (or a malformed/truncated header) —
+    best-effort, never raised.
     """
     if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
         # IHDR is always the first chunk: 4-byte length, 4-byte type
@@ -185,12 +183,12 @@ def embed_album_art(
 
 
 def read_embedded_art(mutagen_file: Any) -> bytes | None:
-    """Roadmap item 66 (Phase 5.2) — the read-side counterpart to
-    embed_album_art, same dispatch/type checks, for "Fix missing cover
-    art": deciding whether a file's already-embedded picture (if any)
-    matches the real current album_art_url bytes requires reading it
-    back first. Returns the first/only front-cover picture's raw bytes,
-    or None if the format has no picture at all — never raises.
+    """The read-side counterpart to embed_album_art, same dispatch/type
+    checks, for "Fix missing cover art": deciding whether a file's
+    already-embedded picture (if any) matches the real current
+    album_art_url bytes requires reading it back first. Returns the
+    first/only front-cover picture's raw bytes, or None if the format
+    has no picture at all — never raises.
     """
     if isinstance(mutagen_file.tags, ID3):
         apics = mutagen_file.tags.getall("APIC")

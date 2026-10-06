@@ -94,8 +94,8 @@ class LocalFileRepository:
             connection: sqlite3.Connection,
     ) -> None:
         # Deliberately NOT part of upsert()'s ON CONFLICT DO UPDATE —
-        # same reasoning as update_analysis() above (item 11's pattern):
-        # a routine library scan must never wipe a previously-computed
+        # same reasoning as update_analysis() above (HISTORY §11): a
+        # routine library scan must never wipe a previously-computed
         # fingerprint just because the file's tags/mtime were re-read.
         connection.execute(
             """
@@ -120,12 +120,12 @@ class LocalFileRepository:
             filename: str,
             connection: sqlite3.Connection,
     ) -> None:
-        # Roadmap item 67 (Phase 6.3) — the DB-row side of a rename,
-        # called AFTER the real file move already succeeded on disk
-        # (deliberately the opposite ordering from item 40's delete
-        # rule — see MetadataService.apply_renames' own comment for
-        # why). Keeps the same id, so every track_matches row pointing
-        # at it survives untouched — never delete-and-reinsert.
+        # The DB-row side of a rename, called AFTER the real file move
+        # already succeeded on disk (deliberately the opposite ordering
+        # from the delete rule — see MetadataService.apply_renames' own
+        # comment for why; HISTORY §40, §67). Keeps the same id, so
+        # every track_matches row pointing at it survives untouched —
+        # never delete-and-reinsert.
         connection.execute(
             """
             UPDATE local_files
@@ -170,11 +170,10 @@ class LocalFileRepository:
         )
 
     def exists_any(self, connection: sqlite3.Connection) -> bool:
-        # A cheap existence check (roadmap item 7's Dashboard CTA needs
-        # "has anything ever been scanned," not the actual rows) rather
-        # than loading every local_files row via get_all() just to
-        # check non-emptiness — this project's real production library
-        # has 3,000+ rows (see CLAUDE.md item 39).
+        # A cheap existence check (the Dashboard's next-step guidance
+        # needs "has anything ever been scanned," not the actual rows)
+        # rather than loading every local_files row via get_all() just
+        # to check non-emptiness — a real library has thousands of rows.
         row = connection.execute(
                 "SELECT 1 FROM local_files LIMIT 1"
         ).fetchone()

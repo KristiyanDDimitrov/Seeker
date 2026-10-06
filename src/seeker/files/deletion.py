@@ -11,11 +11,11 @@ def same_file(path_a: Path, path_b: Path) -> bool:
     caller never has to check existence separately first.
 
     Shared by `library/metadata_service.py` (a case-only rename of
-    itself is never a real collision) and
-    `library/duplicate_service.py` (roadmap item 93/R3.3 — a duplicate
-    group spanning two overlapping registered library locations can
-    produce two `local_files` rows for ONE real file; deleting either
-    while "keeping" the other would delete the kept file too).
+    itself is never a real collision) and `library/duplicate_service.py`
+    (a duplicate group spanning two overlapping registered library
+    locations can produce two `local_files` rows for ONE real file;
+    deleting either while "keeping" the other would delete the kept file
+    too).
     """
     if not path_a.exists() or not path_b.exists():
         return False
@@ -34,12 +34,12 @@ def delete_file(path: Path) -> str | None:
     `tag_tracks`/`compute_fingerprints`).
 
     Shared by `ReviewService.apply_upgrade_decision` (deleting a
-    superseded local file after an upgrade replace, roadmap item 26)
-    and `DuplicateService.delete_local_files` (deleting a duplicate
-    group's lower-ranked copies, roadmap item 40) — one real deletion
-    primitive, not two independently-drifting copies, matching this
-    codebase's own "shared thing lives in exactly one place" precedent
-    (`matching.py`, `quality_tier_for_format`, `download_dedup.py`).
+    superseded local file after an upgrade replace) and
+    `DuplicateService.delete_local_files` (deleting a duplicate group's
+    lower-ranked copies) — one real deletion primitive, not two
+    independently-drifting copies, matching this codebase's own "shared
+    thing lives in exactly one place" precedent (`matching.py`,
+    `quality_tier_for_format`, `download_dedup.py`).
     """
     try:
         path.unlink()

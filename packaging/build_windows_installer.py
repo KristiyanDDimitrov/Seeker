@@ -18,8 +18,8 @@ this project's existing precedent of a real external prerequisite
 (Docker, for slskd) that uv-managed dependencies can't install for you.
 
 WRITTEN BUT NOT VERIFIED ON A REAL WINDOWS MACHINE — no such
-environment exists in this project's development session. See
-CLAUDE.md roadmap item 36 and README's packaging section.
+environment exists in this project's development setup. See
+HISTORY §36 and README's packaging section.
 """
 
 import argparse

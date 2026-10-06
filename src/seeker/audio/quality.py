@@ -15,7 +15,7 @@ from seeker.audio.formats import quality_tier_for_format
 # Untuned heuristic threshold, flagged the same as every other constant
 # in this codebase — a sample at or above this fraction of full-scale
 # (16-bit) counts toward clipping_ratio. Revisit once this sees more
-# real library data than item 5's own small real spot-check.
+# real library data than the small spot-check it was set against.
 CLIPPING_AMPLITUDE_THRESHOLD = 0.999
 
 

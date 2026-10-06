@@ -13,8 +13,8 @@
 ; for the one-command chained build (PyInstaller, then ISCC).
 ;
 ; WRITTEN BUT NOT VERIFIED ON A REAL WINDOWS MACHINE — no such
-; environment exists in this project's development session (see
-; CLAUDE.md roadmap item 36 and README's packaging section). Treat this
+; environment exists in this project's development setup (see
+; HISTORY §36 and README's packaging section). Treat this
 ; the same way seeker.spec's own Windows/Linux rows were already
 ; documented: cross-platform by construction, not proven by a real run.
 ;

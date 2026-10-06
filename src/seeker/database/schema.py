@@ -129,38 +129,38 @@ CREATE TABLE IF NOT EXISTS download_requests (
     --   ready_for_review -> completed (a person confirms; declining
     --                       leaves it here, offered again later)
     status TEXT NOT NULL DEFAULT 'queued',
-    -- slskd's own transfer UUID (from the batch-enqueue response), needed
-    -- because its status endpoint is GET .../{username}/{id} — there's no
-    -- documented way to look up a transfer by filename alone. Updated on
-    -- each Phase 3 locked-retry attempt to the new transfer's id. NULL
-    -- for a 'shortlisted' row until it's activated.
+    -- slskd's own transfer UUID (from the batch-enqueue response),
+    -- needed because its status endpoint is GET .../{username}/{id} —
+    -- there's no documented way to look up a transfer by filename
+    -- alone. Updated on each locked-retry attempt to the new transfer's
+    -- id. NULL for a 'shortlisted' row until it's activated.
     transfer_id TEXT,
     -- File size in bytes, required to re-issue request_download on a
-    -- Phase 3 locked retry, or to activate a Phase 4 shortlist entry
-    -- (slskd's enqueue API requires it) — the exact same candidate, not
-    -- a fresh search.
+    -- locked retry, or to activate an upgrade shortlist entry (slskd's
+    -- enqueue API requires it) — the exact same candidate, not a fresh
+    -- search.
     size INTEGER,
-    -- Phase 4: 1 = immediately requested, 2/3 = shortlisted (persisted,
-    -- not yet sent to slskd until a higher rank is rejected). NULL for
+    -- 1 = immediately requested, 2/3 = shortlisted (persisted, not yet
+    -- sent to slskd until a higher rank is rejected). NULL for
     -- role='settled' — ranking only applies to the upgrade shortlist.
     rank INTEGER,
     requested_at TEXT NOT NULL,
     completed_at TEXT,
-    -- Real progress numbers for the future progress-view screen, polled
-    -- from slskd's own bytesTransferred/size fields (see
-    -- soulseek/client.py's TransferStatus, confirmed live 2026-08-28).
-    -- Nullable and unset until the first real progress poll; a
+    -- Real progress numbers for the UI's progress bars, polled from
+    -- slskd's own bytesTransferred/size fields (see
+    -- soulseek/client.py's TransferStatus, confirmed live). Nullable
+    -- and unset until the first real progress poll; a
     -- rejected-before-any-bytes-moved request deliberately leaves these
     -- unset rather than zeroed, since a rejection isn't progress.
     bytes_transferred INTEGER,
     total_bytes INTEGER,
-    -- Roadmap item 66 (Phase 4.3) — bounds the locked-retry loop. NOT
-    -- NULL DEFAULT 0 so a fresh row (and, via the guarded ALTER in
-    -- connection.py, every pre-existing real 'locked' row) starts its
-    -- backoff schedule from attempt 0. next_retry_at NULL means "no
-    -- backoff in effect yet" (a row that's never been locked, or a
-    -- fresh transition into 'locked' this run) — _retry_locked_request
-    -- treats NULL the same as "due now."
+    -- Bounds the locked-retry loop (HISTORY §66). NOT NULL DEFAULT 0 so
+    -- a fresh row (and, via the guarded ALTER in connection.py, every
+    -- pre-existing real 'locked' row) starts its backoff schedule from
+    -- attempt 0. next_retry_at NULL means "no backoff in effect yet" (a
+    -- row that's never been locked, or a fresh transition into 'locked'
+    -- this run) — _retry_locked_request treats NULL the same as "due
+    -- now."
     retry_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
     -- Why a row became 'failed' or 'unavailable', in words a user can
@@ -179,17 +179,16 @@ CREATE TABLE IF NOT EXISTS download_requests (
 -- artist-matching Soulseek candidate that scored 70-89 (plausible, but
 -- not confident enough to auto-download). One row per track (upserted,
 -- not appended) holding only the single best-scoring such candidate.
--- Originally purely informational (surfaced read-only via `seeker
--- check`) — item 26 adds a real confirm action
--- (ReviewService.confirm_review_candidate), which needs `size` to
+-- Surfaced read-only by `seeker check`, and confirmable on the Review
+-- page (ReviewService.confirm_review_candidate), which needs `size` to
 -- call request_download; a size-less legacy row (from before this
 -- column existed) can't be confirmed until download_playlist() next
 -- refreshes it. Cleared by download_playlist() the moment a later run
 -- finds something better (a real auto-tier candidate, settled or
 -- upgrade-shortlisted) for the same track, so a stale row can never
 -- outlive the state it described.
--- runner_up_* (round 8 §12.10): the second-best-scoring candidate in
--- the same needs_review band, when one exists — quality.py's
+-- runner_up_*: the second-best-scoring candidate in the same
+-- needs_review band, when one exists — quality.py's
 -- find_best_needs_review_candidate already compares every candidate's
 -- score to find the winner, so recording the runner-up it was
 -- compared against costs nothing extra to compute, just to keep. NULL
@@ -210,12 +209,12 @@ CREATE TABLE IF NOT EXISTS soulseek_review_candidates (
     FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
 );
 
--- Roadmap item 56 Phase 6.4 — a purpose-built table rather than a
--- generic key/value store: it gives both the running total (SUM across
--- every row) and a per-event history the History page can surface
--- later, whereas a KV blob would only ever hold the running total and
--- rot. One row per real duplicate-group resolution (a real Delete
--- click, confirmed and completed), not per individual file.
+-- A purpose-built table rather than a generic key/value store: it gives
+-- both the running total (SUM across every row) and a per-event history
+-- the History page can surface later, whereas a KV blob would only ever
+-- hold the running total and rot. One row per real duplicate-group
+-- resolution (a real Delete click, confirmed and completed), not per
+-- individual file.
 CREATE TABLE IF NOT EXISTS duplicate_cleanups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     occurred_at TEXT NOT NULL,

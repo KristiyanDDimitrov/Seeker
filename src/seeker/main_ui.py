@@ -20,8 +20,8 @@ from seeker.ui.wizard import OnboardingWizard
 
 
 def _configure_logging() -> None:
-    # The GUI has no console a launched-from-Finder .app can write to
-    # (§7.2.1) — a real log file is the only support story that works.
+    # The GUI has no console a launched-from-Finder .app can write to —
+    # a real log file is the only support story that works.
     # Same "seeker" logger tree as main.py's CLI StreamHandler, so
     # every service's logger.*() call reaches whichever of the two is
     # actually configured, with no per-call special-casing.
@@ -77,23 +77,22 @@ def main() -> None:
     # Before any window is constructed — apply_theme() sets Fusion
     # (predictable QSS rendering on both macOS and Windows) plus the
     # palette/stylesheet every window relies on, resolved from the
-    # user's persisted theme_mode (roadmap item C5; "system" default).
+    # user's persisted theme_mode ("system" default).
     apply_theme(qt_app, application.theme_mode)
 
     window: QMainWindow
-    # Round 9 §3.2 — "start hidden in the menu bar." Set below only on
-    # the onboarding-complete path; the wizard-first-run path always
-    # shows (see its own branch).
+    # "Start hidden in the menu bar." Set below only on the
+    # onboarding-complete path; the wizard-first-run path always shows
+    # (see its own branch).
     started_hidden = False
 
     if application.onboarding_complete:
-        # Roadmap item R7.1 — set only once a real MainWindow is about
-        # to exist, never while only the onboarding wizard is up: with
-        # no completed setup yet, closing the wizard quitting the whole
-        # app is the correct (and previously the only) behavior — a
-        # headless app left running with no window and no tray would be
-        # a real regression of its own if this were set unconditionally
-        # at the top of main().
+        # Set only once a real MainWindow is about to exist, never while
+        # only the onboarding wizard is up: with no completed setup yet,
+        # closing the wizard quitting the whole app is the correct
+        # behavior — a headless app left running with no window and no
+        # tray would be a defect of its own if this were set
+        # unconditionally at the top of main().
         qt_app.setQuitOnLastWindowClosed(False)
         window = MainWindow(application)
         qt_app.aboutToQuit.connect(window.cleanup_before_quit)
@@ -125,11 +124,11 @@ def main() -> None:
         window = OnboardingWizard(application, on_complete=show_dashboard)
 
     if not started_hidden:
-        # Round 10 §5 — a relaunch honors the same "came back filled or
-        # windowed, never fullscreen" decision a live tray reopen does;
-        # MainWindow.show_restored() reads the flag its lifecycle already
-        # loaded from settings. The wizard-first-run path has no such
-        # state at all, so it keeps the plain show().
+        # A relaunch honors the same "came back filled or windowed,
+        # never fullscreen" decision a live tray reopen does;
+        # MainWindow.show_restored() reads the flag its lifecycle
+        # already loaded from settings. The wizard-first-run path has no
+        # such state at all, so it keeps the plain show().
         if isinstance(window, MainWindow):
             window.show_restored()
         else:

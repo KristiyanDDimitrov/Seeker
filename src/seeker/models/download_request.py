@@ -68,7 +68,7 @@ class DownloadRequest:
     completed_at: str | None = None
     bytes_transferred: int | None = None
     total_bytes: int | None = None
-    # Roadmap item 66 (Phase 4.3) — bounds the locked-retry loop.
+    # Bounds the locked-retry loop (HISTORY §66).
     retry_count: int = 0
     next_retry_at: str | None = None
     failure_reason: str | None = None

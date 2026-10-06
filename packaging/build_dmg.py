@@ -25,12 +25,11 @@ BUILD_INFO_PATH = PROJECT_ROOT / "src" / "seeker" / "_build_info_generated.py"
 
 
 def _write_build_info() -> None:
-    """Roadmap item 81 (0.1), split in the post-implementation review
-    (R1) — writes this build's real identity to a gitignored generated
+    """Writes this build's real identity to a gitignored generated
     module, so two builds made hours apart from the same source tree
     stop being indistinguishable from inside the running app. The
-    tracked `_build_info.py` fallback is never touched by this
-    function — see .gitignore's own comment on this module.
+    tracked `_build_info.py` fallback is never touched by this function
+    — see .gitignore's own comment on this module (HISTORY §81, §83).
     """
     git_sha = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"],

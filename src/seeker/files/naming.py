@@ -2,21 +2,19 @@
 what the file's own tags say rather than whatever a SoulSeek peer named
 it.
 
-Roadmap item 67 (Phase 6.1) — a pure function, no I/O, no Qt, no DB
-access, so it's directly testable and can't grow a second copy the way
-matching.py's own consolidation history (see CLAUDE.md) already
-documents happening once for artist/title matching. Composes with
+A pure function, no I/O, no Qt, no DB access, so it's directly
+testable and stays the one copy of the naming rule. Composes with
 files/sanitize.py's shared character-cleaning logic rather than
-duplicating it.
+duplicating it. See HISTORY §67.
 """
 
 import re
 
 from seeker.files.sanitize import clean_path_component
 
-# Convention, decided (roadmap item 67): "{artists} - {title}.{ext}".
-# artists is every Spotify artist, in Spotify's own credited order,
-# joined with ", " — Track.artist already holds exactly this (item 9).
+# Convention: "{artists} - {title}.{ext}". artists is every Spotify
+# artist, in Spotify's own credited order, joined with ", " —
+# Track.artist already holds exactly this (HISTORY §9).
 # title is Spotify's title verbatim, which already carries "(feat. X)"
 # when Spotify credits it that way.
 
@@ -32,9 +30,8 @@ _FEAT_CLAUSE_PATTERN = re.compile(
 # technically UTF-16 code units, not UTF-8 bytes — untested against a
 # real NTFS volume, a disclosed gap, not assumed correct). UTF-8 bytes,
 # not characters: this library's own accented artist/track names (René
-# Amesz, Mangueleña, ...) make that difference real, not theoretical —
-# see docs/HISTORY.md item 39's own 0-byte-file investigation for two
-# real examples already in this exact library.
+# Amesz, Mangueleña, ...) make that difference real, not theoretical
+# (HISTORY §39).
 MAX_FILENAME_BYTES = 255
 
 
@@ -59,17 +56,17 @@ def build_track_filename(
     if not artist_list:
         return None
 
-    # feat-dedupe heuristic (roadmap item 67): if an artist beyond the
-    # first is already named inside the title's own "(feat. X)" clause,
-    # drop it from the artist prefix — avoids "A, B - Title (feat. B)".
-    # Always keeps the first artist regardless. Real example from this
-    # library: Spotify credits "A-Cray, Zigi SC" as the artist for
-    # "Bit Perfect (Original Mix)" with no feat clause at all (nothing
-    # to dedupe there); a track that DOES carry one, e.g. artists
-    # "Alex Hoing, Sebastian Reza, Bluckther" with a hypothetical title
-    # "La Mangueleña (feat. Bluckther)", would drop "Bluckther" from the
-    # prefix, producing "Alex Hoing, Sebastian Reza - La Mangueleña
-    # (feat. Bluckther).mp3" instead of repeating the name twice.
+    # feat-dedupe heuristic: if an artist beyond the first is already
+    # named inside the title's own "(feat. X)" clause, drop it from the
+    # artist prefix — avoids "A, B - Title (feat. B)". Always keeps the
+    # first artist regardless. Real example from this library: Spotify
+    # credits "A-Cray, Zigi SC" as the artist for "Bit Perfect (Original
+    # Mix)" with no feat clause at all (nothing to dedupe there); a
+    # track that DOES carry one, e.g. artists "Alex Hoing, Sebastian
+    # Reza, Bluckther" with a hypothetical title "La Mangueleña (feat.
+    # Bluckther)", would drop "Bluckther" from the prefix, producing
+    # "Alex Hoing, Sebastian Reza - La Mangueleña (feat. Bluckther).mp3"
+    # instead of repeating the name twice.
     feat_match = _FEAT_CLAUSE_PATTERN.search(title)
     feat_text = feat_match.group(1).lower() if feat_match else ""
 
