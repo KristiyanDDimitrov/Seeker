@@ -9,6 +9,8 @@ enforced by code, so a future page must follow this by hand):
 - Every action row: `QHBoxLayout`, primary action first (left),
   secondaries after, `addStretch()` at the end. Never centred.
   Destructive actions go after the stretch, right-aligned.
+  `action_row()` builds one; a button never sits alone in a vertical
+  or form layout, where it would stretch to the full width.
 
 Accent discipline: ACCENT is for the active nav item, exactly one
 primary button per screen, focus rings, progress fill, table
@@ -354,6 +356,20 @@ def make_card(inner: QWidget) -> QFrame:
     inner.setObjectName("cardInner")
     layout.addWidget(inner)
     return frame
+
+
+def action_row(*widgets: QWidget) -> QHBoxLayout:
+    """A row of buttons at their size hint, left-aligned: `widgets`
+    in order, then a stretch that takes the leftover width. A button
+    added straight to a vertical or form layout stretches to the full
+    width instead. A layout that wants a full-width primary sets the
+    button's `fullWidth` property, which the button-sizing sweep
+    honours."""
+    row = QHBoxLayout()
+    for widget in widgets:
+        row.addWidget(widget)
+    row.addStretch()
+    return row
 
 
 def cell_widget(*widgets: QWidget) -> QWidget:

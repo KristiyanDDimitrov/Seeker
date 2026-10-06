@@ -32,7 +32,7 @@ from seeker.soulseek.docker_setup import (
     detect_docker_state,
 )
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
-from seeker.ui import help_text
+from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
@@ -134,7 +134,7 @@ class OnboardingWizard(QMainWindow):
                 "https://developer.spotify.com/dashboard"
             )
         )
-        layout.addWidget(dashboard_button)
+        layout.addLayout(theme.action_row(dashboard_button))
 
         redirect_row = QHBoxLayout()
         redirect_row.addWidget(
@@ -144,6 +144,7 @@ class OnboardingWizard(QMainWindow):
         copy_button.setToolTip(help_text.TOOLTIP_COPY_REDIRECT_URI)
         copy_button.clicked.connect(self._copy_redirect_uri)
         redirect_row.addWidget(copy_button)
+        redirect_row.addStretch()
         layout.addLayout(redirect_row)
         layout.addWidget(PlainLabel(
             "Add this exact Redirect URI to your Spotify app's "
@@ -174,7 +175,7 @@ class OnboardingWizard(QMainWindow):
         self.connect_button.clicked.connect(
             self._on_connect_spotify_clicked
         )
-        layout.addWidget(self.connect_button)
+        layout.addLayout(theme.action_row(self.connect_button))
 
         self.spotify_status_label = PlainLabel("")
         layout.addWidget(self.spotify_status_label)
@@ -237,7 +238,7 @@ class OnboardingWizard(QMainWindow):
         choose_button.clicked.connect(
             self._on_choose_library_folder_clicked
         )
-        layout.addWidget(choose_button)
+        layout.addLayout(theme.action_row(choose_button))
 
         # Set up a real default destination right here, so a first-time
         # user can never reach the "no destination configured" dead end
@@ -399,7 +400,7 @@ class OnboardingWizard(QMainWindow):
         self.bring_up_button = QPushButton("Set up SoulSeek")
         self.bring_up_button.setToolTip(help_text.TOOLTIP_BRING_UP_SOULSEEK)
         self.bring_up_button.clicked.connect(self._on_bring_up_clicked)
-        layout.addWidget(self.bring_up_button)
+        layout.addLayout(theme.action_row(self.bring_up_button))
 
         self.soulseek_progress = QProgressBar()
         self.soulseek_progress.setRange(0, 0)
@@ -412,7 +413,7 @@ class OnboardingWizard(QMainWindow):
         skip_button = QPushButton("Set up later")
         skip_button.setToolTip(help_text.TOOLTIP_SKIP_SOULSEEK)
         skip_button.clicked.connect(self._on_skip_soulseek_clicked)
-        layout.addWidget(skip_button)
+        layout.addLayout(theme.action_row(skip_button))
 
         layout.addStretch()
         return page
@@ -703,7 +704,7 @@ class OnboardingWizard(QMainWindow):
             help_text.DONE_PAGE_CONTINUE_BUTTON_TEXT
         )
         self.continue_button.clicked.connect(self._finish)
-        layout.addWidget(self.continue_button)
+        layout.addLayout(theme.action_row(self.continue_button))
 
         return page
 

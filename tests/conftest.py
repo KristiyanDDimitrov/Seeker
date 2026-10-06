@@ -1,4 +1,7 @@
 import functools
+import importlib.util
+import sys
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
@@ -117,3 +120,24 @@ def _force_dev_build_identity(monkeypatch):
     monkeypatch.setattr("seeker._build_info.GIT_SHA", "dev")
     monkeypatch.setattr("seeker._build_info.GIT_DESCRIBE", "dev")
     monkeypatch.setattr("seeker._build_info.BUILT_AT", "dev")
+
+
+_SCREENSHOTS_TOOL = (
+    Path(__file__).resolve().parent.parent / "tools" / "screenshots.py"
+)
+
+
+@pytest.fixture(scope="module")
+def screenshots():
+    """`tools/screenshots.py` as a module: its demo dataset and the
+    steps that reach every screen."""
+    spec = importlib.util.spec_from_file_location(
+        "screenshots", _SCREENSHOTS_TOOL,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["screenshots"] = module
+    spec.loader.exec_module(module)
+    yield module
+    del sys.modules["screenshots"]

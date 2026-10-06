@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -67,6 +68,16 @@ SETTINGS_TAB_THRESHOLDS = "Thresholds"
 _LOCATIONS_COLUMNS = theme.ColumnLayout(stretch=(1,), fit_content=(0, 2), actions=3)
 
 
+def _scrollable(tab: QWidget) -> QScrollArea:
+    """`tab` in a frameless scroll area, so a tab taller than the
+    window scrolls instead of squeezing its rows below their size."""
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(True)
+    scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll_area.setWidget(tab)
+    return scroll_area
+
+
 class SettingsPage(QWidget):
     """An in-window Settings page, not a separate top-level window: in
     fullscreen, a second window reads as a dead end with no way back to
@@ -112,12 +123,21 @@ class SettingsPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_locations_tab(), SETTINGS_TAB_LOCATIONS)
         self.tabs.addTab(
-            self._build_destinations_tab(), SETTINGS_TAB_DESTINATIONS,
+            _scrollable(self._build_locations_tab()), SETTINGS_TAB_LOCATIONS,
         )
-        self.tabs.addTab(self._build_connection_tab(), SETTINGS_TAB_CONNECTION)
-        self.tabs.addTab(self._build_thresholds_tab(), SETTINGS_TAB_THRESHOLDS)
+        self.tabs.addTab(
+            _scrollable(self._build_destinations_tab()),
+            SETTINGS_TAB_DESTINATIONS,
+        )
+        self.tabs.addTab(
+            _scrollable(self._build_connection_tab()),
+            SETTINGS_TAB_CONNECTION,
+        )
+        self.tabs.addTab(
+            _scrollable(self._build_thresholds_tab()),
+            SETTINGS_TAB_THRESHOLDS,
+        )
         layout.addWidget(self.tabs)
 
         about_row = QHBoxLayout()
@@ -491,7 +511,7 @@ class SettingsPage(QWidget):
         self.save_destination_button.clicked.connect(
             self._on_save_destination_clicked
         )
-        right.addWidget(self.save_destination_button)
+        right.addLayout(theme.action_row(self.save_destination_button))
 
         self.destinations_status_label = PlainLabel("")
         right.addWidget(self.destinations_status_label)
@@ -724,7 +744,9 @@ class SettingsPage(QWidget):
         self.reauthorize_spotify_button.clicked.connect(
             self._on_reauthorize_spotify_clicked
         )
-        spotify_form.addRow("", self.reauthorize_spotify_button)
+        spotify_form.addRow(
+            "", theme.action_row(self.reauthorize_spotify_button),
+        )
 
         self.spotify_status_label = PlainLabel("")
         spotify_form.addRow("", self.spotify_status_label)
@@ -789,7 +811,9 @@ class SettingsPage(QWidget):
         self.test_connection_button.clicked.connect(
             self._on_test_connection_clicked
         )
-        soulseek_form.addRow("", self.test_connection_button)
+        soulseek_form.addRow(
+            "", theme.action_row(self.test_connection_button),
+        )
 
         self.test_connection_status_label = PlainLabel("")
         soulseek_form.addRow("", self.test_connection_status_label)
@@ -839,7 +863,9 @@ class SettingsPage(QWidget):
         self.update_credentials_button.clicked.connect(
             self._on_update_credentials_clicked
         )
-        soulseek_form.addRow("", self.update_credentials_button)
+        soulseek_form.addRow(
+            "", theme.action_row(self.update_credentials_button),
+        )
 
         self.update_credentials_status_label = PlainLabel("")
         soulseek_form.addRow("", self.update_credentials_status_label)
@@ -1247,7 +1273,7 @@ class SettingsPage(QWidget):
         self.save_thresholds_button.clicked.connect(
             self._on_save_thresholds_clicked
         )
-        layout.addWidget(self.save_thresholds_button)
+        layout.addLayout(theme.action_row(self.save_thresholds_button))
 
         self.thresholds_status_label = PlainLabel("")
         layout.addWidget(self.thresholds_status_label)

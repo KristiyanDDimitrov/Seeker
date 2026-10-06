@@ -55,6 +55,7 @@ def build_support_links_row() -> QHBoxLayout:
             lambda _=False, url=url: webbrowser.open(url)
         )
         row.addWidget(button)
+    row.addStretch()
     return row
 
 

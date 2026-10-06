@@ -93,7 +93,7 @@ class TagResultPanel(QWidget):
         self.details_toggle.setFlat(True)
         self.details_toggle.toggled.connect(self._on_toggle)
         self.details_toggle.hide()
-        layout.addWidget(self.details_toggle)
+        layout.addLayout(theme.action_row(self.details_toggle))
 
         self.details_list = QListWidget()
         self.details_list.setMaximumHeight(160)

@@ -1,27 +1,9 @@
 """`tools/screenshots.py` runs end to end, so a UI change that breaks
 the harness fails here rather than at the next README refresh."""
-import importlib.util
-import sys
-from pathlib import Path
-
 import pytest
 from PySide6.QtGui import QImage
 
 from seeker.ui import theme
-
-_TOOL = Path(__file__).resolve().parent.parent / "tools" / "screenshots.py"
-
-
-@pytest.fixture(scope="module")
-def screenshots():
-    spec = importlib.util.spec_from_file_location("screenshots", _TOOL)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["screenshots"] = module
-    spec.loader.exec_module(module)
-    yield module
-    del sys.modules["screenshots"]
 
 
 @pytest.fixture

@@ -153,6 +153,7 @@ class DuplicatesPage(QWidget):
             self._on_find_duplicates_clicked
         )
         controls.addWidget(self.find_duplicates_button)
+        controls.addStretch()
 
         layout.addLayout(controls)
 
