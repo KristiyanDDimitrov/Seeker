@@ -61,7 +61,7 @@ explicit yes.
 | ☑ S23 | Test gaps | §23 | ~120 K | After §23.1 (`metadata.py`) |
 | **Phase H — Hygiene** | | | | |
 | ☑ S24 | Comment and config hygiene: core (part 1, services: HISTORY §168; part 2, the rest: HISTORY §169) | §24 | ~130 K | After the services half |
-| ☐ S25 | Comment hygiene: `ui/` | §25 | ~130 K | After `main_window.py` and `theme.py` |
+| ☑ S25 | Comment hygiene: `ui/` (HISTORY §170) | §25 | ~130 K | After `main_window.py` and `theme.py` |
 | **Phase I — Nested locations** | | | | |
 | ☐ S26 | Guard nested locations; guided cleanup | §26 | ~120 K | After §26.2 |
 | **Phase J — UI consistency** | | | | |

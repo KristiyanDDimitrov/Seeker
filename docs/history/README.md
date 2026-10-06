@@ -252,3 +252,4 @@ under their entry and live in the same file, after it.
 - §167 — Round 11 S23 (§23): test gaps (tags, CLI, entry points, splitter, upload ETA); FLAC keys also in `INITIALKEY`; a tag save that outgrows the padding goes through a copy; CI floor 92 % → [151-180.md#167](151-180.md#167)
 - §168 — Round 11 S24 part 1 (§24, services half): comment hygiene in the service layer; history references outside `ui/` 250 → 72 (split point; part 2 is models, database, audio, files, CLI, config files) → [151-180.md#168](151-180.md#168)
 - §169 — Round 11 S24 part 2 (§24, the rest): comment hygiene in models, database, audio, files, CLI, entry points and config files; history references outside `ui/` 72 → 0; no history in `--help` → [151-180.md#169](151-180.md#169)
+- §170 — Round 11 S25 (§25): comment hygiene in `ui/`; history references in `src/` that are not `HISTORY §N` pointers 499 → 0; no history in the Scan tooltip → [151-180.md#170](151-180.md#170)

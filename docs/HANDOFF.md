@@ -10,65 +10,60 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S24 close-out commit (HISTORY §169, this handoff, the
+- **HEAD:** the S25 close-out commit (HISTORY §170, this handoff, the
   plan row). Tree clean apart from the untracked `Claude outputs/`.
-- **Local** (at `e003f92`, X9 Pro not mounted): pytest `1654 passed,
+- **Local** (at `94ac488`, X9 Pro not mounted): pytest `1655 passed,
   29 skipped`; `mypy --strict src/` clean, 127 files; `ruff check src
   tests` 0.
-- **CI:** run `37484932869` (at `e60a71d`): **success**, `1654
-  passed, 29 skipped`, coverage 94.09 % (floor 92 %).
+- **CI:** see section 3's last line for the run id at the close-out.
 
 ## 2. Where we are
 
-S1–S24 ticked. **Next: S25**, comment hygiene in `src/seeker/ui/`
-(648 A.10 matches; split point after `main_window.py` and
-`theme.py`).
+S1–S25 ticked. **Next: S26**, guard nested locations and guided
+cleanup (§26; split point after §26.2). It migrates data: rehearse on
+a copy of the real DB (§0.7) and ask before anything destructive at
+scale (memory: destructive-test scope).
 
-## 3. Session report (S24 part 2)
+## 3. Session report (S25)
 
-Evidence, with before/after counts, is in HISTORY §169.
-- `95369e0` §24 the rest: 25 files' comments (core modules, config
-  and packaging files); history references outside `ui/` that are
-  not `HISTORY §N` pointers 72 → 0. AST check: no code change.
-- `e003f92` §24: two `--help` strings printed roadmap item numbers;
-  new sweep test `test_no_help_text_carries_development_history`
+Evidence, with before/after counts, is in HISTORY §170.
+- `e9aec6c` §25 split point: `main_window.py` and `theme.py`
+  comments, docstrings and QSS comments.
+- `51d384e` §25 behaviour: the Scan tooltip said "roadmap item R1";
+  new `test_no_help_text_constant_carries_development_history`
   (failed on HEAD, passes now).
+- `94ac488` §25 the rest of `ui/` (27 files). History references in
+  `src/` that are not `HISTORY §N` pointers: 0 (`ui/` 499 → 0). AST
+  check (docstrings blanked, QSS comments stripped): no code change.
 
 ## 4. Key context
 
-- **Old "item N" numbers are not always HISTORY §N.** Mappings found
-  so far: item 5/38 → §38–§40; item 66's status split → §56, its
-  bounded retry → §66; item 68 (ffmpeg) → §69; item 77/P8 → §78;
-  item 81 → §81, §83. Check `docs/history/README.md` (or `awk` the
-  entry for a keyword) before writing a pointer; drop it when unsure.
-- **Keep `HISTORY` and `§N` on one line** — a wrap between them
-  counts as a leftover.
-- **Count used:** `P='(HISTORY §[0-9]+((, | and |/)§[0-9]+)*)|<A.10
-  pattern>'; grep -rhoE "$P" src/seeker/ui | grep -vc '^HISTORY §'`.
-- **Proving "no code change":** blank every docstring, compare
-  `ast.dump` at HEAD and in the tree (~25 lines; HISTORY §169).
-- **Rewrapping pitfalls:** a "same comment prefix" paragraph joiner
-  merges paragraphs with no blank comment line between them and
-  turns a line-final hyphen into "mid- stream"; partial-line edits
-  leave overlong lines (ruff E501 finds them). Grep the diff after.
-- **User-facing strings are code, not comments:** a history leak in
-  `--help`, a label or a tooltip is its own behaviour commit with a
-  failing test first (as `e003f92`). Expect the same in `ui/`
-  (`help_text.py` has 20 matches).
-- Carried: radon not in the env. Never touch slskd or real data. zsh
-  does not word-split `$var`; BSD `sed` lacks `\b`. CI runs
-  offscreen (800×800); reproduce CI-only UI failures with
-  `QT_QPA_PLATFORM=offscreen` first.
+- **Phase H is done:** the round's exit criterion "`grep -rcE
+  "Roadmap item|round [0-9]+|§[0-9]"` over `src/` reports 0 outside
+  `HISTORY §N` pointers" holds now. New comments must keep it (§0.9).
+- **QSS comments are string data.** theme.py's `/* … */` comments sit
+  inside the stylesheet f-strings, so an AST "no code change" check
+  must strip them; the stylesheet text shrinks, nothing else.
+- **Old labels map unevenly to entries;** §170 lists every mapping
+  used (C5 → §107, R7 → §90, round 9 §7.1 → §133, …). `§97` is not
+  in the index.
+- **Rewrap pitfalls (added to §169's):** join `/`-ended lines with no
+  space; never split a dotted name (`QApplication.setStyleSheet()`)
+  or `WA_DeleteOnClose`; check paragraphs did not merge.
+- Carried: radon not in the env; never touch slskd or real data;
+  zsh does not word-split `$var`; reproduce CI-only UI failures with
+  `QT_QPA_PLATFORM=offscreen` (800×800) first.
 
 ## 5. Decisions made
 
-- **Platform observations stay in comments** (working agreement 4
-  outranks §24's "delete confirmed live" rule); only their dates go.
-- **Comments naming moved code were corrected in the same pass**
-  (`DownloadPoller`, `settle_target`, `ui/tray.py`): a stale name is
-  the same kind of rot as a stale date.
-- **The A.10 count is the measure**, not tech-debt-tracker (run:
-  4,451 → 4,443 items), which has no category for this debt.
+- **`pr-review-expert` not run for S25:** the comment commits are
+  proven code-identical by the AST check, and the one behaviour
+  commit is a one-string change with its own sweep test. Recorded as
+  a divergence from the plan's skills table.
+- **Platform observations stay in comments** (working agreement 4);
+  their dates and round labels went, "confirmed live" stayed.
+- **Unmappable labels were dropped, not guessed** (round 8 §12.x,
+  round 9 §3.1, item 56/62/64/65 phases).
 
 ## 6. Blockers
 
@@ -102,7 +97,8 @@ quit with a download running, "start hidden". **New for S23:** Tag a
 FLAC and check its key appears in Rekordbox, Traktor and Serato
 (the field choice rests on TagLib and Mixxx; UNVERIFIED for those
 three, whose docs never name the field); Tag a file with no cover
-yet on the X9 Pro (the copy path on exFAT).
+yet on the X9 Pro (the copy path on exFAT). **New for S25:** the
+Scan button's tooltip ends at the format list.
 
 ## 9. Open questions
 
