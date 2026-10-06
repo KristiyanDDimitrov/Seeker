@@ -10,72 +10,64 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S23 close-out commit (HISTORY §167, this handoff, the
-  plan tick, CLAUDE.md). Tree clean apart from the untracked
+- **HEAD:** the S24 part-1 close-out commit (HISTORY §168, this
+  handoff, the plan row). Tree clean apart from the untracked
   `Claude outputs/`.
-- **Local pytest** (2026-10-01, at `d31e132`): `1681 passed, 1
-  skipped`, no warnings.
+- **Local pytest** (2026-10-06, at `2fe4768`): `1653 passed, 29
+  skipped` — the X9 Pro was not mounted, so its 28 tests skipped as
+  on CI (with it mounted the count is `1681 passed, 1 skipped`).
 - **`mypy --strict src/`:** clean, 127 files. **`ruff check src
   tests`:** 0 findings.
-- **Coverage:** 93.79 % branch, measured as CI runs (X9 Pro tests
-  deselected). CI floor now 92 %.
-- **CI:** run `36843176493` (close-out) failed one test, CI-only
-  (offscreen screen size, see §4); coverage there 94.10 %. Fixed in
-  `791fb6c`. Run `36843985049` (at `ea0ff01`): **success**, `1653
-  passed, 29 skipped`, coverage 94.12 % (floor 92 %).
+- **CI:** see §3's last line (the run for this push).
 
 ## 2. Where we are
 
-S1–S23 ticked. **Next: S24 — comment and config hygiene: core** (§24;
-split point after the services half).
+S1–S23 ticked. **S24 stopped at its split point** (services half
+done; the session passed the 150 K ceiling at ~200 K). **Next: S24
+part 2**, the rest of §24 (see §7), then S25.
 
-## 3. Session report (S23)
+## 3. Session report (S24 part 1)
 
-Evidence for every line, with before/after tables, is in HISTORY §167.
-- `39392b8`, `9582a8f` §23.1: generated-file tag tests plus
-  `tests/fixtures/silent.m4a`; `tags.py` 100 % on CI.
-- `d4d084d` §23.2 CLI (96 %); `d379add` §23.3 entry points (100 %);
-  `6ab9307` §23.4 Review splitter round trip.
-- `cf8bfd1` §23.6: FLAC key written to `INITIALKEY` and `KEY`.
-- `8f73b4d` §23.6: a tag save that outgrows the padding goes through
-  `files.atomic.rewrite_via_copy`.
-- `9523d38` §18.6 leftovers wait on completion; `9a2b873`
-  `UploadEtaTracker` tests (55 → 100 %).
-- `d31e132` §23.5: `--cov-fail-under` 89 → 92.
+Evidence, with the before/after counts, is in HISTORY §168.
+- `2fe4768` §24 services half: 21 files' comments and docstrings;
+  history references outside `ui/` that are not `HISTORY §N`
+  pointers 250 → 72; pointers 66 → 106. AST check: no code change.
+
 
 ## 4. Key context
 
-- **mutagen grows a tag by moving the audio in place** (`insert_bytes`
-  → `move_bytes`, same inode). A simulated crash corrupted MP3, FLAC
-  and faststart M4A; WAV, AIFF and `moov`-last M4A keep tags at the
-  end. mutagen's `padding=` callback runs before any write in all six
-  layouts, which is how `save_tags` decides (now in CLAUDE.md).
-- **The first save of an untagged file is a resizing save** (padding
-  −39 to −84 bytes), so it takes the copy path, as does the first
-  cover embed. Later text/analysis re-saves stay in place.
-- **Local pytest uses Cocoa, CI offscreen (800×800 screen).**
-  Reproduce a CI-only UI failure with `QT_QPA_PLATFORM=offscreen`
-  first (now in CLAUDE.md). The open focus-search CI flake may be the
-  same class; untested.
-- **CI-equivalent coverage:** `pytest -p no_x9` with a 7-line
-  `pytest_collection_modifyitems` plugin that deselects items whose
-  `skipif` reason mentions x9-pro (§167). Local runs with the drive
-  mounted overstate CI by up to a few points per module.
+- **Old "item N" numbers are not always HISTORY §N.** The duplicate
+  detector's "item 5" is §38–§40; "item 77/P8" is §78; "item 62" is
+  §56's Phase 7 plus §62. Check `docs/history/README.md` before
+  writing a pointer; drop the reference when unsure.
+- **Keep `HISTORY` and `§N` on one line.** The count treats a `§N`
+  not preceded by `HISTORY ` (or in a list like `HISTORY §63, §66`)
+  as a leftover, and a wrap between them makes a false leftover.
+- **Count used** (A.10's pattern, then pointers excluded):
+  `grep -rhoE "(HISTORY §[0-9]+((, | and |/)§[0-9]+)*)|<A.10 pattern>"
+  src/ --exclude-dir=ui | grep -vc '^HISTORY §'` → 72 now.
+- **Proving "no code change":** parse each changed file at HEAD and in
+  the tree, blank every docstring, compare `ast.dump` (~15 lines).
+  The tech-debt-tracker scanner has no category for this debt; the
+  A.10 count is the measure.
+- **Partial-line replacements leave ragged or overlong lines**; ruff
+  E501 catches the long ones, the ragged ones need a rewrap. Grep the
+  diff for `:: ` and `/ ` join artefacts after any automatic rewrap.
 - Carried: radon not in the env. Never touch slskd or real data. zsh
-  does not word-split `$var`; BSD `sed` lacks `\b`.
+  does not word-split `$var`; BSD `sed` lacks `\b`. CI runs
+  offscreen (800×800); reproduce CI-only UI failures with
+  `QT_QPA_PLATFORM=offscreen` first.
 
 ## 5. Decisions made
 
-- **Seams came from the brief, not a new ask.** The `tdd` skill wants
-  seams confirmed with the user; §23 already names them
-  (pre-approved), so the brief's list stood in. Recorded divergence.
-- **Copy only on a resizing save, not on every save:** copying a
-  50 MB WAV for a text tag that fits the padding is wasted I/O on an
-  external drive; the padding callback makes the distinction exact.
-- **The X9 Pro tag tests stay:** the only coverage of real files'
-  existing tags. **Floor 92, not 92.79:** rounded down, as before.
-- **`upload_eta` and the §18.6 leftovers joined this row:** the first
-  is in §23's gap table; the last handoff named S23 for the second.
+- **Stopped at the split point rather than finishing §24:** plan rule
+  3 (the row overran the 150 K ceiling).
+- **Platform observations stay in comments** (working agreement 4
+  outranks §24's "delete confirmed live" rule): `login_item.py` keeps
+  its macOS observation, the date dropped, the packaged-build claim
+  marked UNVERIFIED.
+- **A real peer username in a comment became `<name>`**
+  (`soulseek/client.py`).
 
 ## 6. Blockers
 
@@ -83,7 +75,19 @@ None.
 
 ## 7. Files in progress
 
-None.
+S24 part 2, all `partially_done` as a row (none edited yet): the 72
+leftover references are in `audio/` (`fingerprint.py` 9, `tags.py`,
+`quality.py`), `models/` (`track_status.py` 6 and 6 others),
+`main_ui.py` 6, `main.py`, `cli.py` 4, `files/` (`naming.py` 5,
+`sanitize.py`, `deletion.py`), `database/` (`schema.py` 5,
+`local_file_repository.py` 5, `download_request_repository.py` 4,
+`connection.py`, `playlist_repository.py`,
+`track_match_repository.py`), `_build_info.py` 3. Also §24's config
+files: `pyproject.toml`, `packaging/seeker.spec`,
+`docker-compose.yml`, `packaging/build_dmg.py`,
+`packaging/build_windows_installer.py`, `packaging/seeker.iss`.
+Narrative without a number needs a wider grep than A.10's:
+`grep -nE "20[0-9]{2}-[0-9]{2}-[0-9]{2}|[Cc]onfirmed live|real bug|Phase [0-9]|CLAUDE\\.md|[Bb]rief|[Rr]oadmap"`.
 
 ## 8. Waiting on Kris
 
