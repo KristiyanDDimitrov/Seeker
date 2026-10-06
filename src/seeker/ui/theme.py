@@ -61,6 +61,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.ui.elided_text import elide_table_cells, set_path_columns
 from seeker.ui.plain_text import PlainLabel
 
 # --- Palettes ----------------------------------------------------------
@@ -474,6 +475,7 @@ def apply_table_defaults(table: QTableWidget) -> None:
     table.horizontalHeader().setDefaultAlignment(
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
     )
+    elide_table_cells(table)
     table.setSortingEnabled(True)
     # QHeaderView defaults sortIndicatorSection to 0 (not "no column"),
     # so setSortingEnabled(True) alone silently auto-sorts every table
@@ -588,6 +590,8 @@ class ColumnLayout:
     actions: int | None = None
     minimum_section: int = 40
     stretch_floor: int = STRETCH_COLUMN_FLOOR
+    # Columns of file paths, which elide in the middle.
+    paths: tuple[int, ...] = ()
 
 
 def fit_widths(
@@ -751,6 +755,7 @@ def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
         _veto_actions_column_sort(table, layout.actions)
     _fit_content_columns(table, layout)
     _column_fitter(table, layout)
+    set_path_columns(table, layout.paths)
     apply_column_floors(table)
 
 

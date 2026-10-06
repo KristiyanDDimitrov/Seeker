@@ -66,7 +66,7 @@ _REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
 )
 _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
-    stretch=(0, 1), fit_content=(2, 3), actions=4,
+    stretch=(0, 1), fit_content=(2, 3), actions=4, paths=(1,),
 )
 
 # Enough to show a section's header row plus a couple of table rows even

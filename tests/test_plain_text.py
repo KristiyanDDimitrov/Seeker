@@ -127,16 +127,21 @@ def _is_plain_tooltip_call(node: ast.expr) -> bool:
     )
 
 
+# Where each tooltip-setting call takes its text.
+_TOOLTIP_TEXT_ARGUMENT = {"setToolTip": 0, "showText": 1}
+
+
 def test_every_dynamic_tooltip_goes_through_plain_tooltip():
-    violations = [
-        f"{_where(path, call)}: {ast.unparse(call.args[0])}"
-        for path, call in _ui_calls()
-        if isinstance(call.func, ast.Attribute)
-        and call.func.attr == "setToolTip"
-        and call.args
-        and not _is_fixed_text(call.args[0])
-        and not _is_plain_tooltip_call(call.args[0])
-    ]
+    violations = []
+    for path, call in _ui_calls():
+        if not isinstance(call.func, ast.Attribute):
+            continue
+        position = _TOOLTIP_TEXT_ARGUMENT.get(call.func.attr)
+        if position is None or len(call.args) <= position:
+            continue
+        text = call.args[position]
+        if not _is_fixed_text(text) and not _is_plain_tooltip_call(text):
+            violations.append(f"{_where(path, call)}: {ast.unparse(text)}")
 
     assert violations == [], (
         "a tooltip auto-detects rich text; wrap dynamic text in "

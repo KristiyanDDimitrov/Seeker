@@ -41,6 +41,7 @@ from seeker.soulseek.docker_setup import (
     is_non_loopback_http_url,
 )
 from seeker.ui import help_text, plain_text, theme
+from seeker.ui.elided_text import elide_list_items
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import InlineNotice
 from seeker.ui.plain_text import PlainLabel
@@ -65,7 +66,9 @@ SETTINGS_TAB_CONNECTION = "Connection"
 SETTINGS_TAB_THRESHOLDS = "Thresholds"
 
 # Name/Path/Reachable/Actions, see theme.ColumnLayout.
-_LOCATIONS_COLUMNS = theme.ColumnLayout(stretch=(1,), fit_content=(0, 2), actions=3)
+_LOCATIONS_COLUMNS = theme.ColumnLayout(
+    stretch=(1,), fit_content=(0, 2), actions=3, paths=(1,),
+)
 
 
 def _scrollable(tab: QWidget) -> QScrollArea:
@@ -473,6 +476,7 @@ class SettingsPage(QWidget):
         outer.addWidget(content, 1)
 
         self.destinations_playlist_list = QListWidget()
+        elide_list_items(self.destinations_playlist_list)
         self.destinations_playlist_list.currentItemChanged.connect(
             self._on_destination_playlist_selected
         )

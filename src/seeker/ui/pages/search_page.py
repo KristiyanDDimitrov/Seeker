@@ -50,6 +50,7 @@ _SEARCH_COLUMNS = theme.ColumnLayout(
         _SearchColumn.LOCKED, _SearchColumn.SCORE,
     ),
     actions=_SearchColumn.ACTIONS,
+    paths=(_SearchColumn.FILENAME,),
 )
 
 

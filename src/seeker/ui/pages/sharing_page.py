@@ -32,10 +32,10 @@ from seeker.ui.workers import run_worker
 # tabs) never grew a column IntEnum of their own — their layouts are
 # declared the same way, just against plain column indices.
 _SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
-    stretch=(2,), fit_content=(0, 1, 3), actions=4,
+    stretch=(2,), fit_content=(0, 1, 3), actions=4, paths=(2,),
 )
 _SHARING_UPLOADS_COLUMNS = theme.ColumnLayout(
-    stretch=(1,), fit_content=(0, 2, 3),
+    stretch=(1,), fit_content=(0, 2, 3), paths=(1,),
 )
 
 

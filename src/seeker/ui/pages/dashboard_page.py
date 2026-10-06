@@ -52,6 +52,7 @@ from seeker.models.track_status import (
 )
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import DestinationDialog
+from seeker.ui.elided_text import elide_list_items
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
@@ -353,6 +354,7 @@ class DashboardPage(QWidget):
         content_layout.addWidget(dashboard_content, 1)
 
         self.playlist_list = QListWidget()
+        elide_list_items(self.playlist_list)
         self.playlist_list.currentItemChanged.connect(
             self._on_playlist_selected
         )

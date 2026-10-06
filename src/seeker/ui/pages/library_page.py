@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from seeker.models.playlist import Playlist
 from seeker.ui import help_text, theme
+from seeker.ui.elided_text import elide_list_items
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
@@ -136,6 +137,7 @@ class LibraryPage(QWidget):
         # selected" offers the picker directly instead of only naming
         # the problem.
         self._playlist_picker = QListWidget()
+        elide_list_items(self._playlist_picker)
         self._playlist_picker.setMaximumHeight(160)
         self._playlist_picker.itemClicked.connect(self._on_playlist_picked)
         self._playlist_picker.itemActivated.connect(self._on_playlist_picked)
