@@ -10,13 +10,14 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S26 part-1 close-out commit (HISTORY §171, this
+- **HEAD:** the S26 part-1 handoff commit (after close-out `abbe594` (HISTORY §171, this
   handoff, the plan row). Tree clean apart from the untracked
   `Claude outputs/`.
 - **Local** (at `c154af8`, X9 Pro not mounted): pytest `1674 passed,
   29 skipped`; `mypy --strict src/` clean, 129 files; `ruff check src
   tests` 0.
-- **CI:** see §8 of the close-out report (run id recorded after push).
+- **CI:** run `37501083676` (at `abbe594`): **success**, `1674
+  passed, 29 skipped`, coverage 94.10 % (floor 92 %).
 
 ## 2. Where we are
 
@@ -91,8 +92,7 @@ Evidence and the real-DB counts are in HISTORY §171.
 
 ## 5. Decisions made
 
-- **Stopped at the split point** rather than starting §26.3: the
-  session had passed the ~120 K target (plan rule 3).
+- **Stopped at the split point** (plan rule 3): past ~120 K.
 - **`database-designer` not loaded;** `migration-architect` was. Its
   useful parts were reconciliation counts and a one-transaction merge
   (the transaction is the rollback). Its schema tooling does not apply:
@@ -108,8 +108,7 @@ None.
 
 ## 7. Files in progress
 
-None: both part-1 commits are complete. Part 2 starts from the
-design in §4.
+None; part 2 starts from the design in §4.
 
 ## 8. Waiting on Kris
 
@@ -120,44 +119,23 @@ S42 publishing commands; X1 and X2 (optional).
 against the real files (read-only stat calls on the drive, the DB a
 scratchpad copy).
 
-**Next launch will migrate the real DB** (S8, rehearsed, §144, §145).
+**Carried:** next launch migrates the real DB (S8, §144, §145);
+keep or discard `./slskd-data` (§140); run the stress test
+(`SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
+X9 Pro mounted, Spotify and slskd up).
 
-**Kris's decision (carried):** keep or discard `./slskd-data` (§140).
-
-**Run the stress test** (after S20's lifecycle change):
-`SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`
-(X9 Pro mounted, Spotify and slskd up).
-
-**Live checks:** S41's checklist, plus carried: S6 Refresh playlists;
-S7 drift Scan; S8 Reject-then-Scan, failure reason; S9 mistyped Client
-ID → Cancel; S11 Scan summary, Docker-stopped Download, Qt warning in
-`seeker.log`, app menu "Seeker"; S12 slskd-stopped outage; S14
-one-failing-track Download notice, Tag and Fix cover art summaries;
-S15 `seeker downloads review`; S17 Review Confirm/Reject/Replace and a
-locked download retrying; S20 tray/Dock reopen, fullscreen close,
-quit with a download running, "start hidden"; S23 FLAC key in
-Rekordbox/Traktor/Serato, Tag on the X9 Pro (exFAT copy path); S25
-Scan tooltip ends at the format list. **New for S26:** Settings →
-Library Locations shows the nesting warning naming `Music`⊂`x9-pro`,
+**Live checks:** S41's checklist plus the carried per-row checks
+(full list in the S25 handoff, `git show 5db1162:docs/HANDOFF.md`).
+**New for S26:** Settings → Library Locations warns `Music`⊂`x9-pro`,
 `Test`⊂`x9-pro`, `Test`⊂`Music`; adding `/Volumes/X9 Pro/Music/House`
-is refused with a message naming `Music`.
+is refused, naming `Music`.
 
 ## 9. Open questions
 
-- Closing the wizard or Settings mid-wait does not cancel the Spotify
-  wait (port 8888 and the token lock held up to 300 s). Still unowned.
-- Late-worker defect: `_handle_task_finished` raises on a button
-  destroyed mid-task (§148 addendum); logged at CRITICAL since §11.3.
-- Settings shows results and rejections on status labels, not notices,
-  as does Duplicates' `_render_fingerprint_result`: S28/S29.
-- CLI (carried): print `download`'s failure reasons; catch
-  `httpx.HTTPStatusError`; bidi controls in `printable()`; the
-  one-by-one upgrade review skips `printable()` (§156).
-- `DownloadPoller._activate_shortlisted_entry`: if slskd dies between
-  `request_download` and `get_download_status`, the transfer id is
-  never recorded; X1 is the natural home.
-- A leftover `<name>.<uuid>.tmp` beside a track after a real crash is
-  never cleaned up (the scanner ignores it). Rare; X1-adjacent.
+- Carried unchanged from the S25 handoff: the Spotify wait not
+  cancelled on close; the late-worker button defect (§148); Settings
+  and Duplicates results on status labels (S28/S29); four CLI items
+  (§156); the unrecorded transfer id and leftover `.tmp` files (X1).
 - Why a shared fake's missing method stalls the suite instead of
   failing it (§171). UNVERIFIED.
 
