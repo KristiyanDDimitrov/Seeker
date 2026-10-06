@@ -10,13 +10,14 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S26 part-2 close-out (HISTORY §172, handoff, plan
-  row), after `68e5f85`. Tree clean apart from the untracked
+- **HEAD:** the S26 part-2 handoff commit, after the close-out
+  `66124ac` (HISTORY §172, handoff, plan row). Tree clean apart from the untracked
   `Claude outputs/`.
 - **Local** (at `68e5f85`, X9 Pro not mounted): pytest `1698 passed,
   29 skipped`; `mypy --strict src/` clean, 131 files; `ruff check src
   tests` 0.
-- **CI:** pending for the close-out push; see the commit after it.
+- **CI:** run `37503807018` (at `66124ac`): **success**, `1698
+  passed, 29 skipped`, coverage 94.11 % (floor 92 %).
 
 ## 2. Where we are
 
