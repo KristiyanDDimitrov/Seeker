@@ -1,12 +1,17 @@
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QLabel,
     QListWidget,
+    QProgressBar,
     QPushButton,
+    QRadioButton,
     QTableWidget,
     QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from seeker.ui import theme
@@ -270,3 +275,90 @@ def test_on_accent_text_meets_the_ui_component_floor(palette):
     # 3.91:1 for DANGER, both real but short of 4.5.
     assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 3.0
     assert theme.contrast_ratio(palette.ON_ACCENT, palette.DANGER) >= 3.0
+
+
+# --- Backgrounds: only real surfaces paint one (§27.1) ----------------------
+
+
+@pytest.fixture(params=["dark", "light"])
+def applied_palette(request, qapp):
+    palette = theme.apply_theme(qapp, request.param)
+    yield palette
+    theme.apply_theme(qapp)
+
+
+def _rgb(image, point: QPoint) -> tuple[int, int, int]:
+    color = image.pixelColor(point)
+    return color.red(), color.green(), color.blue()
+
+
+def _hex_rgb(hex_color: str) -> tuple[int, int, int]:
+    return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _grab_card(qtbot, inner):
+    card = theme.make_card(inner)
+    qtbot.addWidget(card)
+    card.resize(640, 240)
+    card.show()
+    qtbot.waitExposed(card)
+    image = card.grab().toImage()
+    dpr = image.width() / card.width()
+
+    def at(widget, point: QPoint) -> tuple[int, int, int]:
+        mapped = widget.mapTo(card, point)
+        return _rgb(image, QPoint(round(mapped.x() * dpr),
+                                  round(mapped.y() * dpr)))
+
+    return at
+
+
+def test_a_cell_widget_paints_the_rows_own_background(
+        qtbot, applied_palette,
+):
+    # A progress cell, a checkbox cell and a radio cell, next to a
+    # plain item: each container's empty corner is the row's pixel.
+    table = QTableWidget(1, 4)
+    table.setItem(0, 0, QTableWidgetItem("Nova Reyes - Voltage Drop"))
+    bar = QProgressBar()
+    bar.setValue(50)
+    table.setCellWidget(0, 1, theme.wrap_progress_bar(bar, None))
+    checkbox = QCheckBox("Keep all")
+    table.setCellWidget(0, 2, theme.cell_widget(checkbox))
+    radio = QRadioButton("Keep")
+    table.setCellWidget(0, 3, theme.cell_widget(radio))
+    for column in range(4):
+        table.setColumnWidth(column, 150)
+    table.setRowHeight(0, 40)
+    at = _grab_card(qtbot, table)
+
+    viewport = table.viewport()
+    item_rect = table.visualRect(table.model().index(0, 0))
+    row_pixel = at(viewport, item_rect.topRight() + QPoint(-3, 3))
+
+    for column in (1, 2, 3):
+        container = table.cellWidget(0, column)
+        corner = container.rect().topRight() + QPoint(-2, 2)
+        assert at(container, corner) == row_pixel, f"column {column}"
+    for control in (checkbox, radio):
+        corner = control.rect().topRight() + QPoint(-1, 1)
+        assert at(control, corner) == row_pixel, type(control).__name__
+
+
+def test_controls_on_a_card_show_the_card_surface(qtbot, applied_palette):
+    # A Settings-style form: a plain QWidget holding a checkbox and a
+    # radio row on a card. Nothing between them and the card paints.
+    form = QWidget()
+    layout = QVBoxLayout(form)
+    checkbox = QCheckBox("Subfolder per playlist")
+    radio = QRadioButton("Dark")
+    layout.addWidget(checkbox)
+    layout.addWidget(radio)
+    layout.addStretch()
+    at = _grab_card(qtbot, form)
+
+    surface = _hex_rgb(applied_palette.BG_SURFACE)
+    assert at(form, form.rect().bottomRight() + QPoint(-2, -2)) == surface
+    for control in (checkbox, radio):
+        corner = control.rect().topRight() + QPoint(-1, 1)
+        assert at(control, corner) == surface, type(control).__name__

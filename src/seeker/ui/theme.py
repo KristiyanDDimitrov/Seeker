@@ -699,8 +699,13 @@ def _base_qss(palette: Palette) -> str:
     plus the sidebar panel and activity strip chrome.
     """
     return f"""
+/* Only a real surface paints a background: the window and dialogs
+here, a card or a table in their own rules. A generic QWidget, a
+checkbox or a radio paints none, so a cell container or a form row
+shows the surface it sits on instead of a BG_APP band. A top-level
+widget still fills with the palette's Window role, which is BG_APP
+(observed on Cocoa and offscreen). */
 QWidget {{
-    background-color: {palette.BG_APP};
     color: {palette.TEXT};
 }}
 
@@ -708,7 +713,7 @@ QMainWindow, QDialog {{
     background-color: {palette.BG_APP};
 }}
 
-QLabel {{
+QLabel, QCheckBox, QRadioButton {{
     background: transparent;
 }}
 
