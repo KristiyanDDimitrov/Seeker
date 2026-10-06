@@ -336,6 +336,7 @@ uv run seeker         # run the CLI
 uv run seeker-ui       # run the GUI (PySide6) — onboarding wizard on first launch
 uv run pytest         # run tests
 uv run mypy --strict src/  # type check — must stay clean
+uv run python tools/screenshots.py  # every screen, both themes -> tools/.screens/
 ```
 
 ## Standing facts and gotchas
@@ -553,6 +554,13 @@ Each links to the HISTORY entry where the full investigation lives;
   CSS, not Qt's dialect) and silently poisons the **entire**
   `::section` rule — use `:last` alone.
   [HISTORY §103](docs/history/072-107.md#103)
+- **Only a real surface paints a background.** The generic `QWidget`
+  rule sets text colour only; `QMainWindow`/`QDialog` paint `BG_APP`,
+  cards and tables their own; `QLabel`/`QCheckBox`/`QRadioButton` are
+  transparent. A new surface gets its own selector, never a
+  background on a generic type, which bands every nested widget.
+  Review a UI change in `tools/screenshots.py`'s images.
+  [HISTORY §173](docs/history/151-180.md#173)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.

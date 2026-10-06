@@ -10,50 +10,53 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S26 part-2 handoff commit, after the close-out
-  `66124ac` (HISTORY §172, handoff, plan row). Tree clean apart from the untracked
-  `Claude outputs/`.
-- **Local** (at `68e5f85`, X9 Pro not mounted): pytest `1698 passed,
-  29 skipped`; `mypy --strict src/` clean, 131 files; `ruff check src
-  tests` 0.
-- **CI:** run `37503807018` (at `66124ac`): **success**, `1698
-  passed, 29 skipped`, coverage 94.11 % (floor 92 %).
+- **HEAD:** the S27 part-1 close-out commit, after `f60f26f`
+  (§27.1). Tree clean apart from the untracked `Claude outputs/`.
+- **Local** (at `f60f26f`): pytest `1705 passed, 29 skipped`;
+  `mypy --strict src/` clean, 131 files; `ruff check src tests tools`
+  0.
+- **CI:** see the close-out push (recorded in the next session's
+  report if not below).
 
 ## 2. Where we are
 
-S1–S26 ticked; Phase I is done. **Next: S27** (Phase J, UI
-consistency): the screenshot harness (§27.0), theme root causes,
-focus and accessibility. Split point after §27.1.
+S1–S26 ticked. **S27 stopped at its split point (after §27.1),** on
+budget, not a blocker. **Next: S27 part 2** — §27.2 combo chevron,
+§27.3 button sizing, §27.4 focus ring and accessible names, §27.5
+splitters and progress-text contrast. Then S28.
 
-## 3. Session report (S26 part 2)
+## 3. Session report (S27 part 1)
 
-Evidence, the rehearsal table and the real-DB checks are in HISTORY
-§172.
-- `ef47736` §26.3 refactor: `remove_location`'s deletes →
-  `_forget_location`. No behaviour change.
-- `dd07692` §26.3: `LibraryService.merge_location` /
-  `preview_merge_location`, `LocationMergeRepository`,
-  `LocationMergeSummary`, `nesting.nested_path_map`;
-  `Application.merge_location` clears a merged default.
-- `68e5f85` §26.3: Settings **Fix…** on the nesting warning; `seeker
-  library merge NAME KEEP`; README rows for `library check`/`merge`.
-- §26.4: rehearsed on a scratchpad copy (no commit; script and log
-  in the session scratchpad, results in §172): 43 matches before and
-  after, 0 on another file or lost; nested pairs 3 → 0.
+Evidence in HISTORY §173.
+- `765ba8f` §27.0: `tools/screenshots.py` replaces
+  `docs/screenshots/generate.py`; README images regenerated;
+  `tests/test_screenshots_tool.py`; CI ruff covers `tools/`.
+- `f60f26f` §27.1: generic `QWidget` paints no background;
+  `QCheckBox`/`QRadioButton` transparent; two pixel tests, both
+  themes, failing first on HEAD.
 
 ## 4. Key context
 
-- **The real merge needs the X9 Pro mounted:** `merge_location`
-  refuses an unreachable root (`same_file` cannot confirm a pair
-  otherwise). Keep `Music`; expect the §172 counts (x9-pro: 3,454
-  merged, 4 forgotten, 37 matches moved; Test: 8, 1, 6).
-- **Three fingerprints the rehearsal "lost" are correct to lose:**
-  stale `x9-pro` rows for files that later moved under `Music/Pop
-  House/`, not indexed by `Music` (§172).
-- **For S27's harness:** Settings now has a `nesting_notice` with a
-  Fix… action button (an `InlineNotice` action); the demo
-  `FakeLibraryService.find_nested_locations` returns `[]`, so the
-  warning only renders if a fake returns pairs.
+- **Use the harness for every UI row from here on:** `uv run python
+  tools/screenshots.py --page review --theme light` takes seconds;
+  the full run (72 images) ~45 s. View images by contact sheet to
+  save tokens: compose four 1280×820 shots at half size with
+  `QImage`/`QPainter` (the S27 script was scratchpad-only).
+- **`MainWindow` does not apply the theme; `main_ui.py` does,** before
+  construction. Anything building a window outside `main_ui.py` calls
+  `theme.apply_theme(app, mode)` first.
+- **Harness teardown:** stop the window's `QTimer`s and drain
+  `thread_pool` before `deleteLater`, or a poll result lands on a
+  deleted widget.
+- **Local pytest grabs at Retina 2×; offscreen at 1×.** A pixel test
+  maps through `image.width() / widget.width()`.
+- What part 2 will see in the images: combos without arrows
+  (Duplicates' location, History's Show, Settings' location pickers);
+  full-width buttons in Settings (Connection tab), the wizard and
+  Duplicates; 6 px `BORDER_STRONG` splitters on Review; "65%" dark on
+  violet in the light Dashboard. S28 material also visible: the
+  Downloads Progress column takes most of the width; Search's Filename
+  column collapses at 960 px.
 - Carried: radon not in the env; never touch slskd or real data; zsh
   does not word-split `$var`; reproduce CI-only UI failures with
   `QT_QPA_PLATFORM=offscreen` (800×800) first; a shared fake missing a
@@ -61,26 +64,21 @@ Evidence, the rehearsal table and the real-DB checks are in HISTORY
 
 ## 5. Decisions made
 
-- **Names, not ids,** for `merge_location(merged_name, kept_name)`,
-  diverging from the brief's `merge_nested_location(redundant_id,
-  keep_id)`: it matches `remove_location`, the CLI and the UI.
-- **Analysis moves only into an empty group and only on equal size
-  and mtime;** a kept row's own analysis is never overwritten.
-- **A merged default destination is cleared, not moved** (as removal
-  does): moving it would change the folder downloads land in.
-- **The CLI merge does not prompt,** consistent with `library
-  remove`; the UI confirms with the preview's counts.
-- **Fix… merges every location inside or around the one kept,** one
-  `merge_location` per location; the preview's per-location
-  summaries are totalled (analysis counts may overlap when two
-  merged locations cover one file; the result reports the truth).
-- **Standing rule promoted to CLAUDE.md:** "Library locations never
-  nest" (Database and migrations); the open-issue bullet now says
-  only the real click remains.
-- **Skills:** `database-designer`/`migration-architect` not reloaded;
-  part 1 already applied migration-architect's useful parts
-  (reconciliation counts; the one transaction is the rollback). No
-  schema change.
+- **Background fix by removal, not a generic `transparent`:** the
+  generic rule keeps only `color`. Page roots needed no rule (they sit
+  in `QMainWindow`'s stack; a top-level plain widget fills with the
+  palette's `BG_APP`, probed). Diverges from the brief's "page roots"
+  wording; same result, one fewer selector.
+- **The harness imports `tests/fakes.py`** (already shared since S18)
+  rather than a copy, so the screenshots render what the UI tests
+  exercise. It lives in `tools/`, linted by CI, not type-checked
+  (mypy covers `src/`).
+- **README images regenerated now** (they carried the 0.91 score
+  bug); S36 regenerates them after the refresh.
+- **Standing rule promoted to CLAUDE.md:** "Only a real surface paints
+  a background" (Qt section), plus the harness command.
+- **Skills:** `frontend-design` not loaded for part 1 (harness and a
+  root-cause fix, no design choices); load it for §27.3–§27.5.
 
 ## 6. Blockers
 
@@ -88,37 +86,27 @@ None.
 
 ## 7. Files in progress
 
-None.
+None; §27.2–§27.5 not started.
 
 ## 8. Waiting on Kris
 
 **Approval gates:** S30 visual direction; S39 bundle identifier;
 S42 publishing commands; X1 and X2 (optional).
 
-**New live check (S41 checklist):** with the X9 Pro mounted,
-Settings → Library Locations → Fix…, keep `Music`; compare with
-§172's counts. The next launch also runs the pending S8 migrations
-(rehearsed again here on the copy, clean).
-
-**Carried:** keep or discard `./slskd-data` (§140); run the stress
-test (`SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
-X9 Pro mounted, Spotify and slskd up). Live checks: S41's checklist
-plus the carried per-row checks (full list in the S25 handoff, `git
-show 5db1162:docs/HANDOFF.md`); S26 part 1's (the warning names the
-three pairs; adding `/Volumes/X9 Pro/Music/House` is refused).
+**Live checks (S41 checklist), unchanged from S26:** the nested-location
+Fix… with the X9 Pro mounted (keep `Music`, compare §172's counts);
+the stress test; the carried list in `git show 5db1162:docs/HANDOFF.md`.
+New, small: glance at Settings and Duplicates on a real display in
+both themes — the banding should be gone.
 
 ## 9. Open questions
 
-- Carried unchanged from the S25 handoff: the Spotify wait not
-  cancelled on close; the late-worker button defect (§148); Settings
-  and Duplicates results on status labels (S28/S29); four CLI items
-  (§156); the unrecorded transfer id and leftover `.tmp` files (X1).
-- Why a shared fake's missing method stalls the suite instead of
-  failing it (§171). UNVERIFIED.
-- A location whose stored path differs in case from the folder on
-  disk maps no files in a merge (paths compare as text after the
-  prefix; the files would be forgotten, not mispaired). Not seen in
-  the real DB; the preview would show it as forgotten files.
+- Carried unchanged: the Spotify wait not cancelled on close; the
+  late-worker button defect (§148); Settings and Duplicates results on
+  status labels (S28/S29); four CLI items (§156); the unrecorded
+  transfer id and leftover `.tmp` files (X1); why a shared fake's
+  missing method stalls the suite (§171, UNVERIFIED); a location whose
+  stored path differs in case from disk maps no files in a merge.
 
 ---
 
