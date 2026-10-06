@@ -279,9 +279,7 @@ class LibraryService:
                 location, default_location_id, connection,
             )
 
-            self.local_files.delete_all_for_location(location.id, connection)
-            playlists.clear_destination_for_location(location.id, connection)
-            self.locations.delete(location.id, connection)
+            self._forget_location(location.id, playlists, connection)
 
         logger.info(
             "Removed library location '%s': %d files forgotten, %d "
@@ -295,6 +293,19 @@ class LibraryService:
         )
 
         return summary
+
+    def _forget_location(
+            self,
+            location_id: int,
+            playlists: PlaylistRepository,
+            connection: sqlite3.Connection,
+    ) -> None:
+        """Deletes a location with its indexed files, releasing every
+        match to them and clearing every playlist destination in it.
+        """
+        self.local_files.delete_all_for_location(location_id, connection)
+        playlists.clear_destination_for_location(location_id, connection)
+        self.locations.delete(location_id, connection)
 
     def _get_location_or_raise(
             self,
