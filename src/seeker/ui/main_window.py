@@ -42,13 +42,8 @@ from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.dashboard_page import (
     DashboardHost,
     DashboardPage,
-    # Roadmap item 9.3 (round 8, Phase 6) — both moved to
-    # dashboard_page.py with the rest of Dashboard, but
-    # tests/test_next_step.py imports both from THIS module's own
-    # namespace (same re-export shape as the Bulk*Dialogs above) —
-    # neither is used directly below any more since S11.4 deleted the
-    # delegating _render_next_step stub that used to need the type
-    # annotation.
+    # Re-exported for tests/test_next_step.py, which imports both from
+    # this module's namespace; nothing below uses them.
     _decide_next_step,  # noqa: F401
     _NextStepFacts,  # noqa: F401
 )
@@ -79,15 +74,15 @@ from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_updat
 logger = logging.getLogger(__name__)
 
 
-# Untuned constant — matches the ~2s cadence already observed against
-# real slskd elsewhere in this project (see CLAUDE.md); revisit once
-# real usage data exists, same convention as every other threshold here.
+# Untuned constant — matches the ~2s cadence observed against real slskd
+# elsewhere in this project; revisit once real usage data exists, same
+# convention as every other threshold here.
 POLL_INTERVAL_MS = 2_000
 
 # Untuned constant — this timer makes real network calls to slskd (via
 # poll_downloads()), so it deliberately runs far less often than the
-# local-DB-only display refresh above. 15-30s starting range per the
-# task brief; revisit once real usage data exists.
+# local-DB-only display refresh above. Revisit once real usage data
+# exists.
 BACKEND_POLL_INTERVAL_MS = 20_000
 
 # Untuned constant — a fixed sidebar width narrow enough to leave real
@@ -111,10 +106,9 @@ _NAV_PAGES = (
     ("history", "History"),
 )
 
-# Roadmap item 65 (Phase 2.2) — human-readable label for each
-# busy_actions key, shown on the global activity strip. Any key with no
-# entry here falls back to a generic "Working…" rather than a raw key
-# string leaking into the UI.
+# Human-readable label for each busy_actions key, shown on the global
+# activity strip. Any key with no entry here falls back to a generic
+# "Working…" rather than a raw key string leaking into the UI.
 _BUSY_ACTION_LABELS: dict[str, str] = {
     "sync": "Refreshing playlists…",
     "scan": "Scanning library and matching tracks…",
@@ -184,11 +178,10 @@ class MainWindow(QMainWindow):
 
     def _init_shared_state(self) -> None:
         self.thread_pool = QThreadPool()
-        # Roadmap item 65 (Phase 2.1) — the single source of truth for
-        # "is this named action currently running," consulted by every
-        # poll-driven render method so it can skip a button whose own
-        # action is still in flight instead of fighting run_worker's own
-        # busy-disable.
+        # The single source of truth for "is this named action currently
+        # running," consulted by every poll-driven render method so it
+        # can skip a button whose own action is still in flight instead
+        # of fighting run_worker's own busy-disable.
         self.busy_actions = BusyActionRegistry()
         # The shared playlist/track selection Dashboard and Library
         # both write (HISTORY §133).
@@ -256,9 +249,9 @@ class MainWindow(QMainWindow):
             )
             self._app_state_connected = True
 
-        # The one seam both real quit routes pass through (HISTORY
-        # §123, §124): tray Quit's `app.quit()` and the native ⌘Q/Dock
-        # "Quit Seeker" both deliver a `QEvent.Type.Quit` to the
+        # The one seam both real quit routes pass through
+        # (HISTORY §123, §124): tray Quit's `app.quit()` and the native
+        # ⌘Q/Dock "Quit Seeker" both deliver a `QEvent.Type.Quit` to the
         # QApplication before `aboutToQuit`. This window's eventFilter
         # can still cancel that exact event; `aboutToQuit` is too late.
         if app is not None:
@@ -306,14 +299,14 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer.start()
 
     def _build_tray_controller(self) -> TrayController:
-        # Roadmap item 9.3.2 (round 8, Phase 6) — the tray/notification
-        # group, extracted to ui/tray.py. `window`/`poll_*`/`navigate`/
-        # `render_activity_strip` are lambdas or bound methods rather
-        # than values captured now, since the pages they reach
+        # The tray/notification group (ui/tray.py). The `window`,
+        # `poll_*`, `navigate` and `render_activity_strip` hooks are
+        # lambdas or bound methods rather than values captured now,
+        # since the pages they reach
         # (`_downloads_page`/`_review_page`/`_dashboard_page`) don't
         # exist yet at this point in construction (this runs before
-        # _build_ui()) — TrayController only calls them later, on a
-        # real reopen. Reopening the window itself goes through
+        # _build_ui()) — TrayController only calls them later, on a real
+        # reopen. Reopening the window itself goes through
         # `window.reopen()`, so the hide-to-tray state stays owned by
         # the lifecycle controller alone.
         return TrayController(TrayHost(
@@ -364,13 +357,13 @@ class MainWindow(QMainWindow):
 
         shell_layout.addWidget(self._build_sidebar())
 
-        # Roadmap item 65 (Phase 2.2) — a persistent activity strip
-        # lives between the sidebar/header and the page content itself,
-        # visible regardless of which page the user has navigated to
-        # (button state alone is invisible once you've left the page a
-        # long-running action was started from). A separate column
-        # rather than widening shell_layout further, so the strip spans
-        # only the content area, not the sidebar.
+        # A persistent activity strip lives between the sidebar/header
+        # and the page content itself, visible regardless of which page
+        # the user has navigated to (button state alone is invisible
+        # once you've left the page a long-running action was started
+        # from). A separate column rather than widening shell_layout
+        # further, so the strip spans only the content area, not the
+        # sidebar.
         content_column = QWidget()
         content_column_layout = QVBoxLayout(content_column)
         content_column_layout.setContentsMargins(0, 0, 0, 0)
@@ -384,12 +377,8 @@ class MainWindow(QMainWindow):
 
         shell_layout.addWidget(content_column, 1)
 
-        # Roadmap item 9.2 (round 8, Phase 6 prep) — the seam a migrated
-        # page gets instead of reaching past it to MainWindow directly.
-        # See PageContext's own docstring for why run_busy_worker/
-        # update_nav_badge/is_hidden_to_tray/render_activity_strip are
-        # here despite not being in the brief's original four-field
-        # sketch.
+        # The seam a page gets instead of reaching past it to MainWindow
+        # directly; PageContext's own docstring describes each field.
         page_context = PageContext(
             application=self.application,
             thread_pool=self.thread_pool,
@@ -458,11 +447,10 @@ class MainWindow(QMainWindow):
         self._support_page = SupportPage(page_context)
         self._register_page("support", self._support_page)
 
-        # Roadmap item 56 Phase 3 — Settings reversed from item 48's
-        # separate-dialog decision into a real page, hosted the same
-        # way as everything else here. header_extra is _build_page's
-        # own extension point (see its docstring), used only by this
-        # page today.
+        # Settings is a page, hosted the same way as everything else
+        # here, not a separate dialog. header_extra is _build_page's own
+        # extension point (see its docstring), used only by this page
+        # today.
         self.settings_back_button = QPushButton("← Back")
         self.settings_back_button.setToolTip(help_text.TOOLTIP_SETTINGS_BACK)
         self.settings_back_button.clicked.connect(
@@ -479,27 +467,22 @@ class MainWindow(QMainWindow):
         self._settings_page_index = self._page_indices["settings"]
 
         # Locations load lazily, on every real show of this page rather
-        # than eagerly in _build_ui() — every MainWindow construction
-        # runs _build_ui() once, and an eager worker here was confirmed
-        # live to compound into a real, reproducible deadlock (Qt's
-        # internal connection-list mutex vs. the GIL) under the rapid,
-        # repeated MainWindow construction this project's own test
-        # suite does — see CLAUDE.md/docs/HISTORY.md item 39. A real
-        # page SHOW (unlike construction) is comparatively rare and
-        # human-paced, so refreshing on every one (roadmap item 56
-        # Phase 6.1 — a location added since the last visit must
-        # actually appear) doesn't reintroduce that hazard; only the
-        # original "fetch at construction time" trigger did.
+        # than eagerly in _build_ui() — an eager worker at construction
+        # compounds into a reproducible deadlock (Qt's internal
+        # connection-list mutex vs. the GIL) under the rapid, repeated
+        # MainWindow construction the test suite does. A page SHOW is
+        # rare and human-paced, so refreshing on every one (a location
+        # added since the last visit must appear) doesn't reintroduce
+        # that hazard. See HISTORY §39.
         self._duplicates_page_index = self._page_indices["duplicates"]
-        # Roadmap item 62 (Phase 7.6) — lazy-loaded like Duplicates
-        # (first real page SHOW, never at construction — see item 39's
-        # deadlock), but ALSO joins the standing 20s backend_poll_timer
-        # once visited, same shape as Downloads' own real-slskd-call
-        # poll — sharing status/uploads are live external state, not a
-        # one-shot local read like Duplicates/History. The visited/
-        # in-progress flags and the ETA tracker live on SharingPage
-        # itself now (round 8 Phase 6); only the page index stays here,
-        # for _on_page_changed's dispatch.
+        # Lazy-loaded like Duplicates (first real page SHOW, never at
+        # construction), but ALSO joins the standing 20s
+        # backend_poll_timer once visited, same shape as Downloads' own
+        # real-slskd-call poll — sharing status/uploads are live
+        # external state, not a one-shot local read like
+        # Duplicates/History. The visited/in-progress flags and the ETA
+        # tracker live on SharingPage itself; only the page index stays
+        # here, for _on_page_changed's dispatch.
         self._sharing_page_index = self._page_indices["sharing"]
         # Same lazy-load-on-first-real-visit reasoning as Duplicates
         # above — a plain, cheap local-DB read, but there's no reason
@@ -508,19 +491,19 @@ class MainWindow(QMainWindow):
         self._history_page_index = self._page_indices["history"]
         self._history_loaded = False
         # Tracks the currently-shown page key so the Settings back
-        # button (roadmap item 56 Phase 3) knows where to return to,
-        # and so _on_page_changed can detect "we just left Settings"
-        # regardless of which navigation path was used (sidebar click,
-        # back button, or a CTA/double-click action — every one of them
-        # goes through _show_page).
+        # button knows where to return to, and so _on_page_changed can
+        # detect "we just left Settings" regardless of which navigation
+        # path was used (sidebar click, back button, or a
+        # CTA/double-click action — every one of them goes through
+        # _show_page).
         self._current_page_key = "dashboard"
         self._previous_page_key = "dashboard"
         self.stacked_widget.currentChanged.connect(self._on_page_changed)
 
         self.setCentralWidget(shell)
-        # Round 8 §12.1 — restore the last-open page; an unrecognized/
-        # missing key (a fresh install, or a page a later version
-        # removed) falls back to the hardcoded "dashboard" default.
+        # Restore the last-open page; an unrecognized/missing key (a
+        # fresh install, or a page a later version removed) falls back
+        # to the hardcoded "dashboard" default.
         restored_page = self.application.settings.last_open_page
         self._show_page(
             restored_page if restored_page in self._page_indices
@@ -542,25 +525,13 @@ class MainWindow(QMainWindow):
             else self._current_page_key
         )
 
-    # History's own delegating properties (window.history_table, etc.)
-    # were deleted at the test-split session (S11.1, §9.3.4) — its
-    # tests now address self._history_page directly. Search's and
-    # Sharing's own delegating properties/methods were deleted the same
-    # way at S11.2, Downloads' and TaggingPanel's own at S11.3, and
-    # Dashboard's own at S11.4 — their tests now address
-    # self._search_page/self._sharing_page/self._downloads_page/
-    # self._dashboard_page directly. TaggingPanel itself moved again
-    # (round 8 §12.6, Library split) — tests now address
-    # self._library_page(._tagging_panel) instead.
-
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
-        # Roadmap item 56 Phase 3 — every navigation path in this app
-        # (sidebar click, the Settings back button, a Dashboard CTA
-        # action, a double-click) already goes through this one method,
-        # so it's the single place both the back button's "where to
-        # return to" and the settings-exit invalidation (§3.3) can hook
-        # into without needing a Settings-specific special case at each
-        # call site.
+        # Every navigation path in this app (sidebar click, the Settings
+        # back button, a Dashboard CTA action, a double-click) already
+        # goes through this one method, so it's the single place both
+        # the back button's "where to return to" and the settings-exit
+        # invalidation can hook into without needing a Settings-specific
+        # special case at each call site.
         if key == "settings" and self._current_page_key != "settings":
             self._previous_page_key = self._current_page_key
         elif self._current_page_key == "settings" and key != "settings":
@@ -580,32 +551,26 @@ class MainWindow(QMainWindow):
         self._show_page(self._previous_page_key)
 
     def _invalidate_after_leaving_settings(self) -> None:
-        # Roadmap item 56 Phase 3 §3.3 — a Settings change can affect
-        # the Duplicates page's location combo (a location added/
-        # removed) and the Dashboard's own next-step CTA (Spotify/
-        # library-location/threshold facts). Both already have a real
-        # refresh method; this just calls them immediately on exit
-        # rather than waiting for their own standing poll/lazy-load to
-        # eventually catch up. Phase 6.1 (Duplicates combo refresh)
-        # later reuses this exact same refresh_locations()
-        # call, not a second one.
+        # A Settings change can affect the Duplicates page's location
+        # combo (a location added/removed) and the Dashboard's own
+        # next-step CTA (Spotify/library-location/threshold facts). Both
+        # already have a real refresh method; this just calls them
+        # immediately on exit rather than waiting for their own standing
+        # poll/lazy-load to eventually catch up.
         self._duplicates_page.refresh_locations()
         self._dashboard_page.poll_next_step()
 
     def _build_activity_strip(self) -> QWidget:
-        # Roadmap item 65 (Phase 2.2) — hidden whenever nothing is
-        # running (the common case); see _render_activity_strip for what
-        # populates it.
+        # Hidden whenever nothing is running (the common case); see
+        # _render_activity_strip for what populates it.
         strip = QWidget()
         strip.setObjectName("activityStrip")
         # A plain QWidget subclass doesn't paint its own stylesheet
-        # background by default in Qt (item 47's identical
-        # WA_StyledBackground finding, same fix here).
+        # background by default in Qt (HISTORY §47).
         strip.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        # Roadmap item C5.3 — the #activityStrip rule now lives in the
-        # global stylesheet (theme.py's build_stylesheet), not baked
-        # into a per-instance string here, so it re-colors on a runtime
-        # theme switch automatically.
+        # The #activityStrip rule lives in the global stylesheet
+        # (theme.py's build_stylesheet), not a per-instance string here,
+        # so it re-colors on a runtime theme switch automatically.
 
         layout = QHBoxLayout(strip)
         layout.setContentsMargins(
@@ -630,8 +595,8 @@ class MainWindow(QMainWindow):
         return strip
 
     def _render_activity_strip(self) -> None:
-        # Roadmap item R7.6 — a visual-only header strip; pure waste to
-        # keep updating while nobody can see it.
+        # A visual-only header strip; pure waste to keep updating while
+        # nobody can see it.
         if self._lifecycle.is_hidden_to_tray():
             return
 
@@ -645,9 +610,8 @@ class MainWindow(QMainWindow):
 
         if len(running) > 1:
             # Multiple actions running at once — a real count, not an
-            # invented merged progress number (roadmap item 65's own
-            # explicit instruction: don't fold unrelated work into one
-            # fake percentage).
+            # invented merged progress number: unrelated work never
+            # folds into one fake percentage.
             self.activity_strip_label.setText(
                 f"{len(running)} actions running"
             )
@@ -674,12 +638,11 @@ class MainWindow(QMainWindow):
     def _on_activity_progress(
             self, key: str, stage: str, current: int, total: int,
     ) -> None:
-        # Roadmap item 65 (Phase 2.3's real consumer) — populated by any
-        # run_worker(..., on_progress=...) caller that also passes a
-        # matching key through here (none yet in this phase; Phase 7's
-        # fingerprinting/duplicate-search progress is the first real
-        # producer). Cleared the moment the action itself ends, via
-        # _run_busy_worker's own wrapped_finished/wrapped_error.
+        # Populated by any run_worker(..., on_progress=...) caller that
+        # also passes a matching key through here (fingerprinting and
+        # the duplicate search). Cleared the moment the action itself
+        # ends, via _run_busy_worker's own
+        # wrapped_finished/wrapped_error.
         self._activity_progress[key] = (stage, current, total)
         self._render_activity_strip()
 
@@ -687,15 +650,13 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebarPanel")
         # A plain QWidget subclass doesn't paint its own stylesheet
-        # background by default in Qt (see notice.py's identical
-        # WA_StyledBackground fix, found live in Phase 3) — the
+        # background by default in Qt (HISTORY §47) — the
         # `#sidebarPanel` QSS rule below would otherwise silently do
         # nothing.
         sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         sidebar.setFixedWidth(SIDEBAR_WIDTH)
-        # Roadmap item C5.3 — the #sidebarPanel rule now lives in the
-        # global stylesheet (theme.py's build_stylesheet); see
-        # #activityStrip's identical fix just above.
+        # The #sidebarPanel rule lives in the global stylesheet
+        # (theme.py's build_stylesheet), like #activityStrip above.
 
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(
@@ -706,25 +667,18 @@ class MainWindow(QMainWindow):
 
         wordmark_row = QHBoxLayout()
         wordmark_row.setContentsMargins(0, 0, 0, 0)
-        # Roadmap item E4 (round 7) — reverses C4 (round 5)/D1 (round
-        # 6). The custom-painted `_Wordmark` widget's own committed
-        # `sizeHint()` (reserving real ascent+descent) contradicted what
-        # a real Mac actually rendered — the label was still clipped at
-        # the bottom in a live screenshot, with no way to settle the
-        # contradiction offscreen. A plain QLabel reserves its own
-        # font's ascent/descent internally and cannot exhibit this class
-        # of bug at all; styled entirely via `QLabel#wordmark` in
-        # `build_stylesheet` (theme.py), so it re-themes for free on
-        # `setStyleSheet()` with no `retint()`/`on_theme_changed()` call
-        # needed. The brow-strokes-over-"ee" idea is deliberately not
-        # carried forward — see HISTORY §E4 for why the asset stays,
-        # dormant, in the repo rather than deleted outright.
+        # A plain QLabel, not a custom-painted widget: a painted
+        # wordmark's own `sizeHint()` still rendered clipped at the
+        # bottom on a real Mac, while a QLabel reserves its font's
+        # ascent/descent internally. Styled entirely via
+        # `QLabel#wordmark` in `build_stylesheet` (theme.py), so it
+        # re-themes for free on `setStyleSheet()`. See HISTORY §114.
         self._wordmark = PlainLabel("Seeker")
         self._wordmark.setObjectName("wordmark")
         wordmark_row.addWidget(self._wordmark)
         wordmark_row.addStretch()
-        # Roadmap item C5.10/C5.11 — right-aligned on the wordmark's own
-        # row, cycling system -> light -> dark -> system.
+        # Right-aligned on the wordmark's own row, cycling system ->
+        # light -> dark -> system.
         self._theme_toggle = ThemeToggleButton(self._theme_mode)
         self._theme_toggle.clicked.connect(self._on_theme_toggle_clicked)
         wordmark_row.addWidget(self._theme_toggle)
@@ -751,22 +705,20 @@ class MainWindow(QMainWindow):
         help_button.clicked.connect(lambda: self._show_page("help"))
         layout.addWidget(help_button)
 
-        # Roadmap item 64 — directly below Help, same individually-built
-        # pattern (a simple _show_page(key) lambda, no initial-tab-aware
-        # handler needed).
+        # Directly below Help, same individually-built pattern (a simple
+        # _show_page(key) lambda, no initial-tab-aware handler needed).
         support_button = _build_nav_button("Support")
         self._nav_group.addButton(support_button)
         self._nav_buttons["support"] = support_button
         support_button.clicked.connect(lambda: self._show_page("support"))
         layout.addWidget(support_button)
 
-        # Roadmap item 56 Phase 3 — reversed from item 48's "Settings
-        # deliberately stays a separate dialog" decision: in fullscreen,
-        # a second window reads as a dead end with no way back to the
-        # shell. Now a real, checkable, nav-group page like Help, just
-        # built individually (like Help) rather than via the generic
-        # _NAV_PAGES loop, since it needs the initial_tab-aware handler
-        # below, not the loop's plain `_show_page(key)`.
+        # A page, not a separate dialog: in fullscreen, a second window
+        # reads as a dead end with no way back to the shell. A real,
+        # checkable, nav-group page like Help, just built individually
+        # (like Help) rather than via the generic _NAV_PAGES loop, since
+        # it needs the initial_tab-aware handler below, not the loop's
+        # plain `_show_page(key)`.
         self.settings_button = _build_nav_button("Settings")
         self._nav_group.addButton(self.settings_button)
         self._nav_buttons["settings"] = self.settings_button
@@ -781,7 +733,7 @@ class MainWindow(QMainWindow):
 
         return sidebar
 
-    # --- Roadmap item C5 (round 5): theme mode --------------------------
+    # --- Theme mode ------------------------------------------------------
 
     def _on_theme_toggle_clicked(self) -> None:
         current_index = _THEME_MODE_CYCLE.index(self._theme_mode)
@@ -796,22 +748,19 @@ class MainWindow(QMainWindow):
         system `colorSchemeChanged` signal (when subscribed) all call
         this, never `theme.apply_theme()` directly. Keeps the toggle
         icon, Settings' own radios, and the persisted config in sync in
-        every direction (C5.12).
+        every direction.
 
-        Roadmap item D2 (round 6) — ordering is load-bearing, not
-        cosmetic. `self._theme_mode` is set and the system-scheme
-        subscription is synced BEFORE `theme.apply_theme()` runs, so an
-        explicit light/dark choice has already disconnected
-        `_on_system_color_scheme_changed` by the time
-        `apply_theme()`'s own `setColorScheme()` call emits
-        `colorSchemeChanged` — that signal used to reach the still-
-        connected handler mid-call, which re-resolved and silently
-        re-applied the SYSTEM palette over whatever this call was
-        trying to set, while the mode/icon/settings still ended up
-        showing the originally-requested mode (the exact reported
-        symptom: only the icon changed). `_applying_theme` is a second,
-        independent guard (D2.3) for the "system" -> "system" path,
-        where the subscription legitimately stays connected throughout.
+        Ordering is load-bearing, not cosmetic. `self._theme_mode` is
+        set and the system-scheme subscription is synced BEFORE
+        `theme.apply_theme()` runs, so an explicit light/dark choice has
+        already disconnected `_on_system_color_scheme_changed` by the
+        time `apply_theme()`'s own `setColorScheme()` call emits
+        `colorSchemeChanged`; a still-connected handler would re-apply
+        the SYSTEM palette mid-call while the mode, icon and settings
+        showed the requested one. `_applying_theme` is a second,
+        independent guard for the "system" -> "system" path, where the
+        subscription legitimately stays connected throughout. See
+        HISTORY §109.
         """
         self._theme_mode = mode
         self._sync_system_scheme_subscription()
@@ -832,9 +781,9 @@ class MainWindow(QMainWindow):
         self.on_theme_changed()
 
     def _sync_system_scheme_subscription(self) -> None:
-        # Roadmap item C5.6 — subscribed ONLY while mode is "system":
-        # an explicit light/dark choice must never be silently
-        # overridden by the OS flipping its own appearance later.
+        # Subscribed ONLY while mode is "system": an explicit light/dark
+        # choice must never be silently overridden by the OS flipping
+        # its own appearance later.
         style_hints = QGuiApplication.styleHints()
         if self._theme_mode == "system" and not self._system_scheme_connected:
             style_hints.colorSchemeChanged.connect(
@@ -852,20 +801,20 @@ class MainWindow(QMainWindow):
         # rather than reading `scheme` directly, so this stays correct
         # even if Qt's own Unknown-scheme fallback (DARK) is in play.
         #
-        # Roadmap item D2.4 (round 6) — a blunt handler that re-applies
-        # unconditionally is a handler waiting to be re-broken by the
-        # next re-entrancy path someone finds. Two independent bail-outs:
+        # Two independent bail-outs, since a handler that re-applies
+        # unconditionally breaks on the next re-entrancy path:
         # `_theme_mode != "system"` (the subscription should already be
         # disconnected whenever this is true, but a handler must not
-        # depend on that alone) and `_applying_theme` (this signal firing
-        # as a direct side effect of `_apply_theme_mode`'s own in-flight
-        # `theme.apply_theme()` call, not a genuine later OS change).
+        # depend on that alone) and `_applying_theme` (this signal
+        # firing as a direct side effect of `_apply_theme_mode`'s own
+        # in-flight `theme.apply_theme()` call, not a genuine later OS
+        # change).
         if self._theme_mode != "system" or self._applying_theme:
             return
         self._apply_theme_mode("system", persist=False)
 
     def on_theme_changed(self) -> None:
-        """Roadmap item C5.4 — re-applies anything that bakes a color
+        """Re-applies anything that bakes a color
         into a specific widget instance rather than reading it fresh
         through the global stylesheet (see theme.py's own module
         docstring for the taxonomy). QSS-driven widgets need nothing
@@ -873,21 +822,16 @@ class MainWindow(QMainWindow):
         `_apply_theme_mode` above) re-polishes every one of them
         automatically.
         """
-        # Roadmap item E4 (round 7) — the wordmark used to be a custom-
-        # painted `_Wordmark` widget needing an explicit re-tint call
-        # here (QSvgRenderer has no currentColor). It's a plain
-        # QLabel#wordmark now, styled entirely through the global
-        # stylesheet, which `_apply_theme_mode`'s own
-        # `setStyleSheet()` call above already re-polishes for free —
-        # nothing left to do here for it.
+        # The wordmark is a QLabel#wordmark, re-polished by
+        # `_apply_theme_mode`'s `setStyleSheet()` call; nothing to do
+        # here for it.
         self._theme_toggle.update()
 
-        # Roadmap item C5.3 point 3 — QColor(theme.ACCENT)/setForeground
-        # calls baked into table items ARE re-computed on every one of
-        # these render calls, which the 2s poll_timer already re-runs
-        # regularly (self-healing within ~2s) — but re-running them
-        # here too means the switch is correct IMMEDIATELY, not after
-        # up to a 2s wait.
+        # QColor(theme.ACCENT)/setForeground calls baked into table
+        # items ARE re-computed on every one of these render calls,
+        # which the 2s poll_timer already re-runs regularly
+        # (self-healing within ~2s) — but re-running them here too means
+        # the switch is correct IMMEDIATELY, not after up to a 2s wait.
         self._dashboard_page.poll_selected_playlist()
         self._downloads_page.poll_active_downloads()
         self._review_page.poll_review_items()
@@ -899,9 +843,9 @@ class MainWindow(QMainWindow):
         button.setText(f"{label}  ({count})" if count > 0 else label)
 
     def _build_view_menu(self) -> None:
-        # Round 8 §12.3/§12.5 — ⌘1-⌘7 for the nav pages, plus ⌘R
-        # refresh, ⌘F focus search and ⌘, Settings, all surfaced here
-        # for discoverability rather than left as invisible shortcuts.
+        # ⌘1-⌘7 for the nav pages, plus ⌘R refresh, ⌘F focus search and
+        # ⌘, Settings, all surfaced here for discoverability rather than
+        # left as invisible shortcuts.
         view_menu = self.menuBar().addMenu("&View")
 
         for index, (key, label) in enumerate(_NAV_PAGES, start=1):
@@ -951,8 +895,8 @@ class MainWindow(QMainWindow):
         self._search_page.search_artist_edit.setFocus()
 
     def _build_window_menu(self) -> None:
-        # Round 8 §12.5 — the standard macOS Window-menu pair; Qt
-        # supplies the rest of the app's window management for free.
+        # The standard macOS Window-menu pair; Qt supplies the rest of
+        # the app's window management for free.
         window_menu = self.menuBar().addMenu("&Window")
 
         minimize_action = QAction("Minimize", self)
@@ -1030,10 +974,10 @@ class MainWindow(QMainWindow):
                 box.setTextFormat(Qt.TextFormat.RichText)
             box.setText(text)
         elif result.status == UpdateStatus.NO_RELEASES_PUBLISHED:
-            # Round 9 §4.2a — a repo with nothing published yet isn't a
-            # fault, so this gets its own honest, un-alarming rendering
-            # rather than falling into the UNAVAILABLE branch's Warning
-            # icon and "Couldn't check for updates:" framing.
+            # A repo with nothing published yet isn't a fault, so this
+            # gets its own honest, un-alarming rendering rather than
+            # falling into the UNAVAILABLE branch's Warning icon and
+            # "Couldn't check for updates:" framing.
             box.setIcon(QMessageBox.Icon.Information)
             box.setText(result.reason or "No releases have been published yet.")
         else:
@@ -1053,16 +997,11 @@ class MainWindow(QMainWindow):
         )
 
     def _on_page_changed(self, index: int) -> None:
-        # Roadmap item 56 Phase 6.1 — was gated by
-        # _duplicates_locations_loaded to fire at most once ever (the
-        # original fix for a real, confirmed Qt/GIL deadlock — item 39
-        # — triggered by fetching at MainWindow *construction* time).
-        # A page SHOW is a different, human-paced trigger — the same
-        # distinction item 39's own addendum already draws — so
-        # refreshing on every show (a location added since the last
-        # visit must actually appear) doesn't reintroduce that
-        # construction-time hazard. Settings' own exit (§3.3) already
-        # calls this same method directly; both paths now land on it.
+        # Refreshed on every show (a location added since the last visit
+        # must appear): the Qt/GIL deadlock came from fetching at
+        # MainWindow *construction* time, and a page SHOW is a
+        # different, human-paced trigger (HISTORY §39). Leaving Settings
+        # calls this same method directly.
         if index == self._duplicates_page_index:
             self._duplicates_page.refresh_locations()
             self._duplicates_page.refresh_milestone()
@@ -1114,9 +1053,9 @@ class MainWindow(QMainWindow):
             # rather than waiting up to POLL_INTERVAL_MS for the next
             # 2s display tick to happen to catch it.
             self._dashboard_page.poll_selected_playlist()
-            # Roadmap item R7.5 — checked on the same real 20s cycle
-            # that can actually produce a newly-completed download, not
-            # a new timer of its own.
+            # Checked on the same real 20s cycle that can actually
+            # produce a newly-completed download, not a new timer of its
+            # own.
             self._tray.check_for_download_notifications()
 
         def on_poll_error(message: str) -> None:
@@ -1142,14 +1081,12 @@ class MainWindow(QMainWindow):
             on_error: Callable[[str], None] | None = None,
             reports_progress: bool = False,
     ) -> None:
-        # Roadmap item 65 (Phase 2.1) — the shared shape for a long-
-        # running action that should register in busy_actions/the
-        # activity strip: begin() before submitting, end() on every real
-        # completion path (success or error) so it's never left marked
-        # running past its own task. Replaces passing button= directly to
-        # run_worker() for every call site converted to use this — the
-        # registry, not run_worker itself, now owns that button's
-        # enable/disable + text for the duration.
+        # The shared shape for a long-running action that should
+        # register in busy_actions/the activity strip: begin() before
+        # submitting, end() on every real completion path (success or
+        # error) so it's never left marked running past its own task.
+        # The registry, not run_worker, owns the button's enable/disable
+        # and text for the duration.
         self.busy_actions.begin(key, button, busy_text)
         self._render_activity_strip()
 
@@ -1178,11 +1115,9 @@ class MainWindow(QMainWindow):
         )
 
     def _on_settings_clicked(self, initial_tab: str | None = None) -> None:
-        # Roadmap item 56 Phase 3 — self.settings_page is a single,
-        # long-lived page built once in _build_ui() (item 22's "held
-        # reference" concern that used to apply to a per-open
-        # SettingsWindow no longer applies at all: this widget is never
-        # constructed-and-discarded).
+        # self.settings_page is a single, long-lived page built once in
+        # _build_ui(), never constructed-and-discarded, so it needs no
+        # held reference of its own.
         if initial_tab is not None:
             self.settings_page.select_tab(initial_tab)
 
@@ -1219,11 +1154,10 @@ class MainWindow(QMainWindow):
         self._tray.on_application_state_changed(state)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        # Round 9 §2.2 — installed on the QApplication instance itself
-        # (see __init__'s own comment on this same mechanism); every
-        # other event passes through untouched via the base
-        # implementation, same pattern as any other QObject-level
-        # filter in this codebase would use.
+        # Installed on the QApplication instance itself (see __init__'s
+        # own comment on this same mechanism); every other event passes
+        # through untouched via the base implementation, same pattern as
+        # any other QObject-level filter in this codebase would use.
         if (
             watched is QApplication.instance()
             and event.type() == QEvent.Type.Quit
@@ -1242,30 +1176,30 @@ class MainWindow(QMainWindow):
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
 
-        # Round 9 §6 — unlike window geometry, there is no
-        # hide-to-tray visibility race to guard against: the Review
-        # page's splitter keeps reporting its real current sizes
-        # whether or not MainWindow itself is visible, since hiding to
-        # the tray never destroys either widget. Unconditional, unlike
-        # the lifecycle's `_hidden_to_tray` gate on geometry.
+        # Unlike window geometry, there is no hide-to-tray visibility
+        # race to guard against: the Review page's splitter keeps
+        # reporting its real current sizes whether or not MainWindow
+        # itself is visible, since hiding to the tray never destroys
+        # either widget. Unconditional, unlike the lifecycle's
+        # `_hidden_to_tray` gate on geometry.
         self._review_page.persist_splitter_state()
 
-        # Roadmap item C5.6 — a real Qt signal connection to a
-        # GLOBAL object (QGuiApplication.styleHints(), not this
-        # window), so it must be torn down explicitly rather than
-        # relying on this window's own destruction to drop it.
+        # A real Qt signal connection to a GLOBAL object
+        # (QGuiApplication.styleHints(), not this window), so it must be
+        # torn down explicitly rather than relying on this window's own
+        # destruction to drop it.
         if self._system_scheme_connected:
             QGuiApplication.styleHints().colorSchemeChanged.disconnect(
                 self._on_system_color_scheme_changed
             )
             self._system_scheme_connected = False
 
-        # Roadmap item 116 (round 8, §14.2) — same reasoning as
-        # _system_scheme_connected just above: a connection to the
-        # GLOBAL QApplication instance, not this window. Disconnects
-        # the same MainWindow-owned stub that was connected in
-        # __init__ (see that connect() call's own comment for why it's
-        # not `self._tray.on_application_state_changed` directly).
+        # Same reasoning as _system_scheme_connected just above: a
+        # connection to the GLOBAL QApplication instance, not this
+        # window. Disconnects the same MainWindow-owned stub that was
+        # connected in __init__ (see that connect() call's own comment
+        # for why it's not `self._tray.on_application_state_changed`
+        # directly).
         if self._app_state_connected:
             app = QApplication.instance()
             if app is not None:
