@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -10,22 +11,37 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.database.repositories.location_merge_repository import (
+    LocationMergeRepository,
+)
 from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
+from seeker.destination_resolution import (
+    InvalidDestinationSubfolderError,
+    validate_destination_subfolder,
+)
 from seeker.errors import (
     LibraryLocationNotFoundError,
     PlaylistNotFoundError,
     SeekerError,
 )
+from seeker.files.deletion import same_file
 from seeker.library.matcher import TrackMatcher
-from seeker.library.nesting import find_nested, is_within, same_directory
+from seeker.library.nesting import (
+    NestedPathMap,
+    find_nested,
+    is_within,
+    nested_path_map,
+    same_directory,
+)
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import ScanAndMatchResult, ScanResult
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.nested_location import NestedLocation
@@ -66,6 +82,27 @@ class LibraryLocationOverlapError(SeekerError):
         super().__init__(message)
 
 
+class LocationsNotNestedError(SeekerError):
+    def __init__(self, merged_name: str, kept_name: str):
+        super().__init__(
+            f"'{merged_name}' and '{kept_name}' are not one inside the "
+            "other, so there is nothing to merge. Remove the one you "
+            "no longer want instead."
+        )
+
+
+@dataclass(frozen=True)
+class _MergePlan:
+    """A merge worked out against the disk, outside any transaction:
+    `pairs` holds (merged row id, kept row id) for every merged file
+    the kept location indexes too.
+    """
+    merged: LibraryLocation
+    kept: LibraryLocation
+    path_map: NestedPathMap
+    pairs: list[tuple[int, int]]
+
+
 # Untuned constant — how many auto-suffix attempts (" (2)", " (3)", ...)
 # before giving up. A real user is never going to genuinely have this
 # many same-named folders; this exists purely as a sane upper bound
@@ -87,6 +124,7 @@ class LibraryService:
         self.local_files = local_file_repo
         self.scanner = LibraryScanner(local_file_repo, database)
         self.track_matches = TrackMatchRepository()
+        self.location_merges = LocationMergeRepository()
         # Both optional — only scan_and_match()/get_needs_review_matches()
         # etc. need them; scan_all()/scan a location alone still work
         # with neither.
@@ -293,6 +331,208 @@ class LibraryService:
         )
 
         return summary
+
+    def preview_merge_location(
+            self,
+            merged_name: str,
+            kept_name: str,
+            default_location_id: int | None = None,
+    ) -> LocationMergeSummary:
+        """What `merge_location` would do, read-only. Touches the disk,
+        so call it off the UI thread.
+        """
+        playlists = self._require_playlists("preview_merge_location()")
+        plan = self._plan_merge(merged_name, kept_name)
+
+        with self.database.transaction() as connection:
+            self._stage_merge(plan, connection)
+            summary, _ = self._merge_summary(
+                plan, default_location_id, playlists, connection,
+            )
+
+        return summary
+
+    def merge_location(
+            self,
+            merged_name: str,
+            kept_name: str,
+            default_location_id: int | None = None,
+    ) -> LocationMergeSummary:
+        """Folds a location nested inside, or around, the kept one into
+        it, in one transaction, then forgets it as `remove_location`
+        does. Each merged file the kept location indexes too (the same
+        physical file, checked on disk) hands its matches, Review
+        rejections and analysis to the kept row; playlists downloading
+        into the merged location download into the same folder through
+        the kept one. Both locations must be reachable. Files on disk
+        are not touched.
+        """
+        playlists = self._require_playlists("merge_location()")
+        plan = self._plan_merge(merged_name, kept_name)
+        merged_id, kept_id = self._location_ids(plan)
+
+        with self.database.transaction() as connection:
+            self._stage_merge(plan, connection)
+            summary, moves = self._merge_summary(
+                plan, default_location_id, playlists, connection,
+            )
+
+            self.location_merges.move_matches(connection)
+            self.location_merges.move_rejections(connection)
+            self.location_merges.carry_analyses(connection)
+            self.location_merges.move_duplicate_cleanups(
+                merged_id, kept_id, connection,
+            )
+
+            for playlist_id, subfolder in moves:
+                playlists.set_destination(
+                    playlist_id, kept_id, subfolder, connection,
+                )
+
+            self._forget_location(merged_id, playlists, connection)
+
+        logger.info(
+            "Merged library location '%s' into '%s': %d files merged, "
+            "%d forgotten, %d matches moved, %d cleared, %d analyses "
+            "kept, %d playlists moved, %d lost their destination.",
+            merged_name,
+            kept_name,
+            summary.files_merged,
+            summary.files_forgotten,
+            summary.matches_moved,
+            summary.matches_cleared,
+            summary.analyses_kept,
+            summary.playlists_moved,
+            summary.playlists_cleared,
+        )
+
+        return summary
+
+    def _plan_merge(self, merged_name: str, kept_name: str) -> _MergePlan:
+        with self.database.transaction() as connection:
+            merged = self._get_location_or_raise(merged_name, connection)
+            kept = self._get_location_or_raise(kept_name, connection)
+            merged_id, kept_id = merged.id, kept.id
+            # Loaded from the DB, so both ids are set.
+            assert merged_id is not None
+            assert kept_id is not None
+            merged_files = self.local_files.get_all_for_location(
+                merged_id, connection,
+            )
+            kept_files = self.local_files.get_all_for_location(
+                kept_id, connection,
+            )
+
+        merged_root = Path(merged.path)
+        kept_root = Path(kept.path)
+        path_map = (
+            nested_path_map(merged_root, kept_root)
+            if merged_id != kept_id
+            else None
+        )
+
+        if path_map is None:
+            raise LocationsNotNestedError(merged_name, kept_name)
+
+        for root in (merged_root, kept_root):
+            if not root.is_dir():
+                raise LibraryUnavailableError(root)
+
+        kept_ids = {file.relative_path: file.id for file in kept_files}
+        pairs = []
+
+        for file in merged_files:
+            kept_path = path_map.map_relative_path(file.relative_path)
+            kept_file_id = kept_ids.get(kept_path) if kept_path else None
+
+            if (
+                    file.id is not None
+                    and kept_path is not None
+                    and kept_file_id is not None
+                    and same_file(
+                        merged_root / file.relative_path,
+                        kept_root / kept_path,
+                    )
+            ):
+                pairs.append((file.id, kept_file_id))
+
+        return _MergePlan(merged, kept, path_map, pairs)
+
+    @staticmethod
+    def _location_ids(plan: _MergePlan) -> tuple[int, int]:
+        # _plan_merge loaded both from the DB, so both ids are set.
+        assert plan.merged.id is not None
+        assert plan.kept.id is not None
+
+        return plan.merged.id, plan.kept.id
+
+    def _stage_merge(
+            self,
+            plan: _MergePlan,
+            connection: sqlite3.Connection,
+    ) -> None:
+        """Stages the plan's pairs, refusing if either location was
+        removed or replaced since the plan was made.
+        """
+        for planned in (plan.merged, plan.kept):
+            current = self._get_location_or_raise(planned.name, connection)
+
+            if current.id != planned.id:
+                raise LibraryLocationNotFoundError(
+                    f"The library location '{planned.name}' changed "
+                    "while the merge was being prepared. Try again."
+                )
+
+        merged_id, kept_id = self._location_ids(plan)
+        self.location_merges.stage(plan.pairs, merged_id, kept_id, connection)
+
+    def _merge_summary(
+            self,
+            plan: _MergePlan,
+            default_location_id: int | None,
+            playlists: PlaylistRepository,
+            connection: sqlite3.Connection,
+    ) -> tuple[LocationMergeSummary, list[tuple[str, str | None]]]:
+        """The summary of a staged merge, and the (playlist id, new
+        subfolder) destinations that move to the kept location.
+        """
+        merged_id, _ = self._location_ids(plan)
+        files_merged = self.location_merges.count_files(connection)
+        matches_moved, matches_cleared = (
+            self.location_merges.count_matches(merged_id, connection)
+        )
+        moves: list[tuple[str, str | None]] = []
+        playlists_cleared = 0
+
+        for playlist in playlists.get_all(connection):
+            if playlist.download_location_id != merged_id:
+                continue
+
+            subfolder = _kept_subfolder(
+                plan.path_map, playlist.download_subfolder,
+            )
+
+            if subfolder is None:
+                playlists_cleared += 1
+            else:
+                moves.append((playlist.id, subfolder or None))
+
+        summary = LocationMergeSummary(
+            merged_name=plan.merged.name,
+            kept_name=plan.kept.name,
+            files_merged=files_merged,
+            files_forgotten=self.local_files.count_for_location(
+                merged_id, connection,
+            ) - files_merged,
+            matches_moved=matches_moved,
+            matches_cleared=matches_cleared,
+            analyses_kept=self.location_merges.count_analyses(connection),
+            playlists_moved=len(moves),
+            playlists_cleared=playlists_cleared,
+            was_default=merged_id == default_location_id,
+        )
+
+        return summary, moves
 
     def _forget_location(
             self,
@@ -533,3 +773,24 @@ class LibraryService:
                 )
 
             self.track_matcher.track_matches.delete(track_id, connection)
+
+
+def _kept_subfolder(
+        path_map: NestedPathMap,
+        subfolder: str | None,
+) -> str | None:
+    """A merged location's destination subfolder as a subfolder of the
+    kept location naming the same folder: "" for the kept root itself,
+    None when the folder is outside the kept location or not a valid
+    subfolder there.
+    """
+    parts = tuple(subfolder.split("/")) if subfolder else ()
+    mapped = path_map.map_parts(parts)
+
+    if mapped is None:
+        return None
+
+    try:
+        return validate_destination_subfolder("/".join(mapped)) or ""
+    except InvalidDestinationSubfolderError:
+        return None

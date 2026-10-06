@@ -13,6 +13,7 @@ from seeker.config_store import (
     resolve_config_path,
     save_config,
 )
+from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.docker_setup import (
     DockerState,
     SlskdBringUpError,
@@ -702,6 +703,33 @@ def test_remove_location_keeps_a_default_destination_elsewhere(
 
     assert summary.was_default is False
     assert app.settings.default_download_location_id == kept_id
+
+
+def test_merge_location_clears_the_default_destination_it_was(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    inner = tmp_path / "music" / "Test"
+    inner.mkdir(parents=True)
+    app.library_service.add_location("Music", str(tmp_path / "music"))
+    service = app.library_service
+    with service.database.transaction() as connection:
+        # Registered unchecked, as builds before the nesting guard did.
+        service.locations.add(
+            LibraryLocation(name="Test", path=str(inner), added_at="t"),
+            connection,
+        )
+        test = service.locations.get_by_name("Test", connection)
+    assert test is not None and test.id is not None
+    app.persist_default_destination(test.id, True)
+
+    preview = app.preview_merge_location("Test", "Music")
+    assert app.settings.default_download_location_id == test.id
+    summary = app.merge_location("Test", "Music")
+
+    assert preview.was_default is summary.was_default is True
+    assert app.settings.default_download_location_id is None
+    assert load_config(resolve_config_path()).default_download_location_id is None
 
 
 def test_persist_default_destination_reflected_by_download_service_immediately(

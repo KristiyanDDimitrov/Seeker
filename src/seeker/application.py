@@ -43,6 +43,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import MetadataService
 from seeker.library.service import LibraryService
 from seeker.models.data_locations import DataLocations
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.slskd_start import SlskdStartResult
 from seeker.soulseek.client import SoulseekClient
@@ -466,6 +467,38 @@ class Application:
         """
         summary = self.library_service.remove_location(
             name,
+            default_location_id=self._config_store.default_download_location_id,
+        )
+
+        if summary.was_default:
+            self.update_settings(default_download_location_id=None)
+
+        return summary
+
+    def preview_merge_location(
+            self,
+            merged_name: str,
+            kept_name: str,
+    ) -> LocationMergeSummary:
+        return self.library_service.preview_merge_location(
+            merged_name,
+            kept_name,
+            default_location_id=self._config_store.default_download_location_id,
+        )
+
+    def merge_location(
+            self,
+            merged_name: str,
+            kept_name: str,
+    ) -> LocationMergeSummary:
+        """Merges a nested location into the one kept (see
+        `LibraryService.merge_location`) and, when the merged one was
+        the default download destination, clears that as removal does:
+        moving it would change the folder downloads land in.
+        """
+        summary = self.library_service.merge_location(
+            merged_name,
+            kept_name,
             default_location_id=self._config_store.default_download_location_id,
         )
 
