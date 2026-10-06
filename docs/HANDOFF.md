@@ -10,49 +10,50 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S24 part-1 close-out commit (HISTORY §168, this
-  handoff, the plan row). Tree clean apart from the untracked
-  `Claude outputs/`.
-- **Local pytest** (2026-10-06, at `2fe4768`): `1653 passed, 29
-  skipped` — the X9 Pro was not mounted, so its 28 tests skipped as
-  on CI (with it mounted the count is `1681 passed, 1 skipped`).
-- **`mypy --strict src/`:** clean, 127 files. **`ruff check src
-  tests`:** 0 findings.
-- **CI:** run `37459977454` (at `028e73f`): **success**, `1653
-  passed, 29 skipped`, coverage 94.10 % (floor 92 %).
+- **HEAD:** the S24 close-out commit (HISTORY §169, this handoff, the
+  plan row). Tree clean apart from the untracked `Claude outputs/`.
+- **Local** (at `e003f92`, X9 Pro not mounted): pytest `1654 passed,
+  29 skipped`; `mypy --strict src/` clean, 127 files; `ruff check src
+  tests` 0.
+- **CI:** pending (the push follows this commit).
 
 ## 2. Where we are
 
-S1–S23 ticked. **S24 stopped at its split point** (services half
-done; the session passed the 150 K ceiling at ~200 K). **Next: S24
-part 2**, the rest of §24 (see §7), then S25.
+S1–S24 ticked. **Next: S25**, comment hygiene in `src/seeker/ui/`
+(648 A.10 matches; split point after `main_window.py` and
+`theme.py`).
 
-## 3. Session report (S24 part 1)
+## 3. Session report (S24 part 2)
 
-Evidence, with the before/after counts, is in HISTORY §168.
-- `2fe4768` §24 services half: 21 files' comments and docstrings;
-  history references outside `ui/` that are not `HISTORY §N`
-  pointers 250 → 72; pointers 66 → 106. AST check: no code change.
-
+Evidence, with before/after counts, is in HISTORY §169.
+- `95369e0` §24 the rest: 25 files' comments (core modules, config
+  and packaging files); history references outside `ui/` that are
+  not `HISTORY §N` pointers 72 → 0. AST check: no code change.
+- `e003f92` §24: two `--help` strings printed roadmap item numbers;
+  new sweep test `test_no_help_text_carries_development_history`
+  (failed on HEAD, passes now).
 
 ## 4. Key context
 
-- **Old "item N" numbers are not always HISTORY §N.** The duplicate
-  detector's "item 5" is §38–§40; "item 77/P8" is §78; "item 62" is
-  §56's Phase 7 plus §62. Check `docs/history/README.md` before
-  writing a pointer; drop the reference when unsure.
-- **Keep `HISTORY` and `§N` on one line.** The count treats a `§N`
-  not preceded by `HISTORY ` (or in a list like `HISTORY §63, §66`)
-  as a leftover, and a wrap between them makes a false leftover.
-- **Count used** (A.10's pattern, then pointers excluded):
-  `grep -rhoE "(HISTORY §[0-9]+((, | and |/)§[0-9]+)*)|<A.10 pattern>"
-  src/ --exclude-dir=ui | grep -vc '^HISTORY §'` → 72 now.
-- **Proving "no code change":** parse each changed file at HEAD and in
-  the tree, blank every docstring, compare `ast.dump` (~15 lines).
-  The tech-debt-tracker scanner has no category for this debt; the
-  A.10 count is the measure.
-- **Partial-line edits leave ragged or overlong lines**: ruff E501
-  finds the long ones; grep the diff for `:: `/`/ ` after a rewrap.
+- **Old "item N" numbers are not always HISTORY §N.** Mappings found
+  so far: item 5/38 → §38–§40; item 66's status split → §56, its
+  bounded retry → §66; item 68 (ffmpeg) → §69; item 77/P8 → §78;
+  item 81 → §81, §83. Check `docs/history/README.md` (or `awk` the
+  entry for a keyword) before writing a pointer; drop it when unsure.
+- **Keep `HISTORY` and `§N` on one line** — a wrap between them
+  counts as a leftover.
+- **Count used:** `P='(HISTORY §[0-9]+((, | and |/)§[0-9]+)*)|<A.10
+  pattern>'; grep -rhoE "$P" src/seeker/ui | grep -vc '^HISTORY §'`.
+- **Proving "no code change":** blank every docstring, compare
+  `ast.dump` at HEAD and in the tree (~25 lines; HISTORY §169).
+- **Rewrapping pitfalls:** a "same comment prefix" paragraph joiner
+  merges paragraphs with no blank comment line between them and
+  turns a line-final hyphen into "mid- stream"; partial-line edits
+  leave overlong lines (ruff E501 finds them). Grep the diff after.
+- **User-facing strings are code, not comments:** a history leak in
+  `--help`, a label or a tooltip is its own behaviour commit with a
+  failing test first (as `e003f92`). Expect the same in `ui/`
+  (`help_text.py` has 20 matches).
 - Carried: radon not in the env. Never touch slskd or real data. zsh
   does not word-split `$var`; BSD `sed` lacks `\b`. CI runs
   offscreen (800×800); reproduce CI-only UI failures with
@@ -60,14 +61,13 @@ Evidence, with the before/after counts, is in HISTORY §168.
 
 ## 5. Decisions made
 
-- **Stopped at the split point rather than finishing §24:** plan rule
-  3 (the row overran the 150 K ceiling).
 - **Platform observations stay in comments** (working agreement 4
-  outranks §24's "delete confirmed live" rule): `login_item.py` keeps
-  its macOS observation, the date dropped, the packaged-build claim
-  marked UNVERIFIED.
-- **A real peer username in a comment became `<name>`**
-  (`soulseek/client.py`).
+  outranks §24's "delete confirmed live" rule); only their dates go.
+- **Comments naming moved code were corrected in the same pass**
+  (`DownloadPoller`, `settle_target`, `ui/tray.py`): a stale name is
+  the same kind of rot as a stale date.
+- **The A.10 count is the measure**, not tech-debt-tracker (run:
+  4,451 → 4,443 items), which has no category for this debt.
 
 ## 6. Blockers
 
@@ -75,12 +75,7 @@ None.
 
 ## 7. Files in progress
 
-S24 part 2 (`partially_done`, none edited yet): the 72 leftovers in
-`audio/`, `models/`, `database/`, `files/`, `cli.py`, `main.py`,
-`main_ui.py`, `_build_info.py` (top five in HISTORY §168; the rest 1–5 each), and
-§24's config files (`pyproject.toml`, `packaging/*`,
-`docker-compose.yml`). Narrative without a number needs a wider grep:
-`grep -nE "20[0-9]{2}-[0-9]{2}-[0-9]{2}|[Cc]onfirmed live|real bug|Phase [0-9]|CLAUDE\.md|[Bb]rief|[Rr]oadmap"`.
+None.
 
 ## 8. Waiting on Kris
 

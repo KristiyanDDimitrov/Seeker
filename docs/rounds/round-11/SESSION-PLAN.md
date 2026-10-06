@@ -60,7 +60,7 @@ explicit yes.
 | ☑ S22 | Performance (part 1 §22.1–§22.2, HISTORY §165; part 2 §22.3–§22.6, HISTORY §166) | §22 | ~120 K | After §22.1–§22.2 (the poll) |
 | ☑ S23 | Test gaps | §23 | ~120 K | After §23.1 (`metadata.py`) |
 | **Phase H — Hygiene** | | | | |
-| ◐ S24 | Comment and config hygiene: core (part 1, the services half, done: HISTORY §168) | §24 | ~130 K | After the services half |
+| ☑ S24 | Comment and config hygiene: core (part 1, services: HISTORY §168; part 2, the rest: HISTORY §169) | §24 | ~130 K | After the services half |
 | ☐ S25 | Comment hygiene: `ui/` | §25 | ~130 K | After `main_window.py` and `theme.py` |
 | **Phase I — Nested locations** | | | | |
 | ☐ S26 | Guard nested locations; guided cleanup | §26 | ~120 K | After §26.2 |
