@@ -95,7 +95,7 @@ src/seeker/
 │   │                          #   quit (WindowLifecycleController)
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
-│       widgets.py (ThemeToggleButton),
+│       widgets.py (ThemeToggleButton, TwoToneProgressBar),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -567,6 +567,16 @@ Each links to the HISTORY entry where the full investigation lives;
   scrolls rather than squeezing rows (Settings' tabs).
   `tests/shell/test_button_sizing.py` walks every harness screen and
   fails the build. [HISTORY §174](docs/history/151-180.md#174)
+- **Focus is visible, and only keyboard focus.** `apply_theme` sets
+  Fusion through `_SeekerStyle` (buttons are `TabFocus`: a click never
+  focuses one), and every focusable control has a `:focus` rule. Test
+  a focused look by painting through `style().drawControl()` with
+  `State_HasFocus` on the option, never by real focus. A per-row
+  button gets `cell_widget(..., row_label=)` and an icon-only control
+  `setAccessibleName`; `tests/shell/test_keyboard_access.py` fails
+  the build. A labelled progress bar is `TwoToneProgressBar`: no one
+  label colour reads on both fill and track.
+  [HISTORY §175](docs/history/151-180.md#175)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.

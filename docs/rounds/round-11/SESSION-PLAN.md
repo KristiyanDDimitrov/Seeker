@@ -65,7 +65,7 @@ explicit yes.
 | **Phase I — Nested locations** | | | | |
 | ☑ S26 | Guard nested locations; guided cleanup (part 1 §26.1–§26.2, HISTORY §171; part 2 §26.3–§26.4, HISTORY §172) | §26 | ~120 K | After §26.2 |
 | **Phase J — UI consistency** | | | | |
-| ☐ S27 | Screenshot harness; theme root causes; focus and accessibility (part 1 §27.0–§27.1, HISTORY §173; part 2 §27.2–§27.3, HISTORY §174) | §27 | ~120 K | After §27.1 |
+| ☑ S27 | Screenshot harness; theme root causes; focus and accessibility (part 1 §27.0–§27.1, HISTORY §173; part 2 §27.2–§27.3, HISTORY §174; part 3 §27.4–§27.5, HISTORY §175) | §27 | ~120 K | After §27.1 |
 | ☐ S28 | Tables, empty states, copy | §28 | ~120 K | After §28.2 |
 | ☐ S29 | Review and Settings information architecture | §29 | ~120 K | After §29.1 |
 | **Phase K — Visual refresh** | | | | |
@@ -254,6 +254,11 @@ checklist (carried items marked):
       display, both themes.
 - [ ] The packaged app draws the combo-box chevron (an SVG: needs
       Qt's `qsvg` plugin in the bundle; HISTORY §174).
+- [ ] Keyboard focus on a real Mac (HISTORY §175): with System
+      Settings → Keyboard → Keyboard navigation on, Tab shows the ring
+      on buttons, checkboxes and tabs, and a mouse click leaves no
+      ring; VoiceOver reads a Review row's button as "Confirm <artist>
+      - <title>".
 
 ---
 
