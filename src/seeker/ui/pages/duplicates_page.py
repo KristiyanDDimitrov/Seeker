@@ -36,16 +36,16 @@ from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker
 
-# A sentinel QButtonGroup id for the "Keep all" option, sharing the
-# same group as the per-file keep radios so selecting one deselects the
+# A sentinel QButtonGroup id for the "Keep all" option, sharing the same
+# group as the per-file keep radios so selecting one deselects the
 # others (the exact behavior the user asked to keep). Real local_file
 # ids are always positive (AUTOINCREMENT starts at 1), so 0 can never
-# collide with one — and, confirmed live, -1 specifically CANNOT be
-# used here: QButtonGroup.addButton(button, id=-1) doesn't set the id
-# to -1 at all — Qt treats -1 as its own "auto-assign an id" sentinel
-# and silently substitutes a different, Qt-generated negative id
+# collide with one — and, confirmed live, -1 specifically CANNOT be used
+# here: QButtonGroup.addButton(button, id=-1) doesn't set the id to -1
+# at all — Qt treats -1 as its own "auto-assign an id" sentinel and
+# silently substitutes a different, Qt-generated negative id
 # (checkedId() returned -2 in a real, direct repro), breaking any
-# comparison against a real -1 constant (HISTORY §56 Phase 6.3).
+# comparison against a real -1 constant (HISTORY §56).
 KEEP_ALL_DUPLICATES_ID = 0
 
 
@@ -103,9 +103,8 @@ class DuplicatesPage(QWidget):
 
         # Persistent, cumulative, and celebratory. Hidden entirely at
         # zero — "an empty milestone is worse than no milestone,"
-        # matching this app's existing "blank, not a misleading
-        # control" precedent for a genuinely-nothing-to-show state
-        # (HISTORY §56 Phase 6.4).
+        # matching this app's existing "blank, not a misleading control"
+        # precedent for a genuinely-nothing-to-show state (HISTORY §56).
         self.duplicates_milestone_label = PlainLabel("")
         self.duplicates_milestone_label.hide()
         layout.addWidget(self.duplicates_milestone_label)
@@ -228,12 +227,11 @@ class DuplicatesPage(QWidget):
             _DUPLICATES_COLUMN_HEADERS
         )
         theme.apply_table_defaults(self.duplicates_table)
-        # Round 8 §12.2 — this table's rows are grouped per duplicate
-        # cluster via setSpan() (see _render_duplicate_groups below);
-        # Qt's own sort reorders rows independent of that grouping,
-        # which would visually merge/split unrelated clusters. Opted
-        # back out of the sorting apply_table_defaults enables for
-        # every other table.
+        # This table's rows are grouped per duplicate cluster via
+        # setSpan() (see _render_duplicate_groups below); Qt's own sort
+        # reorders rows independent of that grouping, which would
+        # visually merge/split unrelated clusters. Opted back out of the
+        # sorting apply_table_defaults enables for every other table.
         self.duplicates_table.setSortingEnabled(False)
         layout.addWidget(theme.make_card(self.duplicates_table))
         self._configure_duplicates_columns()
@@ -242,10 +240,10 @@ class DuplicatesPage(QWidget):
         # radio per group can be selected) have no Qt parent-child
         # ownership tie to the table cells their radios live in — kept
         # alive here for the same reason ui/workers.py's _callbacks
-        # keeps a Worker reference until its own completion (HISTORY
-        # §22): a Qt object with nothing else referencing it is a live
-        # GC/use-after-free hazard, not just a style preference. Reset
-        # on every render.
+        # keeps a Worker reference until its own completion
+        # (HISTORY §22): a Qt object with nothing else referencing it is
+        # a live GC/use-after-free hazard, not just a style preference.
+        # Reset on every render.
         self._duplicate_button_groups: list[QButtonGroup] = []
         self._current_duplicate_groups: list[DuplicateGroup] = []
         # Same rebuild-destroys-state bug the Review page's checkbox
@@ -312,18 +310,18 @@ class DuplicatesPage(QWidget):
     ) -> None:
         # Preserve the current selection across a refresh when that
         # location still exists — losing it on every page revisit would
-        # be a real regression of its own (HISTORY §56 Phase 6.1).
+        # be a real regression of its own (HISTORY §56).
         previously_selected = self._selected_duplicates_location()
 
         self.duplicates_location_combo.clear()
         # The real LibraryLocation (path for the delete-confirmation
-        # dialog's exact full paths and the table's own Location
-        # column; id for the reclaimed-space milestone's cleanup
-        # record). Neither is carried on LocalFile/DuplicateFile at all
-        # (only location_id, and not even that on the milestone side),
-        # and find_duplicate_groups() is already scoped to one location
-        # per call, so this is resolved once here rather than plumbed
-        # through the service layer (HISTORY §56 Phase 6.3/6.4).
+        # dialog's exact full paths and the table's own Location column;
+        # id for the reclaimed-space milestone's cleanup record).
+        # Neither is carried on LocalFile/DuplicateFile at all (only
+        # location_id, and not even that on the milestone side), and
+        # find_duplicate_groups() is already scoped to one location per
+        # call, so this is resolved once here rather than plumbed
+        # through the service layer (HISTORY §56).
         self._duplicates_locations_by_name = {
             location.name: location for location, _ in locations
         }
@@ -799,9 +797,8 @@ class DuplicatesPage(QWidget):
         # "The same file living in several folders is sometimes
         # deliberate." An additional button in the group's EXISTING
         # QButtonGroup (a sentinel id, not a separate control/group) so
-        # the "selecting one deselects the others" behavior is
-        # preserved and simply extended, not reimplemented (HISTORY §56
-        # Phase 6.3).
+        # the "selecting one deselects the others" behavior is preserved
+        # and simply extended, not reimplemented (HISTORY §56) .
         keep_all_radio = QRadioButton("Keep all")
         keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
         # Same preserved-selection treatment as the per-file keep radios
@@ -882,7 +879,7 @@ class DuplicatesPage(QWidget):
         # location (HISTORY §68). Deleting real user files warrants
         # naming them: the exact full paths about to be deleted, not
         # just a bare count, in a second, explicit confirmation
-        # (HISTORY §56 Phase 6.3).
+        # (HISTORY §56).
         paths_to_delete = [
             str(
                 Path(

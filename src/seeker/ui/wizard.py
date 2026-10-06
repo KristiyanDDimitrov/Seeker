@@ -40,9 +40,9 @@ from seeker.ui.workers import run_worker
 
 # Untuned constants, flagged same as every other threshold in this
 # codebase. Poll interval matches the ~2s cadence already observed
-# against real slskd elsewhere in this project (see CLAUDE.md); 60s is
-# a reasonable starting timeout for a fresh `docker compose up` to
-# reach a real Soulseek network login.
+# against real slskd elsewhere in this project; 60s is a reasonable
+# starting timeout for a fresh `docker compose up` to reach a real
+# Soulseek network login.
 HEALTH_POLL_INTERVAL_MS = 2_000
 HEALTH_POLL_TIMEOUT_SECONDS = 60.0
 
@@ -68,10 +68,9 @@ class OnboardingWizard(QMainWindow):
             on_complete: Callable[[], None],
     ):
         super().__init__()
-        # See SettingsWindow's identical fix (CLAUDE.md's broad
-        # end-to-end stress test entry) — a parentless top-level
-        # QMainWindow's close() only hides it by default, never
-        # actually destroys it, unless this is set.
+        # A parentless top-level QMainWindow's close() only hides it by
+        # default, never actually destroys it, unless this is set
+        # (HISTORY §32).
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.application = application
         self.on_complete = on_complete
@@ -157,10 +156,10 @@ class OnboardingWizard(QMainWindow):
         self.client_id_field.textChanged.connect(
             self._update_connect_button_state
         )
-        # Roadmap item 95 (B1.1) — OnboardingWizard is a QMainWindow,
-        # not a QDialog, so Qt's autoDefault/default-button machinery
-        # never applies here; Enter had no keyboard path to Connect at
-        # all before this. Guarded the same way a click already is
+        # OnboardingWizard is a QMainWindow, not a QDialog, so Qt's
+        # autoDefault/default-button machinery never applies here; this
+        # is Enter's only keyboard path to Connect (HISTORY §95).
+        # Guarded the same way a click already is
         # (connect_button.isEnabled()) rather than a second, drifting
         # emptiness check — Enter on an empty field must do nothing,
         # same as clicking a disabled button would.
@@ -240,11 +239,11 @@ class OnboardingWizard(QMainWindow):
         )
         layout.addWidget(choose_button)
 
-        # Roadmap item 6 §5 — set up a real default destination right
-        # here, so a first-time user can never reach the "no
-        # destination configured" dead end at all. Both checked by
-        # default: this is the common case (someone setting up Seeker
-        # for the first time wants downloads to just work).
+        # Set up a real default destination right here, so a first-time
+        # user can never reach the "no destination configured" dead end
+        # at all. Both checked by default: this is the common case
+        # (someone setting up Seeker for the first time wants downloads
+        # to just work; HISTORY §50).
         self.download_into_library_checkbox = QCheckBox(
             "Download new tracks into this folder"
         )
@@ -339,13 +338,13 @@ class OnboardingWizard(QMainWindow):
         account_mode_explanation.setWordWrap(True)
         layout.addWidget(account_mode_explanation)
 
-        # Roadmap item 8 — the protocol itself can't distinguish "wrong
-        # password on my own account" from "that username belongs to
-        # someone else" (both converge on the identical INVALIDPASS
-        # rejection — confirmed live, see soulseek/docker_setup.py's own
+        # The protocol itself can't distinguish "wrong password on my
+        # own account" from "that username belongs to someone else"
+        # (both converge on the identical INVALIDPASS rejection —
+        # confirmed live, see soulseek/docker_setup.py's own
         # BAD_CREDENTIALS_LOG_PATTERNS comment). Asking which one the
         # user is doing is the only way to give useful copy on a
-        # rejection.
+        # rejection (HISTORY §52).
         self._soulseek_account_mode_group = QButtonGroup(self)
         self.existing_account_radio = QRadioButton(
             "I already have a SoulSeek account"
@@ -373,11 +372,10 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_username_field.setToolTip(
             help_text.TOOLTIP_SOULSEEK_USERNAME_FIELD
         )
-        # Roadmap item 95 (B1.2) — no extra guard needed here:
-        # _on_bring_up_clicked already validates non-empty, whitespace,
-        # Docker state, and library location, writing a real status
-        # message for each — Enter from an empty field gets that same
-        # message, not silence.
+        # No extra guard needed here: _on_bring_up_clicked already
+        # validates non-empty, whitespace, Docker state, and library
+        # location, writing a real status message for each — Enter from
+        # an empty field gets that same message, not silence.
         self.soulseek_username_field.returnPressed.connect(
             self._on_bring_up_clicked
         )

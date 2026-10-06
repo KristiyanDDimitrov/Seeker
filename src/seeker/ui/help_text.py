@@ -1,15 +1,14 @@
 """Centralized UI copy — tooltips, tab subtitles, and About/Help text.
 
-Presentation-only (Task 1: contextual help), no service-layer changes.
+Presentation-only, no service-layer dependencies.
 Everything user-facing that isn't a live data value belongs here as a
-named constant, not an inline string in a widget file — the same
-"shared thing lives in exactly one place" discipline this project
-already applies to logic (matching.py's consolidation, download_dedup.py)
+named constant, not an inline string in a widget file — the same "shared
+thing lives in exactly one place" discipline this project already
+applies to logic (matching.py's consolidation, download_dedup.py)
 applied to copy instead. This matters concretely for
 `library_location_picker.py`'s folder-picker flow, which is shared
 between the onboarding wizard and Settings: without this module, its
-copy would need to live in two call sites and could drift the way
-matching.py's two independent copies once did (see CLAUDE.md).
+copy would need to live in two call sites and could drift.
 """
 
 from typing import Any
@@ -126,10 +125,9 @@ HELP_DATA_LOCATIONS_INTRO = (
     "token, and SoulSeek data — in one folder on this machine. Nothing "
     "is uploaded anywhere else."
 )
-# Roadmap item 81 (0.2) — a real prior-round report ("fix didn't work
-# on the other account") turned out to be two entirely separate
-# databases, not a regression — said here explicitly so the next one
-# doesn't cost a whole test round again.
+# Each macOS account has its own entirely separate database, so a "fix
+# didn't work on the other account" report is usually two databases, not
+# a regression — said here explicitly (HISTORY §81).
 HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE = (
     "This folder is per macOS user account — a different login has "
     "its own separate database, library locations, scan state, and "
@@ -158,10 +156,10 @@ HELP_BUILD_IDENTITY_LABEL = "Build:"
 def format_build_identity(
         git_sha: str, git_describe: str, built_at: str,
 ) -> str:
-    """Roadmap item 81 (0.1) — makes "is this account running the
-    build I think it is?" a two-second visual check. `git_sha ==
-    "dev"` means an unmodified `seeker/_build_info.py` — i.e. this is
-    a real `uv run` dev session, not a packaged build at all.
+    """Makes "is this account running the build I think it is?" a
+    two-second visual check. `git_sha == "dev"` means an unmodified
+    `seeker/_build_info.py` — i.e. this is a real `uv run` dev session,
+    not a packaged build at all.
     """
     if git_sha == "dev":
         return "dev (running from source, not a packaged build)"
@@ -242,7 +240,7 @@ def _list_failures(failures: list[TrackFailure]) -> str:
 
     return listed
 
-# --- Destination dialog (roadmap item 6 §3 — "no dead end") ---------------
+# --- Destination dialog ("no dead end") ------------------------------------
 
 
 DESTINATION_DIALOG_TITLE = "Set a Download Destination"
@@ -263,10 +261,10 @@ NO_LOCATIONS_FOR_DESTINATION_DIALOG = (
 def format_destination_preview(
         path: str, exists: bool, audio_file_count: int | None,
 ) -> str:
-    """Roadmap item 65 (Phase 3.2) — the live "where will this actually
-    go" preview inside DestinationDialog. `audio_file_count` is None
-    when the folder exists but couldn't be read (permissions, ...) —
-    shown without a count rather than a misleading zero."""
+    """The live "where will this actually go" preview inside
+    DestinationDialog. `audio_file_count` is None when the folder exists
+    but couldn't be read (permissions, ...) — shown without a count
+    rather than a misleading zero."""
     if not exists:
         return f"Will download to: {path}  (new folder)"
 
@@ -336,7 +334,7 @@ TOOLTIP_FILL_MISSING_ART_URLS = (
     "were captured."
 )
 
-# --- Rename preview dialog (roadmap item 67, Phase 6.4) --------------------
+# --- Rename preview dialog -------------------------------------------------
 
 TOOLTIP_RENAME_FILES = (
     "Preview renaming this playlist's auto-matched files to match their "
@@ -357,15 +355,12 @@ RENAME_PREVIEW_SECTION_REFUSED = "Refused (no local file / error):"
 
 
 def format_rename_result_message(result: RenameResult) -> tuple[str, str]:
-    """Roadmap item 67 (Phase 6.4) — mirrors format_fix_art_result_
-    message's own shape.
+    """Mirrors format_fix_art_result_message's own shape.
 
-    Roadmap item 76 (P2, 2.5) — `collisions` (as of the 2.3 fix in
-    apply_renames) now literally means "the real written name differed
-    from what the preview showed," not just "the plan predicted a
-    suffix" — so naming it prominently here, not just in the
-    easy-to-miss capped results panel, is exactly the honest reporting
-    this item asks for.
+    `collisions` means "the real written name differed from what the
+    preview showed," not just "the plan predicted a suffix" — so it is
+    named prominently here, not just in the easy-to-miss capped results
+    panel (HISTORY §76).
     """
     renamed = result.renamed
     collisions = result.collisions
@@ -394,11 +389,11 @@ def format_rename_result_message(result: RenameResult) -> tuple[str, str]:
 
 
 def format_fix_art_result_message(result: FixArtResult) -> tuple[str, str]:
-    """Roadmap item 66 (Phase 5.2) — mirrors format_tag_result_notice's
-    own shape for the narrower "Fix missing cover art" action."""
+    """Mirrors format_tag_result_notice's own shape for the narrower
+    "Fix missing cover art" action."""
     fixed = result.fixed
-    # Roadmap item 75 (P6, 6.4) — art WAS embedded here, so this is
-    # deliberately NOT folded into `failed` below.
+    # Art WAS embedded here, so this is deliberately NOT folded into
+    # `failed` below.
     fixed_wav = result.fixed_wav_rarely_supported
     already_correct = result.already_correct
     no_url = result.no_url
@@ -446,21 +441,16 @@ def format_fix_art_result_message(result: FixArtResult) -> tuple[str, str]:
 
 
 def format_tag_result_notice(result: TagResult) -> tuple[str, str]:
-    """Roadmap item 66 (Phase 5.1) — the real fix for a fully-already-
-    tagged re-run producing NO prominent notice at all (only the small,
-    easy-to-miss results panel): every real outcome now gets a message,
-    not just tagged/without_art/failed. Returns (message, notice_kind).
+    """Every real outcome gets a prominent message, a fully
+    already-tagged re-run included, not just tagged/without_art/failed.
+    Returns (message, notice_kind).
 
-    Roadmap item 75 (P6, 6a/6.2) — a real, live-confirmed second gap:
-    `_tag_one_track` never even LOOKS at art for an already-tagged
-    track (`skip_tag_write` short-circuits before the art step is
-    reached at all) — so "already tagged" here does not mean "art is
-    fine," it means "art was never checked this run." Every branch
-    below that can co-occur with a nonzero `skipped_already_tagged`
-    now says so explicitly, in every message shape (mixed fresh+
-    already-tagged runs previously said nothing about the skipped
-    ones at all) — not just the "everything was already tagged"
-    all-skip case this function handled before.
+    `_tag_one_track` never LOOKS at art for an already-tagged track
+    (`skip_tag_write` short-circuits before the art step is reached at
+    all) — so "already tagged" here does not mean "art is fine," it
+    means "art was never checked this run." Every branch below that can
+    co-occur with a nonzero `skipped_already_tagged` says so
+    explicitly, in every message shape (HISTORY §75).
     """
     tagged = result.tagged
     without_art = result.tagged_without_art
@@ -576,20 +566,17 @@ TOOLTIP_DUPLICATES_REMOVE_FOLDER = (
 
 
 def format_duplicates_scope_count(summary: Any) -> str:
-    """Roadmap item 68 (Phase 7.2) — shown BEFORE a real, potentially
-    ~10-minute-at-real-scale operation (item 39's own real number), so
-    the scope control is worth having: the user sees what it actually
-    covers first.
+    """Shown BEFORE a real, potentially ~10-minute-at-real-scale
+    operation, so the user sees what it actually covers first.
 
-    Roadmap item 77 (P8.3/8.4) — takes a real
-    `DuplicateService.ScopeSummary` (typed `Any` here only to avoid a
-    library-layer import in this presentation-only module, matching
-    this file's existing pattern for `result: dict[str, Any]`
-    elsewhere below) rather than a bare int: a silent "0 files in
-    scope" was the actual reported bug — this now always names which
-    real location(s) the folders resolved to, and says PLAINLY when
-    one of them has never been scanned at all, instead of leaving that
-    only discoverable by reading source code.
+    Takes a real `DuplicateService.ScopeSummary` (typed `Any` here only
+    to avoid a library-layer import in this presentation-only module,
+    matching this file's existing pattern for `result: dict[str, Any]`
+    elsewhere below) rather than a bare int, so it never reports a
+    silent "0 files in scope" (HISTORY §78): it always names which real
+    location(s) the folders resolved to, and says PLAINLY when one of
+    them has never been scanned at all, instead of leaving that only
+    discoverable by reading source code.
     """
     locations = ", ".join(summary.resolved_location_names)
     location_suffix = f" ({locations})" if locations else ""
@@ -618,14 +605,13 @@ _FINGERPRINT_FAILURE_REASON_LABELS = {
 
 
 def format_fingerprint_result_message(result: FingerprintResult) -> str:
-    """Roadmap item 68 (Phase 8.2) — the aggregate line PLUS, when
-    there's at least one failure, a real per-reason breakdown (never
-    just one lumped "Failed: N") — mirrors the CLI's own per-file
-    `[reason] message` detail lines (cli.py's fingerprint handler),
-    just summarized rather than listed one-by-one for the UI's status
-    label. Phase 8.3's own "never offer to delete" scope needs nothing
-    further here — an empty_file entry can never enter a duplicate
-    group in the first place (find_duplicate_groups only clusters
+    """The aggregate line PLUS, when there's at least one failure, a
+    real per-reason breakdown (never just one lumped "Failed: N") —
+    mirrors the CLI's own per-file `[reason] message` detail lines
+    (cli.py's fingerprint handler), just summarized rather than listed
+    one-by-one for the UI's status label. An empty_file entry needs
+    nothing further here — it can never enter a duplicate group in the
+    first place (find_duplicate_groups only clusters
     already-fingerprinted files), so there's no delete action anywhere
     in this app that could ever reach one.
     """
@@ -672,9 +658,8 @@ DELETE_DUPLICATES_CONFIRM_TITLE = "Delete duplicate files?"
 
 
 def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
-    """The exact full paths about to be permanently deleted — roadmap
-    item 56 Phase 6.3: deleting real user files warrants naming them,
-    not just a bare count."""
+    """The exact full paths about to be permanently deleted — deleting
+    real user files warrants naming them, not just a bare count."""
     listed = "\n".join(f"  {path}" for path in paths)
     count = len(paths)
     plural = "s" if count != 1 else ""
@@ -686,7 +671,7 @@ def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
     )
 
 
-# --- Roadmap item R3: bulk actions -------------------------------------------
+# --- Bulk actions ------------------------------------------------------------
 # Both are among the two most destructive actions in the app (upgrade
 # replacement can delete a real old file; duplicate resolution always
 # deletes real files) — each inherits the project's standing "never
@@ -694,7 +679,7 @@ def format_delete_duplicates_confirm_body(paths: list[str]) -> str:
 # full, via a real listing of what will happen plus an explicit,
 # default-off confirmation control. Neither reuses a stale plan from an
 # earlier click — both are built fresh, from what's on screen right now,
-# at the moment the button is clicked (item 76's own lesson).
+# at the moment the button is clicked (HISTORY §76).
 
 TOOLTIP_REPLACE_ALL_UPGRADES = (
     "Replace every downloaded upgrade currently ready for review, all "
@@ -720,9 +705,9 @@ TOOLTIP_BULK_DELETE_OLD_FILES_CHECKBOX = (
 
 
 def format_bulk_replace_upgrades_result(result: Any) -> str:
-    """Roadmap item R3.1 — the same honest-reporting shape
-    format_rename_result_message uses: a real count, plus one detail
-    line per row so a partial failure is never just a bare number."""
+    """The same honest-reporting shape format_rename_result_message
+    uses: a real count, plus one detail line per row so a partial
+    failure is never just a bare number."""
     lines = [f"Replaced: {result.replaced}, Failed: {result.failed}."]
     lines.extend(f"  {detail}" for detail in result.details)
     return "\n".join(lines)
@@ -772,7 +757,7 @@ def format_bulk_resolve_duplicates_result(result: Any) -> str:
     return "\n".join(lines)
 
 
-# --- Sharing page (roadmap item 62, Phase 7) --------------------------------
+# --- Sharing page ------------------------------------------------------------
 # SoulSeek only works because peers share files back — Seeker downloads
 # from other people's shares, so this page frames what Seeker itself is
 # giving back, honestly: what real mechanics affect it (locked files,
@@ -800,11 +785,10 @@ SHARING_FRAMING_BODY = (
     "you. It just shows, honestly, what's actually shared right now and "
     "who's actually downloading it — so you can see whether you're a "
     "genuine participant in the network you're relying on.</p>"
-    # Roadmap item 116 (round 8, §6.1.4) — states plainly what slskd is
-    # doing on this machine: it shares the library read-only with the
-    # SoulSeek network, and its own admin interface (the web UI at
-    # SLSKD_LOCAL_BASE_URL) is bound to this machine only, never
-    # reachable from another device on the network.
+    # States plainly what slskd is doing on this machine: it shares the
+    # library read-only with the SoulSeek network, and its own admin
+    # interface (the web UI at SLSKD_LOCAL_BASE_URL) is bound to this
+    # machine only, never reachable from another device on the network.
     "<p>Seeker shares your library <b>read-only</b> — SoulSeek peers can "
     "download from it, but nothing they send can write to your drive. "
     "slskd's own admin interface (its web UI) is bound to this machine "
@@ -867,7 +851,7 @@ TOOLTIP_HISTORY_REFRESH_BUTTON = (
     "Re-check current data for recently downloaded and tagged tracks."
 )
 
-# --- Search tab (roadmap item 82, P13) --------------------------------------
+# --- Search tab --------------------------------------------------------------
 
 TOOLTIP_SEARCH_ARTIST = "Artist name to search for."
 TOOLTIP_SEARCH_TITLE = "Track title to search for."
@@ -929,10 +913,10 @@ def format_search_result_count(count: int) -> str:
 
 
 def format_search_download_result(result: ManualDownloadResult) -> str:
-    """Roadmap item 82 (P13.5) — a real outcome message for both
-    download_manual() branches: a settled request (username/filename
-    known) and a locked-only upgrade request (nothing downloadable
-    right this moment, but something real is being chased)."""
+    """A real outcome message for both download_manual() branches: a
+    settled request (username/filename known) and a locked-only upgrade
+    request (nothing downloadable right this moment, but something real
+    is being chased)."""
     if not result.requested:
         return "No candidates found."
 
@@ -1092,7 +1076,7 @@ TOOLTIP_SAVE_THRESHOLDS = (
     "restart needed."
 )
 
-# --- Roadmap item R7.5: menu-bar notification toggles -----------------------
+# --- Menu-bar notification toggles ------------------------------------------
 
 TOOLTIP_NOTIFY_DOWNLOADS_FINISHED_CHECKBOX = (
     "Notify when downloads finish, batched into one notification per "
@@ -1107,7 +1091,7 @@ TOOLTIP_NOTIFY_ERRORS_CHECKBOX = (
     "unreachable slskd doesn't notify on every poll."
 )
 
-# --- Round 9 §3.2: start at login --------------------------------------------
+# --- Start at login ----------------------------------------------------------
 
 TOOLTIP_START_AT_LOGIN_CHECKBOX = (
     "Register Seeker as a login item. Shows under System Settings > "
@@ -1222,9 +1206,8 @@ ABOUT_DIALOG_LICENSE_LINE = (
 # package's own metadata (not assumed) — not an exhaustive legal NOTICE
 # file, just an honest, correctly-sourced summary for a portfolio
 # project. libchromaprint is dynamically loaded via ctypes at runtime
-# (see audio/fingerprint.py/CLAUDE.md item 38-39), never statically
-# linked or bundled — the correct, low-risk way to use an LGPL library
-# from a closed-source app.
+# (see audio/fingerprint.py), never statically linked or bundled — the
+# correct, low-risk way to use an LGPL library from a closed-source app.
 ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
     "<p><b>Third-party notices</b><br>"
     "Built with PySide6/Qt (LGPL-3.0), librosa (ISC), mutagen "
@@ -1235,7 +1218,7 @@ ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
     "governs its use.</p>"
 )
 
-# --- Update check (Phase 11) -------------------------------------------
+# --- Update check ------------------------------------------------------
 # GitHub-releases-based — see update_check.py's own docstring for the
 # real external-dependency caution (rate limits, "never raises").
 # User-triggered only, from this one menu action.
@@ -1243,8 +1226,8 @@ ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
 CHECK_FOR_UPDATES_MENU_TEXT = "Check for updates…"
 UPDATE_CHECK_DIALOG_TITLE = "Check for Updates"
 
-# --- Task 3: support-the-creator links -------------------------------------
-# Both real now (PayPal's went live 2026-09-01). A future new entry
+# --- Support-the-creator links ---------------------------------------------
+# Both are real links. A future new entry
 # should still start as an obvious "TODO: ..." placeholder rather than
 # a fabricated look-real link, so it's easy to grep for and replace —
 # AboutDialog filters any TODO-prefixed value out via
@@ -1260,7 +1243,7 @@ def is_real_support_link(url: str) -> bool:
     return not url.startswith("TODO")
 
 
-# --- Support page (roadmap item 64) ----------------------------------------
+# --- Support page ------------------------------------------------------------
 # A real sidebar page, distinct from AboutDialog's brief support-links row —
 # framed the same honest, non-persuasive way SHARING_FRAMING_BODY is: a
 # statement of fact, not marketing copy. Reuses SUPPORT_LINKS/

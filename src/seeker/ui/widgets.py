@@ -17,12 +17,11 @@ _THEME_MODE_LABELS = {
 
 
 class ThemeToggleButton(QPushButton):
-    """Roadmap item C5.10 (round 5) — a conventional sun/moon/split-
-    circle glyph set, drawn with `QPainter` rather than shipped as SVG/
-    PNG assets, so it's resolution-independent and tints with the
-    active palette for free (reads `theme.TEXT_MUTED` fresh on every
-    paint — this widget draws its own glyph rather than using a
-    palette-driven QSS icon).
+    """A conventional sun/moon/split-circle glyph set, drawn with
+    `QPainter` rather than shipped as SVG/PNG assets, so it's
+    resolution-independent and tints with the active palette for free
+    (reads `theme.TEXT_MUTED` fresh on every paint — this widget draws
+    its own glyph rather than using a palette-driven QSS icon).
 
     A logo-derived glyph (one eye from the mark, solid/outlined/half-
     filled per mode) was tried first and rejected: at real sidebar
@@ -39,15 +38,12 @@ class ThemeToggleButton(QPushButton):
         self.setFlat(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(28, 28)
-        # Roadmap item E3.6 (round 7) — a selector-less setStyleSheet()
-        # string is the exact mechanism item E3 found stripping borders
-        # off a QProgressBar's track (Qt parses it as a universal `*`
-        # rule). This button paints its own glyph with no children, so
-        # there was never anything for it to cascade onto — but scoped
-        # via objectName anyway, so the new ui-wide regression test
-        # (theme.py's own selector-less-setStyleSheet sweep) can't be
-        # tripped by a control that happens to be safe today only
-        # because it's childless.
+        # Scoped via objectName, never a selector-less setStyleSheet()
+        # string, which Qt parses as a universal `*` rule that strips
+        # borders off descendants (HISTORY §114). This button paints its
+        # own glyph with no children, but the ui-wide selector-less
+        # setStyleSheet sweep holds for it too rather than depending on
+        # it staying childless.
         self.setObjectName("themeToggleButton")
         self._mode = mode
         self._update_tooltip()

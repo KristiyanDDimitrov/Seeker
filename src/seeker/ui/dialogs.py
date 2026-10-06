@@ -1,9 +1,7 @@
-"""Standalone dialogs used across the shell — About, a missing-
-destination prompt, and the three "review everything before it
-happens" confirmations for rename/bulk-replace/bulk-resolve. Moved
-verbatim out of main_window.py (round 8, Phase 6 §9.3.1) — these were
-already self-contained QDialog subclasses with no MainWindow
-dependency, so this was a pure file move, not a redesign.
+"""Standalone dialogs used across the shell — About, a
+missing-destination prompt, and the three "review everything before it
+happens" confirmations for rename/bulk-replace/bulk-resolve. Each is a
+self-contained QDialog subclass with no MainWindow dependency.
 """
 
 import contextlib
@@ -43,9 +41,9 @@ from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 
 
 def build_support_links_row() -> QHBoxLayout:
-    # Shared between AboutDialog and the Support page (roadmap item 64) —
-    # both render the same real, filtered SUPPORT_LINKS set the same way,
-    # so this lives once rather than as two copies of the identical loop.
+    # Shared between AboutDialog and the Support page — both render the
+    # same real, filtered SUPPORT_LINKS set the same way, so this lives
+    # once rather than as two copies of the identical loop.
     row = QHBoxLayout()
     for name, url in help_text.SUPPORT_LINKS.items():
         if not help_text.is_real_support_link(url):
@@ -64,9 +62,8 @@ class AboutDialog(QDialog):
     """The Help menu's "About Seeker" entry — app description, real
     installed version (read from package metadata rather than a second
     hardcoded literal that could drift from pyproject.toml), and
-    support-the-creator links (Task 3; see settings_window.py-style
-    placement precedent — Help/About is one of two deliberate spots for
-    those, not the daily-use Dashboard/Downloads/Review screens).
+    support-the-creator links (Help/About is one of two deliberate spots
+    for those, not the daily-use Dashboard/Downloads/Review screens).
     """
 
     def __init__(self, parent: QWidget | None = None):
@@ -120,17 +117,16 @@ class AboutDialog(QDialog):
 
         notices_label = RichLabel(help_text.ABOUT_DIALOG_THIRD_PARTY_NOTICES)
         notices_label.setWordWrap(True)
-        # Roadmap item C5.3 — QLabel[badge="faint"] in theme.py.
+        # QLabel[badge="faint"] in theme.py.
         notices_label.setProperty("badge", "faint")
         layout.addWidget(notices_label)
 
-        # SUPPORT_LINKS now holds only real URLs (Revolut, PayPal) —
+        # SUPPORT_LINKS holds only real URLs (Revolut, PayPal) —
         # is_real_support_link() stays as a guard against a future
         # still-TODO placeholder never actually rendering as a dead,
         # non-URL button. Same webbrowser.open() mechanism the Spotify
         # OAuth flow already uses; no SDK, no embedded payment UI.
-        # Shared with the Support page (roadmap item 64) via
-        # build_support_links_row().
+        # Shared with the Support page via build_support_links_row().
         layout.addLayout(build_support_links_row())
 
         close_row = QHBoxLayout()
@@ -143,25 +139,24 @@ class AboutDialog(QDialog):
 
 
 class DestinationDialog(QDialog):
-    """Roadmap item 6 §3 — "no dead end": shown instead of letting
-    Download raise NoDestinationConfiguredError. Confirming it always
-    persists a real destination somewhere (never a one-time,
-    unpersisted choice — DownloadPlacement.resolve_destination is
-    re-evaluated later, on a separate poll cycle, when the file
-    actually completes, so nothing durable would be left for it to
-    find otherwise) and then the caller continues straight into the
-    real download.
+    """"No dead end" (HISTORY §50): shown instead of letting Download
+    raise NoDestinationConfiguredError. Confirming it always persists a
+    real destination somewhere (never a one-time, unpersisted choice —
+    DownloadPlacement.resolve_destination is re-evaluated later, on a
+    separate poll cycle, when the file actually completes, so nothing
+    durable would be left for it to find otherwise) and then the caller
+    continues straight into the real download.
 
-    Roadmap item 65 (Phase 3.2) — reused (not a second dialog) for a
-    SECOND, more common trigger: a playlist with no destination of its
-    own AND a configured default that WOULD resolve. `initial_subfolder`
-    lets the caller pre-fill with the real current fallback (rather than
-    always the raw playlist name) so the default stays one click away,
-    and `location_path_preview`/`_update_preview` shows the exact
-    absolute path that choice resolves to, live, as the user changes
-    either field — including whether it already exists and how many
-    audio files are already there, since that's what turns "it
-    downloaded into a folder I didn't choose" into an informed choice.
+    Reused (not a second dialog) for a SECOND, more common trigger: a
+    playlist with no destination of its own AND a configured default
+    that WOULD resolve. `initial_subfolder` lets the caller pre-fill
+    with the real current fallback (rather than always the raw playlist
+    name) so the default stays one click away, and
+    `location_path_preview`/`_update_preview` shows the exact absolute
+    path that choice resolves to, live, as the user changes either field
+    — including whether it already exists and how many audio files are
+    already there, since that's what turns "it downloaded into a folder
+    I didn't choose" into an informed choice.
     """
 
     def __init__(
@@ -217,14 +212,13 @@ class DestinationDialog(QDialog):
 
         layout.addLayout(form)
 
-        # Roadmap item 65 (Phase 3.2) — a real, live-updating preview of
-        # exactly where confirming would download to, and what's already
-        # there. Recomputed on every relevant field change, not just once
-        # at open, so it never goes stale while the user is still
-        # deciding.
+        # A real, live-updating preview of exactly where confirming
+        # would download to, and what's already there. Recomputed on
+        # every relevant field change, not just once at open, so it
+        # never goes stale while the user is still deciding.
         self.location_path_preview = PlainLabel()
         self.location_path_preview.setWordWrap(True)
-        # Roadmap item C5.3 — QLabel[badge="muted"] in theme.py.
+        # QLabel[badge="muted"] in theme.py.
         self.location_path_preview.setProperty("badge", "muted")
         layout.addWidget(self.location_path_preview)
 
@@ -314,12 +308,10 @@ class DestinationDialog(QDialog):
 
 
 class RenamePreviewDialog(QDialog):
-    """Roadmap item 67 (Phase 6.4) — every planned change, grouped by
-    action, unchanged and refused tracks visible too. Nothing is
-    written until the user explicitly clicks Rename — item 27's "no
-    gate for tag-writing" precedent does NOT extend to this action,
-    since renaming moves/replaces a file on disk and tag-writing never
-    does.
+    """Every planned change, grouped by action, unchanged and refused
+    tracks visible too. Nothing is written until the user explicitly
+    clicks Rename — unlike tag-writing, which has no such gate, since
+    renaming moves/replaces a file on disk and tag-writing never does.
     """
 
     def __init__(
@@ -371,13 +363,12 @@ class RenamePreviewDialog(QDialog):
             list_widget.addItem(header_item)
 
             for plan in rows:
-                # Roadmap item 93 (B3.2) — the location-relative path
-                # (e.g. "Neuro/Audio, REEBZ - Tractor Beam.flac"), not
-                # just the basename: a basename-only "Already correct"
-                # row for a file elsewhere in the same library location
-                # was indistinguishable from the file the user was
-                # actually looking at (the real story behind B3's
-                # "nothing was renamed" report). Absolute path stays
+                # The location-relative path (e.g. "Neuro/Audio, REEBZ -
+                # Tractor Beam.flac"), not just the basename: a
+                # basename-only "Already correct" row for a file
+                # elsewhere in the same library location was
+                # indistinguishable from the file the user was actually
+                # looking at (HISTORY §93). Absolute path stays
                 # available as the tooltip for anyone who needs it.
                 if (
                         plan.current_relative is not None
@@ -445,13 +436,13 @@ class RenamePreviewDialog(QDialog):
 
 
 class BulkReplaceUpgradesDialog(QDialog):
-    """Roadmap item R3.1 — "Replace all" pending upgrades. Same shape
-    as RenamePreviewDialog: every row named plainly, nothing applied
-    until the user explicitly confirms — this is one of the two most
-    destructive actions in the app (it can delete real old files), so
-    it inherits the project's standing "never modify/delete a real
-    user file without explicit confirmation" rule in full, via the
-    "Delete the old files" checkbox below (default OFF)."""
+    """"Replace all" pending upgrades (HISTORY §88). Same shape as
+    RenamePreviewDialog: every row named plainly, nothing applied until
+    the user explicitly confirms — this is one of the two most
+    destructive actions in the app (it can delete real old files), so it
+    inherits the project's standing "never modify/delete a real user
+    file without explicit confirmation" rule in full, via the "Delete
+    the old files" checkbox below (default OFF)."""
 
     def __init__(
             self, parent: QWidget, upgrades: list[UpgradeReviewDetails],
@@ -508,13 +499,12 @@ class BulkReplaceUpgradesDialog(QDialog):
 
 
 class BulkResolveDuplicatesDialog(QDialog):
-    """Roadmap item R3.2 — "Resolve all groups." Lists REAL absolute
-    paths of every file that would be deleted and every file that
-    would be kept, since this deletes real user files — a bare count
-    is not enough for this specific action, matching the brief's own
-    instruction. Groups already set to "Keep all" are never passed in
-    here at all (skipped by the caller before this dialog is even
-    built) — this dialog only ever shows groups that would actually
+    """"Resolve all groups" (HISTORY §88). Lists REAL absolute paths of
+    every file that would be deleted and every file that would be kept,
+    since this deletes real user files — a bare count is not enough for
+    this specific action. Groups already set to "Keep all" are never
+    passed in here at all (skipped by the caller before this dialog is
+    even built) — this dialog only ever shows groups that would actually
     change something."""
 
     def __init__(
@@ -583,9 +573,9 @@ class BulkResolveDuplicatesDialog(QDialog):
             f"Resolve {len(plans_with_labels)} group(s)"
         )
         self.confirm_button.setProperty("variant", "danger")
-        # Roadmap item R3.2 — same two-step gate as the single-group
-        # Delete flow: the checkbox is required before the button can
-        # do anything, not just informational text next to it.
+        # Same two-step gate as the single-group Delete flow: the
+        # checkbox is required before the button can do anything, not
+        # just informational text next to it.
         self.confirm_button.setEnabled(False)
         has_plans = len(plans_with_labels) > 0
         self.confirm_checkbox.toggled.connect(

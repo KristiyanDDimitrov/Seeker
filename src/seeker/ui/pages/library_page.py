@@ -1,19 +1,16 @@
-"""The Library page (round 8 §12.6) — tagging operations split out of
-the Dashboard, which now only picks a playlist and shows its tracks.
-Library has no selection state of its own — it acts on whatever
-playlist/track selection is currently live in `PageContext.
-playlist_selection` (round9 §7.1) — but as of round9 §7.2 it is a
-writer too: the context header's inline picker lets a playlist be
-chosen right here, not only on Dashboard, via the same shared object
+"""The Library page — tagging operations, kept apart from the Dashboard,
+which only picks a playlist and shows its tracks. Library has no
+selection state of its own — it acts on whatever playlist/track
+selection is currently live in `PageContext.playlist_selection`
+(HISTORY §133) — but it is a writer too (HISTORY §134): the context
+header's inline picker lets a playlist be chosen right here, not only on
+Dashboard, via the same shared object
 (`DashboardPage._on_shared_selection_changed` is what keeps Dashboard's
-own list highlight and track table in step with a write that
-originates here). `LibraryHost` still carries only
-`refresh_track_table` — the same cross-page "reach a live seam on an
-already-migrated page" pattern `ReviewHost` still uses for Dashboard's
-status_label/poll_selected_playlist (main_window.py), since that's an
-action, not selection state. TaggingPanel itself (tagging_panel.py) is
-unchanged by this page's context header; only which page constructs
-and hosts it changed back in round 8.
+own list highlight and track table in step with a write that originates
+here). `LibraryHost` still carries only `refresh_track_table` — the same
+cross-page "reach a live seam on another page" pattern `ReviewHost`
+uses, since that's an action, not selection state. TaggingPanel itself
+(tagging_panel.py) knows nothing of this page's context header.
 """
 
 from collections.abc import Callable
@@ -41,8 +38,8 @@ from seeker.ui.workers import run_worker
 @dataclass(frozen=True)
 class LibraryHost:
     """What the Library page needs from the Dashboard page beyond its
-    live playlist/track selection (`PageContext.playlist_selection`,
-    round9 §7.1)."""
+    live playlist/track selection (`PageContext.playlist_selection`;
+    HISTORY §133)."""
     refresh_track_table: Callable[[], None]
 
 
@@ -104,15 +101,13 @@ class LibraryPage(QWidget):
         self._tagging_panel.tag_playlist(feedback)
 
     def _build_context_header(self) -> QWidget:
-        # round9 §7.2 — Kris: "Library section is currently confusing
-        # — it doesn't say which playlist it's acting upon." This is
-        # the fix: a persistent header above the tagging controls
-        # naming the playlist and its track count, plus an inline
-        # picker to change it without leaving the page. A modal was
-        # considered and rejected — this is frequent enough (every
-        # session, potentially every few minutes) that a dialog's
-        # extra click/focus-shift would be friction, not safety; an
-        # inline collapse/expand costs nothing when not in use.
+        # A persistent header above the tagging controls naming the
+        # playlist it acts on and its track count, plus an inline picker
+        # to change it without leaving the page. Not a modal — this is
+        # frequent enough (every session, potentially every few minutes)
+        # that a dialog's extra click/focus-shift would be friction, not
+        # safety; an inline collapse/expand costs nothing when not in
+        # use.
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
         inner_layout.setContentsMargins(0, 0, 0, 0)

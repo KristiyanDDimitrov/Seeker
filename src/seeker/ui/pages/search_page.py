@@ -177,9 +177,9 @@ class SearchPage(QWidget):
         )
         action_widgets: list[QWidget] = []
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.search_results_table):
             self.search_results_table.setRowCount(len(ranked))
 
@@ -198,9 +198,9 @@ class SearchPage(QWidget):
                 bitrate_text = (
                     f"{file.bit_rate} kbps" if file.bit_rate else "—"
                 )
-                # Round 8 §12.2 — file.bit_rate sorts numerically; the
-                # displayed "kbps" text would otherwise sort "128 kbps"
-                # before "320 kbps" before "96 kbps" (see SortKeyItem).
+                # file.bit_rate sorts numerically; the displayed "kbps"
+                # text would otherwise sort "128 kbps" before "320 kbps"
+                # before "96 kbps" (see SortKeyItem).
                 self.search_results_table.setItem(
                     row, _SearchColumn.BITRATE,
                     SortKeyItem(bitrate_text, file.bit_rate or -1),

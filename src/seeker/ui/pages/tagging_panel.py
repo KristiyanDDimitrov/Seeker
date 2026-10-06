@@ -1,11 +1,10 @@
 """The Tagging panel (HISTORY §119). Not itself a top-level page
 registered on the shell's QStackedWidget — it is the sole content of
-`library_page.py` (round 8 §12.6), which owns its own status_label/
-notice widgets. The playlist/track selection it acts on is read
-straight off `PageContext.playlist_selection` (round9 §7.1); the
-narrower seam it still needs beyond PageContext, `TaggingPanelHost`,
-is now only its own widgets plus `refresh_track_table`, an action, not
-selection state.
+`library_page.py`, which owns its own status_label/notice widgets. The
+playlist/track selection it acts on is read straight off
+`PageContext.playlist_selection` (HISTORY §133); the narrower seam it
+needs beyond PageContext, `TaggingPanelHost`, is only its own widgets
+plus `refresh_track_table`, an action, not selection state.
 """
 
 from collections.abc import Callable
@@ -67,9 +66,9 @@ class TaggingPanel(QWidget):
         self.tagging_controls_layout = self._build_tagging_controls()
         layout.addLayout(self.tagging_controls_layout)
 
-        # Round 8 §12.7 — retry only makes a real tag_tracks([track_id])
-        # call for tag-result failures (see TagResultPanel's own
-        # docstring for why fix-art/rename results don't get one).
+        # Retry only makes a real tag_tracks([track_id]) call for
+        # tag-result failures (see TagResultPanel's own docstring for
+        # why fix-art/rename results don't get one).
         self.results_panel = TagResultPanel(
             on_retry_track=self.retag_track,
         )
@@ -230,7 +229,7 @@ class TaggingPanel(QWidget):
         # detail is already reachable in the persistent results_panel
         # above, itself unaffected by that same clearing bug (a real
         # widget, never wired into status_label's plumbing at all)
-        # (HISTORY §56 Phase 4.2).
+        # (HISTORY §56).
         self._show_tag_result_notice(result, feedback)
 
     def _show_tag_result_notice(

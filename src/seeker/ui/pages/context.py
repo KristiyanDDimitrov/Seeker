@@ -28,19 +28,18 @@ class PageContext:
     """What a page widget gets from the shell — deliberately small and
     explicit, so a page module never reaches past it to call MainWindow
     directly (the same "presentation must go through the service layer,
-    not around it" discipline CLAUDE.md already requires one layer
-    down, applied within the UI layer itself).
+    not around it" layering rule one layer down, applied within the UI
+    layer itself).
 
-    Every field beyond application/thread_pool/busy_actions/navigate
-    was added only once a real page being extracted needed it, each
-    bound to the one real MainWindow implementation rather than a
-    reimplemented copy — see HISTORY §119 for which page found which
-    field necessary, and for the deliberately-not-yet-added `notify`.
-    `playlist_selection` (round9 §7.1) was added when Library needed to
-    read Dashboard's live playlist/track selection without reaching
-    into DashboardPage's own attributes through a Host callable.
-    `slskd_status` carries the backend poll's outage state to every page
-    that shows it.
+    Every field beyond application/thread_pool/busy_actions/navigate was
+    added only once a real page being extracted needed it, each bound to
+    the one real MainWindow implementation rather than a reimplemented
+    copy — see HISTORY §119 for which page found which field necessary,
+    and for the deliberately-not-yet-added `notify`.
+    `playlist_selection` lets Library read Dashboard's live
+    playlist/track selection without reaching into DashboardPage's own
+    attributes through a Host callable (HISTORY §133). `slskd_status`
+    carries the backend poll's outage state to every page that shows it.
     """
     application: Application
     thread_pool: QThreadPool

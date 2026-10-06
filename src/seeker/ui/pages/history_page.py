@@ -125,17 +125,17 @@ class HistoryPage(QWidget):
         else:
             self.history_status_label.setText("")
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.history_table):
             self.history_table.setRowCount(len(events))
 
             for row, event in enumerate(events):
-                # Round 8 §12.2 — occurred_at is a real ISO 8601 string
-                # (sorts chronologically as plain text); the DISPLAYED
-                # "Feb 03, 2026" label would sort by month name instead
-                # if used as the sort key directly (see SortKeyItem).
+                # occurred_at is a real ISO 8601 string (sorts
+                # chronologically as plain text); the DISPLAYED "Feb 03,
+                # 2026" label would sort by month name instead if used
+                # as the sort key directly (see SortKeyItem).
                 self.history_table.setItem(
                     row, 0,
                     SortKeyItem(

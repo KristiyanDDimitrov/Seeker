@@ -32,9 +32,9 @@ if TYPE_CHECKING:
     # (never evaluated at import time).
     from seeker.ui.main_window import MainWindow
 
-# Roadmap item R7.5 — an unreachable slskd must not emit a tray
-# notification on every 20s backend-poll error; untuned, same
-# "reasonable starting guess" convention as every other threshold here.
+# An unreachable slskd must not emit a tray notification on every 20s
+# backend-poll error; untuned, same "reasonable starting guess"
+# convention as every other threshold here.
 ERROR_NOTIFICATION_COOLDOWN_SECONDS = 300.0
 
 
@@ -70,12 +70,12 @@ class TrayHost:
 class TrayController:
     def __init__(self, host: TrayHost) -> None:
         self._host = host
-        # R7.5 — de-duplicates "N item(s) need your decision" so it
-        # only fires on a genuine INCREASE, never every poll tick the
-        # count happens to still be positive.
+        # De-duplicates "N item(s) need your decision" so it only fires
+        # on a genuine INCREASE, never every poll tick the count happens
+        # to still be positive.
         self._last_notified_review_count = 0
-        # R7.5 — the newest HistoryEvent.occurred_at already accounted
-        # for, seeded once (silently, no notification) right after
+        # The newest HistoryEvent.occurred_at already accounted for,
+        # seeded once (silently, no notification) right after
         # construction so pre-existing history never floods a first
         # notification the moment the tray icon appears. None means the
         # seed is still in flight; an empty history seeds "now".
@@ -96,25 +96,25 @@ class TrayController:
         if self._tray_icon is not None:
             self._tray_icon.hide()
 
-    # --- Roadmap item R7: run in the background from the macOS menu bar ----
+    # --- Run in the background from the macOS menu bar (HISTORY §90) -------
 
     def _build_tray_icon(self) -> None:
-        # R7.2 — guarded on real availability; a platform/session with
-        # no tray (this app's own offscreen test environment included —
-        # confirmed live, not assumed: QSystemTrayIcon.
-        # isSystemTrayAvailable() reports False under QT_QPA_PLATFORM=
-        # offscreen) falls back to today's ordinary quit-on-close
-        # behavior untouched — closeEvent below checks self._tray_icon
-        # is not None before doing anything different.
+        # Guarded on real availability; a platform/session with no tray
+        # (this app's own offscreen test environment included —
+        # confirmed live, not assumed:
+        # QSystemTrayIcon.isSystemTrayAvailable() reports False under
+        # QT_QPA_PLATFORM=offscreen) falls back to the ordinary
+        # quit-on-close behavior untouched — closeEvent below checks
+        # self._tray_icon is not None before doing anything different.
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self._tray_icon = None
-            # Round 9 §2.3.3 — the other half of the single decision
-            # this method now owns in full: no tray icon exists to
-            # reopen from, so an ordinary close() must actually destroy
-            # the window (see the True branch below for the mirror
-            # case). Explicit here rather than left to whatever
-            # MainWindow.__init__ set, so this method is the one place
-            # that decides either way, unconditionally.
+            # The other half of the single decision this method owns in
+            # full (HISTORY §125): no tray icon exists to reopen from,
+            # so an ordinary close() must actually destroy the window
+            # (see the True branch below for the mirror case). Explicit
+            # here rather than left to whatever MainWindow.__init__ set,
+            # so this method is the one place that decides either way,
+            # unconditionally.
             self._host.window.setAttribute(
                 Qt.WidgetAttribute.WA_DeleteOnClose, True
             )
@@ -124,14 +124,14 @@ class TrayController:
         icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
         # macOS "template image" convention — a monochrome glyph whose
         # alpha channel Qt/AppKit recolor automatically for the current
-        # menu bar appearance (light/dark), instead of showing a fixed-
-        # color icon that can read wrong against either.
+        # menu bar appearance (light/dark), instead of showing a
+        # fixed-color icon that can read wrong against either.
         #
-        # Roadmap item 98 (B9) — setIsMask(True) against the full-colour
-        # app `.icns` (the original approach here) produced a solid
-        # filled squircle: setIsMask discards colour and stamps only the
-        # ALPHA channel, and the app icon's alpha is one opaque rounded
-        # square. `seeker_menubar_Template.png`/`...@2x.png` is a real,
+        # Never setIsMask(True) against the full-colour app `.icns`: it
+        # produces a solid filled squircle: setIsMask discards colour
+        # and stamps only the ALPHA channel, and the app icon's alpha is
+        # one opaque rounded square.
+        # `seeker_menubar_Template.png`/`...@2x.png` is a real,
         # derived-not-redrawn template asset instead — reproducible if
         # the app icon ever changes: the 1024px `seeker_icon.icns`
         # artwork was thresholded on luminance (a flat background at
@@ -143,30 +143,24 @@ class TrayController:
         # pixels with the glyph carried entirely in the alpha channel —
         # exactly what a template image is. Checked at real menu-bar
         # size composited against both a light and a dark background
-        # before adopting it.
+        # (HISTORY §99).
         icon.setIsMask(True)
 
         self._tray_icon = QSystemTrayIcon(icon, self._host.window)
         self._tray_icon.setToolTip("Seeker")
 
-        # Roadmap item E1 (round 7, corrected after review) — the real
-        # invariant is "a window with a live tray icon to reopen from
-        # must never be deleted on close," which belongs HERE, where
-        # that tray icon is created (once, for the life of the
-        # session), not inside one specific close branch. `WA_
-        # DeleteOnClose` (set at construction — see its own comment
-        # there) was written back when this window's only real close
-        # happened once, at app exit; every close path that reaches
-        # `event.ignore()` first (the ordinary hide-to-tray path) never
-        # actually triggers it regardless, but the fullscreen-close
-        # path (E1.2) deliberately lets a real close complete — with
-        # this attribute still set, Qt would schedule the actual C++
-        # object for deletion right after, silently breaking `_on_tray_
-        # open_seeker` (and this tray icon/menu) the next time the user
-        # tries to reopen. Clearing it here, the moment a tray icon
-        # exists, covers every current and future close path that
-        # reaches this point with a tray present — not just the one
-        # branch that happened to need it first.
+        # The invariant is "a window with a live tray icon to reopen
+        # from must never be deleted on close," which belongs HERE,
+        # where that tray icon is created (once, for the life of the
+        # session), not inside one specific close branch. The ordinary
+        # hide-to-tray path calls `event.ignore()` first and never
+        # triggers `WA_DeleteOnClose`, but the fullscreen-close path
+        # deliberately lets a real close complete — with this attribute
+        # still set, Qt would schedule the actual C++ object for
+        # deletion right after, silently breaking reopen (and this tray
+        # icon/menu) the next time the user tries it. Clearing it here,
+        # the moment a tray icon exists, covers every close path that
+        # reaches this point with a tray present (HISTORY §114, §125).
         self._host.window.setAttribute(
             Qt.WidgetAttribute.WA_DeleteOnClose, False
         )
@@ -192,11 +186,10 @@ class TrayController:
         )
         menu.addSeparator()
 
-        # Roadmap item 98 (B9.5) — "Check now" was ambiguous with Help
-        # menu's "Check for updates…" (a completely different action —
-        # this one triggers an immediate slskd download/upload status
-        # poll, not an app-update check). Renamed plainly, with a
-        # tooltip, so the two "check"s can't be confused.
+        # Named plainly, with a tooltip, so it can't be confused with
+        # the Help menu's "Check for updates…" (a completely different
+        # action — this one triggers an immediate slskd download/upload
+        # status poll, not an app-update check).
         check_now_action = menu.addAction("Check downloads now")
         check_now_action.setToolTip(
             "Refresh download/upload status immediately, instead of "
@@ -217,19 +210,12 @@ class TrayController:
             self,
             reason: QSystemTrayIcon.ActivationReason,
     ) -> None:
-        # Roadmap item D5 (round 6) — this comment used to assert, with
-        # no recorded observation behind it, that macOS routes a
-        # left-click straight to the context menu and Trigger never
-        # fires there. A real user's report (confirmed live: a single
-        # left-click on the menu bar icon both opened the context menu
-        # AND restored the window) is direct evidence that's false on
-        # PySide6 6.11/macOS — the exact "confident, unverified platform
-        # claim" failure mode this project has now hit twice (see
-        # CLAUDE.md's own standing convention on comments like this).
-        # Handled explicitly instead of assumed away: Trigger is skipped
+        # On PySide6 6.11/macOS a single left-click on the menu bar icon
+        # both opens the context menu AND fires Trigger (confirmed live
+        # from a real user's report; HISTORY §112). Trigger is skipped
         # outright on macOS, so a left-click does only what AppKit
-        # already does with it (open the context menu) and nothing
-        # else — matching how an ordinary macOS menu bar extra behaves.
+        # already does with it (open the context menu) and nothing else
+        # — matching how an ordinary macOS menu bar extra behaves.
         # Windows/Linux keep the original behavior, where Trigger is the
         # only signal a left-click produces at all.
         if sys.platform == "darwin":
@@ -250,10 +236,10 @@ class TrayController:
 
     def _on_tray_open_seeker(self) -> None:
         self._host.window.reopen()
-        # Roadmap item R7.6 — the poll methods skip their own work
-        # while hidden; catch up immediately on reopen rather than
-        # waiting up to POLL_INTERVAL_MS for the next tick to notice
-        # the window is visible again.
+        # The poll methods skip their own work while hidden; catch up
+        # immediately on reopen rather than waiting up to
+        # POLL_INTERVAL_MS for the next tick to notice the window is
+        # visible again.
         self._host.poll_selected_playlist()
         self._host.poll_active_downloads()
         self._host.poll_review_items()
@@ -263,9 +249,9 @@ class TrayController:
     def on_application_state_changed(
             self, state: Qt.ApplicationState,
     ) -> None:
-        # Roadmap item 116 (round 8, §14.2) — see the connection's own
-        # comment in MainWindow.__init__ for why this signal exists at
-        # all. Two things about this guard, both deliberate:
+        # See the connection's own comment in MainWindow.__init__ for
+        # why this signal exists at all. Two things about this guard,
+        # both deliberate:
         #
         # ApplicationActive is not reopen-specific — it also fires on
         # ordinary activation (Cmd-Tab, clicking a window), and because
@@ -285,8 +271,8 @@ class TrayController:
         #
         # This proves the HANDLER's own contract (a hidden window comes
         # back on ApplicationActive) — it does not and cannot prove a
-        # real Dock click reaches it, which no headless test can. See
-        # this item's own real-desktop verification checklist.
+        # real Dock click reaches it, which no headless test can; that
+        # needs a live check on a real desktop (HISTORY §116).
         if state != Qt.ApplicationState.ApplicationActive:
             return
         if self._host.window.isVisible():
@@ -294,12 +280,12 @@ class TrayController:
         self._on_tray_open_seeker()
 
     def _on_tray_quit(self) -> None:
-        # Roadmap item R7.7 — a real quit request, same as ⌘Q/dock
-        # "Quit Seeker". Goes straight to QApplication.quit() (posts a
-        # real quit event) rather than self.close() — close() would
-        # re-enter this window's own closeEvent, which hides to the
-        # tray instead of quitting, exactly the behavior a Quit click
-        # must bypass. The actual cleanup lives in MainWindow's own
+        # A real quit request, same as ⌘Q/dock "Quit Seeker". Goes
+        # straight to QApplication.quit() (posts a real quit event)
+        # rather than self.close() — close() would re-enter this
+        # window's own closeEvent, which hides to the tray instead of
+        # quitting, exactly the behavior a Quit click must bypass. The
+        # actual cleanup lives in MainWindow's own
         # cleanup_before_quit(), connected once to QApplication.
         # aboutToQuit in main_ui.py, so it fires for every real quit
         # route uniformly, not just this one.
@@ -344,12 +330,9 @@ class TrayController:
         self._tray_pause_action.blockSignals(False)
 
     def show_hide_notice_once(self) -> None:
-        # Roadmap item E1 (round 7, corrected after review) — was
-        # duplicated (the fullscreen branch and the ordinary hide path
-        # in closeEvent each had their own copy of this, including the
-        # user-facing string) — the exact "two implementations of one
-        # behavior" shape this project's own CLAUDE.md already warns
-        # about (item 104/C3's Dashboard-vs-Downloads progress bar).
+        # The one copy of this, user-facing string included, shared by
+        # the fullscreen branch and the ordinary hide path in
+        # closeEvent.
         assert self._tray_icon is not None
         if self._host.application.settings.tray_hide_notice_shown:
             return
@@ -362,11 +345,11 @@ class TrayController:
         self._host.application.mark_tray_hide_notice_shown()
 
     def seed_notification_cutoff(self) -> None:
-        # Roadmap item R7.5 — silently records the newest existing
-        # HistoryEvent so pre-existing download history never floods a
-        # notification the instant the tray icon appears; only a
-        # DOWNLOADED event with a NEWER occurred_at than this counts as
-        # "new" from here on (get_recent_events sorts newest-first).
+        # Silently records the newest existing HistoryEvent so
+        # pre-existing download history never floods a notification the
+        # instant the tray icon appears; only a DOWNLOADED event with a
+        # NEWER occurred_at than this counts as "new" from here on
+        # (get_recent_events sorts newest-first).
         run_worker(
             self._host.thread_pool,
             lambda: self._host.application.history_service.get_recent_events(
@@ -388,11 +371,11 @@ class TrayController:
         )
 
     def check_for_download_notifications(self) -> None:
-        # Roadmap item R7.5 — batched per playlist, built from
-        # HistoryService's own existing derived DOWNLOADED events (item
-        # 54), not a new source of truth; runs on the real 20s backend-
-        # poll cycle (the only cycle that can actually produce a newly-
-        # completed download), never its own timer.
+        # Batched per playlist, built from HistoryService's own existing
+        # derived DOWNLOADED events (HISTORY §54), not a new source of
+        # truth; runs on the real 20s backend-poll cycle (the only cycle
+        # that can actually produce a newly-completed download), never
+        # its own timer.
         if self._tray_icon is None:
             return
 
@@ -445,10 +428,10 @@ class TrayController:
             self._last_notified_download_at = events[0].occurred_at
 
     def check_for_needs_decision_notification(self, total: int) -> None:
-        # Roadmap item R7.5 — fires only on a genuine INCREASE from the
-        # last-seen total, never on every poll tick the count happens
-        # to still be positive (that would notify every 2s for as long
-        # as anything sits unreviewed).
+        # Fires only on a genuine INCREASE from the last-seen total,
+        # never on every poll tick the count happens to still be
+        # positive (that would notify every 2s for as long as anything
+        # sits unreviewed).
         if (
                 self._tray_icon is not None
                 and self._host.application.settings.notify_needs_decision
@@ -479,8 +462,8 @@ class TrayController:
         )
 
     def notify_error(self, message: str) -> None:
-        # Roadmap item R7.5 — rate-limited so an error that repeats on
-        # every 20s backend-poll tick can't notify on every one.
+        # Rate-limited so an error that repeats on every 20s
+        # backend-poll tick can't notify on every one.
         if self._tray_icon is None:
             return
 
@@ -503,23 +486,20 @@ class TrayController:
 
 
 def _resolve_tray_icon_path() -> Path:
-    """Roadmap item R7.2/98 (B9.1) — same sys.frozen/sys._MEIPASS branch
-    as soulseek/docker_setup.py's compose_template_path(): an ordinary `uv run
-    seeker-ui` dev run resolves against this file's own real location
-    in the source tree; a packaged build resolves against the
-    icons/ directory seeker.spec bundles as a real PyInstaller `datas`
-    entry (this file previously only fed EXE()/BUNDLE()'s own icon= at
-    BUILD time — nothing made it available to the running process at
-    runtime, which would have left a real packaged build's tray icon
-    blank).
+    """Same sys.frozen/sys._MEIPASS branch as soulseek/docker_setup.py's
+    compose_template_path(): an ordinary `uv run seeker-ui` dev run
+    resolves against this file's own real location in the source tree; a
+    packaged build resolves against the icons/ directory seeker.spec
+    bundles as a real PyInstaller `datas` entry (EXE()/BUNDLE()'s own
+    icon= is used only at BUILD time and never reaches the running
+    process).
 
     Points at the real template asset (`seeker_menubar_Template.png` —
-    Qt auto-picks up `...@2x.png` via its own high-DPI file
-    convention), not the full-colour app `.icns` — see B9's own
-    CLAUDE.md entry for why setIsMask(True) on the app icon produced a
-    solid filled squircle instead of a legible glyph. The `.icns` stays
-    the app/Dock icon (BUNDLE()'s own icon= in seeker.spec), unaffected
-    by this."""
+    Qt auto-picks up `...@2x.png` via its own high-DPI file convention),
+    not the full-colour app `.icns` — setIsMask(True) on the app icon
+    produces a solid filled squircle instead of a legible glyph
+    (HISTORY §99). The `.icns` stays the app/Dock icon (BUNDLE()'s own
+    icon= in seeker.spec), unaffected by this."""
     if not getattr(sys, "frozen", False):
         return (
             Path(__file__).resolve().parent.parent.parent.parent
@@ -530,11 +510,10 @@ def _resolve_tray_icon_path() -> Path:
 
 
 def _set_dock_icon_visible(visible: bool) -> None:
-    """Roadmap item 116 (round 8, §14.3) — the Dock icon while hidden to
-    the menu bar. No-op off macOS. The mechanism is NSApplication's own
-    activation policy: Regular (Dock icon + menu bar) while the window
-    is up, Accessory (menu bar extra only, no Dock icon) while it's
-    hidden.
+    """The Dock icon while hidden to the menu bar. No-op off macOS. The
+    mechanism is NSApplication's own activation policy: Regular (Dock
+    icon + menu bar) while the window is up, Accessory (menu bar extra
+    only, no Dock icon) while it's hidden.
 
     Deliberately NOT `LSUIElement` in the Info.plist, which is what
     Apple's own DTS engineers recommend when asked this: `Accessory`/
@@ -544,17 +523,15 @@ def _set_dock_icon_visible(visible: bool) -> None:
     at runtime gives exactly the described behavior instead: icon while
     the window is up, none while it's not.
 
-    This is still a platform claim, and this project has been wrong
-    about confident unverified platform claims twice already (see
-    CLAUDE.md's own standing convention). Programmatic
-    setActivationPolicy_() calls around NSApplicationMain at LAUNCH
-    have reported real flakiness (icons lingering, or flashing before
+    This is still a platform claim, UNVERIFIED in part. Programmatic
+    setActivationPolicy_() calls around NSApplicationMain at LAUNCH have
+    reported real flakiness (icons lingering, or flashing before
     disappearing) per Apple's own developer forums — the reasoning for
-    calling it here instead, at runtime, on the main thread, in
-    response to a window closing/reopening, is that this is a
-    materially different situation and the pattern menu-bar apps
-    normally use — but verify live before trusting a comment that says
-    it works.
+    calling it here instead, at runtime, on the main thread, in response
+    to a window closing/reopening, is that this is a materially
+    different situation and the pattern menu-bar apps normally use — but
+    verify live before trusting a comment that says it works. See
+    HISTORY §116.
     """
     if sys.platform != "darwin":
         return

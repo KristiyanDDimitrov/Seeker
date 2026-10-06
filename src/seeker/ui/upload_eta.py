@@ -1,5 +1,5 @@
 """In-memory upload speed estimation for the Sharing page's Uploads
-table — roadmap item 62 (Phase 7.6).
+table.
 
 Deliberately a SEPARATE tracker from DownloadEtaTracker (ui/download_eta.py),
 not a reuse of it, even though the sampling shape is nearly identical:

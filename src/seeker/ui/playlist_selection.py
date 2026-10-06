@@ -5,17 +5,15 @@ from seeker.models.playlist import Playlist
 
 class PlaylistSelection(QObject):
     """The playlist/track selection Dashboard and Library both act on
-    (round9 §7.1). Owned by the shell (one instance, `MainWindow.
-    playlist_selection`), handed to every page via `PageContext.
-    playlist_selection` — replaces the prior arrangement where
-    `LibraryHost`/`TaggingPanelHost` reached into DashboardPage's own
+    (HISTORY §133). Owned by the shell (one instance,
+    `MainWindow.playlist_selection`), handed to every page via
+    `PageContext.playlist_selection`, so no page reaches into another's
     attributes through read-only callables, which could not support a
-    second writer (§7.2 needs Library to change the playlist too).
+    second writer.
 
-    Both Dashboard and Library are writers as of round9 §7.2 (Library
-    via its own inline picker) and both are readers subscribed to
-    `changed` — each has to be, now that a write can originate on
-    either page.
+    Both Dashboard and Library are writers (Library via its own inline
+    picker; HISTORY §134) and both are readers subscribed to `changed`
+    — each has to be, since a write can originate on either page.
     """
 
     changed = Signal()

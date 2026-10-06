@@ -70,10 +70,9 @@ def _status_text(request: DownloadRequest) -> str:
 
 def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
     # A fixed label, never the ETA tracker, for a row that will never
-    # report new progress again (HISTORY §56 Phase 5.4). 'unavailable'
-    # gets the same blank treatment as 'failed' — a full bar would
-    # misleadingly read as "completed" for something that never
-    # actually succeeded.
+    # report new progress again (HISTORY §56). 'unavailable' gets the
+    # same blank treatment as 'failed' — a full bar would misleadingly
+    # read as "completed" for something that never actually succeeded.
     if request.status in FAILED_OUTCOMES:
         return QWidget()  # blank, not a misleading full/empty bar
 
@@ -97,8 +96,8 @@ def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
 
 
 def _progress_sort_key(request: DownloadRequest) -> float:
-    # §5.1 — mirrors _build_progress_widget's own branching so the
-    # sort order matches what the bar actually shows.
+    # Mirrors _build_progress_widget's own branching so the sort order
+    # matches what the bar actually shows.
     if request.status in FAILED_OUTCOMES:
         # No real transfer to rank — same "sorts below everything
         # real" sentinel as a Dashboard row with no active transfer.
@@ -124,9 +123,9 @@ def _build_progress_widget(
     request = download.request
 
     # Branched on BEFORE ever consulting the ETA tracker, which is the
-    # actual fix for "a finished download reads as Stalled" (HISTORY §56
-    # Phase 5.4): the tracker has no concept of "this row is done," so
-    # feeding it more identical-bytes samples from a finished row
+    # actual fix for "a finished download reads as Stalled"
+    # (HISTORY §56): the tracker has no concept of "this row is done,"
+    # so feeding it more identical-bytes samples from a finished row
     # eventually looks exactly like a genuinely stuck download to it.
     if request.status in SHOWS_NO_FURTHER_PROGRESS:
         return _build_terminal_progress_widget(request)
@@ -299,9 +298,9 @@ class DownloadsPage(QWidget):
         )
         self._render_aggregate_eta(downloads)
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.downloads_table):
             self.downloads_table.setRowCount(len(downloads))
 
@@ -330,9 +329,9 @@ class DownloadsPage(QWidget):
 
                 if is_terminal:
                     # Evicted the moment a terminal status is seen, not
-                    # left to evict_except()'s once-per-poll sweep; the ETA
-                    # tracker is never consulted for this row at all below
-                    # (HISTORY §56 Phase 5.4).
+                    # left to evict_except()'s once-per-poll sweep; the
+                    # ETA tracker is never consulted for this row at all
+                    # below (HISTORY §56).
                     if request.id is not None:
                         self._eta_tracker.evict(request.id)
                     eta_text = None
@@ -388,7 +387,7 @@ class DownloadsPage(QWidget):
         # ready_for_review) has nothing left to estimate; counting it
         # here previously folded it into the header's "queued (no
         # estimate)" figure, which reads as actively waiting rather than
-        # already finished (HISTORY §56 Phase 5.4).
+        # already finished (HISTORY §56).
         pairs = [
             (download.request.id, download.request.total_bytes)
             for download in downloads

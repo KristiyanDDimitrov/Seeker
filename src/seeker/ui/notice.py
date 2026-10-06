@@ -32,12 +32,11 @@ class InlineNotice(QWidget):
     widget itself, only call `show_message`/`dismiss`.
     """
 
-    # Roadmap item 71 (P3) — emitted from dismiss() (both the X button
-    # and any programmatic call) so a poll-driven caller can remember
-    # "the user dismissed this" instead of blindly re-showing on the
-    # next tick. A signal, not a caller reaching into
-    # `_dismiss_button` directly — other pages use this widget too and
-    # would need the same thing.
+    # Emitted from dismiss() (both the X button and any programmatic
+    # call) so a poll-driven caller can remember "the user dismissed
+    # this" instead of blindly re-showing on the next tick. A signal,
+    # not a caller reaching into `_dismiss_button` directly — other
+    # pages use this widget too and would need the same thing.
     dismissed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -100,13 +99,12 @@ class InlineNotice(QWidget):
             action_text: str | None = None,
             on_action: Callable[[], None] | None = None,
     ) -> None:
-        # Roadmap item C5.3 (round 5) — was a per-instance
-        # setStyleSheet() call computed from `kind` in Python, baking a
-        # concrete hex color into a string that a runtime theme switch
-        # could never revisit. Routed through the SAME `variant`
-        # dynamic-property mechanism QPushButton's primary/danger
-        # variants already use — real rules live in theme.py's
-        # `InlineNotice[variant="..."]` selectors, re-applied
+        # Never a per-instance setStyleSheet() computed from `kind`,
+        # which would bake a concrete hex color into a string a runtime
+        # theme switch could never revisit. Routed through the SAME
+        # `variant` dynamic-property mechanism QPushButton's
+        # primary/danger variants already use — real rules live in
+        # theme.py's `InlineNotice[variant="..."]` selectors, re-applied
         # automatically whenever the global stylesheet changes.
         theme.set_variant(
             self, kind if kind in _VALID_KINDS else "info",

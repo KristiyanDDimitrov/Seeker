@@ -61,23 +61,17 @@ SETTINGS_TAB_DESTINATIONS = "Playlist Destinations"
 SETTINGS_TAB_CONNECTION = "Connection"
 SETTINGS_TAB_THRESHOLDS = "Thresholds"
 
-# Roadmap item 8.1.3 (round 8, Phase 5) — Name/Path/Reachable/Actions,
-# see theme.ColumnLayout.
+# Name/Path/Reachable/Actions, see theme.ColumnLayout.
 _LOCATIONS_COLUMNS = theme.ColumnLayout(stretch=(1,), fit_content=(0, 2), actions=3)
 
 
 class SettingsPage(QWidget):
-    """An in-window Settings page (roadmap item 56 Phase 3) — was a
-    separate top-level `SettingsWindow(QMainWindow)` (item 48's
-    deliberate choice at the time). Reversed here: in fullscreen, a
-    second window reads as a dead end with no way back to the shell.
-    Hosted in MainWindow's own QStackedWidget like every other page, via
-    `_build_page()` — its own subtitle label (below) is gone in favor of
-    that helper's, which fixed a real misprinted-looking header (item
-    56 Phase 3 §3.2: the fix IS routing through `_build_page`'s standard
-    margins, not a one-off tweak). No `WA_DeleteOnClose` handling
-    needed any more — this widget is never a top-level window, so the
-    leak that attribute existed to fix (item 32) doesn't apply here.
+    """An in-window Settings page, not a separate top-level window: in
+    fullscreen, a second window reads as a dead end with no way back to
+    the shell. Hosted in MainWindow's own QStackedWidget like every
+    other page, via `_build_page()`, whose standard header and margins
+    it uses rather than a subtitle label of its own. Never a top-level
+    window, so it needs no `WA_DeleteOnClose` handling.
     """
 
     def __init__(
@@ -94,23 +88,22 @@ class SettingsPage(QWidget):
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
         self._web_password_visible = False
-        # S1.2 — whether the generated slskd web UI login is actually
-        # the one the container will accept right now (it may not be:
-        # slskd won't let SLSKD_USERNAME/PASSWORD override a login the
-        # user had already customised). None until the background
-        # check in _refresh_web_login_status() completes.
+        # Whether the generated slskd web UI login is actually the one
+        # the container will accept right now (it may not be: slskd
+        # won't let SLSKD_USERNAME/PASSWORD override a login the user
+        # had already customised). None until the background check in
+        # _refresh_web_login_status() completes.
         self._web_login_status: SlskdWebLoginStatus | None = None
-        # Roadmap item C5.12 (round 5) — MainWindow's own
-        # _apply_theme_mode, so the sidebar toggle and this tab's radio
-        # group stay in sync in both directions. None only in tests
-        # that construct SettingsPage standalone.
+        # MainWindow's own _apply_theme_mode, so the sidebar toggle and
+        # this tab's radio group stay in sync in both directions. None
+        # only in tests that construct SettingsPage standalone.
         self._on_theme_mode_changed = on_theme_mode_changed
         # A callable rather than importing AboutDialog directly —
         # AboutDialog lives in main_window.py, which already imports
         # FROM this module (SETTINGS_TAB_*), so importing it back here
         # would be circular. MainWindow wires this to its own
-        # _on_about_clicked (roadmap item 56 Phase 3 §3.4) — reusing the
-        # exact same dialog/copy, not a second one.
+        # _on_about_clicked — reusing the exact same dialog/copy, not a
+        # second one.
         self._on_about_requested = on_about_requested
 
         layout = QVBoxLayout(self)
@@ -147,18 +140,18 @@ class SettingsPage(QWidget):
     def select_tab(self, tab_name: str) -> None:
         """Switches to the named tab — used both at construction time
         (initial_tab above) and after construction, since this page is
-        now built once and persists for the app's lifetime rather than
-        being recreated on every open (item 56 Phase 3: the wizard's
-        "Connect Spotify"/"Add library location" shortcuts and the
-        Dashboard CTA's settings_connection/settings_locations actions
-        all need to land on a specific tab of the SAME long-lived page).
+        built once and persists for the app's lifetime rather than being
+        recreated on every open (the wizard's "Connect Spotify"/"Add
+        library location" shortcuts and the Dashboard CTA's
+        settings_connection/settings_locations actions all need to land
+        on a specific tab of the SAME long-lived page).
         """
         for index in range(self.tabs.count()):
             if self.tabs.tabText(index) == tab_name:
                 self.tabs.setCurrentIndex(index)
                 return
 
-    # --- Library locations (§1) --------------------------------------
+    # --- Library locations -------------------------------------------
 
     def _build_locations_tab(self) -> QWidget:
         tab = QWidget()
@@ -166,7 +159,7 @@ class SettingsPage(QWidget):
 
         # Persistent, dismissible — for the one real error this tab can
         # produce that's worth more than a transient status line: "this
-        # path is already registered as X" (roadmap item 5 §4).
+        # path is already registered as X".
         self.locations_notice = InlineNotice()
         layout.addWidget(self.locations_notice)
 
@@ -174,13 +167,10 @@ class SettingsPage(QWidget):
         self.locations_table.setHorizontalHeaderLabels(
             ["Name", "Path", "Reachable", "Actions"]
         )
-        # Roadmap item 97 (B6) — this file's own two tables/lists never
-        # went through the shared table-chrome helpers every real
-        # QTableWidget/QListWidget in main_window.py already does (item
-        # 80/R5): visible row-number header, square top-left corner
-        # cutting into the card's own rounded arc, Qt-default row
-        # heights, and (this table specifically) an underived Actions
-        # column width.
+        # The shared table chrome every QTableWidget gets (HISTORY §87):
+        # without it, a visible row-number header, a square top-left
+        # corner cutting into the card's own rounded arc, Qt-default row
+        # heights, and an underived Actions column width.
         theme.apply_table_defaults(self.locations_table)
         theme.configure_columns(self.locations_table, _LOCATIONS_COLUMNS)
         layout.addWidget(theme.make_card(self.locations_table))
@@ -189,7 +179,7 @@ class SettingsPage(QWidget):
         # No name field — the location is registered immediately under
         # the picked folder's own basename (auto-suffixed on a name
         # collision) and is renameable afterward via the table's own
-        # Rename action (roadmap item 5 §1).
+        # Rename action.
         self.add_location_button = QPushButton("Add location…")
         self.add_location_button.setToolTip(help_text.TOOLTIP_ADD_LOCATION)
         self.add_location_button.clicked.connect(
@@ -260,9 +250,9 @@ class SettingsPage(QWidget):
             action_widgets.append(actions)
             self.locations_table.setCellWidget(row, 3, actions)
 
-        # Roadmap item 97 (B6.3) — derived from this render's own real
-        # Actions widgets, same as every other table with this column
-        # (theme.size_action_column's own docstring).
+        # Derived from this render's own real Actions widgets, same as
+        # every other table with this column (theme.size_action_column's
+        # own docstring).
         theme.size_columns(self.locations_table, _LOCATIONS_COLUMNS, action_widgets)
 
     def _on_add_location_clicked(self) -> None:
@@ -346,7 +336,7 @@ class SettingsPage(QWidget):
     def _show_locations_error(self, message: str) -> None:
         self.locations_notice.show_message(message, kind="error")
 
-    # --- Playlist destinations (§2) -----------------------------------
+    # --- Playlist destinations ---------------------------------------
 
     def _build_destinations_tab(self) -> QWidget:
         tab = QWidget()
@@ -363,8 +353,8 @@ class SettingsPage(QWidget):
         self.destinations_playlist_list.currentItemChanged.connect(
             self._on_destination_playlist_selected
         )
-        # Roadmap item 97 (B6.2) — same rounded-card treatment every
-        # QListWidget in main_window.py already gets (item 80).
+        # The same rounded-card treatment every table and list gets
+        # (HISTORY §80).
         layout.addWidget(theme.make_card(self.destinations_playlist_list), 1)
 
         right = QVBoxLayout()
@@ -383,10 +373,10 @@ class SettingsPage(QWidget):
         self.destination_subfolder_field.setToolTip(
             help_text.TOOLTIP_DESTINATION_SUBFOLDER_FIELD
         )
-        # Roadmap item 95 (B1.3) — one field, one obvious submit target
-        # (Save destination), same reasoning/muscle-memory as B1.1/B1.2;
-        # _on_save_destination_clicked already validates a playlist/
-        # location are selected and writes a real status message.
+        # One field, one obvious submit target (Save destination), so
+        # Enter submits (HISTORY §95); _on_save_destination_clicked
+        # already validates a playlist/location are selected and writes
+        # a real status message.
         self.destination_subfolder_field.returnPressed.connect(
             self._on_save_destination_clicked
         )
@@ -411,13 +401,13 @@ class SettingsPage(QWidget):
         return tab
 
     def _build_default_destination_group(self) -> QWidget:
-        # Roadmap item 6 §4 — the fallback DownloadService resolves to
-        # once a playlist has no destination of its own (§1); also
-        # what the Dashboard's own "no dead end" dialog (§3) writes to
-        # when its "Remember this for this playlist" checkbox is left
-        # unchecked. Deliberately above the per-playlist overrides
-        # below, not beside them — this is the first thing a real user
-        # should notice on this tab, per the task's own layout ask.
+        # The fallback DownloadService resolves to once a playlist has
+        # no destination of its own (HISTORY §50); also what the
+        # Dashboard's own "no dead end" dialog writes to when its
+        # "Remember this for this playlist" checkbox is left unchecked.
+        # Deliberately above the per-playlist overrides below, not
+        # beside them — this is the first thing a real user should
+        # notice on this tab.
         group = QGroupBox("Default Destination")
         layout = QFormLayout(group)
 
@@ -597,15 +587,15 @@ class SettingsPage(QWidget):
             ),
         )
 
-    # --- Connection management (§3) ------------------------------------
+    # --- Connection management -----------------------------------------
 
     def _build_connection_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # Roadmap item 116 (round 8, §6.6.1) — starts hidden; only shown
-        # by _refresh_connection_display() when the configured slskd
-        # base URL is actually plain http:// pointed off this machine.
+        # Starts hidden; only shown by _refresh_connection_display()
+        # when the configured slskd base URL is actually plain
+        # http://pointed off this machine.
         self.slskd_remote_warning_notice = InlineNotice()
         layout.addWidget(self.slskd_remote_warning_notice)
 
@@ -618,9 +608,9 @@ class SettingsPage(QWidget):
         self.spotify_client_id_field.setToolTip(
             help_text.TOOLTIP_SPOTIFY_CLIENT_ID_FIELD
         )
-        # Roadmap item 95 (B1.3) — one field, one obvious submit target
-        # (Re-authorize); _on_reauthorize_spotify_clicked already
-        # validates non-empty and writes a real status message.
+        # One field, one obvious submit target (Re-authorize);
+        # _on_reauthorize_spotify_clicked already validates non-empty
+        # and writes a real status message.
         self.spotify_client_id_field.returnPressed.connect(
             self._on_reauthorize_spotify_clicked
         )
@@ -668,11 +658,10 @@ class SettingsPage(QWidget):
         api_key_row.addWidget(self.reveal_api_key_button)
         soulseek_form.addRow("API key:", api_key_row)
 
-        # Roadmap item 116 (round 8, §6.1.2) — surfaces the generated
-        # slskd WEB UI login (distinct from the SoulSeek network login
-        # above), otherwise nowhere in the app the user could ever find
-        # it once bring_up_slskd stopped leaving the web UI at slskd's
-        # own vendor default.
+        # Surfaces the generated slskd WEB UI login (distinct from the
+        # SoulSeek network login above), otherwise nowhere in the app
+        # the user could ever find it, since bring_up_slskd never leaves
+        # the web UI at slskd's own vendor default (HISTORY §116).
         self.slskd_web_username_display = PlainLabel("Not configured")
         soulseek_form.addRow(
             "Web UI username:", self.slskd_web_username_display
@@ -713,10 +702,9 @@ class SettingsPage(QWidget):
         self.new_soulseek_username_field.setToolTip(
             help_text.TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD
         )
-        # Roadmap item 95 (B1.3) — the SoulSeek credentials form the
-        # brief names directly: one obvious submit target (Update
-        # credentials); _on_update_credentials_clicked already
-        # validates non-empty and writes a real status message.
+        # One obvious submit target (Update credentials);
+        # _on_update_credentials_clicked already validates non-empty and
+        # writes a real status message.
         self.new_soulseek_username_field.returnPressed.connect(
             self._on_update_credentials_clicked
         )
@@ -777,7 +765,7 @@ class SettingsPage(QWidget):
 
     def _refresh_web_login_status(self) -> None:
         """Background-check whether the persisted web UI credential is
-        the one the container will actually accept right now (S1.2) —
+        the one the container will actually accept right now —
         `ensure_slskd_web_credentials()` only ever generates and
         persists a value, it never confirms slskd took it, and slskd
         silently won't override an already-customised login. A stale
@@ -823,10 +811,10 @@ class SettingsPage(QWidget):
             self.reveal_web_password_button.hide()
             return
 
-        # S1.2 — never show a credential that isn't the one the
-        # container will actually accept: slskd won't let a generated
+        # Never show a credential that isn't the one the container will
+        # actually accept: slskd won't let a generated
         # SLSKD_USERNAME/PASSWORD override a login already customised
-        # before Seeker ever set it.
+        # before Seeker ever set it (HISTORY §117).
         if self._web_login_status == SlskdWebLoginStatus.INACTIVE:
             self.slskd_web_username_display.setText(
                 "An existing web UI login is already in place — "
@@ -1045,14 +1033,13 @@ class SettingsPage(QWidget):
             "credentials — use Test connection to confirm."
         )
 
-    # --- Appearance (C5.12) -----------------------------------------
+    # --- Appearance ------------------------------------------------
 
     def _build_appearance_group(self) -> QGroupBox:
-        # Roadmap item C5.12 (round 5) — the authoritative three-way
-        # control (the sidebar toggle is the quick, no-label version;
-        # this one names every option explicitly). Kept in sync with
-        # the toggle in both directions via MainWindow._apply_theme_mode
-        # / sync_theme_mode below.
+        # The authoritative three-way control (the sidebar toggle is the
+        # quick, no-label version; this one names every option
+        # explicitly). Kept in sync with the toggle in both directions
+        # via MainWindow._apply_theme_mode / sync_theme_mode below.
         group = QGroupBox("Appearance")
         layout = QVBoxLayout(group)
 
@@ -1109,7 +1096,7 @@ class SettingsPage(QWidget):
             radio.setChecked(True)
             radio.blockSignals(False)
 
-    # --- Thresholds (§4) -------------------------------------------
+    # --- Thresholds ------------------------------------------------
 
     def _build_thresholds_tab(self) -> QWidget:
         tab = QWidget()
@@ -1128,10 +1115,10 @@ class SettingsPage(QWidget):
         self.auto_match_threshold_field.setToolTip(
             help_text.TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD
         )
-        # Roadmap item 95 (B1.3) — one obvious submit target (Save
-        # thresholds) shared by both fields in this form;
-        # _on_save_thresholds_clicked already validates both are real
-        # numbers in the right order and writes a real status message.
+        # One obvious submit target (Save thresholds) shared by both
+        # fields in this form; _on_save_thresholds_clicked already
+        # validates both are real numbers in the right order and writes
+        # a real status message.
         self.auto_match_threshold_field.returnPressed.connect(
             self._on_save_thresholds_clicked
         )
@@ -1164,13 +1151,13 @@ class SettingsPage(QWidget):
         self.thresholds_status_label = PlainLabel("")
         layout.addWidget(self.thresholds_status_label)
 
-        # Roadmap item R7.5 — per-category menu-bar notification
-        # toggles, all defaulting on (config_store.py's own field
-        # defaults). A single checkbox that saves itself immediately on
-        # toggle, matching the "no separate save step for one boolean"
-        # precedent nothing else on this tab actually sets (thresholds
-        # are two related numbers that need a combined save/validation
-        # step; each of these is one independent flag).
+        # Per-category menu-bar notification toggles, all defaulting on
+        # (config_store.py's own field defaults). A single checkbox that
+        # saves itself immediately on toggle, matching the "no separate
+        # save step for one boolean" precedent nothing else on this tab
+        # actually sets (thresholds are two related numbers that need a
+        # combined save/validation step; each of these is one
+        # independent flag).
         notifications_group = QGroupBox("Menu Bar Notifications")
         notifications_layout = QVBoxLayout(notifications_group)
 
@@ -1221,7 +1208,7 @@ class SettingsPage(QWidget):
 
         return tab
 
-    # --- Round 9 §3.2: start at login --------------------------------
+    # --- Start at login ----------------------------------------------
 
     def _build_startup_group(self) -> QGroupBox:
         group = QGroupBox("Startup")
@@ -1260,11 +1247,11 @@ class SettingsPage(QWidget):
 
     def refresh_login_item_state(self) -> None:
         """Re-reads the REAL ServiceManagement status, never a mirrored
-        config.json boolean (round 9 §3.2's "honest state reporting"
-        requirement) — called both at Settings' own construction and,
-        by MainWindow._on_page_changed, on every real show of this
-        page, so a login item the user revoked via System Settings
-        stops showing as on here too without needing a restart."""
+        config.json boolean (HISTORY §131) — called both at Settings'
+        own construction and, by MainWindow._on_page_changed, on every
+        real show of this page, so a login item the user revoked via
+        System Settings stops showing as on here too without needing a
+        restart."""
         if not self.application.login_item_supported:
             self.start_at_login_checkbox.setEnabled(False)
             self.start_at_login_checkbox.blockSignals(True)
@@ -1307,14 +1294,13 @@ class SettingsPage(QWidget):
         self.application.set_login_item_enabled(checked)
 
         # Defaults "start hidden" on every time login-at-startup is
-        # turned ON (round 9 §3.2's own instruction — an app that
-        # launches at login and throws a window in your face at every
-        # boot is a worse experience than one that doesn't launch at
-        # all); a no-op if it's already True. Turning login OFF leaves
-        # "start hidden" exactly as it was — that checkbox is a
-        # standalone preference (main_ui.py applies it on every launch,
-        # not only ones the login item triggered), not something this
-        # method un-sets on the OFF transition.
+        # turned ON (an app that launches at login and throws a window
+        # in your face at every boot is a worse experience than one that
+        # doesn't launch at all); a no-op if it's already True. Turning
+        # login OFF leaves "start hidden" exactly as it was — that
+        # checkbox is a standalone preference (main_ui.py applies it on
+        # every launch, not only ones the login item triggered), not
+        # something this method un-sets on the OFF transition.
         if checked:
             self.application.update_settings(start_hidden_at_login=True)
 

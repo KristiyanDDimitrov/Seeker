@@ -24,12 +24,12 @@ def pick_and_add_library_location(
     register it as a library location — the onboarding wizard's own
     "Choose your music library" step, extracted so Settings' "Add
     location" action can call the identical flow instead of a second
-    copy. Roadmap item 5: no name is ever collected here — the name
-    comes from the picked folder's own basename
+    copy. No name is ever collected here — the name comes from the
+    picked folder's own basename
     (`LibraryService.add_location_from_path`, auto-suffixed on a name
     collision), renameable afterward rather than chosen up front. Both
-    the wizard's single onboarding location and Settings' multi-
-    location flow share this identical behavior now.
+    the wizard's single onboarding location and Settings' multi-location
+    flow share this identical behavior.
 
     on_path_picked (optional) fires synchronously the moment a real
     path is chosen, before add_location_from_path() runs on the worker

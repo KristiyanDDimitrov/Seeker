@@ -1,12 +1,11 @@
-"""Round 8 §12.2 — keep a sortable QTableWidget's sort order intact
-across a full rebuild.
+"""Keep a sortable QTableWidget's sort order intact across a full
+rebuild.
 
-Every table on a poll timer rebuilds by `setRowCount()` + `setItem()`
-in fixed data order, addressing rows by loop index — with sorting live
+Every table on a poll timer rebuilds by `setRowCount()` + `setItem()` in
+fixed data order, addressing rows by loop index — with sorting live
 during that loop, each `setItem()` call re-triggers Qt's own sort and
 the loop's row indices stop lining up with the rows it just wrote
-(round 7's R2 note: a wholesale rebuild already destroyed interactive
-state once this way). `preserving_sort_order` disables sorting for the
+(HISTORY §86, §122). `preserving_sort_order` disables sorting for the
 body of the `with` block and restores the user's chosen column/order
 afterward, the same way the keep-radio/delete-checkbox state already
 survives a rebuild elsewhere in this app.

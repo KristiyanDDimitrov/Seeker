@@ -38,7 +38,7 @@ _SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
 
 @dataclass
 class _SharingSnapshot:
-    """Everything the Sharing page (HISTORY §56 Phase 7) needs to
+    """Everything the Sharing page (HISTORY §56) needs to
     render one background-thread fetch — bundled the same way
     _NextStepFacts bundles the Dashboard CTA's facts, so run_worker's
     single-callable contract only needs one round trip per refresh
@@ -56,7 +56,7 @@ class SharingPage(QWidget):
         self._context = context
 
         # What Seeker is giving back to the SoulSeek network it
-        # downloads from (HISTORY §56 Phase 7). See help_text.py's
+        # downloads from (HISTORY §56). See help_text.py's
         # SHARING_FRAMING_BODY for why this page frames things honestly
         # rather than as a persuasive pitch.
         content = QWidget()
@@ -68,14 +68,13 @@ class SharingPage(QWidget):
         framing_label.setWordWrap(True)
         layout.addWidget(framing_label)
 
-        # Round 8 §12.9 — a real confirmation ("'X' shared — N
-        # directories, M files") used to go to sharing_status_label,
-        # which _refresh_sharing() (called right after, to pick up the
-        # new state) wipes via run_worker's own status_label.setText("")
-        # at the top of every call — the confirmation was never actually
-        # readable. Same fix notice.py's own docstring describes for
-        # Dashboard: persistent, dismissible content belongs on an
-        # InlineNotice, not the poll-cleared status label.
+        # A confirmation ("'X' shared — N directories, M files") goes
+        # here, never on sharing_status_label, which _refresh_sharing()
+        # (called right after, to pick up the new state) wipes via
+        # run_worker's own status_label.setText("") at the top of every
+        # call. Persistent, dismissible content belongs on an
+        # InlineNotice, not the poll-cleared status label (HISTORY §120;
+        # notice.py's own docstring).
         self.sharing_notice = InlineNotice()
         layout.addWidget(self.sharing_notice)
 
@@ -124,7 +123,7 @@ class SharingPage(QWidget):
         # standing 20s backend_poll_timer once visited, same shape as
         # Downloads' own real-slskd-call poll — sharing status/uploads
         # are live external state, not a one-shot local read like
-        # Duplicates/History (HISTORY §56 Phase 7).
+        # Duplicates/History (HISTORY §56).
         self._sharing_page_visited = False
         self._sharing_poll_in_progress = False
         self._upload_eta_tracker = UploadEtaTracker()
@@ -223,9 +222,9 @@ class SharingPage(QWidget):
         table = self.sharing_locations_table
         action_widgets: list[QWidget] = []
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(table):
             table.setRowCount(len(reconciliation))
 
@@ -245,9 +244,9 @@ class SharingPage(QWidget):
                     if state.share and state.share.files is not None
                     else None
                 )
-                # Round 8 §12.2 — a real file count sorts numerically;
-                # the displayed text would otherwise sort "10" before
-                # "9" (see SortKeyItem).
+                # A real file count sorts numerically; the displayed
+                # text would otherwise sort "10" before "9" (see
+                # SortKeyItem).
                 table.setItem(
                     row, 3,
                     SortKeyItem(
@@ -281,8 +280,8 @@ class SharingPage(QWidget):
         self._size_sharing_locations_columns(action_widgets)
 
     def _configure_sharing_locations_columns(self) -> None:
-        # Roadmap item R5 (5b.1); split per item E2 (round 7) so an
-        # empty table gets this layout at construction.
+        # Configured at construction so an empty table already has this
+        # layout.
         theme.configure_columns(
             self.sharing_locations_table, _SHARING_LOCATIONS_COLUMNS,
         )
@@ -303,18 +302,17 @@ class SharingPage(QWidget):
         active_keys: set[tuple[str, str]] = set()
         now = datetime.now(UTC)
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(table):
-            # Roadmap item 73 (P4 audit) — the SAME stale-span bug class as
-            # the duplicates table, found live during that fix's own
-            # "audit every other table" step: this table's empty-state
-            # branch sets a 4-column span at row 0; setRowCount() doesn't
-            # clear it, so a transition from empty -> a real upload left
-            # that span active, visually swallowing the new row's
-            # filename/state/progress cells into column 0 even though their
-            # real QTableWidgetItem data was set correctly underneath.
+            # This table's empty-state branch sets a 4-column span at
+            # row 0, and setRowCount() doesn't clear it, so without this
+            # a transition from empty -> a real upload leaves that span
+            # active, visually swallowing the new row's
+            # filename/state/progress cells into column 0 even though
+            # their real QTableWidgetItem data was set correctly
+            # underneath (HISTORY §73).
             table.clearSpans()
             table.setRowCount(len(uploads))
 

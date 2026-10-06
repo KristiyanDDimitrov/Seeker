@@ -8,13 +8,11 @@ class BusyActionRegistry:
     currently be mid-flight) can skip a button whose own action is still
     running instead of fighting its busy state.
 
-    Roadmap item 65 (Phase 2) — the concrete bug this fixes was proven
-    live in Phase 0's own 0.1 investigation: MainWindow._render_next_step
-    runs on every 2s poll_timer tick and unconditionally called
-    .setEnabled(...) on the Dashboard's action-row buttons, re-enabling
-    (or, for Download, hiding) a button mid-action within 2 seconds of a
-    click, regardless of whether the real background work was still
-    running. That poll now checks is_running() first.
+    The Dashboard's next-step render runs on every 2s poll_timer tick
+    and sets the action-row buttons' enabled state; without checking
+    is_running() first it would re-enable (or, for Download, hide) a
+    button mid-action within 2 seconds of a click, regardless of whether
+    the real background work was still running.
 
     Deliberately kept entirely outside ui/workers.py and its shared
     cross-thread dispatcher — this class holds no signals, does no

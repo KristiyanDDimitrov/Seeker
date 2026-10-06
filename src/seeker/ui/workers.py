@@ -27,13 +27,13 @@ RENDER_FAILED_TEXT = f"Couldn't display the result. {DETAILS_HINT}"
 # Worker's own docstring for the two things this avoids.
 _next_task_id = itertools.count()
 
-# Roadmap item 65 (Phase 2.3) — progress-reporting throttle, applied
-# INSIDE the worker thread, before anything ever reaches the dispatcher.
-# This is a safety requirement, not polish: item 39's own deadlock was
-# triggered by rapid, repeated cross-thread Qt activity, and a naive
-# per-item progress emit across thousands of items (e.g. one per file
-# during fingerprinting) is exactly that pattern. Both untuned — pick
-# whichever threshold is hit first.
+# Progress-reporting throttle, applied INSIDE the worker thread, before
+# anything ever reaches the dispatcher. This is a safety requirement,
+# not polish: the dispatcher deadlock (HISTORY §39) was triggered by
+# rapid, repeated cross-thread Qt activity, and a naive per-item
+# progress emit across thousands of items (e.g. one per file during
+# fingerprinting) is exactly that pattern. Both untuned — pick whichever
+# threshold is hit first.
 PROGRESS_EMIT_MIN_INTERVAL_S = 0.25
 PROGRESS_EMIT_EVERY_N = 25
 
@@ -42,19 +42,17 @@ def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
     """Emits into the shared dispatcher from a worker thread, silently
     dropping the result if `_dispatcher`'s native QObject is gone by the
     time this runs (interpreter shutdown, or a window closing while this
-    worker was still mid-flight — CLAUDE.md item 41).
+    worker was still mid-flight — HISTORY §41).
 
-    **Why not a preceding `Shiboken.isValid(_dispatcher)` check instead
-    (item 41's original fix)?** That's check-then-act, and there is a
-    real, non-zero gap between confirming validity and actually calling
-    `.emit()` where teardown can land — proven live, not assumed
-    (`tests/repro/_workers_teardown_race_repro.py`, which deterministically
-    forces deletion to land in exactly that gap): the check-then-act
-    version raised the same uncaught `RuntimeError` in every single
-    forced trial, because the check happening to pass tells you nothing
-    about the very next line. That test is the same "prove it, don't
-    reason about it" discipline item 39's own aborted `RLock` attempt
-    should have gotten the first time — CLAUDE.md item 42.
+    **Why not a preceding `Shiboken.isValid(_dispatcher)` check
+    instead?** That's check-then-act, and there is a real, non-zero gap
+    between confirming validity and actually calling `.emit()` where
+    teardown can land — proven live, not assumed
+    (`tests/repro/_workers_teardown_race_repro.py`, which
+    deterministically forces deletion to land in exactly that gap): the
+    check-then-act version raised the same uncaught `RuntimeError` in
+    every single forced trial, because the check happening to pass tells
+    you nothing about the very next line.
 
     **The boundary that's actually safe, confirmed live rather than
     assumed:** calling `.emit()` on a signal whose source QObject was
@@ -70,17 +68,17 @@ def _emit_or_drop(bound_signal: SignalInstance, *args: Any) -> None:
     statement.
     """
     # Deliberately kept as try/except, not contextlib.suppress (SIM105,
-    # suppressed): behaviorally identical either way, but per CLAUDE.md
-    # item 32/41's own standing rule, this file's control flow is not
-    # touched even for a cosmetic-only change — see this function's own
-    # docstring for why this exact shape was hard-won.
+    # suppressed): behaviorally identical either way, but this file's
+    # control flow is not touched even for a cosmetic-only change — see
+    # this function's own docstring for why this exact shape was
+    # hard-won (HISTORY §32, §41).
     try:  # noqa: SIM105
         bound_signal.emit(*args)
     except RuntimeError:
-        # Left unlogged (§7.2.4) — this is the confirmed-safe, expected
-        # teardown race the docstring above describes, not a failure
-        # mode; a debug log on every routine emit-after-delete would be
-        # noise, not a diagnostic.
+        # Left unlogged — this is the confirmed-safe, expected teardown
+        # race the docstring above describes, not a failure mode; a
+        # debug log on every routine emit-after-delete would be noise,
+        # not a diagnostic.
         pass
 
 
@@ -94,7 +92,7 @@ class Worker(QRunnable):
     threading.
 
     Two real, independently-confirmed hazards shaped this design
-    (docs/HISTORY.md item 39) — both live-verified with a reproducible
+    (HISTORY §39) — both live-verified with a reproducible
     subprocess repro, not reasoned about in the abstract:
 
     1. `setAutoDelete(False)` is required, full stop, regardless of
@@ -114,10 +112,10 @@ class Worker(QRunnable):
        thread immediately after `run()` returns has been confirmed,
        live, to race unsafely against ordinary main-thread Qt/Python
        activity (e.g. a window closing while its own background poll
-       is still in flight — see docs/HISTORY.md item 39's regression
-       test and its own `test_backend_poll_runs_poll_downloads_off_
-       the_main_thread` fix for the closely related test-timing gap
-       this crash class also depends on).
+       is still in flight — see HISTORY §39 and
+       `test_backend_poll_runs_poll_downloads_off_the_main_thread` for
+       the closely related test-timing gap this crash class also
+       depends on).
     2. Passing `self` through the signal (an earlier, briefly-tried
        design) is independently wrong even with `setAutoDelete(False)`
        correctly set: a QRunnable's lifetime is Qt's own to manage once
@@ -142,9 +140,9 @@ class Worker(QRunnable):
     avoids the crash while still freeing the native object with no
     unbounded accumulation (see `_schedule_native_delete`'s docstring).
 
-    3. A third hazard, closed after this docstring's other two (CLAUDE.md
-       item 42): `run()` reporting completion via the dispatcher can
-       still race a real teardown of `_dispatcher` itself (see item 41).
+    3. A third hazard: `run()` reporting completion via the dispatcher
+       can still race a real teardown of `_dispatcher` itself
+       (HISTORY §41).
        The fix isn't a validity check before the emit — that's
        check-then-act with a real gap in between — it's wrapping the
        emit call itself (`_emit_or_drop`, below); see that function's
@@ -160,10 +158,9 @@ class Worker(QRunnable):
         self.fn = fn
         self.task_id = next(_next_task_id)
         self.setAutoDelete(False)
-        # roadmap item 65 (Phase 2.3) — set only when run_worker() was
-        # given an on_progress callback; changes nothing about fn's own
-        # calling convention otherwise (every pre-existing call site's
-        # zero-argument fn is completely unaffected).
+        # Set only when run_worker() was given an on_progress callback;
+        # changes nothing about fn's own calling convention otherwise (a
+        # call site's zero-argument fn is completely unaffected).
         self._wants_progress = wants_progress
         # -inf, not 0.0: guarantees the FIRST _report_progress call always
         # emits regardless of what time.monotonic()'s own reference point
@@ -178,11 +175,10 @@ class Worker(QRunnable):
         self._progress_count = 0
 
     def _report_progress(self, stage: str, current: int, total: int) -> None:
-        # Throttled at the source (roadmap item 65 Phase 2.3) — runs on
-        # THIS worker thread, before _emit_or_drop is ever reached, so an
-        # unthrottled caller looping over thousands of items can never
-        # produce thousands of cross-thread emits regardless of how often
-        # it calls this.
+        # Throttled at the source — runs on THIS worker thread, before
+        # _emit_or_drop is ever reached, so an unthrottled caller
+        # looping over thousands of items can never produce thousands of
+        # cross-thread emits regardless of how often it calls this.
         self._progress_count += 1
         now = time.monotonic()
         elapsed = now - self._progress_last_emit
@@ -206,22 +202,19 @@ class Worker(QRunnable):
                 if self._wants_progress else self.fn()  # type: ignore[call-arg]
             )
         except Exception as error:
-            # A straggling worker — fn() was still genuinely running when
-            # the app started tearing down (window close, interpreter
-            # shutdown) — can reach this point after _dispatcher's own
-            # native QObject is already gone (first surfaced by
-            # tests/test_stress_e2e.py once the Duplicates tab gave it
-            # real background traffic to race against a slow real slskd
-            # retry, CLAUDE.md item 41). Nobody is listening once the
-            # dispatcher is gone regardless of why — `_emit_or_drop`
-            # (see its own docstring) is what makes dropping the result
-            # here actually safe, including against the tighter race a
-            # plain pre-check can't close.
+            # A straggling worker — fn() was still genuinely running
+            # when the app started tearing down (window close,
+            # interpreter shutdown) — can reach this point after
+            # _dispatcher's own native QObject is already gone (surfaced
+            # by tests/test_stress_e2e.py; HISTORY §41). Nobody is
+            # listening once the dispatcher is gone regardless of why —
+            # `_emit_or_drop` (see its own docstring) is what makes
+            # dropping the result here actually safe, including against
+            # the tighter race a plain pre-check can't close.
             #
-            # §1.3 (round 10) — the traceback only exists on this worker
-            # thread; task_error only ever carries text, so every
-            # failed background task since logging handlers were last
-            # configured left no trace anywhere (Defect B, brief §1).
+            # The traceback only exists on this worker thread, and
+            # task_error only ever carries text, so this log line is a
+            # failed background task's only trace (HISTORY §126).
             # logging is thread-safe and this call touches neither
             # `_dispatcher` nor any other Qt object, so it cannot add a
             # new failure mode to the straggling-worker teardown case
@@ -248,7 +241,7 @@ class _Dispatcher(QObject):
     disconnected every time) after that design was confirmed live to
     cause a real, reproducible deadlock — not a rare theoretical race.
     Root cause, confirmed via `sample`-profiling a genuinely stuck
-    process (see CLAUDE.md/docs/HISTORY.md item 39): Qt's own signal/
+    process (HISTORY §39): Qt's own signal/
     slot connection bookkeeping is guarded by a striped pool of mutexes
     keyed by object address (`QObjectPrivate::signalSlotLock`, backed
     by `QMutexPool` — confirmed against Qt's own internals, not
@@ -297,12 +290,12 @@ class _Dispatcher(QObject):
 
     task_finished = Signal(int, object)
     task_error = Signal(int, str)
-    # Roadmap item 65 (Phase 2.3) — a THIRD signal on this same, already-
-    # permanently-connected object, following the identical "primitives
-    # only, connected once, emit-or-drop" pattern task_finished/task_error
-    # already use. No new QObject, no new connect()/disconnect() —
-    # exactly the property that made this dispatcher design safe in the
-    # first place (see this class's own docstring above).
+    # A THIRD signal on this same, already-permanently-connected object,
+    # following the identical "primitives only, connected once,
+    # emit-or-drop" pattern task_finished/task_error already use. No new
+    # QObject, no new connect()/disconnect() — exactly the property that
+    # made this dispatcher design safe in the first place (see this
+    # class's own docstring above).
     task_progress = Signal(int, str, int, int)
 
 
@@ -327,20 +320,20 @@ _CallbackEntry = tuple[
 ]
 _callbacks: dict[int, _CallbackEntry] = {}
 
-# Roadmap item 65 (Phase 2.3) — a separate dict, not folded into
-# _CallbackEntry above: a progress callback is optional and orthogonal
-# to finished/error handling, and this one is deliberately NOT popped
-# by _handle_task_progress itself (a task can report progress many
-# times) — only ever removed by the SAME finished/error paths that
-# already clean up _callbacks, so a late/dropped progress emit after
-# completion can never look up a stale callback.
+# A separate dict, not folded into _CallbackEntry above: a progress
+# callback is optional and orthogonal to finished/error handling, and
+# this one is deliberately NOT popped by _handle_task_progress itself (a
+# task can report progress many times) — only ever removed by the SAME
+# finished/error paths that already clean up _callbacks, so a
+# late/dropped progress emit after completion can never look up a stale
+# callback.
 _progress_callbacks: dict[int, Callable[[str, int, int], None]] = {}
 
-# HISTORY §116/§1.4 (round 9) — diagnostic-only, added to catch the
-# ~1-in-8 test_history_refresh_button_refetches timeout the next time
-# it fires. Populated in run_worker(), popped by the same two handlers
-# that pop _callbacks/_progress_callbacks above, so it can never outlive
-# a task's real completion. Read only by debug_snapshot() below.
+# Diagnostic-only, for catching an intermittent test timeout such as
+# test_history_refresh_button_refetches's (HISTORY §121, §128).
+# Populated in run_worker(), popped by the same two handlers that pop
+# _callbacks/_progress_callbacks above, so it can never outlive a task's
+# real completion. Read only by debug_snapshot() below.
 _task_started_at: dict[int, float] = {}
 
 
@@ -350,7 +343,7 @@ def debug_snapshot(pool: QThreadPool) -> str:
     how long it has been in flight. Call this from a test's own timeout
     handler (never from production code) to capture what the dispatcher
     actually saw at the moment a `qtbot.waitUntil` gave up — see
-    docs/HISTORY.md §116 for the flake this exists to diagnose.
+    HISTORY §121 for the flake this exists to diagnose.
     """
     now = time.monotonic()
     lines = [
@@ -385,7 +378,7 @@ def _schedule_native_delete(worker: Worker) -> None:
     """The only call site for `_delete_native_worker` — deferred one
     event-loop tick via `QTimer.singleShot(0, ...)`. Do not "simplify"
     this back to either of the two alternatives already tried and
-    confirmed live (docs/HISTORY.md item 39) to reintroduce the same
+    confirmed live (HISTORY §39) to reintroduce the same
     native-QObject-teardown-races-a-live-thread crash class:
 
     - Plain `QThreadPool` autoDelete (the default `setAutoDelete(True)`)
@@ -458,10 +451,10 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
 
     if on_finished is not None:
         # A bug in the caller's own render/completion logic (a
-        # malformed-data assumption violated, an index error, ...)
-        # must not be left to whatever PySide6's own default exception
-        # hook happens to do with it — see run_worker()'s own docstring
-        # for the full reasoning (unchanged from before this redesign).
+        # malformed-data assumption violated, an index error, ...) must
+        # not be left to whatever PySide6's own default exception hook
+        # happens to do with it — see run_worker()'s own docstring for
+        # the full reasoning.
         try:
             on_finished(result)
         except Exception:
@@ -522,15 +515,13 @@ def run_worker(
     status line (e.g. clearing an in-progress flag) — optional, and
     additive to the status-label behavior, not a replacement for it.
 
-    `on_progress` (roadmap item 65, Phase 2.3) is optional and defaults
-    to today's behavior for every existing call site — when omitted, `fn`
-    is called exactly as before, with zero arguments. When given, `fn`
-    is instead called with ONE argument: a `report(stage, current,
-    total)` callable it can call as often as it likes — throttling
-    happens inside `Worker._report_progress` itself (see
-    PROGRESS_EMIT_MIN_INTERVAL_S/PROGRESS_EMIT_EVERY_N above), so `fn`
-    never needs to rate-limit its own calls. `on_progress` itself is
-    invoked on the MAIN thread, same as `on_finished`/`on_error`.
+    `on_progress` is optional — when omitted, `fn` is called with zero
+    arguments. When given, `fn` is instead called with ONE argument: a
+    `report(stage, current, total)` callable it can call as often as it
+    likes — throttling happens inside `Worker._report_progress` itself
+    (see PROGRESS_EMIT_MIN_INTERVAL_S/PROGRESS_EMIT_EVERY_N above), so
+    `fn` never needs to rate-limit its own calls. `on_progress` itself
+    is invoked on the MAIN thread, same as `on_finished`/`on_error`.
 
     The returned `Worker` (and the one stored in `_callbacks`) is the
     same reference kept alive by this dict entry until its own

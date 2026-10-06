@@ -3,17 +3,16 @@ from Qt's own C++ "Flow Layout" example), for any control row that
 should wrap onto more rows as available width shrinks rather than
 imposing a fixed floor on its parent.
 
-Roadmap item 72 (P1) — built specifically to fix the tagging controls
-row (main_window.py's _build_tagging_controls): a plain QHBoxLayout's
+Built for the tagging controls row (HISTORY §72): a plain QHBoxLayout's
 minimum width is the SUM of its children's minimum widths (stretch
 factors only distribute space above each item's minimum, never shrink
-below it), so a row of 9 fixed-size controls imposed a ~900-1000px
-floor on its entire parent page, squeezing the playlist panel next to
-it down to almost nothing. FlowLayout fixes this at the source:
-minimumSize() below returns the WIDEST SINGLE ITEM, not the sum, and
-heightForWidth() grows the row to 2+ lines instead of overflowing
-horizontally — no resolution detection, no resizeEvent hooks, no
-breakpoint constants to tune, purely derived from Qt's own layout pass.
+below it), so a row of 9 fixed-size controls imposed a ~900-1000px floor
+on its entire parent page, squeezing the playlist panel next to it down
+to almost nothing. FlowLayout fixes this at the source: minimumSize()
+below returns the WIDEST SINGLE ITEM, not the sum, and heightForWidth()
+grows the row to 2+ lines instead of overflowing horizontally — no
+resolution detection, no resizeEvent hooks, no breakpoint constants to
+tune, purely derived from Qt's own layout pass.
 """
 
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt

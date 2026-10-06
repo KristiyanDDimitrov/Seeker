@@ -1,10 +1,7 @@
-"""The Dashboard page (HISTORY §119) — the biggest single page moved:
-playlist list, track table, next-step CTA. Round 8 §12.6 split the
-Tagging panel it used to host as a sub-widget out to its own page
-(library_page.py); Dashboard now just picks a playlist and shows its
-tracks, routing the track table's own Tag/Re-tag row actions through
-`DashboardHost` to the Library page instead of owning TaggingPanel
-directly.
+"""The Dashboard page (HISTORY §119): playlist list, track table,
+next-step CTA. Dashboard picks a playlist and shows its tracks, routing
+the track table's own Tag/Re-tag row actions through `DashboardHost` to
+the Library page (library_page.py), which owns the Tagging panel.
 
 The page owns its own actions — Refresh playlists, Rescan and match,
 Re-match, Download (with its destination prompt) and Load tracks — and
@@ -79,8 +76,7 @@ _STATE_LABELS = {
     NOT_FOUND: "Not found",
 }
 
-# The declarative layout each table used to write out by hand across a
-# `_configure_*_columns`/`_size_*_columns` pair; see `theme.ColumnLayout`
+# The track table's column layout; see `theme.ColumnLayout`
 # (HISTORY §118).
 _TRACK_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
@@ -296,24 +292,26 @@ class DashboardPage(QWidget):
         self._context = context
         self._host = host
 
-        # round9 §7.1 — `selected_playlist` itself now lives on the
-        # shared `PlaylistSelection` seam (see the property below), not
-        # as a plain attribute here, so Library can read the same
-        # single source of truth instead of reaching into this page.
+        # `selected_playlist` itself lives on the shared
+        # `PlaylistSelection` seam (see the property below), not as a
+        # plain attribute here, so Library can read the same single
+        # source of truth instead of reaching into this page
+        # (HISTORY §133).
+        #
         # The full statuses list for the currently-selected playlist,
-        # rebuilt on every render. Round 8 §12.2 — no longer used to
-        # resolve a table row back to its TrackStatus (the table is now
-        # sortable, so a row's visual position no longer matches this
-        # list's order); _track_status_by_id below is what every
-        # row-position handler reads instead.
+        # rebuilt on every render. Never used to resolve a table row
+        # back to its TrackStatus (the table is sortable, so a row's
+        # visual position need not match this list's order);
+        # _track_status_by_id below is what every row-position handler
+        # reads instead.
         self._current_track_statuses: list[TrackStatus] = []
         self._track_status_by_id: dict[str, TrackStatus] = {}
         # What the table's rows were last built from, so a poll tick
         # that changes nothing (or only progress) skips the rebuild.
         self._rendered_track_rows: _RenderedRows | None = None
-        # Round 8 §12.8 — which segment of _build_track_filter_row is
-        # active; "all" shows every status, matching the table's
-        # original unfiltered behavior.
+        # Which segment of _build_track_filter_row is active; "all"
+        # shows every status, matching the table's original unfiltered
+        # behavior.
         self._track_filter: str = "all"
         # The "next step" notice is re-rendered unconditionally on
         # every 2s poll tick (see _render_next_step), so dismissing it
@@ -397,15 +395,15 @@ class DashboardPage(QWidget):
         )
         # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW row jumps
         # straight to the Review page. Wired on cellDoubleClicked (not
-        # itemDoubleClicked) since the target column can hold plain
-        # text with no QTableWidgetItem guarantee beyond what
-        # _render_track_statuses always sets (HISTORY §56 §2.4).
+        # itemDoubleClicked) since the target column can hold plain text
+        # with no QTableWidgetItem guarantee beyond what
+        # _render_track_statuses always sets (HISTORY §56).
         self.track_table.cellDoubleClicked.connect(
             self._on_track_table_cell_double_clicked
         )
-        # round9 §7.1 — keeps the shared PlaylistSelection.track_ids
-        # live so Library/TaggingPanel can read it directly instead of
-        # pulling through a get_selected_track_ids() callable.
+        # Keeps the shared PlaylistSelection.track_ids live so
+        # Library/TaggingPanel can read it directly instead of pulling
+        # through a get_selected_track_ids() callable.
         self.track_table.itemSelectionChanged.connect(
             self._on_track_selection_changed
         )
@@ -440,12 +438,10 @@ class DashboardPage(QWidget):
 
         self._render_no_playlist_selected()
 
-        # round9 §7.2 — Library became a second writer of the shared
-        # selection (its own inline picker). Before this, Dashboard
-        # never needed to listen to `changed` at all — it only ever
-        # wrote, then rendered explicitly right after. A write from
-        # elsewhere needs this subscription or Dashboard's own
-        # playlist_list highlight and track table go stale.
+        # Library is a second writer of the shared selection (its own
+        # inline picker). A write from elsewhere needs this subscription
+        # or Dashboard's own playlist_list highlight and track table go
+        # stale (HISTORY §134).
         self._context.playlist_selection.changed.connect(
             self._on_shared_selection_changed
         )
@@ -544,8 +540,8 @@ class DashboardPage(QWidget):
 
     @property
     def selected_playlist(self) -> Playlist | None:
-        # round9 §7.1 — the shared PlaylistSelection is the single
-        # source of truth; this page no longer holds a parallel copy.
+        # The shared PlaylistSelection is the single source of truth;
+        # this page holds no parallel copy.
         return self._context.playlist_selection.playlist
 
     @selected_playlist.setter
@@ -642,9 +638,8 @@ class DashboardPage(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, playlist)
             self.playlist_list.addItem(item)
 
-    # Round 8 §12.8 — filter key -> (label, predicate). "all" has no
-    # predicate (always matches); order here is the row's own left-
-    # to-right button order.
+    # Filter key -> (label, predicate). "all" has no predicate (always
+    # matches); order here is the row's own left-to-right button order.
     _TRACK_FILTERS: tuple[tuple[str, str], ...] = (
         ("all", "All"),
         ("missing", "Missing"),
@@ -785,13 +780,13 @@ class DashboardPage(QWidget):
 
     def _render_track_statuses(self, statuses: list[TrackStatus]) -> None:
         self._current_track_statuses = statuses
-        # Round 8 §12.2 — sorting is now enabled on this table, which
-        # moves each row's QTableWidgetItems (and their attached
-        # UserRole data) but never touches this plain Python list, so
-        # any row-position lookup keyed off `_current_track_statuses`
-        # directly (as opposed to reading a row's own UserRole track
-        # id back and looking it up here) goes stale the moment a user
-        # sorts. See _selected_track_ids/_on_track_table_context_menu/
+        # Sorting is enabled on this table, which moves each row's
+        # QTableWidgetItems (and their attached UserRole data) but never
+        # touches this plain Python list, so any row-position lookup
+        # keyed off `_current_track_statuses` directly (as opposed to
+        # reading a row's own UserRole track id back and looking it up
+        # here) goes stale the moment a user sorts. See
+        # _selected_track_ids, _on_track_table_context_menu and
         # _on_track_table_cell_double_clicked.
         self._track_status_by_id = {
             status.track.id: status for status in statuses
@@ -799,9 +794,9 @@ class DashboardPage(QWidget):
         self._apply_track_filter_and_render()
 
     def _apply_track_filter_and_render(self) -> None:
-        # Round 8 §12.8 — split out of _render_track_statuses so a
-        # filter-button click can re-render from the already-cached
-        # _current_track_statuses without a fresh backend poll.
+        # Split out of _render_track_statuses so a filter-button click
+        # can re-render from the already-cached _current_track_statuses
+        # without a fresh backend poll.
         statuses = self._current_track_statuses
 
         if not statuses:
@@ -861,9 +856,9 @@ class DashboardPage(QWidget):
         self._rendered_track_rows = rendered
 
     def _rebuild_track_rows(self, visible: list[TrackStatus]) -> None:
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.track_table):
             self.track_table.setRowCount(len(visible))
             action_widgets: list[QWidget] = []
@@ -871,10 +866,10 @@ class DashboardPage(QWidget):
             for row, status in enumerate(visible):
                 label = f"{status.track.artist} - {status.track.title}"
                 label_item = QTableWidgetItem(label)
-                # Round 8 §12.2 — the row's own anchor back to its real
-                # data, read by every row-position handler below instead of
-                # indexing _current_track_statuses by row (see this
-                # method's own comment above).
+                # The row's own anchor back to its real data, read by
+                # every row-position handler below instead of indexing
+                # _current_track_statuses by row (see this method's own
+                # comment above).
                 label_item.setData(Qt.ItemDataRole.UserRole, status.track.id)
                 self.track_table.setItem(row, 0, label_item)
 
@@ -892,10 +887,10 @@ class DashboardPage(QWidget):
                     state_text += " (SoulSeek candidate found)"
                 status_item = QTableWidgetItem(state_text)
 
-                # Only these states have anything to jump to on the Review
-                # page; every other status is a genuine no-op on
-                # double-click, so only these get the affordance rather than
-                # a misleading cue on every row (HISTORY §56 §2.4, §66).
+                # Only these states have anything to jump to on the
+                # Review page; every other status is a genuine no-op on
+                # double-click, so only these get the affordance rather
+                # than a misleading cue on every row (HISTORY §56, §66).
                 if status.state in (
                         NEEDS_REVIEW,
                         AWAITING_REVIEW,
@@ -943,8 +938,8 @@ class DashboardPage(QWidget):
                 else:
                     self.track_table.removeCellWidget(row, 2)
                     # No active transfer — sorts below every real
-                    # fraction-complete value (§5.1; SortKeyItem forbids
-                    # None as a sort key).
+                    # fraction-complete value (SortKeyItem forbids None
+                    # as a sort key; HISTORY §122).
                     self.track_table.setItem(
                         row, 2, SortKeyItem("", -1.0),
                     )
@@ -992,7 +987,7 @@ class DashboardPage(QWidget):
         theme.size_columns(self.track_table, _TRACK_COLUMNS, action_widgets)
 
     def _track_status_at_row(self, row: int) -> TrackStatus | None:
-        # Round 8 §12.2 — reads the row's own UserRole anchor (see
+        # Reads the row's own UserRole anchor (see
         # _render_track_statuses) rather than indexing
         # _current_track_statuses by row — sort-safe regardless of the
         # table's current order.
@@ -1181,15 +1176,14 @@ class DashboardPage(QWidget):
 
     def _on_scan_clicked(self) -> None:
         # scan_and_match() chains scan_all() + match_all() into one
-        # background call (roadmap item 56) — a plain scan used to leave
-        # newly-found files with no track_matches row at all until a
-        # separate, non-obvious "Re-match library" click. run_worker()'s
-        # single dispatcher gives no safe way to push a genuine live
-        # "now matching..." update partway through one background call
-        # (see ui/workers.py's own docstring on why a per-task signal was
-        # deliberately removed) — this sets an immediate placeholder
-        # instead, replaced by the real combined result once the whole
-        # call finishes.
+        # background call, so newly-found files get a track_matches row
+        # without a separate, non-obvious "Re-match library" click.
+        # run_worker()'s single dispatcher gives no safe way to push a
+        # genuine live "now matching..." update partway through one
+        # background call (see ui/workers.py's own docstring on why a
+        # per-task signal was deliberately removed) — this sets an
+        # immediate placeholder instead, replaced by the real combined
+        # result once the whole call finishes.
         self._context.run_busy_worker(
             "scan", self.scan_button,
             self._context.application.library_service.scan_and_match,
@@ -1253,27 +1247,24 @@ class DashboardPage(QWidget):
         playlist = self.selected_playlist
         playlist_name = playlist.name
 
-        # Roadmap item 56 Phase 5.1 — the button previously gave no
-        # feedback at all that anything had started, across this
-        # entire multi-step chain (resolvability check, maybe a
-        # destination dialog, then the real download). Disabled +
-        # relabeled here and re-asserted at the top of every
-        # continuation below (run_worker's own success-path
-        # `button.setEnabled(True)` would otherwise flip it back on
-        # between hops) so it never reads "enabled but says Starting
-        # download…" at any point in the chain; reset on every real
-        # exit path (cancelled dialog, no locations, real completion,
-        # or a genuine error via on_error).
+        # The button shows that something started across this entire
+        # multi-step chain (resolvability check, maybe a destination
+        # dialog, then the real download): disabled + relabeled here and
+        # re-asserted at the top of every continuation below
+        # (run_worker's own success-path `button.setEnabled(True)` would
+        # otherwise flip it back on between hops) so it never reads
+        # "enabled but says Starting download…" at any point in the
+        # chain; reset on every real exit path (cancelled dialog, no
+        # locations, real completion, or a genuine error via on_error).
         self._set_download_button_busy()
 
-        # Roadmap item 65 (Phase 3.2) — a playlist with its OWN
-        # destination already set (`playlist.download_location_id`,
-        # already loaded on the Playlist itself — no extra query needed)
-        # always skips straight to the real download; the prompt below
-        # is only for a playlist that would otherwise silently fall
-        # through to the configured default (roadmap item 6 §3's own
-        # earlier fallback), so the user gets to see and confirm — or
-        # change — where it's actually going, once per playlist.
+        # A playlist with its OWN destination already set
+        # (`playlist.download_location_id`, already loaded on the
+        # Playlist itself — no extra query needed) always skips straight
+        # to the real download; the prompt below is only for a playlist
+        # that would otherwise silently fall through to the configured
+        # default (HISTORY §50), so the user gets to see and confirm —
+        # or change — where it's actually going, once per playlist.
         if playlist.download_location_id is not None:
             self._start_download(playlist_name)
             return
@@ -1313,12 +1304,11 @@ class DashboardPage(QWidget):
 
         location_objects = [location for location, _ in locations]
 
-        # Roadmap item 65 (Phase 3.2) — when the real fallback already
-        # resolves (`resolved` given), pre-fill with exactly what it
-        # would use: that location, and its real subfolder (already
-        # sanitized by resolve_destination — never re-sanitized here).
-        # Falls back to the app-wide configured default (item 6 §3's
-        # original behavior) only when nothing resolved at all.
+        # When the real fallback already resolves (`resolved` given),
+        # pre-fill with exactly what it would use: that location, and
+        # its real subfolder (already sanitized by resolve_destination —
+        # never re-sanitized here). Falls back to the app-wide
+        # configured default only when nothing resolved at all.
         if resolved is not None:
             prefill_location, prefill_subfolder = resolved
             default_location_id: int | None = prefill_location.id
@@ -1357,13 +1347,12 @@ class DashboardPage(QWidget):
             else:
                 # Not remembered specifically for this playlist — the
                 # only other real destination concept is the app-wide
-                # default (roadmap item 6 §1), so this becomes that.
-                # Deliberately always True for the subfolder-per-
-                # playlist toggle here: the field was prefilled with
-                # the playlist's own name, so treating this choice as
-                # "per playlist" matches what was actually shown,
-                # even if the text was hand-edited to something else
-                # for this one confirmation.
+                # default, so this becomes that. Deliberately always
+                # True for the subfolder-per-playlist toggle here: the
+                # field was prefilled with the playlist's own name, so
+                # treating this choice as "per playlist" matches what
+                # was actually shown, even if the text was hand-edited
+                # to something else for this one confirmation.
                 self._context.application.persist_default_destination(
                     location_id, True,
                 )

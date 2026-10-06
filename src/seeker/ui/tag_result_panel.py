@@ -1,9 +1,7 @@
-"""TagResultPanel (round 8 §12.7) — replaces the old scrolling
-QPlainTextEdit dump (`tagging_results`, tagging_panel.py) with a
-one-line summary plus a collapsed-by-default expandable list of
-per-item outcomes. Better information in less space: the summary
-answers "did it work" at a glance, the details answer "which ones and
-why" only for someone who asks.
+"""TagResultPanel — a one-line summary plus a collapsed-by-default
+expandable list of per-item outcomes. Better information in less space:
+the summary answers "did it work" at a glance, the details answer "which
+ones and why" only for someone who asks.
 
 Retry is only wired for `tag_tracks` failures — `tag_tracks([track_id],
 ...)` already exists and is exactly what a track row's own "Tag"

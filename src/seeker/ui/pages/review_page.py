@@ -1,7 +1,7 @@
-"""The Review page (HISTORY §119) — the hardest page moved, since it
-hosts three independent decision queues sharing one poll cycle and one
-tray-badge/notification path back to the shell: SoulSeek needs-review
-candidates, Phase 2 upgrade replacements, and local-file matches.
+"""The Review page (HISTORY §119). It hosts three independent decision
+queues sharing one poll cycle and one tray-badge/notification path back
+to the shell: SoulSeek needs-review candidates, upgrade replacements,
+and local-file matches.
 
 Beyond PageContext, this page needs a second, narrower seam —
 `ReviewHost` — for `refresh_track_table` (Dashboard's
@@ -11,15 +11,11 @@ changes what's IN_LIBRARY) and `check_for_needs_decision_notification`
 stays shell-owned because it also reads `_tray_icon`/
 `application.settings`, neither of which belongs on a page).
 
-Round 10 §1.2 — this page used to route every `run_worker` call's
-`status_label` at `ReviewHost.status_label`, in reality the
-*Dashboard's* `status_label`: a widget on a different page, wiped
-every ~2s by Dashboard's own poll regardless of what Review just wrote
-there (HISTORY: see `ui/notice.py`'s module docstring — this is the
-exact failure it exists to fix). A failed Confirm/Reject left Kris
-with no visible error at all. Review now owns its own `self.notice`
-(`InlineNotice`) the same way Library/TaggingPanel do; nothing here
-writes to another page's widget again.
+Review owns its own `self.notice` (`InlineNotice`) the same way
+Library/TaggingPanel do, and nothing here writes to another page's
+widget: the Dashboard's `status_label` is wiped every ~2s by its own
+poll, so a failed Confirm/Reject reported there is never seen
+(HISTORY §126; `ui/notice.py`'s module docstring).
 
 A Dashboard double-click reaches `focus_track` through the shell's
 `_show_page("review", focus_track_id=...)`; the row is selected once
@@ -62,9 +58,7 @@ PendingUpgrades = list[UpgradeReviewDetails]
 
 # The three tables below never grew a column IntEnum of their own —
 # their layouts are declared the same way, just against plain column
-# indices. (Duplicates' own _DuplicatesColumn/_DUPLICATES_COLUMNS
-# stayed on main_window.py; the Track table's own _TRACK_COLUMNS moved
-# to dashboard_page.py — round 8 Phase 6.)
+# indices.
 _REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2, 3), actions=4,
 )
@@ -75,11 +69,11 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
     stretch=(0, 1), fit_content=(2, 3), actions=4,
 )
 
-# Round 9 §6 — enough to show a section's header row plus a couple of
-# table rows even when a neighbour has been dragged to take most of the
-# splitter; setChildrenCollapsible(False) alone still lets a section
-# shrink to its layout's bare minimum otherwise, which is a header row
-# with no visible table at all.
+# Enough to show a section's header row plus a couple of table rows even
+# when a neighbour has been dragged to take most of the splitter;
+# setChildrenCollapsible(False) alone still lets a section shrink to its
+# layout's bare minimum otherwise, which is a header row with no visible
+# table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
 # Wide enough to comfortably grab with a mouse; matches the QSS handle
 # thickness in theme.py's _misc_qss (kept in sync by hand — no shared
@@ -89,8 +83,8 @@ _REVIEW_SPLITTER_HANDLE_WIDTH = 6
 
 @dataclass(frozen=True)
 class ReviewHost:
-    """What Review needs from the shell beyond PageContext (HISTORY
-    §119).
+    """What Review needs from the shell beyond PageContext
+    (HISTORY §119).
     """
     refresh_track_table: Callable[[], None]
     check_for_needs_decision_notification: Callable[[int], None]
@@ -107,18 +101,18 @@ class ReviewPage(QWidget):
         self._needs_review_count = 0
         self._pending_upgrades_count = 0
         # Set by a Dashboard double-click on a NEEDS_REVIEW/AWAITING_
-        # REVIEW row (HISTORY §56 §2.4); consumed once by
+        # REVIEW row (HISTORY §56); consumed once by
         # _focus_pending_review_row the next time this page's data
         # actually loads.
         self._pending_review_focus_track_id: str | None = None
-        # Round 9 §6 — guards the same "restore only once, after the
-        # splitter's children have real geometry" race window_geometry
-        # already solved (see _restore_splitter_state's own comment).
+        # Guards the same "restore only once, after the splitter's
+        # children have real geometry" race window_geometry already
+        # solved (see _restore_splitter_state's own comment).
         self._splitter_state_restored_after_first_show = False
 
         # Two independent sections: SoulSeek needs-review candidates
         # (HISTORY §17's tier, gaining its first real confirm/reject
-        # action here) and Phase 2 upgrade confirmations (HISTORY §8's
+        # action here) and upgrade confirmations (HISTORY §8's
         # ready_for_review flow, previously CLI-only via `seeker
         # downloads review`). Both are driven by DownloadService methods
         # that were built explicit-decision and input()-free
@@ -127,17 +121,17 @@ class ReviewPage(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Round 10 §1.2 — Review's own persistent, dismissible banner
+        # Review's own persistent, dismissible banner
         # (Library/TaggingPanel precedent) for anything a run_worker
         # call needs the user to still see a few seconds later. Nothing
-        # on this page writes to another page's status_label again.
+        # on this page writes to another page's status_label.
         self.notice = InlineNotice()
         layout.addWidget(self.notice)
 
-        # Round 9 §6 — each section (its header row *and* its card)
-        # lives in its own QWidget so it moves as one unit inside the
-        # splitter; a bare QVBoxLayout can't be handed to addWidget()
-        # directly, only a widget can.
+        # Each section (its header row *and* its card) lives in its own
+        # QWidget so it moves as one unit inside the splitter; a bare
+        # QVBoxLayout can't be handed to addWidget() directly, only a
+        # widget can.
         self.review_splitter = QSplitter(Qt.Orientation.Vertical)
         self.review_splitter.setHandleWidth(_REVIEW_SPLITTER_HANDLE_WIDTH)
         # No pane may be dragged away to nothing and become
@@ -197,10 +191,9 @@ class ReviewPage(QWidget):
         upgrades_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
         self.review_splitter.addWidget(upgrades_section)
 
-        # Third section (HISTORY §56 Phase 2), closing HISTORY §7's
-        # long-outstanding gap: needs_review LOCAL-FILE matches (distinct
-        # from the SoulSeek candidates table above) never had a
-        # confirm/reject UI at all before this.
+        # Third section: needs_review LOCAL-FILE matches (distinct from
+        # the SoulSeek candidates table above), confirmed or rejected
+        # here (HISTORY §7, §56).
         local_section = QWidget()
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(0, 0, 0, 0)
@@ -218,10 +211,10 @@ class ReviewPage(QWidget):
         local_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
         self.review_splitter.addWidget(local_section)
 
-        # Sensible first-run proportions rather than three equal
-        # thirds (round 9 §6) — needs-review is the section a user acts
-        # on most, so it gets the most room by default. Only matters
-        # before a real splitter_state has ever been persisted;
+        # Sensible first-run proportions rather than three equal thirds
+        # — needs-review is the section a user acts on most, so it gets
+        # the most room by default. Only matters before a real
+        # splitter_state has ever been persisted;
         # _restore_splitter_state below overrides these the moment a
         # saved value exists.
         self.review_splitter.setStretchFactor(0, 3)
@@ -246,17 +239,17 @@ class ReviewPage(QWidget):
         outer_layout.addWidget(page)
 
     def showEvent(self, event: QShowEvent) -> None:
-        # Round 9 §6 — same failure mode §3.1 found for the main
-        # window's own geometry: a splitter given saveState() bytes
-        # before it has real, laid-out geometry (this page sits hidden
-        # inside MainWindow's QStackedWidget until first navigated to)
-        # redistributes them against a size that isn't the real one yet
-        # and the proportions come out wrong. Restoring here — the first
-        # time this page is actually shown, guarded so a later
-        # navigation back to Review never re-stomps a size the user has
-        # since dragged — is the same "wait for the real show event"
-        # fix, applied to this page's own splitter instead of
-        # MainWindow's own geometry.
+        # The same failure mode as the main window's own geometry: a
+        # splitter given saveState() bytes before it has real, laid-out
+        # geometry (this page sits hidden inside MainWindow's
+        # QStackedWidget until first navigated to) redistributes them
+        # against a size that isn't the real one yet and the proportions
+        # come out wrong. Restoring here — the first time this page is
+        # actually shown, guarded so a later navigation back to Review
+        # never re-stomps a size the user has since dragged — is the
+        # same "wait for the real show event" fix, applied to this
+        # page's own splitter instead of MainWindow's own geometry. See
+        # HISTORY §132.
         super().showEvent(event)
         if not self._splitter_state_restored_after_first_show:
             self._splitter_state_restored_after_first_show = True
@@ -297,14 +290,13 @@ class ReviewPage(QWidget):
         self.poll_review_items()
 
     def persist_splitter_state(self) -> None:
-        # Round 9 §6 — called from MainWindow.cleanup_before_quit, the
-        # one real quit path (HISTORY §124), mirroring
-        # _persist_window_geometry's own "write once, at quit" pattern
-        # rather than on every drag. Unlike window geometry, there is no
-        # hide-to-tray race to guard against here — this page's splitter
-        # keeps reporting its real current sizes regardless of whether
-        # MainWindow itself is visible, since hiding to the tray never
-        # destroys it.
+        # Called from MainWindow.cleanup_before_quit, the one real quit
+        # path (HISTORY §124), mirroring _persist_window_geometry's own
+        # "write once, at quit" pattern rather than on every drag.
+        # Unlike window geometry, there is no hide-to-tray race to guard
+        # against here — this page's splitter keeps reporting its real
+        # current sizes regardless of whether MainWindow itself is
+        # visible, since hiding to the tray never destroys it.
         encoded = base64.b64encode(
             self.review_splitter.saveState().data()
         ).decode("ascii")
@@ -348,11 +340,11 @@ class ReviewPage(QWidget):
         total = len(candidates) + len(upgrades) + len(local_matches)
         self._context.update_nav_badge("review", total)
         # The tray menu's own "Review (N)"/"Upgrades (N)" counts, built
-        # from this same fetch (never a third source of truth).
-        # "Review" covers everything needing a confirm/reject decision;
-        # "Upgrades" is its own real Phase 2 concept (replace/decline),
-        # kept distinct in the menu the same way the two are already
-        # distinct sections on this page (HISTORY §90).
+        # from this same fetch (never a third source of truth). "Review"
+        # covers everything needing a confirm/reject decision;
+        # "Upgrades" is its own real concept (replace/decline), kept
+        # distinct in the menu the same way the two are already distinct
+        # sections on this page (HISTORY §90).
         self._needs_review_count = len(candidates) + len(local_matches)
         self._pending_upgrades_count = len(upgrades)
         self._host.check_for_needs_decision_notification(total)
@@ -373,19 +365,19 @@ class ReviewPage(QWidget):
 
         action_widgets: list[QWidget] = []
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.review_needs_table):
             self.review_needs_table.setRowCount(len(candidates))
 
             for row, (track, candidate) in enumerate(candidates):
                 label = f"{track.artist} - {track.title}"
                 label_item = QTableWidgetItem(label)
-                # Round 8 §12.2 — the row's own anchor back to its real
-                # track id, read by _focus_pending_review_row instead
-                # of assuming this loop's row position still matches
-                # the table's (possibly sorted) row order.
+                # The row's own anchor back to its real track id, read
+                # by _focus_pending_review_row instead of assuming this
+                # loop's row position still matches the table's
+                # (possibly sorted) row order.
                 label_item.setData(Qt.ItemDataRole.UserRole, track.id)
                 self.review_needs_table.setItem(row, 0, label_item)
                 self.review_needs_table.setItem(
@@ -400,11 +392,11 @@ class ReviewPage(QWidget):
                     row, 2, QTableWidgetItem(candidate_text),
                 )
 
-                # Round 8 §12.10 — the second-best-scoring candidate in
-                # the same needs_review band, when one was found
-                # (quality.py's find_best_needs_review_candidate) —
-                # what the winner beat, not just its own score in
-                # isolation. "—" when only one real candidate existed.
+                # The second-best-scoring candidate in the same
+                # needs_review band, when one was found (quality.py's
+                # find_best_needs_review_candidate) — what the winner
+                # beat, not just its own score in isolation. "—" when
+                # only one real candidate existed.
                 if candidate.runner_up_username is not None:
                     runner_up_item = SortKeyItem(
                         f"{candidate.runner_up_username} "
@@ -492,11 +484,10 @@ class ReviewPage(QWidget):
     def _render_pending_upgrades(self, upgrades: PendingUpgrades) -> None:
         # The real list "Replace all" acts on, recomputed fresh every
         # render so a click always sees exactly what's on screen right
-        # now (HISTORY §76's "recompute at click time" lesson, applied
-        # again in §88). Kept unconditional (not behind the
-        # hidden-window gate below) — the underlying poll keeps
-        # fetching fresh data while hidden, so this stays correct the
-        # instant the window is shown again.
+        # now (recomputed at click time; HISTORY §76, §88). Kept
+        # unconditional (not behind the hidden-window gate below) — the
+        # underlying poll keeps fetching fresh data while hidden, so
+        # this stays correct the instant the window is shown again.
         self._current_pending_upgrades = upgrades
 
         # The table rebuild itself is pure waste while hidden
@@ -516,19 +507,19 @@ class ReviewPage(QWidget):
 
         action_widgets: list[QWidget] = []
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.review_upgrades_table):
             self.review_upgrades_table.setRowCount(len(upgrades))
 
             for row, details in enumerate(upgrades):
                 label = f"{details.track.artist} - {details.track.title}"
                 label_item = QTableWidgetItem(label)
-                # Round 8 §12.2 — the row's own anchor back to its real
-                # track id, read by _focus_pending_review_row instead
-                # of assuming this loop's row position still matches
-                # the table's (possibly sorted) row order.
+                # The row's own anchor back to its real track id, read
+                # by _focus_pending_review_row instead of assuming this
+                # loop's row position still matches the table's
+                # (possibly sorted) row order.
                 label_item.setData(Qt.ItemDataRole.UserRole, details.track.id)
                 self.review_upgrades_table.setItem(row, 0, label_item)
                 self.review_upgrades_table.setItem(
@@ -697,19 +688,19 @@ class ReviewPage(QWidget):
 
         action_widgets: list[QWidget] = []
 
-        # Round 8 §12.2 — sorting is live on this table; disabled for
-        # the body of this rebuild (see preserving_sort_order's own
-        # docstring for why) and restored afterward.
+        # Sorting is live on this table; disabled for the body of this
+        # rebuild (see preserving_sort_order's own docstring for why)
+        # and restored afterward.
         with preserving_sort_order(self.review_local_table):
             self.review_local_table.setRowCount(len(matches))
 
             for row, match in enumerate(matches):
                 label = f"{match.track_artist} - {match.track_title}"
                 label_item = QTableWidgetItem(label)
-                # Round 8 §12.2 — the row's own anchor back to its real
-                # track id, read by _focus_pending_review_row instead
-                # of assuming this loop's row position still matches
-                # the table's (possibly sorted) row order.
+                # The row's own anchor back to its real track id, read
+                # by _focus_pending_review_row instead of assuming this
+                # loop's row position still matches the table's
+                # (possibly sorted) row order.
                 label_item.setData(Qt.ItemDataRole.UserRole, match.track_id)
                 self.review_local_table.setItem(row, 0, label_item)
                 self.review_local_table.setItem(
@@ -798,14 +789,13 @@ class ReviewPage(QWidget):
         self._host.refresh_track_table()
 
     def _focus_pending_review_row(self) -> None:
-        # Double-clicking a NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE
-        # Dashboard cell (HISTORY §56 §2.4, extended by §66 to cover
-        # REVIEW_CANDIDATE too) calls focus_track and switches to this
-        # page; once
-        # the real data has actually loaded, this scrolls to and selects
-        # the matching row — a track that turns out to have nothing here
-        # yet (e.g. a locked/shortlisted RETRYING row, not yet
-        # ready_for_review) just lands on the page with nothing
+        # Double-clicking a
+        # NEEDS_REVIEW/AWAITING_REVIEW/REVIEW_CANDIDATE Dashboard cell
+        # (HISTORY §56, §66) calls focus_track and switches to this
+        # page; once the real data has actually loaded, this scrolls to
+        # and selects the matching row — a track that turns out to have
+        # nothing here yet (e.g. a locked/shortlisted RETRYING row, not
+        # yet ready_for_review) just lands on the page with nothing
         # selected, rather than erroring.
         track_id = self._pending_review_focus_track_id
 
@@ -825,10 +815,10 @@ class ReviewPage(QWidget):
     def _select_row_by_track_id(
             self, table: QTableWidget, track_id: str,
     ) -> bool:
-        # Round 8 §12.2 — scans the table's own UserRole anchors (set
-        # by each _render_* method above) rather than a parallel
-        # list's insertion order, which no longer matches row position
-        # once the table has been sorted.
+        # Scans the table's own UserRole anchors (set by each _render_*
+        # method above) rather than a parallel list's insertion order,
+        # which no longer matches row position once the table has been
+        # sorted.
         for row in range(table.rowCount()):
             item = table.item(row, 0)
             if (

@@ -1,14 +1,14 @@
 """In-memory download speed/ETA estimation for the Downloads tab.
 
-Deliberately presentation-only, per Task 2's own scoping — no DB
-changes, no persistence. `DownloadEtaTracker` is fed one (bytes,
-timestamp) sample per `download_request_id` on every real
-`poll_downloads()` cycle (MainWindow's 20s `BACKEND_POLL_INTERVAL_MS`
-timer, not the 2s display-refresh one — sampling on the 2s tick would
-just re-diff against the same DB row `poll_downloads()` hasn't touched
-yet, producing a meaningless zero-delta sample). `describe()` is then
-called on every 2s render tick to turn the last two samples into a
-speed/ETA string, with no new I/O.
+Deliberately presentation-only — no DB, no persistence (HISTORY §33).
+`DownloadEtaTracker` is fed one (bytes, timestamp) sample per
+`download_request_id` on every real `poll_downloads()` cycle
+(MainWindow's 20s `BACKEND_POLL_INTERVAL_MS` timer, not the 2s
+display-refresh one — sampling on the 2s tick would just re-diff against
+the same DB row `poll_downloads()` hasn't touched yet, producing a
+meaningless zero-delta sample). `describe()` is then called on every 2s
+render tick to turn the last two samples into a speed/ETA string, with
+no new I/O.
 """
 
 from dataclasses import dataclass
@@ -39,11 +39,11 @@ STALL_SAMPLE_COUNT = 3
 
 
 class _ContributionState(Enum):
-    """A single download's real, current relationship to an ETA
-    estimate — factored out of describe() (Task 2) so aggregate() (Task
-    9) can classify every active download the same way describe()
-    already does for one, instead of re-deriving the same three cases a
-    second time from scratch.
+    """A single download's real, current relationship to an ETA estimate
+    — factored out of describe() so aggregate() can classify every
+    active download the same way describe() already does for one,
+    instead of re-deriving the same three cases a second time from
+    scratch.
     """
     CALCULATING = auto()  # < 2 samples, or no positive progress yet
     STALLED = auto()
@@ -62,9 +62,9 @@ class _Contribution:
 
 @dataclass
 class AggregateEta:
-    """Task 9's aggregate remaining-time estimate across every currently
-    active download shown on the Downloads page. Pure data — no Qt —
-    so it (and format_aggregate_header() below) can be unit-tested with
+    """The aggregate remaining-time estimate across every currently
+    active download shown on the Downloads page. Pure data — no Qt — so
+    it (and format_aggregate_header() below) can be unit-tested with
     synthetic samples alone.
     """
     eta_seconds: float | None
@@ -86,9 +86,9 @@ class AggregateEta:
 # codebase — the tooltip explaining why queued transfers are excluded
 # from the aggregate estimate rather than folded in to produce a
 # rounder-looking number. Soulseek queue wait times aren't predictable
-# (no reliable "your turn in N minutes" signal exists — see this
-# module's own recon note in HISTORY for Task 9), so including them
-# would make the estimate look more precise than it actually is.
+# (no reliable "your turn in N minutes" signal exists; HISTORY §53), so
+# including them would make the estimate look more precise than it
+# actually is.
 AGGREGATE_ETA_TOOLTIP = (
     "Queued transfers aren't included in this estimate — Soulseek "
     "queue wait times aren't predictable, so folding them in would "
@@ -117,15 +117,14 @@ class DownloadEtaTracker:
         del samples[:-STALL_SAMPLE_COUNT]
 
     def evict(self, request_id: int) -> None:
-        """Drop one tracked id immediately — roadmap item 56 Phase 5.4:
-        a row that just reached a terminal status (completed/failed/
-        ready_for_review) will never report new progress again, so
-        continuing to sample it would eventually misclassify it as
-        "Stalled" (3 identical-bytes samples, the same signal a
-        genuinely stuck in-progress download would produce) rather than
-        just correctly reading as finished. Called the moment a row's
-        status is seen to be terminal, not left to evict_except()'s own
-        once-per-poll sweep.
+        """Drop one tracked id immediately: a row that just reached a
+        terminal status (completed/failed/ready_for_review) will never
+        report new progress again, so continuing to sample it would
+        eventually misclassify it as "Stalled" (3 identical-bytes
+        samples, the same signal a genuinely stuck in-progress download
+        would produce) rather than just correctly reading as finished.
+        Called the moment a row's status is seen to be terminal, not
+        left to evict_except()'s own once-per-poll sweep.
         """
         self._history.pop(request_id, None)
 
@@ -246,10 +245,10 @@ class DownloadEtaTracker:
 
 
 def format_aggregate_header(result: AggregateEta) -> str:
-    """Task 9's Downloads-page header line, e.g. "About 12m 0s
-    remaining · 3 transferring · 5 queued (no estimate)". A pure
-    function over AggregateEta so it's testable with no Qt, matching
-    this module's existing style.
+    """The Downloads-page header line, e.g. "About 12m 0s remaining · 3
+    transferring · 5 queued (no estimate)". A pure function over
+    AggregateEta so it's testable with no Qt, matching this module's
+    existing style.
 
     The non-contributing bucket is always labelled "queued" in the
     header regardless of whether a given download's real DB status is
