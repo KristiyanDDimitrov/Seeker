@@ -16,8 +16,8 @@ nine fields below follow the contract in
   `mypy --strict src/` clean, 132 files; `ruff check src tests tools`
   0.
 - **CI:** `c8cbb80`'s run `37517187829` failed (Duplicates' Path 145
-  px under offscreen fonts); the fix commit's run is the latest in
-  `gh run list -L 1`.
+  px under offscreen fonts); the fix `9c4b88f`'s run `37518629644`
+  green.
 
 ## 2. Where we are
 
