@@ -21,6 +21,7 @@ from seeker.models.download_result import (
 )
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.nested_location import NestedLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult
 from seeker.models.tag_result import FixArtResult, TagResult
 
@@ -1005,6 +1006,18 @@ def format_remove_location_result(summary: LocationRemovalSummary) -> str:
         text += " The default download location is now unset."
 
     return text
+
+
+def format_nested_locations_warning(nested: list[NestedLocation]) -> str:
+    pairs = "; ".join(
+        f"'{pair.inner.name}' is inside '{pair.outer.name}'"
+        for pair in nested
+    )
+
+    return (
+        "Some locations are inside others, so their files are indexed "
+        f"twice: {pairs}."
+    )
 
 
 TOOLTIP_RENAME_LOCATION = "Give this location a different display name."

@@ -157,6 +157,9 @@ class FakeLibraryService:
         self.list_locations_calls += 1
         return self._locations
 
+    def find_nested_locations(self) -> list:
+        return []
+
     def has_scanned_library(self) -> bool:
         return self._has_scanned_library
 

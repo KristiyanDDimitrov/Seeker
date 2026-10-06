@@ -6,6 +6,8 @@ location, as two `local_files` rows for one real file.
 from pathlib import Path
 
 from seeker.files.deletion import same_file
+from seeker.models.library_location import LibraryLocation
+from seeker.models.nested_location import NestedLocation
 
 
 def same_directory(path_a: Path, path_b: Path) -> bool:
@@ -22,3 +24,21 @@ def is_within(inner: Path, outer: Path) -> bool:
     resolved, so a symlink has already become its target.
     """
     return any(same_directory(parent, outer) for parent in inner.parents)
+
+
+def find_nested(locations: list[LibraryLocation]) -> list[NestedLocation]:
+    """Every (inner, outer) pair, outermost first: for `/X`,
+    `/X/Music` and `/X/Music/Test`, three pairs.
+    """
+    by_depth = sorted(
+        locations,
+        key=lambda location: (len(Path(location.path).parts), location.path),
+    )
+
+    return [
+        NestedLocation(inner=inner, outer=outer)
+        for outer in by_depth
+        for inner in by_depth
+        if inner is not outer
+        and is_within(Path(inner.path), Path(outer.path))
+    ]

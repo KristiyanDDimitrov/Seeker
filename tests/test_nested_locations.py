@@ -18,6 +18,7 @@ from seeker.library.service import (
     LibraryLocationPathAlreadyRegisteredError,
     LibraryService,
 )
+from seeker.models.library_location import LibraryLocation
 
 
 def make_service(tmp_path) -> LibraryService:
@@ -139,3 +140,60 @@ def test_a_differently_cased_copy_of_a_location_is_already_registered(
 
     with pytest.raises(LibraryLocationPathAlreadyRegisteredError):
         add(service, str(tmp_path / "music"))
+
+
+# --- Detection: locations registered before the guard existed ---------
+
+
+def register_unchecked(service: LibraryService, name: str, path) -> None:
+    """Registers a location the way builds before the guard did, with
+    no overlap check, as the real database still holds them.
+    """
+    with service.database.transaction() as connection:
+        service.locations.add(
+            LibraryLocation(name=name, path=str(path), added_at="t"),
+            connection,
+        )
+
+
+def nested_names(service: LibraryService) -> list[tuple[str, str]]:
+    return [
+        (nested.inner.name, nested.outer.name)
+        for nested in service.find_nested_locations()
+    ]
+
+
+def test_find_nested_locations_reports_every_inner_outer_pair(tmp_path):
+    service = make_service(tmp_path)
+    drive = tmp_path / "Drive"
+    (drive / "Music" / "Test").mkdir(parents=True)
+    (tmp_path / "Elsewhere").mkdir()
+    register_unchecked(service, "x9-pro", drive)
+    register_unchecked(service, "Test", drive / "Music" / "Test")
+    register_unchecked(service, "Music", drive / "Music")
+    register_unchecked(service, "Elsewhere", tmp_path / "Elsewhere")
+
+    assert nested_names(service) == [
+        ("Music", "x9-pro"),
+        ("Test", "x9-pro"),
+        ("Test", "Music"),
+    ]
+
+
+def test_find_nested_locations_is_empty_for_separate_locations(tmp_path):
+    service = make_service(tmp_path)
+    (tmp_path / "Music").mkdir()
+    (tmp_path / "Music2").mkdir()
+    service.add_location("a", str(tmp_path / "Music"))
+    service.add_location("b", str(tmp_path / "Music2"))
+
+    assert service.find_nested_locations() == []
+
+
+def test_find_nested_locations_sees_a_drive_that_is_not_mounted(tmp_path):
+    service = make_service(tmp_path)
+    drive = tmp_path / "Unmounted"
+    register_unchecked(service, "x9-pro", drive)
+    register_unchecked(service, "Music", drive / "Music")
+
+    assert nested_names(service) == [("Music", "x9-pro")]

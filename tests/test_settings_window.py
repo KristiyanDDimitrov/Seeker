@@ -319,6 +319,52 @@ def test_remove_location_confirms_with_the_real_counts_then_removes(
     assert "Removed 'Main'" in window.locations_notice.text()
 
 
+def register_unchecked(application: Application, name: str, path) -> None:
+    """A location as builds before the nesting guard registered it."""
+    path.mkdir(parents=True, exist_ok=True)
+    with application.database.transaction() as connection:
+        application.library_service.locations.add(
+            LibraryLocation(name=name, path=str(path), added_at="t"),
+            connection,
+        )
+
+
+def test_nested_locations_show_a_warning_naming_both(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    register_unchecked(application, "x9-pro", tmp_path / "Drive")
+    register_unchecked(application, "Music", tmp_path / "Drive" / "Music")
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+    )
+    assert window.nesting_notice.property("variant") == "warning"
+    assert "'Music' is inside 'x9-pro'" in window.nesting_notice.text()
+    assert "indexed twice" in window.nesting_notice.text()
+
+
+def test_separate_locations_show_no_nesting_warning(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+    )
+    wait_for_workers(window)
+    # Delivers the finished signals the workers already posted.
+    qtbot.wait(10)
+
+    assert window.nesting_notice.isHidden()
+
+
 def test_remove_location_cancelled_removes_nothing(
         qtbot, tmp_path, monkeypatch,
 ):

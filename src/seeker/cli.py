@@ -314,6 +314,12 @@ def build_parser() -> argparse.ArgumentParser:
     remove_parser.set_defaults(handler=handle_library_remove)
     remove_parser.add_argument("name")
 
+    check_parser = library_subparsers.add_parser(
+        "check",
+        help="Find library locations inside other locations.",
+    )
+    check_parser.set_defaults(handler=handle_library_check)
+
     scan_parser = library_subparsers.add_parser(
         "scan",
         help="Scan all registered library locations.",
@@ -793,6 +799,27 @@ def handle_library_remove(
         print("  It was the default download location, now unset.")
 
     print("  Files on disk were not touched.")
+
+
+def handle_library_check(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    nested = application.library_service.find_nested_locations()
+
+    if not nested:
+        print("No library location is inside another.")
+        return
+
+    print("These locations are inside other locations, so their files "
+          "are indexed twice:")
+
+    for pair in nested:
+        print(f"  '{pair.inner.name}' ({pair.inner.path}) is inside "
+              f"'{pair.outer.name}' ({pair.outer.path})")
+
+    print("Remove one of each pair ('seeker library remove'), or merge "
+          "them in Settings → Library Locations.")
 
 
 def handle_library_scan(

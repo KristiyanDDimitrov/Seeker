@@ -22,12 +22,13 @@ from seeker.errors import (
     SeekerError,
 )
 from seeker.library.matcher import TrackMatcher
-from seeker.library.nesting import is_within, same_directory
+from seeker.library.nesting import find_nested, is_within, same_directory
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import ScanAndMatchResult, ScanResult
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
+from seeker.models.nested_location import NestedLocation
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,16 @@ class LibraryService:
             (location, Path(location.path).is_dir())
             for location in locations
         ]
+
+    def find_nested_locations(self) -> list[NestedLocation]:
+        """Locations inside other locations, which the add guard now
+        refuses but older builds registered. Touches the disk to compare
+        folders, so call it off the UI thread.
+        """
+        with self.database.transaction() as connection:
+            locations = self.locations.get_all(connection)
+
+        return find_nested(locations)
 
     def has_scanned_library(self) -> bool:
         """The Dashboard's "next step" CTA needs to distinguish "tracks

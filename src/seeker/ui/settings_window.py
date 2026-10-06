@@ -28,6 +28,7 @@ from seeker.login_item import LoginItemStatus
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
 from seeker.models.location_removal import LocationRemovalSummary
+from seeker.models.nested_location import NestedLocation
 from seeker.models.playlist import Playlist
 from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
@@ -163,6 +164,11 @@ class SettingsPage(QWidget):
         self.locations_notice = InlineNotice()
         layout.addWidget(self.locations_notice)
 
+        # Shown while a location sits inside another: the add guard
+        # refuses that now, but older builds registered such pairs.
+        self.nesting_notice = InlineNotice()
+        layout.addWidget(self.nesting_notice)
+
         self.locations_table = QTableWidget(0, 4)
         self.locations_table.setHorizontalHeaderLabels(
             ["Name", "Path", "Reachable", "Actions"]
@@ -197,6 +203,21 @@ class SettingsPage(QWidget):
             self.thread_pool,
             self.application.library_service.list_locations,
             on_finished=self._render_locations,
+        )
+        run_worker(
+            self.thread_pool,
+            self.application.library_service.find_nested_locations,
+            on_finished=self._render_nesting,
+        )
+
+    def _render_nesting(self, nested: list[NestedLocation]) -> None:
+        if not nested:
+            self.nesting_notice.dismiss()
+            return
+
+        self.nesting_notice.show_message(
+            help_text.format_nested_locations_warning(nested),
+            kind="warning",
         )
 
     def _render_locations(

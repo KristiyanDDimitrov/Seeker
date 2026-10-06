@@ -18,6 +18,7 @@ from seeker.library.matcher import TrackMatcher
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.download_result import ManualDownloadResult
 from seeker.models.fingerprint_result import FingerprintResult
+from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import (
     MatchResult,
     ScanAndMatchResult,
@@ -26,6 +27,7 @@ from seeker.models.library_result import (
 from seeker.models.local_file import LocalFile
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
+from seeker.models.nested_location import NestedLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
@@ -1251,6 +1253,47 @@ def test_library_remove_unknown_name_exits_with_the_error(tmp_path, capsys):
     assert "No library location named 'Nope'" in capsys.readouterr().out
 
 
+class FakeLibraryServiceCheckingNesting:
+    def __init__(self, nested: list[NestedLocation]):
+        self._nested = nested
+
+    def find_nested_locations(self) -> list[NestedLocation]:
+        return self._nested
+
+
+def test_library_check_lists_every_nested_pair(tmp_path, capsys):
+    drive = LibraryLocation("x9-pro", "/Volumes/X9 Pro", "t", id=1)
+    music = LibraryLocation("Music", "/Volumes/X9 Pro/Music", "t", id=2)
+    application = FakeApplication(
+        make_matcher(tmp_path),
+        library_service=FakeLibraryServiceCheckingNesting(
+            [NestedLocation(inner=music, outer=drive)],
+        ),
+    )
+
+    cli.run(application, ["library", "check"])
+
+    output = capsys.readouterr().out
+    assert "indexed twice" in output
+    assert (
+        "'Music' (/Volumes/X9 Pro/Music) is inside "
+        "'x9-pro' (/Volumes/X9 Pro)"
+    ) in output
+
+
+def test_library_check_says_when_nothing_is_nested(tmp_path, capsys):
+    application = FakeApplication(
+        make_matcher(tmp_path),
+        library_service=FakeLibraryServiceCheckingNesting([]),
+    )
+
+    cli.run(application, ["library", "check"])
+
+    assert "No library location is inside another." in (
+        capsys.readouterr().out
+    )
+
+
 def test_sync_tracks_reports_skipped_local_files_and_duplicates(
         tmp_path, capsys,
 ):
@@ -1400,7 +1443,7 @@ def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
     [
         (
             "library",
-            "{add,list,remove,scan,match,tag,fix-art,fingerprint,"
+            "{add,list,remove,check,scan,match,tag,fix-art,fingerprint,"
             "duplicates,rename}",
         ),
         ("downloads", "{status,review}"),
