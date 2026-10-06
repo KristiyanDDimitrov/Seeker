@@ -10,9 +10,9 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S26 part-1 handoff commit (after close-out `abbe594` (HISTORY §171, this
-  handoff, the plan row). Tree clean apart from the untracked
-  `Claude outputs/`.
+- **HEAD:** the S26 part-1 handoff commit, after the close-out
+  `abbe594` (HISTORY §171, handoff, plan row). Tree clean apart from
+  the untracked `Claude outputs/`.
 - **Local** (at `c154af8`, X9 Pro not mounted): pytest `1674 passed,
   29 skipped`; `mypy --strict src/` clean, 129 files; `ruff check src
   tests` 0.
