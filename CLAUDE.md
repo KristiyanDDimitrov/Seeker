@@ -561,6 +561,12 @@ Each links to the HISTORY entry where the full investigation lives;
   background on a generic type, which bands every nested widget.
   Review a UI change in `tools/screenshots.py`'s images.
   [HISTORY §173](docs/history/151-180.md#173)
+- **A button takes its size hint.** It goes in `theme.action_row()`
+  (or a row ending in `addStretch()`), never alone in a vertical or
+  form layout, where it stretches to the full width; a tall form
+  scrolls rather than squeezing rows (Settings' tabs).
+  `tests/shell/test_button_sizing.py` walks every harness screen and
+  fails the build. [HISTORY §174](docs/history/151-180.md#174)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.

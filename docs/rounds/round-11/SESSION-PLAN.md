@@ -65,7 +65,7 @@ explicit yes.
 | **Phase I — Nested locations** | | | | |
 | ☑ S26 | Guard nested locations; guided cleanup (part 1 §26.1–§26.2, HISTORY §171; part 2 §26.3–§26.4, HISTORY §172) | §26 | ~120 K | After §26.2 |
 | **Phase J — UI consistency** | | | | |
-| ☐ S27 | Screenshot harness; theme root causes; focus and accessibility (part 1 §27.0–§27.1, HISTORY §173) | §27 | ~120 K | After §27.1 |
+| ☐ S27 | Screenshot harness; theme root causes; focus and accessibility (part 1 §27.0–§27.1, HISTORY §173; part 2 §27.2–§27.3, HISTORY §174) | §27 | ~120 K | After §27.1 |
 | ☐ S28 | Tables, empty states, copy | §28 | ~120 K | After §28.2 |
 | ☐ S29 | Review and Settings information architecture | §29 | ~120 K | After §29.1 |
 | **Phase K — Visual refresh** | | | | |
@@ -252,6 +252,8 @@ checklist (carried items marked):
       not answer.
 - [ ] *(carried)* The Review splitter and Library header on a real
       display, both themes.
+- [ ] The packaged app draws the combo-box chevron (an SVG: needs
+      Qt's `qsvg` plugin in the bundle; HISTORY §174).
 
 ---
 
