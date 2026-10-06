@@ -430,6 +430,8 @@ uv run seeker <command>
 | `library add <name> <path>` | Register a library location (a folder on disk). |
 | `library list` | List registered locations and whether they're currently reachable. |
 | `library remove <name>` | Unregister a location: forgets its indexed files and their matches, and clears any playlist or default destination pointing at it. Files on disk are untouched. |
+| `library check` | List locations registered inside other locations (their files are indexed twice). |
+| `library merge <name> <keep>` | Merge a location inside, or around, `<keep>` into it: matches, Review rejections and analysis move to the same files under `<keep>`, playlist destinations follow the same folder, and files outside `<keep>` are forgotten. Both must be reachable. Files on disk are untouched. |
 | `library scan` | Scan all registered locations for audio files. |
 | `library match` | Fuzzy-match cached Spotify tracks against scanned local files. |
 | `library tag <playlist> [--analyze-audio] [--bpm-range MIN MAX] [--force]` | Write Spotify's artist/title/album/art onto every auto-matched track's local file; `--analyze-audio` also detects and writes BPM/Camelot key; `--force` redoes both even for tracks already tagged/analyzed. |

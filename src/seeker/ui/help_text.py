@@ -20,6 +20,7 @@ from seeker.models.download_result import (
     TrackFailure,
 )
 from seeker.models.fingerprint_result import FingerprintResult
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.nested_location import NestedLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult
@@ -1018,6 +1019,109 @@ def format_nested_locations_warning(nested: list[NestedLocation]) -> str:
         "Some locations are inside others, so their files are indexed "
         f"twice: {pairs}."
     )
+
+
+FIX_NESTING_ACTION = "Fix…"
+MERGE_LOCATIONS_TITLE = "Merge Locations"
+MERGE_LOCATIONS_PICK_LABEL = (
+    "Which location should Seeker keep?\n"
+    "Every location inside or around it is merged into it: matches and "
+    "analysis move to the same files there, and files outside it are "
+    "forgotten. Files on disk are not touched."
+)
+
+
+def _quoted_names(names: list[str]) -> str:
+    quoted = [f"'{name}'" for name in names]
+
+    if len(quoted) < 3:
+        return " and ".join(quoted)
+
+    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
+def format_merge_locations_confirm_body(
+        kept_name: str,
+        summaries: list[LocationMergeSummary],
+) -> str:
+    """Names everything merging into `kept_name` changes, from the same
+    counts the merge itself reports."""
+    merged = _quoted_names([summary.merged_name for summary in summaries])
+    files_merged = sum(summary.files_merged for summary in summaries)
+    matches_moved = sum(summary.matches_moved for summary in summaries)
+    analyses = sum(summary.analyses_kept for summary in summaries)
+    forgotten = sum(summary.files_forgotten for summary in summaries)
+    cleared = sum(summary.matches_cleared for summary in summaries)
+    playlists_moved = sum(summary.playlists_moved for summary in summaries)
+    playlists_cleared = sum(
+        summary.playlists_cleared for summary in summaries
+    )
+    lines = [
+        f"Keep '{kept_name}' and merge {merged} into it?",
+        f"{files_merged:,} of their files "
+        f"{'is' if files_merged == 1 else 'are'} also indexed under "
+        f"'{kept_name}': {_count(matches_moved, 'match', 'matches')} "
+        f"move there, and {_count(analyses, 'file')} gain analysis "
+        f"'{kept_name}' lacked.",
+        f"Seeker forgets the other {_count(forgotten, 'indexed file')} "
+        f"and {_count(cleared, 'match', 'matches')}.",
+    ]
+
+    if playlists_moved:
+        verb = "keeps" if playlists_moved == 1 else "keep"
+        lines.append(
+            f"{_count(playlists_moved, 'playlist')} {verb} downloading "
+            f"into the same folder through '{kept_name}'."
+        )
+
+    if playlists_cleared:
+        lines.append(
+            f"{_count(playlists_cleared, 'playlist')} will need a new "
+            "destination."
+        )
+
+    if any(summary.was_default for summary in summaries):
+        lines.append(
+            "The default download location is among them and will be "
+            "cleared."
+        )
+
+    lines.append("Files on disk are not touched.")
+
+    return " ".join(lines)
+
+
+def format_merge_locations_result(
+        kept_name: str,
+        summaries: list[LocationMergeSummary],
+) -> str:
+    merged = _quoted_names([summary.merged_name for summary in summaries])
+    matches_moved = sum(summary.matches_moved for summary in summaries)
+    analyses = sum(summary.analyses_kept for summary in summaries)
+    forgotten = sum(summary.files_forgotten for summary in summaries)
+    cleared = sum(summary.matches_cleared for summary in summaries)
+    playlists_cleared = sum(
+        summary.playlists_cleared for summary in summaries
+    )
+    text = (
+        f"Merged {merged} into '{kept_name}': moved "
+        f"{_count(matches_moved, 'match', 'matches')}, kept analysis "
+        f"for {_count(analyses, 'file')}, forgot "
+        f"{_count(forgotten, 'indexed file')} and "
+        f"{_count(cleared, 'match', 'matches')}."
+    )
+
+    if playlists_cleared:
+        verb = "needs" if playlists_cleared == 1 else "need"
+        text += (
+            f" {_count(playlists_cleared, 'playlist')} {verb} a new "
+            "destination."
+        )
+
+    if any(summary.was_default for summary in summaries):
+        text += " The default download location is now unset."
+
+    return text
 
 
 TOOLTIP_RENAME_LOCATION = "Give this location a different display name."

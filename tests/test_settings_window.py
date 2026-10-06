@@ -13,6 +13,7 @@ from fakes import wait_for_workers
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
+from seeker.models.nested_location import NestedLocation
 from seeker.models.playlist import Playlist
 from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
@@ -23,7 +24,7 @@ from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 from seeker.ui import plain_text
-from seeker.ui.settings_window import SettingsPage
+from seeker.ui.settings_window import SettingsPage, locations_nested_with
 
 
 def _fake_user_data_dir(data_dir):
@@ -345,6 +346,91 @@ def test_nested_locations_show_a_warning_naming_both(
     assert window.nesting_notice.property("variant") == "warning"
     assert "'Music' is inside 'x9-pro'" in window.nesting_notice.text()
     assert "indexed twice" in window.nesting_notice.text()
+
+
+def test_fix_merges_every_location_nested_with_the_one_kept(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    drive = tmp_path / "Drive"
+    register_unchecked(application, "x9-pro", drive)
+    register_unchecked(application, "Music", drive / "Music")
+    register_unchecked(application, "Test", drive / "Music" / "Test")
+    (drive / "Music" / "Test" / "a.mp3").write_bytes(b"a")
+    application.library_service.scan_all()
+    picked: list[list[str]] = []
+
+    def pick(parent, title, label, items, *args):
+        picked.append(list(items))
+        return "Music", True
+
+    monkeypatch.setattr(QInputDialog, "getItem", pick)
+    asked = answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+    )
+    window.nesting_notice.action_button.click()
+
+    qtbot.waitUntil(
+        lambda: window.locations_table.rowCount() == 1, timeout=4000,
+    )
+    assert picked == [["x9-pro", "Music", "Test"]]
+    assert len(asked) == 1
+    assert asked[0].startswith(
+        "Keep 'Music' and merge 'x9-pro' and 'Test' into it? 2 of their "
+        "files are also indexed under 'Music'"
+    )
+    assert [
+        location.name
+        for location, _ in application.library_service.list_locations()
+    ] == ["Music"]
+    qtbot.waitUntil(window.nesting_notice.isHidden, timeout=2000)
+    assert "Merged 'x9-pro' and 'Test' into 'Music'" in (
+        window.locations_notice.text()
+    )
+
+
+def test_fix_cancelled_at_the_pick_merges_nothing(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    register_unchecked(application, "x9-pro", tmp_path / "Drive")
+    register_unchecked(application, "Music", tmp_path / "Drive" / "Music")
+    monkeypatch.setattr(
+        QInputDialog, "getItem", lambda *a, **k: ("x9-pro", False),
+    )
+    asked = answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+    )
+    window.nesting_notice.action_button.click()
+    wait_for_workers(window)
+
+    assert asked == []
+    assert len(application.library_service.list_locations()) == 2
+
+
+def test_locations_nested_with_names_each_location_around_or_inside():
+    drive = LibraryLocation(name="x9-pro", path="/D", added_at="t")
+    music = LibraryLocation(name="Music", path="/D/M", added_at="t")
+    test = LibraryLocation(name="Test", path="/D/M/T", added_at="t")
+    other = LibraryLocation(name="Other", path="/O/I", added_at="t")
+    outer = LibraryLocation(name="Outer", path="/O", added_at="t")
+    nested = [
+        NestedLocation(inner=music, outer=drive),
+        NestedLocation(inner=test, outer=drive),
+        NestedLocation(inner=other, outer=outer),
+        NestedLocation(inner=test, outer=music),
+    ]
+
+    assert locations_nested_with(nested, "Music") == ["x9-pro", "Test"]
+    assert locations_nested_with(nested, "Other") == ["Outer"]
 
 
 def test_separate_locations_show_no_nesting_warning(

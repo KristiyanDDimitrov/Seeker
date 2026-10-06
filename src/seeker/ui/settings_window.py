@@ -27,6 +27,7 @@ from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
 from seeker.models.library_location import LibraryLocation
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.nested_location import NestedLocation
 from seeker.models.playlist import Playlist
@@ -218,7 +219,86 @@ class SettingsPage(QWidget):
         self.nesting_notice.show_message(
             help_text.format_nested_locations_warning(nested),
             kind="warning",
+            action_text=help_text.FIX_NESTING_ACTION,
+            on_action=lambda: self._on_fix_nesting_clicked(nested),
         )
+
+    def _on_fix_nesting_clicked(self, nested: list[NestedLocation]) -> None:
+        names = list(dict.fromkeys(
+            name
+            for pair in nested
+            for name in (pair.outer.name, pair.inner.name)
+        ))
+        kept, accepted = QInputDialog.getItem(
+            self,
+            help_text.MERGE_LOCATIONS_TITLE,
+            help_text.MERGE_LOCATIONS_PICK_LABEL,
+            names,
+            0,
+            False,
+        )
+
+        if not accepted or kept not in names:
+            return
+
+        merged = locations_nested_with(nested, kept)
+        self.locations_notice.dismiss()
+
+        run_worker(
+            self.thread_pool,
+            lambda: [
+                self.application.preview_merge_location(name, kept)
+                for name in merged
+            ],
+            button=self.nesting_notice.action_button,
+            on_finished=lambda previews: self._confirm_merge_locations(
+                kept, previews,
+            ),
+            on_error=self._show_locations_error,
+        )
+
+    def _confirm_merge_locations(
+            self,
+            kept: str,
+            previews: list[LocationMergeSummary],
+    ) -> None:
+        confirmed = plain_text.question(
+            self,
+            help_text.MERGE_LOCATIONS_TITLE,
+            help_text.format_merge_locations_confirm_body(kept, previews),
+        )
+
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        merged = [preview.merged_name for preview in previews]
+        run_worker(
+            self.thread_pool,
+            lambda: [
+                self.application.merge_location(name, kept)
+                for name in merged
+            ],
+            button=self.nesting_notice.action_button,
+            on_finished=lambda summaries: self._on_locations_merged(
+                kept, summaries,
+            ),
+            on_error=self._on_merge_failed,
+        )
+
+    def _on_locations_merged(
+            self,
+            kept: str,
+            summaries: list[LocationMergeSummary],
+    ) -> None:
+        self.locations_notice.show_message(
+            help_text.format_merge_locations_result(kept, summaries),
+        )
+        self._on_location_added()
+
+    def _on_merge_failed(self, message: str) -> None:
+        # An earlier location in the list may have merged already.
+        self._show_locations_error(message)
+        self._on_location_added()
 
     def _render_locations(
             self,
@@ -1383,3 +1463,19 @@ class SettingsPage(QWidget):
         self.thresholds_status_label.setText(
             "Saved. Takes effect on the next match/download run."
         )
+
+
+def locations_nested_with(
+        nested: list[NestedLocation],
+        kept: str,
+) -> list[str]:
+    """Every location inside or around `kept`, in `nested`'s order."""
+    return list(dict.fromkeys(
+        other.name
+        for pair in nested
+        for location, other in (
+            (pair.inner, pair.outer),
+            (pair.outer, pair.inner),
+        )
+        if location.name == kept
+    ))

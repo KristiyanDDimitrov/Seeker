@@ -320,6 +320,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check_parser.set_defaults(handler=handle_library_check)
 
+    merge_parser = library_subparsers.add_parser(
+        "merge",
+        help="Merge a location inside, or around, another into it.",
+    )
+    merge_parser.set_defaults(handler=handle_library_merge)
+    merge_parser.add_argument("name", help="The location to merge away.")
+    merge_parser.add_argument("keep", help="The location to keep.")
+
     scan_parser = library_subparsers.add_parser(
         "scan",
         help="Scan all registered library locations.",
@@ -818,8 +826,35 @@ def handle_library_check(
         print(f"  '{pair.inner.name}' ({pair.inner.path}) is inside "
               f"'{pair.outer.name}' ({pair.outer.path})")
 
-    print("Remove one of each pair ('seeker library remove'), or merge "
-          "them in Settings → Library Locations.")
+    print("Merge each into the location you keep ('seeker library merge "
+          "NAME KEEP'), or use Fix… in Settings → Library Locations.")
+
+
+def handle_library_merge(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    summary = application.merge_location(parsed.name, parsed.keep)
+    kept = summary.kept_name
+    print(f"Merged '{summary.merged_name}' into '{kept}'.")
+    print(f"  Moved {summary.matches_moved:,} matches to the same files "
+          f"under '{kept}'; kept analysis for {summary.analyses_kept:,} "
+          "files.")
+    print(f"  Forgot {summary.files_forgotten:,} indexed files and "
+          f"{summary.matches_cleared:,} matches '{kept}' does not cover.")
+
+    if summary.playlists_moved:
+        print(f"  {summary.playlists_moved:,} playlists download into the "
+              f"same folder through '{kept}'.")
+
+    if summary.playlists_cleared:
+        print(f"  {summary.playlists_cleared:,} playlists need a new "
+              "destination ('seeker playlists set-destination').")
+
+    if summary.was_default:
+        print("  It was the default download location, now unset.")
+
+    print("  Files on disk were not touched.")
 
 
 def handle_library_scan(

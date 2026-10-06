@@ -25,6 +25,7 @@ from seeker.models.library_result import (
     ScanResult,
 )
 from seeker.models.local_file import LocalFile
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.nested_location import NestedLocation
@@ -1294,6 +1295,50 @@ def test_library_check_says_when_nothing_is_nested(tmp_path, capsys):
     )
 
 
+class FakeApplicationMergingLocations(FakeApplication):
+    def __init__(self, matcher, summary):
+        super().__init__(matcher)
+        self._summary = summary
+        self.merge_location_calls: list[tuple[str, str]] = []
+
+    def merge_location(self, name, keep):
+        self.merge_location_calls.append((name, keep))
+        return self._summary
+
+
+def test_library_merge_prints_what_moved_and_what_was_forgotten(
+        tmp_path, capsys,
+):
+    application = FakeApplicationMergingLocations(
+        make_matcher(tmp_path),
+        LocationMergeSummary(
+            merged_name="x9-pro",
+            kept_name="Music",
+            files_merged=3452,
+            files_forgotten=5,
+            matches_moved=37,
+            matches_cleared=1,
+            analyses_kept=2663,
+            playlists_moved=1,
+            playlists_cleared=2,
+            was_default=True,
+        ),
+    )
+
+    cli.run(application, ["library", "merge", "x9-pro", "Music"])
+
+    assert application.merge_location_calls == [("x9-pro", "Music")]
+    output = capsys.readouterr().out
+    assert "Merged 'x9-pro' into 'Music'." in output
+    assert "Moved 37 matches" in output
+    assert "kept analysis for 2,663 files" in output
+    assert "Forgot 5 indexed files and 1 matches" in output
+    assert "1 playlists download into the same folder" in output
+    assert "2 playlists need a new destination" in output
+    assert "default download location, now unset" in output
+    assert "Files on disk were not touched." in output
+
+
 def test_sync_tracks_reports_skipped_local_files_and_duplicates(
         tmp_path, capsys,
 ):
@@ -1443,7 +1488,7 @@ def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
     [
         (
             "library",
-            "{add,list,remove,check,scan,match,tag,fix-art,fingerprint,"
+            "{add,list,remove,check,merge,scan,match,tag,fix-art,fingerprint,"
             "duplicates,rename}",
         ),
         ("downloads", "{status,review}"),

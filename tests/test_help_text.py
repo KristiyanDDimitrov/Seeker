@@ -1,6 +1,7 @@
 import re
 
 from seeker.models.download_result import PlaylistDownloadResult, TrackFailure
+from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.ui import help_text
 from seeker.ui.help_text import SHARING_FRAMING_BODY
@@ -28,6 +29,61 @@ def test_remove_location_confirm_body_names_everything_it_forgets():
         "Remove 'Music'? Seeker forgets 3,454 indexed files and 12 "
         "matches (3 you confirmed). 2 playlists download here and will "
         "need a new destination. Files on disk are not touched."
+    )
+
+
+def merge_summary(merged_name: str, **counts) -> LocationMergeSummary:
+    fields = {
+        "files_merged": 0,
+        "files_forgotten": 0,
+        "matches_moved": 0,
+        "matches_cleared": 0,
+        "analyses_kept": 0,
+        "playlists_moved": 0,
+        "playlists_cleared": 0,
+        "was_default": False,
+    }
+    fields.update(counts)
+
+    return LocationMergeSummary(
+        merged_name=merged_name, kept_name="Music", **fields,
+    )
+
+
+def test_merge_confirm_body_totals_every_location_merged():
+    summaries = [
+        merge_summary(
+            "x9-pro",
+            files_merged=3452,
+            files_forgotten=5,
+            matches_moved=37,
+            analyses_kept=2663,
+            playlists_moved=1,
+            was_default=True,
+        ),
+        merge_summary("Test", files_merged=9, matches_moved=6),
+    ]
+
+    assert help_text.format_merge_locations_confirm_body(
+        "Music", summaries,
+    ) == (
+        "Keep 'Music' and merge 'x9-pro' and 'Test' into it? 3,461 of "
+        "their files are also indexed under 'Music': 43 matches move "
+        "there, and 2,663 files gain analysis 'Music' lacked. Seeker "
+        "forgets the other 5 indexed files and 0 matches. 1 playlist "
+        "keeps downloading into the same folder through 'Music'. The "
+        "default download location is among them and will be cleared. "
+        "Files on disk are not touched."
+    )
+
+
+def test_merge_result_names_what_changed():
+    summaries = [merge_summary("Test", matches_moved=1, playlists_cleared=2)]
+
+    assert help_text.format_merge_locations_result("Music", summaries) == (
+        "Merged 'Test' into 'Music': moved 1 match, kept analysis for 0 "
+        "files, forgot 0 indexed files and 0 matches. 2 playlists need a "
+        "new destination."
     )
 
 
