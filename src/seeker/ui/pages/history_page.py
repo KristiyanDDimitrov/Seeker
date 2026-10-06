@@ -27,6 +27,8 @@ _HISTORY_EVENT_LABELS = {
     TAGGED: "Tagged",
 }
 
+_HISTORY_COLUMNS = theme.ColumnLayout(stretch=(2,), fit_content=(0, 1, 3))
+
 
 class HistoryPage(QWidget):
     def __init__(self, context: PageContext):
@@ -76,11 +78,8 @@ class HistoryPage(QWidget):
         self.history_table.setHorizontalHeaderLabels(
             ["When", "What", "Track", "Detail"]
         )
-        # No ColumnLayout shape here either — see the same note on
-        # `downloads_table` in downloads_page.py.
-        self.history_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.history_table)
-        theme.apply_column_floors(self.history_table)
+        theme.configure_columns(self.history_table, _HISTORY_COLUMNS)
         layout.addWidget(theme.make_card(self.history_table))
 
         # Raw, unfiltered events from the last real fetch — the filter
@@ -156,3 +155,4 @@ class HistoryPage(QWidget):
                 self.history_table.setItem(
                     row, 3, QTableWidgetItem(event.detail),
                 )
+        theme.size_columns(self.history_table, _HISTORY_COLUMNS, [])

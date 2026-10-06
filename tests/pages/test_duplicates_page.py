@@ -494,7 +494,15 @@ def test_render_duplicate_groups_populates_table(qtbot):
     assert window._duplicates_page.duplicates_table.rowCount() == 2
     assert window._duplicates_page.duplicates_table.item(0, 2).text() == "a.flac"
     assert window._duplicates_page.duplicates_table.item(1, 2).text() == "a.mp3"
-    assert window._duplicates_page.duplicates_table.item(0, 5).text() == "98.7%"
+    assert (
+        window._duplicates_page.duplicates_table.item(0, 3).text()
+        == "FLAC, 1000 kbps"
+    )
+    assert (
+        window._duplicates_page.duplicates_table.item(1, 3).text()
+        == "MP3, 320 kbps"
+    )
+    assert window._duplicates_page.duplicates_table.item(0, 4).text() == "98.7%"
 
 
 def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(

@@ -34,6 +34,8 @@ from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
+_DOWNLOADS_COLUMNS = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2, 3, 4))
+
 # Plain-language notes for statuses that aren't self-explanatory as raw
 # text — a "locked" or "shortlisted" row is still actively being chased,
 # just not in a way a non-technical status string conveys.
@@ -213,22 +215,8 @@ class DownloadsPage(QWidget):
         self.downloads_table.setHorizontalHeaderLabels(
             ["Track", "Playlist", "Role", "Status", "Progress"]
         )
-        # Checked against ColumnLayout and left alone (HISTORY §118):
-        # this table (and History's, Sharing's uploads table) has no
-        # Actions column and no explicit per-column resize mode at all,
-        # relying entirely on setStretchLastSection for its one flexible
-        # column. There is no `fit_content`/`stretch`/`actions` shape
-        # here for a ColumnLayout to declare — folding it in would mean
-        # adding a setStretchLastSection(False) call that actively
-        # fights the one line this table already uses correctly.
-        self.downloads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.downloads_table)
-        # This table never sets a per-column resize mode of its own
-        # (relies on setStretchLastSection above for Progress), so the
-        # floor call belongs right here, once, at construction;
-        # `apply_column_floors` skips the stretched last column on its
-        # own (HISTORY §110).
-        theme.apply_column_floors(self.downloads_table)
+        theme.configure_columns(self.downloads_table, _DOWNLOADS_COLUMNS)
         layout.addWidget(theme.make_card(self.downloads_table))
 
         page = build_page(
@@ -352,12 +340,7 @@ class DownloadsPage(QWidget):
                     SortKeyItem("", _progress_sort_key(request)),
                 )
 
-            # This table's progress-bar cell widgets are real per-row
-            # content, same treatment as every table with an Actions column
-            # even though this one has none (HISTORY §87, §80's own
-            # deliberate scoping — see _build_progress_widget/
-            # _build_terminal_progress_widget's bespoke stretch factor).
-            self.downloads_table.resizeRowsToContents()
+        theme.size_columns(self.downloads_table, _DOWNLOADS_COLUMNS, [])
 
     def _clear_finished(self) -> None:
         # Not run_worker's button=: it re-enables the button when the

@@ -61,16 +61,14 @@ class _DuplicatesColumn(IntEnum):
     GROUP = 0
     LOCATION = 1
     PATH = 2
-    FORMAT = 3
-    BITRATE = 4
-    SIMILARITY = 5
-    KEEP = 6
-    ACTIONS = 7
+    QUALITY = 3
+    SIMILARITY = 4
+    KEEP = 5
+    ACTIONS = 6
 
 
 _DUPLICATES_COLUMN_HEADERS = [
-    "Group", "Location", "Path", "Format", "Bitrate", "Similarity",
-    "Keep", "Actions",
+    "Group", "Location", "Path", "Quality", "Similarity", "Keep", "Actions",
 ]
 
 # The declarative layout each table used to write out by hand across a
@@ -80,8 +78,8 @@ _DUPLICATES_COLUMNS = theme.ColumnLayout(
     stretch=(_DuplicatesColumn.PATH,),
     fit_content=(
         _DuplicatesColumn.GROUP, _DuplicatesColumn.LOCATION,
-        _DuplicatesColumn.FORMAT, _DuplicatesColumn.BITRATE,
-        _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.KEEP,
+        _DuplicatesColumn.QUALITY, _DuplicatesColumn.SIMILARITY,
+        _DuplicatesColumn.KEEP,
     ),
     actions=_DuplicatesColumn.ACTIONS,
 )
@@ -695,18 +693,12 @@ class DuplicatesPage(QWidget):
                     row, _DuplicatesColumn.PATH,
                     QTableWidgetItem(local_file.relative_path),
                 )
+                quality_text = local_file.format.upper()
+                if quality.bitrate_kbps:
+                    quality_text += f", {quality.bitrate_kbps} kbps"
                 self.duplicates_table.setItem(
-                    row, _DuplicatesColumn.FORMAT,
-                    QTableWidgetItem(local_file.format),
-                )
-                bitrate_text = (
-                    f"{quality.bitrate_kbps} kbps"
-                    if quality.bitrate_kbps
-                    else "—"
-                )
-                self.duplicates_table.setItem(
-                    row, _DuplicatesColumn.BITRATE,
-                    QTableWidgetItem(bitrate_text),
+                    row, _DuplicatesColumn.QUALITY,
+                    QTableWidgetItem(quality_text),
                 )
                 self.duplicates_table.setItem(
                     row, _DuplicatesColumn.SIMILARITY,

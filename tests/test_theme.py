@@ -173,6 +173,54 @@ def test_actions_column_click_never_sorts_and_shows_no_indicator(qtbot):
     assert table.item(0, 0).text() == "a"
 
 
+def test_fit_widths_gives_every_column_its_content_when_it_fits():
+    assert theme.fit_widths({0: 50, 1: 120}, {0: 40, 1: 40}, 200) == {
+        0: 50, 1: 120,
+    }
+
+
+def test_fit_widths_cuts_the_widest_column_first():
+    # 50 + 120 = 170 > 140: a cap of 90 takes 30 from the wide column
+    # and leaves the narrow one whole.
+    assert theme.fit_widths({0: 50, 1: 120}, {0: 40, 1: 40}, 140) == {
+        0: 50, 1: 90,
+    }
+
+
+def test_fit_widths_never_goes_below_a_floor():
+    assert theme.fit_widths({0: 50, 1: 120}, {0: 40, 1: 100}, 60) == {
+        0: 40, 1: 100,
+    }
+
+
+def test_fit_widths_with_no_columns_is_empty():
+    assert theme.fit_widths({}, {}, 100) == {}
+
+
+def test_a_table_refits_its_columns_when_it_narrows(qtbot):
+    # Fitted once at the wide size, then narrowed with no render in
+    # between: only the viewport's resize can re-run the fit.
+    table = QTableWidget(1, 3)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["Track", "Status", "Detail"])
+    table.setItem(0, 0, QTableWidgetItem("Nova Reyes - Voltage Drop"))
+    table.setItem(0, 1, QTableWidgetItem("Needs review " * 4))
+    table.setItem(0, 2, QTableWidgetItem("x"))
+    theme.apply_table_defaults(table)
+    layout = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2))
+    table.resize(1200, 200)
+    table.show()
+    theme.size_columns(table, layout, [])
+    header = table.horizontalHeader()
+    wide_status = header.sectionSize(1)
+
+    table.resize(500, 200)
+    qtbot.waitUntil(lambda: header.sectionSize(1) < wide_status)
+
+    assert header.sectionSize(0) >= theme.STRETCH_COLUMN_FLOOR
+    assert not table.horizontalScrollBar().isVisible()
+
+
 def test_header_section_has_a_right_hand_divider():
     # Roadmap item 97 (B2.4) — a real regression from item 47:
     # QHeaderView::section's own `border: none` removed the native

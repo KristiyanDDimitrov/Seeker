@@ -34,6 +34,9 @@ from seeker.ui.workers import run_worker
 _SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
     stretch=(2,), fit_content=(0, 1, 3), actions=4,
 )
+_SHARING_UPLOADS_COLUMNS = theme.ColumnLayout(
+    stretch=(1,), fit_content=(0, 2, 3),
+)
 
 
 @dataclass
@@ -109,11 +112,10 @@ class SharingPage(QWidget):
             ["Peer", "File", "State", "Progress"]
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
-        # No ColumnLayout shape here either — see the same note on
-        # `downloads_table` in downloads_page.py.
-        self.sharing_uploads_table.horizontalHeader().setStretchLastSection(True)
         theme.apply_table_defaults(self.sharing_uploads_table)
-        theme.apply_column_floors(self.sharing_uploads_table)
+        theme.configure_columns(
+            self.sharing_uploads_table, _SHARING_UPLOADS_COLUMNS,
+        )
         layout.addWidget(theme.make_card(self.sharing_uploads_table))
 
         self._current_sharing_self_managed = False
@@ -352,6 +354,7 @@ class SharingPage(QWidget):
                     0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL),
                 )
 
+        theme.size_columns(table, _SHARING_UPLOADS_COLUMNS, [])
         self._upload_eta_tracker.evict_except(active_keys)
 
     def _on_add_location_to_share_clicked(

@@ -41,7 +41,7 @@ import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -468,6 +468,12 @@ def apply_table_defaults(table: QTableWidget) -> None:
     """
     table.verticalHeader().setVisible(False)
     table.horizontalHeader().setMinimumSectionSize(40)
+    # Cells are left-aligned text, and a cell widget's contents start
+    # at its left edge (`cell_widget`'s trailing stretch); a centred
+    # header floats over neither.
+    table.horizontalHeader().setDefaultAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    )
     table.setSortingEnabled(True)
     # QHeaderView defaults sortIndicatorSection to 0 (not "no column"),
     # so setSortingEnabled(True) alone silently auto-sorts every table
@@ -501,9 +507,7 @@ def apply_column_floors(table: QTableWidget) -> None:
     `Interactive`/`Fixed` resize mode. `Stretch` and `ResizeToContents`
     size themselves; pinning an explicit width onto one of them leaves a
     dead band (HISTORY §110), so those modes are skipped outright rather
-    than floored. A column covered by `setStretchLastSection(True)` (the
-    header-level flag a few tables use instead of an explicit per-column
-    `Stretch` mode — Downloads/History/Sharing's uploads table) is
+    than floored. A column covered by `setStretchLastSection(True)` is
     skipped the same way, for the same reason, even though
     `sectionResizeMode()` still reports it as `Interactive`.
 
@@ -556,26 +560,132 @@ def size_action_column(
     header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
     header.resizeSection(column, action_width)
 
-    # apply_table_defaults()'s setMinimumSectionSize() floor already
-    # raises every row to a safe height with no explicit call needed
-    # (confirmed empirically: a bare setRowCount() after it already
-    # reports the floored height). This call is what lets a row grow
-    # TALLER than that floor for real content that needs it (e.g. a
-    # future wrapped multi-line cell), on every table that has real
-    # per-row Actions widgets to measure content against.
-    table.resizeRowsToContents()
+
+# The width a stretch column keeps before the fit-content columns get
+# all theirs: enough for an "Artist - Title" to read at the Dashboard's
+# narrowest, beside Status, Progress and Actions at 960 wide.
+STRETCH_COLUMN_FLOOR = 180
+# The most of a table's width its stretch columns hold back for their
+# content before the fit-content columns are sized.
+_STRETCH_SHARE = 0.4
 
 
 @dataclass(frozen=True)
 class ColumnLayout:
-    """A table's column layout, declared once: which columns stretch,
+    """A table's column layout, declared once: which columns stretch
+    (the primary text a row is about, such as Track or Filename),
     which fit their content, and which (if any) is the Actions column.
     `configure_columns`/`size_columns` below apply it. See HISTORY §118.
+
+    A fit-content column gets its content's width while the stretch
+    columns keep theirs (at least `stretch_floor`, at most 40 % of the
+    table); when the table is too narrow for both, the widest
+    fit-content text columns give way first, down to their header
+    label (`fit_widths`).
     """
     stretch: tuple[int, ...]
     fit_content: tuple[int, ...]
     actions: int | None = None
     minimum_section: int = 40
+    stretch_floor: int = STRETCH_COLUMN_FLOOR
+
+
+def fit_widths(
+        wants: dict[int, int], floors: dict[int, int], budget: int,
+) -> dict[int, int]:
+    """Each column's width when `wants` (content widths) must share
+    `budget` pixels: every column wider than a common cap is cut to
+    it, never below its floor, and the cap is the largest one that
+    fits. Narrow columns keep their content; wide ones share the
+    shortfall. When even the floors overrun the budget, the floors."""
+    def total(cap: int) -> int:
+        return sum(
+            max(floors[column], min(want, cap))
+            for column, want in wants.items()
+        )
+
+    low, high = 0, max(wants.values(), default=0)
+    while low < high:
+        cap = (low + high + 1) // 2
+        if total(cap) <= budget:
+            low = cap
+        else:
+            high = cap - 1
+    return {
+        column: max(floors[column], min(want, low))
+        for column, want in wants.items()
+    }
+
+
+def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
+    """Sets every fit-content column's width from this render's
+    content and the viewport's current width (`fit_widths`). The
+    stretch columns take what is left, which `Stretch` mode does."""
+    if not layout.fit_content:
+        return
+    header = table.horizontalHeader()
+    floors = {
+        column: header_label_floor(table, column)
+        for column in layout.fit_content
+    }
+    wants = {
+        column: max(table.sizeHintForColumn(column), floors[column])
+        for column in layout.fit_content
+    }
+    # Text elides; a cell widget (a progress bar, a radio) clips
+    # instead, so a column holding one keeps its content's width.
+    for column in layout.fit_content:
+        if any(
+            table.cellWidget(row, column) is not None
+            for row in range(table.rowCount())
+        ):
+            floors[column] = wants[column]
+    actions_width = (
+        header.sectionSize(layout.actions)
+        if layout.actions is not None else 0
+    )
+    viewport_width = table.viewport().width()
+    # A stretch column holds back room for its own content, up to its
+    # share of `_STRETCH_SHARE`, so a long secondary column (a failure
+    # reason) never takes the width the row's primary text needs.
+    share = int(viewport_width * _STRETCH_SHARE) // max(len(layout.stretch), 1)
+    reserved = sum(
+        max(layout.stretch_floor, min(table.sizeHintForColumn(column), share))
+        for column in layout.stretch
+    )
+    budget = viewport_width - actions_width - reserved
+    for column, width in fit_widths(wants, floors, budget).items():
+        header.resizeSection(column, width)
+
+
+class _ColumnFitter(QObject):
+    """Re-fits a table's columns whenever its viewport changes width,
+    so the policy holds while the window is resized, not only at the
+    render that last called `size_columns`. A child of the table, so
+    it lives exactly as long as the table does."""
+
+    def __init__(self, table: QTableWidget, layout: ColumnLayout):
+        super().__init__(table)
+        self.table = table
+        self.column_layout = layout
+        self._width = -1
+        table.viewport().installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            width = self.table.viewport().width()
+            if width != self._width:
+                self._width = width
+                _fit_content_columns(self.table, self.column_layout)
+        return False
+
+
+def _column_fitter(table: QTableWidget, layout: ColumnLayout) -> None:
+    fitter = table.findChild(_ColumnFitter)
+    if fitter is None:
+        _ColumnFitter(table, layout)
+    else:
+        fitter.column_layout = layout
 
 
 _ACTIONS_SORT_VETO_WIRED = "_seeker_actions_sort_veto_wired"
@@ -633,14 +743,14 @@ def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
     header.setMinimumSectionSize(layout.minimum_section)
     header.setStretchLastSection(False)
     for column in layout.fit_content:
-        header.setSectionResizeMode(
-            column, QHeaderView.ResizeMode.ResizeToContents,
-        )
+        header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
     for column in layout.stretch:
         header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
     if layout.actions is not None:
         size_action_column(table, layout.actions, [])
         _veto_actions_column_sort(table, layout.actions)
+    _fit_content_columns(table, layout)
+    _column_fitter(table, layout)
     apply_column_floors(table)
 
 
@@ -656,7 +766,14 @@ def size_columns(
     configure_columns(table, layout)
     if layout.actions is not None:
         size_action_column(table, layout.actions, action_widgets)
+    _fit_content_columns(table, layout)
     apply_column_floors(table)
+    # After the columns, whose widths decide how tall a cell's content
+    # is. apply_table_defaults()'s vertical-header floor already keeps
+    # every row tall enough for a cell widget; this lets a row grow
+    # taller than that floor for content that needs it (a two-line
+    # progress cell).
+    table.resizeRowsToContents()
 
 
 def build_qpalette(palette: Palette) -> QPalette:

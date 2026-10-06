@@ -378,19 +378,6 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
     tables = window.findChildren(QTableWidget)
     assert tables, "expected at least one QTableWidget in the window"
 
-    # Roadmap item 8.1.3 — these three genuinely have no ColumnLayout:
-    # no Actions column, no per-column resize mode at all, just
-    # stretchLastSection for their one flex column (see the comments
-    # beside their construction in main_window.py). Excluded from the
-    # stronger per-column check below only — the `has_stretch` check
-    # above still runs on them, which is the actual E2 invariant this
-    # test exists to guard; their non-flex columns were never claimed
-    # to be derived and are not the bug class E2 fixed.
-    _no_column_layout = {
-        window._downloads_page.downloads_table, window._history_page.history_table,
-        window._sharing_page.sharing_uploads_table,
-    }
-
     for table in tables:
         header = table.horizontalHeader()
         has_stretch = header.stretchLastSection() or any(
@@ -404,9 +391,6 @@ def test_every_table_has_a_stretch_column_immediately_after_construction(
             f"empty render of this table will sit at Qt's default "
             f"100px-per-column layout"
         )
-
-        if table in _no_column_layout:
-            continue
 
         last_column = table.columnCount() - 1
         for column in range(table.columnCount()):
