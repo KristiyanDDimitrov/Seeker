@@ -63,7 +63,7 @@ explicit yes.
 | ☑ S24 | Comment and config hygiene: core (part 1, services: HISTORY §168; part 2, the rest: HISTORY §169) | §24 | ~130 K | After the services half |
 | ☑ S25 | Comment hygiene: `ui/` (HISTORY §170) | §25 | ~130 K | After `main_window.py` and `theme.py` |
 | **Phase I — Nested locations** | | | | |
-| ☐ S26 | Guard nested locations; guided cleanup (part 1 §26.1–§26.2, HISTORY §171; part 2 §26.3–§26.4 next) | §26 | ~120 K | After §26.2 |
+| ☑ S26 | Guard nested locations; guided cleanup (part 1 §26.1–§26.2, HISTORY §171; part 2 §26.3–§26.4, HISTORY §172) | §26 | ~120 K | After §26.2 |
 | **Phase J — UI consistency** | | | | |
 | ☐ S27 | Screenshot harness; theme root causes; focus and accessibility | §27 | ~120 K | After §27.1 |
 | ☐ S28 | Tables, empty states, copy | §28 | ~120 K | After §28.2 |
@@ -236,7 +236,9 @@ checklist (carried items marked):
       Docker. This is the live test of S5.
 - [ ] After S4: a Scan re-matches the two Denzel Curry tracks that are
       in limbo now.
-- [ ] After S26: the nested-location Fix… (the real click).
+- [ ] After S26: the nested-location Fix… (the real click): X9 Pro
+      mounted, Settings → Library Locations → Fix…, keep `Music`
+      (HISTORY §172 has the rehearsed counts to compare).
 - [ ] *(carried from rounds 9 and 10)* The stress test:
       `SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
       with the X9 Pro mounted and Spotify and slskd up. It now also

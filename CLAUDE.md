@@ -50,7 +50,8 @@ src/seeker/
 ├── database/                 # connection.py, schema.py,
 │                              #   repositories/{playlist,track,track_match,
 │                              #   local_file,library_location,download_request,
-│                              #   duplicate_cleanup,soulseek_review_candidate}
+│                              #   duplicate_cleanup,soulseek_review_candidate,
+│                              #   rejection,location_merge}
 │                              #   _repository.py
 ├── spotify/                   # auth*.py, token*.py, callback_server.py,
 │                              #   client.py (raw Web API calls), sync_service.py
@@ -105,7 +106,8 @@ src/seeker/
 │                              #   active_download, track_status, upgrade_review,
 │                              #   history_event, data_locations,
 │                              #   duplicate_cleanup, needs_review_match,
-│                              #   location_removal, spotify_sync,
+│                              #   location_removal, location_merge,
+│                              #   nested_location, spotify_sync,
 │                              #   download_result, library_result,
 │                              #   tag_result, fingerprint_result
 ├── matching.py                 # shared fuzzy artist/title matching — used by
@@ -680,6 +682,15 @@ Each links to the HISTORY entry where the full investigation lives;
   deleting one would make a completed manual track an orphan for
   `_migrate`. Any new failed/unavailable transition passes
   `failure_reason=`. [HISTORY §145](docs/history/121-150.md#145)
+- **Library locations never nest.** Adding one inside or around
+  another is refused, by resolved path and on-disk identity (APFS is
+  case-insensitive). A nested pair already registered is merged by
+  `LibraryService.merge_location`: a merged row pairs only with the
+  kept row for the same physical file (`same_file`), analysis moves
+  only into an empty group with equal size and mtime, and the merged
+  location then goes through removal's own deletes.
+  [HISTORY §171](docs/history/151-180.md#171),
+  [§172](docs/history/151-180.md#172)
 - Deleting a local file: DB row first, then the file on disk. Renaming
   one: the opposite order, file then DB row.
   [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)
@@ -815,11 +826,12 @@ Genuinely open only — no "done" items, no flakes that resolved.
   (`_block_event`/`_block_when_limit` on `FakeHistoryService`) so the
   race reproduces every run instead of ~1-in-8. [HISTORY
   §128](docs/history/121-150.md#128)
-- **Three registered library locations nest inside each other and
-  double-index ~3,450 real files** — `add_location`/
-  `add_location_from_path` only check exact path-string uniqueness, no
-  containment check exists. A real user decision, deliberately left
-  open. [HISTORY §93](docs/history/072-107.md#93)
+- **The real DB still holds three nested library locations**
+  (`Music`⊂`x9-pro`, `Test`⊂`x9-pro`, `Test`⊂`Music`), double-indexing
+  ~3,450 files. The guard, detection and merge exist; the merge needs
+  the X9 Pro mounted, so Kris runs Settings → Library Locations →
+  Fix…, keeping `Music` (rehearsed on a copy: 43 matches kept, 0
+  lost). [HISTORY §172](docs/history/151-180.md#172)
 - **CI is real and running (not billing-blocked) as of 2026-09-08 —
   the S1.1/§117 "never completed a real run" finding is superseded.**
   Confirmed live via `gh run list`/`gh run view`: ruff/mypy clean on
