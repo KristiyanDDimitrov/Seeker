@@ -79,3 +79,15 @@ def test_every_icon_and_row_button_has_an_accessible_name(qapp, screenshots):
         screenshots.close(qapp, window)
 
     assert sorted(set(unnamed)) == []
+
+
+def test_switching_pages_moves_focus_off_the_page_being_hidden(qtbot):
+    # Left to Qt, hiding the focused widget passes focus down the tab
+    # chain into the next page's table, as if by Tab, and Fusion then
+    # frames its current cell.
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+
+    window._show_page("review")
+
+    assert window.focusWidget() is window.stacked_widget

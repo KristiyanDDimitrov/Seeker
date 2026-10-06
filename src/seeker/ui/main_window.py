@@ -543,6 +543,18 @@ class MainWindow(QMainWindow):
             self._invalidate_after_leaving_settings()
 
         self._current_page_key = key
+        # Hiding the focused widget would pass focus down the tab chain
+        # into the next page, as if by Tab, and Fusion would frame
+        # whatever it lands on. The stack holds it instead; Tab enters
+        # the new page from there.
+        focused = self.focusWidget()
+        outgoing = self.stacked_widget.currentWidget()
+        if (
+                focused is not None
+                and outgoing is not None
+                and outgoing.isAncestorOf(focused)
+        ):
+            self.stacked_widget.setFocus()
         self.stacked_widget.setCurrentIndex(self._page_indices[key])
 
         button = self._nav_buttons.get(key)

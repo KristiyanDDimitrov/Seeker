@@ -525,3 +525,16 @@ def test_keyboard_focus_changes_the_control_by_the_ui_component_floor(
         for y in range(plain.height())
     )
     assert best >= 3.0
+
+
+@pytest.mark.parametrize(
+        "kind", [QPushButton, QCheckBox, QRadioButton],
+        ids=["button", "checkbox", "radio"],
+)
+def test_a_click_never_gives_a_button_focus(qtbot, applied_palette, kind):
+    # The ring above means keyboard focus. Under Fusion's default a
+    # click focuses a button too, leaving a ring on every button the
+    # mouse touched; macOS's own buttons take focus from Tab only.
+    control = kind("Sync")
+    qtbot.addWidget(control)
+    assert control.focusPolicy() == Qt.FocusPolicy.TabFocus

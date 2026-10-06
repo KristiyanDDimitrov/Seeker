@@ -50,7 +50,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QProgressBar,
+    QProxyStyle,
     QPushButton,
+    QStyle,
+    QStyleFactory,
+    QStyleHintReturn,
+    QStyleOption,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -694,12 +699,33 @@ def build_qpalette(palette: Palette) -> QPalette:
     return qpalette
 
 
+class _SeekerStyle(QProxyStyle):
+    """Fusion, except that a click never gives a button keyboard focus
+    (`SH_Button_FocusPolicy` is `TabFocus`, Fusion's is `StrongFocus`),
+    so the `:focus` ring appears only for focus that came from the
+    keyboard. macOS's native style makes the same choice; with the
+    system's keyboard navigation off, Tab then skips buttons there,
+    as it does in native apps."""
+
+    def styleHint(
+            self,
+            hint: QStyle.StyleHint,
+            option: QStyleOption | None = None,
+            widget: QWidget | None = None,
+            returnData: QStyleHintReturn | None = None,
+    ) -> int:
+        if hint == QStyle.StyleHint.SH_Button_FocusPolicy:
+            return Qt.FocusPolicy.TabFocus.value
+        return super().styleHint(hint, option, widget, returnData)
+
+
 def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     """Resolves `mode` to a real `Palette` (`resolve_palette`), sets
-    Fusion (so the stylesheet renders identically on macOS and Windows
-    — a real concern, since Windows packaging is still unverified),
-    the matching `QPalette`, and the one global stylesheet. Safe to
-    call again later, not just once before the first window —
+    Fusion through `_SeekerStyle` (so the stylesheet renders
+    identically on macOS and Windows — a real concern, since Windows
+    packaging is still unverified), the matching `QPalette`, and the
+    one global stylesheet. Safe to call again later, not just once
+    before the first window —
     `MainWindow.on_theme_changed()` is the runtime re-apply entry point
     for exactly that.
 
@@ -715,7 +741,7 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     Verify by screenshotting the real title bar in all three modes
     before trusting this description further.
     """
-    app.setStyle("Fusion")
+    app.setStyle(_SeekerStyle(QStyleFactory.create("Fusion")))
 
     palette = resolve_palette(mode)
     _set_module_tokens(palette)
