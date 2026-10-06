@@ -14,7 +14,13 @@ Every document in the repository, then where to start.
   numbered `§N`, split by range; its README indexes every entry.
   `grep -n` for the section, never read a whole file.
   `HISTORY.md` is a stub pointing there.
-- [`screenshots/`](screenshots/) — the README's images and `generate.py`.
+- [`screenshots/`](screenshots/) — the README's images, written by
+  `uv run python tools/screenshots.py --readme`.
+- [`../tools/screenshots.py`](../tools/screenshots.py) — renders every
+  screen and wizard step, both themes, at 1280×820 and 960×640, over
+  one invented dataset: `uv run python tools/screenshots.py` (into the
+  gitignored `tools/.screens/`; `--page NAME` and `--theme` narrow it).
+  Review a UI change against these before committing it.
 
 ## Round archive (`rounds/`)
 

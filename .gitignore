@@ -18,3 +18,5 @@ dist/
 # NEVER itself written to, so there is nothing there for a stray build
 # to dirty or a careless commit to sweep in.
 src/seeker/_build_info_generated.py
+# tools/screenshots.py's review images; --readme writes docs/screenshots/.
+tools/.screens/

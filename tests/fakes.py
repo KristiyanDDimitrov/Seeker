@@ -1,7 +1,7 @@
 """Fakes for `Application` and its services, plus the builders and
 monkeypatch helpers more than one UI test module shares.
 
-Every page test, the shell tests and `docs/screenshots/generate.py`
+Every page test, the shell tests and `tools/screenshots.py`
 build a `MainWindow` or a page over `FakeApplication`.
 """
 import threading

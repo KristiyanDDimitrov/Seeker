@@ -32,7 +32,7 @@ jobs:
           enable-cache: true
       - run: brew install chromaprint
       - run: uv sync --locked --all-extras --dev
-      - run: uv run ruff check src tests
+      - run: uv run ruff check src tests tools
       - run: uv run mypy --strict src/
       - run: >-
           uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
