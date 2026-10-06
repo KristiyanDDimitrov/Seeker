@@ -96,6 +96,7 @@ src/seeker/
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       widgets.py (ThemeToggleButton, TwoToneProgressBar),
+│       elided_text.py (one-line cells, full text on hover),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -577,6 +578,16 @@ Each links to the HISTORY entry where the full investigation lives;
   the build. A labelled progress bar is `TwoToneProgressBar`: no one
   label colour reads on both fill and track.
   [HISTORY §175](docs/history/151-180.md#175)
+- **Every table declares a `theme.ColumnLayout`** whose stretch
+  column is the one its rows are about (Track, Filename, Path).
+  `fit_widths` keeps that column's content width (180 px floor, 40 %
+  cap) and shrinks the widest other text columns first, never below
+  a header; a viewport filter refits on resize. Cells are one line:
+  `ElidedTextDelegate` shows the full text on hover only when elided,
+  and `ColumnLayout.paths` columns elide in the middle. A list of
+  names uses `elide_list_items`. `tests/shell/test_table_columns.py`
+  walks every harness screen at 960×640.
+  [HISTORY §176](docs/history/151-180.md#176)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.
