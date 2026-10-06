@@ -87,6 +87,7 @@ class InlineNotice(QWidget):
         # other themed button.
         self._dismiss_button = QPushButton("X")
         self._dismiss_button.setToolTip("Dismiss")
+        self._dismiss_button.setAccessibleName("Dismiss")
         self._dismiss_button.clicked.connect(self.dismiss)
         layout.addWidget(self._dismiss_button)
 

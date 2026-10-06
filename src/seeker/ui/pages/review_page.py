@@ -411,7 +411,7 @@ class ReviewPage(QWidget):
                 self.review_needs_table.setItem(row, 3, runner_up_item)
 
                 needs_review_actions = self._build_needs_review_actions(
-                    track.id,
+                    track.id, label,
                 )
                 action_widgets.append(needs_review_actions)
                 self.review_needs_table.setCellWidget(
@@ -431,7 +431,9 @@ class ReviewPage(QWidget):
             self.review_needs_table, _REVIEW_NEEDS_COLUMNS, action_widgets,
         )
 
-    def _build_needs_review_actions(self, track_id: str) -> QWidget:
+    def _build_needs_review_actions(
+            self, track_id: str, row_label: str,
+    ) -> QWidget:
         confirm_button = QPushButton("Confirm")
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_REVIEW_CANDIDATE)
         reject_button = QPushButton("Reject")
@@ -444,7 +446,9 @@ class ReviewPage(QWidget):
             lambda: self._on_reject_review_candidate(track_id, reject_button)
         )
 
-        return theme.cell_widget(confirm_button, reject_button)
+        return theme.cell_widget(
+            confirm_button, reject_button, row_label=row_label,
+        )
 
     def _on_confirm_review_candidate(
             self,
@@ -528,7 +532,7 @@ class ReviewPage(QWidget):
                 self.review_upgrades_table.setItem(
                     row, 2, QTableWidgetItem(details.quality_descriptor or "—"),
                 )
-                upgrade_actions = self._build_upgrade_actions(details)
+                upgrade_actions = self._build_upgrade_actions(details, label)
                 action_widgets.append(upgrade_actions)
                 self.review_upgrades_table.setCellWidget(
                     row, 3, upgrade_actions,
@@ -557,7 +561,9 @@ class ReviewPage(QWidget):
         else:
             self._upgrade_delete_checked.discard(request_id)
 
-    def _build_upgrade_actions(self, details: UpgradeReviewDetails) -> QWidget:
+    def _build_upgrade_actions(
+            self, details: UpgradeReviewDetails, row_label: str,
+    ) -> QWidget:
         replace_button = QPushButton("Replace")
         replace_button.setToolTip(help_text.TOOLTIP_REPLACE_UPGRADE)
         decline_button = QPushButton("Decline")
@@ -610,7 +616,7 @@ class ReviewPage(QWidget):
         decline_button.clicked.connect(on_decline)
 
         widgets.extend((replace_button, decline_button))
-        return theme.cell_widget(*widgets)
+        return theme.cell_widget(*widgets, row_label=row_label)
 
     def _on_apply_upgrade_decision(
             self,
@@ -713,7 +719,7 @@ class ReviewPage(QWidget):
                     row, 3, SortKeyItem(f"{match.score:.1f}", match.score),
                 )
                 local_review_actions = self._build_local_review_actions(
-                    match.track_id,
+                    match.track_id, label,
                 )
                 action_widgets.append(local_review_actions)
                 self.review_local_table.setCellWidget(
@@ -733,7 +739,9 @@ class ReviewPage(QWidget):
             self.review_local_table, _REVIEW_LOCAL_COLUMNS, action_widgets,
         )
 
-    def _build_local_review_actions(self, track_id: str) -> QWidget:
+    def _build_local_review_actions(
+            self, track_id: str, row_label: str,
+    ) -> QWidget:
         confirm_button = QPushButton("Confirm")
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_LOCAL_MATCH)
         reject_button = QPushButton("Reject")
@@ -746,7 +754,9 @@ class ReviewPage(QWidget):
             lambda: self._on_reject_local_match(track_id, reject_button)
         )
 
-        return theme.cell_widget(confirm_button, reject_button)
+        return theme.cell_widget(
+            confirm_button, reject_button, row_label=row_label,
+        )
 
     def _on_confirm_local_match(
             self,

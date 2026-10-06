@@ -172,6 +172,11 @@ class MainWindow(QMainWindow):
         # After _build_ui(), so a scheme change mid-construction can't
         # reach a half-built UI.
         self._sync_system_scheme_subscription()
+        # Keyboard focus starts where the Dashboard's work starts.
+        # Left to Qt, it lands on the first focusable widget in the
+        # chain, the sidebar's theme toggle, which then wears its
+        # focus ring from launch.
+        self._dashboard_page.playlist_list.setFocus()
 
         self._load_initial_page_state()
         self._start_poll_timers()

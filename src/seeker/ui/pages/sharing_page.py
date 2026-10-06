@@ -273,7 +273,9 @@ class SharingPage(QWidget):
                 # as a filled cell rather than a button. cell_widget()'s
                 # trailing stretch absorbs the leftover width instead
                 # (HISTORY §80).
-                button_widget = theme.cell_widget(button)
+                button_widget = theme.cell_widget(
+                    button, row_label=state.location.name,
+                )
                 action_widgets.append(button_widget)
                 table.setCellWidget(row, 4, button_widget)
 

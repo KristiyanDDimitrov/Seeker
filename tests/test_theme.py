@@ -1,5 +1,6 @@
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -9,6 +10,10 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QStyle,
+    QStyleOptionButton,
+    QStyleOptionTab,
+    QTabBar,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -16,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.ui import theme
+from seeker.ui.widgets import ThemeToggleButton
 
 
 def test_make_card_wraps_inner_in_a_card_frame(qtbot):
@@ -406,3 +412,116 @@ def test_the_combo_chevron_is_drawn_in_the_palettes_muted_text(palette):
     assert path.is_file()
     assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
     assert path.as_posix() in theme.build_stylesheet(palette)
+
+
+def test_cell_widget_names_each_button_for_its_row(qtbot):
+    confirm = QPushButton("Confirm")
+    reject = QPushButton("Reject")
+    label = QLabel("Tagged")
+    container = theme.cell_widget(
+        confirm, reject, label, row_label="Nova Reyes - Voltage Drop",
+    )
+    qtbot.addWidget(container)
+
+    assert confirm.accessibleName() == "Confirm Nova Reyes - Voltage Drop"
+    assert reject.accessibleName() == "Reject Nova Reyes - Voltage Drop"
+    assert label.accessibleName() == ""
+
+
+# --- Keyboard focus is visible (§27.4) --------------------------------------
+
+
+def _button(variant=None, checked=False, nav=False):
+    def build():
+        button = QPushButton("Sync")
+        if nav:
+            button.setProperty("navItem", True)
+        theme.set_variant(button, variant)
+        button.setCheckable(checked)
+        button.setChecked(checked)
+        return button
+    return build
+
+
+def _checkable(kind, checked=False):
+    def build():
+        control = kind("Keep")
+        control.setChecked(checked)
+        return control
+    return build
+
+
+def _tab_bar():
+    bar = QTabBar()
+    bar.addTab("Connection")
+    bar.addTab("Library")
+    return bar
+
+
+_FOCUSABLE = {
+    "button": _button(),
+    "primary": _button("primary"),
+    "danger": _button("danger"),
+    "segment-checked": _button("segment", checked=True),
+    "nav-item": _button(nav=True),
+    "nav-item-checked": _button(nav=True, checked=True),
+    "theme-toggle": lambda: ThemeToggleButton("system"),
+    "checkbox": _checkable(QCheckBox),
+    "checkbox-checked": _checkable(QCheckBox, checked=True),
+    "radio": _checkable(QRadioButton),
+    "radio-checked": _checkable(QRadioButton, checked=True),
+    "tab": _tab_bar,
+}
+
+
+def _render(widget, focused: bool, background: str) -> QImage:
+    # Painted through the style with State_HasFocus set on the option,
+    # which is what a `:focus` rule matches. Real keyboard focus needs
+    # an active window, which neither offscreen nor a busy desktop
+    # session grants reliably (see test_menus.py's focus test).
+    if isinstance(widget, QTabBar):
+        option = QStyleOptionTab()
+        widget.initStyleOption(option, 0)
+        element = QStyle.ControlElement.CE_TabBarTab
+    else:
+        option = QStyleOptionButton()
+        widget.initStyleOption(option)
+        element = {
+            QCheckBox: QStyle.ControlElement.CE_CheckBox,
+            QRadioButton: QStyle.ControlElement.CE_RadioButton,
+        }.get(type(widget), QStyle.ControlElement.CE_PushButton)
+    if focused:
+        option.state |= QStyle.StateFlag.State_HasFocus
+    else:
+        option.state &= ~QStyle.StateFlag.State_HasFocus
+    image = QImage(option.rect.size(), QImage.Format.Format_ARGB32)
+    image.fill(QColor(background))
+    painter = QPainter(image)
+    widget.style().drawControl(element, option, painter, widget)
+    painter.end()
+    return image
+
+
+@pytest.mark.parametrize("control", list(_FOCUSABLE), ids=list(_FOCUSABLE))
+def test_keyboard_focus_changes_the_control_by_the_ui_component_floor(
+        qtbot, applied_palette, control,
+):
+    # WCAG's focus-appearance test: some pixel of the focused control
+    # differs from the same pixel unfocused by at least 3:1.
+    widget = _FOCUSABLE[control]()
+    qtbot.addWidget(widget)
+    widget.ensurePolished()
+    if not isinstance(widget, ThemeToggleButton):
+        widget.resize(widget.sizeHint())
+    background = applied_palette.BG_APP
+    plain = _render(widget, False, background)
+    focused = _render(widget, True, background)
+
+    best = max(
+        theme.contrast_ratio(
+            plain.pixelColor(x, y).name(), focused.pixelColor(x, y).name(),
+        )
+        for x in range(plain.width())
+        for y in range(plain.height())
+    )
+    assert best >= 3.0

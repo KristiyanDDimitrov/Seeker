@@ -46,18 +46,22 @@ class ThemeToggleButton(QPushButton):
         # it staying childless.
         self.setObjectName("themeToggleButton")
         self._mode = mode
-        self._update_tooltip()
+        self._describe_mode()
 
     def set_mode(self, mode: str) -> None:
         self._mode = mode
-        self._update_tooltip()
+        self._describe_mode()
         self.update()
 
-    def _update_tooltip(self) -> None:
+    def _describe_mode(self) -> None:
         label = _THEME_MODE_LABELS.get(self._mode, self._mode)
         self.setToolTip(plain_tooltip(f"Theme: {label} (click to change)"))
+        self.setAccessibleName(f"Theme: {label}")
 
     def paintEvent(self, event: QPaintEvent) -> None:
+        # The stylesheet's box first: transparent, except for the
+        # `#themeToggleButton:focus` ring.
+        super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 

@@ -715,6 +715,9 @@ class DuplicatesPage(QWidget):
 
                 keep_radio = QRadioButton()
                 keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
+                keep_radio.setAccessibleName(
+                    f"Keep {local_file.relative_path}",
+                )
                 # Restore the user's own prior selection for this group
                 # when there is one; only fall back to the "best
                 # quality first" default when nothing was ever chosen
@@ -837,6 +840,9 @@ class DuplicatesPage(QWidget):
                 keep_all_radio,
                 confirm_checkbox,
                 delete_button,
+                row_label=(
+                    f"duplicates of {group.files[0].local_file.relative_path}"
+                ),
         )
 
     def _on_delete_duplicates_clicked(

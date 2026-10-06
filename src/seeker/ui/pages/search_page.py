@@ -242,7 +242,10 @@ class SearchPage(QWidget):
         download_button.clicked.connect(
             lambda: self._on_download_this_one_clicked(file, download_button)
         )
-        return theme.cell_widget(download_button)
+        return theme.cell_widget(
+            download_button,
+            row_label=f"{file.filename} from {file.username}",
+        )
 
     def _on_download_best_clicked(self) -> None:
         # The headline action, so it gets the shared busy_actions/

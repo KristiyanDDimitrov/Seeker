@@ -372,7 +372,7 @@ def action_row(*widgets: QWidget) -> QHBoxLayout:
     return row
 
 
-def cell_widget(*widgets: QWidget) -> QWidget:
+def cell_widget(*widgets: QWidget, row_label: str | None = None) -> QWidget:
     """The one place a `setCellWidget` container is built — no call
     site hand-rolls a `QWidget()` + `QHBoxLayout` of its own. Real,
     visible margins/spacing instead of zero (so buttons neither jam
@@ -380,6 +380,11 @@ def cell_widget(*widgets: QWidget) -> QWidget:
     so leftover cell width goes to blank space, not to stretching the
     last widget to fill the whole cell — a button reads as a button,
     not a filled cell. See HISTORY §80.
+
+    `row_label` names each button for its row ("Confirm Nova Reyes -
+    Voltage Drop"): a screen reader announces a cell's button on its
+    own, without the row around it. Every row with a button passes
+    one.
     """
     container = QWidget()
     # Transparent via `#cellWidgetContainer` in build_stylesheet, never
@@ -402,6 +407,8 @@ def cell_widget(*widgets: QWidget) -> QWidget:
         # without ever entering a cell widget. See HISTORY §126.
         if isinstance(widget, QAbstractButton):
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            if row_label is not None:
+                widget.setAccessibleName(f"{widget.text()} {row_label}")
         layout.addWidget(widget)
     layout.addStretch()
     return container
@@ -933,6 +940,28 @@ QPushButton[navItem="true"]:checked {{
     font-weight: 600;
 }}
 
+/* Keyboard focus: a 2px ring, with the padding giving back the extra
+pixel so the label never moves. ACCENT on the plain surfaces; TEXT on
+an ACCENT fill, where an ACCENT ring would vanish into the button.
+After the variant rules, which set border colours at equal
+specificity. */
+QPushButton:focus {{
+    border: 2px solid {palette.ACCENT};
+    padding: 5px 13px;
+}}
+
+QPushButton[variant="primary"]:focus,
+QPushButton[variant="segment"]:checked:focus {{
+    border: 2px solid {palette.TEXT};
+    padding: 5px 13px;
+}}
+
+QPushButton[navItem="true"]:focus {{
+    border: 2px solid {palette.ACCENT};
+    border-left: 3px solid {palette.ACCENT};
+    padding: 6px {SPACING_MD - 2}px 6px {SPACING_MD}px;
+}}
+
 """
 
 
@@ -1037,6 +1066,11 @@ per-widget stylesheet exists anywhere in ui/. */
 #themeToggleButton {{
     border: none;
     background: transparent;
+}}
+
+#themeToggleButton:focus {{
+    border: 2px solid {palette.ACCENT};
+    border-radius: {RADIUS_CONTROL}px;
 }}
 
 """
@@ -1179,6 +1213,18 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     border-color: {palette.ACCENT};
 }}
 
+/* Keyboard focus thickens the indicator's border to 2px inside the
+same 16px box; TEXT once checked, where the fill is already ACCENT. */
+QCheckBox::indicator:focus, QRadioButton::indicator:focus {{
+    width: 12px;
+    height: 12px;
+    border: 2px solid {palette.ACCENT};
+}}
+
+QCheckBox::indicator:checked:focus, QRadioButton::indicator:checked:focus {{
+    border-color: {palette.TEXT};
+}}
+
 """
 
 
@@ -1285,6 +1331,14 @@ QTabBar::tab {{
 QTabBar::tab:selected {{
     color: {palette.TEXT};
     border-bottom: 2px solid {palette.ACCENT};
+}}
+
+/* Only the current tab takes focus. The ring keeps the selected
+tab's 8px below the label (2px border + 6px padding). */
+QTabBar::tab:focus {{
+    border: 2px solid {palette.ACCENT};
+    border-radius: {RADIUS_CONTROL}px;
+    padding: 4px 12px 6px 12px;
 }}
 """
 

@@ -367,7 +367,9 @@ class SettingsPage(QWidget):
                 )
             )
 
-            actions = theme.cell_widget(rename_button, remove_button)
+            actions = theme.cell_widget(
+                rename_button, remove_button, row_label=location.name,
+            )
             action_widgets.append(actions)
             self.locations_table.setCellWidget(row, 3, actions)
 

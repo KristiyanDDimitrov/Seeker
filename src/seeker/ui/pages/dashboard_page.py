@@ -587,7 +587,10 @@ class DashboardPage(QWidget):
                     track_id, tag_button, self.feedback,
                 )
             )
-            return theme.cell_widget(tag_button)
+            return theme.cell_widget(
+                tag_button,
+                row_label=f"{status.track.artist} - {status.track.title}",
+            )
 
         tagged_label = PlainLabel("Tagged")
         tagged_label.setProperty("badge", "muted")
