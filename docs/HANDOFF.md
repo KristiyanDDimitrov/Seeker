@@ -15,7 +15,8 @@ nine fields below follow the contract in
 - **Local** (at `e003f92`, X9 Pro not mounted): pytest `1654 passed,
   29 skipped`; `mypy --strict src/` clean, 127 files; `ruff check src
   tests` 0.
-- **CI:** pending (the push follows this commit).
+- **CI:** run `37484932869` (at `e60a71d`): **success**, `1654
+  passed, 29 skipped`, coverage 94.09 % (floor 92 %).
 
 ## 2. Where we are
 
