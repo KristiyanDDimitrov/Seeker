@@ -1,3 +1,5 @@
+import re
+
 from seeker.models.download_result import PlaylistDownloadResult, TrackFailure
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.ui import help_text
@@ -56,3 +58,33 @@ def test_download_result_message_caps_the_failure_list():
     assert "Artist - Title 4" in message
     assert "Artist - Title 5" not in message
     assert "and 2 more" in message
+
+
+def _module_strings(value: object):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _module_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _module_strings(item)
+
+
+def test_no_help_text_constant_carries_development_history():
+    # Tooltips, labels and help pages are user-facing copy; a roadmap
+    # or round number means nothing to the person reading it.
+    history = re.compile(
+        r"[Rr]oadmap item|[Rr]ound [0-9]|item [0-9]|§[0-9]|HISTORY"
+    )
+
+    leaks = [
+        f"{name}: {match.group(0)}"
+        for name, value in vars(help_text).items()
+        if name.isupper()
+        for text in _module_strings(value)
+        for match in [history.search(text)]
+        if match
+    ]
+
+    assert leaks == []
