@@ -254,10 +254,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--all",
         action="store_true",
         help=(
-            "Roadmap item R3.1/R3.4 — replace every pending upgrade at "
-            "once instead of prompting per row (CLI parity for the "
-            "UI's \"Replace all\"). Prompts once for whether to also "
-            "delete the old files, then applies to the whole batch."
+            "Replace every pending upgrade at once instead of "
+            "prompting per row (CLI parity for the UI's \"Replace "
+            "all\"). Prompts once for whether to also delete the old "
+            "files, then applies to the whole batch."
         ),
     )
 
@@ -324,9 +324,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Also run a match pass immediately after scanning, in one "
-            "call (roadmap item 56) — 'scan' alone stays available for "
-            "scripted/cron use where a separate 'library match' call is "
-            "preferred."
+            "call — 'scan' alone stays available for scripted/cron use "
+            "where a separate 'library match' call is preferred."
         ),
     )
 

@@ -1,3 +1,5 @@
+import argparse
+import re
 from pathlib import Path
 
 import pytest
@@ -2048,3 +2050,26 @@ def test_no_command_prints_help_and_exits_cleanly(capsys):
 
     assert exit_info.value.code == 0
     assert "usage:" in capsys.readouterr().out
+
+
+def _every_parser(parser: argparse.ArgumentParser):
+    yield parser
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for subparser in action.choices.values():
+                yield from _every_parser(subparser)
+
+
+def test_no_help_text_carries_development_history():
+    # --help is user-facing copy; a roadmap or round number means
+    # nothing to the person reading it.
+    history = re.compile(r"[Rr]oadmap item|[Rr]ound [0-9]|item [0-9]|§[0-9]")
+
+    leaks = [
+        f"{parser.prog}: {match.group(0)}"
+        for parser in _every_parser(cli.build_parser())
+        for match in [history.search(parser.format_help())]
+        if match
+    ]
+
+    assert leaks == []
