@@ -1,0 +1,6 @@
+Lucide icons (https://lucide.dev), copied unchanged from the npm
+package lucide-static 1.52.0 (tarball integrity
+sha512-0zZYihAze4ZmUCcyNa9OkWYqn/Y5f9AdTh02AZIxMtP5ravcTTfoSIAnUPBH6ZvKxt+ZW28JB0ldzLRyD82fcw==).
+LICENSE is that package's own licence file. Seeker recolours each
+icon's `currentColor` at draw time (src/seeker/ui/icons.py); the files
+themselves are never edited, so a newer release replaces them as-is.

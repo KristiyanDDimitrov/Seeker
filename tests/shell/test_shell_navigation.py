@@ -3,6 +3,7 @@ the activity strip, page subtitles, and the Settings page's
 entry and exit.
 """
 
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
@@ -16,7 +17,8 @@ from fakes import (
     make_track,
     make_upgrade_details,
 )
-from seeker.ui import help_text
+from seeker.ui import help_text, theme
+from seeker.ui.icons import nav_icon
 from seeker.ui.main_window import (
     MainWindow,
 )
@@ -91,6 +93,22 @@ def test_nav_buttons_are_mutually_exclusive_including_settings(qtbot):
     for key in window._nav_buttons:
         assert window._nav_buttons[key] in window._nav_group.buttons()
     assert window.settings_button.isCheckable()
+
+
+def test_every_sidebar_button_carries_its_pages_icon(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+
+    for key, button in window._nav_buttons.items():
+        assert not button.icon().isNull(), key
+        assert button.iconSize() == QSize(
+            theme.NAV_ICON_PX, theme.NAV_ICON_PX,
+        ), key
+        # The same drawing nav_icon(key) makes: compared as pixels,
+        # since each QIcon is a separate engine instance.
+        assert button.icon().pixmap(QSize(18, 18)).toImage() == (
+            nav_icon(key).pixmap(QSize(18, 18)).toImage()
+        ), key
 
 
 def test_downloads_and_review_nav_badges_show_live_counts(qtbot):

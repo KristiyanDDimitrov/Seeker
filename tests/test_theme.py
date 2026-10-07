@@ -376,6 +376,20 @@ def test_muted_text_meets_the_aa_floor(palette):
         [theme.DARK, theme.LIGHT],
         ids=["dark", "light"],
 )
+def test_sidebar_text_and_icons_meet_their_floors(palette):
+    # A nav label is text (4.5); its icon is a graphic (WCAG 1.4.11's
+    # 3:1): muted on the sidebar, ACCENT on the checked item's fill.
+    assert theme.contrast_ratio(palette.TEXT_MUTED, palette.BG_SIDEBAR) >= 4.5
+    assert theme.contrast_ratio(palette.TEXT, palette.ACCENT_SUBTLE) >= 4.5
+    assert theme.contrast_ratio(palette.ACCENT, palette.ACCENT_SUBTLE) >= 3.0
+    assert theme.contrast_ratio(palette.ACCENT, palette.BG_SIDEBAR) >= 3.0
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 @pytest.mark.parametrize("status", ["SUCCESS", "WARNING", "DANGER"])
 def test_status_colours_read_as_text_and_as_marks(palette, status):
     # On a table or card a status colour can be a label (4.5). On the

@@ -6,6 +6,7 @@ from typing import Any
 from PySide6.QtCore import (
     QEvent,
     QObject,
+    QSize,
     Qt,
     QThreadPool,
     QTimer,
@@ -38,6 +39,7 @@ from seeker.ui.busy_actions import BusyActionRegistry
 from seeker.ui.dialogs import (
     AboutDialog,
 )
+from seeker.ui.icons import nav_icon
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.dashboard_page import (
     DashboardHost,
@@ -130,7 +132,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
 _THEME_MODE_CYCLE = ("system", "light", "dark")
 
 
-def _build_nav_button(label: str) -> QPushButton:
+def _build_nav_button(key: str, label: str) -> QPushButton:
     # A checkable, flat QPushButton rather than a bespoke widget —
     # QPushButton is already painted through Qt's style system (unlike
     # a plain QWidget, which needs WA_StyledBackground — see notice.py/
@@ -139,7 +141,8 @@ def _build_nav_button(label: str) -> QPushButton:
     # extra plumbing. Text-only badge counts (via _update_nav_badge)
     # rather than a separate sibling widget, to keep one exclusive
     # QButtonGroup member per nav item instead of a composite row.
-    button = QPushButton(label)
+    button = QPushButton(nav_icon(key), label)
+    button.setIconSize(QSize(theme.NAV_ICON_PX, theme.NAV_ICON_PX))
     button.setCheckable(True)
     button.setFlat(True)
     button.setProperty("navItem", True)
@@ -695,7 +698,7 @@ class MainWindow(QMainWindow):
         self._nav_buttons: dict[str, QPushButton] = {}
 
         for key, label in _NAV_PAGES:
-            button = _build_nav_button(label)
+            button = _build_nav_button(key, label)
             self._nav_group.addButton(button)
             self._nav_buttons[key] = button
             button.clicked.connect(
@@ -705,7 +708,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        help_button = _build_nav_button("Help")
+        help_button = _build_nav_button("help", "Help")
         self._nav_group.addButton(help_button)
         self._nav_buttons["help"] = help_button
         help_button.clicked.connect(lambda: self._show_page("help"))
@@ -713,7 +716,7 @@ class MainWindow(QMainWindow):
 
         # Directly below Help, same individually-built pattern (a simple
         # _show_page(key) lambda, no initial-tab-aware handler needed).
-        support_button = _build_nav_button("Support")
+        support_button = _build_nav_button("support", "Support")
         self._nav_group.addButton(support_button)
         self._nav_buttons["support"] = support_button
         support_button.clicked.connect(lambda: self._show_page("support"))
@@ -725,7 +728,7 @@ class MainWindow(QMainWindow):
         # (like Help) rather than via the generic _NAV_PAGES loop, since
         # it needs the initial_tab-aware handler below, not the loop's
         # plain `_show_page(key)`.
-        self.settings_button = _build_nav_button("Settings")
+        self.settings_button = _build_nav_button("settings", "Settings")
         self._nav_group.addButton(self.settings_button)
         self._nav_buttons["settings"] = self.settings_button
         self.settings_button.setToolTip(help_text.TOOLTIP_OPEN_SETTINGS)

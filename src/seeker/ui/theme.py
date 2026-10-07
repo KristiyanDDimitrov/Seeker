@@ -241,6 +241,10 @@ TYPE_SECTION_PX = 16
 WEIGHT_MEDIUM = 500
 WEIGHT_SEMIBOLD = 600
 
+# A sidebar item's icon, on Lucide's 24-unit grid scaled to sit beside
+# body text.
+NAV_ICON_PX = 18
+
 # A splitter handle's grab area. Odd, so its 1px line has a centre
 # pixel (see the QSplitter rules in _misc_qss).
 SPLITTER_GRAB_WIDTH = 7
