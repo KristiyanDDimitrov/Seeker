@@ -10,80 +10,76 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the Duplicates CI fix, after the S28 part-1 close-out
-  `c8cbb80`. Tree clean apart from the untracked `Claude outputs/`.
-- **Local:** pytest `1761 passed, 29 skipped` (offscreen too);
-  `mypy --strict src/` clean, 132 files; `ruff check src tests tools`
-  0.
-- **CI:** `c8cbb80`'s run `37517187829` failed (Duplicates' Path 145
-  px under offscreen fonts); the fix `9c4b88f`'s run `37518629644`
-  green.
+- **HEAD:** the S28 part-2 close-out, after `c7b3122` (§28.4). Tree
+  clean apart from the untracked `Claude outputs/`.
+- **Local (Cocoa):** pytest `2 failed, 1807 passed, 1 skipped`. Both
+  failures are `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`,
+  which also fails on `bda43a1` (see §4). Offscreen: `1809 passed, 1 skipped`.
+  `mypy --strict src/` clean, 133 files; `ruff check src tests tools` 0.
+- **CI:** pending for the close-out push (see the next commit).
 
 ## 2. Where we are
 
-S1–S27 ticked; S28 part 1 (§28.1–§28.2) done, stopped at the row's
-split point on budget. **Next: S28 part 2** (BRIEF §28.3 empty states,
-§28.4 copy pass), then tick S28.
+S1–S28 ticked. **Next: S29** (BRIEF §29, Review and Settings
+information architecture; split point after §29.1).
 
-## 3. Session report (S28 part 1)
+## 3. Session report (S28 part 2)
 
-Evidence in HISTORY §176.
-- `2efcf6a` §28.1: `ColumnLayout` policy (`theme.fit_widths`, viewport
-  refit filter, left headers); Downloads/History/uploads on
-  `ColumnLayout`; Duplicates' Format+Bitrate → Quality. Sweep on HEAD:
-  Dashboard Track 40 px + sideways scroll, Search Filename 94, etc.
-- `17226bd` §28.2: `ui/elided_text.py` (one-line cells, tooltip only
-  when elided, `ColumnLayout.paths` elide in the middle);
-  `elide_list_items` on the three playlist lists. HEAD: list item
-  486 px in a 235 px viewport.
+Evidence in HISTORY §177.
+- `b6442c8` §28.3: `ui/empty_state.py` `EmptyState` on Search, both
+  Sharing tables (the span-row fake is gone), History, the three Review
+  sections and Downloads.
+- `c7b3122` §28.4: copy pass; Downloads' Role column becomes an Upgrade
+  `BADGE_ROLE` pill; `widgets.CloseButton` replaces the notice's "X";
+  build time shown in local time.
 
 ## 4. Key context
 
-- **Harness for every UI row:** `uv run python tools/screenshots.py
-  --page review --theme light` (seconds). Tests walk it through the
-  `screenshots` fixture (`test_table_columns.py`, `test_button_sizing.py`).
-- **For §28.3:** Sharing's uploads table fakes an empty state with a
-  4-column `setSpan` row (`help_text.NO_UPLOADS_LABEL`, plus a
-  `clearSpans()` guard against HISTORY §73). The shared component
-  should replace it, not sit beside it. The Dashboard already has
-  `track_empty_label`, worth reading as the existing pattern. History's
-  "No downloaded or tagged tracks yet." sits on its `status_label`,
-  which the feedback-channel rule says is ephemeral.
-- **For §28.4:** dropping Downloads' Role column means editing
-  `_DOWNLOADS_COLUMNS` (`fit_content=(1, 2, 3, 4)`) and the column
-  indices in `_render_active_downloads`. The Track column should carry
-  the "Upgrade" badge. The notice's "X" has `accessibleName("Dismiss")`,
-  so keep a name on any replacement (the keyboard-access sweep fails
-  otherwise). Search's "Download this one" is the widest per-row
-  button; Sharing's header "Container Path" is jargon.
-- **Testing a tooltip:** send a `QHelpEvent(ToolTip)` to the viewport
-  and read `QToolTip.text()`. `plain_tooltip` wraps the text in `<p>`,
-  so assert containment (`test_elided_text.py`'s `_tooltip_at`).
-- **Duplicates' group Actions cell is two lines** (CI fix: offscreen
-  fonts left Path 145 < 160). A group's first row now stands taller
-  than the rest, and Quality still elides at 960. Both are for S35a.
-- **For S31:** a palette change must update the chevron SVGs; white on
-  dark's ACCENT is 4.35:1 (palette test floor 4.3).
+- **Empty tables:** `EmptyState(table, EmptyGlyph.X, text, action=)`
+  shows itself from the row count. It also sets the table's
+  **minimum height** (chrome + sentence + action). A new page with a
+  short table should check its layout in the harness at 960×640.
+- **Badges:** `item.setData(elided_text.BADGE_ROLE, "Upgrade")` paints
+  a pill before the text. The colours come from the item's palette
+  (Highlight/AlternateBase/Text) because `theme.py` imports
+  `elided_text`, so importing `theme` back is a cycle (reproduced).
+- **The local theme-test failure** (see §1): on this machine's LG 4K
+  at DPR 2.0 the row samples (253,253,254) against the cell widget's
+  (255,255,255). It fails the same on clean `bda43a1`, passes
+  offscreen, and moving the cursor away doesn't change it. Part 1 saw
+  no failures, with the X9 Pro tests skipping (29 skipped); they ran
+  here (1 skipped). Cause UNVERIFIED. Re-check on the next run before
+  calling it a regression.
+- **For S29:** Settings and Duplicates still report some results on
+  status labels (the open question carried below). Review now has
+  `review_needs_empty`/`review_upgrades_empty`/`review_local_empty`;
+  keep them if sections move. Sharing's framing text is clipped at
+  960×640, a little more now that its tables reserve height (S35b).
+- **Harness:** `uv run python tools/screenshots.py --page review
+  --theme light` (seconds). An empty-state screenshot needs an empty
+  `FakeApplication`; the harness's demo data fills every table.
 - Carried: `MainWindow` does not apply the theme, `main_ui.py` does;
   radon not in the env; never touch slskd or real data; zsh does not
   word-split `$var`; reproduce CI-only UI failures with
   `QT_QPA_PLATFORM=offscreen` first; a shared fake missing a method
-  stalls the suite (§171).
+  stalls the suite (§171); a palette change must update the chevron
+  SVGs (S31).
 
 ## 5. Decisions made
 
-- **Cells elide, never wrap.** It's consistent across themes, where
-  Review's Track had wrapped in one theme and elided in the other, and
-  it keeps rows dense. The full text is one hover away.
-- **Paths elide in the middle**, so the filename ending stays visible.
-- **A stretch column reserves up to 40 % for its content**, so a long
-  secondary column (a failure reason) never starves Track.
-- **Duplicates: Format + Bitrate → one Quality column**, in Review's
-  vocabulary, instead of dropping the Group or Location column.
-- **Dialogs' path lists keep their sideways scrollbar:** a delete
-  confirmation should show the whole path.
-- **Standing rule promoted to CLAUDE.md:** every table declares a
-  `ColumnLayout`; cells are one line (Qt section).
+- **The empty state lives inside the viewport, driven by the model**,
+  not a stacked widget swapped by each page: headers stay put and no
+  render can forget to switch it. The Dashboard's own track panel
+  (a stack with Load tracks) was left as it is for S34.
+- **Review's empty sections use a check glyph:** nothing to decide is
+  good news, so they offer no action.
+- **Downloads got an empty state too**, beyond the brief's list.
+- **"Scan library" / "Match tracks"**, named by verb so they no longer
+  read as synonyms, and matching their existing outcomes.
+- **The Upgrade badge marks only upgrades.** A plain download is what
+  every other row is, so it gets no badge.
+- **Standing rule promoted to CLAUDE.md:** empty tables use
+  `EmptyState`, row markers are `BADGE_ROLE` pills (Qt section).
 
 ## 6. Blockers
 
@@ -91,7 +87,7 @@ None.
 
 ## 7. Files in progress
 
-None committed half-done. §28.3–§28.4 not started.
+None.
 
 ## 8. Waiting on Kris
 
@@ -101,21 +97,21 @@ S42 publishing commands; X1 and X2 (optional).
 **Live checks (S41 checklist):** the nested-location Fix… with the X9
 Pro mounted (keep `Music`, compare §172's counts); the stress test;
 the packaged app's combo chevron; keyboard focus and VoiceOver on a
-real Mac; hover tooltips on elided cells (new); the carried list in
+real Mac; hover tooltips on elided cells; the carried list in
 `git show 5db1162:docs/HANDOFF.md`.
 
 ## 9. Open questions
 
 - Carried unchanged: the Spotify wait not cancelled on close; the
   late-worker button defect (§148); Settings and Duplicates results on
-  status labels (S28 part 2/S29); four CLI items (§156); the unrecorded
-  transfer id and leftover `.tmp` files (X1); why a shared fake's
-  missing method stalls the suite (§171, UNVERIFIED); a location whose
-  stored path differs in case from disk maps no files in a merge;
-  should item views get a themed focus indicator (§175).
-- New: the Dashboard's Status links ("Needs review (…") are cell-widget
-  labels, so they clip rather than elide with a tooltip. Fold them into
-  §28.4 or S34?
+  status labels (S29); four CLI items (§156); the unrecorded transfer
+  id and leftover `.tmp` files (X1); why a shared fake's missing
+  method stalls the suite (§171, UNVERIFIED); a location whose stored
+  path differs in case from disk maps no files in a merge; should item
+  views get a themed focus indicator (§175); the Dashboard's Status
+  links clip instead of eliding (S34).
+- New: why the cell-widget background test fails on this display
+  (§1, §4).
 
 ---
 

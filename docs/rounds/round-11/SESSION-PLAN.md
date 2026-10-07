@@ -66,7 +66,7 @@ explicit yes.
 | ☑ S26 | Guard nested locations; guided cleanup (part 1 §26.1–§26.2, HISTORY §171; part 2 §26.3–§26.4, HISTORY §172) | §26 | ~120 K | After §26.2 |
 | **Phase J — UI consistency** | | | | |
 | ☑ S27 | Screenshot harness; theme root causes; focus and accessibility (part 1 §27.0–§27.1, HISTORY §173; part 2 §27.2–§27.3, HISTORY §174; part 3 §27.4–§27.5, HISTORY §175) | §27 | ~120 K | After §27.1 |
-| ☐ S28 | Tables, empty states, copy (part 1 §28.1–§28.2, HISTORY §176; part 2 §28.3–§28.4 next) | §28 | ~120 K | After §28.2 |
+| ☑ S28 | Tables, empty states, copy (part 1 §28.1–§28.2, HISTORY §176; part 2 §28.3–§28.4, HISTORY §177) | §28 | ~120 K | After §28.2 |
 | ☐ S29 | Review and Settings information architecture | §29 | ~120 K | After §29.1 |
 | **Phase K — Visual refresh** | | | | |
 | ☐ S30 | **[ASK]** Visual direction: two grounded options; Kris picks | §30 | ~110 K | Hard stop at §30.3 |

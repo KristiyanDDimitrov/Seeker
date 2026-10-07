@@ -96,7 +96,8 @@ src/seeker/
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       widgets.py (ThemeToggleButton, TwoToneProgressBar),
-│       elided_text.py (one-line cells, full text on hover),
+│       elided_text.py (one-line cells, full text on hover,
+│       BADGE_ROLE pills), empty_state.py (a table's empty state),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -588,6 +589,13 @@ Each links to the HISTORY entry where the full investigation lives;
   names uses `elide_list_items`. `tests/shell/test_table_columns.py`
   walks every harness screen at 960×640.
   [HISTORY §176](docs/history/151-180.md#176)
+- **An empty table shows `ui/empty_state.EmptyState`** (a glyph, one
+  sentence, an optional action) inside its viewport, shown by the row
+  count itself; never a spanned placeholder row or a status-label
+  message. A page only changes its sentence (`set_text`) as the reason
+  changes. A short marker on a row ("Upgrade") is a `BADGE_ROLE`
+  pill on the primary cell, not a column of its own.
+  [HISTORY §177](docs/history/151-180.md#177)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.
