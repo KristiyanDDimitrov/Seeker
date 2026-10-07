@@ -239,7 +239,7 @@ def test_compute_fingerprints_in_folder_mode_calls_service_per_location(
     ) == [("A", ["Trance"]), ("B", [""])]
     qtbot.waitUntil(
         lambda: "Fingerprinted: 2" in (
-            window._duplicates_page.duplicates_status_label.text()
+            window._duplicates_page.notice.text()
         ),
         timeout=2000,
     )
@@ -389,7 +389,7 @@ def test_compute_fingerprints_without_selection_shows_message(qtbot):
     window._duplicates_page._on_compute_fingerprints_clicked()
 
     assert "Select a library location" in (
-        window._duplicates_page.duplicates_status_label.text()
+        window._duplicates_page.notice.text()
     )
     assert application.duplicate_service.compute_fingerprints_calls == []
 
@@ -416,7 +416,7 @@ def test_compute_fingerprints_calls_service_with_selected_location(qtbot):
     )
     qtbot.waitUntil(
         lambda: "Fingerprinted: 3" in (
-            window._duplicates_page.duplicates_status_label.text()
+            window._duplicates_page.notice.text()
         ),
         timeout=2000,
     )
@@ -444,10 +444,10 @@ def test_compute_fingerprints_result_shows_failure_reason_breakdown(qtbot):
     window._duplicates_page._on_compute_fingerprints_clicked()
 
     qtbot.waitUntil(
-        lambda: "Failed: 3" in window._duplicates_page.duplicates_status_label.text(),
+        lambda: "Failed: 3" in window._duplicates_page.notice.text(),
         timeout=2000,
     )
-    status_text = window._duplicates_page.duplicates_status_label.text()
+    status_text = window._duplicates_page.notice.text()
     assert "2 couldn't be decoded" in status_text
     assert "1 0-byte file" in status_text
 
@@ -460,7 +460,7 @@ def test_find_duplicates_without_selection_shows_message(qtbot):
     window._duplicates_page._on_find_duplicates_clicked()
 
     assert "Select a library location" in (
-        window._duplicates_page.duplicates_status_label.text()
+        window._duplicates_page.notice.text()
     )
     assert application.duplicate_service.find_duplicate_groups_calls == []
 
@@ -477,7 +477,7 @@ def test_find_duplicates_renders_no_duplicates_message(qtbot):
 
     qtbot.waitUntil(
         lambda: "No duplicates found" in (
-            window._duplicates_page.duplicates_status_label.text()
+            window._duplicates_page.notice.text()
         ),
         timeout=2000,
     )
@@ -1110,7 +1110,7 @@ def test_delete_duplicates_without_confirm_checkbox_does_not_delete(qtbot):
     delete_button.click()
 
     assert application.duplicate_service.delete_local_files_calls == []
-    assert "Confirm delete" in window._duplicates_page.duplicates_status_label.text()
+    assert "Confirm delete" in window._duplicates_page.notice.text()
 
 
 def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
@@ -1222,7 +1222,7 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
 
     qtbot.waitUntil(
         lambda: "Deleted: 1, Failed: 0" in (
-            window._duplicates_page.duplicates_status_label.text()
+            window._duplicates_page.notice.text()
         ),
         timeout=2000,
     )
@@ -1260,7 +1260,7 @@ def test_delete_duplicates_partial_failure_keeps_group_visible(
 
     qtbot.waitUntil(
         lambda: "Deleted: 0, Failed: 1" in (
-            window._duplicates_page.duplicates_status_label.text()
+            window._duplicates_page.notice.text()
         ),
         timeout=2000,
     )
@@ -1404,3 +1404,61 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(
     assert sorted(delete_ids) == [201, 202, 203]
 
 
+def _main_location():
+    return [(LibraryLocation(id=1, name="Main", path="/music", added_at=""), True)]
+
+
+def test_found_groups_are_reported_on_the_notice_not_the_progress_line(qtbot):
+    application = FakeApplication(duplicate_groups=[make_duplicate_group()])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicates_locations(_main_location())
+
+    page._on_find_duplicates_clicked()
+
+    qtbot.waitUntil(
+        lambda: page.notice.text() == "Found 1 duplicate group.", timeout=2000,
+    )
+    assert page.duplicates_status_label.text() == ""
+
+
+def test_a_failed_search_for_duplicates_reports_on_the_notice(qtbot):
+    application = FakeApplication()
+    application.duplicate_service._find_error = RuntimeError(
+        "The fingerprint data could not be read."
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicates_locations(_main_location())
+
+    page._on_find_duplicates_clicked()
+
+    qtbot.waitUntil(
+        lambda: "could not be read" in page.notice.text(), timeout=2000,
+    )
+    assert page.duplicates_status_label.text() == ""
+
+
+def test_a_resolved_group_says_how_many_are_left(qtbot, monkeypatch):
+    confirm_yes(monkeypatch)
+    application = FakeApplication(duplicate_groups=[make_duplicate_group()])
+    application.duplicate_service._delete_result = {
+        "deleted": 1, "failed": 0, "details": [],
+    }
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups([make_duplicate_group()])
+
+    actions = page.duplicates_table.cellWidget(
+        0, _duplicates_column(window, "Actions"),
+    )
+    actions.findChildren(QCheckBox)[0].setChecked(True)
+    actions.findChildren(QPushButton)[0].click()
+
+    qtbot.waitUntil(
+        lambda: page.notice.text() == "Deleted: 1, Failed: 0. No groups left.",
+        timeout=2000,
+    )

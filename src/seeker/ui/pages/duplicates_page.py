@@ -32,6 +32,7 @@ from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.workers import run_worker
@@ -99,6 +100,9 @@ class DuplicatesPage(QWidget):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        self.notice = InlineNotice()
+        layout.addWidget(self.notice)
 
         # Persistent, cumulative, and celebratory. Hidden entirely at
         # zero — "an empty milestone is worse than no milestone,"
@@ -204,6 +208,9 @@ class DuplicatesPage(QWidget):
 
         duplicates_status_row = QHBoxLayout()
         self.duplicates_status_label = PlainLabel("")
+        self.feedback = FeedbackTarget(
+            self.duplicates_status_label, self.notice,
+        )
         duplicates_status_row.addWidget(self.duplicates_status_label)
         duplicates_status_row.addStretch()
         # "Resolve all groups" (HISTORY §88). Real count set in
@@ -435,18 +442,19 @@ class DuplicatesPage(QWidget):
                 ),
                 status_label=self.duplicates_status_label,
                 on_finished=self._render_fingerprint_result,
+                on_error=self.feedback.show_error,
                 reports_progress=True,
             )
-            self.duplicates_status_label.setText(
-                f"Computing fingerprints for {len(folders)} folder(s)..."
+            self.feedback.show_progress(
+                f"Computing fingerprints for {len(folders)} folder(s)…"
             )
             return
 
         location_name = self._selected_duplicates_location()
 
         if location_name is None:
-            self.duplicates_status_label.setText(
-                "Select a library location first."
+            self.feedback.show_outcome(
+                "Select a library location first.", kind="warning",
             )
             return
 
@@ -459,10 +467,11 @@ class DuplicatesPage(QWidget):
             ),
             status_label=self.duplicates_status_label,
             on_finished=self._render_fingerprint_result,
+            on_error=self.feedback.show_error,
             reports_progress=True,
         )
-        self.duplicates_status_label.setText(
-            f"Computing fingerprints for '{location_name}'..."
+        self.feedback.show_progress(
+            f"Computing fingerprints for '{location_name}'…"
         )
 
     def _compute_fingerprints_for_folders(
@@ -514,8 +523,9 @@ class DuplicatesPage(QWidget):
         return combined
 
     def _render_fingerprint_result(self, result: FingerprintResult) -> None:
-        self.duplicates_status_label.setText(
-            help_text.format_fingerprint_result_message(result)
+        self.feedback.show_outcome(
+            help_text.format_fingerprint_result_message(result),
+            kind="warning" if result.failed else "success",
         )
 
     def _on_find_duplicates_clicked(self) -> None:
@@ -538,19 +548,20 @@ class DuplicatesPage(QWidget):
                     )
                 ),
                 status_label=self.duplicates_status_label,
-                on_finished=self._render_duplicate_groups,
+                on_finished=self._on_duplicate_groups_found,
+                on_error=self.feedback.show_error,
                 reports_progress=True,
             )
-            self.duplicates_status_label.setText(
-                f"Searching for duplicates in {len(folders)} folder(s)..."
+            self.feedback.show_progress(
+                f"Searching for duplicates in {len(folders)} folder(s)…"
             )
             return
 
         location_name = self._selected_duplicates_location()
 
         if location_name is None:
-            self.duplicates_status_label.setText(
-                "Select a library location first."
+            self.feedback.show_outcome(
+                "Select a library location first.", kind="warning",
             )
             return
 
@@ -562,11 +573,12 @@ class DuplicatesPage(QWidget):
                 )
             ),
             status_label=self.duplicates_status_label,
-            on_finished=self._render_duplicate_groups,
+            on_finished=self._on_duplicate_groups_found,
+            on_error=self.feedback.show_error,
             reports_progress=True,
         )
-        self.duplicates_status_label.setText(
-            f"Searching for duplicates in '{location_name}'..."
+        self.feedback.show_progress(
+            f"Searching for duplicates in '{location_name}'…"
         )
 
     def _on_duplicates_keep_toggled(
@@ -574,6 +586,13 @@ class DuplicatesPage(QWidget):
     ) -> None:
         if checked:
             self._duplicates_keep_selection[group_key] = button_id
+
+    def _on_duplicate_groups_found(self, groups: list[DuplicateGroup]) -> None:
+        self._render_duplicate_groups(groups)
+        self.feedback.show_outcome(
+            help_text.format_duplicate_groups_found(len(groups)),
+            kind="success" if groups else "info",
+        )
 
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
         self._duplicate_button_groups = []
@@ -613,15 +632,7 @@ class DuplicatesPage(QWidget):
 
         if not groups:
             self.duplicates_table.setRowCount(0)
-            self.duplicates_status_label.setText(
-                "No duplicates found. Run Compute fingerprints first if "
-                "you haven't yet."
-            )
             return
-
-        self.duplicates_status_label.setText(
-            f"Found {len(groups)} duplicate group(s)."
-        )
 
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
@@ -861,9 +872,10 @@ class DuplicatesPage(QWidget):
             # the second, explicit one, mirroring the Review tab's own
             # Replace + "Delete old file" checkbox pair. Neither one
             # alone deletes anything.
-            self.duplicates_status_label.setText(
+            self.feedback.show_outcome(
                 "Check \"Confirm delete\" before deleting duplicate "
-                "files."
+                "files.",
+                kind="warning",
             )
             return
 
@@ -939,6 +951,7 @@ class DuplicatesPage(QWidget):
             on_finished=lambda result: self._on_delete_duplicates_finished(
                 result, group,
             ),
+            on_error=self.feedback.show_error,
         )
 
     def _on_delete_duplicates_finished(
@@ -966,18 +979,17 @@ class DuplicatesPage(QWidget):
             # DuplicateService.delete_local_files' own per-item
             # semantics) — leave it visible rather than assuming it's
             # gone, so the user can see it's still there and retry.
-            self.duplicates_status_label.setText(message)
+            self.feedback.show_outcome(message, kind="warning")
             return
 
         self._current_duplicate_groups = [
             g for g in self._current_duplicate_groups if g is not group
         ]
-        # _render_duplicate_groups sets its own "Found N group(s)"/"No
-        # duplicates found" status text -- overwritten here afterward so
-        # the deletion result is what the user actually sees.
         self._render_duplicate_groups(self._current_duplicate_groups)
-        self.duplicates_status_label.setText(
-            f"{message} {self.duplicates_status_label.text()}"
+        groups_left = len(self._current_duplicate_groups)
+        self.feedback.show_outcome(
+            f"{message} {help_text.format_duplicate_groups_left(groups_left)}",
+            kind="success",
         )
         # A real deletion just happened (delete_local_files already
         # recorded it) — refresh the milestone total immediately rather
@@ -1109,6 +1121,7 @@ class DuplicatesPage(QWidget):
             on_finished=lambda result: self._on_bulk_resolve_duplicates_finished(
                 result, resolved_groups,
             ),
+            on_error=self.feedback.show_error,
         )
 
     def _on_bulk_resolve_duplicates_finished(

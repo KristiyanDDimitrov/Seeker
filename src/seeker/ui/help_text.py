@@ -639,6 +639,22 @@ _FINGERPRINT_FAILURE_REASON_LABELS = {
 }
 
 
+def format_duplicate_groups_found(count: int) -> str:
+    if count == 0:
+        return (
+            "No duplicates found. Run Compute fingerprints first if you "
+            "haven't yet."
+        )
+    return f"Found {count} duplicate group{'s' if count != 1 else ''}."
+
+
+def format_duplicate_groups_left(count: int) -> str:
+    """After one group is resolved: what is still to decide."""
+    if count == 0:
+        return "No groups left."
+    return f"{count} group{'s' if count != 1 else ''} left."
+
+
 def format_fingerprint_result_message(result: FingerprintResult) -> str:
     """The aggregate line PLUS, when there's at least one failure, a
     real per-reason breakdown (never just one lumped "Failed: N") —

@@ -198,6 +198,7 @@ class FakeDuplicateService:
             details=[],
         )
         self._groups = groups or []
+        self._find_error: Exception | None = None
         self._delete_result = delete_result or {
             "deleted": 0, "failed": 0, "details": [],
         }
@@ -259,6 +260,8 @@ class FakeDuplicateService:
             progress=None,
     ) -> list:
         self.find_duplicate_groups_calls.append((location_name, folders))
+        if self._find_error is not None:
+            raise self._find_error
         if progress is not None:
             progress("Comparing", 1, 1)
         return self._groups

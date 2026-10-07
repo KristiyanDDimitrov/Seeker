@@ -68,6 +68,7 @@ from seeker.audio.fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
 from seeker.library.duplicate_service import DuplicateGroup
 from seeker.ui.main_window import MainWindow
+from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.dashboard_page import DashboardPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.sharing_page import SharingPage
@@ -195,7 +196,7 @@ class _StressHandles:
     duplicates_location_combo: QComboBox
     compute_fingerprints_button: QPushButton
     find_duplicates_button: QPushButton
-    duplicates_status_label: QLabel
+    duplicates_notice: InlineNotice
     duplicates_table: QTableWidget
     sharing_summary_label: QLabel
 
@@ -226,7 +227,7 @@ def _resolve_handles(main_window: MainWindow) -> _StressHandles:
         duplicates_location_combo=duplicates_page.duplicates_location_combo,
         compute_fingerprints_button=duplicates_page.compute_fingerprints_button,
         find_duplicates_button=duplicates_page.find_duplicates_button,
-        duplicates_status_label=duplicates_page.duplicates_status_label,
+        duplicates_notice=duplicates_page.notice,
         duplicates_table=duplicates_page.duplicates_table,
         sharing_summary_label=sharing_page.sharing_summary_label,
     )
@@ -429,7 +430,7 @@ def test_broad_end_to_end_stress(qapp):
         print(
             f"[stress] duplicates fingerprinting settled: "
             f"{fingerprints_done}, status="
-            f"{handles.duplicates_status_label.text()!r}"
+            f"{handles.duplicates_notice.text()!r}"
         )
         handles.find_duplicates_button.click()
         log.sample("duplicates: find fired, overlapping with downloads next")
@@ -628,7 +629,7 @@ def test_broad_end_to_end_stress(qapp):
                 print(
                     f"[stress] duplicates: group delete completed="
                     f"{deleted}, status="
-                    f"{handles.duplicates_status_label.text()!r}"
+                    f"{handles.duplicates_notice.text()!r}"
                 )
                 duplicates_delete_done = True
                 log.sample("duplicates: group delete lifecycle exercised")
@@ -895,8 +896,8 @@ def test_stress_handles_resolve_against_current_main_window(qtbot):
         is window._duplicates_page.find_duplicates_button
     )
     assert (
-        handles.duplicates_status_label
-        is window._duplicates_page.duplicates_status_label
+        handles.duplicates_notice
+        is window._duplicates_page.notice
     )
     assert handles.duplicates_table is window._duplicates_page.duplicates_table
     assert (
