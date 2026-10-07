@@ -622,14 +622,14 @@ def test_each_review_section_title_counts_its_rows(qtbot):
         lambda: page.review_needs_title.text().endswith("(2)"), timeout=2000,
     )
     assert page.review_needs_title.text() == (
-        "SoulSeek candidates needing confirmation (2)"
+        "SoulSeek candidates to confirm (2)"
     )
     assert page.review_local_title.text() == (
-        "Local library matches needing confirmation (1)"
+        "Local matches to confirm (1)"
     )
     # Nothing waiting: the empty state says so, the title carries no "(0)".
     assert page.review_upgrades_title.text() == (
-        "Downloaded upgrades ready for review"
+        "Downloaded upgrades to review"
     )
 
 

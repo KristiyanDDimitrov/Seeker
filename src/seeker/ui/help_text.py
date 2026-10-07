@@ -81,8 +81,8 @@ DOWNLOADS_TAB_SUBTITLE = (
 # library.
 UPGRADE_BADGE_TEXT = "Upgrade"
 REVIEW_TAB_SUBTITLE = (
-    "Confirm or reject SoulSeek matches that weren't clean enough to "
-    "auto-accept, and approve quality upgrades once they're downloaded."
+    "Matches Seeker wasn't sure enough to accept alone, and downloaded "
+    "upgrades waiting for your call."
 )
 DUPLICATES_TAB_SUBTITLE = (
     "Find duplicate or near-duplicate files within one library "

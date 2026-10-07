@@ -80,9 +80,9 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
 
-_NEEDS_TITLE = "SoulSeek candidates needing confirmation"
-_UPGRADES_TITLE = "Downloaded upgrades ready for review"
-_LOCAL_TITLE = "Local library matches needing confirmation"
+_NEEDS_TITLE = "SoulSeek candidates to confirm"
+_UPGRADES_TITLE = "Downloaded upgrades to review"
+_LOCAL_TITLE = "Local matches to confirm"
 
 
 def _counted(title: str, count: int) -> str:
@@ -162,6 +162,7 @@ class ReviewPage(QWidget):
         needs_layout = QVBoxLayout(needs_section)
         needs_layout.setContentsMargins(0, 0, 0, 0)
         self.review_needs_title = PlainLabel(_NEEDS_TITLE)
+        self.review_needs_title.setObjectName("sectionHeaderLabel")
         needs_layout.addWidget(self.review_needs_title)
 
         self.review_needs_table = QTableWidget(0, 5)
@@ -183,6 +184,7 @@ class ReviewPage(QWidget):
 
         upgrades_header_row = QHBoxLayout()
         self.review_upgrades_title = PlainLabel(_UPGRADES_TITLE)
+        self.review_upgrades_title.setObjectName("sectionHeaderLabel")
         upgrades_header_row.addWidget(self.review_upgrades_title)
         upgrades_header_row.addStretch()
         # "Replace all" (HISTORY §88). Real count set/refreshed in
@@ -220,6 +222,7 @@ class ReviewPage(QWidget):
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(0, 0, 0, 0)
         self.review_local_title = PlainLabel(_LOCAL_TITLE)
+        self.review_local_title.setObjectName("sectionHeaderLabel")
         local_layout.addWidget(self.review_local_title)
 
         self.review_local_table = QTableWidget(0, 5)
