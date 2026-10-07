@@ -14,6 +14,8 @@ takes whatever the primary text leaves, and at least
 `_SECONDARY_MIN_SHARE` of the cell, eliding when that is not enough.
 """
 
+import math
+
 from PySide6.QtCore import (
     QEvent,
     QModelIndex,
@@ -26,6 +28,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QFontMetricsF,
     QHelpEvent,
     QPainter,
     QPalette,
@@ -96,10 +99,10 @@ def _secondary_width(option: QStyleOptionViewItem, index: _Index) -> int:
     secondary = index.data(SECONDARY_ROLE)
     if not secondary:
         return 0
-    return (
-        _SECONDARY_GAP + option.fontMetrics.horizontalAdvance(str(secondary))
-        + _BADGE_GAP
-    )
+    # Fractional, rounded up: elidedText measures in fractions of a
+    # pixel, so a rounded advance can leave the text a pixel short.
+    advance = QFontMetricsF(option.font).horizontalAdvance(str(secondary))
+    return _SECONDARY_GAP + math.ceil(advance) + _BADGE_GAP
 
 
 def _icon_width(option: QStyleOptionViewItem) -> int:

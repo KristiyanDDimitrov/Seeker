@@ -268,9 +268,16 @@ def test_secondary_text_with_room_is_painted_whole(qtbot):
     option.fontMetrics = table.fontMetrics()
     table.itemDelegate().initStyleOption(option, index)
 
-    area = _secondary_area(option, _secondary_share(option, index))
+    metrics = table.fontMetrics()
 
-    assert area.width() >= table.fontMetrics().horizontalAdvance("65%")
+    for secondary in ("65%", "66%", "100%", "SoulSeek candidate found"):
+        table.item(0, 1).setData(SECONDARY_ROLE, secondary)
+        area = _secondary_area(option, _secondary_share(option, index))
+        # elidedText measures in fractions of a pixel, which a rounded
+        # horizontalAdvance can fall short of.
+        assert metrics.elidedText(
+            secondary, Qt.TextElideMode.ElideRight, area.width(),
+        ) == secondary
 
 
 def test_a_view_can_give_its_primary_text_the_whole_cell(qtbot):
