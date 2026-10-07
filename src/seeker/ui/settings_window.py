@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -64,6 +65,21 @@ SETTINGS_TAB_GENERAL = "General"
 SETTINGS_TAB_LIBRARY = "Library"
 SETTINGS_TAB_CONNECTIONS = "Connections"
 SETTINGS_TAB_MATCHING = "Matching"
+
+# The shipped auto-match threshold is 90; below this, auto-match
+# accepts pairs a person would send to review, and tagging then writes
+# Spotify's metadata onto the wrong files. Allowed, but warned about.
+_AUTO_MATCH_WARNING_BELOW = 80.0
+
+
+def _threshold_spin_box() -> QDoubleSpinBox:
+    """A match score, 0-100: the fuzzy scores' own range."""
+    spin_box = QDoubleSpinBox()
+    spin_box.setRange(0.0, 100.0)
+    spin_box.setDecimals(1)
+    spin_box.setSingleStep(1.0)
+    return spin_box
+
 
 # Name/Path/Reachable/Actions, see theme.ColumnLayout.
 _LOCATIONS_COLUMNS = theme.ColumnLayout(
@@ -1245,33 +1261,38 @@ class SettingsPage(QWidget):
             "surfaced for review vs. treated as no match at all."
         ))
 
-        form = QFormLayout()
+        self.thresholds_notice = InlineNotice()
+        layout.addWidget(self.thresholds_notice)
 
-        self.auto_match_threshold_field = QLineEdit()
+        form = QFormLayout()
+        # Fusion's form grows every field to the full width; a 0-100
+        # score reads better at its own size.
+        form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+        )
+
+        self.auto_match_threshold_field = _threshold_spin_box()
         self.auto_match_threshold_field.setToolTip(
             help_text.TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD
-        )
-        # One obvious submit target (Save thresholds) shared by both
-        # fields in this form; _on_save_thresholds_clicked already
-        # validates both are real numbers in the right order and writes
-        # a real status message.
-        self.auto_match_threshold_field.returnPressed.connect(
-            self._on_save_thresholds_clicked
         )
         form.addRow(
             "Auto-match threshold:", self.auto_match_threshold_field
         )
-
-        self.needs_review_threshold_field = QLineEdit()
+        self.needs_review_threshold_field = _threshold_spin_box()
         self.needs_review_threshold_field.setToolTip(
             help_text.TOOLTIP_NEEDS_REVIEW_THRESHOLD_FIELD
-        )
-        self.needs_review_threshold_field.returnPressed.connect(
-            self._on_save_thresholds_clicked
         )
         form.addRow(
             "Needs-review threshold:", self.needs_review_threshold_field
         )
+        # Enter in either field saves both: one form, one submit target.
+        for field in (
+                self.auto_match_threshold_field,
+                self.needs_review_threshold_field,
+        ):
+            field.lineEdit().returnPressed.connect(
+                self._on_save_thresholds_clicked
+            )
 
         layout.addLayout(form)
 
@@ -1283,9 +1304,6 @@ class SettingsPage(QWidget):
             self._on_save_thresholds_clicked
         )
         layout.addLayout(theme.action_row(self.save_thresholds_button))
-
-        self.thresholds_status_label = PlainLabel("")
-        layout.addWidget(self.thresholds_status_label)
 
         self._load_threshold_fields()
 
@@ -1456,32 +1474,21 @@ class SettingsPage(QWidget):
             config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
         )
 
-        self.auto_match_threshold_field.setText(str(auto_threshold))
-        self.needs_review_threshold_field.setText(
-            str(needs_review_threshold)
-        )
+        self.auto_match_threshold_field.setValue(auto_threshold)
+        self.needs_review_threshold_field.setValue(needs_review_threshold)
 
     def _on_save_thresholds_clicked(self) -> None:
-        auto_text = self.auto_match_threshold_field.text().strip()
-        needs_review_text = self.needs_review_threshold_field.text().strip()
+        auto_threshold = self.auto_match_threshold_field.value()
+        needs_review_threshold = self.needs_review_threshold_field.value()
 
-        try:
-            auto_threshold = float(auto_text)
-            needs_review_threshold = float(needs_review_text)
-        except ValueError:
-            self.thresholds_status_label.setText(
-                "Both thresholds must be numbers."
-            )
-            return
-
-        # A real logic bug, not just a UX nicety — an inverted or
-        # collapsed band would silently change how every future match
-        # gets classified (see matching.py's own threshold-ordering
-        # comment).
+        # An inverted or collapsed band would silently change how every
+        # future match is classified (see matching.py's own
+        # threshold-ordering comment).
         if needs_review_threshold >= auto_threshold:
-            self.thresholds_status_label.setText(
+            self.thresholds_notice.show_message(
                 "The needs-review threshold must be less than the "
-                "auto-match threshold."
+                "auto-match threshold. Nothing was saved.",
+                kind="error",
             )
             return
 
@@ -1490,8 +1497,19 @@ class SettingsPage(QWidget):
             needs_review_threshold=needs_review_threshold,
         )
 
-        self.thresholds_status_label.setText(
-            "Saved. Takes effect on the next match/download run."
+        if auto_threshold < _AUTO_MATCH_WARNING_BELOW:
+            self.thresholds_notice.show_message(
+                f"Saved. An auto-match threshold below "
+                f"{_AUTO_MATCH_WARNING_BELOW:g} accepts weak matches "
+                "without review, and Tag playlist then writes Spotify's "
+                "metadata onto the wrong files.",
+                kind="warning",
+            )
+            return
+
+        self.thresholds_notice.show_message(
+            "Saved. Takes effect on the next match or download run.",
+            kind="success",
         )
 
 

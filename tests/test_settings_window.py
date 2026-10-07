@@ -2,10 +2,12 @@ import threading
 from dataclasses import replace
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QInputDialog,
+    QLabel,
     QMessageBox,
     QPushButton,
 )
@@ -1288,8 +1290,8 @@ def test_thresholds_tab_prefilled_with_hardcoded_defaults_when_unset(
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    assert window.auto_match_threshold_field.text() == "90.0"
-    assert window.needs_review_threshold_field.text() == "70.0"
+    assert window.auto_match_threshold_field.value() == 90.0
+    assert window.needs_review_threshold_field.value() == 70.0
 
 
 def test_thresholds_tab_prefilled_with_existing_config_value(
@@ -1305,8 +1307,8 @@ def test_thresholds_tab_prefilled_with_existing_config_value(
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    assert window.auto_match_threshold_field.text() == "85.0"
-    assert window.needs_review_threshold_field.text() == "60.0"
+    assert window.auto_match_threshold_field.value() == 85.0
+    assert window.needs_review_threshold_field.value() == 60.0
 
 
 def test_save_thresholds_persists_valid_values(qtbot, tmp_path, monkeypatch):
@@ -1315,31 +1317,30 @@ def test_save_thresholds_persists_valid_values(qtbot, tmp_path, monkeypatch):
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.auto_match_threshold_field.setText("85")
-    window.needs_review_threshold_field.setText("65")
+    window.auto_match_threshold_field.setValue(85)
+    window.needs_review_threshold_field.setValue(65)
     window.save_thresholds_button.click()
 
     assert application._config_store.auto_match_threshold == 85.0
     assert application._config_store.needs_review_threshold == 65.0
-    assert "saved" in window.thresholds_status_label.text().lower()
+    assert "saved" in window.thresholds_notice.text().lower()
 
 
 def test_needs_review_threshold_return_pressed_saves_thresholds(
         qtbot, tmp_path, monkeypatch,
 ):
-    # Roadmap item 95 (B1.3).
     application = make_application(tmp_path, monkeypatch)
 
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.auto_match_threshold_field.setText("85")
-    window.needs_review_threshold_field.setText("65")
-    window.needs_review_threshold_field.returnPressed.emit()
+    window.auto_match_threshold_field.setValue(85)
+    _type_threshold(qtbot, window.needs_review_threshold_field, "65")
+    qtbot.keyClick(window.needs_review_threshold_field, Qt.Key.Key_Return)
 
     assert application._config_store.auto_match_threshold == 85.0
     assert application._config_store.needs_review_threshold == 65.0
-    assert "saved" in window.thresholds_status_label.text().lower()
+    assert "saved" in window.thresholds_notice.text().lower()
 
 
 def test_save_thresholds_rejects_inverted_pair(qtbot, tmp_path, monkeypatch):
@@ -1350,13 +1351,13 @@ def test_save_thresholds_rejects_inverted_pair(qtbot, tmp_path, monkeypatch):
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.auto_match_threshold_field.setText("70")
-    window.needs_review_threshold_field.setText("90")
+    window.auto_match_threshold_field.setValue(70)
+    window.needs_review_threshold_field.setValue(90)
     window.save_thresholds_button.click()
 
     assert application._config_store.auto_match_threshold is None
     assert application._config_store.needs_review_threshold is None
-    assert "less than" in window.thresholds_status_label.text().lower()
+    assert "less than" in window.thresholds_notice.text().lower()
 
 
 def test_save_thresholds_rejects_equal_pair(qtbot, tmp_path, monkeypatch):
@@ -1367,28 +1368,62 @@ def test_save_thresholds_rejects_equal_pair(qtbot, tmp_path, monkeypatch):
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.auto_match_threshold_field.setText("80")
-    window.needs_review_threshold_field.setText("80")
+    window.auto_match_threshold_field.setValue(80)
+    window.needs_review_threshold_field.setValue(80)
     window.save_thresholds_button.click()
 
     assert application._config_store.auto_match_threshold is None
 
 
-def test_save_thresholds_rejects_non_numeric_input(
-        qtbot,
-        tmp_path,
-        monkeypatch,
-):
-    application = make_application(tmp_path, monkeypatch)
+def _type_threshold(qtbot, field, text: str) -> None:
+    field.clear()
+    qtbot.keyClicks(field, text)
 
+
+def _label_texts(window: SettingsPage) -> list[str]:
+    return [label.text() for label in window.findChildren(QLabel)]
+
+
+def test_a_threshold_above_100_is_never_saved(qtbot, tmp_path, monkeypatch):
+    application = make_application(tmp_path, monkeypatch)
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.auto_match_threshold_field.setText("not a number")
+    _type_threshold(qtbot, window.auto_match_threshold_field, "150")
     window.save_thresholds_button.click()
 
-    assert application._config_store.auto_match_threshold is None
-    assert "number" in window.thresholds_status_label.text().lower()
+    saved = application._config_store.auto_match_threshold
+    assert saved is None or saved <= 100
+
+
+def test_a_low_auto_match_threshold_saves_with_a_warning(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    _type_threshold(qtbot, window.auto_match_threshold_field, "10")
+    _type_threshold(qtbot, window.needs_review_threshold_field, "5")
+    window.save_thresholds_button.click()
+
+    assert application._config_store.auto_match_threshold == 10.0
+    warnings = [text for text in _label_texts(window) if "Tag" in text]
+    assert len(warnings) == 1
+    assert "below 80" in warnings[0]
+
+
+def test_a_shipped_default_threshold_saves_without_a_warning(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    window.save_thresholds_button.click()
+
+    assert application._config_store.auto_match_threshold == 90.0
+    assert not any("below 80" in text for text in _label_texts(window))
 
 
 # --- Roadmap item R7.5: menu-bar notification toggles ---------------------
