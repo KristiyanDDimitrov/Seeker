@@ -594,8 +594,11 @@ Each links to the HISTORY entry where the full investigation lives;
   count itself; never a spanned placeholder row or a status-label
   message. A page only changes its sentence (`set_text`) as the reason
   changes. A short marker on a row ("Upgrade") is a `BADGE_ROLE`
-  pill on the primary cell, not a column of its own.
-  [HISTORY §177](docs/history/151-180.md#177)
+  pill on the primary cell, not a column of its own; quieter detail
+  beside a cell's text (a candidate's quality and peer) is
+  `SECONDARY_ROLE`, not a second line.
+  [HISTORY §177](docs/history/151-180.md#177),
+  [§178](docs/history/151-180.md#178)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.
