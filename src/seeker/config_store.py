@@ -85,6 +85,9 @@ class SeekerConfig:
     # missing/corrupt value by leaving the splitter at its hardcoded
     # first-run proportions, so no validation is needed here.
     review_splitter_state: str | None = None
+    # Whether Sharing's "How sharing works" section is open: the
+    # viewer's last choice, closed until they open it.
+    sharing_explainer_open: bool = False
     # Whether the window was closed fullscreen or maximized/zoomed, so
     # a reopen (Dock/menu-bar icon) or a relaunch can come back filling
     # the screen as a normal window rather than re-entering macOS

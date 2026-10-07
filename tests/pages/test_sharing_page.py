@@ -294,3 +294,73 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
 
     assert len(info_calls) == 1
     assert sharing_service.add_location_to_share_calls == []
+
+
+def test_sharing_explainer_starts_closed_below_the_tables(qtbot):
+    application = FakeApplication(soulseek_configured=True)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    page = window._sharing_page
+    assert page.explainer.toggle.text() == help_text.SHARING_EXPLAINER_TITLE
+    assert not page.explainer.is_expanded()
+    assert not page.explainer.body.isVisibleTo(window)
+    # The counts and both tables come first; the explanation is last.
+    content = page.explainer.parentWidget().layout()
+    assert content.indexOf(page.explainer) == content.count() - 1
+
+
+def test_opening_the_sharing_explainer_is_remembered(qtbot):
+    application = FakeApplication(soulseek_configured=True)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("sharing")
+    page = window._sharing_page
+
+    page.explainer.toggle.click()
+
+    assert page.explainer.body.isVisibleTo(window)
+    assert application.settings.sharing_explainer_open is True
+
+    page.explainer.toggle.click()
+
+    assert not page.explainer.body.isVisibleTo(window)
+    assert application.settings.sharing_explainer_open is False
+
+
+def test_sharing_explainer_reopens_as_the_viewer_left_it(qtbot):
+    application = FakeApplication(soulseek_configured=True)
+    application.update_settings(sharing_explainer_open=True)
+    application.update_settings_calls.clear()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    assert window._sharing_page.explainer.body.isVisibleTo(window)
+    # Restoring the state is not a new choice to save.
+    assert not any(
+        "sharing_explainer_open" in call
+        for call in application.update_settings_calls
+    )
+
+
+def test_a_failed_sharing_refresh_stays_on_the_notice(qtbot):
+    class FailingSharingService(FakeSharingService):
+        def get_status(self):
+            raise RuntimeError("slskd answered 500")
+
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=FailingSharingService(),
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    page = window._sharing_page
+    qtbot.waitUntil(lambda: page.sharing_notice.isVisibleTo(window), timeout=2000)
+    assert "slskd answered 500" in page.sharing_notice.text()
+    assert page.sharing_status_label.text() == ""

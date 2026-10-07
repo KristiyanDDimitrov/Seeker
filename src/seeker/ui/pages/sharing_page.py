@@ -21,8 +21,9 @@ from seeker.soulseek.sharing_service import (
     UploadStatus,
 )
 from seeker.ui import help_text, plain_text, theme
+from seeker.ui.disclosure import Disclosure
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, RichLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
@@ -38,6 +39,9 @@ _SHARING_LOCATIONS_COLUMNS = theme.ColumnLayout(
 _SHARING_UPLOADS_COLUMNS = theme.ColumnLayout(
     stretch=(1,), fit_content=(0, 2, 3), paths=(1,),
 )
+
+# The explanation wraps at a reading measure, not the window's width.
+_EXPLAINER_MEASURE_CHARS = 80
 
 
 @dataclass
@@ -68,10 +72,6 @@ class SharingPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_LG)
 
-        framing_label = RichLabel(help_text.SHARING_FRAMING_BODY)
-        framing_label.setWordWrap(True)
-        layout.addWidget(framing_label)
-
         # A confirmation ("'X' shared — N directories, M files") goes
         # here, never on sharing_status_label, which _refresh_sharing()
         # (called right after, to pick up the new state) wipes via
@@ -86,21 +86,33 @@ class SharingPage(QWidget):
         self.sharing_summary_label = PlainLabel("")
         controls.addWidget(self.sharing_summary_label, 1)
 
+        self.sharing_status_label = PlainLabel("")
+        controls.addWidget(self.sharing_status_label)
+        self.feedback = FeedbackTarget(
+            self.sharing_status_label, self.sharing_notice,
+        )
+
         self.sharing_refresh_button = QPushButton("Refresh")
         self.sharing_refresh_button.setToolTip(help_text.TOOLTIP_SHARING_REFRESH)
         self.sharing_refresh_button.clicked.connect(self._refresh_sharing)
         controls.addWidget(self.sharing_refresh_button)
         layout.addLayout(controls)
 
-        self.sharing_status_label = PlainLabel("")
-        layout.addWidget(self.sharing_status_label)
+        locations_section = QVBoxLayout()
+        locations_section.setSpacing(theme.SPACING_SM)
+        locations_label = PlainLabel("Your library on SoulSeek")
+        locations_label.setObjectName("sectionHeaderLabel")
+        locations_section.addWidget(locations_label)
 
         self.sharing_locations_table = QTableWidget(0, 5)
         self.sharing_locations_table.setHorizontalHeaderLabels(
             ["Location", "Shared", "Container Path", "Files", "Action"]
         )
         theme.apply_table_defaults(self.sharing_locations_table)
-        layout.addWidget(theme.make_card(self.sharing_locations_table))
+        locations_section.addWidget(
+            theme.make_card(self.sharing_locations_table),
+        )
+        layout.addLayout(locations_section, 1)
         self._configure_sharing_locations_columns()
         self.sharing_locations_empty_action = QPushButton(
             help_text.OPEN_SETTINGS_TEXT
@@ -114,10 +126,11 @@ class SharingPage(QWidget):
             action=self.sharing_locations_empty_action,
         )
 
+        uploads_section = QVBoxLayout()
+        uploads_section.setSpacing(theme.SPACING_SM)
         uploads_label = PlainLabel("Currently uploading")
-        # QLabel#sectionHeaderLabel in theme.py.
         uploads_label.setObjectName("sectionHeaderLabel")
-        layout.addWidget(uploads_label)
+        uploads_section.addWidget(uploads_label)
 
         self.sharing_uploads_table = QTableWidget(0, 4)
         self.sharing_uploads_table.setHorizontalHeaderLabels(
@@ -128,11 +141,32 @@ class SharingPage(QWidget):
         theme.configure_columns(
             self.sharing_uploads_table, _SHARING_UPLOADS_COLUMNS,
         )
-        layout.addWidget(theme.make_card(self.sharing_uploads_table))
+        uploads_section.addWidget(theme.make_card(self.sharing_uploads_table))
+        layout.addLayout(uploads_section, 1)
         self.sharing_uploads_empty = EmptyState(
             self.sharing_uploads_table, EmptyGlyph.SHARE,
             help_text.SHARING_UPLOADS_EMPTY,
         )
+
+        # The why of sharing is background reading: the counts and
+        # tables come first, and the explanation stays closed until the
+        # viewer opens it, then remembers their choice.
+        framing_label = RichLabel(help_text.SHARING_FRAMING_BODY)
+        framing_label.setWordWrap(True)
+        framing_label.setMaximumWidth(
+            framing_label.fontMetrics().averageCharWidth()
+            * _EXPLAINER_MEASURE_CHARS,
+        )
+        # Open, it takes a table's share of the height and scrolls,
+        # so a short window keeps both tables in view.
+        self.explainer = Disclosure(
+            help_text.SHARING_EXPLAINER_TITLE, theme.scrollable(framing_label),
+            expanded=context.application.settings.sharing_explainer_open,
+        )
+        self.explainer.toggled.connect(self._on_explainer_toggled)
+        layout.addWidget(self.explainer)
+        self._content_layout = layout
+        self._fit_explainer()
 
         self._current_sharing_self_managed = False
 
@@ -150,6 +184,17 @@ class SharingPage(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
+
+    def _on_explainer_toggled(self, expanded: bool) -> None:
+        self._fit_explainer()
+        self._context.application.update_settings(
+            sharing_explainer_open=expanded,
+        )
+
+    def _fit_explainer(self) -> None:
+        self._content_layout.setStretchFactor(
+            self.explainer, 1 if self.explainer.is_expanded() else 0,
+        )
 
     def _gather_sharing_snapshot(self) -> _SharingSnapshot:
         if not self._context.application.soulseek_configured:
@@ -180,6 +225,7 @@ class SharingPage(QWidget):
             self._gather_sharing_snapshot,
             status_label=self.sharing_status_label,
             on_finished=self._render_sharing,
+            on_error=self.feedback.show_error,
         )
 
     def poll_sharing(self) -> None:
@@ -399,6 +445,7 @@ class SharingPage(QWidget):
             lambda: service.add_location_to_share(location, confirm=True),
             status_label=self.sharing_status_label,
             on_finished=self._on_add_location_to_share_finished,
+            on_error=self.feedback.show_error,
         )
 
     def _on_add_location_to_share_finished(

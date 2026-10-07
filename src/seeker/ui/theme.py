@@ -1174,6 +1174,25 @@ QPushButton[variant="segment"]:checked:focus {{
     padding: 5px 13px;
 }}
 
+/* A Disclosure's toggle (ui/disclosure.py): a quiet line of text with
+its chevron, not a button box. */
+QToolButton#disclosureToggle {{
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: {RADIUS_CONTROL}px;
+    padding: 2px 4px 2px 0;
+    color: {palette.TEXT_MUTED};
+}}
+
+QToolButton#disclosureToggle:hover,
+QToolButton#disclosureToggle:checked {{
+    color: {palette.TEXT};
+}}
+
+QToolButton#disclosureToggle:focus {{
+    border: 2px solid {palette.ACCENT};
+}}
+
 QPushButton[navItem="true"]:focus {{
     border: 2px solid {palette.ACCENT};
     border-left: 3px solid {palette.ACCENT};

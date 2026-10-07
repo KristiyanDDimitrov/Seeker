@@ -817,8 +817,8 @@ def format_bulk_resolve_duplicates_result(result: Any) -> str:
 # specifically). The goal isn't a persuasive pitch — it's "be a genuine
 # sharer, see that you are, and see what you're giving back."
 
+SHARING_EXPLAINER_TITLE = "How sharing works"
 SHARING_FRAMING_BODY = (
-    "<h3>Why this page exists</h3>"
     "<p>SoulSeek has no central library — every file available to "
     "download exists because someone chose to share it. Seeker's own "
     "downloads only work because other people are sharing.</p>"

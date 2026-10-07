@@ -94,6 +94,7 @@ from seeker.ui.main_window import MainWindow  # noqa: E402
 from seeker.ui.pages.dashboard_page import DashboardPage  # noqa: E402
 from seeker.ui.pages.duplicates_page import DuplicatesPage  # noqa: E402
 from seeker.ui.pages.search_page import SearchPage  # noqa: E402
+from seeker.ui.pages.sharing_page import SharingPage  # noqa: E402
 from seeker.ui.pages.tagging_panel import TaggingPanel  # noqa: E402
 from seeker.ui.settings_window import (  # noqa: E402
     SETTINGS_TAB_CONNECTIONS,
@@ -619,6 +620,12 @@ def _find_duplicates(window: MainWindow) -> None:
     page.find_duplicates_button.click()
 
 
+def _open_sharing_explainer(window: MainWindow) -> None:
+    page = child(window, SharingPage)
+    assert isinstance(page, SharingPage)
+    page.explainer.toggle.click()
+
+
 def _settings_tab(tab_name: str) -> Step:
     def show(window: MainWindow) -> None:
         window.settings_page.select_tab(tab_name)
@@ -649,6 +656,7 @@ SCREENS = [
     Screen("review", (nav("Review"),)),
     Screen("duplicates", (nav("Duplicates"), _find_duplicates)),
     Screen("sharing", (nav("Sharing"),)),
+    Screen("sharing-explained", (nav("Sharing"), _open_sharing_explainer)),
     Screen("history", (nav("History"),)),
     Screen("help", (nav("Help"),)),
     Screen("support", (nav("Support"),)),
