@@ -230,6 +230,10 @@ RADIUS_CARD = 6
 PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
 
+# A status chip is a pill, its radius derived the same way.
+CHIP_HEIGHT = 26
+CHIP_RADIUS = CHIP_HEIGHT // 2
+
 # --- Type (theme-independent) ----------------------------------------------
 
 # Panel lettering, as on a mixer's faceplate: the wordmark, page titles
@@ -1510,7 +1514,7 @@ QSplitter::handle:horizontal:hover {{
 
 def _status_qss(palette: Palette) -> str:
     """StepIndicator: its labels' weight per step and the hairline
-    between steps; a numbered instruction's number."""
+    between steps; a numbered instruction's number; StatusChip."""
     return f"""\
 QLabel[stepState="current"] {{
     color: {palette.TEXT};
@@ -1531,6 +1535,12 @@ QLabel#stepNumber {{
     font-size: {TYPE_SECTION_PX}px;
     font-weight: {WEIGHT_SEMIBOLD};
     color: {palette.TEXT_MUTED};
+}}
+
+QFrame#statusChip {{
+    background-color: {palette.BG_SURFACE_2};
+    border: 1px solid {palette.BORDER};
+    border-radius: {CHIP_RADIUS}px;
 }}
 
 QFrame#stepConnector {{

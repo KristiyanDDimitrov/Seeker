@@ -40,6 +40,14 @@ from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.pages.context import build_subtitle_label
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
+from seeker.ui.status_lamp import (
+    CUE,
+    CUE_WAITING,
+    FAULT,
+    PLAY,
+    STANDBY,
+    StatusChip,
+)
 from seeker.ui.step_indicator import StepIndicator
 from seeker.ui.wordmark import Wordmark
 from seeker.ui.workers import run_worker
@@ -57,6 +65,8 @@ COLUMN_MAX_WIDTH = 560
 _COLUMN_TOP_MARGIN = 48
 STEP_NAMES = ("Spotify", "Library", "SoulSeek (optional)")
 _SOULSEEK_STEP = 2
+_CHECKING_DOCKER = "Checking Docker…"
+_SOULSEEK_FAILED = "SoulSeek didn't connect"
 
 
 class OnboardingWizard(QMainWindow):
@@ -390,12 +400,18 @@ class OnboardingWizard(QMainWindow):
             "actions stay disabled until it's set up.",
         )
 
-        self.docker_state_label = PlainLabel("Checking Docker...")
-        layout.addWidget(self.docker_state_label)
+        self.docker_chip = StatusChip(CUE, _CHECKING_DOCKER)
+        self.slskd_chip = StatusChip(STANDBY, "SoulSeek isn't set up")
+        chips = QHBoxLayout()
+        chips.setSpacing(theme.SPACING_SM)
+        chips.addWidget(self.docker_chip)
+        chips.addWidget(self.slskd_chip)
+        chips.addStretch()
+        layout.addLayout(chips)
 
         self.docker_action_button = QPushButton("")
         self.docker_action_button.hide()
-        layout.addWidget(self.docker_action_button)
+        layout.addLayout(theme.action_row(self.docker_action_button))
 
         layout.addWidget(PlainLabel("SoulSeek network account:"))
 
@@ -485,7 +501,7 @@ class OnboardingWizard(QMainWindow):
         return page
 
     def _refresh_docker_state(self) -> None:
-        self.docker_state_label.setText("Checking Docker...")
+        self.docker_chip.set_state(CUE, _CHECKING_DOCKER)
         run_worker(
             self.thread_pool,
             detect_docker_state,
@@ -497,7 +513,7 @@ class OnboardingWizard(QMainWindow):
         self._disconnect_docker_action()
 
         if state == DockerState.NOT_INSTALLED:
-            self.docker_state_label.setText("Docker isn't installed.")
+            self.docker_chip.set_state(FAULT, "Docker isn't installed")
             self.docker_action_button.setText("Download Docker Desktop")
             self.docker_action_button.setToolTip(
                 help_text.TOOLTIP_DOWNLOAD_DOCKER
@@ -509,10 +525,8 @@ class OnboardingWizard(QMainWindow):
             )
             self.docker_action_button.show()
         elif state == DockerState.INSTALLED_NOT_RUNNING:
+            self.docker_chip.set_state(CUE_WAITING, "Docker isn't running")
             if sys.platform in ("darwin", "win32"):
-                self.docker_state_label.setText(
-                    "Docker is installed but not running."
-                )
                 self.docker_action_button.setText("Launch Docker Desktop")
                 self.docker_action_button.setToolTip(
                     help_text.TOOLTIP_LAUNCH_DOCKER
@@ -523,9 +537,8 @@ class OnboardingWizard(QMainWindow):
                 # typically already running as a service if installed
                 # via a package manager; guide rather than assume a
                 # launch mechanism.
-                self.docker_state_label.setText(
-                    "Docker is installed, but the daemon isn't "
-                    "running. Start it with your service manager, "
+                self.soulseek_status_label.setText(
+                    "Start the Docker daemon with your service manager, "
                     "e.g. 'sudo systemctl start docker', then check "
                     "again."
                 )
@@ -536,7 +549,7 @@ class OnboardingWizard(QMainWindow):
                 self._connect_docker_action(self._refresh_docker_state)
             self.docker_action_button.show()
         else:
-            self.docker_state_label.setText("Docker is running.")
+            self.docker_chip.set_state(PLAY, "Docker is running")
             self.docker_action_button.hide()
 
     def _connect_docker_action(self, slot: Callable[[], object]) -> None:
@@ -625,13 +638,20 @@ class OnboardingWizard(QMainWindow):
             button=self.bring_up_button,
             status_label=self.soulseek_status_label,
             on_finished=self._start_health_poll,
+            on_error=self._on_bring_up_failed,
         )
+        self.slskd_chip.set_state(CUE, "Starting SoulSeek…")
         self.soulseek_progress.show()
         self.soulseek_status_label.setText("Starting SoulSeek...")
         # A stale detail from an earlier attempt (e.g. the first
         # rejection this same session) must not linger into whatever
         # this new attempt ends up showing.
         self.soulseek_status_label.setToolTip("")
+
+    def _on_bring_up_failed(self, _message: str) -> None:
+        # run_worker has already put the message on the status label.
+        self.soulseek_progress.hide()
+        self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
 
     def _start_health_poll(self, started: SlskdStartResult) -> None:
         self._slskd_started = started
@@ -643,6 +663,7 @@ class OnboardingWizard(QMainWindow):
         # false-flagged as bad credentials forever.
         self._health_poll_started_at = datetime.now(UTC)
         self.soulseek_progress.show()
+        self.slskd_chip.set_state(CUE, "Connecting to SoulSeek…")
         self.soulseek_status_label.setText(
             "Waiting for SoulSeek to connect..."
         )
@@ -671,6 +692,7 @@ class OnboardingWizard(QMainWindow):
         if result.status == SlskdHealthStatus.HEALTHY:
             self._stop_health_poll()
             self._persist_soulseek_config()
+            self.slskd_chip.set_state(PLAY, "SoulSeek is connected")
             self.soulseek_status_label.setText("SoulSeek is connected.")
             self.soulseek_status_label.setToolTip("")
             self._advance_to_done_page()
@@ -678,11 +700,13 @@ class OnboardingWizard(QMainWindow):
 
         if result.status == SlskdHealthStatus.BAD_CREDENTIALS:
             self._stop_health_poll()
+            self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
             self._handle_bad_credentials(result.detail)
             return
 
         if result.status == SlskdHealthStatus.KICKED:
             self._stop_health_poll()
+            self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
             self.soulseek_status_label.setText(
                 "Another client is already logged in with this "
                 "username."
@@ -694,6 +718,7 @@ class OnboardingWizard(QMainWindow):
 
         if self._health_poll_elapsed >= HEALTH_POLL_TIMEOUT_SECONDS:
             self._stop_health_poll()
+            self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
             self.soulseek_status_label.setText(
                 "SoulSeek didn't finish connecting within "
                 f"{HEALTH_POLL_TIMEOUT_SECONDS:.0f}s. Check that Docker "

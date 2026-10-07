@@ -10,6 +10,7 @@ from seeker.soulseek.docker_setup import (
     SlskdHealthStatus,
 )
 from seeker.spotify.callback_server import AuthorizationCancelledError
+from seeker.ui import status_lamp
 from seeker.ui.plain_text import plain_tooltip
 from seeker.ui.wizard import OnboardingWizard
 
@@ -158,9 +159,10 @@ def test_wizard_soulseek_step_checks_real_docker_state_on_entry(
     qtbot.addWidget(wizard)
 
     qtbot.waitUntil(
-        lambda: wizard.docker_state_label.text() == "Docker is running.",
+        lambda: wizard.docker_chip.text() == "Docker is running",
         timeout=2000,
     )
+    assert wizard.docker_chip.lamp == status_lamp.PLAY
 
 
 def test_wizard_skip_soulseek_advances_to_dashboard_without_credentials(
@@ -642,6 +644,8 @@ def test_health_result_healthy_persists_config_and_advances_to_dashboard(
     assert persist_calls[0][2] == str(tmp_path / "slskd-data" / "downloads")
     assert persist_calls[0][3] == "realuser"
     assert persist_calls[0][4] == "realpass"
+    assert wizard.slskd_chip.lamp == status_lamp.PLAY
+    assert wizard.slskd_chip.text() == "SoulSeek is connected"
     # Same done-page indirection as the skip path — on_complete fires
     # only once the done page's own Continue button is clicked.
     assert wizard.stack.currentIndex() == 3
@@ -704,6 +708,7 @@ def test_health_result_bad_credentials_existing_account_mode(
     assert wizard.soulseek_status_label.toolTip() == plain_tooltip(
         "invalid username or password"
     )
+    assert wizard.slskd_chip.lamp == status_lamp.FAULT
     assert completed == []
     assert wizard.stack.currentIndex() == 2
 
@@ -762,6 +767,7 @@ def test_health_result_kicked_shows_distinct_message(
     assert "already logged in" in text
     assert text != real_detail  # plain-language, not the raw log line
     assert wizard.soulseek_status_label.toolTip() == plain_tooltip(real_detail)
+    assert wizard.slskd_chip.lamp == status_lamp.FAULT
     assert completed == []
 
 
@@ -920,6 +926,8 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
         in wizard.soulseek_status_label.text(),
         timeout=2000,
     )
+    assert wizard.slskd_chip.lamp == status_lamp.FAULT
+    assert wizard.soulseek_progress.isHidden()
 
 
 def test_health_poll_timeout_shows_message_after_elapsed_threshold(
@@ -948,6 +956,7 @@ def test_health_poll_timeout_shows_message_after_elapsed_threshold(
     )
 
     assert "didn't finish connecting" in wizard.soulseek_status_label.text()
+    assert wizard.slskd_chip.lamp == status_lamp.FAULT
 
 
 def test_render_docker_state_not_installed_offers_download_link(
@@ -967,9 +976,10 @@ def test_render_docker_state_not_installed_offers_download_link(
     qtbot.addWidget(wizard)
 
     qtbot.waitUntil(
-        lambda: wizard.docker_state_label.text() == "Docker isn't installed.",
+        lambda: wizard.docker_chip.text() == "Docker isn't installed",
         timeout=2000,
     )
+    assert wizard.docker_chip.lamp == status_lamp.FAULT
     assert wizard.docker_action_button.text() == "Download Docker Desktop"
     # isHidden() reflects the widget's own explicit hide/show state,
     # unlike isVisible() which also requires the whole ancestor chain
@@ -995,10 +1005,11 @@ def test_render_docker_state_installed_not_running_offers_launch(
     qtbot.addWidget(wizard)
 
     qtbot.waitUntil(
-        lambda: wizard.docker_state_label.text()
-        == "Docker is installed but not running.",
+        lambda: wizard.docker_chip.text() == "Docker isn't running",
         timeout=2000,
     )
+    # A ring: Docker waits on the user to launch it.
+    assert wizard.docker_chip.lamp == status_lamp.CUE_WAITING
     assert wizard.docker_action_button.text() == "Launch Docker Desktop"
 
 
@@ -1238,3 +1249,37 @@ def test_spotify_step_shows_the_redirect_uri_read_only(
 
     assert wizard.redirect_uri_field.text() == DEFAULT_REDIRECT_URI
     assert wizard.redirect_uri_field.isReadOnly()
+
+
+def test_soulseek_chip_stands_by_until_set_up_starts(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+
+    assert wizard.slskd_chip.lamp == status_lamp.STANDBY
+    assert wizard.slskd_chip.text() == "SoulSeek isn't set up"
+
+
+def test_soulseek_chip_shows_the_wait_for_a_connection(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+
+    wizard._start_health_poll(SlskdStartResult(
+        api_key="real-api-key", download_dir=str(tmp_path),
+    ))
+    wizard._stop_health_poll()
+
+    assert wizard.slskd_chip.lamp == status_lamp.CUE
+    assert wizard.slskd_chip.text() == "Connecting to SoulSeek…"
+
+
+def test_a_status_chip_follows_its_state(qtbot):
+    chip = status_lamp.StatusChip(status_lamp.CUE, "Checking Docker…")
+    qtbot.addWidget(chip)
+
+    chip.set_state(status_lamp.PLAY, "Docker is running")
+
+    assert chip.lamp == status_lamp.PLAY
+    assert chip.text() == "Docker is running"
+    assert chip.accessibleName() == "Docker is running"

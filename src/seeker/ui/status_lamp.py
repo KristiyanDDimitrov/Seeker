@@ -15,11 +15,12 @@ from typing import Literal
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPaintEvent, QPen, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QWidget
 
 from seeker.models import track_status
 from seeker.models.download_request import DownloadStatus
 from seeker.ui import theme
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.theme import Palette
 
 LampColour = Literal["SUCCESS", "WARNING", "DANGER", "TEXT_FAINT"]
@@ -117,3 +118,42 @@ class StatusLamp(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         lamp_icon(self.lamp, theme.active_palette()).paint(painter, self.rect())
+
+
+class StatusChip(QFrame):
+    """A lamp and a short sentence in one pill: a state that stands on
+    its own, outside a table or the activity strip (the wizard's Docker
+    and SoulSeek states)."""
+
+    def __init__(
+            self,
+            lamp: Lamp,
+            text: str,
+            parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        # QFrame#statusChip in theme.py.
+        self.setObjectName("statusChip")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedHeight(theme.CHIP_HEIGHT)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(theme.SPACING_SM, 0, theme.SPACING_MD, 0)
+        layout.setSpacing(theme.SPACING_XS)
+        self._lamp = StatusLamp(lamp)
+        self._label = PlainLabel()
+        layout.addWidget(self._lamp)
+        layout.addWidget(self._label)
+        self.set_state(lamp, text)
+
+    @property
+    def lamp(self) -> Lamp:
+        return self._lamp.lamp
+
+    def text(self) -> str:
+        return self._label.text()
+
+    def set_state(self, lamp: Lamp, text: str) -> None:
+        self._lamp.set_lamp(lamp)
+        self._label.setText(text)
+        self.setAccessibleName(text)
