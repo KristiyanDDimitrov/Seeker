@@ -636,6 +636,13 @@ Each links to the HISTORY entry where the full investigation lives;
   user's click only. Open, its body scrolls inside a share of the
   height rather than squeezing the tables.
   [HISTORY §187](docs/history/181-210.md#187)
+- **Prose wraps at 80 characters through `theme.reading_column`**
+  (Help, Support), which caps the whole column. Never cap one wrapped
+  label inside a wider layout row: the row asks its height at the
+  row's width and clips its last lines (`set_reading_measure` is only
+  for a label that is a scroll area's whole content). A link takes
+  `QPalette.Link`, which `build_qpalette` sets to `ACCENT`.
+  [HISTORY §188](docs/history/181-210.md#188)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.
