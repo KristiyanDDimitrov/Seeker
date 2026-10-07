@@ -8,6 +8,10 @@ of one track in different folders still show different filenames.
 
 A cell can carry a short badge ("Upgrade") in `BADGE_ROLE`: it is
 painted as a pill before the text, which elides in the space left.
+It can also carry secondary text in `SECONDARY_ROLE` (a candidate's
+quality and peer beside its filename): quieter and right-aligned. It
+takes whatever the primary text leaves, and at least
+`_SECONDARY_MIN_SHARE` of the cell, eliding when that is not enough.
 """
 
 from PySide6.QtCore import (
@@ -18,7 +22,14 @@ from PySide6.QtCore import (
     QSize,
     Qt,
 )
-from PySide6.QtGui import QFont, QFontMetrics, QHelpEvent, QPainter, QPalette
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QHelpEvent,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QListWidget,
@@ -36,9 +47,28 @@ _Index = QModelIndex | QPersistentModelIndex
 
 # Clear of the UserRole a page stores its own row ids under.
 BADGE_ROLE = Qt.ItemDataRole.UserRole + 64
+SECONDARY_ROLE = Qt.ItemDataRole.UserRole + 65
 _BADGE_PADDING = 6
 _BADGE_GAP = 6
 _BADGE_FONT_SCALE = 0.85
+_SECONDARY_GAP = 12
+_SECONDARY_MIN_SHARE = 0.45
+# How much of the text colour secondary text keeps over its ground.
+# 0.7 measures at least 5.9:1 on every row ground in both palettes
+# (test_elided_text checks 4.5:1), and still reads as the quieter line.
+_SECONDARY_TEXT_WEIGHT = 0.7
+
+
+def secondary_text_color(text: QColor, ground: QColor) -> QColor:
+    """`text` blended toward `ground`: derived from the cell's own
+    palette, so it follows a theme switch and a selected row without
+    this module reading the theme's tokens (theme.py imports it)."""
+    weight = _SECONDARY_TEXT_WEIGHT
+    return QColor(
+        round(text.red() * weight + ground.red() * (1 - weight)),
+        round(text.green() * weight + ground.green() * (1 - weight)),
+        round(text.blue() * weight + ground.blue() * (1 - weight)),
+    )
 
 
 def _badge_font(base: QFont) -> QFont:
@@ -58,6 +88,33 @@ def _badge_width(option: QStyleOptionViewItem, index: _Index) -> int:
         _BADGE_GAP + metrics.horizontalAdvance(str(badge))
         + 2 * _BADGE_PADDING + _BADGE_GAP
     )
+
+
+def _secondary_width(option: QStyleOptionViewItem, index: _Index) -> int:
+    """The width a cell's secondary text wants, its gap included; 0
+    without any."""
+    secondary = index.data(SECONDARY_ROLE)
+    if not secondary:
+        return 0
+    return _SECONDARY_GAP + option.fontMetrics.horizontalAdvance(str(secondary))
+
+
+def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
+    """What the secondary text takes from this cell's width: what it
+    wants, out of what the primary text leaves or its minimum share,
+    whichever is more."""
+    wanted = _secondary_width(option, index)
+    if not wanted:
+        return 0
+    cell = option.rect.width()
+    primary = (
+        option.fontMetrics.horizontalAdvance(
+            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+        + 2 * _BADGE_GAP + _badge_width(option, index)
+    )
+    available = max(cell - primary, int(cell * _SECONDARY_MIN_SHARE))
+    return min(wanted, available)
 
 
 class ElidedTextDelegate(QStyledItemDelegate):
@@ -92,7 +149,8 @@ class ElidedTextDelegate(QStyledItemDelegate):
             index: _Index,
     ) -> None:
         badge = index.data(BADGE_ROLE)
-        if not badge:
+        secondary = index.data(SECONDARY_ROLE)
+        if not badge and not secondary:
             super().paint(painter, option, index)
             return
 
@@ -112,6 +170,27 @@ class ElidedTextDelegate(QStyledItemDelegate):
         )
 
         reserved = _badge_width(option, index)
+        if badge:
+            self._paint_badge(painter, option, str(badge), reserved)
+        trailing = _secondary_share(option, index)
+        if secondary:
+            self._paint_secondary(painter, option, str(secondary), trailing)
+
+        text = QStyleOptionViewItem(option)
+        self.initStyleOption(text, index)
+        text.rect = option.rect.adjusted(reserved, 0, -trailing, 0)
+        text.state &= ~QStyle.StateFlag.State_HasFocus
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem, text, painter, widget,
+        )
+
+    @staticmethod
+    def _paint_badge(
+            painter: QPainter,
+            option: QStyleOptionViewItem,
+            badge: str,
+            reserved: int,
+    ) -> None:
         font = _badge_font(option.font)
         metrics = QFontMetrics(font)
         pill = QRect(
@@ -132,20 +211,50 @@ class ElidedTextDelegate(QStyledItemDelegate):
         painter.drawRoundedRect(pill, radius, radius)
         painter.setFont(font)
         painter.setPen(palette.color(QPalette.ColorRole.Text))
-        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, str(badge))
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, badge)
         painter.restore()
 
-        text = QStyleOptionViewItem(option)
-        self.initStyleOption(text, index)
-        text.rect = option.rect.adjusted(reserved, 0, 0, 0)
-        text.state &= ~QStyle.StateFlag.State_HasFocus
-        style.drawControl(
-            QStyle.ControlElement.CE_ItemViewItem, text, painter, widget,
+    @staticmethod
+    def _paint_secondary(
+            painter: QPainter,
+            option: QStyleOptionViewItem,
+            secondary: str,
+            width: int,
+    ) -> None:
+        palette = option.palette
+        if option.state & QStyle.StateFlag.State_Selected:
+            text_role = QPalette.ColorRole.HighlightedText
+            ground_role = QPalette.ColorRole.Highlight
+        else:
+            text_role = QPalette.ColorRole.Text
+            ground_role = QPalette.ColorRole.Base
+        margin = _BADGE_GAP
+        area = QRect(
+            option.rect.right() - width + _SECONDARY_GAP,
+            option.rect.top(),
+            max(0, width - _SECONDARY_GAP - margin),
+            option.rect.height(),
         )
+        painter.save()
+        painter.setFont(option.font)
+        painter.setPen(secondary_text_color(
+            palette.color(text_role), palette.color(ground_role),
+        ))
+        painter.drawText(
+            area,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            option.fontMetrics.elidedText(
+                secondary, Qt.TextElideMode.ElideRight, area.width(),
+            ),
+        )
+        painter.restore()
 
     def sizeHint(self, option: QStyleOptionViewItem, index: _Index) -> QSize:
         hint = super().sizeHint(option, index)
-        hint.setWidth(hint.width() + _badge_width(option, index))
+        hint.setWidth(
+            hint.width() + _badge_width(option, index)
+            + _secondary_width(option, index),
+        )
         if self._fill_width:
             # In list mode an item spans the wider of its own hint and
             # the viewport (probed: a zero-width hint tracks the
@@ -166,6 +275,9 @@ class ElidedTextDelegate(QStyledItemDelegate):
                 and self._is_elided(option, index, view)
         ):
             text = str(index.data(Qt.ItemDataRole.DisplayRole))
+            secondary = index.data(SECONDARY_ROLE)
+            if secondary:
+                text = f"{text}\n{secondary}"
             QToolTip.showText(event.globalPos(), plain_tooltip(text), view)
             return True
         return super().helpEvent(event, view, option, index)
@@ -192,8 +304,18 @@ class ElidedTextDelegate(QStyledItemDelegate):
             QStyle.PixelMetric.PM_FocusFrameHMargin, styled, view,
         ) + 1
         metrics = styled.fontMetrics
-        available = text_rect.width() - 2 * margin - _badge_width(option, index)
-        return bool(metrics.horizontalAdvance(text) > available)
+        available = (
+            text_rect.width() - 2 * margin - _badge_width(option, index)
+            - _secondary_share(option, index)
+        )
+        if metrics.horizontalAdvance(text) > available:
+            return True
+        secondary = index.data(SECONDARY_ROLE)
+        return bool(
+            secondary
+            and _secondary_width(option, index)
+            > _secondary_share(option, index)
+        )
 
 
 def elide_table_cells(view: QTableView) -> None:

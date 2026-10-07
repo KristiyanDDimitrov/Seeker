@@ -1,5 +1,5 @@
 """Presentation formatting shared by the CLI and `ui/`: timestamps,
-file sizes, transfer speeds, durations.
+file sizes, transfer speeds, durations, a peer's file name.
 
 Pure functions with no Qt, DB or repository imports, so either
 presentation layer can call them without breaking the layering rule.
@@ -69,3 +69,9 @@ def format_duration_seconds(seconds: float) -> str:
 
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m"
+
+
+def remote_basename(remote_path: str) -> str:
+    """The file name at the end of a SoulSeek peer's path, which may
+    use either separator (a Windows peer's uses backslashes)."""
+    return remote_path.replace("\\", "/").rsplit("/", 1)[-1]

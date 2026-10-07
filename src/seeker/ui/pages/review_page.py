@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker.formatting import remote_basename
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
@@ -47,6 +48,7 @@ from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
@@ -59,9 +61,10 @@ PendingUpgrades = list[UpgradeReviewDetails]
 
 # The three tables below never grew a column IntEnum of their own —
 # their layouts are declared the same way, just against plain column
-# indices.
+# indices. In the two match tables the track and the file it is
+# judged against both stretch: they are the comparison.
 _REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
-    stretch=(0,), fit_content=(1, 2, 3), actions=4,
+    stretch=(0, 2), fit_content=(1, 3), actions=4,
 )
 _REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
@@ -76,6 +79,23 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # layout's bare minimum otherwise, which is a header row with no visible
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
+
+_NEEDS_TITLE = "SoulSeek candidates needing confirmation"
+_UPGRADES_TITLE = "Downloaded upgrades ready for review"
+_LOCAL_TITLE = "Local library matches needing confirmation"
+
+
+def _counted(title: str, count: int) -> str:
+    """A section title with its row count; none at zero, where the
+    section's empty state already says so."""
+    return f"{title} ({count})" if count else title
+
+
+def _tags_text(match: NeedsReviewMatch) -> str:
+    """The file's own tags, the values the match score compared."""
+    if match.tag_artist is None and match.tag_title is None:
+        return "No tags"
+    return f"Tags: {match.tag_artist or '?'} \u2013 {match.tag_title or '?'}"
 
 
 @dataclass(frozen=True)
@@ -141,9 +161,8 @@ class ReviewPage(QWidget):
         needs_section = QWidget()
         needs_layout = QVBoxLayout(needs_section)
         needs_layout.setContentsMargins(0, 0, 0, 0)
-        needs_layout.addWidget(
-            PlainLabel("SoulSeek candidates needing confirmation")
-        )
+        self.review_needs_title = PlainLabel(_NEEDS_TITLE)
+        needs_layout.addWidget(self.review_needs_title)
 
         self.review_needs_table = QTableWidget(0, 5)
         self.review_needs_table.setHorizontalHeaderLabels(
@@ -163,9 +182,8 @@ class ReviewPage(QWidget):
         upgrades_layout.setContentsMargins(0, 0, 0, 0)
 
         upgrades_header_row = QHBoxLayout()
-        upgrades_header_row.addWidget(
-            PlainLabel("Downloaded upgrades ready for review")
-        )
+        self.review_upgrades_title = PlainLabel(_UPGRADES_TITLE)
+        upgrades_header_row.addWidget(self.review_upgrades_title)
         upgrades_header_row.addStretch()
         # "Replace all" (HISTORY §88). Real count set/refreshed in
         # _render_pending_upgrades, so it's never stale against what's
@@ -201,9 +219,8 @@ class ReviewPage(QWidget):
         local_section = QWidget()
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(0, 0, 0, 0)
-        local_layout.addWidget(
-            PlainLabel("Local library matches needing confirmation")
-        )
+        self.review_local_title = PlainLabel(_LOCAL_TITLE)
+        local_layout.addWidget(self.review_local_title)
 
         self.review_local_table = QTableWidget(0, 5)
         self.review_local_table.setHorizontalHeaderLabels(
@@ -355,6 +372,13 @@ class ReviewPage(QWidget):
         self._needs_review_count = len(candidates) + len(local_matches)
         self._pending_upgrades_count = len(upgrades)
         self._host.check_for_needs_decision_notification(total)
+        self.review_needs_title.setText(_counted(_NEEDS_TITLE, len(candidates)))
+        self.review_upgrades_title.setText(
+            _counted(_UPGRADES_TITLE, len(upgrades)),
+        )
+        self.review_local_title.setText(
+            _counted(_LOCAL_TITLE, len(local_matches)),
+        )
         self._render_needs_review_candidates(candidates)
         self._render_pending_upgrades(upgrades)
         self._render_local_needs_review_matches(local_matches)
@@ -392,12 +416,20 @@ class ReviewPage(QWidget):
                     SortKeyItem(f"{candidate.score:.1f}", candidate.score),
                 )
 
-                candidate_text = (
-                        f"{candidate.quality_descriptor} — {candidate.username}"
+                # The file name is what a person judges the match by;
+                # its quality and peer sit beside it, the whole remote
+                # path one hover away.
+                source = (
+                    f"{candidate.quality_descriptor} from {candidate.username}"
                 )
-                self.review_needs_table.setItem(
-                    row, 2, QTableWidgetItem(candidate_text),
+                candidate_item = QTableWidgetItem(
+                    remote_basename(candidate.filename),
                 )
+                candidate_item.setData(SECONDARY_ROLE, source)
+                candidate_item.setToolTip(
+                    plain_tooltip(f"{candidate.filename}\n{source}"),
+                )
+                self.review_needs_table.setItem(row, 2, candidate_item)
 
                 # The second-best-scoring candidate in the same
                 # needs_review band, when one was found (quality.py's
@@ -716,9 +748,9 @@ class ReviewPage(QWidget):
                 # (possibly sorted) row order.
                 label_item.setData(Qt.ItemDataRole.UserRole, match.track_id)
                 self.review_local_table.setItem(row, 0, label_item)
-                self.review_local_table.setItem(
-                    row, 1, QTableWidgetItem(match.local_file_path),
-                )
+                file_item = QTableWidgetItem(match.local_file_path)
+                file_item.setData(SECONDARY_ROLE, _tags_text(match))
+                self.review_local_table.setItem(row, 1, file_item)
                 self.review_local_table.setItem(
                     row, 2, QTableWidgetItem(match.location_name),
                 )

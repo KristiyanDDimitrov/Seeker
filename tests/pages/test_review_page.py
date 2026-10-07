@@ -14,6 +14,8 @@ here, not re-exported from seeker.ui.main_window — that re-export only
 existed for this file's own prior residence in test_ui_smoke.py.
 """
 
+from dataclasses import replace
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
 
@@ -27,6 +29,7 @@ from fakes import (
 )
 from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
 from seeker.ui.plain_text import plain_tooltip
 
@@ -79,7 +82,10 @@ def test_review_tab_renders_needs_review_candidates(qtbot):
     assert window._review_page.review_needs_table.rowCount() == 1
     assert window._review_page.review_needs_table.item(0, 0).text() == "Artist - Title"
     assert window._review_page.review_needs_table.item(0, 1).text() == "73.2"
-    assert "peer1" in window._review_page.review_needs_table.item(0, 2).text()
+    assert (
+        window._review_page.review_needs_table.item(0, 2).text()
+        == "Artist - Title (Original Mix).flac"
+    )
     # No runner-up on this candidate (round 8 §12.10).
     assert window._review_page.review_needs_table.item(0, 3).text() == "—"
 
@@ -564,3 +570,102 @@ def test_each_empty_review_section_says_nothing_is_waiting(qtbot):
             page.review_local_empty,
     ):
         assert empty.isVisibleTo(page)
+
+
+def test_a_candidate_shows_its_file_with_quality_and_peer_beside_it(qtbot):
+    remote_path = "@@peer1\\Music\\Club\\Artist - Title (Original Mix).flac"
+    candidate = replace(make_review_candidate(), filename=remote_path)
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+
+    window._review_page._render_needs_review_candidates(
+        [(make_track(), candidate)],
+    )
+
+    item = window._review_page.review_needs_table.item(0, 2)
+    assert item.text() == "Artist - Title (Original Mix).flac"
+    assert item.data(SECONDARY_ROLE) == "flac from peer1"
+    assert item.toolTip() == plain_tooltip(f"{remote_path}\nflac from peer1")
+
+
+def test_a_local_match_shows_the_tags_it_was_judged_on(qtbot):
+    untagged = replace(
+        make_needs_review_match("t2"), tag_artist=None, tag_title=None,
+    )
+    window = MainWindow(FakeApplication(
+        needs_review_matches=[make_needs_review_match(), untagged],
+    ))
+    qtbot.addWidget(window)
+    table = window._review_page.review_local_table
+
+    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=2000)
+    secondary = {
+        table.item(row, 0).data(Qt.ItemDataRole.UserRole):
+            table.item(row, 1).data(SECONDARY_ROLE)
+        for row in range(2)
+    }
+    assert secondary == {"t1": "Tags: Artist \u2013 Title Edit", "t2": "No tags"}
+
+
+def test_each_review_section_title_counts_its_rows(qtbot):
+    window = MainWindow(FakeApplication(
+        review_candidates=[
+            (make_track("t1"), make_review_candidate("t1")),
+            (make_track("t2"), make_review_candidate("t2")),
+        ],
+        needs_review_matches=[make_needs_review_match()],
+    ))
+    qtbot.addWidget(window)
+    page = window._review_page
+
+    qtbot.waitUntil(
+        lambda: page.review_needs_title.text().endswith("(2)"), timeout=2000,
+    )
+    assert page.review_needs_title.text() == (
+        "SoulSeek candidates needing confirmation (2)"
+    )
+    assert page.review_local_title.text() == (
+        "Local library matches needing confirmation (1)"
+    )
+    # Nothing waiting: the empty state says so, the title carries no "(0)".
+    assert page.review_upgrades_title.text() == (
+        "Downloaded upgrades ready for review"
+    )
+
+
+def test_review_rows_stay_one_line_when_rendered_before_first_shown(qtbot):
+    # A render that lands while Review has never been shown sizes rows
+    # against its unlaid-out columns (Track was 70 px). Before cells
+    # went one-line (HISTORY §176) that wrapped them to 61 and 91 px,
+    # and they stayed that tall once the page was shown at full size.
+    track = make_track("t1")
+    track.artist, track.title = "Odile Kessler", "Undertow (Club Mix)"
+    candidate = replace(
+        make_review_candidate(
+            "t1", runner_up_username="demo_peer_2",
+            runner_up_filename="x.mp3", runner_up_score=64.0,
+        ),
+        quality_descriptor="FLAC, 1050kbps", username="demo_peer_1",
+    )
+    window = MainWindow(FakeApplication(
+        review_candidates=[(track, candidate)],
+        needs_review_matches=[make_needs_review_match()],
+    ))
+    qtbot.addWidget(window)
+    window.resize(1280, 820)
+    window.show()
+    qtbot.waitExposed(window)
+    page = window._review_page
+    page.poll_review_items()
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    assert not page.isVisible()
+
+    window._show_page("review")
+
+    for table in (page.review_needs_table, page.review_local_table):
+        ceiling = (
+            table.verticalHeader().minimumSectionSize()
+            + table.fontMetrics().lineSpacing()
+        )
+        for row in range(table.rowCount()):
+            assert table.rowHeight(row) < ceiling

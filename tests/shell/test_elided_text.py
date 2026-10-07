@@ -1,8 +1,9 @@
 """Long text elides on one line, and its full text is a hover away:
 the playlist lists never scroll sideways, a table cell never wraps,
 and a path keeps its filename."""
+import pytest
 from PySide6.QtCore import QEvent, QModelIndex, Qt
-from PySide6.QtGui import QHelpEvent
+from PySide6.QtGui import QColor, QHelpEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -160,6 +161,42 @@ def test_a_badge_takes_its_width_from_the_text(qtbot):
     item.setData(BADGE_ROLE, "Upgrade")
 
     assert text in _tooltip_at(table, index)
+    assert table.sizeHintForColumn(0) > (
+        table.fontMetrics().horizontalAdvance(text) + 24
+    )
+
+
+@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT])
+def test_secondary_text_reads_on_every_row_ground(palette):
+    from seeker.ui.elided_text import secondary_text_color
+
+    for ground in (
+            palette.BG_SURFACE, palette.BG_SURFACE_2, palette.ACCENT_SUBTLE,
+    ):
+        color = secondary_text_color(QColor(palette.TEXT), QColor(ground))
+        assert theme.contrast_ratio(color.name(), ground) >= 4.5
+        # Still visibly quieter than the primary text.
+        assert theme.contrast_ratio(color.name(), ground) < (
+            theme.contrast_ratio(palette.TEXT, ground)
+        )
+
+
+def test_secondary_text_takes_width_and_joins_the_hover(qtbot):
+    from seeker.ui.elided_text import SECONDARY_ROLE
+
+    text = "Nova Reyes - Voltage Drop.flac"
+    table = _table(qtbot, text)
+    index = table.model().index(0, 0)
+    table.setColumnWidth(
+        0, table.fontMetrics().horizontalAdvance(text) + 24,
+    )
+    assert _tooltip_at(table, index) == ""
+
+    table.item(0, 0).setData(SECONDARY_ROLE, "FLAC, 1411kbps from nova_fan")
+
+    hover = _tooltip_at(table, index)
+    assert text in hover
+    assert "FLAC, 1411kbps from nova_fan" in hover
     assert table.sizeHintForColumn(0) > (
         table.fontMetrics().horizontalAdvance(text) + 24
     )

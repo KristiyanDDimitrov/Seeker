@@ -2,11 +2,14 @@ import ast
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 import seeker
 from seeker.formatting import (
     format_duration_seconds,
     format_file_size,
     format_timestamp,
+    remote_basename,
 )
 
 
@@ -89,3 +92,15 @@ def test_nothing_outside_ui_imports_the_qt_package():
                 offenders.append(str(relative))
 
     assert offenders == []
+
+
+@pytest.mark.parametrize(
+    ("remote_path", "expected"),
+    [
+        ("@@peer\\Music\\Club\\Track (Mix).flac", "Track (Mix).flac"),
+        ("music/club/Track.mp3", "Track.mp3"),
+        ("Track.mp3", "Track.mp3"),
+    ],
+)
+def test_remote_basename_splits_either_separator(remote_path, expected):
+    assert remote_basename(remote_path) == expected
