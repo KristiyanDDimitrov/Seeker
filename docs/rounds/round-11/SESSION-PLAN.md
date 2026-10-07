@@ -74,7 +74,7 @@ explicit yes.
 | ☑ S32 | Refresh: the shell (HISTORY §182) | §32 | ~100 K | After the nav icons |
 | ☑ S33 | Refresh: onboarding wizard (HISTORY §183) | §33 | ~110 K | None; small enough to finish |
 | ☑ S34 | Refresh: Dashboard and Library (part 1, the Dashboard: HISTORY §184; part 2, Library: HISTORY §185) | §34 | ~130 K | After the Dashboard |
-| ☐ S35a | Refresh: Search, Downloads, History, Duplicates | §35 | ~120 K | Per page |
+| ☑ S35a | Refresh: Search, Downloads, History, Duplicates (HISTORY §186) | §35 | ~120 K | Per page |
 | ☐ S35b | Refresh: Review, Sharing, Help, Support, Settings | §35 | ~120 K | Per page |
 | ☐ S36 | README images and final visual QA | §36 | ~80 K | None |
 | **Phase L — Docs** | | | | |

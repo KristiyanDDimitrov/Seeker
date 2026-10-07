@@ -10,75 +10,76 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S34 part 2 close-out (HISTORY §185). Tree clean apart
-  from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `1979 passed, 1 skipped` (+17). The known
-  Cocoa-only pair
-  `test_a_cell_widget_paints_the_rows_own_background[dark]`/`[light]`
-  passed this run; it is order-dependent (§181) and failed in an
-  earlier full run this session. `mypy --strict src/` clean, 137
-  files; `ruff check src tests tools` 0.
-- **CI:** `e2d7653`'s run `37638242820` green.
+- **HEAD:** the S35a close-out (HISTORY §186). Tree clean apart from
+  the untracked `Claude outputs/`.
+- **Local (Cocoa):** pytest `1987 passed, 1 skipped` (+8). `mypy --strict src/` clean,
+  137 files; `ruff check src tests tools` 0.
+- **CI:** pending for this push (recorded in the follow-up commit).
 
 ## 2. Where we are
 
-S1–S34 ticked. **Next: S35a** (BRIEF §35, first bullet): Search,
-Downloads, History, Duplicates.
+S1–S35a ticked. **Next: S35b** (BRIEF §35, second bullet): Review,
+Sharing, Help and Support, Settings.
 
-## 3. Session report (S34 part 2)
+## 3. Session report (S35a)
 
-Evidence in HISTORY §185.
-- `108221e`: `local_files.has_art` (schema, migration, scanner read
-  and NULL backfill, set by tagging and Fix missing cover art).
-- `4e9dd67`: `TrackStatus.has_art` for in-library tracks.
-- `d68c187`: Library's tag-state track list (writes and shows the
-  shared track selection); action groups as titled cards in a
-  wrapping 280 px column; results panel under the list.
+Evidence in HISTORY §186.
+- `7b8c10b`: Search — one query row (Return searches), file name
+  first, Quality column, Locked pill; outcomes and errors on a notice.
+- `fcb9956`: Downloads — status lamps, reasons/percentages as
+  secondary text, the amber meter only for a transfer
+  (`theme.set_busy_meter`), aligned bars.
+- `0935911`: History — playlist as secondary text; refresh errors on a
+  notice.
+- `de1a0a5`: removes `TwoToneProgressBar` and
+  `style_determinate_progress_bar` (no user left).
+- `fa4c1a6`: Duplicates — outcomes and errors on a notice.
+- `3574e56`: Duplicates — Keep first, Similarity spanned, `BAND_ROLE`
+  group bands, Resolve all above the table; harness shows 3 groups.
 
 ## 4. Key context
 
-- **The first scan after this upgrade reads every file's art once**
-  (6,921 rows NULL in the real DB, rehearsed on a copy). Scans count
-  those as unchanged, so the summary looks normal; it is just slower
-  once, longest on the X9 Pro.
-- **`_action_group` (`tagging_panel.py`) is the titled-card
-  component**: `make_card` + `sectionHeaderLabel` title + muted
-  sentence + rows, title as accessible name. Settings' bare Fusion
-  `QGroupBox`es (S35b) should move to it; lift it into `theme` or a
-  `ui/` module when the second user arrives.
-- **Buttons in a narrow column go in `FlowLayout`**, not
-  `action_row`: an `action_row`'s minimum width made the 340 px column
-  scroll sideways. `test_button_sizing` accepts flow rows.
-- **Lamp-in-cell recipe, now used twice** (Dashboard, Library): item
-  icon `status_lamp.lamp_icon(lamp, theme.active_palette())`, table
-  `setIconSize(LAMP_SIZE)`, `set_secondary_min_share(view, 0.0)`, and
-  reload on theme switch (`MainWindow.on_theme_changed`). Downloads
-  (S35a) wants `DOWNLOAD_LAMPS` the same way.
-- **Showing a shared selection in a table**: build a `QItemSelection`
-  and `ClearAndSelect` with both the table's and the selection model's
-  signals blocked, deferred off `changed` (`LibraryPage.
-  _show_shared_track_selection`).
+- **Channel fix recipe** (used on all four pages): an `InlineNotice` at
+  the top of the page's content, `FeedbackTarget(status_label,
+  notice)`, `show_outcome`/`show_error` for results, and
+  `on_error=self.feedback.show_error` on every worker (run_worker's
+  default puts the error on the label, which the next run wipes).
+  Settings (`settings_window.py` ~:577–1161) and the wizard's Spotify
+  and Library steps still put results on labels: S35b.
+- **An empty status label on its own line is a blank band** under the
+  subtitle; put it in an existing row of controls (Downloads, History,
+  Duplicates do).
+- **`elided_text.BAND_ROLE`** bands a cell with AlternateBase at paint
+  time; a cell under a cell widget needs an item carrying it.
+- **A busy bar's still frame looks full**: next to a meter it reads as
+  done. In a table, show one only for a started transfer, in amber
+  (`set_busy_meter`); the activity strip keeps the accent.
+- **`wrap_progress_bar` now ends in a stretch**, so fixed-width bars
+  sit at the cell's left with or without a label.
+- **`run_busy_worker` has no double-start guard**; a second trigger
+  that bypasses the disabled button (Return in a field) must check
+  `busy_actions.is_running(key)` itself.
+- The harness's Duplicates screen now has three groups: S36's
+  `duplicates.png` README image will change.
 - Carried: `set -o pipefail` before `pytest … | tail && git commit`;
   never touch slskd or real data; zsh does not word-split `$var`;
   judge fine detail on a 2× Cocoa grab; the full suite takes ~4 min,
-  so run it in the background.
+  so run it in the background; split a mixed `tests/fakes.py` diff
+  per commit by hunk (`git apply --cached` on a filtered patch).
 
 ## 5. Decisions made
 
-- **`has_art` is a column, not a per-visit tag read**: the fact is
-  the file's, the scanner already opens each file, and a read per row
-  per playlist switch from an external drive was too slow to repeat.
-  NULL means "not read", never 0. Promoted to CLAUDE.md.
-- **Library lists in-library tracks only**: tagging skips anything
-  else, and the Dashboard already shows the rest.
-- **"Tag N selected"** drops "on Dashboard": the selection is now
-  visible on Library itself. Promoted to CLAUDE.md (both tables write
-  `track_ids`).
-- **Tag options sit under Tags** in their own card, with a sentence
-  saying they also apply to the Dashboard's Tag (§29.3 kept them a
-  group of their own; this keeps that). Titles in sentence case.
-- **One commit for the list and the cards**: the results panel's move
-  and the column width belong to both.
+- **Search keeps visible "Artist"/"Title" captions** (buddied
+  `PlainLabel`s) rather than placeholders alone: a filled field would
+  otherwise lose its label.
+- **Downloads' locked row reads "Retrying"**, the Dashboard's word,
+  with "File locked by the peer" beside it.
+- **No bar for queued or finished downloads**: the lamp says it; a bar
+  added nothing but a second, misleading signal.
+- **The Duplicates Group number column is gone**: bands and spans say
+  where a group ends. Promoted to CLAUDE.md with `BAND_ROLE`.
+- **No lamps on History**: a lamp is a current state; History is a
+  record of past events.
 
 ## 6. Blockers
 
@@ -86,7 +87,7 @@ None.
 
 ## 7. Files in progress
 
-None: S34 is committed whole.
+None: S35a is committed whole.
 
 ## 8. Waiting on Kris
 
@@ -96,28 +97,29 @@ X1 and X2 (optional).
 
 **A cheap veto:** the brows over "ee" in the wordmark (`9ff777b`).
 
-**Live checks (S41 checklist):** after the next scan, Library's Cover
-art column against a few real files (Embedded/Missing); the first
-scan's extra time on the X9 Pro; the Dashboard's lamps and amber
-meter on a real display in both themes; the playlist counts against
-the real library; plus everything carried in
+**Live checks (S41 checklist):** the Downloads lamps, meter and busy
+bar on a real display in both themes, and whether the dark Duplicates
+band is visible enough on a real screen (subtle by design: #282C31 on
+#1E2125); plus S34's (Library's Cover art column against real files,
+the first scan's extra time on the X9 Pro, the Dashboard's lamps and
+meter, the playlist counts) and everything carried in
 `git show cd3ba1a:docs/HANDOFF.md` §8 (fresh-account wizard with
 Docker, nested-location Fix…, the stress test, `qsvg` and Barlow and
 nav icons in the packaged app, keyboard focus and VoiceOver).
 
 ## 9. Open questions
 
+- At 960 a Downloads failure reason elides to a few characters (full
+  text on hover); a Duplicates group's first row is taller than the
+  rest; History's Detail says "MP3 320kbps", Search and Duplicates
+  "MP3, 320 kbps".
 - **Refresh playlists drops the Dashboard's selection** (pre-existing:
   `_populate_playlists`' `clear()` fires `currentItemChanged(None)`).
-  Not folded into part 2; take it in S35b or as its own test-first fix.
-- The Dashboard's table does not show a selection made on Library
-  (harmless: nothing there acts on it). Library's context sentence
-  could shrink now that the list shows what it acts on.
+  Take it in S35b or as its own test-first fix.
+- The Dashboard's table does not show a selection made on Library;
+  Library's context sentence could shrink.
 - `poll_selected_playlist` renders a pre-switch result for one tick
   (pre-existing, self-correcting).
-- **Result messages still on status labels:** `settings_window.py`
-  ~:577–1161, 12 sites in `duplicates_page.py`, and the wizard's
-  Spotify and Library steps (S35a/S35b).
 - Carried unchanged: `git show cd3ba1a:docs/HANDOFF.md` §9 and
   `git show 8eee663:docs/HANDOFF.md` §9 (Review's column budget at 960
   for S35b, Settings' subtitle wrap, the wizard's empty progress row).

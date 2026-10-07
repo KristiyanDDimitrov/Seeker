@@ -97,7 +97,8 @@ src/seeker/
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
 │       widgets.py (ThemeToggleButton, CloseButton),
 │       elided_text.py (one-line cells, full text on hover,
-│       BADGE_ROLE pills), empty_state.py (a table's empty state),
+│       BADGE_ROLE pills, BAND_ROLE group bands),
+│       empty_state.py (a table's empty state),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -615,7 +616,10 @@ Each links to the HISTORY entry where the full investigation lives;
   changes. A short marker on a row ("Upgrade") is a `BADGE_ROLE`
   pill on the primary cell, not a column of its own; quieter detail
   beside a cell's text (a candidate's quality and peer) is
-  `SECONDARY_ROLE`, not a second line. A state in a cell is its
+  `SECONDARY_ROLE`, not a second line. Rows that come in groups band
+  every other group with `BAND_ROLE` (the palette's AlternateBase,
+  read at paint time) and span the group's own cells, never a
+  group-number column. A state in a cell is its
   `status_lamp` lamp as the item's icon beside the label, never link
   styling; where the label must read in full, the view sets
   `set_secondary_min_share(view, 0.0)`. Determinate progress is
