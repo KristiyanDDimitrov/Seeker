@@ -91,12 +91,15 @@ def _badge_width(option: QStyleOptionViewItem, index: _Index) -> int:
 
 
 def _secondary_width(option: QStyleOptionViewItem, index: _Index) -> int:
-    """The width a cell's secondary text wants, its gap included; 0
-    without any."""
+    """The width a cell's secondary text wants, with the gap before it
+    and the margin after it (`_secondary_area`); 0 without any."""
     secondary = index.data(SECONDARY_ROLE)
     if not secondary:
         return 0
-    return _SECONDARY_GAP + option.fontMetrics.horizontalAdvance(str(secondary))
+    return (
+        _SECONDARY_GAP + option.fontMetrics.horizontalAdvance(str(secondary))
+        + _BADGE_GAP
+    )
 
 
 def _icon_width(option: QStyleOptionViewItem) -> int:
@@ -131,6 +134,17 @@ def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
     )
     available = max(cell - primary, int(cell * _SECONDARY_MIN_SHARE))
     return min(wanted, available)
+
+
+def _secondary_area(option: QStyleOptionViewItem, width: int) -> QRect:
+    """Where secondary text given `width` of the cell is drawn: right-
+    aligned, after its gap, clear of the cell's right edge."""
+    return QRect(
+        option.rect.right() - width + _SECONDARY_GAP,
+        option.rect.top(),
+        max(0, width - _SECONDARY_GAP - _BADGE_GAP),
+        option.rect.height(),
+    )
 
 
 class ElidedTextDelegate(QStyledItemDelegate):
@@ -244,13 +258,7 @@ class ElidedTextDelegate(QStyledItemDelegate):
         else:
             text_role = QPalette.ColorRole.Text
             ground_role = QPalette.ColorRole.Base
-        margin = _BADGE_GAP
-        area = QRect(
-            option.rect.right() - width + _SECONDARY_GAP,
-            option.rect.top(),
-            max(0, width - _SECONDARY_GAP - margin),
-            option.rect.height(),
-        )
+        area = _secondary_area(option, width)
         painter.save()
         painter.setFont(option.font)
         painter.setPen(secondary_text_color(

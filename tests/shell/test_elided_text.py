@@ -242,3 +242,32 @@ def test_a_cells_icon_counts_against_the_primary_text(qtbot):
 
     primary_right = text_left + table.fontMetrics().horizontalAdvance(text)
     assert option.rect.right() - taken >= primary_right
+
+
+def test_secondary_text_with_room_is_painted_whole(qtbot):
+    # What the secondary text asks for must cover the gap and margin
+    # its paint area leaves out, or a short "65%" elides to "6…" in a
+    # cell with room to spare.
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from seeker.ui.elided_text import (
+        SECONDARY_ROLE,
+        _secondary_area,
+        _secondary_share,
+    )
+
+    table = _table(qtbot, "Nova Reyes - Voltage Drop")
+    table.item(0, 1).setText("Downloading")
+    table.item(0, 1).setData(SECONDARY_ROLE, "65%")
+    table.setColumnWidth(1, 300)
+    index = table.model().index(0, 1)
+    option = QStyleOptionViewItem()
+    option.rect = table.visualRect(index)
+    option.widget = table
+    option.font = table.font()
+    option.fontMetrics = table.fontMetrics()
+    table.itemDelegate().initStyleOption(option, index)
+
+    area = _secondary_area(option, _secondary_share(option, index))
+
+    assert area.width() >= table.fontMetrics().horizontalAdvance("65%")
