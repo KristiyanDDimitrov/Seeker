@@ -71,7 +71,7 @@ class NoDestinationConfiguredError(SeekerError):
 
 
 class UnsupportedDownloadFormatError(SeekerError):
-    """An explicit per-row 'Download this one' pick (download_manual's
+    """An explicit per-row Download pick (download_manual's
     chosen=) bypasses select_downloads' ranking/threshold entirely —
     including the DOWNLOADABLE_EXTENSIONS gate that normally lives
     there — so this is the final guard at request time. A refused
@@ -442,7 +442,7 @@ class DownloadService:
         request, no row: a search that finds nothing or fails, or a
         first request that fails, leaves nothing behind.
 
-        `chosen`, when given (an explicit per-row "Download this one"
+        `chosen`, when given (an explicit per-row "Download"
         pick), bypasses select_downloads' ranking/threshold entirely
         and requests exactly that file as role='settled': the user's
         own explicit choice is a stronger signal than any threshold,

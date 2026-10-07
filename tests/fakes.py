@@ -499,6 +499,7 @@ class FakeDownloadService:
             reason="no_candidate_found",
         )
         self._download_manual_error = download_manual_error
+        self._search_manual_error: Exception | None = None
         self.search_manual_calls: list[tuple[str, str]] = []
         self.download_manual_calls: list[tuple] = []
         # None means "no resolvable destination" — the roadmap item 6
@@ -544,6 +545,8 @@ class FakeDownloadService:
 
     def search_manual(self, artist: str, title: str) -> list:
         self.search_manual_calls.append((artist, title))
+        if self._search_manual_error is not None:
+            raise self._search_manual_error
         return self._search_manual_results
 
     def download_manual(
