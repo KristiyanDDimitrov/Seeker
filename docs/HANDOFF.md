@@ -18,7 +18,7 @@ nine fields below follow the contract in
   passed this full run and failed once in a narrower run: still
   order-dependent (§181). `mypy --strict src/` clean, 137 files;
   `ruff check src tests tools` 0.
-- **CI:** see the S33 handoff commit (filled in after the push).
+- **CI:** `d50a6b3`'s run `37626392927` green.
 
 ## 2. Where we are
 
