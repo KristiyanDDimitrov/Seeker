@@ -383,5 +383,21 @@ private names, and `ruff`/`mypy` do not cover it.
 
 ## Decision
 
-*Pending: Kris's answer goes here (direction, any mix, and whether the
-Dashboard shows BPM and key), with the date. S31 starts from it.*
+**2026-10-07, Kris: Booth with the violet accent (A′), no BPM or key
+on the Dashboard.** Kris's reason for the second half: Seeker is a
+management tool, mainly for downloading and organising; BPM and key
+matter more in performance software such as Rekordbox.
+
+What S31–S36 build from this:
+
+- **Tokens:** Booth's table (surfaces, text, borders, status colours)
+  with A′'s five accent tokens in place of the blue ones. No Harmonic
+  token ships, and the Camelot wheel colours are not added.
+- **Type:** Barlow Semi Condensed, Medium and SemiBold, bundled with
+  its OFL licence; the system font everywhere else.
+- **Status:** the LED system (lit for a settled or working state, ring
+  for waiting on you) and the segmented amber meter.
+- **Icons:** Lucide (ISC).
+- **Dashboard:** no BPM or key column. The analysis feature itself
+  (tagging with `analyze_audio`) is unchanged; its values stay in the
+  file tags, where DJ software such as Rekordbox reads them.
