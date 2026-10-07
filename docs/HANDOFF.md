@@ -14,7 +14,7 @@ nine fields below follow the contract in
   from the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2002 passed, 1 skipped` (+15). `mypy --strict src/` clean,
   138 files; `ruff check src tests tools` 0.
-- **CI:** pending for the close-out push; see the follow-up handoff commit.
+- **CI:** `d3d25cd`'s run `37677983618` green.
 
 ## 2. Where we are
 
