@@ -10,14 +10,15 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S29 part-1 close-out (after `bdf27a4`). Tree clean
+- **HEAD:** the CI-result handoff note, after the S29 part-1
+  close-out `67f273f`. Tree clean
   apart from the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2 failed, 1817 passed, 1 skipped`. Both
   failures are `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`,
   the display-specific failure carried from S28 (§4). `test_theme.py`
   offscreen: 62 passed. `mypy --strict src/` clean, 133 files;
   `ruff check src tests tools` 0.
-- **CI:** see the follow-up handoff commit for the run id and result.
+- **CI:** `67f273f`'s run `37589007991` green.
 
 ## 2. Where we are
 
@@ -55,18 +56,11 @@ Evidence in HISTORY §178.
     `tests/shell/test_shell_navigation.py:237`;
     `tests/shell/test_elided_text.py:79` and `tools/screenshots.py:549`
     select tabs **by index**, so they move when tabs regroup.
-  - Back button: `main_window.py:459` (`settings_back_button`, passed
-    to `build_page(header_extra=)`), handler `_on_settings_back_clicked`
-    :567. It and the sidebar both call `_show_page(key)`; the only
-    extra is "which page". `_previous_page_key` must stay: it also
-    drives `_page_to_reopen` (persisting the page before a Settings
-    detour). `context.py:84` documents `header_extra` as used only by
-    Settings.
-- **Harness:** `uv run python tools/screenshots.py --page review
-  --theme light` (seconds). To check old behaviour, a `git worktree`
-  at an older commit runs with `PYTHONPATH=<wt>/src:<wt>/tests uv run
-  --project <repo> pytest …` (verified: imports the worktree's
-  `seeker`).
+  - Back button: `main_window.py:459`, via `build_page(header_extra=)`
+    (`context.py:84`); both it and the sidebar call `_show_page(key)`.
+    Keep `_previous_page_key`: `_page_to_reopen` uses it too.
+- **Old-commit check:** a `git worktree` runs with
+  `PYTHONPATH=<wt>/src:<wt>/tests uv run --project <repo> pytest …`.
 - Carried: the theme-test display failure (cause UNVERIFIED; passes
   offscreen); `MainWindow` does not apply the theme, `main_ui.py`
   does; radon not in the env; never touch slskd or real data; zsh does
@@ -83,15 +77,10 @@ Evidence in HISTORY §178.
   1050kbps from peer").
 - **Both match columns stretch** (Track and the file): Track is half
   the comparison; the file-only stretch failed the 160 px floor.
-- **No count at zero** in a Review section title: the empty state says
-  it.
-- **The row-height item needed no code change**, only a regression
-  test, because §176 fixed it; the test was reworked until it failed
-  on the old code.
-- **Not done:** the three existing copies of the backslash-basename
-  logic in `soulseek/` (`client.py:398`, `quality.py:23`,
-  `placement.py:250`) were left alone; folding them into
-  `formatting.remote_basename` is a refactor for its own commit.
+- **Row height needed only a regression test** (§176 fixed it).
+- **Left alone:** three copies of the basename logic in `soulseek/`
+  (`client.py:398`, `quality.py:23`, `placement.py:250`); folding them
+  into `formatting.remote_basename` is its own refactor commit.
 
 ## 6. Blockers
 
