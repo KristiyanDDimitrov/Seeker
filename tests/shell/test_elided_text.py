@@ -271,3 +271,37 @@ def test_secondary_text_with_room_is_painted_whole(qtbot):
     area = _secondary_area(option, _secondary_share(option, index))
 
     assert area.width() >= table.fontMetrics().horizontalAdvance("65%")
+
+
+def test_a_view_can_give_its_primary_text_the_whole_cell(qtbot):
+    # A status label must read in full; its percentage may vanish.
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from seeker.ui.elided_text import (
+        SECONDARY_ROLE,
+        _secondary_share,
+        set_secondary_min_share,
+    )
+
+    text = "Downloading"
+    table = _table(qtbot, "Nova Reyes - Voltage Drop")
+    table.item(0, 1).setText(text)
+    table.item(0, 1).setData(SECONDARY_ROLE, "65%")
+    table.setColumnWidth(1, table.fontMetrics().horizontalAdvance(text) + 24)
+    index = table.model().index(0, 1)
+    option = QStyleOptionViewItem()
+    option.rect = table.visualRect(index)
+    option.widget = table
+    option.font = table.font()
+    option.fontMetrics = table.fontMetrics()
+    table.itemDelegate().initStyleOption(option, index)
+    full = table.fontMetrics().horizontalAdvance(text) + 12
+
+    def primary_width() -> int:
+        return option.rect.width() - _secondary_share(option, index)
+
+    assert primary_width() < full
+
+    set_secondary_min_share(table, 0.0)
+
+    assert primary_width() >= full

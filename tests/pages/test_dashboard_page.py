@@ -8,6 +8,7 @@ test_library_page.py.
 
 from dataclasses import replace
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton
 
@@ -32,8 +33,9 @@ from seeker.models.track_status import (
     REVIEW_CANDIDATE,
     TrackStatus,
 )
-from seeker.ui import theme
+from seeker.ui import status_lamp, theme
 from seeker.ui.dialogs import DestinationDialog
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
 
 
@@ -1725,22 +1727,90 @@ def test_a_state_change_rebuilds_the_row(qtbot):
     assert page.track_table.cellWidget(0, 3).findChildren(QPushButton)
 
 
-def test_a_theme_change_recolors_the_review_link(qtbot, monkeypatch):
+def _lamp_image(icon):
+    return icon.pixmap(status_lamp.LAMP_SIZE).toImage()
+
+
+@pytest.mark.parametrize("state", list(status_lamp.TRACK_LAMPS))
+def test_each_status_shows_its_lamp_beside_its_label(qtbot, state):
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
     page = window._dashboard_page
-    statuses = [make_track_status(track_id="t1", state=NEEDS_REVIEW)]
-    page._render_track_statuses(statuses)
-    monkeypatch.setattr(
-            theme,
-            "active_palette",
-            lambda: replace(theme.DARK, ACCENT="#123456"),
+
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=state)],
     )
 
+    item = page.track_table.item(0, 1)
+    expected = status_lamp.lamp_icon(
+        status_lamp.TRACK_LAMPS[state], theme.active_palette(),
+    )
+    assert _lamp_image(item.icon()) == _lamp_image(expected)
+    assert item.text()
+
+
+def test_a_review_status_is_a_lamp_not_a_link(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+
+    page._render_track_statuses(
+        [make_track_status(track_id="t1", state=NEEDS_REVIEW)],
+    )
+
+    item = page.track_table.item(0, 1)
+    assert item.font().underline() is False
+    assert item.foreground().style() == Qt.BrushStyle.NoBrush
+    assert item.toolTip() != ""
+
+
+def test_a_found_candidate_is_quieter_text_beside_needs_review(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    status = replace(
+        make_track_status(track_id="t1", state=NEEDS_REVIEW),
+        soulseek_candidate=object(),
+    )
+
+    page._render_track_statuses([status])
+
+    item = page.track_table.item(0, 1)
+    assert item.text() == "Needs review"
+    assert item.data(SECONDARY_ROLE) == "SoulSeek candidate found"
+
+
+def test_a_download_shows_its_percentage_beside_the_lamp(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    page._render_track_statuses([_downloading(500)])
+    page.track_table.item(0, 0).setData(_PROBE_ROLE, "first render")
+
+    assert page.track_table.item(0, 1).data(SECONDARY_ROLE) == "50%"
+    # The status label wins the cell; the percentage gives way.
+    assert page.track_table.itemDelegate().secondary_min_share == 0
+
+    page._render_track_statuses([_downloading(750)])
+
+    assert page.track_table.item(0, 0).data(_PROBE_ROLE) == "first render"
+    assert page.track_table.item(0, 1).data(SECONDARY_ROLE) == "75%"
+
+
+def test_a_theme_change_repaints_the_lamps(qtbot, monkeypatch):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    statuses = [make_track_status(track_id="t1", state=NOT_FOUND)]
+    page._render_track_statuses(statuses)
+    repainted = replace(theme.DARK, DANGER="#123456")
+    monkeypatch.setattr(theme, "active_palette", lambda: repainted)
+
     page._render_track_statuses(statuses)
 
-    assert page.track_table.item(0, 1).foreground().color().name() == (
-        "#123456"
+    expected = status_lamp.lamp_icon(status_lamp.FAULT, repainted)
+    assert _lamp_image(page.track_table.item(0, 1).icon()) == (
+        _lamp_image(expected)
     )
 
 

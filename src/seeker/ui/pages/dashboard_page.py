@@ -15,8 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -50,9 +50,13 @@ from seeker.models.track_status import (
     REVIEW_CANDIDATE,
     TrackStatus,
 )
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, status_lamp, theme
 from seeker.ui.dialogs import DestinationDialog
-from seeker.ui.elided_text import elide_list_items
+from seeker.ui.elided_text import (
+    SECONDARY_ROLE,
+    elide_list_items,
+    set_secondary_min_share,
+)
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
@@ -85,8 +89,8 @@ _TRACK_COLUMNS = theme.ColumnLayout(
 )
 
 
-# The accent color baked into the rows, and the visible statuses.
-_RenderedRows = tuple[str, tuple[TrackStatus, ...]]
+# The palette the rows' lamps were drawn in, and the visible statuses.
+_RenderedRows = tuple[theme.Palette, tuple[TrackStatus, ...]]
 
 
 def _has_progress_bar(status: TrackStatus) -> bool:
@@ -95,6 +99,12 @@ def _has_progress_bar(status: TrackStatus) -> bool:
         and bool(status.total_bytes)
         and status.bytes_transferred is not None
     )
+
+
+def _percent(status: TrackStatus) -> str:
+    # _has_progress_bar's own conditions, for mypy.
+    assert status.total_bytes and status.bytes_transferred is not None
+    return f"{round(100 * status.bytes_transferred / status.total_bytes)}%"
 
 
 def _row_layout(status: TrackStatus) -> tuple[TrackStatus, bool]:
@@ -112,11 +122,11 @@ def _row_layout(status: TrackStatus) -> tuple[TrackStatus, bool]:
 def _differ_only_in_progress(
         previous: _RenderedRows, current: _RenderedRows,
 ) -> bool:
-    previous_accent, previous_rows = previous
-    current_accent, current_rows = current
+    previous_palette, previous_rows = previous
+    current_palette, current_rows = current
 
     return (
-        previous_accent == current_accent
+        previous_palette == current_palette
         and len(previous_rows) == len(current_rows)
         and all(
             _row_layout(old) == _row_layout(new)
@@ -410,6 +420,12 @@ class DashboardPage(QWidget):
         self.track_table.itemSelectionChanged.connect(
             self._on_track_selection_changed
         )
+        self.track_table.setIconSize(
+            QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE),
+        )
+        # A status reads in full; its percentage or candidate note
+        # gives way first.
+        set_secondary_min_share(self.track_table, 0.0)
         self._configure_track_columns()
         right.addLayout(self._build_track_filter_row())
         self.track_area_stack = QStackedWidget()
@@ -844,10 +860,10 @@ class DashboardPage(QWidget):
 
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
-        # The accent is baked into the review-link items, so a theme
-        # switch must rebuild even when the statuses are unchanged.
-        accent = theme.active_palette().ACCENT
-        rendered: _RenderedRows = (accent, tuple(visible))
+        # The lamps bake in the palette's colours, so a theme switch
+        # must rebuild even when the statuses are unchanged.
+        palette = theme.active_palette()
+        rendered: _RenderedRows = (palette, tuple(visible))
         previous = self._rendered_track_rows
 
         if rendered == previous:
@@ -858,12 +874,12 @@ class DashboardPage(QWidget):
         ):
             self._update_progress_in_place()
         else:
-            self._rebuild_track_rows(visible, accent)
+            self._rebuild_track_rows(visible, palette)
 
         self._rendered_track_rows = rendered
 
     def _rebuild_track_rows(
-            self, visible: list[TrackStatus], accent: str,
+            self, visible: list[TrackStatus], palette: theme.Palette,
     ) -> None:
         # Sorting is live on this table; disabled for the body of this
         # rebuild (see preserving_sort_order's own docstring for why)
@@ -882,24 +898,25 @@ class DashboardPage(QWidget):
                 label_item.setData(Qt.ItemDataRole.UserRole, status.track.id)
                 self.track_table.setItem(row, 0, label_item)
 
-                state_text = _STATE_LABELS[status.state]
-                # Only meaningful for NEEDS_REVIEW now: REVIEW_CANDIDATE's
-                # own label already says "Candidate to review," so
-                # appending this here would just repeat itself
-                # (dashboard_service.py's own _compute_status never sets
-                # soulseek_candidate on any other state — see its
-                # docstring) (HISTORY §66).
+                status_item = QTableWidgetItem(_STATE_LABELS[status.state])
+                status_item.setIcon(status_lamp.lamp_icon(
+                    status_lamp.TRACK_LAMPS[status.state], palette,
+                ))
+                # dashboard_service sets a candidate on NEEDS_REVIEW only;
+                # REVIEW_CANDIDATE's own label already says as much.
                 if (
                         status.state == NEEDS_REVIEW
                         and status.soulseek_candidate is not None
                 ):
-                    state_text += " (SoulSeek candidate found)"
-                status_item = QTableWidgetItem(state_text)
+                    status_item.setData(
+                        SECONDARY_ROLE, "SoulSeek candidate found",
+                    )
+                if _has_progress_bar(status):
+                    status_item.setData(SECONDARY_ROLE, _percent(status))
 
                 # Only these states have anything to jump to on the
-                # Review page; every other status is a genuine no-op on
-                # double-click, so only these get the affordance rather
-                # than a misleading cue on every row (HISTORY §56, §66).
+                # Review page, so only they promise a double-click. Their
+                # ring lamp already says they wait on the user.
                 if status.state in (
                         NEEDS_REVIEW,
                         AWAITING_REVIEW,
@@ -908,10 +925,6 @@ class DashboardPage(QWidget):
                     status_item.setToolTip(
                         help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
                     )
-                    font = status_item.font()
-                    font.setUnderline(True)
-                    status_item.setFont(font)
-                    status_item.setForeground(QColor(accent))
 
                 self.track_table.setItem(row, 1, status_item)
 
@@ -988,6 +1001,9 @@ class DashboardPage(QWidget):
                 sort_item.sort_key = (
                     status.bytes_transferred / status.total_bytes
                 )
+                status_item = self.track_table.item(row, 1)
+                assert status_item is not None
+                status_item.setData(SECONDARY_ROLE, _percent(status))
 
     def _configure_track_columns(self) -> None:
         theme.configure_columns(self.track_table, _TRACK_COLUMNS)

@@ -118,8 +118,8 @@ def _icon_width(option: QStyleOptionViewItem) -> int:
 
 def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
     """What the secondary text takes from this cell's width: what it
-    wants, out of what the icon and primary text leave or its minimum
-    share, whichever is more. `option` is a styled one (see
+    wants, out of what the icon and primary text leave or the view's
+    minimum share, whichever is more. `option` is a styled one (see
     `_icon_width`)."""
     wanted = _secondary_width(option, index)
     if not wanted:
@@ -132,7 +132,15 @@ def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
         )
         + 2 * _BADGE_GAP + _badge_width(option, index)
     )
-    available = max(cell - primary, int(cell * _SECONDARY_MIN_SHARE))
+    delegate = (
+        option.widget.itemDelegate()
+        if isinstance(option.widget, QAbstractItemView) else None
+    )
+    min_share = (
+        delegate.secondary_min_share
+        if isinstance(delegate, ElidedTextDelegate) else _SECONDARY_MIN_SHARE
+    )
+    available = max(0, cell - primary, int(cell * min_share))
     return min(wanted, available)
 
 
@@ -160,6 +168,7 @@ class ElidedTextDelegate(QStyledItemDelegate):
         super().__init__(view)
         self._fill_width = fill_width
         self.path_columns: frozenset[int] = frozenset()
+        self.secondary_min_share = _SECONDARY_MIN_SHARE
 
     def elide_mode(self, index: _Index) -> Qt.TextElideMode:
         if index.column() in self.path_columns:
@@ -353,6 +362,15 @@ def set_path_columns(view: QAbstractItemView, columns: tuple[int, ...]) -> None:
     delegate = view.itemDelegate()
     if isinstance(delegate, ElidedTextDelegate):
         delegate.path_columns = frozenset(columns)
+
+
+def set_secondary_min_share(view: QAbstractItemView, share: float) -> None:
+    """The least of a cell's width its secondary text keeps; 0 lets
+    the primary text take the whole cell first (a status label beside
+    its percentage)."""
+    delegate = view.itemDelegate()
+    if isinstance(delegate, ElidedTextDelegate):
+        delegate.secondary_min_share = share
 
 
 def elide_list_items(widget_list: QListWidget) -> None:
