@@ -15,7 +15,7 @@ nine fields below follow the contract in
   this session: docs, screenshots and a scratch module only.
 - **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict src/`
   clean, 133 files; `ruff check src tests tools` 0.
-- **CI:** recorded below after the push.
+- **CI:** `10af293`'s run `37602884021` green.
 
 ## 2. Where we are
 
