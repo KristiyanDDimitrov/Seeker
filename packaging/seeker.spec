@@ -87,9 +87,12 @@ else:
 # whole directory (not a single file, unlike docker-compose.yml above)
 # so both .icns/.ico ship together at "icons/" and resolve with the
 # exact same relative path this repo's own dev-mode tree already has.
+# The display face (Barlow Semi Condensed, OFL 1.1, with its licence)
+# resolves the same way, through ui/theme.py's bundled_dir("fonts").
 datas = [
     (str(PROJECT_ROOT / "docker-compose.yml"), "."),
     (str(ICONS_DIR), "icons"),
+    (str(SPEC_DIR / "fonts"), "fonts"),
 ]
 
 a = Analysis(

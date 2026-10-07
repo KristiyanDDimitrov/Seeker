@@ -30,12 +30,19 @@ foreground) must be rebuilt when the theme changes;
 `MainWindow.on_theme_changed()` is where that rebuilding happens.
 """
 
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QGuiApplication, QPalette
+from PySide6.QtGui import (
+    QColor,
+    QFontDatabase,
+    QFontMetrics,
+    QGuiApplication,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
@@ -57,6 +64,8 @@ from PySide6.QtWidgets import (
 
 from seeker.ui.elided_text import elide_table_cells, set_path_columns
 from seeker.ui.plain_text import PlainLabel
+
+logger = logging.getLogger(__name__)
 
 # --- Palettes ----------------------------------------------------------
 
@@ -221,17 +230,44 @@ RADIUS_CARD = 6
 PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
 
+# --- Type (theme-independent) ----------------------------------------------
+
+# Panel lettering, as on a mixer's faceplate: the wordmark, page titles
+# and section headers. Everything else stays on the system UI font.
+DISPLAY_FAMILY = "Barlow Semi Condensed"
+TYPE_TITLE_PX = 26
+TYPE_SECTION_PX = 16
+# The two weights bundled. QSS takes the number.
+WEIGHT_MEDIUM = 500
+WEIGHT_SEMIBOLD = 600
+
 # A splitter handle's grab area. Odd, so its 1px line has a centre
 # pixel (see the QSplitter rules in _misc_qss).
 SPLITTER_GRAB_WIDTH = 7
 
 
-def _icons_dir() -> Path:
-    """`packaging/icons/` in a source tree; the `icons/` directory
+def bundled_dir(name: str) -> Path:
+    """`packaging/<name>/` in a source tree; the `<name>/` directory
     `seeker.spec` bundles in a frozen build."""
     if not getattr(sys, "frozen", False):
-        return Path(__file__).resolve().parents[3] / "packaging" / "icons"
-    return Path(sys._MEIPASS) / "icons"  # type: ignore[attr-defined]  # noqa: SLF001
+        return Path(__file__).resolve().parents[3] / "packaging" / name
+    return Path(sys._MEIPASS) / name  # type: ignore[attr-defined]  # noqa: SLF001
+
+
+def load_fonts(directory: Path) -> None:
+    """Registers every `.ttf` in `directory` with Qt. A file Qt cannot
+    read is logged and skipped: its role falls back to the system
+    font rather than stopping the app."""
+    for path in sorted(directory.glob("*.ttf")):
+        if QFontDatabase.addApplicationFont(str(path)) == -1:
+            logger.warning("Could not load the bundled font %s", path)
+
+
+def register_display_font() -> None:
+    """Makes `DISPLAY_FAMILY` available, once per process (a second
+    `addApplicationFont` of the same file would register it again)."""
+    if DISPLAY_FAMILY not in QFontDatabase.families():
+        load_fonts(bundled_dir("fonts"))
 
 
 def combo_chevron_path(palette: Palette) -> Path:
@@ -239,7 +275,7 @@ def combo_chevron_path(palette: Palette) -> Path:
     `image:` takes a file, not a color, so each palette has its own
     bundled SVG; `test_theme.py` fails if one drifts from its token."""
     name = "light" if palette == LIGHT else "dark"
-    return _icons_dir() / f"combo_chevron_{name}.svg"
+    return bundled_dir("icons") / f"combo_chevron_{name}.svg"
 
 
 def set_dynamic_property(widget: QWidget, name: str, value: str | None) -> None:
@@ -831,8 +867,8 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     Fusion through `_SeekerStyle` (so the stylesheet renders
     identically on macOS and Windows — a real concern, since Windows
     packaging is still unverified), the matching `QPalette`, and the
-    one global stylesheet. Safe to call again later, not just once
-    before the first window —
+    one global stylesheet, after registering the bundled display face.
+    Safe to call again later, not just once before the first window —
     `MainWindow.on_theme_changed()` is the runtime re-apply entry point
     for exactly that.
 
@@ -850,6 +886,7 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     """
     app.setStyle(_SeekerStyle(QStyleFactory.create("Fusion")))
 
+    register_display_font()
     palette = resolve_palette(mode)
     _active.palette = palette
 
@@ -914,13 +951,16 @@ QLabel[badge="faint"] {{
 }}
 
 QLabel#pageTitleLabel {{
-    font-size: 18px;
-    font-weight: 600;
+    font-family: "{DISPLAY_FAMILY}";
+    font-size: {TYPE_TITLE_PX}px;
+    font-weight: {WEIGHT_SEMIBOLD};
     color: {palette.TEXT};
 }}
 
 QLabel#sectionHeaderLabel {{
-    font-weight: 600;
+    font-family: "{DISPLAY_FAMILY}";
+    font-size: {TYPE_SECTION_PX}px;
+    font-weight: {WEIGHT_MEDIUM};
     color: {palette.TEXT};
 }}
 
@@ -928,8 +968,9 @@ QLabel#sectionHeaderLabel {{
 and reserves its own font's ascent/descent internally, so it is never
 clipped at the bottom the way a custom-painted wordmark was. */
 QLabel#wordmark {{
-    font-size: 20px;
-    font-weight: 700;
+    font-family: "{DISPLAY_FAMILY}";
+    font-size: {TYPE_TITLE_PX}px;
+    font-weight: {WEIGHT_SEMIBOLD};
     color: {palette.TEXT};
 }}
 

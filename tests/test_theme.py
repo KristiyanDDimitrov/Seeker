@@ -1,6 +1,17 @@
+import sys
+from pathlib import Path
+
 import pytest
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPalette
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontInfo,
+    QImage,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -645,3 +656,61 @@ def test_a_click_never_gives_a_button_focus(qtbot, applied_palette, kind):
     control = kind("Sync")
     qtbot.addWidget(control)
     assert control.focusPolicy() == Qt.FocusPolicy.TabFocus
+
+
+# --- The display face (Barlow Semi Condensed) -------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_the_display_face_ships_with_its_licence():
+    fonts = _PROJECT_ROOT / "packaging" / "fonts"
+    assert (fonts / "BarlowSemiCondensed-Medium.ttf").is_file()
+    assert (fonts / "BarlowSemiCondensed-SemiBold.ttf").is_file()
+    assert "SIL Open Font License" in (fonts / "OFL.txt").read_text()
+
+
+def test_the_spec_bundles_the_fonts_directory():
+    spec = (_PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+    assert '(str(SPEC_DIR / "fonts"), "fonts")' in spec
+
+
+def test_a_frozen_build_reads_fonts_from_the_bundle(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert theme.bundled_dir("fonts") == tmp_path / "fonts"
+
+
+def test_apply_theme_registers_both_weights_of_the_display_face(qapp):
+    theme.apply_theme(qapp, "dark")
+    assert theme.DISPLAY_FAMILY in QFontDatabase.families()
+    styles = QFontDatabase.styles(theme.DISPLAY_FAMILY)
+    assert {"Medium", "SemiBold"} <= set(styles)
+
+
+def test_an_unreadable_font_file_is_logged_not_raised(qapp, tmp_path, caplog):
+    (tmp_path / "Broken.ttf").write_bytes(b"not a font")
+    theme.load_fonts(tmp_path)
+    assert "Broken.ttf" in caplog.text
+
+
+@pytest.mark.parametrize(
+        ("name", "size", "weight"),
+        [
+            ("pageTitleLabel", theme.TYPE_TITLE_PX, QFont.Weight.DemiBold),
+            ("wordmark", theme.TYPE_TITLE_PX, QFont.Weight.DemiBold),
+            ("sectionHeaderLabel", theme.TYPE_SECTION_PX, QFont.Weight.Medium),
+        ],
+)
+def test_title_roles_are_set_in_the_display_face(
+        qtbot, applied_palette, name, size, weight,
+):
+    label = QLabel("Dashboard")
+    label.setObjectName(name)
+    qtbot.addWidget(label)
+    label.show()
+    label.ensurePolished()
+    info = QFontInfo(label.font())
+    assert info.family() == theme.DISPLAY_FAMILY
+    assert info.pixelSize() == size
+    assert label.font().weight() == weight
