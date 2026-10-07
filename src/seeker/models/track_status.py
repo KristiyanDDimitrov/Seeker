@@ -54,3 +54,6 @@ class TrackStatus:
     # completed_at's existing str-not-datetime convention throughout
     # this codebase), or None if the file has never been tagged.
     tagged_at: str | None = None
+    # Only meaningful when state == IN_LIBRARY — LocalFile.has_art:
+    # whether the file has embedded cover art, None until it is read.
+    has_art: bool | None = None

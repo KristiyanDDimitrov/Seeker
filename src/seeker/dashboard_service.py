@@ -308,7 +308,10 @@ def _compute_status(
     ):
         local_file = local_files_by_id[match.local_file_id]
         return TrackStatus(
-            track=track, state=IN_LIBRARY, tagged_at=local_file.tagged_at,
+            track=track,
+            state=IN_LIBRARY,
+            tagged_at=local_file.tagged_at,
+            has_art=local_file.has_art,
         )
 
     downloading = next(

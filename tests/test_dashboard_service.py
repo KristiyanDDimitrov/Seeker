@@ -88,6 +88,7 @@ def seed_local_file(
         service: DashboardService,
         filename: str = "song.mp3",
         tagged_at: str | None = None,
+        has_art: bool | None = None,
 ) -> int:
     with service.database.transaction() as connection:
         location_count = connection.execute(
@@ -114,6 +115,7 @@ def seed_local_file(
                 size_bytes=1_000,
                 mtime=1.0,
                 scanned_at="2026-01-01T00:00:00+00:00",
+                has_art=has_art,
             ),
             connection,
         )
@@ -250,6 +252,22 @@ def test_in_library_state_surfaces_real_tagged_at(tmp_path):
 
     assert statuses[0].state == IN_LIBRARY
     assert statuses[0].tagged_at == "2026-08-30T12:00:00+00:00"
+
+
+@pytest.mark.parametrize("has_art", [True, False, None])
+def test_in_library_state_surfaces_whether_the_file_has_art(
+        tmp_path, has_art,
+):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1")
+    seed_track(service, "p1", "t1")
+    local_file_id = seed_local_file(service, has_art=has_art)
+    seed_match(service, "t1", "auto", local_file_id=local_file_id, score=95.0)
+
+    [status] = service.get_playlist_track_status("Playlist")
+
+    assert status.state == IN_LIBRARY
+    assert status.has_art is has_art
 
 
 def test_downloading_state_surfaces_real_progress(tmp_path):
