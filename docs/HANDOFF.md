@@ -14,7 +14,7 @@ nine fields below follow the contract in
   from the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2012 passed, 1 skipped`, no failures.
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** see the close-out's push (recorded in the follow-up commit).
+- **CI:** `b94dd66`'s run `37689872775` green.
 
 ## 2. Where we are
 
@@ -50,10 +50,9 @@ Evidence in HISTORY §189.
   Cocoa this session** (failed in part 2 on two commits). Consistent
   with part 2's display-profile suspicion, still UNVERIFIED; if it
   fails again in S36, compare against offscreen before believing it.
-- **For a tall grab of one screen**, temporarily set `SIZES` in
-  `tools/screenshots.py` (e.g. `((1280, 1300),)`), render with
-  `--page`/`--theme`, then `git checkout tools/screenshots.py`. There
-  is no CLI flag for it; S36 could add one if it needs it twice.
+- **A tall grab:** set `SIZES` in `tools/screenshots.py` to
+  `((1280, 1300),)`, render with `--page`/`--theme`, then
+  `git checkout tools/screenshots.py` (no CLI flag exists).
 - **Offscreen spin boxes show "90,0"** (the machine's locale), not a
   Settings bug.
 - Carried: a lamp bakes the palette in at render (a slow-poll table
@@ -75,9 +74,8 @@ Evidence in HISTORY §189.
 - **About lives only in the Help menu.** It is not a setting.
 - **Save default destination is no longer primary**: it was the only
   primary save on the page.
-- **SoulSeek button text unchanged** ("Update SoulSeek credentials"):
-  `application.py` and test comments name it; the card is titled
-  "SoulSeek credentials" to match.
+- **"Update SoulSeek credentials" keeps its text** (comments in
+  `application.py` name it); its card is "SoulSeek credentials".
 
 ## 6. Blockers
 
@@ -112,9 +110,8 @@ app, keyboard focus and VoiceOver).
 - **Refresh playlists drops the Dashboard's selection** (pre-existing:
   `_populate_playlists`' `clear()` fires `currentItemChanged(None)`).
   A test-first fix of its own; not part of §35.
-- Settings' locations table keeps a minimum height that shows empty
-  space under three rows; Playlist destinations' list is tall for four
-  playlists. Cosmetic: S36's sweep can judge them against the rest.
+- Settings' locations table and destinations list leave empty space
+  under a few rows. Cosmetic: S36's sweep can judge them.
 - Carried from S35a/S35b: a Downloads failure reason elides at 960; a
   Duplicates group's first row is taller; History says "MP3 320kbps"
   where Search says "MP3, 320 kbps" (Review too: stored
