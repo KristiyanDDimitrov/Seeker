@@ -143,9 +143,11 @@ def test_scan_logs_an_unreadable_tag_at_debug_with_the_traceback(
     with caplog.at_level(logging.DEBUG, logger="seeker.library.scanner"):
         scanner.scan(location)
 
-    [record] = [r for r in caplog.records if "song.mp3" in r.getMessage()]
-    assert record.levelno == logging.DEBUG
-    assert record.exc_info is not None
+    # One record for the text tags, one for the cover art.
+    records = [r for r in caplog.records if "song.mp3" in r.getMessage()]
+    assert len(records) == 2
+    assert all(r.levelno == logging.DEBUG for r in records)
+    assert all(r.exc_info is not None for r in records)
     assert indexed_paths(database, local_files) == ["song.mp3"]
 
 
@@ -174,7 +176,8 @@ def test_scan_reads_tags_without_holding_the_write_lock(
 
     scanner.scan(location)
 
-    assert could_write == [True, True, True]
+    # Each file is opened twice: text tags, then cover art.
+    assert could_write == [True] * 6
     assert len(indexed_paths(database, local_files)) == 3
 
 

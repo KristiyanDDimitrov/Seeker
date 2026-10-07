@@ -9,6 +9,7 @@ from typing import Any
 from mutagen import File as MutagenFile
 
 from seeker.audio.formats import AUDIO_EXTENSIONS
+from seeker.audio.tags import read_embedded_art
 from seeker.database.connection import Database
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
@@ -84,10 +85,17 @@ class LibraryScanner:
             stat = file_path.stat()
             existing = existing_by_relative_path.get(relative_path)
 
-            if (
-                    existing is not None
-                    and existing.size_bytes == stat.st_size
-                    and existing.mtime == stat.st_mtime
+            file_unchanged = (
+                existing is not None
+                and existing.size_bytes == stat.st_size
+                and existing.mtime == stat.st_mtime
+            )
+
+            # A row never read for art (indexed before the column
+            # existed, or unreadable last time) is read again; the file
+            # itself still counts as unchanged.
+            if file_unchanged and existing is not None and (
+                    existing.has_art is not None
             ):
                 unchanged += 1
                 continue
@@ -98,6 +106,8 @@ class LibraryScanner:
 
             if existing is None:
                 added += 1
+            elif file_unchanged:
+                unchanged += 1
             else:
                 updated += 1
 
@@ -223,6 +233,7 @@ def _read_local_file(
         tag_album=tag_album,
         duration_ms=duration_ms,
         scanned_at=datetime.now(UTC).isoformat(),
+        has_art=_read_has_art(file_path),
     )
 
 
@@ -253,6 +264,19 @@ def _read_tags(
     except Exception:
         logger.debug("Could not read tags from %s", file_path, exc_info=True)
         return None, None, None, None
+
+
+def _read_has_art(file_path: Path) -> bool | None:
+    # A second, non-easy open: the easy interface hides pictures. None
+    # for any failure, the same "could not tell" as _read_tags.
+    try:
+        audio = MutagenFile(file_path)
+        if audio is None:
+            return None
+        return read_embedded_art(audio) is not None
+    except Exception:
+        logger.debug("Could not read art from %s", file_path, exc_info=True)
+        return None
 
 
 def _first_tag(tags: Any, key: str) -> str | None:

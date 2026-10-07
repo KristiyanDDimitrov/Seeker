@@ -1,4 +1,8 @@
+import wave
+
 import pytest
+from mutagen.id3 import APIC
+from mutagen.wave import WAVE
 
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -157,3 +161,102 @@ def test_index_single_file_matches_scan_loop_result(tmp_path):
     assert len(scanned) == 1
     assert scanned[0].id == indexed.id
     assert scanned[0].relative_path == indexed.relative_path
+
+
+def _write_wav(path, *, with_art: bool) -> None:
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8_000)
+        handle.writeframes(b"\x00\x00" * 800)
+
+    if with_art:
+        audio = WAVE(path)
+        audio.add_tags()
+        audio.tags.add(
+            APIC(encoding=3, mime="image/jpeg", type=3, data=b"\xff\xd8art")
+        )
+        audio.save()
+
+
+def _scan_location(tmp_path, library_root):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    local_files = LocalFileRepository()
+
+    with database.transaction() as connection:
+        LibraryLocationRepository().add(
+            LibraryLocation(
+                name="main",
+                path=str(library_root),
+                added_at="2026-01-01T00:00:00+00:00",
+            ),
+            connection,
+        )
+        location = LibraryLocationRepository().get_by_name("main", connection)
+
+    return database, local_files, LibraryScanner(local_files, database), location
+
+
+def _has_art_by_path(database, local_files):
+    with database.transaction() as connection:
+        return {
+            local_file.relative_path: local_file.has_art
+            for local_file in local_files.get_all(connection)
+        }
+
+
+def test_scan_records_whether_each_file_has_embedded_art(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    _write_wav(library_root / "with.wav", with_art=True)
+    _write_wav(library_root / "without.wav", with_art=False)
+    (library_root / "unreadable.mp3").write_bytes(b"not audio")
+
+    database, local_files, scanner, location = _scan_location(
+        tmp_path, library_root,
+    )
+    scanner.scan(location)
+
+    # None is "could not tell", never "no art": an unreadable file is
+    # not reported as one cover-art repair would fix.
+    assert _has_art_by_path(database, local_files) == {
+        "with.wav": True, "without.wav": False, "unreadable.mp3": None,
+    }
+
+
+def test_scan_reads_art_for_an_unchanged_file_it_never_checked(tmp_path):
+    # A row indexed before the column existed holds NULL; the next scan
+    # reads it once even though the file is unchanged, and still counts
+    # it as unchanged, since the file is.
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    _write_wav(library_root / "with.wav", with_art=True)
+
+    database, local_files, scanner, location = _scan_location(
+        tmp_path, library_root,
+    )
+    scanner.scan(location)
+    with database.transaction() as connection:
+        connection.execute("UPDATE local_files SET has_art = NULL")
+
+    summary = scanner.scan(location)
+
+    assert (summary.added, summary.updated, summary.unchanged) == (0, 0, 1)
+    assert _has_art_by_path(database, local_files) == {"with.wav": True}
+
+
+def test_index_single_file_records_embedded_art(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    _write_wav(library_root / "with.wav", with_art=True)
+
+    database, local_files, _, location = _scan_location(
+        tmp_path, library_root,
+    )
+    with database.transaction() as connection:
+        indexed = index_single_file(
+            location, "with.wav", local_files, connection,
+        )
+
+    assert indexed.has_art is True

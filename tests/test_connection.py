@@ -243,6 +243,24 @@ def test_initialize_adds_fingerprint_columns_without_losing_existing_data(
     assert row["fingerprint_computed_at"] is None
 
 
+def test_initialize_adds_has_art_as_unknown_for_existing_files(tmp_path):
+    # NULL, not 0: a file indexed before the column existed has not been
+    # read for art, and the next scan reads it.
+    db_path = tmp_path / "seeker.db"
+    _create_pre_migration_local_files_table(db_path)
+
+    database = Database(db_path)
+    database.initialize()
+
+    with database.transaction() as connection:
+        row = connection.execute(
+            "SELECT * FROM local_files WHERE relative_path = 'a.flac'"
+        ).fetchone()
+
+    assert row["tag_artist"] == "Real Artist"
+    assert row["has_art"] is None
+
+
 def test_initialize_closes_its_connection(tmp_path, monkeypatch):
     # Real bug, found via a real ResourceWarning during the UI polish
     # pass's error-handling audit: `with self.connect() as connection:`

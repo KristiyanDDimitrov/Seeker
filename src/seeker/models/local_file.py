@@ -19,6 +19,9 @@ class LocalFile:
     camelot_key: str | None = None
     key_confidence: float | None = None
     tagged_at: str | None = None
+    # Whether the file has an embedded picture; None until a read
+    # succeeds (never read, or unreadable).
+    has_art: bool | None = None
     # None when never computed, and also when the read left them out:
     # only LocalFileRepository.get_all_for_location_with_fingerprints
     # loads them.

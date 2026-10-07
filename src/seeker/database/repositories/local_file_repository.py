@@ -13,7 +13,7 @@ _ID_CHUNK_SIZE = 500
 _COLUMNS = """
     id, location_id, relative_path, filename, format, size_bytes, mtime,
     tag_artist, tag_title, tag_album, duration_ms, scanned_at, bpm,
-    camelot_key, key_confidence, tagged_at
+    camelot_key, key_confidence, tagged_at, has_art
 """
 _FINGERPRINT_COLUMNS = """
     fingerprint, fingerprint_duration, fingerprint_computed_at
@@ -39,9 +39,10 @@ class LocalFileRepository:
                 tag_title,
                 tag_album,
                 duration_ms,
-                scanned_at
+                scanned_at,
+                has_art
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(location_id, relative_path) DO UPDATE SET
                 filename = excluded.filename,
                 format = excluded.format,
@@ -51,7 +52,8 @@ class LocalFileRepository:
                 tag_title = excluded.tag_title,
                 tag_album = excluded.tag_album,
                 duration_ms = excluded.duration_ms,
-                scanned_at = excluded.scanned_at
+                scanned_at = excluded.scanned_at,
+                has_art = excluded.has_art
             """,
             (
                 local_file.location_id,
@@ -65,6 +67,7 @@ class LocalFileRepository:
                 local_file.tag_album,
                 local_file.duration_ms,
                 local_file.scanned_at,
+                local_file.has_art,
             ),
         )
 
@@ -167,6 +170,16 @@ class LocalFileRepository:
         connection.execute(
             "UPDATE local_files SET tagged_at = ? WHERE id = ?",
             (tagged_at, local_file_id),
+        )
+
+    def mark_has_art(
+            self,
+            local_file_id: int,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            "UPDATE local_files SET has_art = 1 WHERE id = ?",
+            (local_file_id,),
         )
 
     def exists_any(self, connection: sqlite3.Connection) -> bool:
@@ -398,6 +411,7 @@ def _row_to_local_file(row: sqlite3.Row) -> LocalFile:
         camelot_key=row["camelot_key"],
         key_confidence=row["key_confidence"],
         tagged_at=row["tagged_at"],
+        has_art=None if row["has_art"] is None else bool(row["has_art"]),
         fingerprint=row["fingerprint"] if has_fingerprint else None,
         fingerprint_duration=(
             row["fingerprint_duration"] if has_fingerprint else None

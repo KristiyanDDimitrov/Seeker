@@ -91,6 +91,9 @@ def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "track_matches", "confirmed_at", "TEXT"
     )
+    # NULL, not 0: an existing row's file has not been read for art yet,
+    # and the next scan reads it.
+    _add_column_if_missing(connection, "local_files", "has_art", "INTEGER")
     # Bounds the locked-file retry loop (HISTORY §63, §66). NOT NULL
     # DEFAULT 0 so every pre-existing 'locked' row starts its backoff
     # schedule from attempt 0 on the very next poll, rather than NULL

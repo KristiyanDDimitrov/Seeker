@@ -509,6 +509,49 @@ def test_tag_tracks_tags_successfully_with_mocked_art_download(
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
 
 
+def _has_art(service: MetadataService, track_id: str) -> bool | None:
+    with service.database.transaction() as connection:
+        match = service.track_matches.get_by_track_id(track_id, connection)
+        local_file = service.local_files.get_by_id(
+            match.local_file_id, connection,
+        )
+    return local_file.has_art
+
+
+def test_tag_tracks_records_the_art_it_embedded(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
+
+    service.tag_tracks(["t1"])
+
+    assert _has_art(service, "t1") is True
+
+
+def test_tag_tracks_leaves_art_unknown_when_none_was_written(tmp_path):
+    # No URL, so nothing was embedded; whatever art the file already
+    # had is still there, and only a read can say.
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "song.wav")
+
+    service.tag_tracks(["t1"])
+
+    assert _has_art(service, "t1") is None
+
+
 def test_download_album_art_rejects_a_response_over_the_size_cap(
         tmp_path, monkeypatch,
 ):
@@ -1078,6 +1121,25 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
 
     reopened = MutagenFile(dest)
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_fix_missing_art_records_the_art_it_embedded(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    _seed_playlist_with_track(service, "t1")
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
+
+    service.fix_missing_art_for_playlist("Test Playlist")
+
+    assert _has_art(service, "t1") is True
 
 
 def test_fix_missing_art_skips_when_already_byte_correct_and_never_touches_text(

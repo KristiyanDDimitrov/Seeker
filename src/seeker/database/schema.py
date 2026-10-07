@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS local_files (
     camelot_key TEXT,
     key_confidence REAL,
     tagged_at TEXT,
+    -- 1/0 from the last read of the file; NULL until one succeeds.
+    has_art INTEGER,
     fingerprint TEXT,
     fingerprint_duration REAL,
     fingerprint_computed_at TEXT,

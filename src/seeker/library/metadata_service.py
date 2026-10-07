@@ -513,7 +513,7 @@ class MetadataService:
             logger.info("Re-analyzed (already tagged): %s", target.description)
             return
 
-        self._mark_tagged(target.local_file)
+        self._mark_tagged(target.local_file, has_art=art.written)
         yield from _tagged_notes(target, art)
 
     def _resolve_tag_target(self, track_id: str) -> _TagTarget | _TagNote:
@@ -655,7 +655,9 @@ class MetadataService:
                 target.description, error,
             )
 
-    def _mark_tagged(self, local_file: LocalFile) -> None:
+    def _mark_tagged(self, local_file: LocalFile, *, has_art: bool) -> None:
+        # An art step that wrote nothing leaves has_art as it was: the
+        # file may still hold the picture it had before.
         with self.database.transaction() as connection:
             # Loaded from the DB by _resolve_tag_target, so .id is set.
             assert local_file.id is not None
@@ -665,6 +667,14 @@ class MetadataService:
                 datetime.now(UTC).isoformat(),
                 connection,
             )
+            if has_art:
+                self.local_files.mark_has_art(local_file.id, connection)
+
+    def _record_has_art(self, local_file: LocalFile) -> None:
+        with self.database.transaction() as connection:
+            # Loaded from the DB by the caller, so .id is set.
+            assert local_file.id is not None
+            self.local_files.mark_has_art(local_file.id, connection)
 
     def fix_missing_art_for_playlist(
             self,
@@ -843,6 +853,7 @@ class MetadataService:
         existing_art = read_embedded_art(mutagen_file)
 
         if existing_art is not None and existing_art == image_bytes:
+            self._record_has_art(local_file)
             result.already_correct += 1
             return
 
@@ -874,6 +885,7 @@ class MetadataService:
             return
 
         save_tags(mutagen_file)
+        self._record_has_art(local_file)
 
         if local_file.format == "wav":
             result.fixed_wav_rarely_supported += 1
