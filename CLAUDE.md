@@ -274,7 +274,10 @@ src/seeker/
   Cross-page selection state goes through
   `PageContext.playlist_selection` (`ui/playlist_selection.py`),
   never through one page reading another's attributes; Dashboard and
-  Library both write it. [HISTORY §133](docs/history/121-150.md#133)
+  Library both write it, the playlist and the track ids alike (both
+  track tables write `track_ids`; Library's shows it, signals
+  blocked). [HISTORY §133](docs/history/121-150.md#133),
+  [§185](docs/history/181-210.md#185)
   A page owns the actions its own buttons start (Dashboard's Sync,
   Scan, Match, Download, Load tracks), and the shell calls only a
   page's **public** methods (`poll_*`, `refresh_*`, `on_shown`,
@@ -732,6 +735,11 @@ Each links to the HISTORY entry where the full investigation lives;
   `ON CONFLICT DO UPDATE` — a routine scan must never wipe prior
   analysis. [HISTORY §11](docs/history/001-024.md#11),
   [§39](docs/history/032-046.md#39)
+- **`local_files.has_art` is NULL until a read succeeds, never a
+  guessed 0.** The scanner reads it (a second, non-easy mutagen open)
+  and re-reads an unchanged file whose value is NULL, counting it
+  unchanged; tagging and Fix missing cover art set it only when they
+  embedded a picture. [HISTORY §185](docs/history/181-210.md#185)
 - `track_matches.confirmed_at` protects a human-confirmed match from
   being silently demoted by a later `match_all()` re-run, which
   otherwise has no provenance concept at all — but only while its
