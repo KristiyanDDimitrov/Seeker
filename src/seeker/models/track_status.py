@@ -24,6 +24,10 @@ NEEDS_REVIEW = "needs_review"
 REVIEW_CANDIDATE = "review_candidate"
 NOT_FOUND = "not_found"
 
+# Missing: nothing local and nothing in flight, so a Download would
+# request it. The review and retry states already have a request.
+MISSING_STATES = frozenset({NOT_FOUND, REVIEW_CANDIDATE})
+
 
 @dataclass
 class TrackStatus:

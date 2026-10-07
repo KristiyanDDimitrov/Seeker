@@ -44,6 +44,7 @@ from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
+    MISSING_STATES,
     NEEDS_REVIEW,
     NOT_FOUND,
     RETRYING,
@@ -244,7 +245,7 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     # clicking Download actually does (HISTORY §66).
     missing_count = sum(
         1 for status in facts.track_statuses
-        if status.state in (NOT_FOUND, REVIEW_CANDIDATE)
+        if status.state in MISSING_STATES
     )
     untagged_count = sum(
         1 for status in facts.track_statuses
@@ -712,7 +713,7 @@ class DashboardPage(QWidget):
 
     def _status_matches_track_filter(self, status: TrackStatus) -> bool:
         if self._track_filter == "missing":
-            return status.state in (NOT_FOUND, REVIEW_CANDIDATE)
+            return status.state in MISSING_STATES
         if self._track_filter == "needs_review":
             return status.state in (NEEDS_REVIEW, AWAITING_REVIEW)
         if self._track_filter == "untagged":
