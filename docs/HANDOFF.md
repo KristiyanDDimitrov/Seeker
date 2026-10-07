@@ -17,7 +17,7 @@ nine fields below follow the contract in
   `test_a_cell_widget_paints_the_rows_own_background[dark]`/`[light]`
   (order-dependent, §181; pass offscreen, as on CI). `mypy --strict src/`
   clean, 137 files; `ruff check src tests tools` 0.
-- **CI:** CI_RESULT.
+- **CI:** `1c8bd09`'s run `37631079148` green.
 
 ## 2. Where we are
 
