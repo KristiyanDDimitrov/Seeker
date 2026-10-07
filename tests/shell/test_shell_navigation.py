@@ -315,24 +315,6 @@ def test_leaving_settings_refreshes_duplicates_locations_and_next_step(
     )
 
 
-def test_settings_about_button_is_wired_to_mainwindows_about_dialog(qtbot):
-    # Reuses the exact same AboutDialog/copy as the Help-menu route
-    # (§3.4) — checked via the wiring itself (settings_page's callback
-    # is literally MainWindow's own _on_about_clicked), not a second
-    # dialog construction path.
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    assert window.settings_page._on_about_requested == window._on_about_clicked
-
-    triggered = []
-    window.settings_page._on_about_requested = lambda: triggered.append(True)
-    window.settings_page.about_button.click()
-
-    assert triggered == [True]
-
-
 def test_dashboard_downloads_review_pages_have_persistent_subtitles(qtbot):
     # Task 1 — a short, persistent (not hover-dependent) one-liner under
     # each page's own header. Phase 4 moved these from a QTabWidget into

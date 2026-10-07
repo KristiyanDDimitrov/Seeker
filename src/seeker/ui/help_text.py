@@ -312,7 +312,6 @@ TOOLTIP_OPEN_SETTINGS = (
     "Appearance and startup, library folders and destinations, "
     "connections, and match thresholds."
 )
-TOOLTIP_SETTINGS_ABOUT = "About Seeker — version, license, support links."
 TOOLTIP_SYNC_TRACKS = (
     "Pull this playlist's full track list from Spotify — never done "
     "automatically, to keep API calls intentional."

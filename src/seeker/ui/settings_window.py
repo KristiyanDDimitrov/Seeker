@@ -109,7 +109,6 @@ class SettingsPage(QWidget):
             self,
             application: Application,
             initial_tab: str | None = None,
-            on_about_requested: Callable[[], None] | None = None,
             on_theme_mode_changed: Callable[[str], None] | None = None,
     ):
         super().__init__()
@@ -129,13 +128,6 @@ class SettingsPage(QWidget):
         # this tab's radio group stay in sync in both directions. None
         # only in tests that construct SettingsPage standalone.
         self._on_theme_mode_changed = on_theme_mode_changed
-        # A callable rather than importing AboutDialog directly —
-        # AboutDialog lives in main_window.py, which already imports
-        # FROM this module (SETTINGS_TAB_*), so importing it back here
-        # would be circular. MainWindow wires this to its own
-        # _on_about_clicked — reusing the exact same dialog/copy, not a
-        # second one.
-        self._on_about_requested = on_about_requested
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -150,24 +142,12 @@ class SettingsPage(QWidget):
             self.tabs.addTab(theme.scrollable(build_tab()), tab_name)
         layout.addWidget(self.tabs)
 
-        about_row = QHBoxLayout()
-        self.about_button = QPushButton("About Seeker")
-        self.about_button.setToolTip(help_text.TOOLTIP_SETTINGS_ABOUT)
-        self.about_button.clicked.connect(self._on_about_clicked)
-        about_row.addWidget(self.about_button)
-        about_row.addStretch()
-        layout.addLayout(about_row)
-
         if initial_tab is not None:
             self.select_tab(initial_tab)
 
         self._refresh_locations()
         self._refresh_destinations()
         self._refresh_connection_display()
-
-    def _on_about_clicked(self) -> None:
-        if self._on_about_requested is not None:
-            self._on_about_requested()
 
     def select_tab(self, tab_name: str) -> None:
         """Switches to the named tab — used both at construction time
