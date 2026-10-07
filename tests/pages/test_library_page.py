@@ -23,9 +23,10 @@ from fakes import FakeApplication, make_track_status
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
 from seeker.models.tag_result import FixArtResult, TagResult
-from seeker.models.track_status import IN_LIBRARY
+from seeker.models.track_status import IN_LIBRARY, NOT_FOUND
 from seeker.ui import help_text
 from seeker.ui.dialogs import RenamePreviewDialog
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
 
 
@@ -297,18 +298,18 @@ def test_tag_selected_is_disabled_with_a_tooltip_when_nothing_is_selected(
     assert application.metadata_service.tag_tracks_calls == []
 
 
-def test_tag_selected_names_how_many_tracks_the_dashboard_has_selected(
+def test_tag_selected_names_how_many_tracks_are_selected(
         qtbot,
 ):
     window = _window_with_three_tracks(qtbot, _three_track_application())
     button = window._library_page._tagging_panel.tag_selected_button
 
     _select_rows(window, (0, 2))
-    assert button.text() == "Tag 2 selected on Dashboard"
+    assert button.text() == "Tag 2 selected"
     assert button.isEnabled()
 
     _select_rows(window, (1,))
-    assert button.text() == "Tag 1 selected on Dashboard"
+    assert button.text() == "Tag 1 selected"
 
     _select_rows(window, ())
     assert not button.isEnabled()
@@ -330,7 +331,7 @@ def test_tag_selected_shows_the_live_selection_after_a_run(qtbot):
         timeout=2000,
     )
 
-    assert button.text() == "Tag 2 selected on Dashboard"
+    assert button.text() == "Tag 2 selected"
     assert button.isEnabled()
 
 
@@ -980,3 +981,150 @@ def test_picking_a_playlist_in_library_updates_shared_selection_and_dashboard(
     )
     assert window._library_page._playlist_picker.isHidden()
     assert "Other" in window._library_page._context_label.text()
+
+
+# Library's own track list: the playlist's tracks that are in the
+# library (the only ones tagging acts on), each with its tag state.
+
+def _tag_state_application() -> FakeApplication:
+    return FakeApplication(
+        playlists=[Playlist(id="p1", name="Peak Time", track_count=5)],
+        statuses=[
+            make_track_status(
+                track_id="tagged", tagged_at="2026-10-01", has_art=True,
+            ),
+            make_track_status(
+                track_id="no-art", tagged_at="2026-10-01", has_art=False,
+                album_art_url="https://i.scdn.co/image/a",
+            ),
+            make_track_status(track_id="no-url", has_art=False),
+            make_track_status(track_id="unread"),
+            make_track_status(track_id="missing", state=NOT_FOUND),
+        ],
+    )
+
+
+def _library_rows(window) -> dict[str, tuple[str, str, str]]:
+    table = window._library_page.track_table
+    rows = {}
+    for row in range(table.rowCount()):
+        track_id = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        rows[track_id] = (
+            table.item(row, 1).text(),
+            table.item(row, 2).text(),
+            table.item(row, 2).data(SECONDARY_ROLE) or "",
+        )
+    return rows
+
+
+def _window_on_library(qtbot, application):
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+    window._show_page("library")
+    return window
+
+
+def test_library_lists_the_playlists_tracks_in_the_library_with_tag_state(
+        qtbot,
+):
+    window = _window_on_library(qtbot, _tag_state_application())
+
+    qtbot.waitUntil(
+        lambda: window._library_page.track_table.rowCount() == 4,
+        timeout=2000,
+    )
+    assert _library_rows(window) == {
+        "tagged": ("Tagged", "Embedded", ""),
+        "no-art": ("Tagged", "Missing", ""),
+        # Fix missing cover art needs Spotify's URL first.
+        "no-url": ("Not tagged", "Missing", "Get from Spotify"),
+        "unread": ("Not tagged", "Not checked", "Scan to check"),
+    }
+
+
+def test_library_track_selection_is_what_tag_selected_tags(qtbot):
+    application = _tag_state_application()
+    window = _window_on_library(qtbot, application)
+    table = window._library_page.track_table
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    button = window._library_page._tagging_panel.tag_selected_button
+
+    table.selectRow(0)
+    table.selectionModel().select(
+        table.model().index(2, 0),
+        QItemSelectionModel.SelectionFlag.Select
+        | QItemSelectionModel.SelectionFlag.Rows,
+    )
+
+    selected = window.playlist_selection.track_ids
+    assert len(selected) == 2
+    assert button.text() == "Tag 2 selected"
+
+    button.click()
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    assert application.metadata_service.tag_tracks_calls[0][0] == selected
+
+
+def test_a_dashboard_selection_shows_on_librarys_track_list(qtbot):
+    window = _window_on_library(qtbot, _tag_state_application())
+    table = window._library_page.track_table
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.track_table.rowCount() == 5,
+        timeout=2000,
+    )
+
+    _select_rows(window, (1, 4))  # no-art, and a track not in the library
+
+    def selected_ids():
+        return {
+            table.item(index.row(), 0).data(Qt.ItemDataRole.UserRole)
+            for index in table.selectionModel().selectedRows()
+        }
+
+    qtbot.waitUntil(lambda: selected_ids() == {"no-art"}, timeout=2000)
+
+
+def test_library_track_list_refreshes_after_a_tag_run(qtbot):
+    application = _tag_state_application()
+    window = _window_on_library(qtbot, application)
+    table = window._library_page.track_table
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    application.dashboard_service._statuses[3] = make_track_status(
+        track_id="unread", tagged_at="2026-10-07", has_art=True,
+    )
+
+    window._library_page._tagging_panel.tag_playlist_button.click()
+
+    qtbot.waitUntil(
+        lambda: _library_rows(window).get("unread")
+        == ("Tagged", "Embedded", ""),
+        timeout=2000,
+    )
+
+
+def test_library_track_list_says_why_it_is_empty(qtbot):
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Peak Time", track_count=1)],
+        statuses=[make_track_status(track_id="missing", state=NOT_FOUND)],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._library_page
+
+    assert page.track_table.rowCount() == 0
+    assert page.track_empty_state.text() == (
+        help_text.LIBRARY_TRACKS_NO_PLAYLIST_TEXT
+    )
+
+    _select_first_playlist(window, qtbot)
+
+    qtbot.waitUntil(
+        lambda: page.track_empty_state.text()
+        == help_text.LIBRARY_TRACKS_NONE_IN_LIBRARY_TEXT,
+        timeout=2000,
+    )

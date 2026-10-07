@@ -40,6 +40,9 @@ LIBRARY_TAGS_TEXT = (
     "Write Spotify's artist, title, album and cover art into the "
     "matched files."
 )
+LIBRARY_TAG_OPTIONS_TEXT = (
+    "Apply to every tag run, here and from the Dashboard."
+)
 LIBRARY_COVER_ART_TEXT = (
     "Repair cover art without touching the text tags, fetching it from "
     "Spotify where a track has none."
@@ -56,6 +59,13 @@ LIBRARY_TAB_SUBTITLE = (
 LIBRARY_NO_PLAYLIST_TEXT = (
     "No playlist selected. Pick one below to tag its tracks, fix "
     "cover art, or rename files to match."
+)
+LIBRARY_TRACKS_NO_PLAYLIST_TEXT = (
+    "Pick a playlist to see which of its tracks are tagged."
+)
+LIBRARY_TRACKS_NONE_IN_LIBRARY_TEXT = (
+    "None of this playlist's tracks are in your library yet. Download "
+    "them from the Dashboard, then tag them here."
 )
 SEARCH_TAB_SUBTITLE = (
     "Find a track that isn't in any of your playlists and download it "
@@ -332,8 +342,8 @@ TOOLTIP_TAG_SELECTED = (
     "matched local files."
 )
 TOOLTIP_TAG_SELECTED_NONE = (
-    "Select tracks in the Dashboard's track list first; this tags "
-    "those."
+    "Select tracks in the list here or on the Dashboard first; this "
+    "tags those."
 )
 TOOLTIP_TAG_PLAYLIST = (
     "Write Spotify's artist/title/album/art onto every auto-matched "

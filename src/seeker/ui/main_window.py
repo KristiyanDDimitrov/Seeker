@@ -841,6 +841,7 @@ class MainWindow(QMainWindow):
         # re-running them here too means the switch is correct
         # IMMEDIATELY, not after up to a 2s wait.
         self._dashboard_page.poll_selected_playlist()
+        self._library_page.refresh_tracks()
         self._downloads_page.poll_active_downloads()
         self._review_page.poll_review_items()
         self._render_activity_strip()
@@ -1016,6 +1017,9 @@ class MainWindow(QMainWindow):
 
         if index == self._sharing_page_index:
             self._sharing_page.on_shown()
+
+        if index == self._page_indices["library"]:
+            self._library_page.refresh_tracks()
 
         if index == self._history_page_index and not self._history_loaded:
             self._history_loaded = True

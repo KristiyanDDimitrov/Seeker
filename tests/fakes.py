@@ -880,9 +880,13 @@ def make_track_status(
         track_id: str = "t1",
         state: str = IN_LIBRARY,
         tagged_at: str | None = None,
+        has_art: bool | None = None,
+        album_art_url: str | None = None,
 ) -> TrackStatus:
+    track = make_track(track_id)
+    track.album_art_url = album_art_url
     return TrackStatus(
-        track=make_track(track_id), state=state, tagged_at=tagged_at,
+        track=track, state=state, tagged_at=tagged_at, has_art=has_art,
     )
 
 

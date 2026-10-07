@@ -15,7 +15,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QGroupBox,
+    QFrame,
     QLabel,
     QPushButton,
 )
@@ -41,8 +41,11 @@ def _make_rename_plan(
     )
 
 
-def _groups(panel) -> dict[str, QGroupBox]:
-    return {group.title(): group for group in panel.findChildren(QGroupBox)}
+def _groups(panel) -> dict[str, QFrame]:
+    return {
+        card.accessibleName(): card
+        for card in panel.findChildren(QFrame, "card")
+    }
 
 
 def test_tagging_options_and_actions_are_grouped_by_job(qtbot):
@@ -52,21 +55,23 @@ def test_tagging_options_and_actions_are_grouped_by_job(qtbot):
 
     groups = _groups(panel)
 
-    assert list(groups) == ["Tag Options", "Tags", "Cover Art", "File Names"]
-    assert set(groups["Tag Options"].findChildren(QCheckBox)) == {
+    assert list(groups) == ["Tags", "Tag options", "Cover art", "File names"]
+    assert set(groups["Tag options"].findChildren(QCheckBox)) == {
         panel.analyze_audio_checkbox, panel.force_retag_checkbox,
     }
     for title, buttons in (
             ("Tags", {panel.tag_selected_button, panel.tag_playlist_button}),
-            ("Cover Art", {
+            ("Tag options", set()),
+            ("Cover art", {
                 panel.fix_missing_art_button,
                 panel.fill_missing_art_urls_button,
             }),
-            ("File Names", {panel.rename_files_button}),
+            ("File names", {panel.rename_files_button}),
     ):
         assert set(groups[title].findChildren(QPushButton)) == buttons
-        # One sentence saying what the group's actions do.
-        [explanation] = groups[title].findChildren(QLabel)
+        # Its title, then one sentence saying what its controls do.
+        heading, explanation = groups[title].findChildren(QLabel)[:2]
+        assert heading.text() == title
         assert explanation.text().endswith(".")
 
 

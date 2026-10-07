@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QGroupBox,
+    QFrame,
     QLabel,
+    QLayout,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -26,6 +27,7 @@ from seeker.models.spotify_sync import TrackSyncResult
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
+from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext
 from seeker.ui.plain_text import PlainLabel
@@ -39,17 +41,43 @@ from seeker.ui.workers import run_worker
 
 
 def _action_group(
-        title: str, explanation: str, *buttons: QPushButton,
-) -> QGroupBox:
-    """One job's actions under its title, after one sentence saying
-    what they do."""
-    group = QGroupBox(title)
-    layout = QVBoxLayout(group)
+        title: str, explanation: str, *rows: QWidget | QLayout,
+) -> QFrame:
+    """One job's card: its title in the panel lettering, one sentence
+    saying what its controls do, then the controls. A row of buttons
+    wraps rather than widening the narrow column the cards stack in.
+    The title is also the card's accessible name."""
+    inner = QWidget()
+    layout = QVBoxLayout(inner)
+    margin = theme.SPACING_MD
+    layout.setContentsMargins(margin, margin, margin, margin)
+    layout.setSpacing(theme.SPACING_SM)
+
+    heading = PlainLabel(title)
+    heading.setObjectName("sectionHeaderLabel")
+    layout.addWidget(heading)
+
     label = PlainLabel(explanation)
     label.setWordWrap(True)
+    label.setProperty("badge", "muted")
     layout.addWidget(label)
-    layout.addLayout(theme.action_row(*buttons))
-    return group
+
+    for row in rows:
+        if isinstance(row, QLayout):
+            layout.addLayout(row)
+        else:
+            layout.addWidget(row)
+
+    card = theme.make_card(inner)
+    card.setAccessibleName(title)
+    return card
+
+
+def _button_flow(*buttons: QPushButton) -> FlowLayout:
+    flow = FlowLayout(h_spacing=theme.SPACING_SM, v_spacing=theme.SPACING_SM)
+    for button in buttons:
+        flow.addWidget(button)
+    return flow
 
 
 @dataclass(frozen=True)
@@ -84,10 +112,12 @@ class TaggingPanel(QWidget):
         # Retry only makes a real tag_tracks([track_id]) call for
         # tag-result failures (see TagResultPanel's own docstring for
         # why fix-art/rename results don't get one).
+        # Built here, placed by the Library page: it reports on runs
+        # this panel starts, but reads best beside the track list.
         self.results_panel = TagResultPanel(
             on_retry_track=self.retag_track,
         )
-        layout.addWidget(self.results_panel)
+        layout.addStretch()
 
         # Only text and enabled state change here, never a rebuild, so
         # running inside the Dashboard table's own selection emission
@@ -129,14 +159,6 @@ class TaggingPanel(QWidget):
             help_text.TOOLTIP_FORCE_RETAG_CHECKBOX
         )
 
-        options = QGroupBox("Tag Options")
-        options_layout = QVBoxLayout(options)
-        options_layout.addLayout(theme.action_row(
-            self.analyze_audio_checkbox, self.bpm_min_edit, self.bpm_max_edit,
-        ))
-        options_layout.addWidget(self.force_retag_checkbox)
-        controls.addWidget(options)
-
         self.tag_selected_button = QPushButton("Tag selected")
         self.tag_selected_button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
         self.tag_selected_button.clicked.connect(
@@ -151,7 +173,13 @@ class TaggingPanel(QWidget):
 
         controls.addWidget(_action_group(
             "Tags", help_text.LIBRARY_TAGS_TEXT,
-            self.tag_selected_button, self.tag_playlist_button,
+            _button_flow(self.tag_selected_button, self.tag_playlist_button),
+        ))
+        controls.addWidget(_action_group(
+            "Tag options", help_text.LIBRARY_TAG_OPTIONS_TEXT,
+            self.analyze_audio_checkbox,
+            theme.action_row(self.bpm_min_edit, self.bpm_max_edit),
+            self.force_retag_checkbox,
         ))
 
         # A narrower, safer repair than forcing a full re-tag: re-embeds
@@ -177,8 +205,11 @@ class TaggingPanel(QWidget):
         )
 
         controls.addWidget(_action_group(
-            "Cover Art", help_text.LIBRARY_COVER_ART_TEXT,
-            self.fix_missing_art_button, self.fill_missing_art_urls_button,
+            "Cover art", help_text.LIBRARY_COVER_ART_TEXT,
+            _button_flow(
+                self.fix_missing_art_button,
+                self.fill_missing_art_urls_button,
+            ),
         ))
 
         # Always a preview first (HISTORY §67) — HISTORY §27's "no gate
@@ -193,8 +224,8 @@ class TaggingPanel(QWidget):
         )
 
         controls.addWidget(_action_group(
-            "File Names", help_text.LIBRARY_FILE_NAMES_TEXT,
-            self.rename_files_button,
+            "File names", help_text.LIBRARY_FILE_NAMES_TEXT,
+            _button_flow(self.rename_files_button),
         ))
 
         return controls
@@ -210,7 +241,7 @@ class TaggingPanel(QWidget):
         button = self.tag_selected_button
         button.setEnabled(count > 0)
         if count:
-            button.setText(f"Tag {count} selected on Dashboard")
+            button.setText(f"Tag {count} selected")
             button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
         else:
             button.setText("Tag selected")

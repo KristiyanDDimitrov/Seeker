@@ -162,9 +162,9 @@ def _candidate(
 STATUSES = [
     TrackStatus(
         track=TRACKS[0], state=IN_LIBRARY,
-        tagged_at="2026-09-02T09:30:00+00:00",
+        tagged_at="2026-09-02T09:30:00+00:00", has_art=True,
     ),
-    TrackStatus(track=TRACKS[6], state=IN_LIBRARY),
+    TrackStatus(track=TRACKS[6], state=IN_LIBRARY, has_art=False),
     TrackStatus(
         track=TRACKS[1], state=DOWNLOADING,
         bytes_transferred=27_000_000, total_bytes=41_000_000,
