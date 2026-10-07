@@ -99,6 +99,7 @@ src/seeker/
 │       elided_text.py (one-line cells, full text on hover,
 │       BADGE_ROLE pills, BAND_ROLE group bands),
 │       empty_state.py (a table's empty state),
+│       disclosure.py (a remembered show/hide section),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
@@ -629,6 +630,12 @@ Each links to the HISTORY entry where the full investigation lives;
   only through `theme.set_indeterminate`, which drops the `::chunk`
   sheet. [HISTORY §177](docs/history/151-180.md#177),
   [§178](docs/history/151-180.md#178), [§184](docs/history/181-210.md#184)
+- **Background reading goes behind a `ui/disclosure.Disclosure`,
+  after the page's working content** (Sharing's "How sharing works"),
+  closed by default, its state a `SeekerConfig` field written on the
+  user's click only. Open, its body scrolls inside a share of the
+  height rather than squeezing the tables.
+  [HISTORY §187](docs/history/181-210.md#187)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.

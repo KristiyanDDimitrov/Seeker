@@ -10,76 +10,73 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S35a close-out (HISTORY §186). Tree clean apart from
-  the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `1987 passed, 1 skipped` (+8). `mypy --strict src/` clean,
-  137 files; `ruff check src tests tools` 0.
-- **CI:** `070bde8`'s run `37674156397` green.
+- **HEAD:** the S35b part 1 close-out (HISTORY §187). Tree clean apart
+  from the untracked `Claude outputs/`.
+- **Local (Cocoa):** pytest `2002 passed, 1 skipped` (+15). `mypy --strict src/` clean,
+  138 files; `ruff check src tests tools` 0.
+- **CI:** pending for the close-out push; see the follow-up handoff commit.
 
 ## 2. Where we are
 
-S1–S35a ticked. **Next: S35b** (BRIEF §35, second bullet): Review,
-Sharing, Help and Support, Settings.
+S1–S35a ticked; **S35b part 1 done** (Review, Sharing), stopped at the
+row's per-page split point on budget. **Next: S35b part 2** (BRIEF §35,
+second bullet): Help and Support, then Settings. Tick S35b when part 2
+lands.
 
-## 3. Session report (S35a)
+## 3. Session report (S35b part 1)
 
-Evidence in HISTORY §186.
-- `7b8c10b`: Search — one query row (Return searches), file name
-  first, Quality column, Locked pill; outcomes and errors on a notice.
-- `fcb9956`: Downloads — status lamps, reasons/percentages as
-  secondary text, the amber meter only for a transfer
-  (`theme.set_busy_meter`), aligned bars.
-- `0935911`: History — playlist as secondary text; refresh errors on a
-  notice.
-- `de1a0a5`: removes `TwoToneProgressBar` and
-  `style_determinate_progress_bar` (no user left).
-- `fa4c1a6`: Duplicates — outcomes and errors on a notice.
-- `3574e56`: Duplicates — Keep first, Similarity spanned, `BAND_ROLE`
-  group bands, Resolve all above the table; harness shows 3 groups.
+Evidence in HISTORY §187.
+- `a45607e`: Review — section titles in `sectionHeaderLabel`, read as
+  tasks; a subtitle covering all three sections on one line.
+- `73aafeb`: Sharing — counts and tables first; "How sharing works"
+  behind `ui/disclosure.Disclosure`, remembered in
+  `SeekerConfig.sharing_explainer_open`; errors on the notice (test
+  first); harness screen `sharing-explained`.
+- `ee85270`: Sharing — Shared/Not shared lamps; upload states as
+  Queued/Uploading/Sent/Failed with lamps; `refresh_lamps()` on a
+  theme switch.
 
 ## 4. Key context
 
-- **Channel fix recipe** (used on all four pages): an `InlineNotice` at
-  the top of the page's content, `FeedbackTarget(status_label,
-  notice)`, `show_outcome`/`show_error` for results, and
-  `on_error=self.feedback.show_error` on every worker (run_worker's
-  default puts the error on the label, which the next run wipes).
-  Settings (`settings_window.py` ~:577–1161) and the wizard's Spotify
-  and Library steps still put results on labels: S35b.
-- **An empty status label on its own line is a blank band** under the
-  subtitle; put it in an existing row of controls (Downloads, History,
-  Duplicates do).
-- **`elided_text.BAND_ROLE`** bands a cell with AlternateBase at paint
-  time; a cell under a cell widget needs an item carrying it.
-- **A busy bar's still frame looks full**: next to a meter it reads as
-  done. In a table, show one only for a started transfer, in amber
-  (`set_busy_meter`); the activity strip keeps the accent.
-- **`wrap_progress_bar` now ends in a stretch**, so fixed-width bars
-  sit at the cell's left with or without a label.
-- **`run_busy_worker` has no double-start guard**; a second trigger
-  that bypasses the disabled button (Return in a field) must check
-  `busy_actions.is_running(key)` itself.
-- The harness's Duplicates screen now has three groups: S36's
-  `duplicates.png` README image will change.
+- **Part 2's known defect:** Support's links paint pure #0000FF in
+  dark (unreadable). Likely `QPalette.Link`/`LinkVisited` unset in
+  `theme.build_qpalette`; a `RichLabel` link takes the palette's Link
+  colour. Write the failing test first (sample the link colour or
+  assert the palette role), and check Help's links too.
+- **Settings still puts results on labels** (`settings_window.py`
+  ~:577–1161) — the channel recipe below applies; the wizard's Spotify
+  and Library steps likewise (outside §35's list: note, don't take).
+- **Settings visual gaps seen in the harness:** `QGroupBox` titles in
+  the system font (Library's cards use `sectionHeaderLabel` inside
+  `theme.make_card`); fields run the full ~930 px width (Client ID);
+  the subtitle wraps at 1280; "About Seeker" floats under the tab
+  widget. Help's body runs the full width (~140 chars a line): give
+  it a reading measure, as Sharing's explainer has (80 chars).
+- **Channel fix recipe** (unchanged): `InlineNotice` at the top of the
+  content, `FeedbackTarget(status_label, notice)`,
+  `on_error=self.feedback.show_error` on every worker.
+- **A lamp bakes the palette in at render**: a table that renders only
+  on a slow poll needs a repaint hook in `MainWindow.on_theme_changed`
+  (Sharing's `refresh_lamps` repaints the last snapshot).
+- **A disclosure body that is a plain label crushes the tables** at
+  960×640; scroll it and give it stretch while open.
 - Carried: `set -o pipefail` before `pytest … | tail && git commit`;
-  never touch slskd or real data; zsh does not word-split `$var`;
-  judge fine detail on a 2× Cocoa grab; the full suite takes ~4 min,
-  so run it in the background; split a mixed `tests/fakes.py` diff
-  per commit by hunk (`git apply --cached` on a filtered patch).
+  never touch slskd or real data; the full suite takes ~4 min, run it
+  in the background; `run_busy_worker` has no double-start guard;
+  judge fine detail on a 2× Cocoa grab.
 
 ## 5. Decisions made
 
-- **Search keeps visible "Artist"/"Title" captions** (buddied
-  `PlainLabel`s) rather than placeholders alone: a filled field would
-  otherwise lose its label.
-- **Downloads' locked row reads "Retrying"**, the Dashboard's word,
-  with "File locked by the peer" beside it.
-- **No bar for queued or finished downloads**: the lamp says it; a bar
-  added nothing but a second, misleading signal.
-- **The Duplicates Group number column is gone**: bands and spans say
-  where a group ends. Promoted to CLAUDE.md with `BAND_ROLE`.
-- **No lamps on History**: a lamp is a current state; History is a
-  record of past events.
+- **Sharing's explainer sits last and closed** ("counts and tables
+  first"); open, it scrolls within a table's share of the height.
+  Promoted to CLAUDE.md (Disclosure bullet).
+- **Review keeps its Runner-up column at 960**: it says what Reject
+  falls through to; the elided Candidate has its full text on hover.
+- **Upload states stay forgiving**: an unknown slskd state reads raw,
+  and the raw string is always the tooltip, since a populated upload
+  is still unconfirmed live (HISTORY §62).
+- **Review's "FLAC, 1050kbps" descriptors left as stored**: unifying
+  with "MP3, 320 kbps" changes stored data, not a restyle.
 
 ## 6. Blockers
 
@@ -87,7 +84,9 @@ None.
 
 ## 7. Files in progress
 
-None: S35a is committed whole.
+None: part 1 is committed whole at a page boundary. Part 2 starts
+fresh on `src/seeker/ui/pages/static_pages.py`, `help_text.py` and
+`settings_window.py`.
 
 ## 8. Waiting on Kris
 
@@ -97,32 +96,28 @@ X1 and X2 (optional).
 
 **A cheap veto:** the brows over "ee" in the wordmark (`9ff777b`).
 
-**Live checks (S41 checklist):** the Downloads lamps, meter and busy
-bar on a real display in both themes, and whether the dark Duplicates
-band is visible enough on a real screen (subtle by design: #282C31 on
-#1E2125); plus S34's (Library's Cover art column against real files,
-the first scan's extra time on the X9 Pro, the Dashboard's lamps and
-meter, the playlist counts) and everything carried in
+**Live checks (S41 checklist):** a real upload on Sharing (does
+slskd's state read as Queued/Uploading/Sent?), plus S35a's (Downloads
+lamps, meter and busy bar; the dark Duplicates band), S34's (Library's
+Cover art column, the first scan's time on the X9 Pro, the Dashboard's
+lamps and meter, playlist counts) and everything carried in
 `git show cd3ba1a:docs/HANDOFF.md` §8 (fresh-account wizard with
-Docker, nested-location Fix…, the stress test, `qsvg` and Barlow and
-nav icons in the packaged app, keyboard focus and VoiceOver).
+Docker, nested-location Fix…, the stress test, `qsvg`, Barlow and nav
+icons in the packaged app, keyboard focus and VoiceOver).
 
 ## 9. Open questions
 
-- At 960 a Downloads failure reason elides to a few characters (full
-  text on hover); a Duplicates group's first row is taller than the
-  rest; History's Detail says "MP3 320kbps", Search and Duplicates
-  "MP3, 320 kbps".
 - **Refresh playlists drops the Dashboard's selection** (pre-existing:
   `_populate_playlists`' `clear()` fires `currentItemChanged(None)`).
-  Take it in S35b or as its own test-first fix.
-- The Dashboard's table does not show a selection made on Library;
-  Library's context sentence could shrink.
-- `poll_selected_playlist` renders a pre-switch result for one tick
-  (pre-existing, self-correcting).
+  A test-first fix of its own; not part of §35.
+- Carried from S35a: a Downloads failure reason elides at 960; a
+  Duplicates group's first row is taller; History says "MP3 320kbps"
+  where Search says "MP3, 320 kbps" (Review too, see §5); the
+  Dashboard's table does not show a Library selection;
+  `poll_selected_playlist` renders a pre-switch result for one tick.
 - Carried unchanged: `git show cd3ba1a:docs/HANDOFF.md` §9 and
-  `git show 8eee663:docs/HANDOFF.md` §9 (Review's column budget at 960
-  for S35b, Settings' subtitle wrap, the wizard's empty progress row).
+  `git show 8eee663:docs/HANDOFF.md` §9 (Settings' subtitle wrap, the
+  wizard's empty progress row).
 
 ---
 
