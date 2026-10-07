@@ -350,12 +350,16 @@ class FakeHistoryService:
         # test_history_page.py.
         self._block_event: threading.Event | None = None
         self._block_when_limit: int | None = None
+        # Raised by a page's own fetch (any limit but the tray's seed).
+        self._error: Exception | None = None
 
     def get_recent_events(self, limit: int = 50) -> list:
         self.get_recent_events_calls += 1
         if limit == self._block_when_limit:
             assert self._block_event is not None
             self._block_event.wait()
+        if self._error is not None and limit != 1:
+            raise self._error
         return self._events
 
 

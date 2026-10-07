@@ -3,6 +3,7 @@ actually touched PageContext (dialogs.py, moved before this, was a
 pure class move with no MainWindow state attached).
 """
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -16,7 +17,9 @@ from PySide6.QtWidgets import (
 from seeker.formatting import format_timestamp
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.ui import help_text, theme
+from seeker.ui.elided_text import SECONDARY_ROLE, set_secondary_min_share
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
@@ -46,8 +49,13 @@ class HistoryPage(QWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # A failed refresh, which outlives the progress line.
+        self.notice = InlineNotice()
+        layout.addWidget(self.notice)
+
         controls = QHBoxLayout()
-        controls.addWidget(PlainLabel("Show:"))
+        show_label = PlainLabel("Show")
+        controls.addWidget(show_label)
 
         self.history_filter_combo = QComboBox()
         self.history_filter_combo.setToolTip(
@@ -59,8 +67,14 @@ class HistoryPage(QWidget):
         self.history_filter_combo.currentIndexChanged.connect(
             self._render_history_table
         )
+        show_label.setBuddy(self.history_filter_combo)
         controls.addWidget(self.history_filter_combo)
 
+        # The progress line shares the controls' row: empty, it would
+        # hold a blank line of its own above the table.
+        self.history_status_label = PlainLabel("")
+        controls.addSpacing(theme.SPACING_MD)
+        controls.addWidget(self.history_status_label)
         controls.addStretch()
 
         self.history_refresh_button = QPushButton("Refresh")
@@ -71,9 +85,7 @@ class HistoryPage(QWidget):
         controls.addWidget(self.history_refresh_button)
 
         layout.addLayout(controls)
-
-        self.history_status_label = PlainLabel("")
-        layout.addWidget(self.history_status_label)
+        self.feedback = FeedbackTarget(self.history_status_label, self.notice)
 
         self.history_table = QTableWidget(0, 4)
         self.history_table.setHorizontalHeaderLabels(
@@ -81,6 +93,8 @@ class HistoryPage(QWidget):
         )
         theme.apply_table_defaults(self.history_table)
         theme.configure_columns(self.history_table, _HISTORY_COLUMNS)
+        # The track reads in full; its playlist gives way first.
+        set_secondary_min_share(self.history_table, 0.0)
         layout.addWidget(theme.make_card(self.history_table))
         self.history_empty_action = QPushButton(help_text.GO_TO_DASHBOARD_TEXT)
         self.history_empty_action.clicked.connect(
@@ -110,6 +124,7 @@ class HistoryPage(QWidget):
             self._context.application.history_service.get_recent_events,
             status_label=self.history_status_label,
             on_finished=self._on_history_fetched,
+            on_error=self.feedback.show_error,
         )
 
     def _on_history_fetched(self, events: list[HistoryEvent]) -> None:
@@ -159,13 +174,16 @@ class HistoryPage(QWidget):
                     row, 1,
                     QTableWidgetItem(_HISTORY_EVENT_LABELS[event.event_type]),
                 )
-                self.history_table.setItem(
-                    row, 2,
-                    QTableWidgetItem(
-                        f"{event.track_artist} - {event.track_title} "
-                        f"({event.playlist_name})"
-                    ),
+                # The track reads first; its playlist sits quieter
+                # beside it, as on Library and Review.
+                label = f"{event.track_artist} - {event.track_title}"
+                track_item = QTableWidgetItem(label)
+                track_item.setData(SECONDARY_ROLE, event.playlist_name)
+                track_item.setData(
+                    Qt.ItemDataRole.AccessibleTextRole,
+                    f"{label}, {event.playlist_name}",
                 )
+                self.history_table.setItem(row, 2, track_item)
                 self.history_table.setItem(
                     row, 3, QTableWidgetItem(event.detail),
                 )
