@@ -110,6 +110,10 @@ class StatusLamp(QWidget):
         self.lamp = lamp
         self.setFixedSize(LAMP_SIZE, LAMP_SIZE)
 
+    def set_lamp(self, lamp: Lamp) -> None:
+        self.lamp = lamp
+        self.update()
+
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         lamp_icon(self.lamp, theme.active_palette()).paint(painter, self.rect())

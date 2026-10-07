@@ -1508,6 +1508,30 @@ QSplitter::handle:horizontal:hover {{
 """
 
 
+def _status_qss(palette: Palette) -> str:
+    """StepIndicator: its labels' weight per step and the hairline
+    between steps."""
+    return f"""\
+QLabel[stepState="current"] {{
+    color: {palette.TEXT};
+    font-weight: {WEIGHT_SEMIBOLD};
+}}
+
+QLabel[stepState="done"] {{
+    color: {palette.TEXT};
+}}
+
+QLabel[stepState="upcoming"], QLabel[stepState="skipped"] {{
+    color: {palette.TEXT_MUTED};
+}}
+
+QFrame#stepConnector {{
+    background-color: {palette.BORDER_STRONG};
+}}
+
+"""
+
+
 def _menu_tab_qss(palette: Palette) -> str:
     """QMenuBar/QMenu and QTabWidget/QTabBar."""
     return f"""\
@@ -1573,5 +1597,6 @@ def build_stylesheet(palette: Palette) -> str:
         + _progress_qss(palette)
         + _form_control_qss(palette)
         + _misc_qss(palette)
+        + _status_qss(palette)
         + _menu_tab_qss(palette)
     )

@@ -1460,7 +1460,7 @@ SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT = "Go to Sharing"
 
 TOOLTIP_SUPPORT_LINK = "Opens in your browser."
 
-DONE_PAGE_TITLE_HTML = "<h2>You're all set</h2>"
+DONE_PAGE_TITLE = "You're all set"
 DONE_PAGE_BODY = (
     "Seeker is ready — sync your playlists, scan your library, and "
     "start matching whenever you like."

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -34,8 +35,11 @@ from seeker.soulseek.docker_setup import (
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
-from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
+from seeker.ui.pages.context import build_subtitle_label
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
+from seeker.ui.step_indicator import StepIndicator
+from seeker.ui.wordmark import Wordmark
 from seeker.ui.workers import run_worker
 
 # Untuned constants, flagged same as every other threshold in this
@@ -45,6 +49,12 @@ from seeker.ui.workers import run_worker
 # Soulseek network login.
 HEALTH_POLL_INTERVAL_MS = 2_000
 HEALTH_POLL_TIMEOUT_SECONDS = 60.0
+
+# The wizard is one column of reading width, centred in the window.
+COLUMN_MAX_WIDTH = 560
+_COLUMN_TOP_MARGIN = 48
+STEP_NAMES = ("Spotify", "Library", "SoulSeek (optional)")
+_SOULSEEK_STEP = 2
 
 
 class OnboardingWizard(QMainWindow):
@@ -90,20 +100,60 @@ class OnboardingWizard(QMainWindow):
         self._docker_action_connected = False
 
         self.setWindowTitle("Seeker Setup")
-        self.resize(520, 420)
+        self.resize(720, 700)
 
+        self.step_indicator = StepIndicator(STEP_NAMES)
         self.stack = QStackedWidget()
-        self.setCentralWidget(self.stack)
-
         self.stack.addWidget(self._build_spotify_page())
         self.stack.addWidget(self._build_library_page())
         self.stack.addWidget(self._build_soulseek_page())
         self.stack.addWidget(self._build_done_page())
+        self.stack.currentChanged.connect(self._on_step_changed)
+        self.setCentralWidget(self._build_column())
 
         self.stack.setCurrentIndex(self._initial_step())
+        self._on_step_changed(self.stack.currentIndex())
 
         if self.stack.currentIndex() == 2:
             self._refresh_docker_state()
+
+    def _build_column(self) -> QWidget:
+        self.column = QWidget()
+        self.column.setMaximumWidth(COLUMN_MAX_WIDTH)
+        self.column.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
+        column_layout = QVBoxLayout(self.column)
+        column_layout.setContentsMargins(0, 0, 0, 0)
+        column_layout.setSpacing(theme.SPACING_XL)
+        column_layout.addWidget(Wordmark())
+        column_layout.addWidget(self.step_indicator)
+        column_layout.addWidget(self.stack)
+
+        # The stretches share only what the column's maximum leaves.
+        content = QWidget()
+        row = QHBoxLayout(content)
+        row.setContentsMargins(
+            theme.SPACING_XL, _COLUMN_TOP_MARGIN,
+            theme.SPACING_XL, theme.SPACING_XL,
+        )
+        row.addStretch(1)
+        row.addWidget(self.column, 100, Qt.AlignmentFlag.AlignTop)
+        row.addStretch(1)
+        return theme.scrollable(content)
+
+    def _on_step_changed(self, index: int) -> None:
+        self.step_indicator.set_current(index)
+        # A QStackedWidget is as tall as its tallest page unless the
+        # others are Ignored, and a short step should never scroll.
+        for page_index in range(self.stack.count()):
+            page = self.stack.widget(page_index)
+            assert page is not None
+            policy = (
+                QSizePolicy.Policy.Preferred if page_index == index
+                else QSizePolicy.Policy.Ignored
+            )
+            page.setSizePolicy(policy, policy)
 
     def _initial_step(self) -> int:
         if not self.application.spotify_configured:
@@ -117,15 +167,12 @@ class OnboardingWizard(QMainWindow):
     # --- Step 1: Spotify -------------------------------------------
 
     def _build_spotify_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        layout.addWidget(RichLabel("<h2>Connect Spotify</h2>"))
-        layout.addWidget(PlainLabel(
+        page, layout = _step_page(
+            "Connect Spotify",
             "Seeker needs a Spotify app to sync your playlists. "
             "Register one on the Spotify Developer Dashboard, then "
-            "paste its Client ID below."
-        ))
+            "paste its Client ID below.",
+        )
 
         dashboard_button = QPushButton("Open Spotify Developer Dashboard")
         dashboard_button.setToolTip(help_text.TOOLTIP_OPEN_SPOTIFY_DASHBOARD)
@@ -221,14 +268,11 @@ class OnboardingWizard(QMainWindow):
     # --- Step 2: library location ------------------------------------
 
     def _build_library_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        layout.addWidget(RichLabel("<h2>Choose your music library</h2>"))
-        layout.addWidget(PlainLabel(
+        page, layout = _step_page(
+            "Choose your music library",
             "Seeker scans this folder for audio files to match "
-            "against your Spotify tracks."
-        ))
+            "against your Spotify tracks.",
+        )
 
         self.library_path_label = PlainLabel("No folder selected.")
         layout.addWidget(self.library_path_label)
@@ -314,15 +358,12 @@ class OnboardingWizard(QMainWindow):
     # --- Step 3: SoulSeek / Docker ------------------------------------
 
     def _build_soulseek_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        layout.addWidget(RichLabel("<h2>Set up SoulSeek (optional)</h2>"))
-        layout.addWidget(PlainLabel(
+        page, layout = _step_page(
+            "Set up SoulSeek",
             "Seeker searches SoulSeek for tracks missing from your "
             "local library. This step is optional — SoulSeek-dependent "
-            "actions stay disabled until it's set up."
-        ))
+            "actions stay disabled until it's set up.",
+        )
 
         self.docker_state_label = PlainLabel("Checking Docker...")
         layout.addWidget(self.docker_state_label)
@@ -684,6 +725,7 @@ class OnboardingWizard(QMainWindow):
         )
 
     def _on_skip_soulseek_clicked(self) -> None:
+        self.step_indicator.mark_skipped(_SOULSEEK_STEP)
         self._advance_to_done_page()
 
     def _advance_to_done_page(self) -> None:
@@ -692,13 +734,9 @@ class OnboardingWizard(QMainWindow):
     # --- Step 4: done -----------------------------------------------
 
     def _build_done_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        layout.addWidget(RichLabel(help_text.DONE_PAGE_TITLE_HTML))
-        layout.addWidget(PlainLabel(help_text.DONE_PAGE_BODY))
-
-        layout.addStretch()
+        page, layout = _step_page(
+            help_text.DONE_PAGE_TITLE, help_text.DONE_PAGE_BODY,
+        )
 
         self.continue_button = QPushButton(
             help_text.DONE_PAGE_CONTINUE_BUTTON_TEXT
@@ -711,3 +749,23 @@ class OnboardingWizard(QMainWindow):
     def _finish(self) -> None:
         self.close()
         self.on_complete()
+
+
+def _step_page(title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
+    """One step's page, headed as a shell page is: its title in the
+    page-title role, its subtitle muted beneath it."""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(theme.SPACING_MD)
+
+    header = QVBoxLayout()
+    header.setSpacing(theme.SPACING_XS)
+    title_label = PlainLabel(title)
+    # QLabel#pageTitleLabel in theme.py.
+    title_label.setObjectName("pageTitleLabel")
+    header.addWidget(title_label)
+    header.addWidget(build_subtitle_label(subtitle))
+    layout.addLayout(header)
+    layout.addSpacing(theme.SPACING_XS)
+    return page, layout

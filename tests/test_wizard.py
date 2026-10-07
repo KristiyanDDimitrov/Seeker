@@ -1125,3 +1125,88 @@ def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
     assert wizard.spotify_status_label.text() == "Authorization cancelled."
     assert wizard.stack.currentIndex() == 0
     assert calls == ["mistyped-client-id"]
+
+
+def _built_wizard(qtbot, tmp_path, monkeypatch) -> OnboardingWizard:
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+    return wizard
+
+
+def test_wizard_content_is_one_centred_column(qtbot, tmp_path, monkeypatch):
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+    wizard.resize(1280, 820)
+    wizard.show()
+    qtbot.waitExposed(wizard)
+
+    column = wizard.column
+    left = column.mapTo(wizard, column.rect().topLeft()).x()
+    right_gap = wizard.width() - (left + column.width())
+
+    assert column.width() <= 560
+    # A vertical scroll bar, if one shows, takes its width off the
+    # right-hand gap only.
+    assert abs(left - right_gap) <= 20
+
+
+def test_every_wizard_step_has_a_page_title(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QLabel
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+
+    titles = [
+        [
+            label.text()
+            for label in wizard.stack.widget(index).findChildren(QLabel)
+            if label.objectName() == "pageTitleLabel"
+        ]
+        for index in range(wizard.stack.count())
+    ]
+
+    assert titles == [
+        ["Connect Spotify"],
+        ["Choose your music library"],
+        ["Set up SoulSeek"],
+        ["You're all set"],
+    ]
+
+
+def test_step_indicator_follows_the_current_step(
+        qtbot, tmp_path, monkeypatch,
+):
+    from seeker.ui import status_lamp
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+    indicator = wizard.step_indicator
+
+    assert indicator.lamps() == [
+        status_lamp.CUE_WAITING, status_lamp.STANDBY, status_lamp.STANDBY,
+    ]
+    assert indicator.accessibleName() == "Step 1 of 3: Spotify"
+
+    wizard.stack.setCurrentIndex(2)
+
+    assert indicator.lamps() == [
+        status_lamp.PLAY, status_lamp.PLAY, status_lamp.CUE_WAITING,
+    ]
+    assert indicator.accessibleName() == "Step 3 of 3: SoulSeek (optional)"
+
+
+def test_skipping_soulseek_leaves_its_step_unlit(qtbot, tmp_path, monkeypatch):
+    from seeker.ui import status_lamp
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+    wizard.stack.setCurrentIndex(2)
+
+    wizard._on_skip_soulseek_clicked()
+
+    assert wizard.stack.currentIndex() == 3
+    assert wizard.step_indicator.lamps() == [
+        status_lamp.PLAY, status_lamp.PLAY, status_lamp.STANDBY,
+    ]
+    assert wizard.step_indicator.accessibleName() == (
+        "Setup complete; SoulSeek (optional) skipped"
+    )

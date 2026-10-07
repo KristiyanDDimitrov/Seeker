@@ -104,6 +104,7 @@ src/seeker/
 │       slskd_status.py (shared outage state + Start slskd),
 │       status_lamp.py (each track/download state's LED: colour,
 │       lit or ring, its icon, and StatusLamp, one as a widget),
+│       step_indicator.py (the wizard's steps as a row of lamps),
 │       icons.py (Lucide nav icons drawn in palette tokens),
 │       wordmark.py (the sidebar wordmark and its brows)
 ├── models/                     # dataclasses — playlist, track, track_match,
