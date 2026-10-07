@@ -178,6 +178,12 @@ class SettingsPage(QWidget):
     def _build_library_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+
+        # The tab's outcomes, persistent and dismissible: a folder
+        # already registered or nested, a removal's counts.
+        self.library_notice = InlineNotice()
+        layout.addWidget(self.library_notice)
+
         layout.addWidget(self._build_locations_group())
         layout.addWidget(self._build_default_destination_group())
         layout.addWidget(self._build_playlist_destinations_group())
@@ -187,12 +193,6 @@ class SettingsPage(QWidget):
     def _build_locations_group(self) -> QGroupBox:
         group = QGroupBox("Library Locations")
         layout = QVBoxLayout(group)
-
-        # Persistent, dismissible — for errors worth more than a
-        # transient status line: a folder already registered, or one
-        # inside or around a registered location.
-        self.locations_notice = InlineNotice()
-        layout.addWidget(self.locations_notice)
 
         # Shown while a location sits inside another: the add guard
         # refuses that now, but older builds registered such pairs.
@@ -270,7 +270,7 @@ class SettingsPage(QWidget):
             return
 
         merged = locations_nested_with(nested, kept)
-        self.locations_notice.dismiss()
+        self.library_notice.dismiss()
 
         run_worker(
             self.thread_pool,
@@ -318,7 +318,7 @@ class SettingsPage(QWidget):
             kept: str,
             summaries: list[LocationMergeSummary],
     ) -> None:
-        self.locations_notice.show_message(
+        self.library_notice.show_message(
             help_text.format_merge_locations_result(kept, summaries),
         )
         self._on_location_added()
@@ -387,7 +387,7 @@ class SettingsPage(QWidget):
         theme.size_columns(self.locations_table, _LOCATIONS_COLUMNS, action_widgets)
 
     def _on_add_location_clicked(self) -> None:
-        self.locations_notice.dismiss()
+        self.library_notice.dismiss()
 
         pick_and_add_library_location(
             self,
@@ -395,7 +395,7 @@ class SettingsPage(QWidget):
             self.application,
             button=self.add_location_button,
             on_finished=lambda _: self._on_location_added(),
-            on_error=lambda message: self.locations_notice.show_message(
+            on_error=lambda message: self.library_notice.show_message(
                 message, kind="error",
             ),
         )
@@ -411,7 +411,7 @@ class SettingsPage(QWidget):
         if not accepted or not new_name or new_name == current_name:
             return
 
-        self.locations_notice.dismiss()
+        self.library_notice.dismiss()
 
         run_worker(
             self.thread_pool,
@@ -419,7 +419,7 @@ class SettingsPage(QWidget):
                 location_id, new_name,
             ),
             on_finished=lambda _: self._on_location_added(),
-            on_error=lambda message: self.locations_notice.show_message(
+            on_error=lambda message: self.library_notice.show_message(
                 message, kind="error",
             ),
         )
@@ -431,7 +431,7 @@ class SettingsPage(QWidget):
         self._refresh_destinations()
 
     def _on_remove_location_clicked(self, name: str) -> None:
-        self.locations_notice.dismiss()
+        self.library_notice.dismiss()
 
         run_worker(
             self.thread_pool,
@@ -459,13 +459,13 @@ class SettingsPage(QWidget):
         )
 
     def _on_location_removed(self, summary: LocationRemovalSummary) -> None:
-        self.locations_notice.show_message(
+        self.library_notice.show_message(
             help_text.format_remove_location_result(summary),
         )
         self._on_location_added()
 
     def _show_locations_error(self, message: str) -> None:
-        self.locations_notice.show_message(message, kind="error")
+        self.library_notice.show_message(message, kind="error")
 
     # --- Playlist destinations ---------------------------------------
 

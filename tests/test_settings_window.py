@@ -243,9 +243,9 @@ def test_add_location_for_an_already_registered_path_shows_an_inline_notice(
     window.add_location_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.locations_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=2000,
     )
-    assert existing.name in window.locations_notice.text()
+    assert existing.name in window.library_notice.text()
     # No duplicate row was added — still just the one real location.
     assert application.library_service.list_locations()[0][0].name == "Music"
     assert len(application.library_service.list_locations()) == 1
@@ -318,9 +318,9 @@ def test_rename_location_collision_shows_an_inline_notice(
     window._on_rename_location_clicked(other.id, "Other")
 
     qtbot.waitUntil(
-        lambda: not window.locations_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=2000,
     )
-    assert "Main" in window.locations_notice.text()
+    assert "Main" in window.library_notice.text()
 
 
 def click_remove_location(window: SettingsPage, qtbot) -> None:
@@ -371,10 +371,10 @@ def test_remove_location_confirms_with_the_real_counts_then_removes(
     assert "1 playlist downloads here" in asked[0]
     assert "Files on disk are not touched." in asked[0]
     qtbot.waitUntil(
-        lambda: not window.locations_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=2000,
     )
-    assert window.locations_notice.property("variant") == "info"
-    assert "Removed 'Main'" in window.locations_notice.text()
+    assert window.library_notice.property("variant") == "info"
+    assert "Removed 'Main'" in window.library_notice.text()
 
 
 def register_unchecked(application: Application, name: str, path) -> None:
@@ -446,7 +446,7 @@ def test_fix_merges_every_location_nested_with_the_one_kept(
     ] == ["Music"]
     qtbot.waitUntil(window.nesting_notice.isHidden, timeout=2000)
     assert "Merged 'x9-pro' and 'Test' into 'Music'" in (
-        window.locations_notice.text()
+        window.library_notice.text()
     )
 
 
@@ -542,10 +542,10 @@ def test_remove_location_failure_lands_on_the_notice_as_an_error(
     click_remove_location(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: not window.locations_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=2000,
     )
-    assert window.locations_notice.property("variant") == "error"
-    assert "database is locked" in window.locations_notice.text()
+    assert window.library_notice.property("variant") == "error"
+    assert "database is locked" in window.library_notice.text()
 
 
 # --- Playlist destinations (§2) ----------------------------------------
