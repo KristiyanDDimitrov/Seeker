@@ -17,7 +17,7 @@ from fakes import (
     make_track,
     make_upgrade_details,
 )
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, status_lamp, theme
 from seeker.ui.icons import nav_icon
 from seeker.ui.main_window import (
     MainWindow,
@@ -160,6 +160,9 @@ def test_activity_strip_shows_label_for_a_single_running_action(qtbot):
     )
     assert window.activity_strip_bar.minimum() == 0
     assert window.activity_strip_bar.maximum() == 0  # indeterminate
+    # Work in progress is cue: a lit amber lamp beside the label.
+    assert window.activity_strip_lamp.lamp == status_lamp.CUE
+    assert window.activity_strip_lamp.isVisibleTo(window.activity_strip)
 
     window.busy_actions.end("scan")
     window._render_activity_strip()

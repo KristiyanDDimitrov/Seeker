@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPaintEvent, QPen, QPixmap
+from PySide6.QtWidgets import QWidget
 
 from seeker.models import track_status
 from seeker.models.download_request import DownloadStatus
+from seeker.ui import theme
 from seeker.ui.theme import Palette
 
 LampColour = Literal["SUCCESS", "WARNING", "DANGER", "TEXT_FAINT"]
@@ -97,3 +99,17 @@ def lamp_icon(lamp: Lamp, palette: Palette) -> QIcon:
         painter.drawEllipse(centre, _DOT_RADIUS, _DOT_RADIUS)
     painter.end()
     return QIcon(pixmap)
+
+
+class StatusLamp(QWidget):
+    """One lamp on its own, drawn in the active palette on every paint,
+    for a place with no table cell to carry it (the activity strip)."""
+
+    def __init__(self, lamp: Lamp, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.lamp = lamp
+        self.setFixedSize(LAMP_SIZE, LAMP_SIZE)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        lamp_icon(self.lamp, theme.active_palette()).paint(painter, self.rect())

@@ -105,3 +105,20 @@ def test_a_ring_lamp_is_hollow(palette, qapp):
     assert (ring.red(), ring.green(), ring.blue()) == QColor(
             palette.WARNING,
     ).getRgb()[:3]
+
+
+@_PALETTES
+def test_a_lamp_widget_paints_its_lamp_in_the_active_palette(
+        palette, qtbot, monkeypatch,
+):
+    monkeypatch.setattr(theme, "active_palette", lambda: palette)
+    widget = status_lamp.StatusLamp(status_lamp.CUE)
+    qtbot.addWidget(widget)
+    widget.show()
+    qtbot.waitExposed(widget)
+
+    image = widget.grab().toImage()
+    centre = image.pixelColor(image.width() // 2, image.height() // 2)
+
+    assert widget.size() == QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE)
+    assert centre == QColor(palette.WARNING)

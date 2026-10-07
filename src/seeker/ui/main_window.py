@@ -64,6 +64,7 @@ from seeker.ui.plain_text import PlainLabel
 from seeker.ui.playlist_selection import PlaylistSelection
 from seeker.ui.settings_window import SettingsPage
 from seeker.ui.slskd_status import START_SLSKD_KEY, SlskdStatus
+from seeker.ui.status_lamp import CUE, StatusLamp
 from seeker.ui.tray import TrayController, TrayHost
 from seeker.ui.widgets import ThemeToggleButton
 from seeker.ui.window_lifecycle import (
@@ -588,6 +589,10 @@ class MainWindow(QMainWindow):
             theme.SPACING_MD, theme.SPACING_XS,
         )
         layout.setSpacing(theme.SPACING_SM)
+
+        # Work in progress is cue, as on a deck: a lit amber lamp.
+        self.activity_strip_lamp = StatusLamp(CUE)
+        layout.addWidget(self.activity_strip_lamp)
 
         self.activity_strip_label = PlainLabel("")
         layout.addWidget(self.activity_strip_label)
