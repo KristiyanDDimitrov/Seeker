@@ -613,9 +613,15 @@ Each links to the HISTORY entry where the full investigation lives;
   changes. A short marker on a row ("Upgrade") is a `BADGE_ROLE`
   pill on the primary cell, not a column of its own; quieter detail
   beside a cell's text (a candidate's quality and peer) is
-  `SECONDARY_ROLE`, not a second line.
-  [HISTORY §177](docs/history/151-180.md#177),
-  [§178](docs/history/151-180.md#178)
+  `SECONDARY_ROLE`, not a second line. A state in a cell is its
+  `status_lamp` lamp as the item's icon beside the label, never link
+  styling; where the label must read in full, the view sets
+  `set_secondary_min_share(view, 0.0)`. Determinate progress is
+  `theme.style_meter` (amber segments; Downloads' labelled bar is
+  the one still on `style_determinate_progress_bar`), and a bar goes back to busy
+  only through `theme.set_indeterminate`, which drops the `::chunk`
+  sheet. [HISTORY §177](docs/history/151-180.md#177),
+  [§178](docs/history/151-180.md#178), [§184](docs/history/181-210.md#184)
 - Any `setStyleSheet()` call must carry a selector — a selector-less
   rule parses as a universal `*` rule and silently strips styling off
   every descendant widget's box model.
@@ -676,8 +682,8 @@ Each links to the HISTORY entry where the full investigation lives;
   does. [HISTORY §134](docs/history/121-150.md#134)
 - **The Dashboard's track table rebuilds only when what its rows were
   built from changes** (`_RenderedRows`: the visible statuses plus
-  the active accent); a progress-only change updates bars and sort keys
-  in place. Anything new a row bakes in at build time (a color, a
+  the active palette, which the lamps bake in); a progress-only change
+  updates bars, percentages and sort keys in place. Anything new a row bakes in at build time (a color, a
   setting) must join that key, or a change to it never reaches the
   table. `QTableWidget.setItem` measured ~2.4 ms a call at 500 rows —
   mutate an existing item on a hot path. [HISTORY
