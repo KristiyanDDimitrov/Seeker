@@ -844,9 +844,10 @@ class DashboardPage(QWidget):
 
         self.track_area_stack.setCurrentWidget(self.track_table_card)
 
-        # theme.ACCENT is baked into the review-link items, so a theme
+        # The accent is baked into the review-link items, so a theme
         # switch must rebuild even when the statuses are unchanged.
-        rendered: _RenderedRows = (theme.ACCENT, tuple(visible))
+        accent = theme.active_palette().ACCENT
+        rendered: _RenderedRows = (accent, tuple(visible))
         previous = self._rendered_track_rows
 
         if rendered == previous:
@@ -857,11 +858,13 @@ class DashboardPage(QWidget):
         ):
             self._update_progress_in_place()
         else:
-            self._rebuild_track_rows(visible)
+            self._rebuild_track_rows(visible, accent)
 
         self._rendered_track_rows = rendered
 
-    def _rebuild_track_rows(self, visible: list[TrackStatus]) -> None:
+    def _rebuild_track_rows(
+            self, visible: list[TrackStatus], accent: str,
+    ) -> None:
         # Sorting is live on this table; disabled for the body of this
         # rebuild (see preserving_sort_order's own docstring for why)
         # and restored afterward.
@@ -908,7 +911,7 @@ class DashboardPage(QWidget):
                     font = status_item.font()
                     font.setUnderline(True)
                     status_item.setFont(font)
-                    status_item.setForeground(QColor(theme.ACCENT))
+                    status_item.setForeground(QColor(accent))
 
                 self.track_table.setItem(row, 1, status_item)
 

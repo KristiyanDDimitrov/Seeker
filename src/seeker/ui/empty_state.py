@@ -36,7 +36,7 @@ class EmptyGlyph(StrEnum):
 
 
 class _Glyph(QWidget):
-    """Drawn with `QPainter` in `theme.TEXT_MUTED`, read on every
+    """Drawn with `QPainter` in the active palette's `TEXT_MUTED`, read on every
     paint, like `ThemeToggleButton`: it follows a theme switch without
     shipping an asset per palette."""
 
@@ -48,7 +48,7 @@ class _Glyph(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(theme.TEXT_MUTED)
+        color = QColor(theme.active_palette().TEXT_MUTED)
         pen = QPen(color, 2.0)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)

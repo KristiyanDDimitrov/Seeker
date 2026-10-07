@@ -104,6 +104,6 @@ def test_a_handle_is_a_one_pixel_line_in_a_wider_grab_area(qtbot):
         ).name().upper()
         for y in range(handle.height())
     ]
-    assert painted.count(theme.BORDER_STRONG) == 1
-    assert painted.count(theme.BG_APP) == handle.height() - 1
+    assert painted.count(theme.active_palette().BORDER_STRONG) == 1
+    assert painted.count(theme.active_palette().BG_APP) == handle.height() - 1
     assert handle.height() >= 7

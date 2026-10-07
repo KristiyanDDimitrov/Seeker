@@ -556,6 +556,11 @@ Each links to the HISTORY entry where the full investigation lives;
   CSS, not Qt's dialect) and silently poisons the **entire**
   `::section` rule — use `:last` alone.
   [HISTORY §103](docs/history/072-107.md#103)
+- **A colour is read from `theme.active_palette()` at paint or render
+  time, never cached** — the palette `apply_theme` last applied. There
+  are no module-level colour names (`theme.ACCENT` is gone); prefer a
+  QSS rule over reading a token at all. [HISTORY
+  §181](docs/history/181-210.md#181)
 - **Only a real surface paints a background.** The generic `QWidget`
   rule sets text colour only; `QMainWindow`/`QDialog` paint `BG_APP`,
   cards and tables their own; `QLabel`/`QCheckBox`/`QRadioButton` are
@@ -659,7 +664,7 @@ Each links to the HISTORY entry where the full investigation lives;
   does. [HISTORY §134](docs/history/121-150.md#134)
 - **The Dashboard's track table rebuilds only when what its rows were
   built from changes** (`_RenderedRows`: the visible statuses plus
-  `theme.ACCENT`); a progress-only change updates bars and sort keys
+  the active accent); a progress-only change updates bars and sort keys
   in place. Anything new a row bakes in at build time (a color, a
   setting) must join that key, or a change to it never reaches the
   table. `QTableWidget.setItem` measured ~2.4 ms a call at 500 rows —

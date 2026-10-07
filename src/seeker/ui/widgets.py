@@ -26,7 +26,7 @@ class ThemeToggleButton(QPushButton):
     """A conventional sun/moon/split-circle glyph set, drawn with
     `QPainter` rather than shipped as SVG/PNG assets, so it's
     resolution-independent and tints with the active palette for free
-    (reads `theme.TEXT_MUTED` fresh on every paint — this widget draws
+    (reads `theme.active_palette().TEXT_MUTED` on every paint — this widget draws
     its own glyph rather than using a palette-driven QSS icon).
 
     A logo-derived glyph (one eye from the mark, solid/outlined/half-
@@ -76,7 +76,7 @@ class ThemeToggleButton(QPushButton):
             (self.width() - side) / 2, (self.height() - side) / 2,
             side, side,
         )
-        pen_color = QColor(theme.TEXT_MUTED)
+        pen_color = QColor(theme.active_palette().TEXT_MUTED)
         pen = painter.pen()
         pen.setColor(pen_color)
         pen.setWidthF(max(1.5, side * 0.09))
@@ -142,7 +142,7 @@ class ThemeToggleButton(QPushButton):
 
 class CloseButton(QPushButton):
     """A flat cross that closes the panel it sits on, drawn like
-    `ThemeToggleButton`'s glyphs in `theme.TEXT_MUTED`, read on every
+    `ThemeToggleButton`'s glyphs in the active `TEXT_MUTED`, read on every
     paint. Its accessible name and tooltip say what it closes, since
     the cross alone carries no words."""
 
@@ -162,7 +162,7 @@ class CloseButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = painter.pen()
-        pen.setColor(QColor(theme.TEXT_MUTED))
+        pen.setColor(QColor(theme.active_palette().TEXT_MUTED))
         pen.setWidthF(1.75)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
@@ -208,10 +208,11 @@ class TwoToneProgressBar(QProgressBar):
         split = contents.left() + filled
         whole = self.rect()
 
+        palette = theme.active_palette()
         painter = QPainter(self)
         for color, side in (
-                (theme.ON_ACCENT, QRect(0, 0, split, whole.height())),
-                (theme.TEXT, QRect(split, 0, whole.width() - split, whole.height())),
+                (palette.ON_ACCENT, QRect(0, 0, split, whole.height())),
+                (palette.TEXT, QRect(split, 0, whole.width() - split, whole.height())),
         ):
             painter.setClipRect(side)
             painter.setPen(QColor(color))

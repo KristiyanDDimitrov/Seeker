@@ -44,14 +44,15 @@ def _label_contrast(bar: QProgressBar) -> dict[str, float]:
         # The fill's rounded end shows the track in its corners; the
         # fill is sampled only where it is full height.
         "fill": (
-            theme.ACCENT,
+            theme.active_palette().ACCENT,
             range(
                 text_left,
                 min(text_right, split - theme.PROGRESS_BAR_RADIUS),
             ),
         ),
         "track": (
-            theme.BG_SURFACE_2, range(max(text_left, split + 1), text_right),
+            theme.active_palette().BG_SURFACE_2,
+            range(max(text_left, split + 1), text_right),
         ),
     }
     best: dict[str, float] = {}

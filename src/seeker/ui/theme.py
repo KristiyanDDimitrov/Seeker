@@ -18,27 +18,20 @@ selection, links, and the "In library" badge. Nothing else — two
 violet buttons on one screen means one of them is wrong.
 
 Architecture, read before touching a color (HISTORY §107): `Palette` is
-the real source of truth (`DARK`/`LIGHT` below); the bare module-level
-names (`theme.ACCENT`, `theme.TEXT`, ...) exist ONLY for the call sites
-elsewhere in `ui/` that read them as plain constants —
-`apply_theme()`/`set_palette()` REASSIGN every one of those names
-whenever the active palette changes, so an ordinary read (`theme.ACCENT`
-inside an f-string built at WIDGET-CONSTRUCTION time) automatically
-picks up the current palette with no per-call-site change needed. This
-does NOT retroactively fix a color already baked into an existing
-widget's own per-instance `setStyleSheet()` call — anything that bakes a
-token into a string on a specific widget instance (rather than reading
-it fresh through the global app-level stylesheet) must be rebuilt when
-the theme changes; `MainWindow.on_theme_changed()` is where that
-rebuilding happens. Prefer routing a new label/panel's color through an
-`objectName` + a rule in `build_stylesheet()` instead of a per-widget
-`setStyleSheet()` wherever possible — `QApplication.setStyleSheet()`
-re-polishes every widget matching a rule automatically on re-apply, so
-it needs no theme-change handler code at all.
+the source of truth (`DARK`/`LIGHT` below), and `active_palette()` is
+the one that `apply_theme()` last applied. Code that paints or renders
+reads `active_palette()` at that moment, never caches a token, so it
+follows a theme switch. Prefer routing a label/panel's color through an
+`objectName` + a rule in `build_stylesheet()` over reading a token at
+all: `QApplication.setStyleSheet()` re-polishes every widget matching a
+rule on re-apply, so it needs no theme-change handler code. Anything
+that bakes a token into a widget at build time (a table item's
+foreground) must be rebuilt when the theme changes;
+`MainWindow.on_theme_changed()` is where that rebuilding happens.
 """
 
 import sys
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -195,43 +188,20 @@ def resolve_palette(mode: ThemeMode) -> Palette:
     return DARK
 
 
-def _set_module_tokens(palette: Palette) -> None:
-    """Back-compat bridge (see the module docstring's architecture
-    note) — reassigns every bare `theme.TOKEN` module global from the
-    active palette. Uses `dataclasses.fields` rather than a
-    hand-maintained name list, so a future field added to `Palette` is
-    wired automatically instead of silently staying stale."""
-    module_globals = globals()
-    for field in fields(Palette):
-        module_globals[field.name] = getattr(palette, field.name)
+@dataclass
+class _ActivePalette:
+    palette: Palette
 
 
-# --- Color tokens (back-compat module-level names — see the module
-# docstring's architecture note; kept as plain names, not a class, so
-# the `theme.TOKEN` call sites across ui/*.py read them directly).
-# Declared explicitly (not via the `_set_module_tokens` loop) so mypy
-# sees a real, statically-typed module attribute for each one — they
-# ARE still reassigned dynamically at runtime by `_set_module_tokens`/
-# `apply_theme`/`set_palette` on every theme switch; a plain read like
-# `theme.ACCENT` always resolves to whatever the name currently holds
-# in the module namespace, static declaration or not.
-BG_APP: str = DARK.BG_APP
-BG_SIDEBAR: str = DARK.BG_SIDEBAR
-BG_SURFACE: str = DARK.BG_SURFACE
-BG_SURFACE_2: str = DARK.BG_SURFACE_2
-BORDER: str = DARK.BORDER
-BORDER_STRONG: str = DARK.BORDER_STRONG
-TEXT: str = DARK.TEXT
-TEXT_MUTED: str = DARK.TEXT_MUTED
-TEXT_FAINT: str = DARK.TEXT_FAINT
-ACCENT: str = DARK.ACCENT
-ACCENT_HOVER: str = DARK.ACCENT_HOVER
-ACCENT_PRESSED: str = DARK.ACCENT_PRESSED
-ACCENT_SUBTLE: str = DARK.ACCENT_SUBTLE
-SUCCESS: str = DARK.SUCCESS
-WARNING: str = DARK.WARNING
-DANGER: str = DARK.DANGER
-ON_ACCENT: str = DARK.ON_ACCENT
+_active = _ActivePalette(DARK)
+
+
+def active_palette() -> Palette:
+    """The palette `apply_theme` last applied; `DARK` before the first
+    call. Read it when painting or rendering, never keep it: a theme
+    switch replaces it."""
+    return _active.palette
+
 
 # --- Spacing / radius tokens (theme-independent) ----------------------------
 
@@ -303,7 +273,7 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
     """
     bar.setStyleSheet(
         f"QProgressBar::chunk {{"
-        f"  background-color: {ACCENT};"
+        f"  background-color: {active_palette().ACCENT};"
         f"  border-radius: {PROGRESS_BAR_RADIUS}px;"
         f"}}"
     )
@@ -881,7 +851,7 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     app.setStyle(_SeekerStyle(QStyleFactory.create("Fusion")))
 
     palette = resolve_palette(mode)
-    _set_module_tokens(palette)
+    _active.palette = palette
 
     app.setPalette(build_qpalette(palette))
     app.setStyleSheet(build_stylesheet(palette))

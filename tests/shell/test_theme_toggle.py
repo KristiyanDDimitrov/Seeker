@@ -211,16 +211,16 @@ def test_theme_toggle_actually_changes_the_applied_stylesheet(qtbot):
     assert app is not None
 
     window._theme_toggle.click()  # system -> light
-    assert theme.BG_SURFACE == theme.LIGHT.BG_SURFACE
+    assert theme.active_palette() is theme.LIGHT
     assert theme.LIGHT.BG_SURFACE in app.styleSheet()
 
     window._theme_toggle.click()  # light -> dark
-    assert theme.BG_SURFACE == theme.DARK.BG_SURFACE
+    assert theme.active_palette() is theme.DARK
     assert theme.DARK.BG_SURFACE in app.styleSheet()
 
     window._theme_toggle.click()  # dark -> system
     resolved = theme.resolve_palette("system")
-    assert theme.BG_SURFACE == resolved.BG_SURFACE
+    assert theme.active_palette() is resolved
     assert resolved.BG_SURFACE in app.styleSheet()
 
 
@@ -258,7 +258,7 @@ def test_apply_theme_mode_survives_a_synchronous_scheme_signal_mid_apply(
     window._apply_theme_mode("light")
 
     assert window._theme_mode == "light"
-    assert theme.BG_SURFACE == theme.LIGHT.BG_SURFACE
+    assert theme.active_palette() is theme.LIGHT
     app = QApplication.instance()
     assert app is not None
     assert theme.LIGHT.BG_SURFACE in app.styleSheet()

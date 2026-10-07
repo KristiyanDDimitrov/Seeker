@@ -833,11 +833,11 @@ class MainWindow(QMainWindow):
         # here for it.
         self._theme_toggle.update()
 
-        # QColor(theme.ACCENT)/setForeground calls baked into table
-        # items ARE re-computed on every one of these render calls,
-        # which the 2s poll_timer already re-runs regularly
-        # (self-healing within ~2s) — but re-running them here too means
-        # the switch is correct IMMEDIATELY, not after up to a 2s wait.
+        # The accent colours baked into table items are re-computed on
+        # every one of these render calls, which the 2s poll_timer
+        # already re-runs regularly (self-healing within ~2s) — but
+        # re-running them here too means the switch is correct
+        # IMMEDIATELY, not after up to a 2s wait.
         self._dashboard_page.poll_selected_playlist()
         self._downloads_page.poll_active_downloads()
         self._review_page.poll_review_items()

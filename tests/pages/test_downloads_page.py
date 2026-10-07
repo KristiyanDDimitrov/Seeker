@@ -245,7 +245,7 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
     # check above.
     image = window.grab().toImage()
     surface_rgb = tuple(
-        int(theme.BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
+        int(theme.active_palette().BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
     )
     top_left = viewport.mapTo(window, viewport.rect().topLeft())
     # window.grab() returns a QImage in DEVICE pixels; every geometry
@@ -320,7 +320,7 @@ def test_downloads_header_shows_a_real_divider_between_columns(qtbot):
     dpr = image.width() / window.width()
 
     border_strong_rgb = tuple(
-        int(theme.BORDER_STRONG[i:i + 2], 16) for i in (1, 3, 5)
+        int(theme.active_palette().BORDER_STRONG[i:i + 2], 16) for i in (1, 3, 5)
     )
     ncols = table.columnCount()
 

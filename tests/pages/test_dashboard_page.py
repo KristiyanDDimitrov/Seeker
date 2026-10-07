@@ -892,7 +892,7 @@ def test_dashboard_downloading_bar_is_vertically_centered(qtbot):
     image = window.grab().toImage()
     dpr = image.width() / window.width()
     surface_rgb = tuple(
-        int(theme.BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
+        int(theme.active_palette().BG_SURFACE[i:i + 2], 16) for i in (1, 3, 5)
     )
     top_left = viewport.mapTo(window, viewport.rect().topLeft())
     x = round((top_left.x() + row_rect.left() + 10) * dpr)
@@ -1731,7 +1731,11 @@ def test_a_theme_change_recolors_the_review_link(qtbot, monkeypatch):
     page = window._dashboard_page
     statuses = [make_track_status(track_id="t1", state=NEEDS_REVIEW)]
     page._render_track_statuses(statuses)
-    monkeypatch.setattr(theme, "ACCENT", "#123456")
+    monkeypatch.setattr(
+            theme,
+            "active_palette",
+            lambda: replace(theme.DARK, ACCENT="#123456"),
+    )
 
     page._render_track_statuses(statuses)
 
