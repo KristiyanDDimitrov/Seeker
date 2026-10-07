@@ -6,6 +6,7 @@ mirror of §9.3.1's own Sharing extraction (S6).
 structural sweep tests and Duplicates' own tests use them too.
 """
 
+import pytest
 from PySide6.QtWidgets import QPushButton
 
 from fakes import (
@@ -14,8 +15,10 @@ from fakes import (
     confirm_yes,
     make_location,
 )
-from seeker.ui import help_text, plain_text
+from seeker.ui import help_text, plain_text, status_lamp
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
+from seeker.ui.pages.sharing_page import _upload_state
 
 
 def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
@@ -87,8 +90,11 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
 
     locations_table = window._sharing_page.sharing_locations_table
     qtbot.waitUntil(lambda: locations_table.rowCount() == 2, timeout=2000)
-    assert locations_table.item(0, 1).text() == "Yes"
-    assert locations_table.item(1, 1).text() == "No"
+    assert locations_table.item(0, 1).text() == "Shared"
+    assert not locations_table.item(0, 1).icon().isNull()
+    assert locations_table.item(1, 1).text() == "Not shared"
+    # A shared row's action cell is empty: Shared already says so.
+    assert locations_table.cellWidget(0, 4) is None
     assert (
         locations_table.cellWidget(1, 4).findChild(QPushButton) is not None
     )
@@ -364,3 +370,50 @@ def test_a_failed_sharing_refresh_stays_on_the_notice(qtbot):
     qtbot.waitUntil(lambda: page.sharing_notice.isVisibleTo(window), timeout=2000)
     assert "slskd answered 500" in page.sharing_notice.text()
     assert page.sharing_status_label.text() == ""
+
+
+@pytest.mark.parametrize(
+    ("raw", "label", "lamp", "note"),
+    [
+        ("Queued, Remotely", "Queued", status_lamp.CUE, None),
+        ("Requested", "Queued", status_lamp.CUE, None),
+        ("Initializing", "Queued", status_lamp.CUE, None),
+        ("InProgress", "Uploading", status_lamp.CUE, None),
+        ("Completed, Succeeded", "Sent", status_lamp.PLAY, None),
+        ("Completed, TimedOut", "Failed", status_lamp.FAULT, "Timed out"),
+        ("Completed, Cancelled", "Failed", status_lamp.FAULT, "Cancelled"),
+        ("Completed, Errored", "Failed", status_lamp.FAULT, "Error"),
+        ("SomethingNew", "SomethingNew", None, None),
+        (None, "", None, None),
+    ],
+)
+def test_an_upload_state_reads_in_seekers_words(raw, label, lamp, note):
+    state = _upload_state(raw)
+
+    assert (state.label, state.lamp, state.note) == (label, lamp, note)
+
+
+def test_an_upload_row_shows_its_state_with_a_lamp(qtbot):
+    from seeker.soulseek.sharing_service import UploadStatus
+
+    sharing_service = FakeSharingService(uploads=[
+        UploadStatus(
+            username="listener", filename="Music\\a.flac",
+            state="Completed, TimedOut", bytes_transferred=10, size=100,
+        ),
+    ])
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    table = window._sharing_page.sharing_uploads_table
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    item = table.item(0, 2)
+    assert item.text() == "Failed"
+    assert item.data(SECONDARY_ROLE) == "Timed out"
+    assert not item.icon().isNull()
+    assert "Completed, TimedOut" in item.toolTip()

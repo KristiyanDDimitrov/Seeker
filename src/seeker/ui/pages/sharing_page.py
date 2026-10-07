@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
@@ -20,12 +21,13 @@ from seeker.soulseek.sharing_service import (
     SharingApplyResult,
     UploadStatus,
 )
-from seeker.ui import help_text, plain_text, theme
+from seeker.ui import help_text, plain_text, status_lamp, theme
 from seeker.ui.disclosure import Disclosure
+from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
-from seeker.ui.plain_text import PlainLabel, RichLabel
+from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.upload_eta import UploadEtaTracker
 from seeker.ui.workers import run_worker
@@ -42,6 +44,63 @@ _SHARING_UPLOADS_COLUMNS = theme.ColumnLayout(
 
 # The explanation wraps at a reading measure, not the window's width.
 _EXPLAINER_MEASURE_CHARS = 80
+
+# slskd's own words for a finished upload that did not succeed.
+_UPLOAD_ENDINGS = {
+    "Cancelled": "Cancelled",
+    "TimedOut": "Timed out",
+    "Errored": "Error",
+    "Rejected": "Rejected",
+    "Aborted": "Aborted",
+}
+
+
+@dataclass(frozen=True)
+class _UploadState:
+    label: str
+    lamp: status_lamp.Lamp | None = None
+    note: str | None = None
+
+
+def _upload_state(raw: str | None) -> _UploadState:
+    """Seeker's word and lamp for slskd's transfer state, a flags
+    string such as "Queued, Remotely" or "Completed, Succeeded". A
+    state it does not know reads as slskd wrote it."""
+    if not raw:
+        return _UploadState("")
+    flags = {flag.strip() for flag in raw.split(",")}
+    if "Completed" in flags:
+        if "Succeeded" in flags:
+            return _UploadState("Sent", status_lamp.PLAY)
+        ending = next(
+            (_UPLOAD_ENDINGS[flag] for flag in flags if flag in _UPLOAD_ENDINGS),
+            None,
+        )
+        return _UploadState("Failed", status_lamp.FAULT, ending)
+    if "InProgress" in flags:
+        return _UploadState("Uploading", status_lamp.CUE)
+    if flags & {"Queued", "Requested", "Initializing"}:
+        return _UploadState("Queued", status_lamp.CUE)
+    return _UploadState(raw)
+
+
+def _lamp_item(
+        label: str, lamp: status_lamp.Lamp | None, note: str | None = None,
+) -> QTableWidgetItem:
+    item = QTableWidgetItem(label)
+    if lamp is not None:
+        item.setIcon(status_lamp.lamp_icon(lamp, theme.active_palette()))
+    if note is not None:
+        item.setData(SECONDARY_ROLE, note)
+        # The secondary text is painted, not read: say it as well.
+        item.setData(Qt.ItemDataRole.AccessibleTextRole, f"{label}: {note}")
+    return item
+
+
+def _upload_key(upload: UploadStatus) -> tuple[str, str] | None:
+    if upload.username is None or upload.filename is None:
+        return None
+    return (upload.username, upload.filename)
 
 
 @dataclass
@@ -109,6 +168,9 @@ class SharingPage(QWidget):
             ["Location", "Shared", "Container Path", "Files", "Action"]
         )
         theme.apply_table_defaults(self.sharing_locations_table)
+        self.sharing_locations_table.setIconSize(
+            QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE),
+        )
         locations_section.addWidget(
             theme.make_card(self.sharing_locations_table),
         )
@@ -138,6 +200,9 @@ class SharingPage(QWidget):
         )
         self.sharing_uploads_table.setToolTip(help_text.TOOLTIP_UPLOADS_TABLE)
         theme.apply_table_defaults(self.sharing_uploads_table)
+        self.sharing_uploads_table.setIconSize(
+            QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE),
+        )
         theme.configure_columns(
             self.sharing_uploads_table, _SHARING_UPLOADS_COLUMNS,
         )
@@ -169,6 +234,7 @@ class SharingPage(QWidget):
         self._fit_explainer()
 
         self._current_sharing_self_managed = False
+        self._last_snapshot: _SharingSnapshot | None = None
 
         # Lazy-loaded like Duplicates (first real page SHOW, never at
         # construction — see HISTORY §39's deadlock), but also joins the
@@ -254,9 +320,19 @@ class SharingPage(QWidget):
             on_error=on_error,
         )
 
+    def refresh_lamps(self) -> None:
+        """Repaint the tables' lamps in the active palette, from the
+        last fetch: a theme switch needs no new call to slskd."""
+        if self._last_snapshot is not None:
+            self._paint_sharing(self._last_snapshot)
+
     def _render_sharing(self, snapshot: _SharingSnapshot) -> None:
         self._current_sharing_self_managed = snapshot.self_managed
+        self._last_snapshot = snapshot
+        self._record_upload_progress(snapshot.uploads)
+        self._paint_sharing(snapshot)
 
+    def _paint_sharing(self, snapshot: _SharingSnapshot) -> None:
         if not snapshot.configured:
             self.sharing_summary_label.setText(
                 help_text.SHARING_UNCONFIGURED_NOTICE
@@ -302,7 +378,9 @@ class SharingPage(QWidget):
             for row, state in enumerate(reconciliation):
                 table.setItem(row, 0, QTableWidgetItem(state.location.name))
                 table.setItem(
-                    row, 1, QTableWidgetItem("Yes" if state.shared else "No"),
+                    row, 1,
+                    _lamp_item("Shared", status_lamp.PLAY) if state.shared
+                    else _lamp_item("Not shared", status_lamp.STANDBY),
                 )
                 table.setItem(
                     row, 2,
@@ -327,9 +405,8 @@ class SharingPage(QWidget):
                 )
 
                 if state.shared:
-                    shared_widget = theme.cell_widget(PlainLabel("Shared"))
-                    action_widgets.append(shared_widget)
-                    table.setCellWidget(row, 4, shared_widget)
+                    # The Shared column already says so.
+                    table.removeCellWidget(row, 4)
                     continue
 
                 button = QPushButton("Add to my SoulSeek share")
@@ -368,12 +445,22 @@ class SharingPage(QWidget):
             action_widgets,
         )
 
+    def _record_upload_progress(self, uploads: list[UploadStatus]) -> None:
+        """Feed each upload's bytes to the ETA tracker, once per fetch."""
+        active_keys: set[tuple[str, str]] = set()
+        now = datetime.now(UTC)
+        for upload in uploads:
+            key = _upload_key(upload)
+            if key is None or upload.bytes_transferred is None:
+                continue
+            active_keys.add(key)
+            self._upload_eta_tracker.record(key, upload.bytes_transferred, now)
+        self._upload_eta_tracker.evict_except(active_keys)
+
     def _render_sharing_uploads_table(
             self, uploads: list[UploadStatus],
     ) -> None:
         table = self.sharing_uploads_table
-        active_keys: set[tuple[str, str]] = set()
-        now = datetime.now(UTC)
 
         # Sorting is live on this table; disabled for the body of this
         # rebuild (see preserving_sort_order's own docstring for why)
@@ -388,28 +475,23 @@ class SharingPage(QWidget):
                 table.setItem(
                     row, 1, QTableWidgetItem(upload.filename or "")
                 )
-                table.setItem(row, 2, QTableWidgetItem(upload.state or ""))
+                state = _upload_state(upload.state)
+                state_item = _lamp_item(state.label, state.lamp, state.note)
+                if upload.state:
+                    state_item.setToolTip(plain_tooltip(
+                        f"slskd: {upload.state}"
+                    ))
+                table.setItem(row, 2, state_item)
 
-                progress_text = ""
-
-                if (
-                        upload.username is not None
-                        and upload.filename is not None
-                        and upload.bytes_transferred is not None
-                ):
-                    key = (upload.username, upload.filename)
-                    active_keys.add(key)
-                    self._upload_eta_tracker.record(
-                        key, upload.bytes_transferred, now,
-                    )
-                    progress_text = self._upload_eta_tracker.describe(
-                        key, upload.size,
-                    )
-
+                key = _upload_key(upload)
+                progress_text = (
+                    self._upload_eta_tracker.describe(key, upload.size)
+                    if key is not None and upload.bytes_transferred is not None
+                    else ""
+                )
                 table.setItem(row, 3, QTableWidgetItem(progress_text))
 
         theme.size_columns(table, _SHARING_UPLOADS_COLUMNS, [])
-        self._upload_eta_tracker.evict_except(active_keys)
 
     def _on_add_location_to_share_clicked(
             self, location: LibraryLocation,
