@@ -152,7 +152,7 @@ def test_run_worker_error_names_a_bare_assertion_error(qtbot):
     run_worker(SynchronousPool(), boom, status_label=label)
 
     assert "AssertionError" in label.text()
-    assert "Open Log Folder" in label.text()
+    assert "Open log folder" in label.text()
 
 
 def test_run_worker_registry_releases_worker_on_both_success_and_error():

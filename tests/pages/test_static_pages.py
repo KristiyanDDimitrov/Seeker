@@ -246,3 +246,26 @@ def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
     assert window.stacked_widget.currentIndex() == window._page_indices[
             "sharing"
     ]
+
+
+def test_help_prose_is_never_clipped_by_its_reading_measure(qtbot):
+    # A wrapped label capped narrower than its layout row is measured at
+    # the row's width and loses its last lines; Help caps its whole
+    # column instead, so each label gets the height its width needs.
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.resize(1280, 820)
+    window.show()
+    qtbot.waitExposed(window)
+    window._nav_buttons["help"].click()
+    qtbot.wait(20)
+
+    wrapped = [
+        label for label in window._help_page.findChildren(QLabel)
+        if label.wordWrap() and label.isVisible()
+    ]
+    assert wrapped
+    for label in wrapped:
+        assert label.height() >= label.heightForWidth(label.width()), (
+            label.text()[:40]
+        )

@@ -10,9 +10,9 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
-    QHBoxLayout,
+    QFrame,
+    QLabel,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -44,91 +44,61 @@ def _open_in_file_manager(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
+def _section(title: str, *widgets: QWidget) -> QVBoxLayout:
+    """A section of a reading page: its title in the panel lettering,
+    then `widgets`, closer to each other than to the next section."""
+    layout = QVBoxLayout()
+    layout.setSpacing(theme.SPACING_SM)
+    heading = PlainLabel(title)
+    heading.setObjectName("sectionHeaderLabel")
+    layout.addWidget(heading)
+    for widget in widgets:
+        layout.addWidget(widget)
+    return layout
+
+
+def _prose(label: QLabel) -> QLabel:
+    label.setWordWrap(True)
+    return label
+
+
 class HelpPage(QWidget):
     def __init__(self, context: PageContext):
         super().__init__()
         self._context = context
 
-        # Real content (walkthrough/troubleshooting/data locations),
-        # not a placeholder. Every data-location value below is a real,
-        # already-resolved path (Application.data_locations) — cheap,
-        # synchronous, purely local string formatting, so this builds
-        # directly at page-construction time like AboutDialog's own
-        # version() lookup, no lazy-load/run_worker needed (contrast
-        # with Duplicates/History, which do a real DB read).
+        # Every value here is already resolved and local
+        # (Application.data_locations, the build identity), so the page
+        # builds at construction, with no worker.
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
         inner_layout.setContentsMargins(0, 0, 0, 0)
         inner_layout.setSpacing(theme.SPACING_LG)
 
-        walkthrough_label = RichLabel(help_text.HELP_WALKTHROUGH_BODY)
-        walkthrough_label.setWordWrap(True)
-        inner_layout.addWidget(walkthrough_label)
+        inner_layout.addLayout(_section(
+            help_text.HELP_WALKTHROUGH_HEADING,
+            _prose(RichLabel(help_text.HELP_WALKTHROUGH_BODY)),
+        ))
+        inner_layout.addLayout(_section(
+            help_text.HELP_TROUBLESHOOTING_HEADING,
+            _prose(RichLabel(help_text.HELP_TROUBLESHOOTING_BODY)),
+        ))
 
-        troubleshooting_label = RichLabel(help_text.HELP_TROUBLESHOOTING_BODY)
-        troubleshooting_label.setWordWrap(True)
-        inner_layout.addWidget(troubleshooting_label)
-
-        locations = context.application.data_locations
-
-        data_heading = RichLabel(help_text.HELP_DATA_LOCATIONS_HEADING)
-        inner_layout.addWidget(data_heading)
-
-        intro_label = PlainLabel(help_text.HELP_DATA_LOCATIONS_INTRO)
-        intro_label.setWordWrap(True)
-        inner_layout.addWidget(intro_label)
-
-        # Said explicitly, in the app, not just in a doc (HISTORY §81):
-        # a "fix didn't work on the other account" report is very often
-        # a different-database report, not a different-behavior one.
-        per_account_label = PlainLabel(
-            help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE
-        )
-        per_account_label.setWordWrap(True)
-        inner_layout.addWidget(per_account_label)
-
-        # Next to the data locations, not buried in About, since this
-        # page is exactly where "which build is this?" troubleshooting
-        # starts (HISTORY §81).
-        build_identity = help_text.format_build_identity(
-            _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
-            _build_info.BUILT_AT,
-        )
-        build_label = PlainLabel(
-            f"{help_text.HELP_BUILD_IDENTITY_LABEL} {build_identity}"
-        )
-        build_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        inner_layout.addWidget(build_label)
-
-        locations_form = QFormLayout()
-        for label_text, path in (
-                (help_text.DATA_LOCATION_DATABASE_LABEL, locations.database_path),
-                (help_text.DATA_LOCATION_CONFIG_LABEL, locations.config_path),
-                (
-                    help_text.DATA_LOCATION_SPOTIFY_TOKEN_LABEL,
-                    locations.spotify_token_path,
-                ),
-                (help_text.DATA_LOCATION_SLSKD_LABEL, locations.slskd_data_dir),
-                (help_text.DATA_LOCATION_LOG_LABEL, locations.log_dir),
-        ):
-            path_label = PlainLabel(str(path))
-            path_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-            path_label.setWordWrap(True)
-            locations_form.addRow(label_text, path_label)
-        inner_layout.addLayout(locations_form)
-
-        buttons_row = QHBoxLayout()
+        # Said in the app, not just in a doc (HISTORY §81): a "fix
+        # didn't work on the other account" report is very often a
+        # different-database report, not a different-behaviour one.
+        inner_layout.addLayout(_section(
+            help_text.HELP_DATA_LOCATIONS_HEADING,
+            _prose(PlainLabel(help_text.HELP_DATA_LOCATIONS_INTRO)),
+            _prose(PlainLabel(help_text.HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE)),
+            self._build_locations_card(),
+        ))
 
         open_folder_button = QPushButton(
                 help_text.OPEN_DATA_FOLDER_BUTTON_TEXT
         )
         open_folder_button.setToolTip(help_text.TOOLTIP_OPEN_DATA_FOLDER)
         open_folder_button.clicked.connect(self._on_open_data_folder_clicked)
-        buttons_row.addWidget(open_folder_button)
 
         open_log_folder_button = QPushButton(
                 help_text.OPEN_LOG_FOLDER_BUTTON_TEXT
@@ -137,30 +107,59 @@ class HelpPage(QWidget):
         open_log_folder_button.clicked.connect(
             self._on_open_log_folder_clicked
         )
-        buttons_row.addWidget(open_log_folder_button)
-
-        buttons_row.addStretch()
-        inner_layout.addLayout(buttons_row)
-
+        inner_layout.addLayout(
+            theme.action_row(open_folder_button, open_log_folder_button),
+        )
         inner_layout.addStretch()
 
-        # Scrollable — the walkthrough + troubleshooting + data-location
-        # sections together are genuinely longer than this app's
-        # 960x640 minimum window (HISTORY §48), unlike every other page.
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setWidget(inner)
-
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(scroll_area)
-
-        page = build_page("Help", help_text.HELP_PAGE_SUBTITLE, content)
+        # The walkthrough, troubleshooting and data locations together
+        # are taller than the 960x640 minimum window (HISTORY §48).
+        page = build_page(
+            "Help", help_text.HELP_PAGE_SUBTITLE,
+            theme.scrollable(theme.reading_column(inner)),
+        )
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(page)
+
+    def _build_locations_card(self) -> QFrame:
+        """Each data path, then the build, in one card: the two things
+        a problem report needs. Next to the paths rather than only in
+        About, since this page is where "which build is this?" starts
+        (HISTORY §81)."""
+        locations = self._context.application.data_locations
+        build_identity = help_text.format_build_identity(
+            _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
+            _build_info.BUILT_AT,
+        )
+        rows = (
+            (help_text.DATA_LOCATION_DATABASE_LABEL, str(locations.database_path)),
+            (help_text.DATA_LOCATION_CONFIG_LABEL, str(locations.config_path)),
+            (
+                help_text.DATA_LOCATION_SPOTIFY_TOKEN_LABEL,
+                str(locations.spotify_token_path),
+            ),
+            (help_text.DATA_LOCATION_SLSKD_LABEL, str(locations.slskd_data_dir)),
+            (help_text.DATA_LOCATION_LOG_LABEL, str(locations.log_dir)),
+            (help_text.HELP_BUILD_IDENTITY_LABEL, build_identity),
+        )
+
+        inner = QWidget()
+        form = QFormLayout(inner)
+        margin = theme.SPACING_MD
+        form.setContentsMargins(margin, margin, margin, margin)
+        form.setHorizontalSpacing(theme.SPACING_LG)
+        form.setVerticalSpacing(theme.SPACING_SM)
+        for label_text, value in rows:
+            name_label = PlainLabel(label_text)
+            name_label.setProperty("badge", "muted")
+            value_label = PlainLabel(value)
+            value_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            value_label.setWordWrap(True)
+            form.addRow(name_label, value_label)
+        return theme.make_card(inner)
 
     def _on_open_data_folder_clicked(self) -> None:
         _open_in_file_manager(self._context.application.data_locations.base_dir)

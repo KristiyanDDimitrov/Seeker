@@ -109,8 +109,8 @@ SHARING_TAB_SUBTITLE = (
     "currently downloading from you."
 )
 
+HELP_WALKTHROUGH_HEADING = "How Seeker works"
 HELP_WALKTHROUGH_BODY = (
-    "<h3>How Seeker works</h3>"
     "<p><b>1. Sync</b> — Spotify playlists and their tracks are pulled "
     "via the Web API and cached locally, so day-to-day use doesn't "
     "keep re-hitting Spotify's rate-limited API.</p>"
@@ -128,8 +128,8 @@ HELP_WALKTHROUGH_BODY = (
     "Library page.</p>"
 )
 
+HELP_TROUBLESHOOTING_HEADING = "Troubleshooting"
 HELP_TROUBLESHOOTING_BODY = (
-    "<h3>Troubleshooting</h3>"
     "<p><b>Spotify won't connect</b> — check the Client ID in Settings "
     "→ Connections, and that your browser didn't block the "
     "authorization popup.</p>"
@@ -148,7 +148,7 @@ HELP_TROUBLESHOOTING_BODY = (
     "predictable.</p>"
 )
 
-HELP_DATA_LOCATIONS_HEADING = "<h3>Where your data lives</h3>"
+HELP_DATA_LOCATIONS_HEADING = "Where your data lives"
 HELP_DATA_LOCATIONS_INTRO = (
     "Seeker keeps everything — its database, config, cached Spotify "
     "token, and SoulSeek data — in one folder on this machine. Nothing "
@@ -158,26 +158,23 @@ HELP_DATA_LOCATIONS_INTRO = (
 # didn't work on the other account" report is usually two databases, not
 # a regression — said here explicitly (HISTORY §81).
 HELP_DATA_LOCATIONS_PER_ACCOUNT_NOTE = (
-    "This folder is per macOS user account — a different login has "
-    "its own separate database, library locations, scan state, and "
-    "SoulSeek data, with nothing shared between accounts. If something "
-    "looks different on another account, check first whether that "
-    "account has actually been set up the same way (synced, scanned, "
-    "matched) — it's very often a different-database report, not a "
-    "different-behavior one."
+    "This folder is per macOS user account: another login has its own "
+    "database, library locations, scan state and SoulSeek data. If "
+    "Seeker behaves differently on another account, first check that "
+    "it has been set up the same way (synced, scanned, matched)."
 )
 DATA_LOCATION_DATABASE_LABEL = "Database:"
 DATA_LOCATION_CONFIG_LABEL = "Config:"
 DATA_LOCATION_SPOTIFY_TOKEN_LABEL = "Spotify token:"
 DATA_LOCATION_SLSKD_LABEL = "SoulSeek data:"
 DATA_LOCATION_LOG_LABEL = "Log folder:"
-OPEN_DATA_FOLDER_BUTTON_TEXT = "Open Data Folder"
+OPEN_DATA_FOLDER_BUTTON_TEXT = "Open data folder"
 TOOLTIP_OPEN_DATA_FOLDER = (
-    "Open the folder above in Finder/Explorer/your file manager."
+    "Open the data folder in Finder/Explorer/your file manager."
 )
-OPEN_LOG_FOLDER_BUTTON_TEXT = "Open Log Folder"
+OPEN_LOG_FOLDER_BUTTON_TEXT = "Open log folder"
 TOOLTIP_OPEN_LOG_FOLDER = (
-    "Open the log folder above — useful when reporting a problem."
+    "Open the log folder: useful when reporting a problem."
 )
 HELP_BUILD_IDENTITY_LABEL = "Build:"
 

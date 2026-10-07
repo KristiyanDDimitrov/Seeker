@@ -18,5 +18,5 @@ class DataLocations:
     # Data Folder" actually opens.
     base_dir: Path
     # A separate OS-conventional directory (platformdirs.user_log_dir) —
-    # never under base_dir — what "Open Log Folder" opens.
+    # never under base_dir — what "Open log folder" opens.
     log_dir: Path

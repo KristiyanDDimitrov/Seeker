@@ -164,5 +164,5 @@ def test_os_error_without_a_path_reads_as_its_reason():
 def test_details_hint_can_be_replaced_for_the_cli():
     text = describe_error(AssertionError(), details_hint="")
 
-    assert "Open Log Folder" not in text
+    assert "Open log folder" not in text
     assert "AssertionError" in text

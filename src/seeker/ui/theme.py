@@ -399,13 +399,31 @@ def scrollable(content: QWidget) -> QScrollArea:
 READING_MEASURE_CHARS = 80
 
 
+def _reading_width(widget: QWidget) -> int:
+    return widget.fontMetrics().averageCharWidth() * READING_MEASURE_CHARS
+
+
 def set_reading_measure(label: QLabel) -> None:
     """Caps a wrapping `label` at about `READING_MEASURE_CHARS` of its
-    own font, so a paragraph stays readable on a wide window."""
+    own font. Only where `label` is a scroll area's whole content: in a
+    layout row wider than the cap, the row measures the label's height
+    at the row's width and clips the wrapped lines (seen on Help)."""
     label.setWordWrap(True)
-    label.setMaximumWidth(
-        label.fontMetrics().averageCharWidth() * READING_MEASURE_CHARS,
-    )
+    label.setMaximumWidth(_reading_width(label))
+
+
+def reading_column(column: QWidget) -> QWidget:
+    """`column` capped at the reading measure, left-aligned, with the
+    rest of the width a stretch. A horizontal layout gives each item
+    its real width before asking its height, so wrapped labels inside
+    `column` are measured at the width they get."""
+    column.setMaximumWidth(_reading_width(column))
+    row = QWidget()
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(column)
+    layout.addStretch()
+    return row
 
 
 def make_card(inner: QWidget) -> QFrame:

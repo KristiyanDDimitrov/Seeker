@@ -1434,7 +1434,7 @@ def test_other_database_errors_print_their_details(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "database" in output
     assert "disk I/O error" in output
-    assert "Open Log Folder" not in output
+    assert "Open log folder" not in output
 
 
 def test_any_seeker_error_prints_its_sentence_not_a_traceback(

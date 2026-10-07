@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import httpx
 
-DETAILS_HINT = "Details are in the log (Help → Open Log Folder)."
+DETAILS_HINT = "Details are in the log (Help → Open log folder)."
 
 # Builtin exception types Seeker never raises on purpose — none appears
 # in a `raise` anywhere under src/. Reaching the user, one is always a
