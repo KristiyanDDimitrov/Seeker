@@ -101,7 +101,9 @@ src/seeker/
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
 │       download_eta.py, upload_eta.py,
 │       library_location_picker.py, plain_text.py,
-│       slskd_status.py (shared outage state + Start slskd)
+│       slskd_status.py (shared outage state + Start slskd),
+│       status_lamp.py (each track/download state's LED: colour,
+│       lit or ring, and its icon)
 ├── models/                     # dataclasses — playlist, track, track_match,
 │                              #   local_file, library_location, soulseek_file,
 │                              #   download_request, soulseek_review_candidate,
