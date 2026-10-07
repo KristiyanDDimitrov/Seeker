@@ -3,9 +3,10 @@
 from datetime import UTC, datetime
 from enum import IntEnum
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QProgressBar,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -16,27 +17,29 @@ from PySide6.QtWidgets import (
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import (
     FAILED_OUTCOMES,
-    IN_FLIGHT,
     SHOWS_NO_FURTHER_PROGRESS,
     STAMPS_COMPLETED_AT,
     DownloadRequest,
     DownloadRole,
     DownloadStatus,
 )
-from seeker.ui import help_text, theme
+from seeker.ui import help_text, status_lamp, theme
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
     DownloadEtaTracker,
     format_aggregate_header,
 )
-from seeker.ui.elided_text import BADGE_ROLE
+from seeker.ui.elided_text import (
+    BADGE_ROLE,
+    SECONDARY_ROLE,
+    set_secondary_min_share,
+)
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
-from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
 
@@ -57,70 +60,69 @@ _DOWNLOADS_COLUMNS = theme.ColumnLayout(
     ),
 )
 
-# Plain-language notes for statuses that aren't self-explanatory as raw
-# text — a "locked" or "shortlisted" row is still actively being chased,
-# just not in a way a non-technical status string conveys.
+# A status's label beside its lamp. The words are the Dashboard's where
+# the state is the same one ("Retrying"), so a track reads alike on both
+# pages.
 _DOWNLOAD_STATUS_LABELS = {
     DownloadStatus.QUEUED: "Queued",
     DownloadStatus.DOWNLOADING: "Downloading",
-    DownloadStatus.LOCKED: "Locked — retrying",
+    DownloadStatus.LOCKED: "Retrying",
     DownloadStatus.SHORTLISTED: "Queued as backup",
     DownloadStatus.READY_FOR_REVIEW: "Ready for review",
     DownloadStatus.COMPLETED: "Completed",
     DownloadStatus.FAILED: "Failed",
-    # Exhausted its retry budget against this specific peer; distinct
-    # from "Failed" so it reads as "we gave up chasing this one," not
-    # "something errored" (HISTORY §66).
-    DownloadStatus.UNAVAILABLE: "Unavailable — stopped retrying",
-}
-
-# The words a failure's recorded reason follows in the Status cell
-# ("Failed — Timed out").
-_FAILURE_STATUS_LABELS = {
-    DownloadStatus.FAILED: "Failed",
     DownloadStatus.UNAVAILABLE: "Unavailable",
 }
 
+# The quieter note beside a label that does not explain itself. A
+# failure's own recorded reason takes its place when there is one.
+_DOWNLOAD_STATUS_NOTES = {
+    DownloadStatus.LOCKED: "File locked by the peer",
+    # Exhausted its retry budget against this peer: "we gave up chasing
+    # this one", not "something errored" (HISTORY §66).
+    DownloadStatus.UNAVAILABLE: "Stopped retrying",
+}
 
-def _status_text(request: DownloadRequest) -> str:
-    failure_label = _FAILURE_STATUS_LABELS.get(request.status)
 
-    if failure_label is not None and request.failure_reason:
-        return f"{failure_label} — {request.failure_reason}"
+def _status_note(request: DownloadRequest) -> str | None:
+    """The secondary text of a row's Status cell: a failure's reason,
+    the percentage of a transfer with real bytes, or a fixed note."""
+    if request.status in FAILED_OUTCOMES and request.failure_reason:
+        return request.failure_reason
 
-    return _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
+    if (
+            request.status == DownloadStatus.DOWNLOADING
+            and request.total_bytes
+            and request.bytes_transferred is not None
+    ):
+        return (
+            f"{round(100 * request.bytes_transferred / request.total_bytes)}%"
+        )
+
+    return _DOWNLOAD_STATUS_NOTES.get(request.status)
 
 
-def _build_terminal_progress_widget(request: DownloadRequest) -> QWidget:
-    # A fixed label, never the ETA tracker, for a row that will never
-    # report new progress again (HISTORY §56). 'unavailable' gets the
-    # same blank treatment as 'failed' — a full bar would misleadingly
-    # read as "completed" for something that never actually succeeded.
-    if request.status in FAILED_OUTCOMES:
-        return QWidget()  # blank, not a misleading full/empty bar
+def _build_status_item(request: DownloadRequest) -> QTableWidgetItem:
+    label = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
+    item = QTableWidgetItem(label)
+    lamp = status_lamp.DOWNLOAD_LAMPS.get(request.status)
+    if lamp is not None:
+        item.setIcon(status_lamp.lamp_icon(lamp, theme.active_palette()))
 
-    bar = TwoToneProgressBar()
-
-    if request.total_bytes and request.bytes_transferred is not None:
-        bar.setRange(0, request.total_bytes)
-        bar.setValue(request.bytes_transferred)
-    else:
-        # A completed/ready_for_review row should always have real
-        # bytes (HISTORY §20), but render a full bar rather than
-        # crash/guess if a real one somehow doesn't.
-        bar.setRange(0, 1)
-        bar.setValue(1)
-
-    theme.style_determinate_progress_bar(bar)
-
-    label_text = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
-
-    return theme.wrap_progress_bar(bar, label_text)
+    note = _status_note(request)
+    if note is not None:
+        item.setData(SECONDARY_ROLE, note)
+        # The secondary text is painted, not read: say it as well.
+        item.setData(Qt.ItemDataRole.AccessibleTextRole, f"{label}: {note}")
+    if request.failure_reason:
+        # The cell elides a long reason; the tooltip never does.
+        item.setToolTip(plain_tooltip(f"{label} — {note}"))
+    return item
 
 
 def _progress_sort_key(request: DownloadRequest) -> float:
-    # Mirrors _build_progress_widget's own branching so the sort order
-    # matches what the bar actually shows.
+    # How far along a row is: finished rows above transfers, transfers
+    # by fraction done, failures below everything.
     if request.status in FAILED_OUTCOMES:
         # No real transfer to rank — same "sorts below everything
         # real" sentinel as a Dashboard row with no active transfer.
@@ -131,8 +133,7 @@ def _progress_sort_key(request: DownloadRequest) -> float:
 
     if request.status in SHOWS_NO_FURTHER_PROGRESS:
         # completed/ready_for_review with no real bytes recorded
-        # (HISTORY §20 says this shouldn't happen) — rendered as a
-        # full bar, so it sorts as done.
+        # (HISTORY §20 says this shouldn't happen): still done.
         return 1.0
 
     # queued/downloading with no bytes reported yet — indeterminate.
@@ -145,38 +146,34 @@ def _build_progress_widget(
 ) -> QWidget:
     request = download.request
 
-    # Branched on BEFORE ever consulting the ETA tracker, which is the
-    # actual fix for "a finished download reads as Stalled"
-    # (HISTORY §56): the tracker has no concept of "this row is done,"
-    # so feeding it more identical-bytes samples from a finished row
-    # eventually looks exactly like a genuinely stuck download to it.
-    if request.status in SHOWS_NO_FURTHER_PROGRESS:
-        return _build_terminal_progress_widget(request)
-
-    # A locked/shortlisted row has no current transfer to show progress
-    # for (a rejection leaves bytes_transferred/total_bytes unset by
-    # design, not zeroed).
-    if request.status not in IN_FLIGHT:
+    # Only a transfer has progress to show; every other row's lamp
+    # says where it stands. A queued row waits in the peer's queue, and
+    # a locked or shortlisted one has no current transfer (a rejection
+    # leaves its bytes unset by design, not zeroed). Branched on before
+    # the ETA tracker is ever consulted, which has no idea a row is
+    # done and would read a finished one's flat bytes as "Stalled"
+    # (HISTORY §56).
+    if request.status != DownloadStatus.DOWNLOADING:
         return QWidget()
 
-    bar = TwoToneProgressBar()
+    bar = QProgressBar()
+    bar.setFixedWidth(theme.METER_WIDTH)
 
     if not (request.total_bytes and request.bytes_transferred is not None):
-        # No bytes reported yet — indeterminate ("busy") rather than a
-        # 0%-forever bar that looks identical to actually being stuck.
-        # No ETA either: there's nothing determinate to estimate
-        # against. Wrapped in the same container shape as the
-        # determinate branch below, not returned bare: a bare bar gets
-        # clamped to the top of the cell (HISTORY §96; see
-        # theme.wrap_progress_bar's own docstring for why).
-        bar.setRange(0, 0)
+        # Started, no bytes reported yet: busy, not a 0%-forever meter
+        # that looks identical to being stuck. No ETA either: nothing
+        # determinate to estimate against. Wrapped like the meter
+        # below, not returned bare: a bare bar clamps to the top of the
+        # cell (HISTORY §96).
+        theme.set_busy_meter(bar)
         return theme.wrap_progress_bar(bar, None)
 
     bar.setRange(0, request.total_bytes)
     bar.setValue(request.bytes_transferred)
-    theme.style_determinate_progress_bar(bar)
+    theme.style_meter(bar)
 
-    # ETA only ever shown once the bar is determinate (HISTORY §20).
+    # ETA only ever shown once the bar is determinate (HISTORY §20); the
+    # percentage is the Status cell's secondary text.
     return theme.wrap_progress_bar(bar, eta_text or "Calculating…")
 
 
@@ -207,7 +204,6 @@ class DownloadsPage(QWidget):
         self.notice = InlineNotice()
         layout.addWidget(self.notice)
         self.status_label = PlainLabel("")
-        layout.addWidget(self.status_label)
         self.feedback = FeedbackTarget(self.status_label, self.notice)
         self._context.slskd_status.changed.connect(self._render_outage)
         self._render_outage()
@@ -226,8 +222,11 @@ class DownloadsPage(QWidget):
         self.clear_finished_button.setEnabled(False)
         self.clear_finished_button.clicked.connect(self._clear_finished)
 
+        # The progress line shares the header's row: empty, it would
+        # hold a blank line of its own above the table.
         header_row = QHBoxLayout()
         header_row.addWidget(self.downloads_eta_label)
+        header_row.addWidget(self.status_label)
         header_row.addStretch()
         header_row.addWidget(self.clear_finished_button)
         layout.addLayout(header_row)
@@ -238,6 +237,12 @@ class DownloadsPage(QWidget):
         )
         theme.apply_table_defaults(self.downloads_table)
         theme.configure_columns(self.downloads_table, _DOWNLOADS_COLUMNS)
+        self.downloads_table.setIconSize(
+            QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE),
+        )
+        # A status reads in full; its reason or percentage gives way
+        # first, whole on hover.
+        set_secondary_min_share(self.downloads_table, 0.0)
         layout.addWidget(theme.make_card(self.downloads_table))
         self.downloads_empty_action = QPushButton(
             help_text.GO_TO_DASHBOARD_TEXT
@@ -345,13 +350,8 @@ class DownloadsPage(QWidget):
 
                 request = download.request
                 status = request.status
-                status_item = QTableWidgetItem(_status_text(request))
-                if request.failure_reason:
-                    # The cell elides a long reason; the tooltip never
-                    # does.
-                    status_item.setToolTip(plain_tooltip(status_item.text()))
                 self.downloads_table.setItem(
-                    row, _DownloadsColumn.STATUS, status_item,
+                    row, _DownloadsColumn.STATUS, _build_status_item(request),
                 )
 
                 is_terminal = status in SHOWS_NO_FURTHER_PROGRESS

@@ -368,6 +368,18 @@ def set_indeterminate(bar: QProgressBar) -> None:
     bar.setRange(0, 0)
 
 
+def set_busy_meter(bar: QProgressBar) -> None:
+    """A meter whose amount is not known yet: Qt's busy animation in
+    the cue amber of a working lamp, not the accent. The colour is set
+    on the bar's palette, so call it again after a theme switch."""
+    set_indeterminate(bar)
+    palette = bar.palette()
+    palette.setColor(
+        QPalette.ColorRole.Highlight, QColor(active_palette().WARNING),
+    )
+    bar.setPalette(palette)
+
+
 def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
     """The one place a progress bar gets put into a cell-ready
     container. A bare bar returned directly from a `setCellWidget` call
@@ -376,13 +388,17 @@ def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
     the TOP of that tall cell instead of centering it. `label_text=None`
     omits the label entirely (an indeterminate "busy" bar has nothing
     determinate to show an ETA for). Shared by the Downloads page's own
-    progress cells and the Dashboard's track_table. See HISTORY §96."""
+    progress cells and the Dashboard's track_table. See HISTORY §96.
+
+    A fixed-width bar (a meter) sits at the cell's left edge with or
+    without a label, so a column of them lines up."""
     container = QWidget()
     layout = QHBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.addWidget(bar, 1)
     if label_text is not None:
         layout.addWidget(PlainLabel(label_text))
+    layout.addStretch()
     return container
 
 
