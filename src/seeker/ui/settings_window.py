@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLineEdit,
@@ -78,6 +78,16 @@ def _threshold_spin_box() -> QDoubleSpinBox:
     spin_box.setDecimals(1)
     spin_box.setSingleStep(1.0)
     return spin_box
+
+
+def _location_combo() -> QComboBox:
+    """A library location picker at a name's width, not the card's."""
+    combo = QComboBox()
+    combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+    )
+    combo.setMinimumContentsLength(24)
+    return combo
 
 
 # Name/Path/Reachable/Actions, see theme.ColumnLayout.
@@ -191,14 +201,10 @@ class SettingsPage(QWidget):
         layout.addStretch()
         return tab
 
-    def _build_locations_group(self) -> QGroupBox:
-        group = QGroupBox("Library Locations")
-        layout = QVBoxLayout(group)
-
+    def _build_locations_group(self) -> QFrame:
         # Shown while a location sits inside another: the add guard
         # refuses that now, but older builds registered such pairs.
         self.nesting_notice = InlineNotice()
-        layout.addWidget(self.nesting_notice)
 
         self.locations_table = QTableWidget(0, 4)
         self.locations_table.setHorizontalHeaderLabels(
@@ -210,9 +216,7 @@ class SettingsPage(QWidget):
         # heights, and an underived Actions column width.
         theme.apply_table_defaults(self.locations_table)
         theme.configure_columns(self.locations_table, _LOCATIONS_COLUMNS)
-        layout.addWidget(theme.make_card(self.locations_table))
 
-        add_row = QHBoxLayout()
         # No name field — the location is registered immediately under
         # the picked folder's own basename (auto-suffixed on a name
         # collision) and is renameable afterward via the table's own
@@ -222,11 +226,13 @@ class SettingsPage(QWidget):
         self.add_location_button.clicked.connect(
             self._on_add_location_clicked
         )
-        add_row.addWidget(self.add_location_button)
-        add_row.addStretch()
-        layout.addLayout(add_row)
 
-        return group
+        return theme.section_card(
+            "Library locations", help_text.SETTINGS_LOCATIONS_TEXT,
+            self.nesting_notice,
+            theme.make_card(self.locations_table),
+            theme.action_row(self.add_location_button),
+        )
 
     def _refresh_locations(self) -> None:
         run_worker(
@@ -470,9 +476,8 @@ class SettingsPage(QWidget):
 
     # --- Playlist destinations ---------------------------------------
 
-    def _build_playlist_destinations_group(self) -> QGroupBox:
-        group = QGroupBox("Playlist Destinations")
-        layout = QHBoxLayout(group)
+    def _build_playlist_destinations_group(self) -> QFrame:
+        layout = QHBoxLayout()
 
         self.destinations_playlist_list = QListWidget()
         elide_list_items(self.destinations_playlist_list)
@@ -486,7 +491,7 @@ class SettingsPage(QWidget):
         right = QVBoxLayout()
 
         form = QFormLayout()
-        self.destination_location_combo = QComboBox()
+        self.destination_location_combo = _location_combo()
         self.destination_location_combo.setToolTip(
             help_text.TOOLTIP_DESTINATION_LOCATION_COMBO
         )
@@ -521,19 +526,25 @@ class SettingsPage(QWidget):
         right.addStretch()
         layout.addLayout(right, 1)
 
-        return group
+        return theme.section_card(
+            "Playlist destinations",
+            help_text.SETTINGS_PLAYLIST_DESTINATIONS_TEXT,
+            layout,
+        )
 
-    def _build_default_destination_group(self) -> QGroupBox:
+    def _build_default_destination_group(self) -> QFrame:
         # The fallback DownloadService resolves to once a playlist has
         # no destination of its own (HISTORY §50); also what the
         # Dashboard's own "no dead end" dialog writes to when its
         # "Remember this for this playlist" checkbox is left unchecked.
         # Deliberately above the per-playlist overrides, not beside
         # them: it applies to every playlist without one of its own.
-        group = QGroupBox("Default Destination")
-        layout = QFormLayout(group)
+        layout = QFormLayout()
+        layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint
+        )
 
-        self.default_location_combo = QComboBox()
+        self.default_location_combo = _location_combo()
         self.default_location_combo.setToolTip(
             help_text.TOOLTIP_DEFAULT_LOCATION_COMBO
         )
@@ -548,22 +559,24 @@ class SettingsPage(QWidget):
         )
         layout.addRow("", self.default_subfolder_per_playlist_checkbox)
 
-        save_row = QHBoxLayout()
         self.save_default_destination_button = QPushButton(
             "Save default destination"
         )
-        self.save_default_destination_button.setProperty("variant", "primary")
         self.save_default_destination_button.setToolTip(
             help_text.TOOLTIP_SAVE_DEFAULT_DESTINATION
         )
         self.save_default_destination_button.clicked.connect(
             self._on_save_default_destination_clicked
         )
-        save_row.addWidget(self.save_default_destination_button)
-        save_row.addStretch()
-        layout.addRow(save_row)
+        layout.addRow(
+            "", theme.action_row(self.save_default_destination_button),
+        )
 
-        return group
+        return theme.section_card(
+            "Default destination",
+            help_text.SETTINGS_DEFAULT_DESTINATION_TEXT,
+            layout,
+        )
 
     def _on_save_default_destination_clicked(self) -> None:
         location_id = self.default_location_combo.currentData()
@@ -728,8 +741,7 @@ class SettingsPage(QWidget):
         self.connections_notice = InlineNotice()
         layout.addWidget(self.connections_notice)
 
-        spotify_group = QGroupBox("Spotify")
-        spotify_form = QFormLayout(spotify_group)
+        spotify_form = QFormLayout()
 
         self.spotify_client_id_field = QLineEdit()
         # Not actually secret — PKCE has no client secret component —
@@ -752,12 +764,11 @@ class SettingsPage(QWidget):
         self.reauthorize_spotify_button.clicked.connect(
             self._on_reauthorize_spotify_clicked
         )
-        spotify_form.addRow(
-            "", theme.action_row(self.reauthorize_spotify_button),
-        )
-
+        # Progress sits beside the button that started it.
         self.spotify_status_label = PlainLabel("")
-        spotify_form.addRow("", self.spotify_status_label)
+        spotify_form.addRow("", theme.action_row(
+            self.reauthorize_spotify_button, self.spotify_status_label,
+        ))
         self.spotify_feedback = FeedbackTarget(
             self.spotify_status_label, self.connections_notice,
         )
@@ -768,12 +779,13 @@ class SettingsPage(QWidget):
             self.reauthorize_spotify_button,
             self.spotify_status_label,
         )
-        spotify_form.addRow("", self.spotify_authorization_wait)
+        spotify_form.addRow(self.spotify_authorization_wait)
 
-        layout.addWidget(spotify_group)
+        layout.addWidget(theme.section_card(
+            "Spotify", help_text.SETTINGS_SPOTIFY_TEXT, spotify_form,
+        ))
 
-        soulseek_group = QGroupBox("SoulSeek")
-        soulseek_form = QFormLayout(soulseek_group)
+        soulseek_form = QFormLayout()
 
         self.soulseek_username_display = PlainLabel("Not configured")
         soulseek_form.addRow("Username:", self.soulseek_username_display)
@@ -825,8 +837,11 @@ class SettingsPage(QWidget):
         soulseek_form.addRow(
             "", theme.action_row(self.test_connection_button),
         )
+        layout.addWidget(theme.section_card(
+            "SoulSeek", help_text.SETTINGS_SOULSEEK_TEXT, soulseek_form,
+        ))
 
-        soulseek_form.addRow(PlainLabel("Update credentials:"))
+        credentials_form = QFormLayout()
 
         self.new_soulseek_username_field = QLineEdit()
         self.new_soulseek_username_field.setPlaceholderText(
@@ -841,7 +856,7 @@ class SettingsPage(QWidget):
         self.new_soulseek_username_field.returnPressed.connect(
             self._on_update_credentials_clicked
         )
-        soulseek_form.addRow(
+        credentials_form.addRow(
             "New username:", self.new_soulseek_username_field
         )
 
@@ -858,7 +873,7 @@ class SettingsPage(QWidget):
         self.new_soulseek_password_field.returnPressed.connect(
             self._on_update_credentials_clicked
         )
-        soulseek_form.addRow(
+        credentials_form.addRow(
             "New password:", self.new_soulseek_password_field
         )
 
@@ -871,19 +886,22 @@ class SettingsPage(QWidget):
         self.update_credentials_button.clicked.connect(
             self._on_update_credentials_clicked
         )
-        soulseek_form.addRow(
-            "", theme.action_row(self.update_credentials_button),
-        )
-
         self.update_credentials_status_label = PlainLabel("")
-        soulseek_form.addRow("", self.update_credentials_status_label)
+        credentials_form.addRow("", theme.action_row(
+            self.update_credentials_button,
+            self.update_credentials_status_label,
+        ))
         self.credentials_feedback = FeedbackTarget(
             self.update_credentials_status_label, self.connections_notice,
         )
 
-        layout.addWidget(soulseek_group)
+        layout.addWidget(theme.section_card(
+            "SoulSeek credentials",
+            help_text.SETTINGS_SOULSEEK_CREDENTIALS_TEXT,
+            credentials_form,
+        ))
         layout.addStretch()
-        return tab
+        return theme.reading_column(tab)
 
     def _refresh_connection_display(self) -> None:
         config = self.application.settings
@@ -1190,15 +1208,16 @@ class SettingsPage(QWidget):
 
     # --- Appearance ------------------------------------------------
 
-    def _build_appearance_group(self) -> QGroupBox:
+    def _build_appearance_group(self) -> QFrame:
         # The authoritative three-way control (the sidebar toggle is the
         # quick, no-label version; this one names every option
         # explicitly). Kept in sync with the toggle in both directions
         # via MainWindow._apply_theme_mode / sync_theme_mode below.
-        group = QGroupBox("Appearance")
-        layout = QVBoxLayout(group)
+        radios = QWidget()
+        layout = QVBoxLayout(radios)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self._theme_mode_group = QButtonGroup(group)
+        self._theme_mode_group = QButtonGroup(radios)
         self._theme_mode_radios: dict[str, QRadioButton] = {}
         for mode, label in (
                 ("system", "Follow system"),
@@ -1227,7 +1246,9 @@ class SettingsPage(QWidget):
             radio.setChecked(True)
             radio.blockSignals(False)
 
-        return group
+        return theme.section_card(
+            "Appearance", help_text.SETTINGS_APPEARANCE_TEXT, radios,
+        )
 
     def _on_theme_mode_radio_toggled(self, mode: str, checked: bool) -> None:
         if not checked:
@@ -1260,23 +1281,14 @@ class SettingsPage(QWidget):
         layout.addWidget(self._build_startup_group())
         layout.addWidget(self._build_notifications_group())
         layout.addStretch()
-        return tab
+        return theme.reading_column(tab)
 
     def _build_matching_tab(self) -> QWidget:
         tab = QWidget()
         outer = QVBoxLayout(tab)
-        group = QGroupBox("Match Thresholds")
-        layout = QVBoxLayout(group)
-        outer.addWidget(group)
-        outer.addStretch()
-
-        layout.addWidget(PlainLabel(
-            "Controls when a matched track is auto-accepted vs. "
-            "surfaced for review vs. treated as no match at all."
-        ))
 
         self.thresholds_notice = InlineNotice()
-        layout.addWidget(self.thresholds_notice)
+        outer.addWidget(self.thresholds_notice)
 
         form = QFormLayout()
         # Fusion's form grows every field to the full width; a 0-100
@@ -1308,8 +1320,6 @@ class SettingsPage(QWidget):
                 self._on_save_thresholds_clicked
             )
 
-        layout.addLayout(form)
-
         self.save_thresholds_button = QPushButton("Save thresholds")
         self.save_thresholds_button.setToolTip(
             help_text.TOOLTIP_SAVE_THRESHOLDS
@@ -1317,19 +1327,24 @@ class SettingsPage(QWidget):
         self.save_thresholds_button.clicked.connect(
             self._on_save_thresholds_clicked
         )
-        layout.addLayout(theme.action_row(self.save_thresholds_button))
+        form.addRow("", theme.action_row(self.save_thresholds_button))
+        outer.addWidget(theme.section_card(
+            "Match thresholds", help_text.SETTINGS_THRESHOLDS_TEXT, form,
+        ))
+        outer.addStretch()
 
         self._load_threshold_fields()
 
-        return tab
+        return theme.reading_column(tab)
 
-    def _build_notifications_group(self) -> QGroupBox:
+    def _build_notifications_group(self) -> QFrame:
         # Per-category menu-bar notification toggles, all defaulting on
         # (config_store.py's own field defaults). Each checkbox saves
         # itself on toggle: one independent flag needs no save step,
         # unlike the thresholds, two related numbers validated together.
-        notifications_group = QGroupBox("Notifications")
-        notifications_layout = QVBoxLayout(notifications_group)
+        checkboxes = QWidget()
+        notifications_layout = QVBoxLayout(checkboxes)
+        notifications_layout.setContentsMargins(0, 0, 0, 0)
 
         self.notify_downloads_finished_checkbox = QCheckBox(
             "Downloads finished"
@@ -1380,13 +1395,17 @@ class SettingsPage(QWidget):
             checkbox.setChecked(value)
             checkbox.blockSignals(False)
 
-        return notifications_group
+        return theme.section_card(
+            "Notifications", help_text.SETTINGS_NOTIFICATIONS_TEXT,
+            checkboxes,
+        )
 
     # --- Start at login ----------------------------------------------
 
-    def _build_startup_group(self) -> QGroupBox:
-        group = QGroupBox("Startup")
-        layout = QVBoxLayout(group)
+    def _build_startup_group(self) -> QFrame:
+        controls = QWidget()
+        layout = QVBoxLayout(controls)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.start_at_login_checkbox = QCheckBox("Start Seeker at login")
         self.start_at_login_checkbox.setToolTip(
@@ -1417,7 +1436,9 @@ class SettingsPage(QWidget):
 
         self.refresh_login_item_state()
 
-        return group
+        return theme.section_card(
+            "Startup", help_text.SETTINGS_STARTUP_TEXT, controls,
+        )
 
     def refresh_login_item_state(self) -> None:
         """Re-reads the REAL ServiceManagement status, never a mirrored

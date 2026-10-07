@@ -91,8 +91,8 @@ DUPLICATES_TAB_SUBTITLE = (
     "removed until you explicitly check the box and click Delete."
 )
 SETTINGS_WINDOW_SUBTITLE = (
-    "Appearance and startup, library folders and destinations, "
-    "Spotify and SoulSeek connections, and match thresholds."
+    "Appearance, library folders, connections and how closely tracks "
+    "must match."
 )
 HISTORY_PAGE_SUBTITLE = (
     "Recently downloaded and tagged tracks, in one place. Derived from "
@@ -1265,6 +1265,43 @@ TOOLTIP_UPDATE_CREDENTIALS = (
 )
 
 # --- Settings: General and Matching tabs ------------------------------------
+
+SETTINGS_APPEARANCE_TEXT = (
+    "Follow system switches between light and dark with macOS."
+)
+SETTINGS_STARTUP_TEXT = "Open Seeker when you log in to this Mac."
+SETTINGS_NOTIFICATIONS_TEXT = (
+    "Which events Seeker announces with a macOS notification."
+)
+SETTINGS_LOCATIONS_TEXT = (
+    "The folders Seeker scans for your music and matches playlists "
+    "against."
+)
+SETTINGS_DEFAULT_DESTINATION_TEXT = (
+    "Where downloads go for a playlist with no destination of its own."
+)
+SETTINGS_PLAYLIST_DESTINATIONS_TEXT = (
+    "Send one playlist's downloads somewhere else: pick the playlist, "
+    "then its location and an optional subfolder."
+)
+SETTINGS_SPOTIFY_TEXT = (
+    "Seeker reads your playlists through your own Spotify app. Paste "
+    "its Client ID from the Spotify Developer Dashboard, then "
+    "re-authorize."
+)
+SETTINGS_SOULSEEK_TEXT = (
+    "Seeker searches and downloads through slskd, the SoulSeek client "
+    "it runs in Docker."
+)
+SETTINGS_SOULSEEK_CREDENTIALS_TEXT = (
+    "Recreates the slskd container with a new SoulSeek login and a "
+    "fresh API key. What it shares stays the same."
+)
+SETTINGS_THRESHOLDS_TEXT = (
+    "A match scoring at or above the auto-match threshold is accepted; "
+    "at or above the needs-review threshold, it waits on the Review "
+    "page; below both, the track counts as unmatched."
+)
 
 TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD = (
     "Match score at or above which a track is auto-accepted with no "

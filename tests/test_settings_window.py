@@ -5,7 +5,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QInputDialog,
     QLabel,
     QMessageBox,
@@ -140,7 +140,10 @@ def _tab_constants() -> list[str]:
 def _group_titles_on_tab(window: SettingsPage, tab_name: str) -> set[str]:
     window.select_tab(tab_name)
     tab = window.tabs.currentWidget()
-    return {group.title() for group in tab.findChildren(QGroupBox)}
+    return {
+        card.accessibleName() for card in tab.findChildren(QFrame)
+        if card.objectName() == "card" and card.accessibleName()
+    }
 
 
 def test_every_settings_tab_constant_selects_its_own_tab(
@@ -171,15 +174,15 @@ def test_settings_tabs_group_settings_by_job(qtbot, tmp_path, monkeypatch):
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_GENERAL,
     ) == {"Appearance", "Startup", "Notifications"}
-    assert {"Library Locations", "Playlist Destinations"} <= (
+    assert {"Library locations", "Playlist destinations"} <= (
         _group_titles_on_tab(window, settings_window.SETTINGS_TAB_LIBRARY)
     )
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_CONNECTIONS,
-    ) >= {"Spotify"}
+    ) == {"Spotify", "SoulSeek", "SoulSeek credentials"}
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_MATCHING,
-    ) == {"Match Thresholds"}
+    ) == {"Match thresholds"}
 
 
 # --- Library locations (§1) -------------------------------------------
