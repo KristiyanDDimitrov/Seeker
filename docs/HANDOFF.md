@@ -10,12 +10,12 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S30 close-out (HISTORY §180), after `17bfc32`. Tree
+- **HEAD:** the S30 violet-variant handoff, after `6bba4b9` (HISTORY §180). Tree
   clean apart from the untracked `Claude outputs/`. No `src/` change
   this session: docs, screenshots and a scratch module only.
 - **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict src/`
   clean, 133 files; `ruff check src tests tools` 0.
-- **CI:** `10af293`'s run `37602884021` green.
+- **CI:** `10af293`'s run `37602884021` green; the later docs-only push is recorded in the final message.
 
 ## 2. Where we are
 
@@ -32,6 +32,9 @@ Evidence in HISTORY §180.
   Dashboard and a sheet of every key pill. 19 images in
   `docs/design/visual-direction/`, and the scratch module that
   rendered them in `scratch/`.
+- `6bba4b9` (at Kris's request): Booth with a violet accent (A′),
+  rendered and added to the document with its contrast numbers and
+  the take; the recommendation moves to A′.
 - `17bfc32` §30.2: `docs/design/visual-direction.md` holds tokens,
   type, spacing and radius, the contrast table, Lucide, the real-data
   finding and the recommendation. Linked from `docs/README.md`.
@@ -70,7 +73,11 @@ Evidence in HISTORY §180.
 
 ## 5. Decisions made
 
-- **Recommendation: Booth, without BPM and key on the Dashboard.**
+- **Recommendation: Booth with the violet accent (A′, `6bba4b9`),
+  without BPM and key on the Dashboard.** Kris asked for a violet
+  Booth. It is now recommended over blue because the app icon is
+  violet, and on graphite surfaces violet is an accent, not a mood.
+  Its dark accent is a lit `#9A7DFF` with dark text (6.09:1).
   Its boldness lands on the status column, which is the primary job.
   Harmonic's lands on data that is blank for every missing track and
   for 99.96 % of the real library. A straight mix is not recommended,
@@ -95,8 +102,8 @@ empty until Kris answers.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** **S30, the pick:** Booth, Harmonic, a mix, or
-neither, and whether the Dashboard shows BPM and key. Then the S39
+**Approval gates:** **S30, the pick:** Booth (blue), Booth violet
+(A′, recommended), Harmonic, a mix, or neither, and whether the Dashboard shows BPM and key. Then the S39
 bundle identifier, the S42 publishing commands, and X1 and X2
 (optional).
 

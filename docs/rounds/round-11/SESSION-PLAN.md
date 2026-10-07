@@ -222,7 +222,8 @@ the `tc-tracker` handoff format.
 - [ ] **S30** — the visual direction: "Booth", "Harmonic", a mix, or
       neither. Also whether the Dashboard shows BPM and key. Rendered
       and written up: `docs/design/visual-direction.md`
-      (recommendation: Booth, no BPM/key on the Dashboard).
+      (recommendation: Booth with a violet accent, "A′", no BPM/key
+      on the Dashboard).
 - [ ] **S39 §39.3** — the bundle identifier. Recommended:
       `io.github.kristiyanddimitrov.seeker`. It must change before the
       first release.
