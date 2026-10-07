@@ -250,17 +250,99 @@ def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
     assert force is False
 
 
-def test_tag_selected_with_no_selection_shows_message_and_makes_no_call(qtbot):
-    statuses = [make_track_status(track_id="s1", state=IN_LIBRARY)]
-    application = FakeApplication()
+def _select_rows(window, rows) -> None:
+    selection_model = window._dashboard_page.track_table.selectionModel()
+    selection_model.clearSelection()
+    for row in rows:
+        selection_model.select(
+            window._dashboard_page.track_table.model().index(row, 0),
+            QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows,
+        )
+
+
+def _three_track_application() -> FakeApplication:
+    return FakeApplication(
+        playlists=[Playlist(id="p1", name="Peak Time", track_count=3)],
+        statuses=[
+            make_track_status(track_id=f"s{index}", state=IN_LIBRARY)
+            for index in (1, 2, 3)
+        ],
+    )
+
+
+def _window_with_three_tracks(qtbot, application):
+    # A selected playlist whose statuses the fake serves, so a refresh
+    # after a run rebuilds the same rows instead of emptying the table.
     window = MainWindow(application)
     qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.track_table.rowCount() == 3,
+        timeout=2000,
+    )
+    return window
 
-    window._dashboard_page._render_track_statuses(statuses)
-    window._library_page._tagging_panel.tag_selected_button.click()
 
+def test_tag_selected_is_disabled_with_a_tooltip_when_nothing_is_selected(
+        qtbot,
+):
+    application = _three_track_application()
+    window = _window_with_three_tracks(qtbot, application)
+    button = window._library_page._tagging_panel.tag_selected_button
+
+    assert not button.isEnabled()
+    assert "Dashboard" in button.toolTip()
+    button.click()
     assert application.metadata_service.tag_tracks_calls == []
-    assert "select" in window._library_page.notice.text().lower()
+
+
+def test_tag_selected_names_how_many_tracks_the_dashboard_has_selected(
+        qtbot,
+):
+    window = _window_with_three_tracks(qtbot, _three_track_application())
+    button = window._library_page._tagging_panel.tag_selected_button
+
+    _select_rows(window, (0, 2))
+    assert button.text() == "Tag 2 selected on Dashboard"
+    assert button.isEnabled()
+
+    _select_rows(window, (1,))
+    assert button.text() == "Tag 1 selected on Dashboard"
+
+    _select_rows(window, ())
+    assert not button.isEnabled()
+
+
+def test_tag_selected_shows_the_live_selection_after_a_run(qtbot):
+    application = _three_track_application()
+    window = _window_with_three_tracks(qtbot, application)
+    button = window._library_page._tagging_panel.tag_selected_button
+    _select_rows(window, (0, 2))
+
+    button.click()
+    qtbot.waitUntil(
+        lambda: application.metadata_service.tag_tracks_calls != [],
+        timeout=2000,
+    )
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("tag_selected"),
+        timeout=2000,
+    )
+
+    assert button.text() == "Tag 2 selected on Dashboard"
+    assert button.isEnabled()
+
+
+def test_a_selection_change_mid_run_leaves_tag_selected_disabled(qtbot):
+    window = _window_with_three_tracks(qtbot, _three_track_application())
+    button = window._library_page._tagging_panel.tag_selected_button
+    _select_rows(window, (0,))
+    window.busy_actions.begin("tag_selected", button)
+
+    _select_rows(window, (0, 1))
+
+    assert not button.isEnabled()
 
 
 def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):

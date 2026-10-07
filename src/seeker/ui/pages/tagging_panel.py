@@ -89,6 +89,14 @@ class TaggingPanel(QWidget):
         )
         layout.addWidget(self.results_panel)
 
+        # Only text and enabled state change here, never a rebuild, so
+        # running inside the Dashboard table's own selection emission
+        # is safe.
+        self._context.playlist_selection.changed.connect(
+            self._render_tag_selected_button
+        )
+        self._render_tag_selected_button()
+
     def _build_tagging_controls(self) -> QVBoxLayout:
         controls = QVBoxLayout()
         controls.setSpacing(theme.SPACING_MD)
@@ -190,6 +198,23 @@ class TaggingPanel(QWidget):
         ))
 
         return controls
+
+    def _render_tag_selected_button(self) -> None:
+        """Names how many tracks the Dashboard has selected, or is
+        disabled when none are: the selection lives on another page.
+        Left alone while a run is in flight; the registry owns the
+        button then, and the run's end renders it again."""
+        if self._context.busy_actions.is_running("tag_selected"):
+            return
+        count = len(self._context.playlist_selection.track_ids)
+        button = self.tag_selected_button
+        button.setEnabled(count > 0)
+        if count:
+            button.setText(f"Tag {count} selected on Dashboard")
+            button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
+        else:
+            button.setText("Tag selected")
+            button.setToolTip(help_text.TOOLTIP_TAG_SELECTED_NONE)
 
     def _on_analyze_audio_toggled(self, checked: bool) -> None:
         self.bpm_min_edit.setVisible(checked)
@@ -344,9 +369,6 @@ class TaggingPanel(QWidget):
         track_ids = self._context.playlist_selection.track_ids
 
         if not track_ids:
-            self._host.notice.show_message(
-                "Select at least one track first.", kind="warning",
-            )
             return
 
         try:
@@ -354,6 +376,14 @@ class TaggingPanel(QWidget):
         except ValueError as error:
             self._host.notice.show_message(str(error), kind="error")
             return
+
+        def render_result(result: TagResult) -> None:
+            self._render_tag_selected_button()
+            self._render_tag_result(result)
+
+        def show_error(message: str) -> None:
+            self._render_tag_selected_button()
+            self._host.feedback.show_error(message)
 
         self._context.run_busy_worker(
             "tag_selected", self.tag_selected_button,
@@ -364,7 +394,8 @@ class TaggingPanel(QWidget):
                 force=force,
             ),
             status_label=self._host.status_label,
-            on_finished=self._render_tag_result,
+            on_finished=render_result,
+            on_error=show_error,
         )
         # Analysis in particular does real, potentially slow per-track
         # work — an in-progress note beyond just the disabled button,

@@ -331,6 +331,10 @@ TOOLTIP_TAG_SELECTED = (
     "Write Spotify's artist/title/album/art onto the selected tracks' "
     "matched local files."
 )
+TOOLTIP_TAG_SELECTED_NONE = (
+    "Select tracks in the Dashboard's track list first; this tags "
+    "those."
+)
 TOOLTIP_TAG_PLAYLIST = (
     "Write Spotify's artist/title/album/art onto every auto-matched "
     "track in this playlist."
