@@ -112,7 +112,7 @@ _NAV_PAGES = (
 _BUSY_ACTION_LABELS: dict[str, str] = {
     "sync": "Refreshing playlists…",
     "scan": "Scanning library and matching tracks…",
-    "match": "Re-matching library…",
+    "match": "Matching tracks…",
     "download": "Requesting downloads…",
     "sync_tracks": "Loading tracks…",
     "tag_selected": "Tagging selected tracks…",

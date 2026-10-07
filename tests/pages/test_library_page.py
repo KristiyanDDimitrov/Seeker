@@ -669,7 +669,7 @@ def test_fill_missing_art_urls_button_reports_the_real_count(qtbot):
         timeout=2000,
     )
     assert (
-        "Filled in 7 missing album art URLs"
+        "Found cover art on Spotify for 7 tracks"
         in window._library_page.notice.text()
     )
 
@@ -685,7 +685,7 @@ def test_fill_missing_art_urls_button_reports_zero_found(qtbot):
 
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
-        and "No missing" in window._library_page.notice.text(),
+        and "No track was missing" in window._library_page.notice.text(),
         timeout=2000,
     )
 

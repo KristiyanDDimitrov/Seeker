@@ -89,7 +89,7 @@ def test_render_next_step_does_not_reenable_a_button_whose_action_is_running(
     window.busy_actions.end("scan")
     window._dashboard_page._render_next_step(facts)
     assert window._dashboard_page.scan_button.isEnabled() is True
-    assert window._dashboard_page.scan_button.text() == "Rescan and match library"
+    assert window._dashboard_page.scan_button.text() == "Scan library"
 
 
 def test_render_next_step_does_not_hide_or_reenable_download_button_mid_download(
@@ -140,8 +140,8 @@ def test_global_action_buttons_have_the_renamed_labels(qtbot):
     qtbot.addWidget(window)
 
     assert window._dashboard_page.sync_button.text() == "Refresh playlists"
-    assert window._dashboard_page.scan_button.text() == "Rescan and match library"
-    assert window._dashboard_page.match_button.text() == "Re-match library"
+    assert window._dashboard_page.scan_button.text() == "Scan library"
+    assert window._dashboard_page.match_button.text() == "Match tracks"
     assert window._dashboard_page.download_button.text() == "Download selected playlist"
 
 

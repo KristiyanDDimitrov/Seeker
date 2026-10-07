@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from seeker.ui import theme
 from seeker.ui.plain_text import PlainLabel
+from seeker.ui.widgets import CloseButton
 
 _VALID_KINDS = {"info", "success", "warning", "error"}
 
@@ -73,21 +74,7 @@ class InlineNotice(QWidget):
         # suppress the noise.
         self._action_connected = False
 
-        # Plain ASCII "X" rather than a Unicode "✕"/"×" glyph — the  # noqa: RUF003
-        # theme's global QPushButton rule (padding: 6px 14px) needs no
-        # special-casing for a plain ASCII glyph, and this avoids
-        # depending on Unicode multiplication-sign coverage in whatever
-        # font a given platform falls back to.
-        #
-        # Deliberately no setFixedWidth() here — found live that a
-        # fixed width narrower than the global QPushButton rule's own
-        # horizontal padding (14px + 14px = 28px alone) left zero space
-        # for the glyph itself, silently clipping it to nothing. Sized
-        # by its own sizeHint (padding + glyph) instead, like every
-        # other themed button.
-        self._dismiss_button = QPushButton("X")
-        self._dismiss_button.setToolTip("Dismiss")
-        self._dismiss_button.setAccessibleName("Dismiss")
+        self._dismiss_button = CloseButton("Dismiss")
         self._dismiss_button.clicked.connect(self.dismiss)
         layout.addWidget(self._dismiss_button)
 

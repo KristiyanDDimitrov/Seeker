@@ -321,7 +321,7 @@ class OnboardingWizard(QMainWindow):
         layout.addWidget(PlainLabel(
             "Seeker searches SoulSeek for tracks missing from your "
             "local library. This step is optional — SoulSeek-dependent "
-            "actions stay disabled until it's set up, same as the CLI."
+            "actions stay disabled until it's set up."
         ))
 
         self.docker_state_label = PlainLabel("Checking Docker...")

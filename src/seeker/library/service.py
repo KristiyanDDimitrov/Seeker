@@ -622,7 +622,7 @@ class LibraryService:
     def scan_and_match(self) -> ScanAndMatchResult:
         """Chains a full scan into a match pass in one call, so newly
         scanned files never sit without a track_matches row until a
-        separate "Re-match library" click.
+        separate "Match tracks" click.
         """
         if self.track_matcher is None:
             raise RuntimeError(

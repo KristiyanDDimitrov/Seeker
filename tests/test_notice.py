@@ -1,4 +1,5 @@
 from seeker.ui.notice import InlineNotice
+from seeker.ui.widgets import CloseButton
 
 
 def test_starts_hidden(qtbot):
@@ -111,3 +112,14 @@ def test_a_peer_filename_in_a_message_renders_literally_not_as_a_link(
 
     assert notice._message_label.textFormat() == Qt.TextFormat.PlainText
     assert filename in notice.text()
+
+
+def test_the_dismiss_control_is_a_named_cross_not_a_letter(qtbot):
+    notice = InlineNotice()
+    qtbot.addWidget(notice)
+
+    button = notice._dismiss_button
+
+    assert isinstance(button, CloseButton)
+    assert button.text() == ""
+    assert button.accessibleName() == "Dismiss"

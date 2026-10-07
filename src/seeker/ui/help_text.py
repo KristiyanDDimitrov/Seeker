@@ -11,8 +11,10 @@ between the onboarding wizard and Settings: without this module, its
 copy would need to live in two call sites and could drift.
 """
 
+from datetime import datetime
 from typing import Any
 
+from seeker.formatting import format_timestamp
 from seeker.library.metadata_service import RenameResult
 from seeker.models.download_result import (
     ManualDownloadResult,
@@ -44,9 +46,8 @@ LIBRARY_NO_PLAYLIST_TEXT = (
     "cover art, or rename files to match."
 )
 SEARCH_TAB_SUBTITLE = (
-    "Find and download a track that isn't in any Spotify playlist — "
-    "the same best-quality-with-fallback search SoulSeek downloads "
-    "already use."
+    "Find a track that isn't in any of your playlists and download it "
+    "from SoulSeek. Results are ranked the way playlist downloads are."
 )
 DOWNLOADS_TAB_SUBTITLE = (
     "Every SoulSeek transfer currently in progress, across all "
@@ -54,6 +55,9 @@ DOWNLOADS_TAB_SUBTITLE = (
     "here for about a minute, then moves to the History page. A failed "
     "one stays, with its reason, until you click Clear finished."
 )
+# A Downloads row chasing a better copy of a track already in the
+# library.
+UPGRADE_BADGE_TEXT = "Upgrade"
 REVIEW_TAB_SUBTITLE = (
     "Confirm or reject SoulSeek matches that weren't clean enough to "
     "auto-accept, and approve quality upgrades once they're downloaded."
@@ -111,10 +115,11 @@ HELP_TROUBLESHOOTING_BODY = (
     "actually running, and that the SoulSeek username/password in "
     "Settings are correct (a wrong password and a duplicate-login "
     "\"kicked\" state look different in the wizard's own error text).</p>"
-    "<p><b>Tracks stuck as missing</b> — has this playlist's tracks "
-    "been loaded (Refresh playlists), and has your library actually "
-    "been scanned and re-matched? The Dashboard's own \"next step\" "
-    "banner usually names the exact missing step.</p>"
+    "<p><b>Tracks stuck as missing</b> — check that the playlist's "
+    "tracks are loaded (Load tracks on the Dashboard) and that your "
+    "library has been scanned since the files arrived (Scan library). "
+    "The Dashboard's \"next step\" banner usually names the step "
+    "that's missing.</p>"
     "<p><b>A download looks stuck</b> — check the Downloads page; a "
     "queued transfer waiting on a peer looks different from one "
     "actively transferring, and SoulSeek queue wait times aren't "
@@ -165,7 +170,11 @@ def format_build_identity(
     """
     if git_sha == "dev":
         return "dev (running from source, not a packaged build)"
-    return f"{git_describe} — built {built_at}"
+    try:
+        datetime.fromisoformat(built_at)
+    except ValueError:
+        return f"{git_describe} — built {built_at}"
+    return f"{git_describe} — built {format_timestamp(built_at)}"
 
 # --- MainWindow toolbar ---------------------------------------------------
 
@@ -330,10 +339,9 @@ TOOLTIP_FIX_MISSING_ART = (
     "re-tagging everything."
 )
 TOOLTIP_FILL_MISSING_ART_URLS = (
-    "Re-fetch this playlist's tracks from Spotify (a real API call) to "
-    "populate any missing album art URLs — needed before \"Fix missing "
-    "cover art\" can do anything for a track synced before art URLs "
-    "were captured."
+    "Reload this playlist's tracks from Spotify (one API call) to find "
+    "cover art for tracks that have none — needed before \"Fix missing "
+    "cover art\" can add art to those files."
 )
 
 # --- Rename preview dialog -------------------------------------------------
@@ -427,7 +435,7 @@ def format_fix_art_result_message(result: FixArtResult) -> tuple[str, str]:
         return message + " See the results panel below for details.", "error"
     if no_url:
         return (
-            message + " Re-run \"sync-tracks\" to populate missing art URLs.",
+            message + " Click Get cover art from Spotify, then try again.",
             "warning",
         )
     if fixed_wav:
@@ -593,8 +601,8 @@ def format_duplicates_scope_count(summary: Any) -> str:
 
     empty = ", ".join(summary.empty_locations)
     return (
-        f"{base} '{empty}' has no scanned files yet — run Rescan and "
-        f"match library first."
+        f"{base} '{empty}' has no scanned files yet — run Scan library "
+        f"first."
     )
 
 

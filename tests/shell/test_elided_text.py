@@ -136,3 +136,30 @@ def test_a_duplicates_path_elides_in_the_middle_and_keeps_its_filename(
         delegate.elide_mode(table.model().index(0, 1))
         == Qt.TextElideMode.ElideRight
     )
+
+
+def test_a_badge_takes_its_width_from_the_text(qtbot):
+    from seeker.ui.elided_text import BADGE_ROLE
+
+    table = QTableWidget(1, 1)
+    theme.apply_table_defaults(table)
+    qtbot.addWidget(table)
+    text = "Nova Reyes - Voltage Drop"
+    item = QTableWidgetItem(text)
+    table.setItem(0, 0, item)
+    table.resize(400, 120)
+    table.show()
+    qtbot.waitExposed(table)
+    index = table.model().index(0, 0)
+    # Just wide enough for the text alone.
+    table.setColumnWidth(
+        0, table.fontMetrics().horizontalAdvance(text) + 24,
+    )
+    assert _tooltip_at(table, index) == ""
+
+    item.setData(BADGE_ROLE, "Upgrade")
+
+    assert text in _tooltip_at(table, index)
+    assert table.sizeHintForColumn(0) > (
+        table.fontMetrics().horizontalAdvance(text) + 24
+    )

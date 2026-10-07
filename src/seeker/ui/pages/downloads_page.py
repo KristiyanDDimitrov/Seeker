@@ -1,7 +1,9 @@
 """The Downloads page (HISTORY §119)."""
 
 from datetime import UTC, datetime
+from enum import IntEnum
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -18,6 +20,7 @@ from seeker.models.download_request import (
     SHOWS_NO_FURTHER_PROGRESS,
     STAMPS_COMPLETED_AT,
     DownloadRequest,
+    DownloadRole,
     DownloadStatus,
 )
 from seeker.ui import help_text, theme
@@ -26,6 +29,7 @@ from seeker.ui.download_eta import (
     DownloadEtaTracker,
     format_aggregate_header,
 )
+from seeker.ui.elided_text import BADGE_ROLE
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
@@ -35,7 +39,23 @@ from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
-_DOWNLOADS_COLUMNS = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2, 3, 4))
+
+class _DownloadsColumn(IntEnum):
+    TRACK = 0
+    PLAYLIST = 1
+    STATUS = 2
+    PROGRESS = 3
+
+
+_DOWNLOADS_COLUMN_HEADERS = ["Track", "Playlist", "Status", "Progress"]
+
+_DOWNLOADS_COLUMNS = theme.ColumnLayout(
+    stretch=(_DownloadsColumn.TRACK,),
+    fit_content=(
+        _DownloadsColumn.PLAYLIST, _DownloadsColumn.STATUS,
+        _DownloadsColumn.PROGRESS,
+    ),
+)
 
 # Plain-language notes for statuses that aren't self-explanatory as raw
 # text — a "locked" or "shortlisted" row is still actively being chased,
@@ -43,7 +63,7 @@ _DOWNLOADS_COLUMNS = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2, 3, 4))
 _DOWNLOAD_STATUS_LABELS = {
     DownloadStatus.QUEUED: "Queued",
     DownloadStatus.DOWNLOADING: "Downloading",
-    DownloadStatus.LOCKED: "Retrying (locked)",
+    DownloadStatus.LOCKED: "Locked — retrying",
     DownloadStatus.SHORTLISTED: "Queued as backup",
     DownloadStatus.READY_FOR_REVIEW: "Ready for review",
     DownloadStatus.COMPLETED: "Completed",
@@ -51,7 +71,7 @@ _DOWNLOAD_STATUS_LABELS = {
     # Exhausted its retry budget against this specific peer; distinct
     # from "Failed" so it reads as "we gave up chasing this one," not
     # "something errored" (HISTORY §66).
-    DownloadStatus.UNAVAILABLE: "Unavailable (gave up retrying)",
+    DownloadStatus.UNAVAILABLE: "Unavailable — stopped retrying",
 }
 
 # The words a failure's recorded reason follows in the Status cell
@@ -212,9 +232,9 @@ class DownloadsPage(QWidget):
         header_row.addWidget(self.clear_finished_button)
         layout.addLayout(header_row)
 
-        self.downloads_table = QTableWidget(0, 5)
+        self.downloads_table = QTableWidget(0, len(_DOWNLOADS_COLUMN_HEADERS))
         self.downloads_table.setHorizontalHeaderLabels(
-            ["Track", "Playlist", "Role", "Status", "Progress"]
+            _DOWNLOADS_COLUMN_HEADERS
         )
         theme.apply_table_defaults(self.downloads_table)
         theme.configure_columns(self.downloads_table, _DOWNLOADS_COLUMNS)
@@ -306,13 +326,21 @@ class DownloadsPage(QWidget):
             for row, download in enumerate(downloads):
                 track = download.track
                 label = f"{track.artist} - {track.title}"
-                self.downloads_table.setItem(row, 0, QTableWidgetItem(label))
+                track_item = QTableWidgetItem(label)
+                # Only an upgrade is marked: a plain download is what
+                # every other row is.
+                if download.request.role == DownloadRole.UPGRADE:
+                    track_item.setData(BADGE_ROLE, help_text.UPGRADE_BADGE_TEXT)
+                    track_item.setData(
+                        Qt.ItemDataRole.AccessibleTextRole,
+                        f"{help_text.UPGRADE_BADGE_TEXT}: {label}",
+                    )
                 self.downloads_table.setItem(
-                    row, 1, QTableWidgetItem(download.playlist_name),
+                    row, _DownloadsColumn.TRACK, track_item,
                 )
                 self.downloads_table.setItem(
-                    row, 2,
-                    QTableWidgetItem(download.request.role.capitalize()),
+                    row, _DownloadsColumn.PLAYLIST,
+                    QTableWidgetItem(download.playlist_name),
                 )
 
                 request = download.request
@@ -322,7 +350,9 @@ class DownloadsPage(QWidget):
                     # The cell elides a long reason; the tooltip never
                     # does.
                     status_item.setToolTip(plain_tooltip(status_item.text()))
-                self.downloads_table.setItem(row, 3, status_item)
+                self.downloads_table.setItem(
+                    row, _DownloadsColumn.STATUS, status_item,
+                )
 
                 is_terminal = status in SHOWS_NO_FURTHER_PROGRESS
 
@@ -344,10 +374,11 @@ class DownloadsPage(QWidget):
                     )
 
                 self.downloads_table.setCellWidget(
-                    row, 4, _build_progress_widget(download, eta_text),
+                    row, _DownloadsColumn.PROGRESS,
+                    _build_progress_widget(download, eta_text),
                 )
                 self.downloads_table.setItem(
-                    row, 4,
+                    row, _DownloadsColumn.PROGRESS,
                     SortKeyItem("", _progress_sort_key(request)),
                 )
 

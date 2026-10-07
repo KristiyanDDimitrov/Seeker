@@ -1225,6 +1225,21 @@ per-widget stylesheet exists anywhere in ui/. */
     border-radius: {RADIUS_CONTROL}px;
 }}
 
+#closeButton {{
+    border: none;
+    border-radius: {RADIUS_CONTROL}px;
+    background: transparent;
+    padding: 0;
+}}
+
+#closeButton:hover {{
+    background: {palette.BG_SURFACE_2};
+}}
+
+#closeButton:focus {{
+    border: 2px solid {palette.ACCENT};
+}}
+
 """
 
 

@@ -5,6 +5,7 @@ mirror of §9.3.1's own Downloads extraction (S7).
 
 from datetime import UTC, datetime, timedelta
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel, QProgressBar
 
@@ -18,6 +19,7 @@ from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.track import Track
 from seeker.ui import help_text, theme
+from seeker.ui.elided_text import BADGE_ROLE
 from seeker.ui.main_window import MainWindow
 
 
@@ -42,7 +44,7 @@ def test_downloads_tab_renders_rows_across_playlists(qtbot):
     assert table.item(1, 1).text() == "Playlist B"
     # A raw "locked" status gets a plain-language note, not the raw
     # state string.
-    assert table.item(1, 3).text() == "Retrying (locked)"
+    assert table.item(1, 2).text() == "Locked — retrying"
 
 
 # --- Downloads aggregate remaining-time header (Task 9) --------------------
@@ -143,7 +145,7 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     # it (the real reported bug — a queued row's bar visibly sat above
     # center while a downloading row's own bar, already wrapped, sat
     # centered).
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     assert not isinstance(container, QProgressBar)
     bar = container.findChild(QProgressBar)
     assert bar is not None
@@ -177,7 +179,7 @@ def test_downloads_tab_progress_bar_determinate_with_real_bytes(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     bar = container.findChild(QProgressBar)
     assert bar is not None
     assert bar.maximum() == 1_000
@@ -220,9 +222,9 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
 
     for row in (0, 1):
         row_rect = window._downloads_page.downloads_table.visualRect(
-            window._downloads_page.downloads_table.model().index(row, 4)
+            window._downloads_page.downloads_table.model().index(row, 3)
         )
-        widget = window._downloads_page.downloads_table.cellWidget(row, 4)
+        widget = window._downloads_page.downloads_table.cellWidget(row, 3)
         assert widget is not None
         bar = widget.findChild(QProgressBar)
         assert bar is not None
@@ -257,7 +259,7 @@ def test_downloads_tab_queued_and_downloading_bars_are_both_vertically_centered(
 
     for row in (0, 1):
         row_rect = window._downloads_page.downloads_table.visualRect(
-            window._downloads_page.downloads_table.model().index(row, 4)
+            window._downloads_page.downloads_table.model().index(row, 3)
         )
         x = round((top_left.x() + row_rect.left() + 10) * dpr)
         y0 = round((top_left.y() + row_rect.top()) * dpr)
@@ -361,7 +363,7 @@ def test_downloads_tab_locked_row_has_no_progress_bar(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    bar = window._downloads_page.downloads_table.cellWidget(0, 4)
+    bar = window._downloads_page.downloads_table.cellWidget(0, 3)
     assert not isinstance(bar, QProgressBar)
 
 
@@ -392,7 +394,7 @@ def test_a_just_completed_download_never_consults_the_eta_tracker(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     label_texts = [
         child.text() for child in container.findChildren(QLabel)
     ]
@@ -413,7 +415,7 @@ def test_terminal_progress_widget_shows_a_full_bar_for_completed(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     bar = container.findChild(QProgressBar)
     assert bar is not None
     assert bar.value() == bar.maximum()
@@ -430,7 +432,7 @@ def test_terminal_progress_widget_shows_ready_for_review_label(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     label_texts = [
         child.text() for child in container.findChildren(QLabel)
     ]
@@ -447,7 +449,7 @@ def test_terminal_progress_widget_for_failed_is_blank_not_a_bar(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    widget = window._downloads_page.downloads_table.cellWidget(0, 4)
+    widget = window._downloads_page.downloads_table.cellWidget(0, 3)
     assert not isinstance(widget, QProgressBar)
     assert widget.findChild(QProgressBar) is None
 
@@ -488,7 +490,7 @@ def test_downloads_tab_eta_shows_calculating_before_second_sample(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     label = container.findChild(QLabel)
     assert label.text() == "Calculating…"
 
@@ -510,7 +512,7 @@ def test_downloads_tab_eta_shows_estimate_after_two_samples(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     label = container.findChild(QLabel)
     assert label.text() == "1s"
 
@@ -532,7 +534,7 @@ def test_downloads_tab_eta_shows_stalled_after_flat_samples(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    container = window._downloads_page.downloads_table.cellWidget(0, 4)
+    container = window._downloads_page.downloads_table.cellWidget(0, 3)
     label = container.findChild(QLabel)
     assert label.text() == "Stalled"
 
@@ -616,7 +618,7 @@ def test_a_failed_row_shows_its_reason_with_the_full_text_in_a_tooltip(
 
     window._downloads_page._render_active_downloads([download])
 
-    item = window._downloads_page.downloads_table.item(0, 3)
+    item = window._downloads_page.downloads_table.item(0, 2)
     assert item.text() == "Failed — Peer rejected: too many requests"
     tooltip = QTextDocument()
     tooltip.setHtml(item.toolTip())
@@ -638,7 +640,7 @@ def test_a_failure_reason_with_markup_renders_literally_in_the_tooltip(
     window._downloads_page._render_active_downloads([download])
 
     tooltip = QTextDocument()
-    tooltip.setHtml(window._downloads_page.downloads_table.item(0, 3).toolTip())
+    tooltip.setHtml(window._downloads_page.downloads_table.item(0, 2).toolTip())
     assert tooltip.toPlainText() == f"Failed — {reason}"
 
 
@@ -653,7 +655,7 @@ def test_an_unavailable_row_shows_its_reason(qtbot):
 
     window._downloads_page._render_active_downloads([download])
 
-    item = window._downloads_page.downloads_table.item(0, 3)
+    item = window._downloads_page.downloads_table.item(0, 2)
     assert item.text() == (
         "Unavailable — Peer kept refusing after 8 attempts"
     )
@@ -671,7 +673,7 @@ def test_a_failure_from_before_reasons_were_stored_shows_the_plain_label(
 
     window._downloads_page._render_active_downloads([download])
 
-    assert window._downloads_page.downloads_table.item(0, 3).text() == (
+    assert window._downloads_page.downloads_table.item(0, 2).text() == (
         "Failed"
     )
 
@@ -709,7 +711,7 @@ def test_clear_finished_dismisses_finished_rows_and_refreshes(qtbot):
         lambda: page.downloads_table.rowCount() == 1, timeout=2000,
     )
     assert dashboard_service.clear_finished_calls == 1
-    assert page.downloads_table.item(0, 3).text() == "Downloading"
+    assert page.downloads_table.item(0, 2).text() == "Downloading"
     assert not page.clear_finished_button.isEnabled()
 
 
@@ -758,3 +760,38 @@ def test_an_empty_downloads_page_points_at_the_dashboard(qtbot):
     page.downloads_empty_action.click()
 
     assert window._current_page_key == "dashboard"
+
+
+def test_downloads_marks_an_upgrade_with_a_badge_not_a_column(qtbot):
+    downloads = [
+        make_active_download(track_id="t1", role="settled"),
+        make_active_download(track_id="t2", role="upgrade"),
+    ]
+    window = MainWindow(FakeApplication(active_downloads=downloads))
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads(downloads)
+
+    table = window._downloads_page.downloads_table
+    headers = [
+        table.horizontalHeaderItem(column).text()
+        for column in range(table.columnCount())
+    ]
+    assert headers == ["Track", "Playlist", "Status", "Progress"]
+    assert table.item(0, 0).data(BADGE_ROLE) is None
+    assert table.item(1, 0).data(BADGE_ROLE) == help_text.UPGRADE_BADGE_TEXT
+    assert table.item(1, 0).data(Qt.ItemDataRole.AccessibleTextRole) == (
+        f"Upgrade: {table.item(1, 0).text()}"
+    )
+
+
+def test_an_unavailable_download_says_it_stopped_retrying(qtbot):
+    download = make_active_download(status="unavailable")
+    window = MainWindow(FakeApplication(active_downloads=[download]))
+    qtbot.addWidget(window)
+
+    window._downloads_page._render_active_downloads([download])
+
+    assert window._downloads_page.downloads_table.item(0, 2).text() == (
+        "Unavailable — stopped retrying"
+    )

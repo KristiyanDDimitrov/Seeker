@@ -5,10 +5,20 @@ Every table gets this from `theme.apply_table_defaults`; a list of
 names opts in with `elide_list_items`. A path column (a
 `theme.ColumnLayout.paths` entry) elides in the middle, so two copies
 of one track in different folders still show different filenames.
+
+A cell can carry a short badge ("Upgrade") in `BADGE_ROLE`: it is
+painted as a pill before the text, which elides in the space left.
 """
 
-from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QSize, Qt
-from PySide6.QtGui import QHelpEvent
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QPersistentModelIndex,
+    QRect,
+    QSize,
+    Qt,
+)
+from PySide6.QtGui import QFont, QFontMetrics, QHelpEvent, QPainter, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QListWidget,
@@ -23,6 +33,31 @@ from PySide6.QtWidgets import (
 from seeker.ui.plain_text import plain_tooltip
 
 _Index = QModelIndex | QPersistentModelIndex
+
+# Clear of the UserRole a page stores its own row ids under.
+BADGE_ROLE = Qt.ItemDataRole.UserRole + 64
+_BADGE_PADDING = 6
+_BADGE_GAP = 6
+_BADGE_FONT_SCALE = 0.85
+
+
+def _badge_font(base: QFont) -> QFont:
+    font = QFont(base)
+    font.setPointSizeF(base.pointSizeF() * _BADGE_FONT_SCALE)
+    return font
+
+
+def _badge_width(option: QStyleOptionViewItem, index: _Index) -> int:
+    """The width a cell's badge takes from its text, gaps included;
+    0 without a badge."""
+    badge = index.data(BADGE_ROLE)
+    if not badge:
+        return 0
+    metrics = QFontMetrics(_badge_font(option.font))
+    return (
+        _BADGE_GAP + metrics.horizontalAdvance(str(badge))
+        + 2 * _BADGE_PADDING + _BADGE_GAP
+    )
 
 
 class ElidedTextDelegate(QStyledItemDelegate):
@@ -50,8 +85,67 @@ class ElidedTextDelegate(QStyledItemDelegate):
         super().initStyleOption(option, index)
         option.textElideMode = self.elide_mode(index)
 
+    def paint(
+            self,
+            painter: QPainter,
+            option: QStyleOptionViewItem,
+            index: _Index,
+    ) -> None:
+        badge = index.data(BADGE_ROLE)
+        if not badge:
+            super().paint(painter, option, index)
+            return
+
+        widget = option.widget
+        style = widget.style() if widget is not None else None
+        if style is None:
+            super().paint(painter, option, index)
+            return
+
+        # The row's background, selection and focus over the whole
+        # cell first, then the text in what the pill leaves.
+        background = QStyleOptionViewItem(option)
+        self.initStyleOption(background, index)
+        background.text = ""
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem, background, painter, widget,
+        )
+
+        reserved = _badge_width(option, index)
+        font = _badge_font(option.font)
+        metrics = QFontMetrics(font)
+        pill = QRect(
+            option.rect.left() + _BADGE_GAP,
+            option.rect.center().y() - (metrics.height() + 4) // 2,
+            reserved - 2 * _BADGE_GAP,
+            metrics.height() + 4,
+        )
+        # The palette `theme.apply_theme` sets (Highlight is ACCENT),
+        # so the pill follows a theme switch; theme.py imports this
+        # module, so it cannot read the tokens itself.
+        palette = option.palette
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(palette.color(QPalette.ColorRole.Highlight))
+        painter.setBrush(palette.color(QPalette.ColorRole.AlternateBase))
+        radius = pill.height() / 2
+        painter.drawRoundedRect(pill, radius, radius)
+        painter.setFont(font)
+        painter.setPen(palette.color(QPalette.ColorRole.Text))
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, str(badge))
+        painter.restore()
+
+        text = QStyleOptionViewItem(option)
+        self.initStyleOption(text, index)
+        text.rect = option.rect.adjusted(reserved, 0, 0, 0)
+        text.state &= ~QStyle.StateFlag.State_HasFocus
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem, text, painter, widget,
+        )
+
     def sizeHint(self, option: QStyleOptionViewItem, index: _Index) -> QSize:
         hint = super().sizeHint(option, index)
+        hint.setWidth(hint.width() + _badge_width(option, index))
         if self._fill_width:
             # In list mode an item spans the wider of its own hint and
             # the viewport (probed: a zero-width hint tracks the
@@ -98,9 +192,8 @@ class ElidedTextDelegate(QStyledItemDelegate):
             QStyle.PixelMetric.PM_FocusFrameHMargin, styled, view,
         ) + 1
         metrics = styled.fontMetrics
-        return bool(
-            metrics.horizontalAdvance(text) > text_rect.width() - 2 * margin
-        )
+        available = text_rect.width() - 2 * margin - _badge_width(option, index)
+        return bool(metrics.horizontalAdvance(text) > available)
 
 
 def elide_table_cells(view: QTableView) -> None:

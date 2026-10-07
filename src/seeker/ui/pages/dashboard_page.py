@@ -3,8 +3,8 @@ next-step CTA. Dashboard picks a playlist and shows its tracks, routing
 the track table's own Tag/Re-tag row actions through `DashboardHost` to
 the Library page (library_page.py), which owns the Tagging panel.
 
-The page owns its own actions — Refresh playlists, Rescan and match,
-Re-match, Download (with its destination prompt) and Load tracks — and
+The page owns its own actions — Refresh playlists, Scan library,
+Match tracks, Download (with its destination prompt) and Load tracks — and
 runs them through `PageContext.run_busy_worker`. Beyond PageContext it
 needs a second, narrower seam, `DashboardHost`, only for what lands on
 another page: Settings at a given tab, Review with a track focused, and
@@ -69,7 +69,7 @@ _STATE_LABELS = {
     # The file is locked or queued behind a peer; Seeker is retrying in
     # the background. Not waiting on a human, unlike AWAITING_REVIEW
     # above (the split this label exists to make visible) (HISTORY §66).
-    RETRYING: "Retrying (locked/queued)",
+    RETRYING: "Retrying",
     NEEDS_REVIEW: "Needs review",
     # A real SoulSeek candidate was found but wasn't auto-tier enough
     # to request — actionable from the Review page, hence the same
@@ -528,12 +528,12 @@ class DashboardPage(QWidget):
         # ampersand. "&Help" at this file's menu-bar construction is a
         # real, intentional mnemonic and is the only place this should
         # ever appear unescaped (HISTORY §79).
-        self.scan_button = QPushButton("Rescan and match library")
+        self.scan_button = QPushButton("Scan library")
         self.scan_button.setToolTip(help_text.TOOLTIP_SCAN_ALL_LOCATIONS)
         self.scan_button.clicked.connect(self._on_scan_clicked)
         row.addWidget(self.scan_button)
 
-        self.match_button = QPushButton("Re-match library")
+        self.match_button = QPushButton("Match tracks")
         self.match_button.setToolTip(help_text.TOOLTIP_MATCH_ALL_TRACKS)
         self.match_button.clicked.connect(self._on_match_clicked)
         row.addWidget(self.match_button)
@@ -1183,7 +1183,7 @@ class DashboardPage(QWidget):
     def _on_scan_clicked(self) -> None:
         # scan_and_match() chains scan_all() + match_all() into one
         # background call, so newly-found files get a track_matches row
-        # without a separate, non-obvious "Re-match library" click.
+        # without a separate, non-obvious "Match tracks" click.
         # run_worker()'s single dispatcher gives no safe way to push a
         # genuine live "now matching..." update partway through one
         # background call (see ui/workers.py's own docstring on why a

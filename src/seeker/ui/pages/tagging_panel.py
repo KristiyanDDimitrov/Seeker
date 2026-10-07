@@ -154,7 +154,7 @@ class TaggingPanel(QWidget):
         # The one-click fix for the "no_url" case: a real sync-tracks
         # call, honest about being a real Spotify API call (HISTORY §66).
         self.fill_missing_art_urls_button = QPushButton(
-            "Fill missing art URLs"
+            "Get cover art from Spotify"
         )
         self.fill_missing_art_urls_button.setToolTip(
             help_text.TOOLTIP_FILL_MISSING_ART_URLS
@@ -461,13 +461,14 @@ class TaggingPanel(QWidget):
         if art_urls_filled:
             plural = "s" if art_urls_filled != 1 else ""
             self._host.notice.show_message(
-                f"Filled in {art_urls_filled} missing album art "
-                f"URL{plural}.",
+                f"Found cover art on Spotify for {art_urls_filled} "
+                f"track{plural}. Fix missing cover art adds it to the "
+                f"files.",
                 kind="success",
             )
         else:
             self._host.notice.show_message(
-                "No missing album art URLs found.", kind="info",
+                "No track was missing cover art on Spotify.", kind="info",
             )
 
     def _on_rename_files_clicked(self) -> None:

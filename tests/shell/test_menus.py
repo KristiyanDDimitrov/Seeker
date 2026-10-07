@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from fakes import (
     FakeApplication,
 )
+from seeker.formatting import format_timestamp
 from seeker.ui import help_text
 from seeker.ui.main_window import (
     MainWindow,
@@ -297,7 +298,16 @@ def test_format_build_identity_shows_real_sha_and_timestamp():
         "a1b2c3d", "v0.1.0-3-ga1b2c3d", "2026-09-03T12:00:00+00:00",
     )
     assert "v0.1.0-3-ga1b2c3d" in text
-    assert "2026-09-03T12:00:00+00:00" in text
+    # The viewer's local time, as everywhere else in the app; never the
+    # raw ISO string.
+    assert format_timestamp("2026-09-03T12:00:00+00:00") in text
+    assert "T12:00" not in text
+
+
+def test_format_build_identity_keeps_an_unparseable_time_as_written():
+    text = help_text.format_build_identity("a1b2c3d", "v0.1.0", "yesterday")
+
+    assert text.endswith("built yesterday")
 
 
 # --- Menu bar: View/Window (round 8 §12.3/§12.5) ----------------------------

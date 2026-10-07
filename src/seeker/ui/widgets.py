@@ -140,6 +140,45 @@ class ThemeToggleButton(QPushButton):
         painter.drawPath(half)
 
 
+class CloseButton(QPushButton):
+    """A flat cross that closes the panel it sits on, drawn like
+    `ThemeToggleButton`'s glyphs in `theme.TEXT_MUTED`, read on every
+    paint. Its accessible name and tooltip say what it closes, since
+    the cross alone carries no words."""
+
+    def __init__(self, name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFlat(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(24, 24)
+        # `#closeButton` in theme.py: transparent, a hover fill, and the
+        # keyboard focus ring.
+        self.setObjectName("closeButton")
+        self.setToolTip(plain_tooltip(name))
+        self.setAccessibleName(name)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = painter.pen()
+        pen.setColor(QColor(theme.TEXT_MUTED))
+        pen.setWidthF(1.75)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        arm = 4.5
+        center = QRectF(self.rect()).center()
+        painter.drawLine(
+            QPointF(center.x() - arm, center.y() - arm),
+            QPointF(center.x() + arm, center.y() + arm),
+        )
+        painter.drawLine(
+            QPointF(center.x() + arm, center.y() - arm),
+            QPointF(center.x() - arm, center.y() + arm),
+        )
+        painter.end()
+
+
 class TwoToneProgressBar(QProgressBar):
     """A progress bar whose percentage reads on both of its
     backgrounds: `ON_ACCENT` over the ACCENT fill, `TEXT` over the
