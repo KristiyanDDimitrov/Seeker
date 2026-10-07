@@ -874,6 +874,13 @@ def build_qpalette(palette: Palette) -> QPalette:
     qpalette.setColor(
         QPalette.ColorRole.PlaceholderText, QColor(palette.TEXT_FAINT),
     )
+    # A rich-text anchor paints in these; left unset they are the
+    # platform's, which offscreen is #0000FF (2:1 on dark's page) and
+    # on Cocoa a visited magenta (2.6:1 on light's).
+    for link_role in (
+            QPalette.ColorRole.Link, QPalette.ColorRole.LinkVisited,
+    ):
+        qpalette.setColor(link_role, QColor(palette.ACCENT))
     qpalette.setColor(
         QPalette.ColorGroup.Disabled,
         QPalette.ColorRole.Text,

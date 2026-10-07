@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.ui import theme
+from seeker.ui.plain_text import RichLabel
 from seeker.ui.widgets import ThemeToggleButton
 
 
@@ -411,6 +412,21 @@ def applied_palette(request, qapp):
     palette = theme.apply_theme(qapp, request.param)
     yield palette
     theme.apply_theme(qapp)
+
+
+@pytest.mark.parametrize(
+        "role",
+        [QPalette.ColorRole.Link, QPalette.ColorRole.LinkVisited],
+        ids=["link", "visited"],
+)
+def test_a_rich_label_link_reads_on_the_page(applied_palette, role):
+    # A RichLabel's anchor paints in the palette's Link colour, which
+    # Qt defaults to pure #0000FF (2.2:1 on dark's page ground) and its
+    # visited one to magenta: Support's issue link and e-mail address.
+    label = RichLabel('<a href="https://example.com">a link</a>')
+    colour = label.palette().color(role).name()
+    assert theme.contrast_ratio(colour, applied_palette.BG_APP) >= 4.5
+    assert theme.contrast_ratio(colour, applied_palette.BG_SURFACE) >= 4.5
 
 
 def _rgb(image, point: QPoint) -> tuple[int, int, int]:
