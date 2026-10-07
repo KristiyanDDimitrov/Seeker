@@ -27,6 +27,7 @@ from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
 from seeker.ui import plain_text, settings_window
+from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import SettingsPage, locations_nested_with
 
 
@@ -606,7 +607,7 @@ def test_save_default_destination_persists_to_the_real_application(
     window.save_default_destination_button.click()
 
     qtbot.waitUntil(
-        lambda: window.default_destination_status_label.text() != "",
+        lambda: not window.library_notice.isHidden(),
         timeout=2000,
     )
     assert (
@@ -629,7 +630,7 @@ def test_save_default_destination_without_a_location_shows_message(
 
     window.save_default_destination_button.click()
 
-    assert "location" in window.default_destination_status_label.text().lower()
+    assert "location" in window.library_notice.text().lower()
 
 
 def test_default_destination_prefills_existing_config_value(
@@ -686,7 +687,7 @@ def test_save_destination_calls_set_destination_with_selected_values(
     window.save_destination_button.click()
 
     qtbot.waitUntil(
-        lambda: window.destinations_status_label.text() != "",
+        lambda: not window.library_notice.isHidden(),
         timeout=2000,
     )
 
@@ -707,7 +708,7 @@ def test_save_destination_without_selected_playlist_shows_message(
 
     window.save_destination_button.click()
 
-    assert "playlist" in window.destinations_status_label.text().lower()
+    assert "playlist" in window.library_notice.text().lower()
 
 
 def test_destination_subfolder_return_pressed_saves_destination(
@@ -736,7 +737,7 @@ def test_destination_subfolder_return_pressed_saves_destination(
     window.destination_subfolder_field.returnPressed.emit()
 
     qtbot.waitUntil(
-        lambda: window.destinations_status_label.text() != "",
+        lambda: not window.library_notice.isHidden(),
         timeout=2000,
     )
 
@@ -980,10 +981,10 @@ def test_test_connection_reports_healthy_result(qtbot, tmp_path, monkeypatch):
     window.test_connection_button.click()
 
     qtbot.waitUntil(
-        lambda: window.test_connection_status_label.text() != "",
+        lambda: not window.connections_notice.isHidden(),
         timeout=2000,
     )
-    assert window.test_connection_status_label.text() == "Connected."
+    assert window.connections_notice.text() == "Connected to SoulSeek."
 
 
 def test_test_connection_without_config_shows_message_and_makes_no_call(
@@ -1002,7 +1003,7 @@ def test_test_connection_without_config_shows_message_and_makes_no_call(
     window.test_connection_button.click()
 
     assert calls == []
-    assert "configured" in window.test_connection_status_label.text().lower()
+    assert "configured" in window.connections_notice.text().lower()
 
 
 def test_update_credentials_calls_bring_up_and_persists_on_success(
@@ -1097,7 +1098,7 @@ def _wait_for_credentials_update(qtbot, window, bring_up_calls) -> None:
     # teardown, against a deleted button (seen on CI, HISTORY §148).
     qtbot.waitUntil(
         lambda: bring_up_calls != []
-        and window.update_credentials_status_label.text().startswith(
+        and window.connections_notice.text().startswith(
             "Credentials updated"
         ),
         timeout=2000,
@@ -1189,7 +1190,7 @@ def test_update_credentials_cancelling_the_share_question_starts_nothing(
     qtbot.waitUntil(lambda: asked != [], timeout=2000)
     qtbot.waitUntil(window.update_credentials_button.isEnabled, timeout=2000)
     assert bring_up_calls == []
-    assert "cancel" in window.update_credentials_status_label.text().lower()
+    assert "cancel" in window.connections_notice.text().lower()
 
 
 def test_soulseek_password_return_pressed_calls_update_credentials(
@@ -1256,7 +1257,7 @@ def test_update_credentials_without_username_or_password_makes_no_call(
     window.update_credentials_button.click()
 
     assert calls == []
-    assert "username" in window.update_credentials_status_label.text().lower()
+    assert "username" in window.connections_notice.text().lower()
 
 
 def test_update_credentials_without_a_library_location_shows_message(
@@ -1277,7 +1278,7 @@ def test_update_credentials_without_a_library_location_shows_message(
     window.update_credentials_button.click()
 
     assert calls == []
-    assert "location" in window.update_credentials_status_label.text().lower()
+    assert "location" in window.connections_notice.text().lower()
 
 
 # --- Thresholds (§4) -----------------------------------------------------
@@ -1659,3 +1660,141 @@ def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
     assert wait.isHidden()
     assert window.spotify_status_label.text() == "Authorization cancelled."
     assert calls == ["mistyped-client-id"]
+
+
+def _shown_notice(window) -> InlineNotice | None:
+    for notice in window.findChildren(InlineNotice):
+        if not notice.isHidden():
+            return notice
+    return None
+
+
+def _wait_for_notice(qtbot, window, text: str) -> InlineNotice:
+    # Any notice on the page: the outcome must land somewhere that
+    # persists, never on a status label the next run_worker wipes.
+    qtbot.waitUntil(
+        lambda: (notice := _shown_notice(window)) is not None
+        and text in notice.text(),
+        timeout=2000,
+    )
+    notice = _shown_notice(window)
+    assert notice is not None
+    return notice
+
+
+def test_a_refused_destination_is_reported_on_a_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    add_playlist(
+        application, Playlist(id="p1", name="240KM/H", track_count=3),
+    )
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window.destinations_playlist_list.count() == 1,
+        timeout=2000,
+    )
+    window.destinations_playlist_list.setCurrentRow(0)
+    window.destination_location_combo.setCurrentIndex(
+        window.destination_location_combo.findData("Main"),
+    )
+    window.destination_subfolder_field.setText("../outside")
+
+    window.save_destination_button.click()
+
+    notice = _wait_for_notice(qtbot, window, "..")
+    assert notice.property("variant") == "error"
+
+
+def test_a_saved_default_destination_is_confirmed_on_a_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    location = add_location(application, "Main", tmp_path / "music")
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window.default_location_combo.count() > 1, timeout=2000,
+    )
+    window.default_location_combo.setCurrentIndex(
+        window.default_location_combo.findData(location.id),
+    )
+
+    window.save_default_destination_button.click()
+
+    notice = _wait_for_notice(qtbot, window, "Default destination saved.")
+    assert notice.property("variant") == "success"
+
+
+def test_a_failed_connection_test_is_reported_on_a_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application._config_store = replace(
+        application._config_store,
+        slskd_base_url="http://localhost:5030",
+        slskd_api_key="real-api-key",
+    )
+
+    def fail(base_url, api_key, since):
+        raise ValueError("slskd sent a reply Seeker cannot read.")
+
+    monkeypatch.setattr("seeker.ui.settings_window.check_slskd_health", fail)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    window.test_connection_button.click()
+
+    notice = _wait_for_notice(qtbot, window, "cannot read")
+    assert notice.property("variant") == "error"
+    qtbot.waitUntil(window.test_connection_button.isEnabled, timeout=2000)
+
+
+def test_a_failed_credentials_update_is_reported_on_a_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    _fake_live_mounts(
+        monkeypatch, {"/shared/music": str(tmp_path / "music")},
+    )
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("Docker isn't running.")
+
+    monkeypatch.setattr(application, "start_slskd", fail)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _click_update_credentials(qtbot, window)
+
+    notice = _wait_for_notice(qtbot, window, "Docker isn't running.")
+    assert notice.property("variant") == "error"
+    assert window.update_credentials_status_label.text() == ""
+    qtbot.waitUntil(window.update_credentials_button.isEnabled, timeout=2000)
+
+
+def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    def fail(client_id, force_reauthorize=False, cancel=None):
+        raise RuntimeError("Spotify refused this Client ID.")
+
+    monkeypatch.setattr(application, "connect_spotify", fail)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    window.spotify_client_id_field.setText("mistyped-client-id")
+    window.reauthorize_spotify_button.click()
+
+    notice = _wait_for_notice(qtbot, window, "refused this Client ID")
+    assert notice.property("variant") == "error"
+    qtbot.waitUntil(
+        window.reauthorize_spotify_button.isEnabled, timeout=2000,
+    )

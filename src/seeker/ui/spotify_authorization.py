@@ -68,7 +68,11 @@ class SpotifyAuthorizationWait(QWidget):
             client_id: str,
             on_connected: Callable[[], None],
             force_reauthorize: bool = False,
+            on_error: Callable[[str], None] | None = None,
     ) -> None:
+        """`on_error` hears a failed attempt, never a cancelled one:
+        the cancellation answers the user's own click, in the status
+        label beside it."""
         if self._cancel is not None:
             return
 
@@ -93,9 +97,21 @@ class SpotifyAuthorizationWait(QWidget):
             ),
             status_label=self._status_label,
             on_finished=on_finished,
-            on_error=lambda _message: self._end(),
+            on_error=lambda message: self._on_attempt_failed(
+                cancel, message, on_error,
+            ),
         )
         self._status_label.setText(help_text.SPOTIFY_AUTHORIZATION_WAITING)
+
+    def _on_attempt_failed(
+            self,
+            cancel: threading.Event,
+            message: str,
+            on_error: Callable[[str], None] | None,
+    ) -> None:
+        self._end()
+        if on_error is not None and not cancel.is_set():
+            on_error(message)
 
     def _on_cancel_clicked(self) -> None:
         if self._cancel is not None:

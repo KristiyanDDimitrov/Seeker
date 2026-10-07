@@ -43,7 +43,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.elided_text import elide_list_items
 from seeker.ui.library_location_picker import pick_and_add_library_location
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
@@ -180,7 +180,8 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(tab)
 
         # The tab's outcomes, persistent and dismissible: a folder
-        # already registered or nested, a removal's counts.
+        # already registered or nested, a removal's counts, a
+        # destination saved or refused.
         self.library_notice = InlineNotice()
         layout.addWidget(self.library_notice)
 
@@ -517,9 +518,6 @@ class SettingsPage(QWidget):
         )
         right.addLayout(theme.action_row(self.save_destination_button))
 
-        self.destinations_status_label = PlainLabel("")
-        right.addWidget(self.destinations_status_label)
-
         right.addStretch()
         layout.addLayout(right, 1)
 
@@ -565,17 +563,14 @@ class SettingsPage(QWidget):
         save_row.addStretch()
         layout.addRow(save_row)
 
-        self.default_destination_status_label = PlainLabel("")
-        layout.addRow(self.default_destination_status_label)
-
         return group
 
     def _on_save_default_destination_clicked(self) -> None:
         location_id = self.default_location_combo.currentData()
 
         if location_id is None:
-            self.default_destination_status_label.setText(
-                "Select a library location first."
+            self.library_notice.show_message(
+                "Select a library location first.", kind="warning",
             )
             return
 
@@ -589,10 +584,10 @@ class SettingsPage(QWidget):
                 location_id, subfolder_per_playlist,
             ),
             button=self.save_default_destination_button,
-            status_label=self.default_destination_status_label,
-            on_finished=lambda _: self.default_destination_status_label.setText(
-                "Default destination saved."
+            on_finished=lambda _: self.library_notice.show_message(
+                "Default destination saved.", kind="success",
             ),
+            on_error=self._show_library_error,
         )
 
     def _refresh_destinations(self) -> None:
@@ -608,7 +603,11 @@ class SettingsPage(QWidget):
             self.thread_pool,
             fetch,
             on_finished=self._render_destinations,
+            on_error=self._show_library_error,
         )
+
+    def _show_library_error(self, message: str) -> None:
+        self.library_notice.show_message(message, kind="error")
 
     def _render_destinations(
             self,
@@ -683,16 +682,16 @@ class SettingsPage(QWidget):
         current_item = self.destinations_playlist_list.currentItem()
 
         if current_item is None:
-            self.destinations_status_label.setText(
-                "Select a playlist first."
+            self.library_notice.show_message(
+                "Select a playlist first.", kind="warning",
             )
             return
 
         location_name = self.destination_location_combo.currentData()
 
         if location_name is None:
-            self.destinations_status_label.setText(
-                "Select a library location first."
+            self.library_notice.show_message(
+                "Select a library location first.", kind="warning",
             )
             return
 
@@ -705,10 +704,10 @@ class SettingsPage(QWidget):
                 playlist_name, location_name, subfolder,
             ),
             button=self.save_destination_button,
-            status_label=self.destinations_status_label,
-            on_finished=lambda _: self.destinations_status_label.setText(
-                "Destination saved."
+            on_finished=lambda _: self.library_notice.show_message(
+                "Destination saved.", kind="success",
             ),
+            on_error=self._show_library_error,
         )
 
     # --- Connection management -----------------------------------------
@@ -722,6 +721,12 @@ class SettingsPage(QWidget):
         # http://pointed off this machine.
         self.slskd_remote_warning_notice = InlineNotice()
         layout.addWidget(self.slskd_remote_warning_notice)
+
+        # The tab's outcomes: a test's result, a re-authorization or a
+        # credentials update that failed or finished. Each action's
+        # status label carries its progress only.
+        self.connections_notice = InlineNotice()
+        layout.addWidget(self.connections_notice)
 
         spotify_group = QGroupBox("Spotify")
         spotify_form = QFormLayout(spotify_group)
@@ -753,6 +758,9 @@ class SettingsPage(QWidget):
 
         self.spotify_status_label = PlainLabel("")
         spotify_form.addRow("", self.spotify_status_label)
+        self.spotify_feedback = FeedbackTarget(
+            self.spotify_status_label, self.connections_notice,
+        )
 
         self.spotify_authorization_wait = SpotifyAuthorizationWait(
             self.application,
@@ -818,9 +826,6 @@ class SettingsPage(QWidget):
             "", theme.action_row(self.test_connection_button),
         )
 
-        self.test_connection_status_label = PlainLabel("")
-        soulseek_form.addRow("", self.test_connection_status_label)
-
         soulseek_form.addRow(PlainLabel("Update credentials:"))
 
         self.new_soulseek_username_field = QLineEdit()
@@ -872,6 +877,9 @@ class SettingsPage(QWidget):
 
         self.update_credentials_status_label = PlainLabel("")
         soulseek_form.addRow("", self.update_credentials_status_label)
+        self.credentials_feedback = FeedbackTarget(
+            self.update_credentials_status_label, self.connections_notice,
+        )
 
         layout.addWidget(soulseek_group)
         layout.addStretch()
@@ -1028,15 +1036,19 @@ class SettingsPage(QWidget):
         client_id = self.spotify_client_id_field.text().strip()
 
         if not client_id:
-            self.spotify_status_label.setText("Enter a Client ID first.")
+            self.spotify_feedback.show_outcome(
+                "Enter a Client ID first.", kind="warning",
+            )
             return
 
+        self.connections_notice.dismiss()
         self.spotify_authorization_wait.start(
             client_id,
-            on_connected=lambda: self.spotify_status_label.setText(
-                "Re-authorized."
+            on_connected=lambda: self.spotify_feedback.show_outcome(
+                "Re-authorized with Spotify.", kind="success",
             ),
             force_reauthorize=True,
+            on_error=self.spotify_feedback.show_error,
         )
 
     def _on_test_connection_clicked(self) -> None:
@@ -1044,11 +1056,12 @@ class SettingsPage(QWidget):
         api_key = self.application.slskd_api_key
 
         if not base_url or not api_key:
-            self.test_connection_status_label.setText(
-                "SoulSeek isn't configured yet."
+            self.connections_notice.show_message(
+                "SoulSeek isn't configured yet.", kind="warning",
             )
             return
 
+        self.connections_notice.dismiss()
         run_worker(
             self.thread_pool,
             lambda: check_slskd_health(
@@ -1056,6 +1069,9 @@ class SettingsPage(QWidget):
             ),
             button=self.test_connection_button,
             on_finished=self._render_test_connection_result,
+            on_error=lambda message: self.connections_notice.show_message(
+                message, kind="error",
+            ),
         )
 
     def _render_test_connection_result(
@@ -1063,14 +1079,17 @@ class SettingsPage(QWidget):
             result: SlskdHealthCheckResult,
     ) -> None:
         if result.status == SlskdHealthStatus.HEALTHY:
-            self.test_connection_status_label.setText("Connected.")
+            self.connections_notice.show_message(
+                "Connected to SoulSeek.", kind="success",
+            )
         elif result.status == SlskdHealthStatus.BAD_CREDENTIALS:
-            self.test_connection_status_label.setText(
-                f"Rejected: {result.detail}"
+            self.connections_notice.show_message(
+                f"SoulSeek rejected the login: {result.detail}",
+                kind="error",
             )
         else:
-            self.test_connection_status_label.setText(
-                "Not connected right now."
+            self.connections_notice.show_message(
+                "SoulSeek isn't connected right now.", kind="warning",
             )
 
     def _on_update_credentials_clicked(self) -> None:
@@ -1078,16 +1097,19 @@ class SettingsPage(QWidget):
         password = self.new_soulseek_password_field.text()
 
         if not username or not password:
-            self.update_credentials_status_label.setText(
-                "Enter both a username and password."
+            self.credentials_feedback.show_outcome(
+                "Enter both a username and password.", kind="warning",
             )
             return
 
         if not self._locations_by_name:
-            self.update_credentials_status_label.setText(
-                "Register a library location before setting up SoulSeek."
+            self.credentials_feedback.show_outcome(
+                "Register a library location before setting up SoulSeek.",
+                kind="warning",
             )
             return
+
+        self.connections_notice.dismiss()
 
         # A credential update must never change what is shared: keep the
         # running container's share, and ask only when none is running.
@@ -1099,6 +1121,7 @@ class SettingsPage(QWidget):
             on_finished=lambda share_path: self._recreate_with_credentials(
                 username, password, share_path,
             ),
+            on_error=self.credentials_feedback.show_error,
         )
         self.update_credentials_status_label.setText(
             "Checking which folder SoulSeek shares now..."
@@ -1116,8 +1139,8 @@ class SettingsPage(QWidget):
             library_location_path = self._ask_which_location_to_share()
 
         if library_location_path is None:
-            self.update_credentials_status_label.setText(
-                "Cancelled — SoulSeek was not changed."
+            self.credentials_feedback.show_outcome(
+                "Cancelled — SoulSeek was not changed.",
             )
             return
 
@@ -1132,6 +1155,7 @@ class SettingsPage(QWidget):
             button=self.update_credentials_button,
             status_label=self.update_credentials_status_label,
             on_finished=lambda _: self._on_credentials_updated(),
+            on_error=self.credentials_feedback.show_error,
         )
         self.update_credentials_status_label.setText(
             "Recreating SoulSeek container..."
@@ -1158,9 +1182,10 @@ class SettingsPage(QWidget):
         self.new_soulseek_username_field.clear()
         self.new_soulseek_password_field.clear()
         self._refresh_connection_display()
-        self.update_credentials_status_label.setText(
+        self.credentials_feedback.show_outcome(
             "Credentials updated. Container recreated with new "
-            "credentials — use Test connection to confirm."
+            "credentials — use Test connection to confirm.",
+            kind="success",
         )
 
     # --- Appearance ------------------------------------------------
