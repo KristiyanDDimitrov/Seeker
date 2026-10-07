@@ -10,13 +10,13 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S28 part-2 close-out, after `c7b3122` (§28.4). Tree
+- **HEAD:** the CI-result handoff note, after the S28 part-2 close-out `dccaeca`. Tree
   clean apart from the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2 failed, 1807 passed, 1 skipped`. Both
   failures are `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`,
   which also fails on `bda43a1` (see §4). Offscreen: `1809 passed, 1 skipped`.
   `mypy --strict src/` clean, 133 files; `ruff check src tests tools` 0.
-- **CI:** pending for the close-out push (see the next commit).
+- **CI:** `dccaeca`'s run `37585880304` green.
 
 ## 2. Where we are
 
