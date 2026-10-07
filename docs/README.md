@@ -16,6 +16,10 @@ Every document in the repository, then where to start.
   `HISTORY.md` is a stub pointing there.
 - [`screenshots/`](screenshots/) — the README's images, written by
   `uv run python tools/screenshots.py --readme`.
+- [`design/visual-direction.md`](design/visual-direction.md) — the
+  visual refresh's two rendered directions ("Booth", "Harmonic"):
+  tokens, WCAG contrast numbers, icon set, recommendation, and Kris's
+  decision, which S31–S36 build on.
 - [`../tools/screenshots.py`](../tools/screenshots.py) — renders every
   screen and wizard step, both themes, at 1280×820 and 960×640, over
   one invented dataset: `uv run python tools/screenshots.py` (into the
