@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import QThreadPool
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from seeker.application import Application
 from seeker.ui import theme
@@ -53,6 +53,11 @@ class PageContext:
     slskd_status: SlskdStatus
 
 
+# A subtitle wraps at about this many characters, a readable measure
+# however wide the window is.
+SUBTITLE_MEASURE_CHARS = 90
+
+
 def build_subtitle_label(text: str) -> QLabel:
     # Persistent, not hover-dependent — a muted one-liner under each
     # tab's own header, aimed at someone who never reads the README and
@@ -64,6 +69,9 @@ def build_subtitle_label(text: str) -> QLabel:
     # MainWindow.on_theme_changed() code needed.
     label.setProperty("badge", "muted")
     label.setWordWrap(True)
+    label.setMaximumWidth(
+        label.fontMetrics().averageCharWidth() * SUBTITLE_MEASURE_CHARS,
+    )
     return label
 
 
@@ -83,19 +91,18 @@ def build_page(
         theme.SPACING_XL, theme.SPACING_LG,
         theme.SPACING_XL, theme.SPACING_LG,
     )
-    layout.setSpacing(theme.SPACING_MD)
+    layout.setSpacing(theme.SPACING_LG)
 
-    title_row = QHBoxLayout()
-    title_row.setSpacing(theme.SPACING_SM)
-
+    # Title and subtitle read as one unit, set apart from the content.
+    header = QVBoxLayout()
+    header.setSpacing(theme.SPACING_XS)
     title_label = PlainLabel(title)
     # QLabel#pageTitleLabel in theme.py.
     title_label.setObjectName("pageTitleLabel")
-    title_row.addWidget(title_label)
-    title_row.addStretch()
+    header.addWidget(title_label)
+    header.addWidget(build_subtitle_label(subtitle))
 
-    layout.addLayout(title_row)
-    layout.addWidget(build_subtitle_label(subtitle))
+    layout.addLayout(header)
     layout.addWidget(content, 1)
 
     return page
