@@ -520,6 +520,45 @@ def test_a_combo_box_shows_a_chevron_in_its_drop_down(
     assert best >= 3.0
 
 
+def test_a_checked_checkbox_shows_a_tick(qtbot, applied_palette):
+    # A checked box was a solid ACCENT square: the state rested on
+    # colour alone. Inside the indicator, some pixel must stand off
+    # the ACCENT fill by the 3:1 UI-component floor.
+    checkbox = QCheckBox("Keep all")
+    checkbox.setChecked(True)
+    at = _grab_card(qtbot, checkbox)
+
+    option = QStyleOptionButton()
+    checkbox.initStyleOption(option)
+    indicator = checkbox.style().subElementRect(
+            QStyle.SubElement.SE_CheckBoxIndicator, option, checkbox,
+    )
+    inside = [
+        at(checkbox, QPoint(x, y))
+        for x in range(indicator.left() + 3, indicator.right() - 2)
+        for y in range(indicator.top() + 3, indicator.bottom() - 2)
+    ]
+    best = max(
+        theme.contrast_ratio(
+                "#{:02X}{:02X}{:02X}".format(*pixel), applied_palette.ACCENT,
+        )
+        for pixel in inside
+    )
+    assert best >= 3.0
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+def test_the_checkbox_tick_is_drawn_in_on_accent(palette):
+    path = theme.check_tick_path(palette)
+    assert path.is_file()
+    assert f'stroke="{palette.ON_ACCENT}"' in path.read_text()
+    assert path.as_posix() in theme.build_stylesheet(palette)
+
+
 @pytest.mark.parametrize(
         "palette",
         [theme.DARK, theme.LIGHT],

@@ -270,12 +270,23 @@ def register_display_font() -> None:
         load_fonts(bundled_dir("fonts"))
 
 
-def combo_chevron_path(palette: Palette) -> Path:
-    """The drop-down chevron drawn in `palette.TEXT_MUTED`. A QSS
-    `image:` takes a file, not a color, so each palette has its own
-    bundled SVG; `test_theme.py` fails if one drifts from its token."""
+def _palette_icon(stem: str, palette: Palette) -> Path:
+    """A QSS `image:` takes a file, not a color, so each palette has
+    its own bundled SVG; `test_theme.py` fails if one drifts from its
+    token."""
     name = "light" if palette == LIGHT else "dark"
-    return bundled_dir("icons") / f"combo_chevron_{name}.svg"
+    return bundled_dir("icons") / f"{stem}_{name}.svg"
+
+
+def combo_chevron_path(palette: Palette) -> Path:
+    """The drop-down chevron, drawn in `palette.TEXT_MUTED`."""
+    return _palette_icon("combo_chevron", palette)
+
+
+def check_tick_path(palette: Palette) -> Path:
+    """A checked checkbox's tick, drawn in `palette.ON_ACCENT` over the
+    ACCENT fill, so the state does not rest on colour alone."""
+    return _palette_icon("check_tick", palette)
 
 
 def set_dynamic_property(widget: QWidget, name: str, value: str | None) -> None:
@@ -1396,6 +1407,10 @@ QRadioButton::indicator {{
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     background-color: {palette.ACCENT};
     border-color: {palette.ACCENT};
+}}
+
+QCheckBox::indicator:checked {{
+    image: url("{check_tick_path(palette).as_posix()}");
 }}
 
 /* Keyboard focus thickens the indicator's border to 2px inside the
