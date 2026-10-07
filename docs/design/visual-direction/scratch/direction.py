@@ -1,11 +1,13 @@
 """Scratch only (S30): renders a visual direction over the real app.
 
-SEEKER_SCRATCH_DIRECTION=booth|harmonic selects one. Everything is a
+SEEKER_SCRATCH_DIRECTION=booth|booth-violet|harmonic selects one. Everything is a
 monkeypatch applied before the window exists; no repository file
 changes. Imported by render.py.
 """
 import colorsys
 import os
+import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
@@ -79,6 +81,25 @@ BOOTH_LIGHT = Palette(
     WARNING="#9E5C00",
     DANGER="#C22B2B",
     ON_ACCENT="#FFFFFF",
+)
+
+# Booth with a violet accent in place of the waveform blue. Surfaces,
+# status colours and type are Booth's own.
+BOOTH_VIOLET_DARK = replace(
+    BOOTH_DARK,
+    ACCENT="#9A7DFF",
+    ACCENT_HOVER="#AA91FF",
+    ACCENT_PRESSED="#8A6BF5",
+    ACCENT_SUBTLE="#262236",
+    ON_ACCENT="#120E1F",
+)
+
+BOOTH_VIOLET_LIGHT = replace(
+    BOOTH_LIGHT,
+    ACCENT="#6440E6",
+    ACCENT_HOVER="#5734D6",
+    ACCENT_PRESSED="#4A2BBD",
+    ACCENT_SUBTLE="#E9E4FB",
 )
 
 # --- Harmonic -----------------------------------------------------------
@@ -174,13 +195,13 @@ DEMO_ANALYSIS = {
 
 DIRECTIONS = {
     "booth": (BOOTH_DARK, BOOTH_LIGHT),
+    "booth-violet": (BOOTH_VIOLET_DARK, BOOTH_VIOLET_LIGHT),
     "harmonic": (HARMONIC_DARK, HARMONIC_LIGHT),
 }
 
 
 def _chevrons(dark: Palette, light: Palette) -> None:
-    out = HERE / "icons"
-    out.mkdir(exist_ok=True)
+    out = Path(tempfile.mkdtemp(prefix="seeker-chevrons-"))
     for name, palette in (("dark", dark), ("light", light)):
         (out / f"combo_chevron_{name}.svg").write_text(
             '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" '
@@ -361,14 +382,15 @@ def install(app: QApplication) -> None:
     _chevrons(dark, light)
 
     original_build = theme.build_stylesheet
-    extra = _booth_qss if name == "booth" else _harmonic_qss
+    booth = name.startswith("booth")
+    extra = _booth_qss if booth else _harmonic_qss
 
     def build(palette: Palette) -> str:
         return original_build(palette) + extra(palette)
 
     theme.build_stylesheet = build
 
-    if name == "booth":
+    if booth:
         for font in HERE.glob("fonts/*.ttf"):
             QFontDatabase.addApplicationFont(str(font))
         theme.style_determinate_progress_bar = _booth_progress
@@ -398,7 +420,7 @@ def install(app: QApplication) -> None:
         for row in range(table.rowCount()):
             label_item = table.item(row, 0)
             status = by_id[label_item.data(Qt.ItemDataRole.UserRole)]
-            if name == "booth":
+            if booth:
                 token, lit = _LED[status.state]
                 table.item(row, 1).setIcon(
                     led_icon(getattr(palette, token), lit, palette.BG_SURFACE),

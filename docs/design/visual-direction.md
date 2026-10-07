@@ -90,6 +90,44 @@ hardware: controls 4 px, cards 6 px, meter 2 px with 1 px segments.
 The mockup changed only the meter's radius. The others are this
 document's proposal.
 
+### Variant A′ — Booth with a violet accent
+
+The same Booth in every respect (graphite surfaces, LEDs, the amber
+meter, condensed titles), with violet in the accent's place: selection,
+focus, the one primary button, links, checked controls. Only the five
+accent tokens change.
+
+| | Dark | Light |
+|---|---|---|
+| Dashboard | ![](visual-direction/booth-violet-dashboard-dark.png) | ![](visual-direction/booth-violet-dashboard-light.png) |
+| Review | ![](visual-direction/booth-violet-review-dark.png) | ![](visual-direction/booth-violet-review-light.png) |
+| Settings | ![](visual-direction/booth-violet-settings-general-dark.png) | ![](visual-direction/booth-violet-settings-general-light.png) |
+| Wizard | ![](visual-direction/booth-violet-wizard-soulseek-dark.png) | ![](visual-direction/booth-violet-wizard-soulseek-light.png) |
+
+| Token | Dark | Light |
+|---|---|---|
+| `ACCENT` | `#9A7DFF` | `#6440E6` |
+| `ACCENT_HOVER` / `_PRESSED` / `_SUBTLE` | `#AA91FF` / `#8A6BF5` / `#262236` | `#5734D6` / `#4A2BBD` / `#E9E4FB` |
+| `ON_ACCENT` | `#120E1F` | `#FFFFFF` |
+
+| Pair | Floor | Dark | Light |
+|---|---|---|---|
+| ON_ACCENT / ACCENT | 4.5 | 6.09 | 6.14 |
+| ON_ACCENT / ACCENT_HOVER, _PRESSED | 4.5 | 7.40, 4.96 | 7.32, 8.85 |
+| ACCENT / BG_SURFACE (link text) | 4.5 | 5.20 | 5.88 |
+| ACCENT / BG_APP | 4.5 | 5.66 | 5.09 |
+| ON_ACCENT / DANGER | 3.0 | 6.51 | 5.72 |
+
+Every other pair is Booth's, in the main contrast table below.
+
+**Why today's violet fails, and this one does not.** Today's `#7C5CFF`
+sits in a dead zone: white on it is 4.35:1 and dark text on it 4.36:1,
+so no text colour reaches 4.5. Dark mode has to choose a side. A
+lighter, "lit" violet (`#9A7DFF`) carries dark text at 6.09:1, the
+same move as Booth's lit blue. Light mode keeps a deep violet under
+white text. The hue stays within a few degrees of today's, so it reads
+as the same brand colour.
+
 ---
 
 ## Direction B — "Harmonic"
@@ -249,7 +287,9 @@ with librosa running over every file, and it is not in the brief.
 
 ## Recommendation
 
-**Booth, without BPM and key on the Dashboard.**
+**Booth, without BPM and key on the Dashboard, with the violet
+accent (A′).** The case for Booth over Harmonic is below. The case for
+violet over blue follows it.
 
 - Booth spends its boldness on the status column, and that column *is*
   the primary job. It reads in a dark room at a glance, and it improves
@@ -264,6 +304,36 @@ with librosa running over every file, and it is not in the brief.
   a pattern the codebase already has (`_MEIPASS` resources, per-palette
   icon files, `style_determinate_progress_bar`).
 
+**Violet over blue (Kris asked, 2026-10-07).** Blue was chosen to
+echo a waveform display. Rendered side by side, violet is the better
+accent for this app:
+
+- *It is already Seeker's colour.* The app icon is violet eyes on
+  near-black (`packaging/icons/seeker_icon.icns`). A blue interface
+  under a violet Dock icon reads as two products, or else forces an
+  icon redraw before v0.1.0 that nobody asked for.
+- *What made today's theme generic was never the violet.* It was
+  violet everywhere: tinted surfaces, a tinted sidebar, a tinted
+  border, and a violet accent on top, so the whole window was one
+  mood. On neutral graphite, violet becomes a true accent: it marks
+  only selection, focus and the primary action. That is the
+  discipline the theme's own docstring asks for.
+- *It does as well against the LEDs.* Violet (hue 253°) is far from
+  all three status hues (green, amber 39°, red), so a selected row or
+  a link never reads as a status. Blue (214°) is the closer complement
+  to amber (175° apart against violet's 146°), but both separate
+  cleanly in the renders. This point is a tie, not a reason.
+- *What blue had that violet loses:* the literal hardware echo.
+  Booth's grounding now rests on the LEDs, the meter and the panel
+  lettering. Those are where it mattered, because the accent is the
+  quietest part of the design.
+
+The one honest risk: violet is a common accent for dark tools, so the
+accent alone will not make Seeker look distinct. In A′ it doesn't
+have to. The status column carries the identity, and the accent only
+has to stay out of the way and match the icon. On both counts violet
+does better than blue here.
+
 **If you want key and BPM visible somewhere,** the Harmonic pill would
 fit Library's tag results and Review's candidates better, where a file
 exists. Doing that well needs analysis at scan time first. That would
@@ -274,13 +344,20 @@ coloured keys on one table). Twelve key hues beside three status hues
 gives two competing colour systems on one row, which is exactly what
 "spend boldness in one place" rules out.
 
-### Found while rendering (affects S34 if Booth or Harmonic is chosen)
+### Found while rendering (affects S31–S34 whichever direction is chosen)
 
 - A decoration icon in a cell is not counted by the column fit or by
   `ElidedTextDelegate`'s secondary-text budget. With the LED, "Needs
   review (SoulSeek candidate found)" elides at 1280 px. With a key
   pill, a `SECONDARY_ROLE` "126 BPM" elided to "…". `fit_widths` and
   the delegate need the icon's width.
+- Booth's download percentage, moved beside the LED as
+  `SECONDARY_ROLE`, elides to "6…" in the Status column at 1280 px:
+  the same icon-width gap.
+- A checked checkbox is a solid `ACCENT` square with no tick, in
+  today's theme and in every direction. A tick is clearer and does not
+  rely on colour alone: one SVG per palette, like the combo chevron
+  (S31).
 - The wizard's step headings are `<h2>` rich text inside 9 px margins,
   outside the page-title QSS role. The mockups preview them in the
   title role; S33 makes that real.
@@ -290,7 +367,9 @@ gives two competing colour systems on one row, which is exactly what
 `visual-direction/scratch/` holds the monkeypatch module that rendered
 every image: `direction.py`, the palettes and painters;
 `render.py`, the harness driver; and `wheelsheet.py`, the pill sheet.
-It changes no repository file at runtime. To re-render, put the two
+It changes no repository file at runtime (its recoloured chevrons go
+to a temporary directory). `SEEKER_SCRATCH_DIRECTION` takes `booth`,
+`booth-violet` or `harmonic`. To re-render, put the two
 Barlow Semi Condensed TTFs in `scratch/fonts/`, then:
 
 ```
