@@ -45,7 +45,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "pytest-qt>=4.5.0",
-    "ruff>=0.16.4,<0.17",
+    "ruff>=0.16.10,<0.17",
     "scipy-stubs>=1.18.1.0",
 ]
 
