@@ -630,6 +630,10 @@ Each links to the HISTORY entry where the full investigation lives;
   only through `theme.set_indeterminate`, which drops the `::chunk`
   sheet. [HISTORY §177](docs/history/151-180.md#177),
   [§178](docs/history/151-180.md#178), [§184](docs/history/181-210.md#184)
+- **A titled section is `theme.section_card`** (its title in the
+  panel lettering, one muted sentence, then the controls), never a
+  `QGroupBox`, whose title draws in the system font; none is left in
+  `src/`. [HISTORY §189](docs/history/181-210.md#189)
 - **Background reading goes behind a `ui/disclosure.Disclosure`,
   after the page's working content** (Sharing's "How sharing works"),
   closed by default, its state a `SeekerConfig` field written on the
@@ -932,8 +936,7 @@ Genuinely open only — no "done" items, no flakes that resolved.
 - **The real DB still holds three nested library locations**
   (`Music`⊂`x9-pro`, `Test`⊂`x9-pro`, `Test`⊂`Music`), double-indexing
   ~3,450 files. The guard, detection and merge exist; the merge needs
-  the X9 Pro mounted, so Kris runs Settings → Library Locations →
-  Fix…, keeping `Music` (rehearsed on a copy: 43 matches kept, 0
+  the X9 Pro mounted, so Kris runs Settings → Library → Fix…, keeping `Music` (rehearsed on a copy: 43 matches kept, 0
   lost). [HISTORY §172](docs/history/151-180.md#172)
 - **CI is real and running (not billing-blocked) as of 2026-09-08 —
   the S1.1/§117 "never completed a real run" finding is superseded.**

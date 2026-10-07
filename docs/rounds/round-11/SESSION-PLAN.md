@@ -75,7 +75,7 @@ explicit yes.
 | ☑ S33 | Refresh: onboarding wizard (HISTORY §183) | §33 | ~110 K | None; small enough to finish |
 | ☑ S34 | Refresh: Dashboard and Library (part 1, the Dashboard: HISTORY §184; part 2, Library: HISTORY §185) | §34 | ~130 K | After the Dashboard |
 | ☑ S35a | Refresh: Search, Downloads, History, Duplicates (HISTORY §186) | §35 | ~120 K | Per page |
-| ☐ S35b | Refresh: Review, Sharing, Help, Support, Settings (part 1, Review and Sharing: HISTORY §187; part 2, Help and Support: HISTORY §188; part 3, Settings: next) | §35 | ~120 K | Per page |
+| ☑ S35b | Refresh: Review, Sharing, Help, Support, Settings (part 1, Review and Sharing: HISTORY §187; part 2, Help and Support: HISTORY §188; part 3, Settings: HISTORY §189) | §35 | ~120 K | Per page |
 | ☐ S36 | README images and final visual QA | §36 | ~80 K | None |
 | **Phase L — Docs** | | | | |
 | ☐ S37 | README and developer docs | §37 | ~110 K | After §37.1 |
@@ -240,7 +240,7 @@ checklist (carried items marked):
 - [ ] After S4: a Scan re-matches the two Denzel Curry tracks that are
       in limbo now.
 - [ ] After S26: the nested-location Fix… (the real click): X9 Pro
-      mounted, Settings → Library Locations → Fix…, keep `Music`
+      mounted, Settings → Library → Fix…, keep `Music`
       (HISTORY §172 has the rehearsed counts to compare).
 - [ ] *(carried from rounds 9 and 10)* The stress test:
       `SEEKER_RUN_STRESS_TEST=1 uv run pytest tests/test_stress_e2e.py`,
