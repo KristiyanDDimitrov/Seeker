@@ -18,11 +18,10 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.matching import (
-    AUTO_MATCH_THRESHOLD,
-    NEEDS_REVIEW_THRESHOLD,
     artist_matches,
     evaluate_match,
     resolve_text_source,
+    resolve_thresholds,
 )
 from seeker.models.library_result import MatchResult
 from seeker.models.local_file import LocalFile
@@ -194,15 +193,18 @@ class TrackMatcher:
         # wins over config; config wins over matching.py's hardcoded
         # default.
         config = self._get_config()
+        configured_auto, configured_needs_review = resolve_thresholds(
+            config.auto_match_threshold, config.needs_review_threshold,
+        )
         resolved_auto_threshold = (
             auto_match_threshold
             if auto_match_threshold is not None
-            else config.auto_match_threshold or AUTO_MATCH_THRESHOLD
+            else configured_auto
         )
         resolved_needs_review_threshold = (
             needs_review_threshold
             if needs_review_threshold is not None
-            else config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+            else configured_needs_review
         )
 
         counts = MatchResult()

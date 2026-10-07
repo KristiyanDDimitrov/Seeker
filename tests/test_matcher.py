@@ -224,6 +224,34 @@ def test_match_all_resolves_threshold_from_config_end_to_end(tmp_path):
     assert counts_after.auto == 1
 
 
+def test_a_saved_needs_review_threshold_of_zero_is_used_not_the_default(
+        tmp_path,
+):
+    # Settings accepts 0-100, so 0 is a real setting, not "unset".
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    config = SeekerConfig(
+        auto_match_threshold=80.0, needs_review_threshold=0.0,
+    )
+    matcher = TrackMatcher(
+        database,
+        TrackRepository(),
+        LocalFileRepository(),
+        TrackMatchRepository(),
+        get_config=lambda: config,
+    )
+    track = make_track()
+    local_file = make_local_file(tag_title="Blinding Lights (Radio Edit)")
+    match = find_best_match(track, [local_file])
+    assert match is not None
+    assert match[1] < NEEDS_REVIEW_THRESHOLD
+    seed(matcher, track, local_file)
+
+    counts = matcher.match_all()
+
+    assert counts == MatchResult(auto=0, needs_review=1, unmatched=0)
+
+
 def test_untagged_file_matches_via_filename_alone():
     # Real case: a WAV with no tags at all (mutagen extracted nothing),
     # matched purely off its "Artist - Title"-style filename. This used

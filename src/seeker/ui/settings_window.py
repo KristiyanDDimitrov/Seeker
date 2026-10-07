@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
-from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
+from seeker.matching import resolve_thresholds
 from seeker.models.library_location import LibraryLocation
 from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
@@ -1469,9 +1469,8 @@ class SettingsPage(QWidget):
     def _load_threshold_fields(self) -> None:
         config = self.application.settings
 
-        auto_threshold = config.auto_match_threshold or AUTO_MATCH_THRESHOLD
-        needs_review_threshold = (
-            config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        auto_threshold, needs_review_threshold = resolve_thresholds(
+            config.auto_match_threshold, config.needs_review_threshold,
         )
 
         self.auto_match_threshold_field.setValue(auto_threshold)

@@ -40,7 +40,7 @@ from seeker.errors import (
     PlaylistNotFoundError,
     SeekerError,
 )
-from seeker.matching import AUTO_MATCH_THRESHOLD, NEEDS_REVIEW_THRESHOLD
+from seeker.matching import resolve_thresholds
 from seeker.models.download_request import (
     DownloadRequest,
     DownloadRole,
@@ -282,11 +282,8 @@ class DownloadService:
         # download_playlist() call, so a Settings-driven change takes
         # effect on the next run with no restart needed.
         config = self._get_config()
-        auto_match_threshold = (
-            config.auto_match_threshold or AUTO_MATCH_THRESHOLD
-        )
-        needs_review_threshold = (
-            config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        auto_match_threshold, needs_review_threshold = resolve_thresholds(
+            config.auto_match_threshold, config.needs_review_threshold,
         )
 
         result = PlaylistDownloadResult(total=len(unmatched_tracks))
@@ -503,11 +500,8 @@ class DownloadService:
             )
 
         config = self._get_config()
-        auto_match_threshold = (
-            config.auto_match_threshold or AUTO_MATCH_THRESHOLD
-        )
-        needs_review_threshold = (
-            config.needs_review_threshold or NEEDS_REVIEW_THRESHOLD
+        auto_match_threshold, needs_review_threshold = resolve_thresholds(
+            config.auto_match_threshold, config.needs_review_threshold,
         )
 
         search_results = (

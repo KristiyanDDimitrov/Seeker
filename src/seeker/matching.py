@@ -31,6 +31,22 @@ NEEDS_REVIEW_THRESHOLD = 70.0
 # artist. Untuned, same as the two thresholds above.
 ARTIST_UNCONFIRMED_SCORE_CAP = AUTO_MATCH_THRESHOLD - 1
 
+
+def resolve_thresholds(
+        auto_match_threshold: float | None,
+        needs_review_threshold: float | None,
+) -> tuple[float, float]:
+    """The saved (auto-match, needs-review) thresholds, each falling
+    back to its default only when unset. `is None`, never `or`: 0 is a
+    threshold Settings accepts."""
+    return (
+        AUTO_MATCH_THRESHOLD if auto_match_threshold is None
+        else auto_match_threshold,
+        NEEDS_REVIEW_THRESHOLD if needs_review_threshold is None
+        else needs_review_threshold,
+    )
+
+
 TRACK_NUMBER_PREFIX_RE = re.compile(r"^\s*\d{1,3}\s*[-.]\s*")
 TRAILING_SEPARATOR_RE = re.compile(
     r"[\s\-–—.]+$"  # noqa: RUF001 -- en/em dash are real seps, not typos
