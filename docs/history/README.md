@@ -13,11 +13,11 @@ heading, so `file#N` lands on it. Link to an entry as
 heading-derived GitHub anchor, which breaks whenever a title changes.
 
 **Adding an entry (every session, per the round brief's §0.6).**
-Append it to the end of the last file, `151-180.md`: a
+Append it to the end of the last file, `181-210.md`: a
 `<a name="N"></a>` line directly above `### N — <title>`, numbering
 continuing from the last entry. Then add its line to that file's list
 below, in the same format. When the next number passes the last
-file's range, open the next range file (`151-180.md`, …) and add a
+file's range, open the next range file (`211-240.md`, …) and add a
 section for it here. Never renumber, move or rename an existing entry
 or file: every `file#N` link depends on both staying put. Keep each
 file under about 150 KB.
@@ -37,7 +37,8 @@ file under about 150 KB.
 | [`072-107.md`](072-107.md) | §72–§107: rounds 1–5 (the P, R, B and C series) |
 | [`108-120.md`](108-120.md) | §109–§120: rounds 6–8 (toolchain, security, Phase 6) |
 | [`121-150.md`](121-150.md) | §121–§150: rounds 9–11 |
-| [`151-180.md`](151-180.md) | §151 onward: round 11. **New entries go here.** |
+| [`151-180.md`](151-180.md) | §151–§180: round 11 |
+| [`181-210.md`](181-210.md) | §181 onward: round 11. **New entries go here.** |
 
 No entry was ever written for §37, §57–§61, §97 or §108; those numbers
 are unused, not missing files. §62 exists only as a follow-up heading
@@ -263,3 +264,7 @@ under their entry and live in the same file, after it.
 - §178 — Round 11 S29 part 1 (§29.1): Review candidates show their file name with quality and peer as `SECONDARY_ROLE` text (a palette-blended colour, ≥5.9:1), local matches show the file's tags, section titles count their rows; the tall-row bug is a render before first show, fixed by §176 and now regression-tested → [151-180.md#178](151-180.md#178)
 - §179 — Round 11 S29 part 2 (§29.2–§29.3): Settings tabs by job (General, Library, Connections, Matching); thresholds as 0–100 spin boxes, needs-review below auto, a warning below 80; a saved threshold of 0 no longer reads as unset (`resolve_thresholds`); the Back button removed (sidebar only); Library's options and actions grouped by job, scrolling; "Tag selected" names the Dashboard's selection → [151-180.md#179](151-180.md#179)
 - §180 — Round 11 S30 (§30.1–§30.2): "Booth" and "Harmonic" rendered over the real widgets by a scratch monkeypatch module; `docs/design/visual-direction.md` (tokens, contrast, Lucide, recommendation Booth without BPM/key); equal-contrast wheel hues; 3 of 6,921 real files carry a key; a decoration icon is invisible to the column fit; stopped at §30.3; Kris picked Booth violet (A′), no BPM/key, 2026-10-07 → [151-180.md#180](151-180.md#180)
+
+### `181-210.md`
+
+- §181 — Round 11 S31 (§31.1–§31.4): Booth violet tokens with AA floors on every accent and status pair; `theme.active_palette()` replaces the module-token bridge; Barlow Semi Condensed bundled (titles 26 px SemiBold, section headers 16 px Medium); status lamps (`ui/status_lamp.py`); a checkbox tick; the cell-widget pixel test is order-dependent on Cocoa → [181-210.md#181](181-210.md#181)

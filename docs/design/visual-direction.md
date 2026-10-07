@@ -377,7 +377,10 @@ SEEKER_SCRATCH_DIRECTION=booth uv run python docs/design/visual-direction/scratc
 ```
 
 It is reference material for S31, not product code: it reaches into
-private names, and `ruff`/`mypy` do not cover it.
+private names, and `ruff`/`mypy` do not cover it. It was written against the theme
+before S31, which removed the module-level colour names it reads
+(`theme.WARNING`, `theme.TEXT`); re-rendering it today needs those two
+reads changed to `theme.active_palette()`.
 
 ---
 
