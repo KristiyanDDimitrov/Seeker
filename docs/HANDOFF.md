@@ -17,7 +17,7 @@ nine fields below follow the contract in
   `[light]`, failing identically on the pre-session `4cd9329`
   (`2 failed, 2000 passed`); environmental, see §4. `mypy --strict src/` clean,
   138 files; `ruff check src tests tools` 0.
-- **CI:** pending for the close-out push (recorded in the next commit).
+- **CI:** `aea4ccc`'s run `37685387304` green.
 
 ## 2. Where we are
 
