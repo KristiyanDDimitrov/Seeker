@@ -1,3 +1,8 @@
+import pytest
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget
+
+from seeker.ui import theme
 from seeker.ui.notice import InlineNotice
 from seeker.ui.widgets import CloseButton
 
@@ -123,3 +128,37 @@ def test_the_dismiss_control_is_a_named_cross_not_a_letter(qtbot):
     assert isinstance(button, CloseButton)
     assert button.text() == ""
     assert button.accessibleName() == "Dismiss"
+
+
+_EDGE_TOKENS = {
+    "info": "TEXT_MUTED",
+    "success": "SUCCESS",
+    "warning": "WARNING",
+    "error": "DANGER",
+}
+
+
+@pytest.mark.parametrize("palette", [theme.DARK, theme.LIGHT], ids=["dark", "light"])
+@pytest.mark.parametrize("kind", list(_EDGE_TOKENS))
+def test_a_notice_lights_only_its_left_edge(qtbot, palette, kind):
+    # The variant colour marks the left edge alone, like a lamp; the
+    # rest of the frame is the ordinary hairline. Info is not the
+    # accent, which marks only selection, focus and the primary action.
+    host = QWidget()
+    qtbot.addWidget(host)
+    host.setStyleSheet(theme.build_stylesheet(palette))
+    notice = InlineNotice(host)
+    notice.show_message("Scan finished.", kind)
+    notice.resize(400, 48)
+    host.resize(400, 48)
+    host.show()
+    qtbot.waitExposed(host)
+
+    image = notice.grab().toImage()
+    scale = image.width() / notice.width()
+    middle_y = image.height() // 2
+    left_edge = image.pixelColor(round(1 * scale), middle_y)
+    top_edge = image.pixelColor(image.width() // 2, 0)
+
+    assert left_edge == QColor(getattr(palette, _EDGE_TOKENS[kind]))
+    assert top_edge == QColor(palette.BORDER)

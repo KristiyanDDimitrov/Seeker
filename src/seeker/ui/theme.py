@@ -1003,37 +1003,31 @@ QLabel#wordmark {{
 
 
 def _notice_qss(palette: Palette) -> str:
-    """InlineNotice and its four variant borders."""
+    """InlineNotice and its four variants' lit edges."""
     return f"""\
-/* InlineNotice's border color comes from its `[variant]` dynamic
-property, never a per-instance setStyleSheet() (dead on a theme switch,
-same class as the selectors above). Same `[variant]` dynamic-property
-mechanism QPushButton's own primary/danger variants already use
-(theme.set_variant()) — InlineNotice reuses that exact helper rather
-than inventing a second one. */
+/* A notice is a raised panel with its left edge lit in its variant's
+colour, like a lamp; the rest of the frame stays the ordinary hairline,
+so a stack of notices never reads as a row of alarms. Info's edge is
+muted, not ACCENT, which marks only selection, focus and the primary
+action. The variant is InlineNotice's `[variant]` dynamic property
+(theme.set_variant()), so a theme switch restyles it. */
 InlineNotice {{
     background-color: {palette.BG_SURFACE_2};
+    border: 1px solid {palette.BORDER};
+    border-left: 3px solid {palette.TEXT_MUTED};
     border-radius: {RADIUS_CONTROL}px;
 }}
 
-InlineNotice[variant="info"] {{
-    border: 1px solid {palette.ACCENT};
-    border-left: 3px solid {palette.ACCENT};
-}}
-
 InlineNotice[variant="success"] {{
-    border: 1px solid {palette.SUCCESS};
-    border-left: 3px solid {palette.SUCCESS};
+    border-left-color: {palette.SUCCESS};
 }}
 
 InlineNotice[variant="warning"] {{
-    border: 1px solid {palette.WARNING};
-    border-left: 3px solid {palette.WARNING};
+    border-left-color: {palette.WARNING};
 }}
 
 InlineNotice[variant="error"] {{
-    border: 1px solid {palette.DANGER};
-    border-left: 3px solid {palette.DANGER};
+    border-left-color: {palette.DANGER};
 }}
 
 """
