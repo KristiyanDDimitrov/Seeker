@@ -70,6 +70,7 @@ from seeker.ui.window_lifecycle import (
     WindowLifecycleController,
     WindowLifecycleHost,
 )
+from seeker.ui.wordmark import BROW_ROOM_PX, Wordmark
 from seeker.ui.workers import run_worker
 from seeker.update_check import UpdateCheckResult, UpdateStatus, check_for_update
 
@@ -669,21 +670,14 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(
-            theme.SPACING_MD, theme.SPACING_LG,
+            theme.SPACING_MD, theme.SPACING_LG - BROW_ROOM_PX,
             theme.SPACING_MD, theme.SPACING_LG,
         )
         layout.setSpacing(theme.SPACING_XS)
 
         wordmark_row = QHBoxLayout()
         wordmark_row.setContentsMargins(0, 0, 0, 0)
-        # A plain QLabel, not a custom-painted widget: a painted
-        # wordmark's own `sizeHint()` still rendered clipped at the
-        # bottom on a real Mac, while a QLabel reserves its font's
-        # ascent/descent internally. Styled entirely via
-        # `QLabel#wordmark` in `build_stylesheet` (theme.py), so it
-        # re-themes for free on `setStyleSheet()`. See HISTORY §114.
-        self._wordmark = PlainLabel("Seeker")
-        self._wordmark.setObjectName("wordmark")
+        self._wordmark = Wordmark()
         wordmark_row.addWidget(self._wordmark)
         wordmark_row.addStretch()
         # Right-aligned on the wordmark's own row, cycling system ->

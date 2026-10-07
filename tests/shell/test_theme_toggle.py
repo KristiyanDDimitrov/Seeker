@@ -5,9 +5,6 @@ rendering.
 from dataclasses import astuple
 
 import pytest
-from PySide6.QtWidgets import (
-    QLabel,
-)
 
 from fakes import (
     FakeApplication,
@@ -18,21 +15,18 @@ from seeker.ui.main_window import (
     MainWindow,
 )
 from seeker.ui.widgets import ThemeToggleButton
+from seeker.ui.wordmark import Wordmark
 
-# --- Roadmap item E4 (round 7): wordmark, plain QLabel, no brows ------------
+# --- The wordmark never clips (HISTORY §114) --------------------------------
 
 
 def test_wordmark_bottom_row_has_no_text_colored_pixel(qtbot):
-    # Roadmap item E4.5 (round 7) — the actual invariant the user cares
-    # about, which the deleted `_Wordmark`'s own D1.3 test never
-    # expressed (it asserted a `sizeHint()` number, not a real pixel):
-    # nothing in the rendered label may touch its own bottom edge. A
-    # plain QLabel reserves real font-metric ascent/descent internally,
-    # so this holds structurally rather than by any hand-tuned padding
-    # constant. Real pixel scan (item 77's own lesson — geometry alone
-    # can't prove a paint result), not a geometry-only check.
-    label = QLabel("Seeker")
-    label.setObjectName("wordmark")
+    # Nothing in the rendered wordmark may touch its own bottom edge.
+    # The word is a plain QLabel, which reserves its font's ascent and
+    # descent, and the brows are an overlay it never measures, so this
+    # holds by construction. A pixel scan, since geometry alone cannot
+    # prove what was painted.
+    label = Wordmark()
     qtbot.addWidget(label)
     from seeker.ui import theme as theme_module
     label.setStyleSheet(theme_module.build_stylesheet(theme_module.DARK))
