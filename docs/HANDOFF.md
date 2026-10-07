@@ -18,8 +18,7 @@ nine fields below follow the contract in
   passed this run; it is order-dependent (§181) and failed in an
   earlier full run this session. `mypy --strict src/` clean, 137
   files; `ruff check src tests tools` 0.
-- **CI:** pending for the close-out push; recorded here once the run
-  finishes.
+- **CI:** `e2d7653`'s run `37638242820` green.
 
 ## 2. Where we are
 
