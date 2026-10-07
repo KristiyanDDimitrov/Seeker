@@ -63,7 +63,6 @@ from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTIONS, SETTINGS_TAB_LIBRARY
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
-from seeker.ui.widgets import TwoToneProgressBar
 from seeker.ui.workers import run_worker
 
 _STATE_LABELS = {
@@ -934,22 +933,14 @@ class DashboardPage(QWidget):
                         status.total_bytes
                         and status.bytes_transferred is not None
                     )
-                    progress = TwoToneProgressBar()
+                    progress = QProgressBar()
+                    progress.setFixedWidth(theme.METER_WIDTH)
                     progress.setMaximum(status.total_bytes)
                     progress.setValue(status.bytes_transferred)
-                    theme.style_determinate_progress_bar(progress)
-                    # A bare QProgressBar handed to setCellWidget gets
-                    # resized to the whole (tall) cell rect, then the global
-                    # `QProgressBar { max-height: 14px; }` rule clamps it to
-                    # the TOP instead of centering it — the identical bug
-                    # HISTORY §96 fixed on the Downloads page, in this
-                    # Dashboard-only builder that fix never touched
-                    # (HISTORY §105). `theme.wrap_progress_bar` is the one
-                    # shared container both pages now go through (moved out
-                    # of main_window.py alongside the Downloads page itself,
-                    # the moment a second caller needed it — HISTORY §119);
-                    # the Dashboard deliberately passes no label (`None`) —
-                    # no ETA is tracked per-track here, unlike Downloads.
+                    theme.style_meter(progress)
+                    # Wrapped, or the cell's height clamps the bar to
+                    # its top (HISTORY §96, §105). No label: the
+                    # percentage is the status cell's secondary text.
                     self.track_table.setCellWidget(
                         row, 2, theme.wrap_progress_bar(progress, None),
                     )

@@ -645,7 +645,7 @@ class MainWindow(QMainWindow):
             )
             self.activity_strip_bar.setRange(0, total)
             self.activity_strip_bar.setValue(current)
-            theme.style_determinate_progress_bar(self.activity_strip_bar)
+            theme.style_meter(self.activity_strip_bar)
         else:
             self.activity_strip_label.setText(label)
             theme.set_indeterminate(self.activity_strip_bar)

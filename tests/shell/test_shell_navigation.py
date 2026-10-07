@@ -198,6 +198,10 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
     assert window.activity_strip_bar.minimum() == 0
     assert window.activity_strip_bar.maximum() == 100
     assert window.activity_strip_bar.value() == 40
+    # Work in progress is cue amber, as on the Dashboard's meters.
+    assert theme.active_palette().WARNING in (
+        window.activity_strip_bar.styleSheet()
+    )
 
 
 def test_main_window_has_a_settings_button(qtbot):

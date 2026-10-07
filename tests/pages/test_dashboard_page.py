@@ -739,31 +739,25 @@ def test_needs_review_status_cell_has_tooltip_other_states_dont(qtbot):
     assert window._dashboard_page.track_table.item(1, 1).toolTip() == ""
 
 
-def test_dashboard_downloading_progress_bar_gets_the_accent_chunk_style(qtbot):
-    # This cell is only ever rendered determinate (blank otherwise — see
-    # _render_track_statuses), but it shares theme.py's
-    # style_determinate_progress_bar() with the Downloads tab's own bar,
-    # so it needs the identical guard against a regression that skips
-    # applying it.
+def test_a_download_is_a_segmented_amber_meter(qtbot):
+    # The percentage sits beside the lamp, so the meter has no label;
+    # the cell widget wraps the bar (theme.wrap_progress_bar).
     status = TrackStatus(
         track=make_track("t1"), state=DOWNLOADING,
         bytes_transferred=500, total_bytes=1_000,
     )
-    application = FakeApplication()
-    window = MainWindow(application)
+    window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
 
     window._dashboard_page._render_track_statuses([status])
 
-    # Roadmap item C3 (round 5) — this cell widget is now wrapped by
-    # _wrap_progress_bar (see the test just below for why: a bare bar
-    # here reproduced the exact same top-clamped-bar bug B4/item 96
-    # fixed on the Downloads page), so the real QProgressBar is a
-    # child of the cell widget, not the cell widget itself.
     container = window._dashboard_page.track_table.cellWidget(0, 2)
     bar = container.findChild(QProgressBar)
-    assert bar is not None
-    assert "chunk" in bar.styleSheet()
+    sheet = bar.styleSheet()
+    assert theme.active_palette().WARNING in sheet
+    assert f"width: {theme.METER_SEGMENT_WIDTH}px" in sheet
+    assert bar.isTextVisible() is False
+    assert bar.width() == theme.METER_WIDTH
 
 
 def test_tag_button_appears_only_for_in_library_tracks(qtbot):

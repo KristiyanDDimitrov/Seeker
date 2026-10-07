@@ -230,6 +230,13 @@ RADIUS_CARD = 6
 PROGRESS_BAR_HEIGHT = 14
 PROGRESS_BAR_RADIUS = PROGRESS_BAR_HEIGHT // 2
 
+# A meter: determinate progress drawn as a hardware level meter, lit
+# segments on a squarer track. Its width fits the Progress header.
+METER_WIDTH = 72
+METER_RADIUS = 2
+METER_SEGMENT_WIDTH = 5
+METER_SEGMENT_GAP = 1
+
 # A status chip is a pill, its radius derived the same way.
 CHIP_HEIGHT = 26
 CHIP_RADIUS = CHIP_HEIGHT // 2
@@ -330,6 +337,25 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
         f"QProgressBar::chunk {{"
         f"  background-color: {active_palette().ACCENT};"
         f"  border-radius: {PROGRESS_BAR_RADIUS}px;"
+        f"}}"
+    )
+
+
+def style_meter(bar: QProgressBar) -> None:
+    """Determinate progress as a meter: cue-amber segments (work in
+    progress, the same amber as a working lamp) and no label; the
+    percentage, where one shows, is text beside it. A per-instance
+    sheet for the reason `style_determinate_progress_bar` gives, so
+    call it again after a theme switch."""
+    bar.setTextVisible(False)
+    bar.setFormat("")
+    bar.setStyleSheet(
+        f"QProgressBar {{ border-radius: {METER_RADIUS}px; }}"
+        f"QProgressBar::chunk {{"
+        f"  background-color: {active_palette().WARNING};"
+        f"  width: {METER_SEGMENT_WIDTH}px;"
+        f"  margin: {METER_SEGMENT_GAP}px;"
+        f"  border-radius: 1px;"
         f"}}"
     )
 

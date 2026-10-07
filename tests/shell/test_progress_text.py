@@ -102,7 +102,9 @@ def test_the_percentage_reads_on_the_fill_and_on_the_track(
                 screenshots.settle(qapp, window)
             for bar in window.findChildren(QProgressBar):
                 # The activity strip's bar never shows a label, and an
-                # indeterminate bar has none (its text() is empty).
+                # indeterminate bar or a meter (theme.style_meter, its
+                # percentage beside it as cell text) has none: its
+                # text() is empty, so no label is painted to measure.
                 if (
                         bar is window.activity_strip_bar
                         or not bar.isVisible()
