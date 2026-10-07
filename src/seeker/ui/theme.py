@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QProgressBar,
     QProxyStyle,
     QPushButton,
@@ -467,6 +468,37 @@ def make_card(inner: QWidget) -> QFrame:
     inner.setObjectName("cardInner")
     layout.addWidget(inner)
     return frame
+
+
+def section_card(
+        title: str, explanation: str, *rows: QWidget | QLayout,
+) -> QFrame:
+    """One job's card: its title in the panel lettering, one sentence
+    saying what its controls do, then the controls. The title is also
+    the card's accessible name."""
+    inner = QWidget()
+    layout = QVBoxLayout(inner)
+    layout.setContentsMargins(SPACING_MD, SPACING_MD, SPACING_MD, SPACING_MD)
+    layout.setSpacing(SPACING_SM)
+
+    heading = PlainLabel(title)
+    heading.setObjectName("sectionHeaderLabel")
+    layout.addWidget(heading)
+
+    label = PlainLabel(explanation)
+    label.setWordWrap(True)
+    label.setProperty("badge", "muted")
+    layout.addWidget(label)
+
+    for row in rows:
+        if isinstance(row, QLayout):
+            layout.addLayout(row)
+        else:
+            layout.addWidget(row)
+
+    card = make_card(inner)
+    card.setAccessibleName(title)
+    return card
 
 
 def action_row(*widgets: QWidget) -> QHBoxLayout:

@@ -13,9 +13,7 @@ from dataclasses import dataclass
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QFrame,
     QLabel,
-    QLayout,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -30,7 +28,6 @@ from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext
-from seeker.ui.plain_text import PlainLabel
 from seeker.ui.tag_result_panel import (
     TagResultPanel,
     summarize_fix_art_result,
@@ -38,39 +35,6 @@ from seeker.ui.tag_result_panel import (
     summarize_tag_result,
 )
 from seeker.ui.workers import run_worker
-
-
-def _action_group(
-        title: str, explanation: str, *rows: QWidget | QLayout,
-) -> QFrame:
-    """One job's card: its title in the panel lettering, one sentence
-    saying what its controls do, then the controls. A row of buttons
-    wraps rather than widening the narrow column the cards stack in.
-    The title is also the card's accessible name."""
-    inner = QWidget()
-    layout = QVBoxLayout(inner)
-    margin = theme.SPACING_MD
-    layout.setContentsMargins(margin, margin, margin, margin)
-    layout.setSpacing(theme.SPACING_SM)
-
-    heading = PlainLabel(title)
-    heading.setObjectName("sectionHeaderLabel")
-    layout.addWidget(heading)
-
-    label = PlainLabel(explanation)
-    label.setWordWrap(True)
-    label.setProperty("badge", "muted")
-    layout.addWidget(label)
-
-    for row in rows:
-        if isinstance(row, QLayout):
-            layout.addLayout(row)
-        else:
-            layout.addWidget(row)
-
-    card = theme.make_card(inner)
-    card.setAccessibleName(title)
-    return card
 
 
 def _button_flow(*buttons: QPushButton) -> FlowLayout:
@@ -171,11 +135,11 @@ class TaggingPanel(QWidget):
             self._on_tag_playlist_clicked
         )
 
-        controls.addWidget(_action_group(
+        controls.addWidget(theme.section_card(
             "Tags", help_text.LIBRARY_TAGS_TEXT,
             _button_flow(self.tag_selected_button, self.tag_playlist_button),
         ))
-        controls.addWidget(_action_group(
+        controls.addWidget(theme.section_card(
             "Tag options", help_text.LIBRARY_TAG_OPTIONS_TEXT,
             self.analyze_audio_checkbox,
             theme.action_row(self.bpm_min_edit, self.bpm_max_edit),
@@ -204,7 +168,7 @@ class TaggingPanel(QWidget):
             self._on_fill_missing_art_urls_clicked
         )
 
-        controls.addWidget(_action_group(
+        controls.addWidget(theme.section_card(
             "Cover art", help_text.LIBRARY_COVER_ART_TEXT,
             _button_flow(
                 self.fix_missing_art_button,
@@ -223,7 +187,7 @@ class TaggingPanel(QWidget):
             self._on_rename_files_clicked
         )
 
-        controls.addWidget(_action_group(
+        controls.addWidget(theme.section_card(
             "File names", help_text.LIBRARY_FILE_NAMES_TEXT,
             _button_flow(self.rename_files_button),
         ))
