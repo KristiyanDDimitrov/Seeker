@@ -18,7 +18,8 @@ nine fields below follow the contract in
   `860d521` before any S31 change (§181). The same files pass under
   `QT_QPA_PLATFORM=offscreen` (289 passed). `mypy --strict src/` clean,
   134 files; `ruff check src tests tools` 0.
-- **CI:** recorded in the final message of the session that pushed this.
+- **CI:** `096acd0`'s run `37614880162` green (offscreen, so the
+  Cocoa-only pixel failure does not reach it).
 
 ## 2. Where we are
 
@@ -53,24 +54,17 @@ Evidence in HISTORY §180 (the pick) and §181.
 - **`ON_ACCENT` is dark ink in dark mode** (`#120E1F` on the lit
   `#9A7DFF`, 6.09:1), white in light. White on the dark accent is
   3.1:1; never put white text on it.
-- **Status lamps are ready, not placed.** S34 puts `lamp_icon` in the
-  Dashboard's Status cells, S35a in Downloads'. Both must make
-  `fit_widths` and `ElidedTextDelegate` count the icon's width (§180:
-  otherwise "Needs review (SoulSeek candidate found)" elides at 1280).
-  The segmented amber meter (`WARNING` chunks, per-instance QSS through
-  `style_determinate_progress_bar`) is S34's too. A global `::chunk`
-  rule still kills the indeterminate animation.
-- **Display type is QSS-only:** `QLabel#pageTitleLabel`, `#wordmark`
-  and `#sectionHeaderLabel` carry `DISPLAY_FAMILY`. A new title role
-  uses those tokens; body text stays on the system font.
-- **Bundled resources go through `theme.bundled_dir(name)`**
-  (`packaging/<name>/` from source, `_MEIPASS/<name>` frozen). S32's
-  nav SVGs belong in `packaging/icons/`, with one file per palette
-  (`_palette_icon`) if the icon is drawn in a token colour.
-- **Lucide's page-to-icon names are still unconfirmed** (S32).
-- **The scratch mockup module no longer runs as-is:** it reads
-  `theme.WARNING`/`theme.TEXT` (`visual-direction.md` → "Reproducing
-  the mockups").
+- **Status lamps are ready, not placed** (S34 Dashboard, S35a
+  Downloads). `fit_widths` and `ElidedTextDelegate` must count the
+  icon's width, or Status elides at 1280 (§180). S34 also owns the
+  segmented amber meter: per-instance QSS only, since a global
+  `::chunk` rule kills the indeterminate animation.
+- **Display type is QSS-only** (`#pageTitleLabel`, `#wordmark`,
+  `#sectionHeaderLabel`); body text stays on the system font.
+- **Bundled resources: `theme.bundled_dir(name)`**; a token-coloured
+  SVG gets one file per palette (`_palette_icon`). S32's nav icons too.
+- Lucide's page-to-icon names are unconfirmed (S32). The scratch
+  mockup module no longer runs as-is (`visual-direction.md`).
 - Carried: `MainWindow` does not apply the theme, `main_ui.py` does;
   radon is not in the env; never touch slskd or real data; zsh does
   not word-split `$var`; reproduce CI-only UI failures with
@@ -85,15 +79,12 @@ Evidence in HISTORY §180 (the pick) and §181.
 - **Section headers use Barlow Medium, titles SemiBold.** It answers
   S30's open question; rendered on Sharing, Medium reads as a header
   without competing with the title. Both bundled weights are now used.
-- **Queued downloads light amber (`CUE`), not a neutral lamp.** The
-  user's part is done; the wait is on the network. Superseded requests
-  are `STANDBY`, a faint ring.
-- **The status-colour floors are 4.5 on a surface (text) and 3.0 on
-  the page ground and a selected row (mark).** Light `SUCCESS` on
-  `BG_APP` is 4.14, so a status colour as *text* belongs on a surface.
-- **New HISTORY range file `181-210.md`.** `151-180.md` is full.
-- CLAUDE.md gained the `active_palette()` rule and `status_lamp.py` in
-  the layout.
+- **Queued downloads light amber (`CUE`):** the wait is on the
+  network, not the user. Superseded is `STANDBY`, a faint ring.
+- **Status colours: 4.5 on a surface (text), 3.0 on the page ground
+  and a selected row (mark).** As text, they belong on a surface.
+- **New HISTORY range file `181-210.md`.** CLAUDE.md gained the
+  `active_palette()` rule and `status_lamp.py`.
 
 ## 6. Blockers
 
@@ -101,7 +92,7 @@ None.
 
 ## 7. Files in progress
 
-None. S31 finished, with no split.
+None.
 
 ## 8. Waiting on Kris
 
@@ -119,15 +110,11 @@ real Mac; hover tooltips on elided cells; the carried list in
 
 ## 9. Open questions
 
-- **The cell-widget pixel test on Cocoa:** order-dependent (§181), the
-  row pixel tinted a few units toward the accent. Is it hover from the
-  cursor? A fix would move the cursor off-screen or clear hover before
-  the grab. It does not affect CI.
-- **Result messages still on status labels:** Settings' destinations,
-  Spotify, Test connection and credentials (`settings_window.py`
-  ~:577–1161), and 12 sites on Duplicates (`duplicates_page.py`
-  :440–979). One channel migration; fold it into S35a/S35b or give it
-  its own commit.
+- **The cell-widget pixel test on Cocoa** is order-dependent (§181):
+  hover from the cursor? It does not affect CI.
+- **Result messages still on status labels:** `settings_window.py`
+  ~:577–1161 and 12 sites in `duplicates_page.py` :440–979; fold into
+  S35a/S35b or its own commit.
 - Carried unchanged: the Spotify wait not cancelled on close; the
   late-worker button defect (§148); four CLI items (§156); the
   unrecorded transfer id and leftover `.tmp` files (X1); why a shared
