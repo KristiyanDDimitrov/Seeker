@@ -36,6 +36,18 @@ DASHBOARD_TAB_SUBTITLE = (
     "Pick a playlist on the left to see each track's status, and "
     "download what's missing."
 )
+LIBRARY_TAGS_TEXT = (
+    "Write Spotify's artist, title, album and cover art into the "
+    "matched files."
+)
+LIBRARY_COVER_ART_TEXT = (
+    "Repair cover art without touching the text tags, fetching it from "
+    "Spotify where a track has none."
+)
+LIBRARY_FILE_NAMES_TEXT = (
+    "Rename the matched files to 'Artist - Title', after a preview you "
+    "confirm."
+)
 LIBRARY_TAB_SUBTITLE = (
     "Tag downloaded tracks with Spotify's metadata, fix missing cover "
     "art, and rename files to match — pick the playlist to act on "

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -25,9 +26,9 @@ from seeker.models.spotify_sync import TrackSyncResult
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import RenamePreviewDialog
-from seeker.ui.flow_layout import FlowLayout
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext
+from seeker.ui.plain_text import PlainLabel
 from seeker.ui.tag_result_panel import (
     TagResultPanel,
     summarize_fix_art_result,
@@ -35,6 +36,20 @@ from seeker.ui.tag_result_panel import (
     summarize_tag_result,
 )
 from seeker.ui.workers import run_worker
+
+
+def _action_group(
+        title: str, explanation: str, *buttons: QPushButton,
+) -> QGroupBox:
+    """One job's actions under its title, after one sentence saying
+    what they do."""
+    group = QGroupBox(title)
+    layout = QVBoxLayout(group)
+    label = PlainLabel(explanation)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    layout.addLayout(theme.action_row(*buttons))
+    return group
 
 
 @dataclass(frozen=True)
@@ -74,31 +89,15 @@ class TaggingPanel(QWidget):
         )
         layout.addWidget(self.results_panel)
 
-    def _build_tagging_controls(self) -> FlowLayout:
-        # Shared by all three triggers (per-track, "Tag selected",
-        # "Tag playlist") — one set of options, not three independently
-        # configurable copies. --bpm-range requiring --analyze-audio
-        # (the CLI's own validation) is enforced structurally here by
-        # hiding the range fields entirely while the checkbox is
-        # unchecked, rather than validating the combination after the
-        # fact the way the CLI has to.
-        #
-        # A plain QHBoxLayout's minimum width is the SUM of its
-        # children's minimum widths, which made this 9-widget row
-        # impose a ~900-1000px floor on the whole dashboard page,
-        # squeezing the playlist panel next to it down to almost
-        # nothing. FlowLayout fixes both halves at once: it reflows
-        # 1-row -> 2-row -> 3-row purely from available width, and its
-        # own minimumSize() is just the widest single item (HISTORY §72).
-        # Bare FlowLayout() leaves h_spacing/v_spacing at -1, which
-        # falls through to _smart_spacing()'s PM_LayoutHorizontalSpacing
-        # style query — approximately zero under this app's Fusion
-        # styling, so the buttons touched. These are deliberate, chosen
-        # values, not style-derived ones (HISTORY §79).
-        controls = FlowLayout(
-            h_spacing=theme.SPACING_SM, v_spacing=theme.SPACING_SM,
-        )
+    def _build_tagging_controls(self) -> QVBoxLayout:
+        controls = QVBoxLayout()
+        controls.setSpacing(theme.SPACING_MD)
 
+        # One set of options shared by all three tag triggers
+        # (per-track, "Tag selected", "Tag playlist"), never three
+        # copies. --bpm-range requiring --analyze-audio (the CLI's own
+        # validation) is enforced structurally: the range fields are
+        # hidden while the checkbox is unchecked.
         self.analyze_audio_checkbox = QCheckBox("Analyze audio (BPM/Key)")
         self.analyze_audio_checkbox.setToolTip(
             help_text.TOOLTIP_ANALYZE_AUDIO_CHECKBOX
@@ -106,39 +105,46 @@ class TaggingPanel(QWidget):
         self.analyze_audio_checkbox.toggled.connect(
             self._on_analyze_audio_toggled
         )
-        controls.addWidget(self.analyze_audio_checkbox)
 
         self.bpm_min_edit = QLineEdit()
         self.bpm_min_edit.setPlaceholderText("Min BPM")
         self.bpm_min_edit.setToolTip(help_text.TOOLTIP_BPM_MIN)
         self.bpm_min_edit.hide()
-        controls.addWidget(self.bpm_min_edit)
 
         self.bpm_max_edit = QLineEdit()
         self.bpm_max_edit.setPlaceholderText("Max BPM")
         self.bpm_max_edit.setToolTip(help_text.TOOLTIP_BPM_MAX)
         self.bpm_max_edit.hide()
-        controls.addWidget(self.bpm_max_edit)
 
         self.force_retag_checkbox = QCheckBox("Re-tag already tagged files")
         self.force_retag_checkbox.setToolTip(
             help_text.TOOLTIP_FORCE_RETAG_CHECKBOX
         )
-        controls.addWidget(self.force_retag_checkbox)
+
+        options = QGroupBox("Tag Options")
+        options_layout = QVBoxLayout(options)
+        options_layout.addLayout(theme.action_row(
+            self.analyze_audio_checkbox, self.bpm_min_edit, self.bpm_max_edit,
+        ))
+        options_layout.addWidget(self.force_retag_checkbox)
+        controls.addWidget(options)
 
         self.tag_selected_button = QPushButton("Tag selected")
         self.tag_selected_button.setToolTip(help_text.TOOLTIP_TAG_SELECTED)
         self.tag_selected_button.clicked.connect(
             self._on_tag_selected_clicked
         )
-        controls.addWidget(self.tag_selected_button)
 
         self.tag_playlist_button = QPushButton("Tag playlist")
         self.tag_playlist_button.setToolTip(help_text.TOOLTIP_TAG_PLAYLIST)
         self.tag_playlist_button.clicked.connect(
             self._on_tag_playlist_clicked
         )
-        controls.addWidget(self.tag_playlist_button)
+
+        controls.addWidget(_action_group(
+            "Tags", help_text.LIBRARY_TAGS_TEXT,
+            self.tag_selected_button, self.tag_playlist_button,
+        ))
 
         # A narrower, safer repair than forcing a full re-tag: re-embeds
         # art only, never text tags (HISTORY §66).
@@ -149,7 +155,6 @@ class TaggingPanel(QWidget):
         self.fix_missing_art_button.clicked.connect(
             self._on_fix_missing_art_clicked
         )
-        controls.addWidget(self.fix_missing_art_button)
 
         # The one-click fix for the "no_url" case: a real sync-tracks
         # call, honest about being a real Spotify API call (HISTORY §66).
@@ -162,7 +167,11 @@ class TaggingPanel(QWidget):
         self.fill_missing_art_urls_button.clicked.connect(
             self._on_fill_missing_art_urls_clicked
         )
-        controls.addWidget(self.fill_missing_art_urls_button)
+
+        controls.addWidget(_action_group(
+            "Cover Art", help_text.LIBRARY_COVER_ART_TEXT,
+            self.fix_missing_art_button, self.fill_missing_art_urls_button,
+        ))
 
         # Always a preview first (HISTORY §67) — HISTORY §27's "no gate
         # for tag-writing" precedent does NOT extend here: this
@@ -174,7 +183,11 @@ class TaggingPanel(QWidget):
         self.rename_files_button.clicked.connect(
             self._on_rename_files_clicked
         )
-        controls.addWidget(self.rename_files_button)
+
+        controls.addWidget(_action_group(
+            "File Names", help_text.LIBRARY_FILE_NAMES_TEXT,
+            self.rename_files_button,
+        ))
 
         return controls
 

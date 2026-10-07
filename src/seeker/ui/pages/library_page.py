@@ -74,7 +74,8 @@ class LibraryPage(QWidget):
         layout.addStretch()
 
         page = build_page(
-            "Library", help_text.LIBRARY_TAB_SUBTITLE, content,
+            "Library", help_text.LIBRARY_TAB_SUBTITLE,
+            theme.scrollable(content),
         )
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
