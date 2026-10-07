@@ -1283,3 +1283,26 @@ def test_a_status_chip_follows_its_state(qtbot):
     assert chip.lamp == status_lamp.PLAY
     assert chip.text() == "Docker is running"
     assert chip.accessibleName() == "Docker is running"
+
+
+def test_each_wizard_step_has_one_primary_action(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QPushButton
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+
+    primaries = [
+        [
+            button.text()
+            for button in wizard.stack.widget(index).findChildren(QPushButton)
+            if button.property("variant") == "primary"
+            and not button.isHidden()
+        ]
+        for index in range(wizard.stack.count())
+    ]
+
+    assert primaries == [
+        ["Connect"],
+        ["Choose Folder..."],
+        ["Set up SoulSeek"],
+        ["Go to Dashboard"],
+    ]

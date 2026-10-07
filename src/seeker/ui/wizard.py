@@ -252,6 +252,7 @@ class OnboardingWizard(QMainWindow):
         layout.addSpacing(theme.SPACING_XS)
 
         self.connect_button = QPushButton("Connect")
+        self.connect_button.setProperty("variant", "primary")
         self.connect_button.setToolTip(help_text.TOOLTIP_CONNECT_SPOTIFY)
         self.connect_button.setEnabled(False)
         self.connect_button.clicked.connect(
@@ -260,6 +261,7 @@ class OnboardingWizard(QMainWindow):
         layout.addLayout(theme.action_row(self.connect_button))
 
         self.spotify_status_label = PlainLabel("")
+        self.spotify_status_label.setWordWrap(True)
         layout.addWidget(self.spotify_status_label)
 
         self.spotify_authorization_wait = SpotifyAuthorizationWait(
@@ -312,13 +314,6 @@ class OnboardingWizard(QMainWindow):
         self.library_path_label = PlainLabel("No folder selected.")
         layout.addWidget(self.library_path_label)
 
-        choose_button = QPushButton("Choose Folder...")
-        choose_button.setToolTip(help_text.TOOLTIP_CHOOSE_LIBRARY_FOLDER)
-        choose_button.clicked.connect(
-            self._on_choose_library_folder_clicked
-        )
-        layout.addLayout(theme.action_row(choose_button))
-
         # Set up a real default destination right here, so a first-time
         # user can never reach the "no destination configured" dead end
         # at all. Both checked by default: this is the common case
@@ -343,9 +338,25 @@ class OnboardingWizard(QMainWindow):
         self.subfolder_per_playlist_checkbox.setToolTip(
             help_text.TOOLTIP_SUBFOLDER_PER_PLAYLIST_CHECKBOX
         )
-        layout.addWidget(self.subfolder_per_playlist_checkbox)
+        # Indented under the option it refines.
+        subfolder_row = QHBoxLayout()
+        subfolder_row.addSpacing(theme.SPACING_XL)
+        subfolder_row.addWidget(self.subfolder_per_playlist_checkbox)
+        layout.addLayout(subfolder_row)
+
+        # Last, because choosing the folder finishes the step: the
+        # options above apply to it.
+        choose_button = QPushButton("Choose Folder...")
+        choose_button.setProperty("variant", "primary")
+        choose_button.setToolTip(help_text.TOOLTIP_CHOOSE_LIBRARY_FOLDER)
+        choose_button.clicked.connect(
+            self._on_choose_library_folder_clicked
+        )
+        layout.addSpacing(theme.SPACING_XS)
+        layout.addLayout(theme.action_row(choose_button))
 
         self.library_status_label = PlainLabel("")
+        self.library_status_label.setWordWrap(True)
         layout.addWidget(self.library_status_label)
 
         layout.addStretch()
@@ -413,11 +424,16 @@ class OnboardingWizard(QMainWindow):
         self.docker_action_button.hide()
         layout.addLayout(theme.action_row(self.docker_action_button))
 
-        layout.addWidget(PlainLabel("SoulSeek network account:"))
+        account_header = PlainLabel("Your SoulSeek account")
+        # QLabel#sectionHeaderLabel in theme.py.
+        account_header.setObjectName("sectionHeaderLabel")
+        layout.addSpacing(theme.SPACING_SM)
+        layout.addWidget(account_header)
 
         account_mode_explanation = PlainLabel(
             help_text.SOULSEEK_ACCOUNT_MODE_EXPLANATION
         )
+        account_mode_explanation.setProperty("badge", "muted")
         account_mode_explanation.setWordWrap(True)
         layout.addWidget(account_mode_explanation)
 
@@ -480,9 +496,14 @@ class OnboardingWizard(QMainWindow):
         layout.addWidget(self.soulseek_password_field)
 
         self.bring_up_button = QPushButton("Set up SoulSeek")
+        self.bring_up_button.setProperty("variant", "primary")
         self.bring_up_button.setToolTip(help_text.TOOLTIP_BRING_UP_SOULSEEK)
         self.bring_up_button.clicked.connect(self._on_bring_up_clicked)
-        layout.addLayout(theme.action_row(self.bring_up_button))
+        skip_button = QPushButton("Set up later")
+        skip_button.setToolTip(help_text.TOOLTIP_SKIP_SOULSEEK)
+        skip_button.clicked.connect(self._on_skip_soulseek_clicked)
+        layout.addSpacing(theme.SPACING_XS)
+        layout.addLayout(theme.action_row(self.bring_up_button, skip_button))
 
         self.soulseek_progress = QProgressBar()
         self.soulseek_progress.setRange(0, 0)
@@ -490,12 +511,8 @@ class OnboardingWizard(QMainWindow):
         layout.addWidget(self.soulseek_progress)
 
         self.soulseek_status_label = PlainLabel("")
+        self.soulseek_status_label.setWordWrap(True)
         layout.addWidget(self.soulseek_status_label)
-
-        skip_button = QPushButton("Set up later")
-        skip_button.setToolTip(help_text.TOOLTIP_SKIP_SOULSEEK)
-        skip_button.clicked.connect(self._on_skip_soulseek_clicked)
-        layout.addLayout(theme.action_row(skip_button))
 
         layout.addStretch()
         return page
@@ -791,9 +808,11 @@ class OnboardingWizard(QMainWindow):
         self.continue_button = QPushButton(
             help_text.DONE_PAGE_CONTINUE_BUTTON_TEXT
         )
+        self.continue_button.setProperty("variant", "primary")
         self.continue_button.clicked.connect(self._finish)
         layout.addLayout(theme.action_row(self.continue_button))
 
+        layout.addStretch()
         return page
 
     def _finish(self) -> None:
