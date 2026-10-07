@@ -1210,3 +1210,31 @@ def test_skipping_soulseek_leaves_its_step_unlit(qtbot, tmp_path, monkeypatch):
     assert wizard.step_indicator.accessibleName() == (
         "Setup complete; SoulSeek (optional) skipped"
     )
+
+
+def test_spotify_step_numbers_its_registration_steps(
+        qtbot, tmp_path, monkeypatch,
+):
+    from PySide6.QtWidgets import QLabel
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+    spotify_page = wizard.stack.widget(0)
+
+    numbers = [
+        label.text()
+        for label in spotify_page.findChildren(QLabel)
+        if label.objectName() == "stepNumber"
+    ]
+
+    assert numbers == ["1", "2", "3"]
+
+
+def test_spotify_step_shows_the_redirect_uri_read_only(
+        qtbot, tmp_path, monkeypatch,
+):
+    from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
+
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+
+    assert wizard.redirect_uri_field.text() == DEFAULT_REDIRECT_URI
+    assert wizard.redirect_uri_field.isReadOnly()

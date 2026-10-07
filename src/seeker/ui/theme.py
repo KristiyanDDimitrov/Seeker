@@ -1510,7 +1510,7 @@ QSplitter::handle:horizontal:hover {{
 
 def _status_qss(palette: Palette) -> str:
     """StepIndicator: its labels' weight per step and the hairline
-    between steps."""
+    between steps; a numbered instruction's number."""
     return f"""\
 QLabel[stepState="current"] {{
     color: {palette.TEXT};
@@ -1522,6 +1522,14 @@ QLabel[stepState="done"] {{
 }}
 
 QLabel[stepState="upcoming"], QLabel[stepState="skipped"] {{
+    color: {palette.TEXT_MUTED};
+}}
+
+/* A numbered instruction's number, in the panel lettering. */
+QLabel#stepNumber {{
+    font-family: "{DISPLAY_FAMILY}";
+    font-size: {TYPE_SECTION_PX}px;
+    font-weight: {WEIGHT_SEMIBOLD};
     color: {palette.TEXT_MUTED};
 }}
 

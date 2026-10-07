@@ -9,7 +9,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QGridLayout,
     QHBoxLayout,
+    QLayout,
     QLineEdit,
     QMainWindow,
     QProgressBar,
@@ -169,9 +171,8 @@ class OnboardingWizard(QMainWindow):
     def _build_spotify_page(self) -> QWidget:
         page, layout = _step_page(
             "Connect Spotify",
-            "Seeker needs a Spotify app to sync your playlists. "
-            "Register one on the Spotify Developer Dashboard, then "
-            "paste its Client ID below.",
+            "Seeker syncs your playlists through a Spotify app you "
+            "register once.",
         )
 
         dashboard_button = QPushButton("Open Spotify Developer Dashboard")
@@ -181,22 +182,18 @@ class OnboardingWizard(QMainWindow):
                 "https://developer.spotify.com/dashboard"
             )
         )
-        layout.addLayout(theme.action_row(dashboard_button))
 
-        redirect_row = QHBoxLayout()
-        redirect_row.addWidget(
-            PlainLabel(f"Redirect URI: {DEFAULT_REDIRECT_URI}")
-        )
+        # Read-only rather than a label, so the URI can be selected as
+        # well as copied.
+        self.redirect_uri_field = QLineEdit(DEFAULT_REDIRECT_URI)
+        self.redirect_uri_field.setReadOnly(True)
+        self.redirect_uri_field.setToolTip(help_text.TOOLTIP_COPY_REDIRECT_URI)
         copy_button = QPushButton("Copy")
         copy_button.setToolTip(help_text.TOOLTIP_COPY_REDIRECT_URI)
         copy_button.clicked.connect(self._copy_redirect_uri)
+        redirect_row = QHBoxLayout()
+        redirect_row.addWidget(self.redirect_uri_field, 1)
         redirect_row.addWidget(copy_button)
-        redirect_row.addStretch()
-        layout.addLayout(redirect_row)
-        layout.addWidget(PlainLabel(
-            "Add this exact Redirect URI to your Spotify app's "
-            "settings — it must match exactly."
-        ))
 
         self.client_id_field = QLineEdit()
         self.client_id_field.setPlaceholderText("Spotify Client ID")
@@ -214,7 +211,35 @@ class OnboardingWizard(QMainWindow):
         self.client_id_field.returnPressed.connect(
             self._on_client_id_return_pressed
         )
-        layout.addWidget(self.client_id_field)
+
+        steps = QGridLayout()
+        steps.setHorizontalSpacing(theme.SPACING_MD)
+        steps.setVerticalSpacing(theme.SPACING_LG)
+        steps.setColumnStretch(1, 1)
+        instructions: tuple[tuple[str, QWidget | QLayout], ...] = (
+            (
+                "Create an app on the Spotify Developer Dashboard.",
+                theme.action_row(dashboard_button),
+            ),
+            (
+                "In the app's settings, add this Redirect URI. It "
+                "must match exactly, port included.",
+                redirect_row,
+            ),
+            (
+                "Copy the app's Client ID and paste it here. No "
+                "client secret is needed.",
+                self.client_id_field,
+            ),
+        )
+        for row, (instruction, control) in enumerate(instructions):
+            number = PlainLabel(str(row + 1))
+            # QLabel#stepNumber in theme.py.
+            number.setObjectName("stepNumber")
+            steps.addWidget(number, row, 0, Qt.AlignmentFlag.AlignTop)
+            steps.addLayout(_instruction(instruction, control), row, 1)
+        layout.addLayout(steps)
+        layout.addSpacing(theme.SPACING_XS)
 
         self.connect_button = QPushButton("Connect")
         self.connect_button.setToolTip(help_text.TOOLTIP_CONNECT_SPOTIFY)
@@ -769,3 +794,17 @@ def _step_page(title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
     layout.addLayout(header)
     layout.addSpacing(theme.SPACING_XS)
     return page, layout
+
+
+def _instruction(text: str, control: QWidget | QLayout) -> QVBoxLayout:
+    """One numbered step's sentence with the control it asks for."""
+    layout = QVBoxLayout()
+    layout.setSpacing(theme.SPACING_SM)
+    label = PlainLabel(text)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    if isinstance(control, QWidget):
+        layout.addWidget(control)
+    else:
+        layout.addLayout(control)
+    return layout
