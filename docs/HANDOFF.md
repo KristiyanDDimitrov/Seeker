@@ -10,14 +10,15 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S29 part-2 close-out commit (HISTORY §179). Tree clean
-  apart from the untracked `Claude outputs/`.
+- **HEAD:** the CI-result handoff note, after the S29 part-2
+  close-out `0c9e227` (HISTORY §179). Tree clean apart from the
+  untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict
   src/` clean, 133 files; `ruff check src tests tools` 0. The
   display-specific `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`
   passed this run and failed in an earlier one this session
   (`2 failed, 1821 passed, 1 skipped`): intermittent here, not fixed.
-- **CI:** see the follow-up handoff note for the close-out's run.
+- **CI:** `0c9e227`'s run `37595631436` green.
 
 ## 2. Where we are
 
