@@ -3,6 +3,7 @@ Moved verbatim out of test_ui_smoke.py (round 8, §9.3.4, session
 S11.1) — the mirror of §9.3.1's own Help/Support extraction (S5).
 """
 
+import pytest
 from PySide6.QtWidgets import QLabel, QPushButton
 
 from fakes import FakeApplication
@@ -248,20 +249,22 @@ def test_support_page_go_to_sharing_button_navigates_to_sharing_page(qtbot):
     ]
 
 
-def test_help_prose_is_never_clipped_by_its_reading_measure(qtbot):
+@pytest.mark.parametrize("page", ["help", "support"])
+def test_prose_is_never_clipped_by_its_reading_measure(qtbot, page):
     # A wrapped label capped narrower than its layout row is measured at
-    # the row's width and loses its last lines; Help caps its whole
-    # column instead, so each label gets the height its width needs.
+    # the row's width and loses its last lines; these pages cap their
+    # whole column instead, so each label gets the height it needs.
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
     window.resize(1280, 820)
     window.show()
     qtbot.waitExposed(window)
-    window._nav_buttons["help"].click()
+    window._nav_buttons[page].click()
     qtbot.wait(20)
 
+    page_widget = window.stacked_widget.currentWidget()
     wrapped = [
-        label for label in window._help_page.findChildren(QLabel)
+        label for label in page_widget.findChildren(QLabel)
         if label.wordWrap() and label.isVisible()
     ]
     assert wrapped

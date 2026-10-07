@@ -1458,14 +1458,13 @@ SUPPORT_TAB_SUBTITLE = (
     "required."
 )
 
-SUPPORT_PAGE_FRAMING_BODY = (
-    "<h3>Support Seeker</h3>"
-    "<p>Seeker is free to use, has no telemetry, and has no paid tier — "
-    "nothing in the app is gated behind a donation. If it's been useful "
-    "to you, a donation is a thank-you, not a purchase.</p>"
+SUPPORT_PAGE_DONATE_HEADING = "Donate"
+SUPPORT_PAGE_DONATE_BODY = (
+    "If Seeker has been useful to you, a donation is a thank-you, not "
+    "a purchase: nothing in the app is gated behind one."
 )
 
-SUPPORT_PAGE_NON_FINANCIAL_HEADING = "<h3>Other ways to help</h3>"
+SUPPORT_PAGE_NON_FINANCIAL_HEADING = "Other ways to help"
 
 SUPPORT_PAGE_REPORT_BUG_BODY = (
     "<p><b>Report a bug</b> — open an issue on "

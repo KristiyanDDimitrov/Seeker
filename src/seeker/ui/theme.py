@@ -421,7 +421,9 @@ def reading_column(column: QWidget) -> QWidget:
     row = QWidget()
     layout = QHBoxLayout(row)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(column)
+    # The column's stretch factor, not the spacer's: the column grows
+    # to its cap first and the spacer takes only what is left.
+    layout.addWidget(column, 1)
     layout.addStretch()
     return row
 

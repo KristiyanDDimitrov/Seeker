@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QLabel,
+    QLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -44,16 +45,19 @@ def _open_in_file_manager(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
-def _section(title: str, *widgets: QWidget) -> QVBoxLayout:
+def _section(title: str, *items: QWidget | QLayout) -> QVBoxLayout:
     """A section of a reading page: its title in the panel lettering,
-    then `widgets`, closer to each other than to the next section."""
+    then `items`, closer to each other than to the next section."""
     layout = QVBoxLayout()
     layout.setSpacing(theme.SPACING_SM)
     heading = PlainLabel(title)
     heading.setObjectName("sectionHeaderLabel")
     layout.addWidget(heading)
-    for widget in widgets:
-        layout.addWidget(widget)
+    for item in items:
+        if isinstance(item, QLayout):
+            layout.addLayout(item)
+        else:
+            layout.addWidget(item)
     return layout
 
 
@@ -173,36 +177,22 @@ class SupportPage(QWidget):
         super().__init__()
         self._context = context
 
-        # A real sidebar page, directly below Help (HISTORY §64). Every
-        # string here is entirely static copy (no service/DB call at
-        # all, unlike Duplicates/History) — built directly at
-        # construction time, same "nothing to lazily load" reasoning as
-        # HelpPage's own Application.data_locations lookup above, just
-        # with even less to fetch here.
+        # Static copy, built at construction, like Help.
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_LG)
 
-        framing_label = RichLabel(help_text.SUPPORT_PAGE_FRAMING_BODY)
-        framing_label.setWordWrap(True)
-        layout.addWidget(framing_label)
+        layout.addLayout(_section(
+            help_text.SUPPORT_PAGE_DONATE_HEADING,
+            _prose(PlainLabel(help_text.SUPPORT_PAGE_DONATE_BODY)),
+            build_support_links_row(),
+        ))
 
-        layout.addLayout(build_support_links_row())
-
-        non_financial_heading = RichLabel(
-            help_text.SUPPORT_PAGE_NON_FINANCIAL_HEADING
+        report_bug_label = _prose(
+            RichLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY),
         )
-        layout.addWidget(non_financial_heading)
-
-        report_bug_label = RichLabel(help_text.SUPPORT_PAGE_REPORT_BUG_BODY)
-        report_bug_label.setWordWrap(True)
         report_bug_label.setOpenExternalLinks(True)
-        layout.addWidget(report_bug_label)
-
-        share_library_label = RichLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)
-        share_library_label.setWordWrap(True)
-        layout.addWidget(share_library_label)
 
         go_to_sharing_button = QPushButton(
             help_text.SUPPORT_PAGE_GO_TO_SHARING_BUTTON_TEXT
@@ -210,19 +200,23 @@ class SupportPage(QWidget):
         go_to_sharing_button.clicked.connect(
             lambda: context.navigate("sharing")
         )
-        layout.addWidget(
-            go_to_sharing_button, alignment=Qt.AlignmentFlag.AlignLeft,
-        )
+        layout.addLayout(_section(
+            help_text.SUPPORT_PAGE_NON_FINANCIAL_HEADING,
+            report_bug_label,
+            _prose(RichLabel(help_text.SUPPORT_PAGE_SHARE_LIBRARY_BODY)),
+            theme.action_row(go_to_sharing_button),
+        ))
 
-        author_label = RichLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE)
-        author_label.setWordWrap(True)
+        author_label = _prose(RichLabel(help_text.ABOUT_DIALOG_AUTHOR_LINE))
         author_label.setOpenExternalLinks(True)
+        author_label.setProperty("badge", "muted")
         layout.addWidget(author_label)
 
         layout.addStretch()
 
         page = build_page(
-            "Support", help_text.SUPPORT_TAB_SUBTITLE, content,
+            "Support", help_text.SUPPORT_TAB_SUBTITLE,
+            theme.reading_column(content),
         )
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
