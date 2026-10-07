@@ -326,7 +326,7 @@ def test_soulseek_username_return_pressed_triggers_bring_up_validation(
     wizard.soulseek_username_field.returnPressed.emit()
 
     assert calls == []
-    assert "username" in wizard.soulseek_status_label.text().lower()
+    assert "username" in wizard.soulseek_notice.text().lower()
 
 
 def test_soulseek_password_return_pressed_calls_bring_up_slskd(
@@ -527,7 +527,7 @@ def test_bring_up_soulseek_requires_username_and_password(
     wizard.bring_up_button.click()
 
     assert calls == []
-    assert "username" in wizard.soulseek_status_label.text().lower()
+    assert "username" in wizard.soulseek_notice.text().lower()
 
 
 def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
@@ -696,7 +696,7 @@ def test_health_result_bad_credentials_existing_account_mode(
         )
     )
 
-    text = wizard.soulseek_status_label.text()
+    text = wizard.soulseek_notice.text()
     assert "rejected that username and password" in text
     assert "case-sensitive" in text
     # The username field is untouched in this mode — nothing about
@@ -705,7 +705,7 @@ def test_health_result_bad_credentials_existing_account_mode(
     assert wizard.soulseek_username_field.text() == "realuser"
     # The real, raw detail is never dropped — available on hover
     # regardless of which branch's copy is shown.
-    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(
+    assert wizard.soulseek_notice.toolTip() == plain_tooltip(
         "invalid username or password"
     )
     assert wizard.slskd_chip.lamp == status_lamp.FAULT
@@ -730,7 +730,7 @@ def test_health_result_bad_credentials_new_account_mode(
         )
     )
 
-    text = wizard.soulseek_status_label.text()
+    text = wizard.soulseek_notice.text()
     assert "'takenusername'" in text
     assert "already taken" in text
     # Username cleared so the user can pick a different one; password
@@ -742,7 +742,7 @@ def test_health_result_bad_credentials_new_account_mode(
     # suite runs under.
     assert wizard.soulseek_username_field.text() == ""
     assert wizard.soulseek_password_field.text() == "mypassword"
-    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(
+    assert wizard.soulseek_notice.toolTip() == plain_tooltip(
         "invalid username or password"
     )
     assert completed == []
@@ -763,10 +763,10 @@ def test_health_result_kicked_shows_distinct_message(
         SlskdHealthCheckResult(SlskdHealthStatus.KICKED, detail=real_detail)
     )
 
-    text = wizard.soulseek_status_label.text()
+    text = wizard.soulseek_notice.text()
     assert "already logged in" in text
     assert text != real_detail  # plain-language, not the raw log line
-    assert wizard.soulseek_status_label.toolTip() == plain_tooltip(real_detail)
+    assert wizard.soulseek_notice.toolTip() == plain_tooltip(real_detail)
     assert wizard.slskd_chip.lamp == status_lamp.FAULT
     assert completed == []
 
@@ -803,7 +803,7 @@ def test_bring_up_soulseek_blocked_when_docker_not_running(
     wizard.bring_up_button.click()
 
     assert calls == []
-    assert wizard.soulseek_status_label.text() == "Docker isn't running yet."
+    assert wizard.soulseek_notice.text() == "Docker isn't running yet."
 
 
 def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
@@ -833,7 +833,7 @@ def test_bring_up_rejects_username_with_leading_or_trailing_whitespace(
     wizard.bring_up_button.click()
 
     assert calls == []
-    assert "leading or trailing spaces" in wizard.soulseek_status_label.text()
+    assert "leading or trailing spaces" in wizard.soulseek_notice.text()
 
 
 def test_soulseek_account_mode_radios_default_to_existing_account(
@@ -881,7 +881,7 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
     wizard.bring_up_button.click()
 
     assert calls == []
-    assert "library location" in wizard.soulseek_status_label.text().lower()
+    assert "library location" in wizard.soulseek_notice.text().lower()
 
 
 def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
@@ -923,7 +923,7 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
 
     qtbot.waitUntil(
         lambda: "real docker compose error text"
-        in wizard.soulseek_status_label.text(),
+        in wizard.soulseek_notice.text(),
         timeout=2000,
     )
     assert wizard.slskd_chip.lamp == status_lamp.FAULT
@@ -955,7 +955,7 @@ def test_health_poll_timeout_shows_message_after_elapsed_threshold(
         SlskdHealthCheckResult(SlskdHealthStatus.NOT_READY)
     )
 
-    assert "didn't finish connecting" in wizard.soulseek_status_label.text()
+    assert "didn't finish connecting" in wizard.soulseek_notice.text()
     assert wizard.slskd_chip.lamp == status_lamp.FAULT
 
 
@@ -1076,7 +1076,7 @@ def test_launch_docker_clicked_failure_shows_manual_instructions(
 
     wizard._on_launch_docker_clicked()
 
-    assert "manually" in wizard.soulseek_status_label.text().lower()
+    assert "manually" in wizard.soulseek_notice.text().lower()
 
 
 def _blocking_connect_spotify(started: threading.Event, calls: list[str]):
@@ -1306,3 +1306,37 @@ def test_each_wizard_step_has_one_primary_action(qtbot, tmp_path, monkeypatch):
         ["Set up SoulSeek"],
         ["Go to Dashboard"],
     ]
+
+
+def test_a_soulseek_outcome_replaces_the_progress_line(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard, _completed = _build_wizard_at_soulseek_step(
+        qtbot, tmp_path, monkeypatch,
+    )
+    wizard.soulseek_status_label.setText("Waiting for SoulSeek to connect...")
+
+    wizard._handle_health_result(
+        SlskdHealthCheckResult(SlskdHealthStatus.KICKED, detail="kicked"),
+    )
+
+    assert wizard.soulseek_status_label.text() == ""
+    assert not wizard.soulseek_notice.isHidden()
+    assert wizard.soulseek_notice.property("variant") == "error"
+
+
+def test_a_new_soulseek_attempt_clears_the_last_outcome(
+        qtbot, tmp_path, monkeypatch,
+):
+    wizard, _completed = _build_wizard_at_soulseek_step(
+        qtbot, tmp_path, monkeypatch,
+    )
+    wizard.bring_up_button.click()
+    assert not wizard.soulseek_notice.isHidden()
+
+    wizard.soulseek_username_field.setText(" spaced ")
+    wizard.bring_up_button.click()
+
+    # Only the new attempt's own outcome shows, with no stale detail.
+    assert "leading or trailing spaces" in wizard.soulseek_notice.text()
+    assert wizard.soulseek_notice.toolTip() == ""

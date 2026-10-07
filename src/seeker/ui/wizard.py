@@ -37,6 +37,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text, theme
 from seeker.ui.library_location_picker import pick_and_add_library_location
+from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import build_subtitle_label
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
@@ -510,9 +511,13 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_progress.hide()
         layout.addWidget(self.soulseek_progress)
 
+        # Progress only; every outcome goes on the notice below it.
         self.soulseek_status_label = PlainLabel("")
         self.soulseek_status_label.setWordWrap(True)
         layout.addWidget(self.soulseek_status_label)
+
+        self.soulseek_notice = InlineNotice()
+        layout.addWidget(self.soulseek_notice)
 
         layout.addStretch()
         return page
@@ -554,10 +559,11 @@ class OnboardingWizard(QMainWindow):
                 # typically already running as a service if installed
                 # via a package manager; guide rather than assume a
                 # launch mechanism.
-                self.soulseek_status_label.setText(
+                self._show_soulseek_outcome(
                     "Start the Docker daemon with your service manager, "
                     "e.g. 'sudo systemctl start docker', then check "
-                    "again."
+                    "again.",
+                    kind="warning",
                 )
                 self.docker_action_button.setText("Check again")
                 self.docker_action_button.setToolTip(
@@ -593,7 +599,7 @@ class OnboardingWizard(QMainWindow):
                 "Launching Docker Desktop... this can take a minute."
             )
         except (OSError, subprocess.SubprocessError):
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 "Couldn't launch Docker Desktop automatically — open "
                 "it manually, then click 'Check again'."
             )
@@ -606,6 +612,8 @@ class OnboardingWizard(QMainWindow):
         self._connect_docker_action(self._refresh_docker_state)
 
     def _on_bring_up_clicked(self) -> None:
+        # Only this attempt's outcome may show.
+        self.soulseek_notice.dismiss()
         raw_username = self.soulseek_username_field.text()
         password = self.soulseek_password_field.text()
 
@@ -617,27 +625,32 @@ class OnboardingWizard(QMainWindow):
         # leave the user unsure which literal string is "the"
         # username they registered.
         if raw_username != raw_username.strip():
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 "Remove the leading or trailing spaces from your "
-                "SoulSeek username."
+                "SoulSeek username.",
+                kind="warning",
             )
             return
 
         username = raw_username
 
         if not username or not password:
-            self.soulseek_status_label.setText(
-                "Enter your SoulSeek network username and password."
+            self._show_soulseek_outcome(
+                "Enter your SoulSeek network username and password.",
+                kind="warning",
             )
             return
 
         if self._docker_state != DockerState.RUNNING:
-            self.soulseek_status_label.setText("Docker isn't running yet.")
+            self._show_soulseek_outcome(
+                "Docker isn't running yet.", kind="warning",
+            )
             return
 
         if self._library_location_path is None:
-            self.soulseek_status_label.setText(
-                "No library location — go back and choose one first."
+            self._show_soulseek_outcome(
+                "No library location — go back and choose one first.",
+                kind="warning",
             )
             return
 
@@ -653,22 +666,29 @@ class OnboardingWizard(QMainWindow):
             self.thread_pool,
             do_bring_up,
             button=self.bring_up_button,
-            status_label=self.soulseek_status_label,
             on_finished=self._start_health_poll,
             on_error=self._on_bring_up_failed,
         )
         self.slskd_chip.set_state(CUE, "Starting SoulSeek…")
         self.soulseek_progress.show()
         self.soulseek_status_label.setText("Starting SoulSeek...")
-        # A stale detail from an earlier attempt (e.g. the first
-        # rejection this same session) must not linger into whatever
-        # this new attempt ends up showing.
-        self.soulseek_status_label.setToolTip("")
 
-    def _on_bring_up_failed(self, _message: str) -> None:
-        # run_worker has already put the message on the status label.
+    def _on_bring_up_failed(self, message: str) -> None:
         self.soulseek_progress.hide()
         self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
+        self._show_soulseek_outcome(message)
+
+    def _show_soulseek_outcome(
+            self,
+            text: str,
+            kind: str = "error",
+            detail: str | None = None,
+    ) -> None:
+        """Ends the step's progress line. `detail`, the raw log line
+        behind a rejection, is never dropped: it shows on hover."""
+        self.soulseek_status_label.setText("")
+        self.soulseek_notice.show_message(text, kind=kind)
+        self.soulseek_notice.setToolTip(plain_tooltip(detail or ""))
 
     def _start_health_poll(self, started: SlskdStartResult) -> None:
         self._slskd_started = started
@@ -710,8 +730,7 @@ class OnboardingWizard(QMainWindow):
             self._stop_health_poll()
             self._persist_soulseek_config()
             self.slskd_chip.set_state(PLAY, "SoulSeek is connected")
-            self.soulseek_status_label.setText("SoulSeek is connected.")
-            self.soulseek_status_label.setToolTip("")
+            self.soulseek_status_label.setText("")
             self._advance_to_done_page()
             return
 
@@ -724,19 +743,17 @@ class OnboardingWizard(QMainWindow):
         if result.status == SlskdHealthStatus.KICKED:
             self._stop_health_poll()
             self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 "Another client is already logged in with this "
-                "username."
-            )
-            self.soulseek_status_label.setToolTip(
-                plain_tooltip(result.detail or ""),
+                "username.",
+                detail=result.detail,
             )
             return
 
         if self._health_poll_elapsed >= HEALTH_POLL_TIMEOUT_SECONDS:
             self._stop_health_poll()
             self.slskd_chip.set_state(FAULT, _SOULSEEK_FAILED)
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 "SoulSeek didn't finish connecting within "
                 f"{HEALTH_POLL_TIMEOUT_SECONDS:.0f}s. Check that Docker "
                 "is still running, that your SoulSeek username and "
@@ -751,23 +768,21 @@ class OnboardingWizard(QMainWindow):
         # real signal available for which message applies.
         if self.new_account_radio.isChecked():
             username = self.soulseek_username_field.text()
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 f"The username '{username}' is already taken on the "
-                f"SoulSeek network. Pick a different one and try again."
+                f"SoulSeek network. Pick a different one and try again.",
+                detail=detail,
             )
             # Keep the password (still probably the one they meant to
             # use going forward) — only the username needs to change.
             self.soulseek_username_field.clear()
             self.soulseek_username_field.setFocus()
         else:
-            self.soulseek_status_label.setText(
+            self._show_soulseek_outcome(
                 "SoulSeek rejected that username and password. Check "
-                "the password — usernames are case-sensitive."
+                "the password — usernames are case-sensitive.",
+                detail=detail,
             )
-
-        # Never dropped — the real log line stays available on hover,
-        # regardless of which branch's copy is shown.
-        self.soulseek_status_label.setToolTip(plain_tooltip(detail or ""))
 
     def _stop_health_poll(self) -> None:
         if self._health_poll_timer is not None:
