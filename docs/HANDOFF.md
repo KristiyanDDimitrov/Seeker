@@ -10,76 +10,74 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S32 close-out (HISTORY §182). Tree clean apart from the
+- **HEAD:** the S33 close-out (HISTORY §183). Tree clean apart from the
   untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 1930 passed, 1 skipped`. The two
-  are `test_a_cell_widget_paints_the_rows_own_background[dark]` and
-  `[light]`, the same order-dependent Cocoa-only pair as S31 (§181);
-  +27 passing are S32's new tests. `mypy --strict src/` clean, 136
-  files; `ruff check src tests tools` 0.
-- **CI:** `62e2c50`'s run `37621636784` green (offscreen, so the
-  Cocoa-only pixel failure does not reach it).
+- **Local (Cocoa):** pytest `1944 passed, 1 skipped` (+12, S33's new
+  tests). The Cocoa-only pair
+  `test_a_cell_widget_paints_the_rows_own_background[dark]`/`[light]`
+  passed this full run and failed once in a narrower run: still
+  order-dependent (§181). `mypy --strict src/` clean, 137 files;
+  `ruff check src tests tools` 0.
+- **CI:** see the S33 handoff commit (filled in after the push).
 
 ## 2. Where we are
 
-S1–S32 ticked. **Next: S33, the onboarding wizard** (BRIEF §33).
+S1–S33 ticked. **Next: S34, Dashboard and Library** (BRIEF §34).
 
-## 3. Session report (S32)
+## 3. Session report (S33)
 
-Evidence in HISTORY §182.
-- `a32d604`: Lucide nav icons for all eleven sidebar entries,
-  `ui/icons.py` (`TokenIconEngine`, `NAV_ICONS`, `nav_icon`); vendored
-  unchanged with `LICENSE` and `SOURCE.txt`; sidebar contrast floors.
-- `9ff777b`: `ui/wordmark.py`, the brows over "ee" as an overlay on
-  the plain `QLabel#wordmark`.
-- `3baaad5`: `build_page` header as one unit; subtitles wrap at
-  `SUBTITLE_MEASURE_CHARS` (90).
-- `3e1379a`: the activity strip leads with a lit `CUE` lamp
-  (`status_lamp.StatusLamp`).
-- `f10a612`: notices: neutral hairline, variant colour on the left
-  edge only; info's edge is `TEXT_MUTED`.
+Evidence in HISTORY §183.
+- `f77ab07`: the wizard as one centred 560 px column with the
+  wordmark, `#pageTitleLabel` titles and `ui/step_indicator.py`.
+- `01e403b`: three numbered Spotify registration steps; the Redirect
+  URI is a read-only field beside Copy.
+- `68ae035`: `status_lamp.StatusChip` for the Docker and SoulSeek
+  states; fixes the busy bar left running after a failed bring-up.
+- `8e52af0`: one primary action per step; form regrouped.
+- `75f3cdb`: SoulSeek outcomes on `soulseek_notice`; the status line
+  is progress only.
 
 ## 4. Key context
 
-- **Icons:** `icons.token_icon(path, IconColours(...))` for any new
-  bundled line icon; it reads `active_palette()` per draw, so nothing
-  needs rebuilding on a theme switch. A Lucide file is never edited;
-  add a name to `NAV_ICONS` (or a new mapping) and copy the file from
-  the same release. `test_icons.py` fails on an unused or missing file.
-- **The wizard (S33) has no sidebar**, but its title role and notices
-  now follow the shell: use `#pageTitleLabel`, and `InlineNotice` for
-  results. Lamps are available as a widget (`StatusLamp`).
-- **The strip's progress bar is still the accent.** S34's segmented
-  amber meter should be applied to `activity_strip_bar` too.
-- **Render scale:** `tools/screenshots.py` writes at 1× (the brows are
-  ~2 px tall there); a Cocoa `window.grab()` is 2×. Judge fine detail
-  on a 2× grab (scratch: build `MainWindow(build_demo_application())`
-  from `tools/screenshots.py`, `grab()`).
-- From S31: lamps are not yet in cells (S34, S35a); `fit_widths` and
+- **New reusable pieces for S34/S35:** `StatusChip(lamp, text)` with
+  `set_state(lamp, text)` (a standalone state, e.g. Sharing's slskd
+  state); `StepIndicator(names)` with `set_current`/`mark_skipped`;
+  `StatusLamp.set_lamp`. QSS lives in `theme._status_qss`
+  (`QFrame#statusChip`, `QLabel[stepState]`, `QLabel#stepNumber`,
+  `QFrame#stepConnector`); `CHIP_HEIGHT`/`CHIP_RADIUS` are tokens.
+- **The plain-text sweep wants `setToolTip(plain_tooltip(...))`
+  literally**: a conditional around the call fails
+  `test_every_dynamic_tooltip_goes_through_plain_tooltip`.
+- **A `QStackedWidget` is as tall as its tallest page** unless the
+  hidden pages are `QSizePolicy.Ignored` (the wizard's
+  `_on_step_changed`).
+- **`set -o pipefail` before `pytest … | tail && git commit`**: without
+  it a failing run still commits (it happened once this session; the
+  failures were the known Cocoa pair, nothing new).
+- From S32, still open: the strip's progress bar is the accent (S34's
+  segmented amber meter should cover `activity_strip_bar`); lamps are
+  not yet in table cells (S34, S35a), and `fit_widths` and
   `ElidedTextDelegate` must count the icon's width.
-- Carried: `MainWindow` does not apply the theme, `main_ui.py` does;
-  radon is not in the env; never touch slskd or real data; zsh does
-  not word-split `$var`; reproduce CI-only UI failures with
-  `QT_QPA_PLATFORM=offscreen` first; a shared fake missing a method
-  stalls the suite (§171); old-commit checks run in a `git worktree`
-  with `PYTHONPATH=<wt>/src:<wt>/tests uv run --project <repo> pytest
-  …`; `QStyle.subElementRect(..., None, ...)` segfaults: pass a real
-  option (`initStyleOption`); PIL is not in the env (crop with
-  `QImage.copy`); qtbot holds widgets weakly (keep a host referenced).
+- Carried gotchas (unchanged, full list in `git show 8eee663:docs/HANDOFF.md`
+  §4): never touch slskd or real data; zsh does not word-split `$var`;
+  CI-only UI failures reproduce with `QT_QPA_PLATFORM=offscreen`; a
+  shared fake missing a method stalls the suite (§171); judge fine
+  detail on a 2× Cocoa grab, the harness writes 1×.
 
 ## 5. Decisions made
 
-- **Nav icons recolour at draw time, not one file per palette.** It
-  keeps the vendored files identical to upstream and follows a theme
-  switch for free. A QSS `image:` still needs per-palette files.
-  Promoted to CLAUDE.md.
-- **The brows wordmark is revived** because Kris picked it (§106) and
-  §114 removed it only for a clip the overlay design cannot have. Its
-  geometry was tuned until it no longer read as accents ("Sèéker").
-- **Info notices do not use the accent**, which is reserved for
-  selection, focus and the primary action.
-- **Nav badges stay text** (`"Downloads  (7)"`); a count pill is a
-  separate change that touches the harness and tests.
+- **The current wizard step is an amber ring, not the accent.** The
+  step waits on the user, which is what a ring means everywhere else;
+  the accent stays for selection, focus and the primary action.
+- **No numbers on the step indicator.** The lamps' order carries the
+  sequence; numbers appear only where the content is a sequence of
+  instructions (the Spotify steps).
+- **Only the SoulSeek step's outcomes moved to a notice.** Spotify's
+  and Library's status labels are written by helpers shared with
+  Settings; moving them belongs with Settings' own status-label work
+  (S35b).
+- **The wizard's title is plain text in the title role**, so
+  `DONE_PAGE_TITLE_HTML` became `DONE_PAGE_TITLE`.
 
 ## 6. Blockers
 
@@ -95,17 +93,19 @@ None.
 (`io.github.kristiyanddimitrov.seeker`), the S42 publishing commands,
 X1 and X2 (optional).
 
-**A cheap veto:** the brows over "ee" in the sidebar wordmark
-(`9ff777b`). If they read wrong on your display, deleting the overlay
-is a one-commit revert; the word itself is unchanged.
+**A cheap veto:** the brows over "ee" in the wordmark (`9ff777b`),
+now also at the top of the wizard. Deleting the overlay is a
+one-commit revert.
 
-**Live checks (S41 checklist):** the nested-location Fix… with the X9
-Pro mounted (keep `Music`, compare §172's counts); the stress test;
-the packaged app's combo chevron and checkbox tick (both need `qsvg`
-in the bundle), Barlow in the titles (the fonts directory must reach
-`_MEIPASS`) **and the nav icons** (`icons/lucide/` must reach
-`_MEIPASS`; QtSvg must be collected); keyboard focus and VoiceOver on
-a real Mac; hover tooltips on elided cells; the carried list in
+**Live checks (S41 checklist):** the wizard on a fresh account now
+also shows the chips' live states against a real Docker (not running
+→ Launch → running; connecting → connected); the nested-location
+Fix… with the X9 Pro mounted (keep `Music`, compare §172's counts);
+the stress test; the packaged app's combo chevron and checkbox tick
+(`qsvg`), Barlow in the titles, and the nav icons (`icons/lucide/`
+must reach `_MEIPASS`; QtSvg collected); keyboard focus and VoiceOver
+on a real Mac (VoiceOver should read the step indicator as "Step 1 of
+3: Spotify"); hover tooltips on elided cells; the carried list in
 `git show 5db1162:docs/HANDOFF.md`.
 
 ## 9. Open questions
@@ -113,19 +113,17 @@ a real Mac; hover tooltips on elided cells; the carried list in
 - **The cell-widget pixel test on Cocoa** is order-dependent (§181):
   hover from the cursor? It does not affect CI.
 - **Result messages still on status labels:** `settings_window.py`
-  ~:577–1161 and 12 sites in `duplicates_page.py` :440–979; fold into
+  ~:577–1161, 12 sites in `duplicates_page.py` :440–979, and the
+  wizard's Spotify and Library steps (shared helpers); fold into
   S35a/S35b or its own commit.
+- The wizard's empty progress line still takes a row above the
+  SoulSeek notice (a ~20 px gap); hide it when empty if it bothers.
 - Settings' subtitle leaves "thresholds." alone on its second line at
   the 90-character measure (copy, S35b).
-- Carried unchanged: the Spotify wait not cancelled on close; the
-  late-worker button defect (§148); four CLI items (§156); the
-  unrecorded transfer id and leftover `.tmp` files (X1); why a shared
-  fake's missing method stalls the suite (§171, UNVERIFIED); a
-  location whose stored path differs in case from disk maps no files
-  in a merge; should item views get a themed focus indicator (§175);
-  the Dashboard's Status links clip instead of eliding (S34); Review's
-  column budget at 960 (S35b); three copies of the basename logic in
-  `soulseek/` (a refactor commit).
+- Carried unchanged: see `git show 8eee663:docs/HANDOFF.md` §9 (the
+  Spotify wait on close, §148's late-worker button, §156's CLI items,
+  X1's leftovers, the Dashboard Status links clipping (S34), Review's
+  column budget at 960 (S35b), and the rest).
 
 ---
 

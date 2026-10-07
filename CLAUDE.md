@@ -103,7 +103,8 @@ src/seeker/
 │       library_location_picker.py, plain_text.py,
 │       slskd_status.py (shared outage state + Start slskd),
 │       status_lamp.py (each track/download state's LED: colour,
-│       lit or ring, its icon, and StatusLamp, one as a widget),
+│       lit or ring, its icon, StatusLamp, one as a widget, and
+│       StatusChip, a lamp and a sentence in a pill),
 │       step_indicator.py (the wizard's steps as a row of lamps),
 │       icons.py (Lucide nav icons drawn in palette tokens),
 │       wordmark.py (the sidebar wordmark and its brows)
