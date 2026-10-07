@@ -827,7 +827,7 @@ def handle_library_check(
               f"'{pair.outer.name}' ({pair.outer.path})")
 
     print("Merge each into the location you keep ('seeker library merge "
-          "NAME KEEP'), or use Fix… in Settings → Library Locations.")
+          "NAME KEEP'), or use Fix… in Settings → Library.")
 
 
 def handle_library_merge(

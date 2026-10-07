@@ -60,10 +60,10 @@ def _test_connection_since() -> datetime:
     return datetime.now(UTC)
 
 
-SETTINGS_TAB_LOCATIONS = "Library Locations"
-SETTINGS_TAB_DESTINATIONS = "Playlist Destinations"
-SETTINGS_TAB_CONNECTION = "Connection"
-SETTINGS_TAB_THRESHOLDS = "Thresholds"
+SETTINGS_TAB_GENERAL = "General"
+SETTINGS_TAB_LIBRARY = "Library"
+SETTINGS_TAB_CONNECTIONS = "Connections"
+SETTINGS_TAB_MATCHING = "Matching"
 
 # Name/Path/Reachable/Actions, see theme.ColumnLayout.
 _LOCATIONS_COLUMNS = theme.ColumnLayout(
@@ -126,21 +126,13 @@ class SettingsPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(
-            _scrollable(self._build_locations_tab()), SETTINGS_TAB_LOCATIONS,
-        )
-        self.tabs.addTab(
-            _scrollable(self._build_destinations_tab()),
-            SETTINGS_TAB_DESTINATIONS,
-        )
-        self.tabs.addTab(
-            _scrollable(self._build_connection_tab()),
-            SETTINGS_TAB_CONNECTION,
-        )
-        self.tabs.addTab(
-            _scrollable(self._build_thresholds_tab()),
-            SETTINGS_TAB_THRESHOLDS,
-        )
+        for build_tab, tab_name in (
+                (self._build_general_tab, SETTINGS_TAB_GENERAL),
+                (self._build_library_tab, SETTINGS_TAB_LIBRARY),
+                (self._build_connection_tab, SETTINGS_TAB_CONNECTIONS),
+                (self._build_matching_tab, SETTINGS_TAB_MATCHING),
+        ):
+            self.tabs.addTab(_scrollable(build_tab()), tab_name)
         layout.addWidget(self.tabs)
 
         about_row = QHBoxLayout()
@@ -178,9 +170,18 @@ class SettingsPage(QWidget):
 
     # --- Library locations -------------------------------------------
 
-    def _build_locations_tab(self) -> QWidget:
+    def _build_library_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.addWidget(self._build_locations_group())
+        layout.addWidget(self._build_default_destination_group())
+        layout.addWidget(self._build_playlist_destinations_group())
+        layout.addStretch()
+        return tab
+
+    def _build_locations_group(self) -> QGroupBox:
+        group = QGroupBox("Library Locations")
+        layout = QVBoxLayout(group)
 
         # Persistent, dismissible — for errors worth more than a
         # transient status line: a folder already registered, or one
@@ -219,8 +220,7 @@ class SettingsPage(QWidget):
         add_row.addStretch()
         layout.addLayout(add_row)
 
-        layout.addStretch()
-        return tab
+        return group
 
     def _refresh_locations(self) -> None:
         run_worker(
@@ -464,16 +464,9 @@ class SettingsPage(QWidget):
 
     # --- Playlist destinations ---------------------------------------
 
-    def _build_destinations_tab(self) -> QWidget:
-        tab = QWidget()
-        outer = QVBoxLayout(tab)
-
-        outer.addWidget(self._build_default_destination_group())
-
-        content = QWidget()
-        layout = QHBoxLayout(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(content, 1)
+    def _build_playlist_destinations_group(self) -> QGroupBox:
+        group = QGroupBox("Playlist Destinations")
+        layout = QHBoxLayout(group)
 
         self.destinations_playlist_list = QListWidget()
         elide_list_items(self.destinations_playlist_list)
@@ -525,16 +518,15 @@ class SettingsPage(QWidget):
         right.addStretch()
         layout.addLayout(right, 1)
 
-        return tab
+        return group
 
-    def _build_default_destination_group(self) -> QWidget:
+    def _build_default_destination_group(self) -> QGroupBox:
         # The fallback DownloadService resolves to once a playlist has
         # no destination of its own (HISTORY §50); also what the
         # Dashboard's own "no dead end" dialog writes to when its
         # "Remember this for this playlist" checkbox is left unchecked.
-        # Deliberately above the per-playlist overrides below, not
-        # beside them — this is the first thing a real user should
-        # notice on this tab.
+        # Deliberately above the per-playlist overrides, not beside
+        # them: it applies to every playlist without one of its own.
         group = QGroupBox("Default Destination")
         layout = QFormLayout(group)
 
@@ -1221,21 +1213,32 @@ class SettingsPage(QWidget):
         while syncing — without this, setChecked(True) here would fire
         `toggled` right back into `_on_theme_mode_changed`, re-entering
         `MainWindow._apply_theme_mode` for a mode it's already applying
-        (same discipline `_load_threshold_fields` already uses for its
-        own checkboxes)."""
+        (same discipline `_build_notifications_group` uses for its own
+        checkboxes)."""
         radio = self._theme_mode_radios.get(mode)
         if radio is not None and not radio.isChecked():
             radio.blockSignals(True)
             radio.setChecked(True)
             radio.blockSignals(False)
 
-    # --- Thresholds ------------------------------------------------
+    # --- General and Matching tabs ------------------------------------
 
-    def _build_thresholds_tab(self) -> QWidget:
+    def _build_general_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-
         layout.addWidget(self._build_appearance_group())
+        layout.addWidget(self._build_startup_group())
+        layout.addWidget(self._build_notifications_group())
+        layout.addStretch()
+        return tab
+
+    def _build_matching_tab(self) -> QWidget:
+        tab = QWidget()
+        outer = QVBoxLayout(tab)
+        group = QGroupBox("Match Thresholds")
+        layout = QVBoxLayout(group)
+        outer.addWidget(group)
+        outer.addStretch()
 
         layout.addWidget(PlainLabel(
             "Controls when a matched track is auto-accepted vs. "
@@ -1284,14 +1287,16 @@ class SettingsPage(QWidget):
         self.thresholds_status_label = PlainLabel("")
         layout.addWidget(self.thresholds_status_label)
 
+        self._load_threshold_fields()
+
+        return tab
+
+    def _build_notifications_group(self) -> QGroupBox:
         # Per-category menu-bar notification toggles, all defaulting on
-        # (config_store.py's own field defaults). A single checkbox that
-        # saves itself immediately on toggle, matching the "no separate
-        # save step for one boolean" precedent nothing else on this tab
-        # actually sets (thresholds are two related numbers that need a
-        # combined save/validation step; each of these is one
-        # independent flag).
-        notifications_group = QGroupBox("Menu Bar Notifications")
+        # (config_store.py's own field defaults). Each checkbox saves
+        # itself on toggle: one independent flag needs no save step,
+        # unlike the thresholds, two related numbers validated together.
+        notifications_group = QGroupBox("Notifications")
         notifications_layout = QVBoxLayout(notifications_group)
 
         self.notify_downloads_finished_checkbox = QCheckBox(
@@ -1331,15 +1336,19 @@ class SettingsPage(QWidget):
         )
         notifications_layout.addWidget(self.notify_errors_checkbox)
 
-        layout.addWidget(notifications_group)
+        config = self.application.settings
+        for checkbox, value in (
+                (self.notify_downloads_finished_checkbox,
+                 config.notify_downloads_finished),
+                (self.notify_needs_decision_checkbox,
+                 config.notify_needs_decision),
+                (self.notify_errors_checkbox, config.notify_errors),
+        ):
+            checkbox.blockSignals(True)
+            checkbox.setChecked(value)
+            checkbox.blockSignals(False)
 
-        layout.addWidget(self._build_startup_group())
-
-        layout.addStretch()
-
-        self._load_threshold_fields()
-
-        return tab
+        return notifications_group
 
     # --- Start at login ----------------------------------------------
 
@@ -1451,17 +1460,6 @@ class SettingsPage(QWidget):
         self.needs_review_threshold_field.setText(
             str(needs_review_threshold)
         )
-
-        for checkbox, value in (
-                (self.notify_downloads_finished_checkbox,
-                 config.notify_downloads_finished),
-                (self.notify_needs_decision_checkbox,
-                 config.notify_needs_decision),
-                (self.notify_errors_checkbox, config.notify_errors),
-        ):
-            checkbox.blockSignals(True)
-            checkbox.setChecked(value)
-            checkbox.blockSignals(False)
 
     def _on_save_thresholds_clicked(self) -> None:
         auto_text = self.auto_match_threshold_field.text().strip()

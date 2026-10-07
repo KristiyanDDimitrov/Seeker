@@ -17,6 +17,7 @@ from fakes import FakeApplication, make_duplicate_group
 from seeker.models.playlist import Playlist
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
+from seeker.ui.settings_window import SETTINGS_TAB_LIBRARY
 
 # Wider than any of the three lists at 960 wide, Library's included.
 _LONG_NAME = (
@@ -76,7 +77,7 @@ def test_the_settings_destination_list_elides_a_long_name(qtbot):
     window = _window(qtbot)
     window._show_page("settings")
     settings = window.settings_page
-    settings.tabs.setCurrentIndex(1)
+    settings.select_tab(SETTINGS_TAB_LIBRARY)
     settings._render_destinations(([Playlist("p1", _LONG_NAME, 12)], []))
 
     _assert_elides(settings.destinations_playlist_list, qtbot)

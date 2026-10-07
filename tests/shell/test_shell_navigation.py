@@ -234,10 +234,10 @@ def test_next_step_action_button_opens_settings_on_the_connection_tab(
         window.stacked_widget.currentIndex()
         == window._page_indices["settings"]
     )
-    from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION
+    from seeker.ui.settings_window import SETTINGS_TAB_CONNECTIONS
     assert window.settings_page.tabs.tabText(
         window.settings_page.tabs.currentIndex()
-    ) == SETTINGS_TAB_CONNECTION
+    ) == SETTINGS_TAB_CONNECTIONS
 
 
 def test_settings_page_shows_its_subtitle_via_build_page(qtbot):

@@ -69,8 +69,8 @@ DUPLICATES_TAB_SUBTITLE = (
     "removed until you explicitly check the box and click Delete."
 )
 SETTINGS_WINDOW_SUBTITLE = (
-    "Library locations, playlist destinations, Spotify/SoulSeek "
-    "connections, and match-classification thresholds."
+    "Appearance and startup, library folders and destinations, "
+    "Spotify and SoulSeek connections, and match thresholds."
 )
 HISTORY_PAGE_SUBTITLE = (
     "Recently downloaded and tagged tracks, in one place. Derived from "
@@ -93,7 +93,7 @@ HELP_WALKTHROUGH_BODY = (
     "via the Web API and cached locally, so day-to-day use doesn't "
     "keep re-hitting Spotify's rate-limited API.</p>"
     "<p><b>2. Scan</b> — registered library locations (folders on disk, "
-    "Settings → Locations) are scanned for audio files.</p>"
+    "Settings → Library) are scanned for audio files.</p>"
     "<p><b>3. Match</b> — each cached track is fuzzy-matched against "
     "scanned files and classified in library or missing, shown per-"
     "playlist on the Dashboard.</p>"
@@ -109,7 +109,7 @@ HELP_WALKTHROUGH_BODY = (
 HELP_TROUBLESHOOTING_BODY = (
     "<h3>Troubleshooting</h3>"
     "<p><b>Spotify won't connect</b> — check the Client ID in Settings "
-    "→ Connection, and that your browser didn't block the "
+    "→ Connections, and that your browser didn't block the "
     "authorization popup.</p>"
     "<p><b>SoulSeek/Docker won't start</b> — confirm Docker Desktop is "
     "actually running, and that the SoulSeek username/password in "
@@ -979,7 +979,7 @@ def format_search_download_result(result: ManualDownloadResult) -> str:
     )
 
 
-# --- Settings: Library Locations tab --------------------------------------
+# --- Settings: Library tab, locations ---------------------------------------
 
 TOOLTIP_ADD_LOCATION = (
     "Pick a folder on disk and register it as a place Seeker scans for "
@@ -1174,7 +1174,7 @@ def format_merge_locations_result(
 
 TOOLTIP_RENAME_LOCATION = "Give this location a different display name."
 
-# --- Settings: Playlist Destinations tab ----------------------------------
+# --- Settings: Library tab, destinations ------------------------------------
 
 TOOLTIP_DEFAULT_LOCATION_COMBO = (
     "Where downloads land for any playlist that doesn't have its own "
@@ -1200,7 +1200,7 @@ TOOLTIP_SAVE_DESTINATION = (
     "land."
 )
 
-# --- Settings: Connection tab ----------------------------------------------
+# --- Settings: Connections tab ---------------------------------------------
 
 TOOLTIP_SPOTIFY_CLIENT_ID_FIELD = (
     "From your app on the Spotify Developer Dashboard. Not secret — "
@@ -1226,7 +1226,7 @@ TOOLTIP_UPDATE_CREDENTIALS = (
     "generated API key."
 )
 
-# --- Settings: Thresholds tab -----------------------------------------------
+# --- Settings: General and Matching tabs ------------------------------------
 
 TOOLTIP_AUTO_MATCH_THRESHOLD_FIELD = (
     "Match score at or above which a track is auto-accepted with no "

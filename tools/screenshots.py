@@ -94,6 +94,12 @@ from seeker.ui.pages.dashboard_page import DashboardPage  # noqa: E402
 from seeker.ui.pages.duplicates_page import DuplicatesPage  # noqa: E402
 from seeker.ui.pages.search_page import SearchPage  # noqa: E402
 from seeker.ui.pages.tagging_panel import TaggingPanel  # noqa: E402
+from seeker.ui.settings_window import (  # noqa: E402
+    SETTINGS_TAB_CONNECTIONS,
+    SETTINGS_TAB_GENERAL,
+    SETTINGS_TAB_LIBRARY,
+    SETTINGS_TAB_MATCHING,
+)
 from seeker.ui.wizard import OnboardingWizard  # noqa: E402
 
 SCREENS_DIR = REPO_ROOT / "tools" / ".screens"
@@ -544,9 +550,9 @@ def _find_duplicates(window: MainWindow) -> None:
     page.find_duplicates_button.click()
 
 
-def _settings_tab(index: int) -> Step:
+def _settings_tab(tab_name: str) -> Step:
     def show(window: MainWindow) -> None:
-        window.settings_page.tabs.setCurrentIndex(index)
+        window.settings_page.select_tab(tab_name)
 
     return show
 
@@ -577,10 +583,15 @@ SCREENS = [
     Screen("history", (nav("History"),)),
     Screen("help", (nav("Help"),)),
     Screen("support", (nav("Support"),)),
-    Screen("settings-locations", (nav("Settings"), _settings_tab(0))),
-    Screen("settings-downloads", (nav("Settings"), _settings_tab(1))),
-    Screen("settings-connection", (nav("Settings"), _settings_tab(2))),
-    Screen("settings-thresholds", (nav("Settings"), _settings_tab(3))),
+    *(
+        Screen(f"settings-{tab_name.lower()}", (
+            nav("Settings"), _settings_tab(tab_name),
+        ))
+        for tab_name in (
+            SETTINGS_TAB_GENERAL, SETTINGS_TAB_LIBRARY,
+            SETTINGS_TAB_CONNECTIONS, SETTINGS_TAB_MATCHING,
+        )
+    ),
 ]
 WIZARD_STEPS = ("spotify", "library", "soulseek", "done")
 

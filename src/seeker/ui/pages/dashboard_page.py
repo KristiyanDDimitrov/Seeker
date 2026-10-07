@@ -56,7 +56,7 @@ from seeker.ui.elided_text import elide_list_items
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
-from seeker.ui.settings_window import SETTINGS_TAB_CONNECTION, SETTINGS_TAB_LOCATIONS
+from seeker.ui.settings_window import SETTINGS_TAB_CONNECTIONS, SETTINGS_TAB_LIBRARY
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.widgets import TwoToneProgressBar
@@ -1436,9 +1436,9 @@ class DashboardPage(QWidget):
                 self.feedback,
             )
         elif action == "settings_connection":
-            self._host.open_settings(SETTINGS_TAB_CONNECTION)
+            self._host.open_settings(SETTINGS_TAB_CONNECTIONS)
         elif action == "settings_locations":
-            self._host.open_settings(SETTINGS_TAB_LOCATIONS)
+            self._host.open_settings(SETTINGS_TAB_LIBRARY)
         elif action == "sync":
             self.refresh_playlists()
         elif action == "sync_tracks":

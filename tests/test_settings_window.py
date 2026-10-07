@@ -4,6 +4,7 @@ from dataclasses import replace
 import pytest
 from PySide6.QtWidgets import (
     QFileDialog,
+    QGroupBox,
     QInputDialog,
     QMessageBox,
     QPushButton,
@@ -23,7 +24,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
-from seeker.ui import plain_text
+from seeker.ui import plain_text, settings_window
 from seeker.ui.settings_window import SettingsPage, locations_nested_with
 
 
@@ -122,6 +123,60 @@ def test_settings_window_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
             window.save_thresholds_button,
     ):
         assert widget.toolTip() != ""
+
+
+# --- Tabs --------------------------------------------------------------
+
+def _tab_constants() -> list[str]:
+    return [
+        value for name, value in vars(settings_window).items()
+        if name.startswith("SETTINGS_TAB_")
+    ]
+
+
+def _group_titles_on_tab(window: SettingsPage, tab_name: str) -> set[str]:
+    window.select_tab(tab_name)
+    tab = window.tabs.currentWidget()
+    return {group.title() for group in tab.findChildren(QGroupBox)}
+
+
+def test_every_settings_tab_constant_selects_its_own_tab(
+        qtbot, tmp_path, monkeypatch,
+):
+    window = SettingsPage(make_application(tmp_path, monkeypatch))
+    qtbot.addWidget(window)
+
+    assert len(_tab_constants()) == window.tabs.count()
+    for tab_name in _tab_constants():
+        # Start from a different tab, so a name that matches nothing
+        # (select_tab's no-op) cannot pass by staying put.
+        window.tabs.setCurrentIndex(next(
+            index for index in range(window.tabs.count())
+            if window.tabs.tabText(index) != tab_name
+        ))
+        window.select_tab(tab_name)
+        assert window.tabs.tabText(window.tabs.currentIndex()) == tab_name
+
+
+def test_settings_tabs_group_settings_by_job(qtbot, tmp_path, monkeypatch):
+    window = SettingsPage(make_application(tmp_path, monkeypatch))
+    qtbot.addWidget(window)
+
+    assert [
+        window.tabs.tabText(index) for index in range(window.tabs.count())
+    ] == ["General", "Library", "Connections", "Matching"]
+    assert _group_titles_on_tab(
+        window, settings_window.SETTINGS_TAB_GENERAL,
+    ) == {"Appearance", "Startup", "Notifications"}
+    assert {"Library Locations", "Playlist Destinations"} <= (
+        _group_titles_on_tab(window, settings_window.SETTINGS_TAB_LIBRARY)
+    )
+    assert _group_titles_on_tab(
+        window, settings_window.SETTINGS_TAB_CONNECTIONS,
+    ) >= {"Spotify"}
+    assert _group_titles_on_tab(
+        window, settings_window.SETTINGS_TAB_MATCHING,
+    ) == {"Match Thresholds"}
 
 
 # --- Library locations (§1) -------------------------------------------

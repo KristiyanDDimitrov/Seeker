@@ -322,7 +322,7 @@ username/password, and generates a `SLSKD_API_KEY` itself, so there's no
 `.env` file to hand-edit and no need to click through slskd's own web UI
 at all. Everything it collects is written to a `config.json` in the same
 per-user app-data directory as the database (see step 1) — not `.env` —
-and can be changed later from the Settings screen (Connection tab:
+and can be changed later from the Settings screen (Connections tab:
 re-authorize Spotify, update SoulSeek credentials, test the connection)
 without touching either file by hand. The wizard is resumable — closing
 and relaunching `seeker-ui` picks up wherever you left off.
@@ -383,7 +383,7 @@ peer-connection port (`50300`) is published on every interface, since
 the protocol itself needs that.
 
 If you went through the wizard or Settings instead of this manual path,
-slskd's own web UI login is generated for you (Settings → Connection
+slskd's own web UI login is generated for you (Settings → Connections
 tab → "Web UI username"/"Web UI password") rather than left at slskd's
 vendor default (`slskd`/`slskd`) — set `SLSKD_USERNAME`/`SLSKD_PASSWORD`
 yourself in `.env` for a fully manual setup.

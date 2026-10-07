@@ -378,7 +378,7 @@ class Application:
             raise SlskdStartRefusedError(
                 "Seeker can't find the slskd container it set up, so it "
                 "won't guess what to share. Start slskd where it runs, or "
-                "set it up again in Settings → Connection."
+                "set it up again in Settings → Connections."
             )
 
         username = self._config_store.slskd_username
@@ -387,7 +387,7 @@ class Application:
         if not username or not password:
             raise SlskdStartRefusedError(
                 "Seeker has no saved SoulSeek login. Enter it in "
-                "Settings → Connection."
+                "Settings → Connections."
             )
 
         return self.start_slskd(username, password, share_path, persist=True)
