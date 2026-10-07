@@ -491,18 +491,18 @@ def test_render_duplicate_groups_populates_table(qtbot):
 
     window._duplicates_page._render_duplicate_groups([make_duplicate_group()])
 
-    assert window._duplicates_page.duplicates_table.rowCount() == 2
-    assert window._duplicates_page.duplicates_table.item(0, 2).text() == "a.flac"
-    assert window._duplicates_page.duplicates_table.item(1, 2).text() == "a.mp3"
-    assert (
-        window._duplicates_page.duplicates_table.item(0, 3).text()
-        == "FLAC, 1000 kbps"
-    )
-    assert (
-        window._duplicates_page.duplicates_table.item(1, 3).text()
-        == "MP3, 320 kbps"
-    )
-    assert window._duplicates_page.duplicates_table.item(0, 4).text() == "98.7%"
+    table = window._duplicates_page.duplicates_table
+    path = _duplicates_column(window, "Path")
+    quality = _duplicates_column(window, "Quality")
+    similarity = _duplicates_column(window, "Similarity")
+    assert table.rowCount() == 2
+    assert table.item(0, path).text() == "a.flac"
+    assert table.item(1, path).text() == "a.mp3"
+    assert table.item(0, quality).text() == "FLAC, 1000 kbps"
+    assert table.item(1, quality).text() == "MP3, 320 kbps"
+    # A group's similarity is the group's: one cell spanning its rows.
+    assert table.item(0, similarity).text() == "98.7%"
+    assert table.rowSpan(0, similarity) == 2
 
 
 def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
@@ -1461,4 +1461,63 @@ def test_a_resolved_group_says_how_many_are_left(qtbot, monkeypatch):
     qtbot.waitUntil(
         lambda: page.notice.text() == "Deleted: 1, Failed: 0. No groups left.",
         timeout=2000,
+    )
+
+
+def test_every_other_group_sits_on_a_band(qtbot):
+    from seeker.ui.elided_text import BAND_ROLE
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+
+    page._render_duplicate_groups(
+        [make_duplicate_group(), make_duplicate_group(), make_duplicate_group()],
+    )
+
+    table = page.duplicates_table
+    banded_rows = [
+        row for row in range(table.rowCount())
+        if all(
+            table.item(row, column) is not None
+            and table.item(row, column).data(BAND_ROLE)
+            for column in (
+                _duplicates_column(window, "Keep"),
+                _duplicates_column(window, "Path"),
+                _duplicates_column(window, "Quality"),
+            )
+        )
+    ]
+    # Groups of two rows each: the second group's rows only.
+    assert banded_rows == [2, 3]
+    keep = _duplicates_column(window, "Keep")
+    assert table.columnAt(0) == keep
+
+
+def test_the_band_paints_the_palettes_alternate_ground(qtbot):
+    from PySide6.QtGui import QPalette
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.show()
+    window._show_page("duplicates")
+    page = window._duplicates_page
+    page._render_duplicate_groups([make_duplicate_group(), make_duplicate_group()])
+    qtbot.wait(20)
+
+    table = page.duplicates_table
+    image = table.viewport().grab().toImage()
+    dpr = image.width() / table.viewport().width()
+    path = _duplicates_column(window, "Path")
+
+    def ground(row: int) -> str:
+        rect = table.visualRect(table.model().index(row, path))
+        x = round((rect.right() - 4) * dpr)
+        y = round(rect.center().y() * dpr)
+        return image.pixelColor(x, y).name().upper()
+
+    palette = table.palette()
+    assert ground(0) == palette.color(QPalette.ColorRole.Base).name().upper()
+    assert ground(2) == (
+        palette.color(QPalette.ColorRole.AlternateBase).name().upper()
     )

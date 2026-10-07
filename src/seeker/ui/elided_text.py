@@ -12,6 +12,11 @@ It can also carry secondary text in `SECONDARY_ROLE` (a candidate's
 quality and peer beside its filename): quieter and right-aligned. It
 takes whatever the primary text leaves, and at least
 `_SECONDARY_MIN_SHARE` of the cell, eliding when that is not enough.
+
+A cell whose `BAND_ROLE` is true sits on the palette's AlternateBase
+instead of Base: a table whose rows come in groups (Duplicates) bands
+every other group, so where one ends reads at a glance. A cell under a
+cell widget needs an item carrying the role too.
 """
 
 import math
@@ -51,6 +56,7 @@ _Index = QModelIndex | QPersistentModelIndex
 # Clear of the UserRole a page stores its own row ids under.
 BADGE_ROLE = Qt.ItemDataRole.UserRole + 64
 SECONDARY_ROLE = Qt.ItemDataRole.UserRole + 65
+BAND_ROLE = Qt.ItemDataRole.UserRole + 66
 _BADGE_PADDING = 6
 _BADGE_GAP = 6
 _BADGE_FONT_SCALE = 0.85
@@ -183,6 +189,12 @@ class ElidedTextDelegate(QStyledItemDelegate):
     ) -> None:
         super().initStyleOption(option, index)
         option.textElideMode = self.elide_mode(index)
+        # Read from the palette at paint time, so a theme switch
+        # reaches a band without a re-render.
+        if index.data(BAND_ROLE):
+            option.backgroundBrush = option.palette.brush(
+                QPalette.ColorRole.AlternateBase,
+            )
 
     def paint(
             self,

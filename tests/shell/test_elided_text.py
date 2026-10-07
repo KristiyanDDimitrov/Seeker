@@ -132,12 +132,16 @@ def test_a_duplicates_path_elides_in_the_middle_and_keeps_its_filename(
     page = window._duplicates_page
     page._render_duplicate_groups([make_duplicate_group()])
     table = page.duplicates_table
-    index = table.model().index(0, 2)
+    headers = [
+        table.horizontalHeaderItem(column).text()
+        for column in range(table.columnCount())
+    ]
+    index = table.model().index(0, headers.index("Path"))
 
     delegate = table.itemDelegateForIndex(index)
     assert delegate.elide_mode(index) == Qt.TextElideMode.ElideMiddle
     assert (
-        delegate.elide_mode(table.model().index(0, 1))
+        delegate.elide_mode(table.model().index(0, headers.index("Location")))
         == Qt.TextElideMode.ElideRight
     )
 

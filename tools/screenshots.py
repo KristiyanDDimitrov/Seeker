@@ -359,13 +359,24 @@ SEARCH_RESULTS = [
 ]
 
 
-def _local_file(file_id: int, filename: str, size_mb: float) -> LocalFile:
+def _local_file(
+        file_id: int, filename: str, size_mb: float, folder: str = "Techno",
+) -> LocalFile:
+    artist, _, rest = filename.partition(" - ")
     return LocalFile(
-        id=file_id, location_id=1, relative_path=f"Techno/{filename}",
+        id=file_id, location_id=1, relative_path=f"{folder}/{filename}",
         filename=filename, format=filename.rsplit(".", 1)[-1],
         size_bytes=int(size_mb * 1_000_000), mtime=1_700_000_000.0,
-        scanned_at="2026-08-01T00:00:00+00:00", tag_artist="Nova Reyes",
-        tag_title="Voltage Drop", duration_ms=214_000,
+        scanned_at="2026-08-01T00:00:00+00:00", tag_artist=artist,
+        tag_title=rest.rsplit(".", 1)[0], duration_ms=214_000,
+    )
+
+
+def _quality(tier: int, bitrate_kbps: int | None) -> LocalFileQuality:
+    return LocalFileQuality(
+        tier=tier, bitrate_kbps=bitrate_kbps,
+        bit_depth=16 if bitrate_kbps is None else None, sample_rate=44_100,
+        clipping_ratio=0.0, integrated_loudness_lufs=-9.0,
     )
 
 
@@ -394,6 +405,49 @@ DUPLICATE_GROUPS = [
             ),
         ],
         similarity=0.97,
+    ),
+    # Three copies, two of them filed elsewhere: the row a person most
+    # needs to tell apart from the next group.
+    DuplicateGroup(
+        files=[
+            DuplicateFile(
+                local_file=_local_file(
+                    3, "Juno Halvorsen - Lowercase.aiff", 52.4, "House",
+                ),
+                quality=_quality(0, None),
+            ),
+            DuplicateFile(
+                local_file=_local_file(
+                    4, "Juno Halvorsen - Lowercase.mp3", 11.0, "Downloads",
+                ),
+                quality=_quality(2, 320),
+            ),
+            DuplicateFile(
+                local_file=_local_file(
+                    5, "Juno Halvorsen - Lowercase (Radio Edit).mp3", 7.2,
+                    "Downloads",
+                ),
+                quality=_quality(2, 256),
+            ),
+        ],
+        similarity=0.91,
+    ),
+    DuplicateGroup(
+        files=[
+            DuplicateFile(
+                local_file=_local_file(
+                    6, "Tomas Wren - Signal Path.flac", 41.0,
+                ),
+                quality=_quality(0, None),
+            ),
+            DuplicateFile(
+                local_file=_local_file(
+                    7, "Tomas Wren - Signal Path.flac", 41.0, "Old crate",
+                ),
+                quality=_quality(0, None),
+            ),
+        ],
+        similarity=1.0,
     ),
 ]
 

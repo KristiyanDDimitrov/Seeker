@@ -32,6 +32,7 @@ from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkResolveDuplicatesDialog
+from seeker.ui.elided_text import BAND_ROLE
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
@@ -58,18 +59,19 @@ KEEP_ALL_DUPLICATES_ID = 0
 # resolve "Actions" by its real header text instead of sharing the same
 # literal the render code uses (a test that shares the code's own
 # mistake proves nothing) (HISTORY §68).
+# Keep leads: a group's rows read as a choice of which copy to keep.
+# Similarity and Actions belong to the group, so they span its rows.
 class _DuplicatesColumn(IntEnum):
-    GROUP = 0
-    LOCATION = 1
-    PATH = 2
+    KEEP = 0
+    PATH = 1
+    LOCATION = 2
     QUALITY = 3
     SIMILARITY = 4
-    KEEP = 5
-    ACTIONS = 6
+    ACTIONS = 5
 
 
 _DUPLICATES_COLUMN_HEADERS = [
-    "Group", "Location", "Path", "Quality", "Similarity", "Keep", "Actions",
+    "Keep", "Path", "Location", "Quality", "Similarity", "Actions",
 ]
 
 # The declarative layout each table used to write out by hand across a
@@ -78,9 +80,8 @@ _DUPLICATES_COLUMN_HEADERS = [
 _DUPLICATES_COLUMNS = theme.ColumnLayout(
     stretch=(_DuplicatesColumn.PATH,),
     fit_content=(
-        _DuplicatesColumn.GROUP, _DuplicatesColumn.LOCATION,
+        _DuplicatesColumn.KEEP, _DuplicatesColumn.LOCATION,
         _DuplicatesColumn.QUALITY, _DuplicatesColumn.SIMILARITY,
-        _DuplicatesColumn.KEEP,
     ),
     actions=_DuplicatesColumn.ACTIONS,
     paths=(_DuplicatesColumn.PATH,),
@@ -110,7 +111,6 @@ class DuplicatesPage(QWidget):
         # precedent for a genuinely-nothing-to-show state (HISTORY §56).
         self.duplicates_milestone_label = PlainLabel("")
         self.duplicates_milestone_label.hide()
-        layout.addWidget(self.duplicates_milestone_label)
 
         controls = QHBoxLayout()
 
@@ -156,9 +156,28 @@ class DuplicatesPage(QWidget):
             self._on_find_duplicates_clicked
         )
         controls.addWidget(self.find_duplicates_button)
-        controls.addStretch()
 
+        # The progress line shares the controls' row: empty, it would
+        # hold a blank line of its own above the table.
+        self.duplicates_status_label = PlainLabel("")
+        self.feedback = FeedbackTarget(
+            self.duplicates_status_label, self.notice,
+        )
+        controls.addSpacing(theme.SPACING_MD)
+        controls.addWidget(self.duplicates_status_label)
+        controls.addStretch()
         layout.addLayout(controls)
+
+        # "Resolve all groups" (HISTORY §88). Real count set in
+        # _render_duplicate_groups, never stale against the table.
+        self.resolve_all_duplicates_button = QPushButton("Resolve all groups")
+        self.resolve_all_duplicates_button.setToolTip(
+            help_text.TOOLTIP_RESOLVE_ALL_DUPLICATES
+        )
+        self.resolve_all_duplicates_button.setEnabled(False)
+        self.resolve_all_duplicates_button.clicked.connect(
+            self._on_resolve_all_duplicates_clicked
+        )
 
         # Hidden by default; shown only when "Only these folders…" is
         # checked. A plain QListWidget of real absolute paths, resolved
@@ -206,25 +225,13 @@ class DuplicatesPage(QWidget):
         self.duplicates_folders_panel.setVisible(False)
         layout.addWidget(self.duplicates_folders_panel)
 
-        duplicates_status_row = QHBoxLayout()
-        self.duplicates_status_label = PlainLabel("")
-        self.feedback = FeedbackTarget(
-            self.duplicates_status_label, self.notice,
-        )
-        duplicates_status_row.addWidget(self.duplicates_status_label)
-        duplicates_status_row.addStretch()
-        # "Resolve all groups" (HISTORY §88). Real count set in
-        # _render_duplicate_groups, never stale against the table.
-        self.resolve_all_duplicates_button = QPushButton("Resolve all groups")
-        self.resolve_all_duplicates_button.setToolTip(
-            help_text.TOOLTIP_RESOLVE_ALL_DUPLICATES
-        )
-        self.resolve_all_duplicates_button.setEnabled(False)
-        self.resolve_all_duplicates_button.clicked.connect(
-            self._on_resolve_all_duplicates_clicked
-        )
-        duplicates_status_row.addWidget(self.resolve_all_duplicates_button)
-        layout.addLayout(duplicates_status_row)
+        # Above the table it acts on, beside what resolving has
+        # reclaimed so far.
+        table_header_row = QHBoxLayout()
+        table_header_row.addWidget(self.duplicates_milestone_label)
+        table_header_row.addStretch()
+        table_header_row.addWidget(self.resolve_all_duplicates_button)
+        layout.addLayout(table_header_row)
 
         self.duplicates_table = QTableWidget(
                 0,
@@ -676,15 +683,22 @@ class DuplicatesPage(QWidget):
                 )
             )
 
+            # Every other group sits on a band, so where one group
+            # ends reads without a column of numbers.
+            banded = group_index % 2 == 0
+
+            def group_item(
+                    text: str = "", banded: bool = banded,
+            ) -> QTableWidgetItem:
+                item = QTableWidgetItem(text)
+                item.setData(BAND_ROLE, banded)
+                return item
+
             for file_index, duplicate_file in enumerate(group.files):
                 local_file = duplicate_file.local_file
                 quality = duplicate_file.quality
                 assert local_file.id is not None
 
-                self.duplicates_table.setItem(
-                    row, _DuplicatesColumn.GROUP,
-                    QTableWidgetItem(str(group_index)),
-                )
                 # Location + full relative path — "the same file in two
                 # folders" is a judgement the user needs the real path
                 # to make, not just a bare filename (HISTORY §56 Phase
@@ -697,24 +711,17 @@ class DuplicatesPage(QWidget):
                 )
                 self.duplicates_table.setItem(
                     row, _DuplicatesColumn.LOCATION,
-                    QTableWidgetItem(
-                        file_location.name if file_location else "—"
-                    ),
+                    group_item(file_location.name if file_location else "—"),
                 )
                 self.duplicates_table.setItem(
                     row, _DuplicatesColumn.PATH,
-                    QTableWidgetItem(local_file.relative_path),
+                    group_item(local_file.relative_path),
                 )
                 quality_text = local_file.format.upper()
                 if quality.bitrate_kbps:
                     quality_text += f", {quality.bitrate_kbps} kbps"
                 self.duplicates_table.setItem(
-                    row, _DuplicatesColumn.QUALITY,
-                    QTableWidgetItem(quality_text),
-                )
-                self.duplicates_table.setItem(
-                    row, _DuplicatesColumn.SIMILARITY,
-                    QTableWidgetItem(f"{group.similarity:.1%}"),
+                    row, _DuplicatesColumn.QUALITY, group_item(quality_text),
                 )
 
                 keep_radio = QRadioButton()
@@ -735,6 +742,10 @@ class DuplicatesPage(QWidget):
                 # below reads it back directly, no separate id-to-file
                 # mapping needed.
                 button_group.addButton(keep_radio, id=local_file.id)
+                # The item under the radio carries the band.
+                self.duplicates_table.setItem(
+                    row, _DuplicatesColumn.KEEP, group_item(),
+                )
                 self.duplicates_table.setCellWidget(
                     row, _DuplicatesColumn.KEEP, keep_radio,
                 )
@@ -755,9 +766,18 @@ class DuplicatesPage(QWidget):
             # blank widget, not the real one, before this fix. The span
             # itself is what makes the covered rows read as blank; no
             # cell widget is needed there at all (HISTORY §77).
-            self.duplicates_table.setSpan(
-                group_first_row, _DuplicatesColumn.ACTIONS,
-                len(group.files), 1,
+            for column in (
+                    _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.ACTIONS,
+            ):
+                self.duplicates_table.setSpan(
+                    group_first_row, column, len(group.files), 1,
+                )
+            self.duplicates_table.setItem(
+                group_first_row, _DuplicatesColumn.SIMILARITY,
+                group_item(f"{group.similarity:.1%}"),
+            )
+            self.duplicates_table.setItem(
+                group_first_row, _DuplicatesColumn.ACTIONS, group_item(),
             )
             group_actions_widget = self._build_duplicate_group_actions(
                 group, button_group, previously_selected_id,
