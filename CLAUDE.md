@@ -634,6 +634,14 @@ Each links to the HISTORY entry where the full investigation lives;
 - `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService` is
   a **callable**, not a snapshot — a Settings change takes effect
   immediately, no restart. [HISTORY §28](docs/history/025-031.md#28)
+  The match thresholds resolve through `matching.resolve_thresholds`
+  (`is None`, never `or`: 0 is a value Settings accepts).
+  [HISTORY §179](docs/history/151-180.md#179)
+- **One navigation model: the sidebar.** Every registered page has a
+  sidebar button, and no page gets its own "← Back" (Settings' was
+  removed). Settings' tabs are `SETTINGS_TAB_*` (General, Library,
+  Connections, Matching); select one by constant, never by index.
+  [HISTORY §179](docs/history/151-180.md#179)
 - A `setCellWidget`-only column (no `QTableWidgetItem`) sorts as a
   silent no-op under click-to-sort — give it a `SortKeyItem`
   (`ui/table_sort.py`) if it has real data to order by (see

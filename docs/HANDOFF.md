@@ -10,110 +10,116 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the CI-result handoff note, after the S29 part-1
-  close-out `67f273f`. Tree clean
+- **HEAD:** the S29 part-2 close-out commit (HISTORY §179). Tree clean
   apart from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 1817 passed, 1 skipped`. Both
-  failures are `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`,
-  the display-specific failure carried from S28 (§4). `test_theme.py`
-  offscreen: 62 passed. `mypy --strict src/` clean, 133 files;
-  `ruff check src tests tools` 0.
-- **CI:** `67f273f`'s run `37589007991` green.
+- **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict
+  src/` clean, 133 files; `ruff check src tests tools` 0. The
+  display-specific `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`
+  passed this run and failed in an earlier one this session
+  (`2 failed, 1821 passed, 1 skipped`): intermittent here, not fixed.
+- **CI:** see the follow-up handoff note for the close-out's run.
 
 ## 2. Where we are
 
-S1–S28 ticked; **S29 part 1 (§29.1) done**, stopped at the row's split
-point at ~175 K tokens. **Next: S29 part 2** (BRIEF §29.2 Settings,
-§29.3 Library). Then S30 (**[ASK]** visual direction).
+S1–S29 ticked. **Next: S30, an [ASK] row** (BRIEF §30, visual
+direction): it starts only after Kris's explicit yes, and it ends at
+§30.3's hard stop for Kris's pick. Then S31.
 
-## 3. Session report (S29 part 1)
+## 3. Session report (S29 part 2)
 
-Evidence in HISTORY §178.
-- `bdf27a4` §29.1: Review candidates show the file name with quality
-  and peer as `SECONDARY_ROLE` text; local matches show "Tags: artist
-  – title"; section titles count rows; regression test for the tall
-  rows (fails on `38fc5a4`, passes on HEAD).
+Evidence in HISTORY §179.
+- `0d536e7` §29.2a: Settings tabs General / Library / Connections /
+  Matching; every `SETTINGS_TAB_*` tested; copy names the new tabs.
+- `9c88063` §29.2b: thresholds as 0–100 spin boxes, needs-review
+  below auto (refused), warning below 80; results on an InlineNotice.
+- `08ef76f` §29.2c: found defect, a saved threshold of 0 read as
+  unset; `matching.resolve_thresholds` (`is None`).
+- `83646f0` §29.2d: Back button removed, sidebar only.
+- `b7fa6e2` refactor: `theme.scrollable`.
+- `4e37c5f` §29.3a: Library options and actions grouped by job; the
+  page scrolls.
+- `ff3f410` §29.3b: "Tag N selected on Dashboard", or disabled.
 
 ## 4. Key context
 
-- **`elided_text.SECONDARY_ROLE`:** quieter right-aligned text after
-  a cell's primary text, colour blended from the item palette
-  (`secondary_text_color`, ≥5.9:1 on every row ground). It takes what
-  the primary text leaves, with a 45 % floor. Rule in CLAUDE.md (Qt
-  section).
-- **Review at 960 is tight:** both match columns stretch (Track must
-  stay ≥160 px for `test_table_columns`), so the candidate's peer
-  elides even at 1280. Worth a column-budget pass in S35b.
-- **For §29.2 (mapped, not started):**
-  - Tabs: `SETTINGS_TAB_*` at `settings_window.py:63`, built in
-    `SettingsPage.__init__` (~:128); groups: Appearance
-    `_build_appearance_group` :1171, Notifications inside
-    `_build_thresholds_tab` :1234 (group at :1294), Startup
-    `_build_startup_group` :1346; thresholds load :1442, save
-    `_on_save_thresholds_clicked` :1466.
-  - Tab users: `dashboard_page.py:59/1439/1441` (CONNECTION,
-    LOCATIONS); `main_window.py:1139` `select_tab`;
-    `tests/shell/test_shell_navigation.py:237`;
-    `tests/shell/test_elided_text.py:79` and `tools/screenshots.py:549`
-    select tabs **by index**, so they move when tabs regroup.
-  - Back button: `main_window.py:459`, via `build_page(header_extra=)`
-    (`context.py:84`); both it and the sidebar call `_show_page(key)`.
-    Keep `_previous_page_key`: `_page_to_reopen` uses it too.
-- **Old-commit check:** a `git worktree` runs with
-  `PYTHONPATH=<wt>/src:<wt>/tests uv run --project <repo> pytest …`.
-- Carried: the theme-test display failure (cause UNVERIFIED; passes
-  offscreen); `MainWindow` does not apply the theme, `main_ui.py`
-  does; radon not in the env; never touch slskd or real data; zsh does
-  not word-split `$var`; reproduce CI-only UI failures with
+- **Settings tabs** are `SETTINGS_TAB_GENERAL/LIBRARY/CONNECTIONS/
+  MATCHING`; the screenshot harness writes `settings-general` …
+  `settings-matching`. Delete stale `tools/.screens/settings-*`
+  images if an old run left them.
+- **Library is a `theme.scrollable` page** of four `QGroupBox`es
+  (Tag Options, Tags, Cover Art, File Names); the job sentences are
+  `help_text.LIBRARY_*_TEXT`. §34 does its visual treatment.
+- **`tag_selected_button`'s state is render-decided**
+  (`_render_tag_selected_button`, skips while `tag_selected` is busy).
+  A Library test that needs a selection to survive a run must select
+  a playlist whose statuses the fake serves: the post-tag
+  `refresh_track_table` otherwise empties the table.
+- **Spin boxes:** `QDoubleSpinBox` shows the system locale's decimal
+  comma here ("75,0"); Return is `lineEdit().returnPressed`
+  (observed). Their arrows are tiny under the current theme (S31).
+- **The tooltip sweep** cannot tell a helper's `tooltip` parameter
+  from peer text: keep `setToolTip(help_text.X)` at the call site.
+- Carried: `MainWindow` does not apply the theme, `main_ui.py` does;
+  radon not in the env; never touch slskd or real data; zsh does not
+  word-split `$var`; reproduce CI-only UI failures with
   `QT_QPA_PLATFORM=offscreen` first; a shared fake missing a method
   stalls the suite (§171); a palette change must update the chevron
-  SVGs (S31).
+  SVGs (S31); old-commit checks run in a `git worktree` with
+  `PYTHONPATH=<wt>/src:<wt>/tests uv run --project <repo> pytest …`.
 
 ## 5. Decisions made
 
-- **Secondary text, not a second line or more columns:** CLAUDE.md
-  keeps cells one line, and two extra columns (quality, peer) don't
-  fit at 960. Peer and quality share one secondary string ("FLAC,
-  1050kbps from peer").
-- **Both match columns stretch** (Track and the file): Track is half
-  the comparison; the file-only stretch failed the 160 px floor.
-- **Row height needed only a regression test** (§176 fixed it).
-- **Left alone:** three copies of the basename logic in `soulseek/`
-  (`client.py:398`, `quality.py:23`, `placement.py:250`); folding them
-  into `formatting.remote_basename` is its own refactor commit.
+- **Sidebar only, no Back** (BRIEF's recommendation, tested): Back
+  passed no focus or state, and every page has a sidebar button.
+  Promoted to CLAUDE.md (Qt section).
+- **Threshold warning, not a floor:** auto below 80 saves, with an
+  InlineNotice warning naming Tag playlist's consequence (brief: warn,
+  don't forbid). Needs-review ≥ auto stays refused.
+- **Three sibling groups on the Library tab**, not the Default
+  Destination group nested inside Playlist Destinations.
+- **`resolve_thresholds` folded four copies** in the fix commit: the
+  fix is replacing `or`, and one helper is that fix. Rule promoted to
+  CLAUDE.md.
+- **Group title "Notifications"** (brief's wording), not "Menu Bar
+  Notifications"; the checkboxes already say what they notify.
 
 ## 6. Blockers
 
-None.
+None. S30 waits on Kris's yes (an approval gate, not a blocker).
 
 ## 7. Files in progress
 
-None. §29.2 and §29.3 are not started.
+None.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** S30 visual direction (and whether the Dashboard
-shows BPM and key); S39 bundle identifier; S42 publishing commands;
-X1 and X2 (optional).
+**Approval gates:** S30 visual direction ("Booth", "Harmonic", a mix
+or neither, and whether the Dashboard shows BPM and key); S39 bundle
+identifier; S42 publishing commands; X1 and X2 (optional).
 
 **Live checks (S41 checklist):** the nested-location Fix… with the X9
 Pro mounted (keep `Music`, compare §172's counts); the stress test;
 the packaged app's combo chevron; keyboard focus and VoiceOver on a
-real Mac; hover tooltips on elided cells (now also a Review
-candidate's path and a local match's tags); the carried list in
+real Mac; hover tooltips on elided cells; the carried list in
 `git show 5db1162:docs/HANDOFF.md`.
 
 ## 9. Open questions
 
+- **Result messages still on status labels** (scoped this session):
+  Settings' default and per-playlist destinations, Spotify, Test
+  connection and credentials (`settings_window.py` ~:577–1161), and
+  12 sites on Duplicates (`duplicates_page.py` :440–979). One channel
+  migration; fold into S35a/S35b or its own commit.
 - Carried unchanged: the Spotify wait not cancelled on close; the
-  late-worker button defect (§148); Settings and Duplicates results on
-  status labels (S29 part 2); four CLI items (§156); the unrecorded
-  transfer id and leftover `.tmp` files (X1); why a shared fake's
-  missing method stalls the suite (§171, UNVERIFIED); a location whose
-  stored path differs in case from disk maps no files in a merge;
-  should item views get a themed focus indicator (§175); the
-  Dashboard's Status links clip instead of eliding (S34); why the
-  cell-widget background test fails on this display (§177).
+  late-worker button defect (§148); four CLI items (§156); the
+  unrecorded transfer id and leftover `.tmp` files (X1); why a shared
+  fake's missing method stalls the suite (§171, UNVERIFIED); a
+  location whose stored path differs in case from disk maps no files
+  in a merge; should item views get a themed focus indicator (§175);
+  the Dashboard's Status links clip instead of eliding (S34); why the
+  cell-widget background test fails on this display, intermittently
+  (§177); Review's column budget at 960 (S35b); three copies of the
+  basename logic in `soulseek/` (a refactor commit).
 
 ---
 
