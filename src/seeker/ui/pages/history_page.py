@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from seeker.formatting import format_timestamp
 from seeker.models.history_event import DOWNLOADED, TAGGED, HistoryEvent
 from seeker.ui import help_text, theme
+from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
@@ -81,6 +82,14 @@ class HistoryPage(QWidget):
         theme.apply_table_defaults(self.history_table)
         theme.configure_columns(self.history_table, _HISTORY_COLUMNS)
         layout.addWidget(theme.make_card(self.history_table))
+        self.history_empty_action = QPushButton(help_text.GO_TO_DASHBOARD_TEXT)
+        self.history_empty_action.clicked.connect(
+            lambda: self._context.navigate("dashboard")
+        )
+        self.history_empty = EmptyState(
+            self.history_table, EmptyGlyph.RECORD, help_text.HISTORY_EMPTY,
+            action=self.history_empty_action,
+        )
 
         # Raw, unfiltered events from the last real fetch — the filter
         # combo re-renders from this in memory rather than re-querying,
@@ -117,12 +126,17 @@ class HistoryPage(QWidget):
             ]
         )
 
-        if not self._history_events:
-            self.history_status_label.setText(
-                "No downloaded or tagged tracks yet."
+        if self._history_events:
+            self.history_empty.set_text(
+                help_text.format_history_filter_empty(
+                    self.history_filter_combo.currentText()
+                )
             )
         else:
-            self.history_status_label.setText("")
+            self.history_empty.set_text(help_text.HISTORY_EMPTY)
+        # Only an empty history has a first step to offer; an empty
+        # filter is undone from the combo above the table.
+        self.history_empty_action.setVisible(not self._history_events)
 
         # Sorting is live on this table; disabled for the body of this
         # rebuild (see preserving_sort_order's own docstring for why)

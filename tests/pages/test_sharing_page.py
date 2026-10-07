@@ -92,38 +92,69 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
     assert (
         locations_table.cellWidget(1, 4).findChild(QPushButton) is not None
     )
-    assert window._sharing_page.sharing_uploads_table.item(0, 0).text() == (
-        help_text.NO_UPLOADS_LABEL
+    uploads_table = window._sharing_page.sharing_uploads_table
+    assert uploads_table.rowCount() == 0
+    assert window._sharing_page.sharing_uploads_empty.isVisibleTo(window)
+    assert window._sharing_page.sharing_uploads_empty.text() == (
+        help_text.SHARING_UPLOADS_EMPTY
     )
 
 
-def test_sharing_uploads_table_clears_stale_span_after_empty_state(qtbot):
-    # Roadmap item 73 (P4 audit) — the SAME stale-span bug the
-    # duplicates table had, found live via that fix's own "audit every
-    # other table" instruction: the empty-state branch spans row 0
-    # across all 4 columns; setRowCount() alone does not clear that
-    # span, so a transition from empty -> a real upload used to leave
-    # the stale span active, visually swallowing the new row's
-    # filename/state/progress cells into column 0.
+def test_sharing_uploads_empty_state_gives_way_to_a_real_upload(qtbot):
     from seeker.soulseek.sharing_service import UploadStatus
 
     application = FakeApplication()
     window = MainWindow(application)
     qtbot.addWidget(window)
+    page = window._sharing_page
 
-    window._sharing_page._render_sharing_uploads_table([])
-    assert window._sharing_page.sharing_uploads_table.columnSpan(0, 0) == 4
+    page._render_sharing_uploads_table([])
+    assert page.sharing_uploads_empty.isVisibleTo(page)
 
-    window._sharing_page._render_sharing_uploads_table([
+    page._render_sharing_uploads_table([
         UploadStatus(
             username="alice", filename="track.flac", state="InProgress",
             bytes_transferred=100, size=1000,
         ),
     ])
 
-    assert window._sharing_page.sharing_uploads_table.rowSpan(0, 0) == 1
-    assert window._sharing_page.sharing_uploads_table.columnSpan(0, 0) == 1
-    assert window._sharing_page.sharing_uploads_table.item(0, 1).text() == "track.flac"
+    assert not page.sharing_uploads_empty.isVisibleTo(page)
+    assert page.sharing_uploads_table.columnSpan(0, 0) == 1
+    assert page.sharing_uploads_table.item(0, 1).text() == "track.flac"
+
+
+def test_sharing_locations_empty_state_sends_you_to_settings(qtbot):
+    application = FakeApplication(soulseek_configured=False)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("sharing")
+    page = window._sharing_page
+
+    qtbot.waitUntil(
+        lambda: page.sharing_locations_empty.text()
+        == help_text.SHARING_LOCATIONS_UNCONFIGURED,
+        timeout=2000,
+    )
+    page.sharing_locations_empty_action.click()
+
+    assert window._current_page_key == "settings"
+
+
+def test_sharing_locations_empty_state_asks_for_a_location(qtbot):
+    sharing_service = FakeSharingService(reconciliation=[], uploads=[])
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("sharing")
+    page = window._sharing_page
+
+    qtbot.waitUntil(
+        lambda: page.sharing_locations_empty.text()
+        == help_text.SHARING_LOCATIONS_EMPTY,
+        timeout=2000,
+    )
 
 
 def test_sharing_add_to_share_button_calls_service_after_confirm(

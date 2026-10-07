@@ -744,3 +744,17 @@ def test_clear_finished_finishing_never_re_enables_over_a_newer_render(
     qtbot.waitUntil(lambda: refreshes == [1], timeout=2000)
 
     assert not page.clear_finished_button.isEnabled()
+
+
+def test_an_empty_downloads_page_points_at_the_dashboard(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window._show_page("downloads")
+    page = window._downloads_page
+
+    assert page.downloads_empty.text() == help_text.DOWNLOADS_EMPTY
+    assert page.downloads_empty.isVisibleTo(page)
+
+    page.downloads_empty_action.click()
+
+    assert window._current_page_key == "dashboard"

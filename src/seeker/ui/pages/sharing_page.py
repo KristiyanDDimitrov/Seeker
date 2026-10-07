@@ -21,6 +21,7 @@ from seeker.soulseek.sharing_service import (
     UploadStatus,
 )
 from seeker.ui import help_text, plain_text, theme
+from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, RichLabel
@@ -101,6 +102,17 @@ class SharingPage(QWidget):
         theme.apply_table_defaults(self.sharing_locations_table)
         layout.addWidget(theme.make_card(self.sharing_locations_table))
         self._configure_sharing_locations_columns()
+        self.sharing_locations_empty_action = QPushButton(
+            help_text.OPEN_SETTINGS_TEXT
+        )
+        self.sharing_locations_empty_action.clicked.connect(
+            lambda: self._context.navigate("settings")
+        )
+        self.sharing_locations_empty = EmptyState(
+            self.sharing_locations_table, EmptyGlyph.SHARE,
+            help_text.SHARING_LOCATIONS_EMPTY,
+            action=self.sharing_locations_empty_action,
+        )
 
         uploads_label = PlainLabel("Currently uploading")
         # QLabel#sectionHeaderLabel in theme.py.
@@ -117,6 +129,10 @@ class SharingPage(QWidget):
             self.sharing_uploads_table, _SHARING_UPLOADS_COLUMNS,
         )
         layout.addWidget(theme.make_card(self.sharing_uploads_table))
+        self.sharing_uploads_empty = EmptyState(
+            self.sharing_uploads_table, EmptyGlyph.SHARE,
+            help_text.SHARING_UPLOADS_EMPTY,
+        )
 
         self._current_sharing_self_managed = False
 
@@ -200,8 +216,15 @@ class SharingPage(QWidget):
                 help_text.SHARING_UNCONFIGURED_NOTICE
             )
             self.sharing_locations_table.setRowCount(0)
+            self.sharing_locations_empty.set_text(
+                help_text.SHARING_LOCATIONS_UNCONFIGURED
+            )
             self.sharing_uploads_table.setRowCount(0)
             return
+
+        self.sharing_locations_empty.set_text(
+            help_text.SHARING_LOCATIONS_EMPTY
+        )
 
         status = snapshot.status
         assert status is not None
@@ -310,14 +333,6 @@ class SharingPage(QWidget):
         # rebuild (see preserving_sort_order's own docstring for why)
         # and restored afterward.
         with preserving_sort_order(table):
-            # This table's empty-state branch sets a 4-column span at
-            # row 0, and setRowCount() doesn't clear it, so without this
-            # a transition from empty -> a real upload leaves that span
-            # active, visually swallowing the new row's
-            # filename/state/progress cells into column 0 even though
-            # their real QTableWidgetItem data was set correctly
-            # underneath (HISTORY §73).
-            table.clearSpans()
             table.setRowCount(len(uploads))
 
             for row, upload in enumerate(uploads):
@@ -346,13 +361,6 @@ class SharingPage(QWidget):
                     )
 
                 table.setItem(row, 3, QTableWidgetItem(progress_text))
-
-            if not uploads:
-                table.setRowCount(1)
-                table.setSpan(0, 0, 1, 4)
-                table.setItem(
-                    0, 0, QTableWidgetItem(help_text.NO_UPLOADS_LABEL),
-                )
 
         theme.size_columns(table, _SHARING_UPLOADS_COLUMNS, [])
         self._upload_eta_tracker.evict_except(active_keys)

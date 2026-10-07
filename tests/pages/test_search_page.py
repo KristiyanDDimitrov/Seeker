@@ -85,10 +85,23 @@ def test_search_no_results_shows_a_clear_message(qtbot):
     window._search_page.search_title_edit.setText("Nothing")
     window._search_page._on_search_clicked()
 
-    status_label = window._search_page.search_status_label
-    qtbot.waitUntil(lambda: status_label.text() != "", timeout=2000)
-    assert help_text.SEARCH_NO_RESULTS_MESSAGE in status_label.text()
+    empty = window._search_page.search_results_empty
+    qtbot.waitUntil(lambda: "Nobody - Nothing" in empty.text(), timeout=2000)
+    assert empty.text() == help_text.format_search_no_results(
+        "Nobody", "Nothing",
+    )
+    assert empty.isVisibleTo(window)
     assert not window._search_page.download_best_button.isEnabled()
+
+
+def test_search_results_invite_a_search_before_the_first_one(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+
+    empty = window._search_page.search_results_empty
+
+    assert empty.text() == help_text.SEARCH_RESULTS_EMPTY
+    assert empty.isVisibleTo(window._search_page)
 
 
 def test_search_download_best_passes_the_already_fetched_results(qtbot):

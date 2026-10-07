@@ -13,7 +13,7 @@ from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
 from fakes import FakeApplication, make_history_event
 from seeker.models.history_event import DOWNLOADED, TAGGED
-from seeker.ui import workers
+from seeker.ui import help_text, workers
 from seeker.ui.main_window import MainWindow
 
 
@@ -84,21 +84,6 @@ def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
     window._show_page("dashboard")
     window._show_page("history")
     assert application.history_service.get_recent_events_calls == 2
-
-
-def test_history_page_empty_state_message(qtbot):
-    application = FakeApplication(history_events=[])
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("history")
-
-    qtbot.waitUntil(
-        lambda: "no downloaded or tagged" in
-        window._history_page.history_status_label.text().lower(),
-        timeout=2000,
-    )
-    assert window._history_page.history_table.rowCount() == 0
 
 
 def test_history_filter_combo_filters_by_event_type(qtbot):
@@ -199,3 +184,40 @@ def test_history_refresh_button_refetches(qtbot):
             "worker snapshot:\n" + workers.debug_snapshot(window.thread_pool),
         )
         raise
+
+
+def test_an_empty_history_invites_a_first_download(qtbot):
+    application = FakeApplication(history_events=[])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("history")
+
+    page = window._history_page
+    qtbot.waitUntil(
+        lambda: page.history_empty.text() == help_text.HISTORY_EMPTY,
+        timeout=2000,
+    )
+    assert page.history_status_label.text() == ""
+    assert page.history_empty.isVisibleTo(page)
+
+    page.history_empty_action.click()
+
+    assert window._current_page_key == "dashboard"
+
+
+def test_a_filter_with_no_matches_says_so_and_offers_no_action(qtbot):
+    application = FakeApplication(history_events=[make_history_event()])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("history")
+    page = window._history_page
+    qtbot.waitUntil(lambda: page.history_table.rowCount() == 1, timeout=2000)
+
+    page.history_filter_combo.setCurrentIndex(
+        page.history_filter_combo.findData(TAGGED)
+    )
+
+    assert page.history_empty.text() == help_text.format_history_filter_empty(
+        "Tagged",
+    )
+    assert not page.history_empty_action.isVisibleTo(page)

@@ -25,7 +25,7 @@ from fakes import (
     make_upgrade_details,
     wait_for_workers,
 )
-from seeker.ui import plain_text
+from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.main_window import MainWindow
 from seeker.ui.plain_text import plain_tooltip
@@ -547,3 +547,20 @@ def test_review_tab_reject_local_match_calls_reject_match(qtbot):
         lambda: application.library_service.reject_match_calls == ["tc"],
         timeout=2000,
     )
+
+
+def test_each_empty_review_section_says_nothing_is_waiting(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window._show_page("review")
+    page = window._review_page
+
+    assert page.review_needs_empty.text() == help_text.REVIEW_CANDIDATES_EMPTY
+    assert page.review_upgrades_empty.text() == help_text.REVIEW_UPGRADES_EMPTY
+    assert page.review_local_empty.text() == help_text.REVIEW_LOCAL_EMPTY
+    for empty in (
+            page.review_needs_empty,
+            page.review_upgrades_empty,
+            page.review_local_empty,
+    ):
+        assert empty.isVisibleTo(page)

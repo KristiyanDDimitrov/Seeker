@@ -18,6 +18,7 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.quality import rank_candidates, score_candidate
 from seeker.ui import help_text, theme
+from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
@@ -114,6 +115,10 @@ class SearchPage(QWidget):
         theme.apply_table_defaults(self.search_results_table)
         layout.addWidget(theme.make_card(self.search_results_table))
         self._configure_search_columns()
+        self.search_results_empty = EmptyState(
+            self.search_results_table, EmptyGlyph.SEARCH,
+            help_text.SEARCH_RESULTS_EMPTY,
+        )
 
         self._search_artist = ""
         self._search_title = ""
@@ -164,7 +169,10 @@ class SearchPage(QWidget):
         self.download_best_button.setEnabled(bool(files))
         self.search_status_label.setText(
             help_text.format_search_result_count(len(files))
-            if files else help_text.SEARCH_NO_RESULTS_MESSAGE
+            if files else ""
+        )
+        self.search_results_empty.set_text(
+            help_text.format_search_no_results(artist, title)
         )
 
         ranked = rank_candidates(files)

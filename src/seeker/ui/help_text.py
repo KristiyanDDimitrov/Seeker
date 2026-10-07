@@ -838,7 +838,48 @@ TOOLTIP_UPLOADS_TABLE = (
     "Real-time transfers other SoulSeek peers are currently downloading "
     "from your shares."
 )
-NO_UPLOADS_LABEL = "No one is currently downloading from you."
+
+# --- Empty tables -----------------------------------------------------------
+# One sentence each, shown by ui/empty_state.py over a table with no
+# rows: why it is empty, and what to do about it when there is anything
+# to do.
+
+SHARING_UPLOADS_EMPTY = "No one is downloading from you right now."
+SHARING_LOCATIONS_EMPTY = (
+    "No library locations yet. Add one in Settings, then share it here."
+)
+SHARING_LOCATIONS_UNCONFIGURED = (
+    "Connect SoulSeek in Settings to share your library."
+)
+SEARCH_RESULTS_EMPTY = "Enter an artist and a title, then search SoulSeek."
+HISTORY_EMPTY = (
+    "Nothing downloaded or tagged yet. Download a playlist's missing "
+    "tracks from the Dashboard to start."
+)
+DOWNLOADS_EMPTY = (
+    "Nothing downloading. Pick a playlist on the Dashboard and download "
+    "its missing tracks."
+)
+REVIEW_CANDIDATES_EMPTY = "No SoulSeek matches to confirm."
+REVIEW_UPGRADES_EMPTY = (
+    "No upgrades to approve. A better copy shows up here once it "
+    "downloads."
+)
+REVIEW_LOCAL_EMPTY = "No library matches to confirm."
+GO_TO_DASHBOARD_TEXT = "Go to Dashboard"
+OPEN_SETTINGS_TEXT = "Open Settings"
+
+
+def format_search_no_results(artist: str, title: str) -> str:
+    return (
+        f"No one is sharing '{artist} - {title}' right now. Try a "
+        f"shorter title, or leave out the remix name."
+    )
+
+
+def format_history_filter_empty(event_label: str) -> str:
+    return f"Nothing {event_label.lower()} yet."
+
 
 # --- History page -----------------------------------------------------------
 
@@ -869,7 +910,6 @@ TOOLTIP_DOWNLOAD_THIS_ONE = (
     "Download this specific file instead of the automatic best pick."
 )
 SEARCH_EMPTY_FIELDS_MESSAGE = "Enter both an artist and a title first."
-SEARCH_NO_RESULTS_MESSAGE = "No results found."
 
 
 def format_playlist_refresh_message(result: PlaylistRefreshResult) -> str:

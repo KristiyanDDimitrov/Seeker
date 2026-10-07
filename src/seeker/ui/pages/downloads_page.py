@@ -26,6 +26,7 @@ from seeker.ui.download_eta import (
     DownloadEtaTracker,
     format_aggregate_header,
 )
+from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
@@ -218,6 +219,16 @@ class DownloadsPage(QWidget):
         theme.apply_table_defaults(self.downloads_table)
         theme.configure_columns(self.downloads_table, _DOWNLOADS_COLUMNS)
         layout.addWidget(theme.make_card(self.downloads_table))
+        self.downloads_empty_action = QPushButton(
+            help_text.GO_TO_DASHBOARD_TEXT
+        )
+        self.downloads_empty_action.clicked.connect(
+            lambda: self._context.navigate("dashboard")
+        )
+        self.downloads_empty = EmptyState(
+            self.downloads_table, EmptyGlyph.RECORD, help_text.DOWNLOADS_EMPTY,
+            action=self.downloads_empty_action,
+        )
 
         page = build_page(
             "Downloads", help_text.DOWNLOADS_TAB_SUBTITLE, content,

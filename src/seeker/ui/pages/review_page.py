@@ -47,6 +47,7 @@ from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 from seeker.ui import help_text, plain_text, theme
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
+from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
@@ -151,6 +152,9 @@ class ReviewPage(QWidget):
         theme.apply_table_defaults(self.review_needs_table)
         needs_layout.addWidget(theme.make_card(self.review_needs_table))
         self._configure_review_needs_columns()
+        self.review_needs_empty = EmptyState(
+            self.review_needs_table, EmptyGlyph.DONE, help_text.REVIEW_CANDIDATES_EMPTY,
+        )
         needs_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
         self.review_splitter.addWidget(needs_section)
 
@@ -184,6 +188,10 @@ class ReviewPage(QWidget):
         theme.apply_table_defaults(self.review_upgrades_table)
         upgrades_layout.addWidget(theme.make_card(self.review_upgrades_table))
         self._configure_review_upgrades_columns()
+        self.review_upgrades_empty = EmptyState(
+            self.review_upgrades_table, EmptyGlyph.DONE,
+            help_text.REVIEW_UPGRADES_EMPTY,
+        )
         upgrades_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
         self.review_splitter.addWidget(upgrades_section)
 
@@ -204,6 +212,9 @@ class ReviewPage(QWidget):
         theme.apply_table_defaults(self.review_local_table)
         local_layout.addWidget(theme.make_card(self.review_local_table))
         self._configure_review_local_columns()
+        self.review_local_empty = EmptyState(
+            self.review_local_table, EmptyGlyph.DONE, help_text.REVIEW_LOCAL_EMPTY,
+        )
         local_section.setMinimumHeight(_REVIEW_SECTION_MIN_HEIGHT)
         self.review_splitter.addWidget(local_section)
 
