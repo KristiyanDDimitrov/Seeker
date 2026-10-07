@@ -453,21 +453,15 @@ class MainWindow(QMainWindow):
         self._register_page("support", self._support_page)
 
         # Settings is a page, hosted the same way as everything else
-        # here, not a separate dialog. header_extra is _build_page's own
-        # extension point (see its docstring), used only by this page
-        # today.
-        self.settings_back_button = QPushButton("← Back")
-        self.settings_back_button.setToolTip(help_text.TOOLTIP_SETTINGS_BACK)
-        self.settings_back_button.clicked.connect(
-            self._on_settings_back_clicked
-        )
+        # here, not a separate dialog, and left the same way: through
+        # the sidebar, which has a button for every page.
         self.settings_page = SettingsPage(
             self.application, on_about_requested=self._on_about_clicked,
             on_theme_mode_changed=self._apply_theme_mode,
         )
         self._register_page("settings", build_page(
             "Settings", help_text.SETTINGS_WINDOW_SUBTITLE,
-            self.settings_page, header_extra=self.settings_back_button,
+            self.settings_page,
         ))
         self._settings_page_index = self._page_indices["settings"]
 
@@ -495,12 +489,11 @@ class MainWindow(QMainWindow):
         # may never open this page in a given session.
         self._history_page_index = self._page_indices["history"]
         self._history_loaded = False
-        # Tracks the currently-shown page key so the Settings back
-        # button knows where to return to, and so _on_page_changed can
+        # Tracks the currently-shown page key so _page_to_reopen knows
+        # the page Settings was opened from, and so _on_page_changed can
         # detect "we just left Settings" regardless of which navigation
-        # path was used (sidebar click, back button, or a
-        # CTA/double-click action — every one of them goes through
-        # _show_page).
+        # path was used (sidebar click or a CTA/double-click action —
+        # every one of them goes through _show_page).
         self._current_page_key = "dashboard"
         self._previous_page_key = "dashboard"
         self.stacked_widget.currentChanged.connect(self._on_page_changed)
@@ -531,12 +524,11 @@ class MainWindow(QMainWindow):
         )
 
     def _show_page(self, key: str, focus_track_id: str | None = None) -> None:
-        # Every navigation path in this app (sidebar click, the Settings
-        # back button, a Dashboard CTA action, a double-click) already
-        # goes through this one method, so it's the single place both
-        # the back button's "where to return to" and the settings-exit
-        # invalidation can hook into without needing a Settings-specific
-        # special case at each call site.
+        # Every navigation path in this app (sidebar click, a Dashboard
+        # CTA action, a double-click) goes through this one method, so
+        # it's the single place both the page Settings was opened from
+        # and the settings-exit invalidation can hook into without a
+        # Settings-specific special case at each call site.
         if key == "settings" and self._current_page_key != "settings":
             self._previous_page_key = self._current_page_key
         elif self._current_page_key == "settings" and key != "settings":
@@ -563,9 +555,6 @@ class MainWindow(QMainWindow):
 
         if key == "review" and focus_track_id is not None:
             self._review_page.focus_track(focus_track_id)
-
-    def _on_settings_back_clicked(self) -> None:
-        self._show_page(self._previous_page_key)
 
     def _invalidate_after_leaving_settings(self) -> None:
         # A Settings change can affect the Duplicates page's location

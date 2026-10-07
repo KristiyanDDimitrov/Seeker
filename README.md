@@ -104,8 +104,8 @@ tracks — see `seeker history` below). **Settings** (library locations,
 playlist destinations — including the app-wide default destination the
 wizard sets up — SoulSeek/Spotify connection management, and the
 auto-match/needs-review classification thresholds) is a page in the
-same sidebar, not a separate window — a "← Back" button returns to
-wherever you were before opening it. A **Help** page covers a short
+same sidebar, not a separate window, left through the sidebar like
+any other page. A **Help** page covers a short
 walkthrough, troubleshooting, and exactly where your database/config/
 Spotify token/SoulSeek data live on disk (with a button to open that
 folder); the Help menu's **About** dialog has author/license/

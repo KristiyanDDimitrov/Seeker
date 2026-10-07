@@ -5,6 +5,7 @@ entry and exit.
 
 from PySide6.QtWidgets import (
     QLabel,
+    QPushButton,
 )
 
 from fakes import (
@@ -257,40 +258,20 @@ def test_settings_page_shows_its_subtitle_via_build_page(qtbot):
     assert help_text.SETTINGS_WINDOW_SUBTITLE in labels
 
 
-def test_settings_back_button_returns_to_the_previous_page(qtbot):
-    application = FakeApplication()
-    window = MainWindow(application)
+def test_settings_is_left_through_the_sidebar_alone(qtbot):
+    # One navigation model: every page Settings can be opened from has
+    # a sidebar button, so a Back button would only duplicate one.
+    window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
 
-    window._show_page("duplicates")
-    window._show_page("settings")
-    assert (
-        window.stacked_widget.currentIndex()
-        == window._page_indices["settings"]
+    assert set(window._nav_buttons) == set(window._page_indices)
+    settings_wrapper = window.stacked_widget.widget(
+        window._page_indices["settings"]
     )
-
-    window.settings_back_button.click()
-
-    assert (
-        window.stacked_widget.currentIndex()
-        == window._page_indices["duplicates"]
-    )
-
-
-def test_settings_back_button_falls_back_to_dashboard_from_a_fresh_window(
-        qtbot,
-):
-    application = FakeApplication()
-    window = MainWindow(application)
-    qtbot.addWidget(window)
-
-    window._show_page("settings")
-    window.settings_back_button.click()
-
-    assert (
-        window.stacked_widget.currentIndex()
-        == window._page_indices["dashboard"]
-    )
+    assert not [
+        button for button in settings_wrapper.findChildren(QPushButton)
+        if "Back" in button.text()
+    ]
 
 
 def test_leaving_settings_refreshes_duplicates_locations_and_next_step(

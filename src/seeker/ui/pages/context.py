@@ -71,19 +71,12 @@ def build_page(
         title: str,
         subtitle: str,
         content: QWidget,
-        header_extra: QWidget | None = None,
 ) -> QWidget:
     # Every page in the shell gets the identical [title, subtitle,
     # content] shape and the identical page-level margins — this is the
     # one place that convention actually gets enforced, rather than
     # each page copying setContentsMargins/setSpacing by hand and
     # drifting.
-    #
-    # header_extra — an optional widget placed to the LEFT of the
-    # title, in the same row. Only the Settings page uses this today
-    # (its "← Back" button), but it's a real, reusable extension point
-    # rather than a Settings-specific special case bolted onto this
-    # shared helper.
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(
@@ -94,9 +87,6 @@ def build_page(
 
     title_row = QHBoxLayout()
     title_row.setSpacing(theme.SPACING_SM)
-
-    if header_extra is not None:
-        title_row.addWidget(header_extra)
 
     title_label = PlainLabel(title)
     # QLabel#pageTitleLabel in theme.py.
