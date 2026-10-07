@@ -10,59 +10,59 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the CI-result handoff note, after the S29 part-2
-  close-out `0c9e227` (HISTORY §179). Tree clean apart from the
-  untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict
-  src/` clean, 133 files; `ruff check src tests tools` 0. The
-  display-specific `test_theme.py::test_a_cell_widget_paints_the_rows_own_background[dark|light]`
-  passed this run and failed in an earlier one this session
-  (`2 failed, 1821 passed, 1 skipped`): intermittent here, not fixed.
-- **CI:** `0c9e227`'s run `37595631436` green.
+- **HEAD:** the S30 close-out (HISTORY §180), after `17bfc32`. Tree
+  clean apart from the untracked `Claude outputs/`. No `src/` change
+  this session: docs, screenshots and a scratch module only.
+- **Local (Cocoa):** pytest `1825 passed, 1 skipped`. `mypy --strict src/`
+  clean, 133 files; `ruff check src tests tools` 0.
+- **CI:** recorded below after the push.
 
 ## 2. Where we are
 
-S1–S29 ticked. **Next: S30, an [ASK] row** (BRIEF §30, visual
-direction): it starts only after Kris's explicit yes, and it ends at
-§30.3's hard stop for Kris's pick. Then S31.
+S1–S29 ticked. **S30 stopped at §30.3, its hard stop.** §30.1 and
+§30.2 are done; the box stays unticked until Kris picks. **Next: record
+Kris's answer in `docs/design/visual-direction.md` → "Decision" (with
+the date), tick S30, then S31.** S31–S36 must not start before that.
 
-## 3. Session report (S29 part 2)
+## 3. Session report (S30)
 
-Evidence in HISTORY §179.
-- `0d536e7` §29.2a: Settings tabs General / Library / Connections /
-  Matching; every `SETTINGS_TAB_*` tested; copy names the new tabs.
-- `9c88063` §29.2b: thresholds as 0–100 spin boxes, needs-review
-  below auto (refused), warning below 80; results on an InlineNotice.
-- `08ef76f` §29.2c: found defect, a saved threshold of 0 read as
-  unset; `matching.resolve_thresholds` (`is None`).
-- `83646f0` §29.2d: Back button removed, sidebar only.
-- `b7fa6e2` refactor: `theme.scrollable`.
-- `4e37c5f` §29.3a: Library options and actions grouped by job; the
-  page scrolls.
-- `ff3f410` §29.3b: "Tag N selected on Dashboard", or disabled.
+Evidence in HISTORY §180.
+- `8442297` §30.1: Booth and Harmonic rendered over the real widgets
+  (Dashboard, Review, Settings, wizard; both themes), plus the current
+  Dashboard and a sheet of every key pill. 19 images in
+  `docs/design/visual-direction/`, and the scratch module that
+  rendered them in `scratch/`.
+- `17bfc32` §30.2: `docs/design/visual-direction.md` holds tokens,
+  type, spacing and radius, the contrast table, Lucide, the real-data
+  finding and the recommendation. Linked from `docs/README.md`.
 
 ## 4. Key context
 
-- **Settings tabs** are `SETTINGS_TAB_GENERAL/LIBRARY/CONNECTIONS/
-  MATCHING`; the screenshot harness writes `settings-general` …
-  `settings-matching`. Delete stale `tools/.screens/settings-*`
-  images if an old run left them.
-- **Library is a `theme.scrollable` page** of four `QGroupBox`es
-  (Tag Options, Tags, Cover Art, File Names); the job sentences are
-  `help_text.LIBRARY_*_TEXT`. §34 does its visual treatment.
-- **`tag_selected_button`'s state is render-decided**
-  (`_render_tag_selected_button`, skips while `tag_selected` is busy).
-  A Library test that needs a selection to survive a run must select
-  a playlist whose statuses the fake serves: the post-tag
-  `refresh_track_table` otherwise empties the table.
-- **Spin boxes:** `QDoubleSpinBox` shows the system locale's decimal
-  comma here ("75,0"); Return is `lineEdit().returnPressed`
-  (observed). Their arrows are tiny under the current theme (S31).
-- **The tooltip sweep** cannot tell a helper's `tooltip` parameter
-  from peer text: keep `setToolTip(help_text.X)` at the call site.
+- **The decision document holds every value S31 needs.** Each token
+  for both directions and both themes, the type roles and scale, and
+  the wheel algorithm. `scratch/direction.py` is the executable form
+  (`SEEKER_SCRATCH_DIRECTION=booth|harmonic`, through
+  `scratch/render.py <out-dir>`). It reaches into private names and
+  needs the Barlow TTFs in `scratch/fonts/`, which are not committed.
+  S31 bundles the face properly.
+- **Booth's `ON_ACCENT` is dark text in dark mode** (`#0A1422`): white
+  on the lit blue is 2.82:1. `Palette.ON_ACCENT`'s "always white"
+  comment and `TwoToneProgressBar`'s docstring change with it.
+- **The segmented meter is per-instance QSS** (`::chunk { width: 5px;
+  margin: 1px }`) through `style_determinate_progress_bar`. A global
+  `::chunk` rule would still kill the indeterminate animation (the
+  standing comment in `_progress_qss`). The mockup set the bar's
+  format to "" and showed the percentage as `SECONDARY_ROLE` on the
+  status cell, because the label overprinted the segments.
+- **A decoration icon is invisible to `fit_widths` and to
+  `ElidedTextDelegate`'s secondary budget** (observed, §180). S34
+  must count the icon's width, or the Status column elides at 1280.
+- **Real data:** 3 of 6,921 `local_files` carry a key or BPM.
+  Analysis runs only on tagging with `analyze_audio` on.
+- The wizard's headings are `<h2>` rich text in 9 px margins (§33).
 - Carried: `MainWindow` does not apply the theme, `main_ui.py` does;
-  radon not in the env; never touch slskd or real data; zsh does not
-  word-split `$var`; reproduce CI-only UI failures with
+  radon is not in the env; never touch slskd or real data; zsh does
+  not word-split `$var`; reproduce CI-only UI failures with
   `QT_QPA_PLATFORM=offscreen` first; a shared fake missing a method
   stalls the suite (§171); a palette change must update the chevron
   SVGs (S31); old-commit checks run in a `git worktree` with
@@ -70,33 +70,35 @@ Evidence in HISTORY §179.
 
 ## 5. Decisions made
 
-- **Sidebar only, no Back** (BRIEF's recommendation, tested): Back
-  passed no focus or state, and every page has a sidebar button.
-  Promoted to CLAUDE.md (Qt section).
-- **Threshold warning, not a floor:** auto below 80 saves, with an
-  InlineNotice warning naming Tag playlist's consequence (brief: warn,
-  don't forbid). Needs-review ≥ auto stays refused.
-- **Three sibling groups on the Library tab**, not the Default
-  Destination group nested inside Playlist Destinations.
-- **`resolve_thresholds` folded four copies** in the fix commit: the
-  fix is replacing `or`, and one helper is that fix. Rule promoted to
-  CLAUDE.md.
-- **Group title "Notifications"** (brief's wording), not "Menu Bar
-  Notifications"; the checkboxes already say what they notify.
+- **Recommendation: Booth, without BPM and key on the Dashboard.**
+  Its boldness lands on the status column, which is the primary job.
+  Harmonic's lands on data that is blank for every missing track and
+  for 99.96 % of the real library. A straight mix is not recommended,
+  because it puts two colour systems on one row.
+- **Equal-contrast wheel hues** (every fill 7.0:1 against the pill
+  text) rather than fixed HSL lightness, which failed AA on keys 10
+  and 11.
+- **Lucide (ISC)** over Phosphor (MIT): one weight and one grid; the
+  page-to-icon names are to be confirmed at S32.
+- **The mockup module is committed under `docs/`, not `tools/`.** It
+  is reference material, not a tool (§0.10: scratch work outside the
+  repo is lost).
 
 ## 6. Blockers
 
-None. S30 waits on Kris's yes (an approval gate, not a blocker).
+S31–S36 wait on Kris's pick (§30.3). Nothing else.
 
 ## 7. Files in progress
 
-None.
+None. `docs/design/visual-direction.md` → "Decision" is intentionally
+empty until Kris answers.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** S30 visual direction ("Booth", "Harmonic", a mix
-or neither, and whether the Dashboard shows BPM and key); S39 bundle
-identifier; S42 publishing commands; X1 and X2 (optional).
+**Approval gates:** **S30, the pick:** Booth, Harmonic, a mix, or
+neither, and whether the Dashboard shows BPM and key. Then the S39
+bundle identifier, the S42 publishing commands, and X1 and X2
+(optional).
 
 **Live checks (S41 checklist):** the nested-location Fix… with the X9
 Pro mounted (keep `Music`, compare §172's counts); the stress test;
@@ -106,11 +108,14 @@ real Mac; hover tooltips on elided cells; the carried list in
 
 ## 9. Open questions
 
-- **Result messages still on status labels** (scoped this session):
-  Settings' default and per-playlist destinations, Spotify, Test
-  connection and credentials (`settings_window.py` ~:577–1161), and
-  12 sites on Duplicates (`duplicates_page.py` :440–979). One channel
-  migration; fold into S35a/S35b or its own commit.
+- If Booth is chosen: are two weights of Barlow enough (Medium for
+  section headers, SemiBold for titles)? The mockup used SemiBold
+  only.
+- **Result messages still on status labels:** Settings' destinations,
+  Spotify, Test connection and credentials (`settings_window.py`
+  ~:577–1161), and 12 sites on Duplicates (`duplicates_page.py`
+  :440–979). One channel migration; fold it into S35a/S35b or give it
+  its own commit.
 - Carried unchanged: the Spotify wait not cancelled on close; the
   late-worker button defect (§148); four CLI items (§156); the
   unrecorded transfer id and leftover `.tmp` files (X1); why a shared

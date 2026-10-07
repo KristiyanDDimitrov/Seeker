@@ -69,7 +69,7 @@ explicit yes.
 | ☑ S28 | Tables, empty states, copy (part 1 §28.1–§28.2, HISTORY §176; part 2 §28.3–§28.4, HISTORY §177) | §28 | ~120 K | After §28.2 |
 | ☑ S29 | Review and Settings information architecture (part 1 §29.1, HISTORY §178; part 2 §29.2–§29.3, HISTORY §179) | §29 | ~120 K | After §29.1 |
 | **Phase K — Visual refresh** | | | | |
-| ☐ S30 | **[ASK]** Visual direction: two grounded options; Kris picks | §30 | ~110 K | Hard stop at §30.3 |
+| ☐ S30 | **[ASK]** Visual direction: two grounded options; Kris picks (§30.1–§30.2 done, HISTORY §180; stopped at §30.3 for the pick) | §30 | ~110 K | Hard stop at §30.3 |
 | ☐ S31 | Refresh foundation: tokens, type, palette accessor | §31 | ~110 K | After §31.2 |
 | ☐ S32 | Refresh: the shell | §32 | ~100 K | After the nav icons |
 | ☐ S33 | Refresh: onboarding wizard | §33 | ~110 K | None; small enough to finish |
@@ -220,7 +220,9 @@ the `tc-tracker` handoff format.
       and slskd code into `soulseek/`): yes or no. **Answered
       2026-10-01: yes, all three. Done in S21 (HISTORY §164).**
 - [ ] **S30** — the visual direction: "Booth", "Harmonic", a mix, or
-      neither. Also whether the Dashboard shows BPM and key.
+      neither. Also whether the Dashboard shows BPM and key. Rendered
+      and written up: `docs/design/visual-direction.md`
+      (recommendation: Booth, no BPM/key on the Dashboard).
 - [ ] **S39 §39.3** — the bundle identifier. Recommended:
       `io.github.kristiyanddimitrov.seeker`. It must change before the
       first release.
