@@ -376,3 +376,22 @@ def test_review_nav_badge_counts_all_three_sections(qtbot):
         lambda: window._nav_buttons["review"].text() == "Review  (3)",
         timeout=2000,
     )
+
+
+def test_activity_strip_bar_goes_back_to_the_native_busy_animation(qtbot):
+    # Any ::chunk rule replaces Qt's animated busy bar with a static
+    # block, so the determinate fill must not outlive the progress.
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.busy_actions.begin(
+        "compute_fingerprints",
+        window._duplicates_page.compute_fingerprints_button,
+    )
+    window._on_activity_progress("compute_fingerprints", "Decoding", 40, 100)
+    assert "chunk" in window.activity_strip_bar.styleSheet()
+
+    window.busy_actions.begin("scan", window._dashboard_page.scan_button)
+    window._render_activity_strip()
+
+    assert window.activity_strip_bar.maximum() == 0
+    assert "chunk" not in window.activity_strip_bar.styleSheet()

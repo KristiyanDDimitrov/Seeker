@@ -630,7 +630,7 @@ class MainWindow(QMainWindow):
             self.activity_strip_label.setText(
                 f"{len(running)} actions running"
             )
-            self.activity_strip_bar.setRange(0, 0)
+            theme.set_indeterminate(self.activity_strip_bar)
             return
 
         key = running[0]
@@ -648,7 +648,7 @@ class MainWindow(QMainWindow):
             theme.style_determinate_progress_bar(self.activity_strip_bar)
         else:
             self.activity_strip_label.setText(label)
-            self.activity_strip_bar.setRange(0, 0)  # indeterminate
+            theme.set_indeterminate(self.activity_strip_bar)
 
     def _on_activity_progress(
             self, key: str, stage: str, current: int, total: int,

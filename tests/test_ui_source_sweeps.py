@@ -47,7 +47,9 @@ def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
             ):
                 continue
             text = rendered_text(node.args[0])
-            if text is not None and "{" not in text:
+            # "" clears a widget's own sheet: no declarations, so
+            # nothing that could cascade. Any non-blank text is checked.
+            if text is not None and text.strip() and "{" not in text:
                 violations.append(f"{path.name}:{node.lineno}: {text!r}")
 
     assert violations == [], (

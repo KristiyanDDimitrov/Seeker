@@ -334,6 +334,14 @@ def style_determinate_progress_bar(bar: QProgressBar) -> None:
     )
 
 
+def set_indeterminate(bar: QProgressBar) -> None:
+    """Qt's animated busy bar, with any determinate fill a bar was
+    given removed first: a `::chunk` rule left behind paints a static
+    block instead of the animation."""
+    bar.setStyleSheet("")
+    bar.setRange(0, 0)
+
+
 def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
     """The one place a progress bar gets put into a cell-ready
     container. A bare bar returned directly from a `setCellWidget` call
