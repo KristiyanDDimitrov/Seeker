@@ -322,31 +322,12 @@ def set_variant(widget: QWidget, variant: str | None) -> None:
     set_dynamic_property(widget, "variant", variant)
 
 
-def style_determinate_progress_bar(bar: QProgressBar) -> None:
-    """Apply the accent chunk fill to a genuinely DETERMINATE
-    QProgressBar (a real range + value already set) — never to an
-    indeterminate one (`setRange(0, 0)`). See the stylesheet's own
-    `QProgressBar::chunk` comment for why this can't just be a global
-    QSS rule: any `::chunk` rule at all, regardless of its properties,
-    replaces Qt's native animated "busy" indicator with a static block
-    for every QProgressBar it matches, indeterminate ones included. A
-    per-instance stylesheet, applied only here, keeps that global rule
-    from ever existing in the first place.
-    """
-    bar.setStyleSheet(
-        f"QProgressBar::chunk {{"
-        f"  background-color: {active_palette().ACCENT};"
-        f"  border-radius: {PROGRESS_BAR_RADIUS}px;"
-        f"}}"
-    )
-
-
 def style_meter(bar: QProgressBar) -> None:
     """Determinate progress as a meter: cue-amber segments (work in
     progress, the same amber as a working lamp) and no label; the
     percentage, where one shows, is text beside it. A per-instance
-    sheet for the reason `style_determinate_progress_bar` gives, so
-    call it again after a theme switch."""
+    sheet, never a global `::chunk` rule (see the stylesheet's
+    `QProgressBar` comment), so call it again after a theme switch."""
     bar.setTextVisible(False)
     bar.setFormat("")
     bar.setStyleSheet(
@@ -1411,9 +1392,6 @@ QProgressBar {{
     border: 1px solid {palette.BORDER};
     border-radius: {PROGRESS_BAR_RADIUS}px;
     text-align: center;
-    /* The label of a plain QProgressBar. The pages' labelled bars are
-    widgets.TwoToneProgressBar, which paints ON_ACCENT over the fill
-    and TEXT over the track: one colour cannot read on both. */
     color: {palette.TEXT};
     max-height: {PROGRESS_BAR_HEIGHT}px;
 }}
@@ -1430,10 +1408,9 @@ static solid rect instead. Confirmed by bisection: a bare
 animated stripe; adding ANY `::chunk` rule back (even one with no
 background-color at all) replaces it with a static block that reads as
 "stuck at 100%," not "in progress." There is no `:indeterminate`
-pseudo-state in Qt's QSS to scope a `::chunk` rule around, so the
-accent fill for a genuinely DETERMINATE bar is applied locally, per
-instance, via `style_determinate_progress_bar()` below — never here,
-never globally. */
+pseudo-state in Qt's QSS to scope a `::chunk` rule around, so a
+genuinely DETERMINATE bar's fill is applied locally, per instance, via
+`style_meter()` — never here, never globally. */
 
 """
 

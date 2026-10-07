@@ -95,7 +95,7 @@ src/seeker/
 │   │                          #   quit (WindowLifecycleController)
 │   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
 │       busy_actions.py, workers.py (run_worker()), help_text.py,
-│       widgets.py (ThemeToggleButton, TwoToneProgressBar),
+│       widgets.py (ThemeToggleButton, CloseButton),
 │       elided_text.py (one-line cells, full text on hover,
 │       BADGE_ROLE pills), empty_state.py (a table's empty state),
 │       error_hooks.py (uncaught exceptions + Qt messages -> log),
@@ -596,8 +596,7 @@ Each links to the HISTORY entry where the full investigation lives;
   `State_HasFocus` on the option, never by real focus. A per-row
   button gets `cell_widget(..., row_label=)` and an icon-only control
   `setAccessibleName`; `tests/shell/test_keyboard_access.py` fails
-  the build. A labelled progress bar is `TwoToneProgressBar`: no one
-  label colour reads on both fill and track.
+  the build.
   [HISTORY §175](docs/history/151-180.md#175)
 - **Every table declares a `theme.ColumnLayout`** whose stretch
   column is the one its rows are about (Track, Filename, Path).
@@ -620,8 +619,9 @@ Each links to the HISTORY entry where the full investigation lives;
   `status_lamp` lamp as the item's icon beside the label, never link
   styling; where the label must read in full, the view sets
   `set_secondary_min_share(view, 0.0)`. Determinate progress is
-  `theme.style_meter` (amber segments; Downloads' labelled bar is
-  the one still on `style_determinate_progress_bar`), and a bar goes back to busy
+  `theme.style_meter` (amber segments, no label: the percentage is
+  cell text); an in-table bar with no amount yet is
+  `theme.set_busy_meter` (the same amber), and a bar goes back to busy
   only through `theme.set_indeterminate`, which drops the `::chunk`
   sheet. [HISTORY §177](docs/history/151-180.md#177),
   [§178](docs/history/151-180.md#178), [§184](docs/history/181-210.md#184)

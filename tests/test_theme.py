@@ -310,19 +310,6 @@ def test_faint_text_and_borders_meet_the_decorative_floor(palette):
         [theme.DARK, theme.LIGHT],
         ids=["dark", "light"],
 )
-def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
-    # TwoToneProgressBar's two label colours, each against the ground
-    # it is painted on (tests/shell/test_progress_text.py measures the
-    # pixels). TEXT alone over the fill was 3.13:1 in light.
-    assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 4.5
-    assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE_2) >= 4.5
-
-
-@pytest.mark.parametrize(
-        "palette",
-        [theme.DARK, theme.LIGHT],
-        ids=["dark", "light"],
-)
 @pytest.mark.parametrize(
         "fill", ["ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED"],
 )
