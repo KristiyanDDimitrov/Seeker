@@ -30,6 +30,7 @@ from seeker.models.download_request import (
     DownloadStatus,
 )
 from seeker.models.local_file import LocalFile
+from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track, resolve_playlist_label
 from seeker.models.track_match import TrackMatch
@@ -37,6 +38,7 @@ from seeker.models.track_status import (
     AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
+    MISSING_STATES,
     NEEDS_REVIEW,
     NOT_FOUND,
     RETRYING,
@@ -111,12 +113,16 @@ class DashboardService:
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
 
-            if playlist is None:
-                raise PlaylistNotFoundError(
-                    f"No playlist named '{playlist_name}' has been "
-                    f"synced."
-                )
+        if playlist is None:
+            raise PlaylistNotFoundError(
+                f"No playlist named '{playlist_name}' has been "
+                f"synced."
+            )
 
+        return self._track_statuses(playlist)
+
+    def _track_statuses(self, playlist: Playlist) -> list[TrackStatus]:
+        with self.database.transaction() as connection:
             tracks = self.tracks.get_all_for_playlist(
                 playlist.id, connection
             )
@@ -164,6 +170,30 @@ class DashboardService:
             )
             for track in tracks
         ]
+
+    def get_playlist_summaries(self) -> list[PlaylistSummary]:
+        """Every synced playlist, in name order, with its missing count
+        from the same statuses the Dashboard shows. A never-loaded
+        playlist is never fetched (HISTORY §141), so it carries
+        Spotify's count and no missing count. One status read per
+        loaded playlist: run it on load and after a change, never on
+        the 2-second poll."""
+        with self.database.transaction() as connection:
+            playlists = self.playlists.get_all(connection)
+
+        summaries = []
+        for playlist in playlists:
+            if playlist.tracks_snapshot_id is None:
+                summaries.append(
+                    PlaylistSummary(playlist, playlist.track_count, None),
+                )
+                continue
+            statuses = self._track_statuses(playlist)
+            missing = sum(
+                1 for status in statuses if status.state in MISSING_STATES
+            )
+            summaries.append(PlaylistSummary(playlist, len(statuses), missing))
+        return summaries
 
     def get_active_downloads(self) -> list[ActiveDownload]:
         """Every download_requests row still in progress, GLOBALLY across

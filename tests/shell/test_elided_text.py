@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from fakes import FakeApplication, make_duplicate_group
-from seeker.models.playlist import Playlist
+from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
 from seeker.ui.settings_window import SETTINGS_TAB_LIBRARY
@@ -58,7 +58,9 @@ def _window(qtbot) -> MainWindow:
 def test_the_dashboard_playlist_list_elides_a_long_name(qtbot):
     window = _window(qtbot)
     page = window._dashboard_page
-    page._populate_playlists([Playlist("p1", _LONG_NAME, 12)])
+    page._populate_playlists(
+        [PlaylistSummary(Playlist("p1", _LONG_NAME, 12), 12, None)],
+    )
 
     _assert_elides(page.playlist_list, qtbot)
 

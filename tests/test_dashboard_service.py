@@ -837,3 +837,45 @@ def test_get_active_downloads_dedup_does_not_merge_across_roles(tmp_path):
     downloads = service.get_active_downloads()
 
     assert len(downloads) == 2
+
+
+def test_playlist_summaries_count_a_loaded_playlists_missing_tracks(tmp_path):
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1", name="Loaded")
+    seed_playlist(service, "p2", name="Never loaded")
+    for track_id in ("t1", "t2", "t3"):
+        seed_track(service, "p1", track_id)
+    local_file_id = seed_local_file(service)
+    seed_match(service, "t1", "auto", local_file_id=local_file_id, score=95.0)
+    seed_review_candidate(service, "t2")
+    with service.database.transaction() as connection:
+        service.playlists.mark_tracks_loaded("p1", "snap", connection)
+
+    summaries = {
+        summary.playlist.id: summary
+        for summary in service.get_playlist_summaries()
+    }
+
+    # t2 (a candidate, never requested) and t3 (nothing found).
+    assert (summaries["p1"].track_count, summaries["p1"].missing) == (3, 2)
+    assert summaries["p2"].missing is None
+    assert summaries["p2"].track_count == 0
+
+
+def test_playlist_summaries_tell_apart_two_playlists_with_one_name(tmp_path):
+    # Spotify allows it; a lookup by name would count p1's tracks twice.
+    service = make_service(tmp_path)
+    seed_playlist(service, "p1", name="Same")
+    seed_playlist(service, "p2", name="Same")
+    seed_track(service, "p1", "t1")
+    with service.database.transaction() as connection:
+        service.playlists.mark_tracks_loaded("p1", "snap", connection)
+        service.playlists.mark_tracks_loaded("p2", "snap", connection)
+
+    summaries = {
+        summary.playlist.id: summary
+        for summary in service.get_playlist_summaries()
+    }
+
+    assert summaries["p1"].missing == 1
+    assert summaries["p2"].missing == 0

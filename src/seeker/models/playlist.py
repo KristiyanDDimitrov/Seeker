@@ -19,3 +19,13 @@ class Playlist:
             self.tracks_snapshot_id is not None
             and self.tracks_snapshot_id != self.snapshot_id
         )
+
+
+@dataclass(frozen=True)
+class PlaylistSummary:
+    """A playlist as the Dashboard lists it. `track_count` is the
+    cached tracks once loaded, else Spotify's count; `missing` (the
+    tracks in `MISSING_STATES`) is None until the tracks are loaded."""
+    playlist: Playlist
+    track_count: int
+    missing: int | None

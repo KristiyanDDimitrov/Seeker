@@ -33,13 +33,14 @@ from seeker.models.library_result import (
 )
 from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
-from seeker.models.playlist import Playlist
+from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.models.track_status import (
     IN_LIBRARY,
+    MISSING_STATES,
     TrackStatus,
 )
 from seeker.models.upgrade_review import UpgradeReviewDetails
@@ -94,8 +95,10 @@ class FakeDashboardService:
             self,
             statuses: list | None = None,
             active_downloads: list | None = None,
+            playlists: list[Playlist] | None = None,
     ):
-        self._statuses = statuses or []
+        self._statuses = statuses if statuses is not None else []
+        self._playlists = playlists or []
         self._active_downloads = active_downloads or []
         self.calls: list[str] = []
         self.clear_finished_calls = 0
@@ -103,6 +106,22 @@ class FakeDashboardService:
     def get_playlist_track_status(self, playlist_name: str) -> list:
         self.calls.append(playlist_name)
         return self._statuses
+
+    def get_playlist_summaries(self) -> list[PlaylistSummary]:
+        # Every loaded playlist has the same statuses here.
+        return [
+            PlaylistSummary(playlist, playlist.track_count, None)
+            if playlist.tracks_snapshot_id is None
+            else PlaylistSummary(
+                playlist,
+                len(self._statuses),
+                sum(
+                    1 for status in self._statuses
+                    if status.state in MISSING_STATES
+                ),
+            )
+            for playlist in self._playlists
+        ]
 
     def get_active_downloads(self) -> list:
         return self._active_downloads
@@ -635,7 +654,7 @@ class FakeApplication:
             log_dir=Path("/fake/logs"),
         )
         self.dashboard_service = FakeDashboardService(
-            statuses, active_downloads,
+            statuses, active_downloads, playlists,
         )
         self.library_service = FakeLibraryService(
             locations, has_scanned_library, needs_review_matches,

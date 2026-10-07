@@ -38,7 +38,7 @@ from seeker.formatting import format_timestamp
 from seeker.models.download_result import PlaylistDownloadResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import MatchResult, ScanAndMatchResult
-from seeker.models.playlist import Playlist
+from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track_status import (
     AWAITING_REVIEW,
@@ -105,6 +105,16 @@ def _percent(status: TrackStatus) -> str:
     # _has_progress_bar's own conditions, for mypy.
     assert status.total_bytes and status.bytes_transferred is not None
     return f"{round(100 * status.bytes_transferred / status.total_bytes)}%"
+
+
+def _playlist_counts(track_count: int, missing: int | None) -> str:
+    """A playlist row's quieter text: its tracks, and how many are
+    missing once its tracks are loaded."""
+    if missing is None:
+        return f"{track_count} tracks"
+    if missing == 0:
+        return f"{track_count} · complete"
+    return f"{track_count} · {missing} missing"
 
 
 def _row_layout(status: TrackStatus) -> tuple[TrackStatus, bool]:
@@ -645,20 +655,63 @@ class DashboardPage(QWidget):
     def load_playlists(self) -> None:
         run_worker(
             self._context.thread_pool,
-            self._context.application.sync_service.list_playlists,
+            self._context.application.dashboard_service.get_playlist_summaries,
             on_finished=self._populate_playlists,
             on_error=self.feedback.show_error,
         )
 
-    def _populate_playlists(self, playlists: list[Playlist]) -> None:
+    def _populate_playlists(self, summaries: list[PlaylistSummary]) -> None:
         self.playlist_list.clear()
 
-        for playlist in playlists:
-            item = QListWidgetItem(
-                f"{playlist.name} ({playlist.track_count} tracks)"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, playlist)
+        for summary in summaries:
+            item = QListWidgetItem(summary.playlist.name)
+            item.setData(Qt.ItemDataRole.UserRole, summary.playlist)
+            item.setData(SECONDARY_ROLE, _playlist_counts(
+                summary.track_count, summary.missing,
+            ))
             self.playlist_list.addItem(item)
+
+    def _refresh_playlist_counts(self) -> None:
+        """New counts on the rows already listed, after something that
+        changes them; repopulating would drop the selection."""
+        run_worker(
+            self._context.thread_pool,
+            self._context.application.dashboard_service.get_playlist_summaries,
+            on_finished=self._apply_playlist_counts,
+            on_error=self.feedback.show_error,
+        )
+
+    def _apply_playlist_counts(self, summaries: list[PlaylistSummary]) -> None:
+        counts = {
+            summary.playlist.id: _playlist_counts(
+                summary.track_count, summary.missing,
+            )
+            for summary in summaries
+        }
+        for row in range(self.playlist_list.count()):
+            item = self.playlist_list.item(row)
+            playlist = item.data(Qt.ItemDataRole.UserRole)
+            if playlist.id in counts:
+                item.setData(SECONDARY_ROLE, counts[playlist.id])
+
+    def _show_polled_playlist_counts(
+            self, playlist_id: str, statuses: list[TrackStatus],
+    ) -> None:
+        """The polled playlist's row counts from the poll's own
+        statuses: no extra read, and current while its downloads land.
+        By id, so a result that lands after the selection moved still
+        updates its own row."""
+        if not statuses:
+            return
+        missing = sum(
+            1 for status in statuses if status.state in MISSING_STATES
+        )
+        for row in range(self.playlist_list.count()):
+            item = self.playlist_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole).id == playlist_id:
+                item.setData(
+                    SECONDARY_ROLE, _playlist_counts(len(statuses), missing),
+                )
 
     # Filter key -> (label, predicate). "all" has no predicate (always
     # matches); order here is the row's own left-to-right button order.
@@ -779,6 +832,11 @@ class DashboardPage(QWidget):
             return
 
         playlist_name = self.selected_playlist.name
+        playlist_id = self.selected_playlist.id
+
+        def on_finished(statuses: list[TrackStatus]) -> None:
+            self._show_polled_playlist_counts(playlist_id, statuses)
+            self._render_track_statuses(statuses)
 
         run_worker(
             self._context.thread_pool,
@@ -786,7 +844,7 @@ class DashboardPage(QWidget):
             .get_playlist_track_status(playlist_name),
             # No status_label: run_worker clears it at submit, and this
             # runs every 2 s, so it would wipe whatever an action wrote.
-            on_finished=self._render_track_statuses,
+            on_finished=on_finished,
         )
 
     def _render_no_playlist_selected(self) -> None:
@@ -909,7 +967,7 @@ class DashboardPage(QWidget):
                         and status.soulseek_candidate is not None
                 ):
                     status_item.setData(
-                        SECONDARY_ROLE, "SoulSeek candidate found",
+                        SECONDARY_ROLE, "Candidate found",
                     )
                 if _has_progress_bar(status):
                     status_item.setData(SECONDARY_ROLE, _percent(status))
@@ -1223,6 +1281,7 @@ class DashboardPage(QWidget):
             kind="success",
         )
         self.poll_selected_playlist()
+        self._refresh_playlist_counts()
 
     def _on_match_clicked(self) -> None:
         self._context.run_busy_worker(
@@ -1240,6 +1299,7 @@ class DashboardPage(QWidget):
             kind="success",
         )
         self.poll_selected_playlist()
+        self._refresh_playlist_counts()
 
     def _set_download_button_busy(self) -> None:
         # Idempotent (BusyActionRegistry.begin() no-ops if already

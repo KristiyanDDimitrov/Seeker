@@ -608,6 +608,95 @@ def test_main_window_populates_playlist_list_from_service(qtbot):
     assert "Test Playlist" in window._dashboard_page.playlist_list.item(0).text()
 
 
+def _loaded(playlist_id: str, name: str) -> Playlist:
+    return Playlist(
+        id=playlist_id, name=name, track_count=3, tracks_snapshot_id="s",
+    )
+
+
+def _counts(window, row: int) -> str:
+    return window._dashboard_page.playlist_list.item(row).data(SECONDARY_ROLE)
+
+
+def test_a_playlist_row_shows_its_counts_beside_its_name(qtbot):
+    application = FakeApplication(
+        playlists=[
+            _loaded("p1", "Peak Time"),
+            Playlist(id="p2", name="Never loaded", track_count=34),
+        ],
+        statuses=[
+            make_track_status(track_id="t1", state=NOT_FOUND),
+            make_track_status(track_id="t2", state=IN_LIBRARY),
+            make_track_status(track_id="t3", state=REVIEW_CANDIDATE),
+        ],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 2,
+        timeout=2000,
+    )
+
+    assert window._dashboard_page.playlist_list.item(0).text() == "Peak Time"
+    assert _counts(window, 0) == "3 · 2 missing"
+    assert _counts(window, 1) == "34 tracks"
+
+
+def test_a_playlist_with_nothing_missing_says_so(qtbot):
+    application = FakeApplication(
+        playlists=[_loaded("p1", "Peak Time")],
+        statuses=[make_track_status(track_id="t1", state=IN_LIBRARY)],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1,
+        timeout=2000,
+    )
+
+    assert _counts(window, 0) == "1 · complete"
+
+
+def test_the_selected_playlists_counts_follow_the_poll(qtbot):
+    statuses = [make_track_status(track_id="t1", state=NOT_FOUND)]
+    application = FakeApplication(
+        playlists=[_loaded("p1", "Peak Time")], statuses=statuses,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+    statuses[:] = [
+        make_track_status(track_id="t1", state=IN_LIBRARY),
+        make_track_status(track_id="t2", state=NOT_FOUND),
+    ]
+
+    window._dashboard_page.poll_selected_playlist()
+
+    qtbot.waitUntil(
+        lambda: _counts(window, 0) == "2 · 1 missing", timeout=2000,
+    )
+
+
+def test_a_scan_refreshes_the_counts_and_keeps_the_selection(qtbot):
+    statuses = [make_track_status(track_id="t1", state=NOT_FOUND)]
+    application = FakeApplication(
+        playlists=[_loaded("p1", "Peak Time")], statuses=statuses,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+    statuses[0] = make_track_status(track_id="t1", state=IN_LIBRARY)
+
+    window._dashboard_page._on_scan_clicked()
+
+    qtbot.waitUntil(
+        lambda: _counts(window, 0) == "1 · complete", timeout=2000,
+    )
+    assert window._dashboard_page.selected_playlist.id == "p1"
+
+
 def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
         qtbot,
 ):
@@ -1771,7 +1860,7 @@ def test_a_found_candidate_is_quieter_text_beside_needs_review(qtbot):
 
     item = page.track_table.item(0, 1)
     assert item.text() == "Needs review"
-    assert item.data(SECONDARY_ROLE) == "SoulSeek candidate found"
+    assert item.data(SECONDARY_ROLE) == "Candidate found"
 
 
 def test_a_download_shows_its_percentage_beside_the_lamp(qtbot):

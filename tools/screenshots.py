@@ -64,7 +64,7 @@ from seeker.models.library_location import LibraryLocation  # noqa: E402
 from seeker.models.local_file import LocalFile  # noqa: E402
 from seeker.models.needs_review_match import NeedsReviewMatch  # noqa: E402
 from seeker.models.nested_location import NestedLocation  # noqa: E402
-from seeker.models.playlist import Playlist  # noqa: E402
+from seeker.models.playlist import Playlist, PlaylistSummary  # noqa: E402
 from seeker.models.soulseek_file import SoulseekFile  # noqa: E402
 from seeker.models.soulseek_review_candidate import (  # noqa: E402
     SoulseekReviewCandidate,
@@ -75,6 +75,7 @@ from seeker.models.track_status import (  # noqa: E402
     AWAITING_REVIEW,
     DOWNLOADING,
     IN_LIBRARY,
+    MISSING_STATES,
     NEEDS_REVIEW,
     NOT_FOUND,
     RETRYING,
@@ -460,6 +461,20 @@ def build_demo_application() -> FakeApplication:
                 size=31_000_000,
             ),
         ],
+    )
+    # The fake gives every loaded playlist one set of statuses; each
+    # demo playlist gets counts of its own.
+    peak_missing = sum(
+        1 for status in STATUSES if status.state in MISSING_STATES
+    )
+    summaries = [
+        PlaylistSummary(PLAYLISTS[0], len(STATUSES), peak_missing),
+        PlaylistSummary(PLAYLISTS[1], 34, 0),
+        PlaylistSummary(PLAYLISTS[2], 21, None),
+        PlaylistSummary(PLAYLISTS[3], 12, 3),
+    ]
+    application.dashboard_service.get_playlist_summaries = (
+        lambda: summaries
     )
     nested = [NestedLocation(inner=LOCATIONS[2], outer=LOCATIONS[1])]
     application.library_service.find_nested_locations = (
