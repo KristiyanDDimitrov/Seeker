@@ -201,3 +201,44 @@ def test_secondary_text_takes_width_and_joins_the_hover(qtbot):
     assert table.sizeHintForColumn(0) > (
         table.fontMetrics().horizontalAdvance(text) + 24
     )
+
+
+def test_a_cells_icon_counts_against_the_primary_text(qtbot):
+    # A status lamp sits before the text. Secondary text may take only
+    # what the icon and the primary text leave, or the primary text
+    # elides while the secondary still has room to give.
+    from PySide6.QtCore import QSize
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from seeker.ui import status_lamp
+    from seeker.ui.elided_text import SECONDARY_ROLE, _secondary_share
+
+    text = "Needs review"
+    table = _table(qtbot, "Nova Reyes - Voltage Drop")
+    item = table.item(0, 1)
+    item.setText(text)
+    item.setData(SECONDARY_ROLE, "SoulSeek candidate found")
+    item.setIcon(
+        status_lamp.lamp_icon(status_lamp.CUE_WAITING, theme.DARK),
+    )
+    size = status_lamp.LAMP_SIZE
+    table.setIconSize(QSize(size, size))
+    table.setColumnWidth(1, table.fontMetrics().horizontalAdvance(text) + 140)
+    index = table.model().index(0, 1)
+    delegate = table.itemDelegate()
+    option = QStyleOptionViewItem()
+    option.rect = table.visualRect(index)
+    option.widget = table
+    option.font = table.font()
+    option.fontMetrics = table.fontMetrics()
+    option.decorationSize = table.iconSize()
+    delegate.initStyleOption(option, index)
+    style = table.style()
+    text_left = style.subElementRect(
+        style.SubElement.SE_ItemViewItemText, option, table,
+    ).left()
+
+    taken = _secondary_share(option, index)
+
+    primary_right = text_left + table.fontMetrics().horizontalAdvance(text)
+    assert option.rect.right() - taken >= primary_right

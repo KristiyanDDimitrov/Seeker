@@ -99,16 +99,32 @@ def _secondary_width(option: QStyleOptionViewItem, index: _Index) -> int:
     return _SECONDARY_GAP + option.fontMetrics.horizontalAdvance(str(secondary))
 
 
+def _icon_width(option: QStyleOptionViewItem) -> int:
+    """How far an icon (a status lamp) pushes the text in from the
+    cell's left edge; 0 without one. `option` has been through the
+    delegate's `initStyleOption`, which records the icon."""
+    widget = option.widget
+    has_icon = option.features & QStyleOptionViewItem.ViewItemFeature.HasDecoration
+    if widget is None or not has_icon:
+        return 0
+    text = widget.style().subElementRect(
+        QStyle.SubElement.SE_ItemViewItemText, option, widget,
+    )
+    return text.left() - option.rect.left()
+
+
 def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
     """What the secondary text takes from this cell's width: what it
-    wants, out of what the primary text leaves or its minimum share,
-    whichever is more."""
+    wants, out of what the icon and primary text leave or its minimum
+    share, whichever is more. `option` is a styled one (see
+    `_icon_width`)."""
     wanted = _secondary_width(option, index)
     if not wanted:
         return 0
     cell = option.rect.width()
     primary = (
-        option.fontMetrics.horizontalAdvance(
+        _icon_width(option)
+        + option.fontMetrics.horizontalAdvance(
             str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
         )
         + 2 * _BADGE_GAP + _badge_width(option, index)
@@ -169,15 +185,15 @@ class ElidedTextDelegate(QStyledItemDelegate):
             QStyle.ControlElement.CE_ItemViewItem, background, painter, widget,
         )
 
+        text = QStyleOptionViewItem(option)
+        self.initStyleOption(text, index)
         reserved = _badge_width(option, index)
         if badge:
             self._paint_badge(painter, option, str(badge), reserved)
-        trailing = _secondary_share(option, index)
+        trailing = _secondary_share(text, index)
         if secondary:
             self._paint_secondary(painter, option, str(secondary), trailing)
 
-        text = QStyleOptionViewItem(option)
-        self.initStyleOption(text, index)
         text.rect = option.rect.adjusted(reserved, 0, -trailing, 0)
         text.state &= ~QStyle.StateFlag.State_HasFocus
         style.drawControl(
@@ -306,7 +322,7 @@ class ElidedTextDelegate(QStyledItemDelegate):
         metrics = styled.fontMetrics
         available = (
             text_rect.width() - 2 * margin - _badge_width(option, index)
-            - _secondary_share(option, index)
+            - _secondary_share(styled, index)
         )
         if metrics.horizontalAdvance(text) > available:
             return True
@@ -314,7 +330,7 @@ class ElidedTextDelegate(QStyledItemDelegate):
         return bool(
             secondary
             and _secondary_width(option, index)
-            > _secondary_share(option, index)
+            > _secondary_share(styled, index)
         )
 
 
