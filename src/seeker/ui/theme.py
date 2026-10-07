@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QProgressBar,
     QProxyStyle,
     QPushButton,
@@ -392,6 +393,19 @@ def scrollable(content: QWidget) -> QScrollArea:
     scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
     scroll_area.setWidget(content)
     return scroll_area
+
+
+# Prose wraps at a reading measure, not the window's width.
+READING_MEASURE_CHARS = 80
+
+
+def set_reading_measure(label: QLabel) -> None:
+    """Caps a wrapping `label` at about `READING_MEASURE_CHARS` of its
+    own font, so a paragraph stays readable on a wide window."""
+    label.setWordWrap(True)
+    label.setMaximumWidth(
+        label.fontMetrics().averageCharWidth() * READING_MEASURE_CHARS,
+    )
 
 
 def make_card(inner: QWidget) -> QFrame:

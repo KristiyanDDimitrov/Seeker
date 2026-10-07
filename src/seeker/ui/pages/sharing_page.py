@@ -42,9 +42,6 @@ _SHARING_UPLOADS_COLUMNS = theme.ColumnLayout(
     stretch=(1,), fit_content=(0, 2, 3), paths=(1,),
 )
 
-# The explanation wraps at a reading measure, not the window's width.
-_EXPLAINER_MEASURE_CHARS = 80
-
 # slskd's own words for a finished upload that did not succeed.
 _UPLOAD_ENDINGS = {
     "Cancelled": "Cancelled",
@@ -217,11 +214,7 @@ class SharingPage(QWidget):
         # tables come first, and the explanation stays closed until the
         # viewer opens it, then remembers their choice.
         framing_label = RichLabel(help_text.SHARING_FRAMING_BODY)
-        framing_label.setWordWrap(True)
-        framing_label.setMaximumWidth(
-            framing_label.fontMetrics().averageCharWidth()
-            * _EXPLAINER_MEASURE_CHARS,
-        )
+        theme.set_reading_measure(framing_label)
         # Open, it takes a table's share of the height and scrolls,
         # so a short window keeps both tables in view.
         self.explainer = Disclosure(
