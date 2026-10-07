@@ -17,7 +17,8 @@ nine fields below follow the contract in
   `[light]`, the same order-dependent Cocoa-only pair as S31 (§181);
   +27 passing are S32's new tests. `mypy --strict src/` clean, 136
   files; `ruff check src tests tools` 0.
-- **CI:** CI_PENDING
+- **CI:** `62e2c50`'s run `37621636784` green (offscreen, so the
+  Cocoa-only pixel failure does not reach it).
 
 ## 2. Where we are
 
