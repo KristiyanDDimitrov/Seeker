@@ -1,6 +1,6 @@
 import pytest
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QColor, QImage, QPainter, QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -302,10 +302,8 @@ def test_faint_text_and_borders_meet_the_decorative_floor(palette):
 def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
     # TwoToneProgressBar's two label colours, each against the ground
     # it is painted on (tests/shell/test_progress_text.py measures the
-    # pixels). TEXT alone over the fill was 3.13:1 in light. White on
-    # dark's ACCENT is 4.35:1, short of AA's 4.5 for small text; the
-    # 4.3 floor records that, so a palette change cannot make it worse.
-    assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 4.3
+    # pixels). TEXT alone over the fill was 3.13:1 in light.
+    assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 4.5
     assert theme.contrast_ratio(palette.TEXT, palette.BG_SURFACE_2) >= 4.5
 
 
@@ -314,21 +312,83 @@ def test_progress_bar_percentage_text_reads_on_both_its_backgrounds(palette):
         [theme.DARK, theme.LIGHT],
         ids=["dark", "light"],
 )
-def test_on_accent_text_meets_the_ui_component_floor(palette):
-    # Roadmap item C5.8 — found live building this exact test: the
-    # QSS used to put plain `TEXT` on top of a saturated ACCENT/DANGER
-    # fill (QPushButton[variant="primary"], the danger button's hover
-    # state) — fine in dark (TEXT is near-white) but wrong in light
-    # (TEXT is near-BLACK, dark text on a purple button). Fixed with a
-    # dedicated `ON_ACCENT` token (white in both palettes), asserted
-    # here against BOTH saturated fills it's actually used on. 3:1 is
-    # WCAG's own floor for large-scale/UI-component text, the correct
-    # standard for a short bold button label rather than the stricter
-    # 4.5:1 body-text floor — DARK's own real number here (verified,
-    # not the brief's originally-claimed one) is 4.35:1 for ACCENT and
-    # 3.91:1 for DANGER, both real but short of 4.5.
-    assert theme.contrast_ratio(palette.ON_ACCENT, palette.ACCENT) >= 3.0
+@pytest.mark.parametrize(
+        "fill", ["ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED"],
+)
+def test_on_accent_text_meets_the_aa_floor_on_every_accent_state(
+        palette, fill,
+):
+    # A primary button's label sits on each of these fills in turn
+    # (rest, hover, pressed); a label is text, so 4.5 applies.
+    assert theme.contrast_ratio(
+            palette.ON_ACCENT, getattr(palette, fill),
+    ) >= 4.5
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+def test_on_accent_text_reads_on_the_danger_fill(palette):
+    # The danger button's hover state. 3:1 is WCAG's floor for a
+    # short bold control label.
     assert theme.contrast_ratio(palette.ON_ACCENT, palette.DANGER) >= 3.0
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+@pytest.mark.parametrize("ground", ["BG_SURFACE", "BG_APP"])
+def test_accent_reads_as_link_text(palette, ground):
+    # Links and the Dashboard's review links are ACCENT text on a
+    # surface or the page ground.
+    assert theme.contrast_ratio(
+            palette.ACCENT, getattr(palette, ground),
+    ) >= 4.5
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+def test_muted_text_meets_the_aa_floor(palette):
+    assert theme.contrast_ratio(palette.TEXT_MUTED, palette.BG_SURFACE) >= 4.5
+    assert theme.contrast_ratio(palette.TEXT_MUTED, palette.BG_APP) >= 4.5
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+@pytest.mark.parametrize("status", ["SUCCESS", "WARNING", "DANGER"])
+def test_status_colours_read_as_text_and_as_marks(palette, status):
+    # On a table or card a status colour can be a label (4.5). On the
+    # page ground and on a selected row it is at least a status mark,
+    # an LED beside its label (WCAG 1.4.11's 3:1).
+    colour = getattr(palette, status)
+    assert theme.contrast_ratio(colour, palette.BG_SURFACE) >= 4.5
+    assert theme.contrast_ratio(colour, palette.BG_APP) >= 3.0
+    assert theme.contrast_ratio(colour, palette.ACCENT_SUBTLE) >= 3.0
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+def test_native_highlighted_text_reads_on_the_highlight(palette):
+    # Whatever Qt draws natively with the QPalette (a menu's current
+    # item, a selection no stylesheet rule covers).
+    qpalette = theme.build_qpalette(palette)
+    assert theme.contrast_ratio(
+            qpalette.color(QPalette.ColorRole.HighlightedText).name(),
+            qpalette.color(QPalette.ColorRole.Highlight).name(),
+    ) >= 4.5
 
 
 # --- Backgrounds: only real surfaces paint one (§27.1) ----------------------

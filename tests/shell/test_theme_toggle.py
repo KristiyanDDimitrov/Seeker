@@ -2,6 +2,9 @@
 rendering.
 """
 
+from dataclasses import astuple
+
+import pytest
 from PySide6.QtWidgets import (
     QLabel,
 )
@@ -136,28 +139,29 @@ def test_cleanup_before_quit_disconnects_the_system_scheme_signal(qtbot):
 # test_theme.py directly; DARK's real-values-unchanged claim is checked
 # structurally here. -------------------------------------------------------
 
-def test_dark_palette_is_byte_identical_to_the_pre_refactor_constants():
-    # Roadmap item C5.1 — "DARK carries today's EXACT values,
-    # unchanged... the first thing to prove." These are the literal
-    # hex strings theme.py held as bare module constants before this
-    # refactor (see CLAUDE.md's own pre-C5 history) — a real pin, not a
-    # restatement of whatever DARK currently says.
-    assert theme.DARK.BG_APP == "#100E15"
-    assert theme.DARK.BG_SIDEBAR == "#15121D"
-    assert theme.DARK.BG_SURFACE == "#1D1929"
-    assert theme.DARK.BG_SURFACE_2 == "#29243A"
-    assert theme.DARK.BORDER == "#3A344E"
-    assert theme.DARK.BORDER_STRONG == "#4E4768"
-    assert theme.DARK.TEXT == "#ECEAF3"
-    assert theme.DARK.TEXT_MUTED == "#9E98B3"
-    assert theme.DARK.TEXT_FAINT == "#6F6987"
-    assert theme.DARK.ACCENT == "#7C5CFF"
-    assert theme.DARK.ACCENT_HOVER == "#8E72FF"
-    assert theme.DARK.ACCENT_PRESSED == "#6446E0"
-    assert theme.DARK.ACCENT_SUBTLE == "#241E3D"
-    assert theme.DARK.SUCCESS == "#3FBF7F"
-    assert theme.DARK.WARNING == "#E0A33E"
-    assert theme.DARK.DANGER == "#E5484D"
+@pytest.mark.parametrize(
+        ("palette", "expected"),
+        [
+            (theme.DARK, (
+                "#17191C", "#101113", "#1E2125", "#282C31", "#353A40",
+                "#4C535B", "#E8EAEC", "#A0A7AE", "#737B83", "#9A7DFF",
+                "#AA91FF", "#8A6BF5", "#262236", "#35D07F", "#FFB020",
+                "#FF6363", "#120E1F",
+            )),
+            (theme.LIGHT, (
+                "#E8EAEC", "#DDE0E3", "#F9FAFA", "#F0F2F3", "#CBD0D5",
+                "#9BA3AB", "#15181B", "#4D555D", "#757D85", "#6440E6",
+                "#5734D6", "#4A2BBD", "#E9E4FB", "#11804A", "#9E5C00",
+                "#C22B2B", "#FFFFFF",
+            )),
+        ],
+        ids=["dark", "light"],
+)
+def test_palettes_carry_the_approved_tokens(palette, expected):
+    # The literal values of docs/design/visual-direction.md's approved
+    # direction (Booth, violet accent), in Palette's field order: a
+    # pin, not a restatement of whatever theme.py currently says.
+    assert astuple(palette) == expected
 
 
 def test_apply_theme_with_dark_mode_produces_the_same_stylesheet_as_before(

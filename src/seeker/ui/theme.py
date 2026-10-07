@@ -95,60 +95,58 @@ class Palette:
     ON_ACCENT: str
 
 
-# The original dark design-system values.
+# "Booth" with a violet accent (docs/design/visual-direction.md):
+# neutral graphite surfaces, so the accent marks only selection, focus
+# and the primary action, and the status colours read like a CDJ's
+# lamps: SUCCESS is play (in library), WARNING is cue (working, or
+# waiting on you), DANGER is not found. test_theme.py asserts every
+# contrast pair this module relies on.
 DARK = Palette(
-    BG_APP="#100E15",
-    BG_SIDEBAR="#15121D",
-    BG_SURFACE="#1D1929",
-    BG_SURFACE_2="#29243A",
-    BORDER="#3A344E",
-    BORDER_STRONG="#4E4768",
-    TEXT="#ECEAF3",
-    TEXT_MUTED="#9E98B3",
-    TEXT_FAINT="#6F6987",
-    ACCENT="#7C5CFF",
-    ACCENT_HOVER="#8E72FF",
-    ACCENT_PRESSED="#6446E0",
-    ACCENT_SUBTLE="#241E3D",
-    SUCCESS="#3FBF7F",
-    WARNING="#E0A33E",
-    DANGER="#E5484D",
-    # Text on a saturated ACCENT/DANGER fill needs its own token: TEXT
-    # is near-white in dark but near-BLACK in light, which would render
-    # dark text on a purple button. Always white in both palettes, used
-    # only where text sits on a saturated fill.
-    ON_ACCENT="#FFFFFF",
+    BG_APP="#17191C",
+    BG_SIDEBAR="#101113",
+    BG_SURFACE="#1E2125",
+    BG_SURFACE_2="#282C31",
+    BORDER="#353A40",
+    BORDER_STRONG="#4C535B",
+    TEXT="#E8EAEC",
+    TEXT_MUTED="#A0A7AE",
+    TEXT_FAINT="#737B83",
+    # A lit violet: white on it would be 3.1:1, so it carries dark
+    # text, like a backlit pad.
+    ACCENT="#9A7DFF",
+    ACCENT_HOVER="#AA91FF",
+    ACCENT_PRESSED="#8A6BF5",
+    ACCENT_SUBTLE="#262236",
+    SUCCESS="#35D07F",
+    WARNING="#FFB020",
+    DANGER="#FF6363",
+    # Text on a saturated ACCENT/DANGER fill. Its own token because it
+    # is not TEXT in either theme: dark ink on dark mode's lit accent,
+    # white on light mode's deep one.
+    ON_ACCENT="#120E1F",
 )
 
-# Measured WCAG contrast ratios, asserted by test_theme.py's own
-# contrast checker. Elevation is preserved, lightness is not: in dark,
-# higher elevation gets LIGHTER; here, higher elevation gets WHITER,
-# with the page ground (BG_APP) slightly tinted so a white card
+# Elevation is preserved, lightness is not: in dark, higher elevation
+# gets LIGHTER; here it gets WHITER, over a grey page ground, so a card
 # (BG_SURFACE) reads as coming forward. The sidebar stays the recessed
-# chrome in both directions. That mapping is a deliberate judgement
-# call, not a mechanical inversion, and is UNTUNED — a real designer's
-# pass over this specific palette hasn't happened yet. ACCENT is
-# deliberately darker than DARK's own accent: the dark value scores
-# 4.35:1 on white (this file's own contrast_ratio, cross-checked against
-# textbook reference pairs in test_theme.py), short of the 4.5:1 AA
-# body-text floor. White text on THIS accent is 5.60:1.
+# chrome in both. ACCENT is a deep violet under white text.
 LIGHT = Palette(
-    BG_APP="#F1EEF8",
-    BG_SIDEBAR="#E9E4F3",
-    BG_SURFACE="#FFFFFF",
-    BG_SURFACE_2="#F7F5FC",
-    BORDER="#DCD6EC",
-    BORDER_STRONG="#BFB5DA",
-    TEXT="#1B1726",
-    TEXT_MUTED="#5C5474",
-    TEXT_FAINT="#8A82A3",
-    ACCENT="#6A46F0",
-    ACCENT_HOVER="#5B36E4",
-    ACCENT_PRESSED="#4B2ACB",
-    ACCENT_SUBTLE="#EDE7FF",
-    SUCCESS="#18854F",
-    WARNING="#9A6410",
-    DANGER="#C2303A",
+    BG_APP="#E8EAEC",
+    BG_SIDEBAR="#DDE0E3",
+    BG_SURFACE="#F9FAFA",
+    BG_SURFACE_2="#F0F2F3",
+    BORDER="#CBD0D5",
+    BORDER_STRONG="#9BA3AB",
+    TEXT="#15181B",
+    TEXT_MUTED="#4D555D",
+    TEXT_FAINT="#757D85",
+    ACCENT="#6440E6",
+    ACCENT_HOVER="#5734D6",
+    ACCENT_PRESSED="#4A2BBD",
+    ACCENT_SUBTLE="#E9E4FB",
+    SUCCESS="#11804A",
+    WARNING="#9E5C00",
+    DANGER="#C22B2B",
     ON_ACCENT="#FFFFFF",
 )
 
@@ -243,8 +241,9 @@ SPACING_MD = 12
 SPACING_LG = 16
 SPACING_XL = 24
 
-RADIUS_CONTROL = 6
-RADIUS_CARD = 10
+# Tight, like hardware: a control is a key cap, a card a panel.
+RADIUS_CONTROL = 4
+RADIUS_CARD = 6
 
 # Track and fill are the SAME pill shape at 0%, mid-download and 100%.
 # The radius is derived from the height (never a literal), so the two
@@ -814,7 +813,7 @@ def build_qpalette(palette: Palette) -> QPalette:
     qpalette.setColor(QPalette.ColorRole.ToolTipText, QColor(palette.TEXT))
     qpalette.setColor(QPalette.ColorRole.Highlight, QColor(palette.ACCENT))
     qpalette.setColor(
-        QPalette.ColorRole.HighlightedText, QColor(palette.TEXT),
+        QPalette.ColorRole.HighlightedText, QColor(palette.ON_ACCENT),
     )
     qpalette.setColor(
         QPalette.ColorRole.PlaceholderText, QColor(palette.TEXT_FAINT),

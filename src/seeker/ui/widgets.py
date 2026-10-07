@@ -183,8 +183,8 @@ class TwoToneProgressBar(QProgressBar):
     """A progress bar whose percentage reads on both of its
     backgrounds: `ON_ACCENT` over the ACCENT fill, `TEXT` over the
     track. The stylesheet painter draws a styled bar's label in one
-    colour, and no one colour clears both (`TEXT` on the light
-    ACCENT is 3.13:1), so this bar paints its own label twice, each
+    colour, and no one colour clears both (`TEXT` on ACCENT is under
+    3:1 in both themes), so this bar paints its own label twice, each
     pass clipped to one side of the fill's edge. Indeterminate, it has
     no label (`text()` is empty) and paints as a plain bar."""
 
