@@ -268,3 +268,4 @@ under their entry and live in the same file, after it.
 ### `181-210.md`
 
 - §181 — Round 11 S31 (§31.1–§31.4): Booth violet tokens with AA floors on every accent and status pair; `theme.active_palette()` replaces the module-token bridge; Barlow Semi Condensed bundled (titles 26 px SemiBold, section headers 16 px Medium); status lamps (`ui/status_lamp.py`); a checkbox tick; the cell-widget pixel test is order-dependent on Cocoa → [181-210.md#181](181-210.md#181)
+- §182 — Round 11 S32: the shell — Lucide nav icons (vendored unchanged, recoloured at draw time by `ui/icons.py`'s `TokenIconEngine`); the brows wordmark revived as an overlay on the plain label (`ui/wordmark.py`); the page header as one unit with a 90-character subtitle; a cue lamp on the activity strip (`StatusLamp`); notices with a lit left edge → [181-210.md#182](181-210.md#182)

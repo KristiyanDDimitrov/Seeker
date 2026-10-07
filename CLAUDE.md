@@ -103,7 +103,9 @@ src/seeker/
 │       library_location_picker.py, plain_text.py,
 │       slskd_status.py (shared outage state + Start slskd),
 │       status_lamp.py (each track/download state's LED: colour,
-│       lit or ring, and its icon)
+│       lit or ring, its icon, and StatusLamp, one as a widget),
+│       icons.py (Lucide nav icons drawn in palette tokens),
+│       wordmark.py (the sidebar wordmark and its brows)
 ├── models/                     # dataclasses — playlist, track, track_match,
 │                              #   local_file, library_location, soulseek_file,
 │                              #   download_request, soulseek_review_candidate,
@@ -563,6 +565,12 @@ Each links to the HISTORY entry where the full investigation lives;
   are no module-level colour names (`theme.ACCENT` is gone); prefer a
   QSS rule over reading a token at all. [HISTORY
   §181](docs/history/181-210.md#181)
+- **A bundled line icon is a `QIcon` over `ui/icons.py`'s
+  `TokenIconEngine`**, which swaps `currentColor` for a palette token
+  on every draw (per mode and state, `IconColours`). The vendored
+  Lucide files in `packaging/icons/lucide/` are never edited; a QSS
+  `image:` still needs one file per palette (`_palette_icon`).
+  [HISTORY §182](docs/history/181-210.md#182)
 - **Only a real surface paints a background.** The generic `QWidget`
   rule sets text colour only; `QMainWindow`/`QDialog` paint `BG_APP`,
   cards and tables their own; `QLabel`/`QCheckBox`/`QRadioButton` are
