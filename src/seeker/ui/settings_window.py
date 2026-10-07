@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -87,16 +86,6 @@ _LOCATIONS_COLUMNS = theme.ColumnLayout(
 )
 
 
-def _scrollable(tab: QWidget) -> QScrollArea:
-    """`tab` in a frameless scroll area, so a tab taller than the
-    window scrolls instead of squeezing its rows below their size."""
-    scroll_area = QScrollArea()
-    scroll_area.setWidgetResizable(True)
-    scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll_area.setWidget(tab)
-    return scroll_area
-
-
 class SettingsPage(QWidget):
     """An in-window Settings page, not a separate top-level window: in
     fullscreen, a second window reads as a dead end with no way back to
@@ -148,7 +137,7 @@ class SettingsPage(QWidget):
                 (self._build_connection_tab, SETTINGS_TAB_CONNECTIONS),
                 (self._build_matching_tab, SETTINGS_TAB_MATCHING),
         ):
-            self.tabs.addTab(_scrollable(build_tab()), tab_name)
+            self.tabs.addTab(theme.scrollable(build_tab()), tab_name)
         layout.addWidget(self.tabs)
 
         about_row = QHBoxLayout()

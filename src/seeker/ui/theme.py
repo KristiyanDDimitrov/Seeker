@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QProxyStyle,
     QPushButton,
+    QScrollArea,
     QStyle,
     QStyleFactory,
     QStyleHintReturn,
@@ -325,6 +326,17 @@ def wrap_progress_bar(bar: QProgressBar, label_text: str | None) -> QWidget:
     if label_text is not None:
         layout.addWidget(PlainLabel(label_text))
     return container
+
+
+def scrollable(content: QWidget) -> QScrollArea:
+    """`content` in a frameless scroll area, so a page or tab taller
+    than the window scrolls instead of squeezing its rows below their
+    size."""
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(True)
+    scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+    scroll_area.setWidget(content)
+    return scroll_area
 
 
 def make_card(inner: QWidget) -> QFrame:
