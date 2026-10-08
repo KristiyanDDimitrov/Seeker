@@ -804,24 +804,26 @@ Genuinely open only, checked against every CI run on record (187, to
 
 ## Roadmap
 
-Forward-looking only — see `docs/history/` for everything shipped.
+Forward-looking only; everything shipped is in `docs/history/`.
 
-- **Round 11 — the final polish round, ending in the v0.1.0 release —
-  in progress.** Session map: `docs/rounds/round-11/SESSION-PLAN.md`;
-  task text: `docs/rounds/round-11/BRIEF.md`; findings:
-  `docs/rounds/round-11/AUDIT.md`. Every document: `docs/README.md`.
-- **Linux packaging** (AppImage or `.deb`) — deprioritized, not scoped.
-- **SoundCloud as a second source — deliberately deferred, not
-  started.** Two disqualifying blockers found researching it:
-  registering a SoundCloud API app requires a paid Artist Pro
-  subscription, and it requires a confidential `client_secret` even for
-  a native app — incompatible with a distributed `.dmg` holding no
-  secret and no proxy server. If picked up: bring-your-own-credentials
-  (Settings, like the existing Spotify field), source toggle top-right
-  of the Dashboard. No code/schema/stubs exist yet.
-- **The brief's §9.4** (long functions beyond `MainWindow`'s own
-  decomposition) — optional; fold into a session that finishes early,
-  or skip and say so.
+- **Round 11, ending in the v0.1.0 release: S39–S42 left** (release
+  engineering, the update check, acceptance, publishing). Session
+  map: `docs/rounds/round-11/SESSION-PLAN.md`; task text: `BRIEF.md`;
+  findings: `AUDIT.md`. Every document: `docs/README.md`.
+- **Two functions above radon C stand between the round and its exit
+  criterion:** `dashboard_page._decide_next_step` (D, 21) and
+  `sharing_service._insert_slskd_share_directory` (D, 26), measured
+  2026-10-08 with `uvx radon cc -n D -s src/seeker`. No row owns
+  them yet.
+- **Windows and Linux packaging: written, never run on real
+  hardware**; no Linux installer format is scoped
+  ([docs/packaging.md](docs/packaging.md)).
+- **SoundCloud as a second source: deferred, not started.** An API
+  app needs a paid Artist Pro subscription and a confidential
+  `client_secret` even for a native app, which a distributed `.dmg`
+  with no secret and no proxy cannot hold. If picked up:
+  bring-your-own credentials in Settings, a source toggle on the
+  Dashboard. No code or schema exists.
 
 ## Working agreements
 
