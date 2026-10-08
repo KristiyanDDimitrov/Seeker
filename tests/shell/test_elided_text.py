@@ -300,7 +300,8 @@ def test_a_view_can_give_its_primary_text_the_whole_cell(qtbot):
     table = _table(qtbot, "Nova Reyes - Voltage Drop")
     table.item(0, 1).setText(text)
     table.item(0, 1).setData(SECONDARY_ROLE, "65%")
-    table.setColumnWidth(1, table.fontMetrics().horizontalAdvance(text) + 24)
+    # Wide enough that the default share holds the whole "65%".
+    table.setColumnWidth(1, table.fontMetrics().horizontalAdvance(text) + 40)
     index = table.model().index(0, 1)
     option = QStyleOptionViewItem()
     option.rect = table.visualRect(index)
@@ -318,3 +319,43 @@ def test_a_view_can_give_its_primary_text_the_whole_cell(qtbot):
     set_secondary_min_share(table, 0.0)
 
     assert primary_width() >= full
+
+
+def test_secondary_text_with_no_room_for_a_word_is_left_to_the_hover(
+        qtbot,
+):
+    # Downloads' "Unavailable" at 960 wide drew its reason as a lone
+    # "…": width taken from the label, nothing a reader can use. A
+    # reason that cannot show its first few letters takes no width at
+    # all, and still joins the hover.
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from seeker.ui.elided_text import (
+        SECONDARY_ROLE,
+        _secondary_share,
+        set_secondary_min_share,
+    )
+
+    text = "Unavailable"
+    reason = "Every candidate was locked after 8 attempts."
+    table = _table(qtbot, "Nova Reyes - Voltage Drop")
+    table.item(0, 1).setText(text)
+    table.item(0, 1).setData(SECONDARY_ROLE, reason)
+    set_secondary_min_share(table, 0.0)
+    metrics = table.fontMetrics()
+    # A few pixels past the label: room for an ellipsis, not a word.
+    table.setColumnWidth(
+        1, metrics.horizontalAdvance(text) + metrics.horizontalAdvance(
+            "…",
+        ) + 40,
+    )
+    index = table.model().index(0, 1)
+    option = QStyleOptionViewItem()
+    option.rect = table.visualRect(index)
+    option.widget = table
+    option.font = table.font()
+    option.fontMetrics = metrics
+    table.itemDelegate().initStyleOption(option, index)
+
+    assert _secondary_share(option, index) == 0
+    assert reason in _tooltip_at(table, index)

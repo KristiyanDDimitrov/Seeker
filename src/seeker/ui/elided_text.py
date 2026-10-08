@@ -11,7 +11,9 @@ painted as a pill before the text, which elides in the space left.
 It can also carry secondary text in `SECONDARY_ROLE` (a candidate's
 quality and peer beside its filename): quieter and right-aligned. It
 takes whatever the primary text leaves, and at least
-`_SECONDARY_MIN_SHARE` of the cell, eliding when that is not enough.
+`_SECONDARY_MIN_SHARE` of the cell, eliding when that is not enough;
+too little room for its first few letters and it takes none, left to
+the hover.
 
 A cell whose `BAND_ROLE` is true sits on the palette's AlternateBase
 instead of Base: a table whose rows come in groups (Duplicates) bands
@@ -62,6 +64,9 @@ _BADGE_GAP = 6
 _BADGE_FONT_SCALE = 0.85
 _SECONDARY_GAP = 12
 _SECONDARY_MIN_SHARE = 0.45
+# The fewest characters an elided secondary text shows before its
+# ellipsis; with less room it is not drawn at all.
+_SECONDARY_MIN_CHARACTERS = 3
 # How much of the text colour secondary text keeps over its ground.
 # 0.7 measures at least 5.9:1 on every row ground in both palettes
 # (test_elided_text checks 4.5:1), and still reads as the quieter line.
@@ -150,7 +155,15 @@ def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
         if isinstance(delegate, ElidedTextDelegate) else _SECONDARY_MIN_SHARE
     )
     available = max(0, cell - primary, int(cell * min_share))
-    return min(wanted, available)
+    if available >= wanted:
+        return wanted
+    secondary = str(index.data(SECONDARY_ROLE))
+    shortest = option.fontMetrics.horizontalAdvance(
+        f"{secondary[:_SECONDARY_MIN_CHARACTERS]}…",
+    )
+    if available - _SECONDARY_GAP - _BADGE_GAP < shortest:
+        return 0
+    return available
 
 
 def _secondary_area(option: QStyleOptionViewItem, width: int) -> QRect:
