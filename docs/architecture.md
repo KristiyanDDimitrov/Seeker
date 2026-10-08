@@ -50,6 +50,38 @@ foreign keys are enforced (`PRAGMA foreign_keys = ON`), and
 `Database.transaction()` opens a new connection per call, so it is
 safe from any thread.
 
+## Tech stack
+
+| Concern | Choice |
+|---|---|
+| Language, environment | Python 3.13, [`uv`](https://docs.astral.sh/uv/) (not pip or poetry) |
+| GUI | [PySide6](https://doc.qt.io/qtforpython/): the Fusion style under Seeker's own QSS theme, `QThreadPool` for background work |
+| HTTP | [`httpx`](https://www.python-httpx.org/), synchronous, for both Spotify and slskd: one pattern, one way to test it (mock the transport) |
+| Data | SQLite through the standard library's `sqlite3`; raw SQL, no ORM |
+| Matching | [`rapidfuzz`](https://github.com/rapidfuzz/RapidFuzz) |
+| Audio | [`mutagen`](https://mutagen.readthedocs.io/) for tags, [`librosa`](https://librosa.org/) for BPM and key, a project-owned `ctypes` binding to `libchromaprint` for fingerprints (optional; looked up only when used) |
+| SoulSeek | [`slskd`](https://github.com/slskd/slskd) in Docker, through its REST API, not a protocol implementation |
+| Packaging | PyInstaller (one folder), `dmgbuild`, Inno Setup ([packaging.md](packaging.md)) |
+
+## Design principles
+
+- **The schema guards the data.** Multi-step writes share one
+  transaction, and enforced foreign keys keep the database from
+  holding a dangling reference, whatever the code above does.
+- **One bad item never aborts a batch.** Every loop over tracks or
+  downloads (`download_playlist`, `poll_downloads`, tagging, scanning)
+  handles each item on its own, so one network blip or missing file is
+  counted as one failure and the rest carry on.
+- **Real responses over documentation.** Spotify's and slskd's docs
+  have been wrong or silent about response shapes more than once;
+  several fixes exist because a live run showed the mismatch. Where it
+  matters, tests use captured real responses and real files.
+- **A file is destroyed only on an explicit confirmation.** Replacing
+  a file with an upgrade and deleting a duplicate both ask first.
+  Writing tags is treated as non-destructive and runs without asking,
+  but is saved through a copy when it would otherwise shift audio in
+  place.
+
 ## Module map
 
 The one canonical layout of `src/seeker/`.
@@ -315,8 +347,9 @@ to completion and prints the result.
 
 ## Where data lives
 
-All under one per-user directory from `platformdirs`
-(`~/Library/Application Support/Seeker` on macOS):
+All under one per-user directory from `platformdirs`:
+`~/Library/Application Support/Seeker` on macOS, `~/.local/share/Seeker`
+on Linux, `%LOCALAPPDATA%\Seeker` on Windows.
 
 | File | Holds |
 |---|---|

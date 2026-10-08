@@ -7,7 +7,8 @@ whatever's missing — searches SoulSeek (via a self-hosted `slskd` daemon)
 to identify and download the highest-quality available file for each
 track, then tags matched files with Spotify's canonical metadata. Ships
 both a CLI (`seeker`) and a desktop GUI (`seeker-ui`, PySide6) over the
-same service layer — see README.md for the full command/screen reference.
+same service layer — see docs/cli.md for the command reference and which
+screen covers each command.
 
 This is a portfolio project. Code quality, structure, and test coverage
 matter as much as functionality — prefer the idiomatic/correct approach over
