@@ -654,6 +654,16 @@ Each links to the HISTORY entry where the full investigation lives;
   docstring). Run it deliberately via `SEEKER_RUN_STRESS_TEST=1 uv run
   pytest tests/test_stress_e2e.py` after any change to worker/timer/
   connection lifecycle code. [HISTORY §32](docs/history/032-046.md#32)
+  CI skips 29: that one plus 28 `@requires_x9_pro` tests (no such
+  drive on a runner).
+- **A UI test waits for its flow's real end, never the fake's call
+  record.** A fake records the call on the worker thread, before the
+  main thread's finish handler runs: a test that returns or asserts
+  then races it. A late handler raises `RuntimeError: … already
+  deleted` reported at setup of the *next* test; look at the test
+  before it. Wait for the notice, label or button the finish handler
+  sets. [HISTORY §128](docs/history/121-150.md#128),
+  [§148](docs/history/121-150.md#148)
 
 ### Database and migrations
 
@@ -748,120 +758,49 @@ Each links to the HISTORY entry where the full investigation lives;
 
 ## Open issues
 
-Genuinely open only — no "done" items, no flakes that resolved.
+Genuinely open only, checked against every CI run on record (187, to
+2026-10-08) in [HISTORY §192](docs/history/181-210.md#192).
 
-- **Item 63 — a real locked-file retry storm against production slskd
-  (300+ retries of one row in ~18 min), root cause still
-  unidentified.** Three dedicated follow-up runs individually and
-  jointly ruled out locked-row presence, a zero-locked baseline, and
-  heavy combined load as the trigger. One lead: a real one-off `500` on
-  `/api/v0/transfers/downloads/batches` matching the storm's own error
-  text, but as a single enqueue failure, not a cascade. The retry-rate
-  bound added since (exponential backoff + terminal `unavailable` after
-  8 attempts) means this storm shape can't recur even though *why* it
-  happened is still unknown. [HISTORY §63](docs/history/047-071.md#63)
-- **Item 70 — a real stress-test hang at production library scale
-  (~3,100 files), root cause still unidentified.** Reproduced 3/3 times
-  at production scale, always right after sync/scan/match settle,
-  waiting on Duplicates' Compute Fingerprints — but not in 2/2 isolated
-  repros, one at 1,500-file scale. A `faulthandler` watchdog never fired
-  once across ~38 stuck minutes, implicating whole-process GIL
-  starvation, not just a stuck Qt loop. **Answered (round 6): this is a
-  separate defect from item 105's pytest-runner stall** — different
-  symptom, trigger, and mechanism. Real Spotify sync duration and/or
-  real DB size/content are the untested suspects. A concrete lead
-  (UNVERIFIED): until S22 the Dashboard's 2-second poll and the
-  20-second history poll each read all ~32 MB of fingerprint text on
-  a worker thread, and the Dashboard rebuilt every track row on the
-  main thread each tick (§166); S41's stress run tests it.
-  [HISTORY §70](docs/history/047-071.md#70),
-  [§165](docs/history/151-180.md#165)
-- **Item 125 — a real "not responding" quit hang, reported once,
-  still unreproduced.** Kris closed the window (hid to tray correctly)
-  then quit from the tray icon; the app reappeared in the Dock marked
-  "not responding." Round 9 §2.3 mechanically confirmed the leading
-  candidate mechanism in isolation — a per-window `QThreadPool` (the
-  same shape `MainWindow.thread_pool` is) blocks its own destructor on
-  any in-flight runnable, so `quit()` returning instantly does not mean
-  the process actually exits — but did not reproduce Kris's specific
-  sequence live. `cleanup_before_quit` now logs the real pool's
-  active/max thread count at entry and elapsed time at exit
-  specifically so a real recurrence is diagnosable from `seeker.log`
-  alone. Next live attempt should bias toward quitting while a real
-  background worker (scan/fingerprint/search) is provably still
-  running. [HISTORY §125](docs/history/121-150.md#125)
-- **Two unconfirmed round-8 test flakes** (the fullscreen-close pair
-  is closed — see below). Diagnose any recurrence directly — never
-  reach for `pytest-rerunfailures`.
-  - `test_close_event_falls_back_to_real_close_when_no_tray` — fired
-    once across ~12 full-suite runs, clean since. Round 8 §14
-    subsequently modified `closeEvent` directly — check that first if
-    it recurs.
-  - **Closed, round 10 §6: the fullscreen-close pair**
-    (`test_fullscreen_close_policy_check_ignores_a_stale_request` +
-    `test_reopening_after_a_fullscreen_close_restores_maximized_not_
-    fullscreen`, four recurrences). Traced live: offscreen Qt delivered
-    a real `applicationStateChanged(ApplicationActive)` inside the
-    test's own `qtbot.wait`, to the test's OWN closed window (not a
-    zombie), which reopened it and called `set_dock_icon_visible(True)`.
-    conftest's `_ignore_organic_application_state_changes` now drops
-    signal-delivered calls (direct calls still reach the handler); two
-    deterministic repro tests emit the real signal. PySide6 gotcha: a
-    monkeypatched slot needs `functools.wraps` or `sender()` reads
-    `None`. [HISTORY §130](docs/history/121-150.md#130)
-  - `test_view_menu_focus_search_navigates_and_focuses_the_search_field`
-    (added S15, §12.3/§12.5) — fails on real CI (`macos-latest`) with
-    `assert False` on `search_artist_edit.hasFocus()`, confirmed on TWO
-    consecutive real runs (`34340583368` at S15's own close-out commit
-    `6f1ea0b`, before any S16 work existed; `34346738383` at S16's
-    close-out `2b83554`) — not a regression from S16, and 2-for-2 on CI
-    is stronger than a one-off. Passes reliably locally every time
-    (confirmed across many full-suite runs this session). Consistent
-    with a real focus-doesn't-land-without-a-real-window-manager gap
-    under CI's headless/offscreen platform — plausible but UNVERIFIED;
-    `QApplication.setActiveWindow`/a real `activateWindow()` call before
-    the assertion is the next thing to try if it recurs.
-- **Closed, S18: `test_download_button_disabled_with_no_playlist_selected`**
-  (CI run `36758864929`). The button is enabled until a worker's
-  render disables it; the test asserted after a bare `qtbot.wait(50)`.
-  Reproduced with a 200 ms fact fetch; it now `waitUntil`s the
-  disable. [HISTORY §161](docs/history/151-180.md#161)
-- **Closed, round 10 §4: the review replace-button and history-refresh
-  flakes were one root cause, not two — a fake's call counter increments
-  on the worker thread before `_handle_task_finished` re-enables the
-  triggering button on the main thread, so a test that clicks right
-  after the counter hits its target can land the click on a still-
-  disabled button (correct product behavior; the bug was in the test).
-  §1.2 fixed the replace-button half by waiting on Review's own notice
-  text; round 10 §4 fixed the history-refresh half the same way (wait
-  for the button itself) and added a deterministic repro
-  (`_block_event`/`_block_when_limit` on `FakeHistoryService`) so the
-  race reproduces every run instead of ~1-in-8. [HISTORY
-  §128](docs/history/121-150.md#128)
+- **Item 63 — a locked-file retry storm against production slskd**
+  (300+ retries of one row in ~18 min), cause unknown. Three
+  follow-up runs ruled out locked-row presence, a zero-locked
+  baseline and heavy load. One lead: a single `500` on
+  `/api/v0/transfers/downloads/batches` with the storm's error text.
+  Backoff plus a terminal `unavailable` after 8 attempts bounds the
+  rate whatever the cause. [HISTORY §63](docs/history/047-071.md#63)
+- **Item 70 — a stress-test hang at production scale (~3,100
+  files)**, cause unknown: 3/3 at scale, after sync/scan/match
+  settle, on Duplicates' Compute Fingerprints; 0/2 isolated (one at
+  1,500 files). A `faulthandler` watchdog never fired in ~38 stuck
+  minutes, which points at whole-process GIL starvation. Separate
+  from item 105's pytest stall. Lead (UNVERIFIED): until S22 the
+  Dashboard's 2 s poll and the 20 s history poll each read all ~32
+  MB of fingerprint text, and the Dashboard rebuilt every row each
+  tick; S22 cut those to 0.24 ms, 1.8 ms and 0.2 ms. S41's stress
+  run tests it. [HISTORY §70](docs/history/047-071.md#70),
+  [§165](docs/history/151-180.md#165), [§166](docs/history/151-180.md#166)
+- **Item 125 — a "not responding" quit hang**, reported once (close
+  to tray, then quit from the tray), unreproduced. Candidate,
+  confirmed in isolation: a per-window `QThreadPool`'s destructor
+  waits for in-flight runnables. `cleanup_before_quit` logs the
+  pool's active threads and its own elapsed time; next attempt: quit
+  while a scan, fingerprint or search worker is provably running.
+  [HISTORY §125](docs/history/121-150.md#125)
+- **Two test failures, not yet diagnosed.** Diagnose any recurrence;
+  never reach for `pytest-rerunfailures`.
+  - `test_search_download_best_passes_the_already_fetched_results`,
+    once on CI (`37599402903`): the status label was still empty. It
+    waits on the fake's call list, then reads a label the finish
+    handler writes — §128's race shape, UNVERIFIED until reproduced.
+  - `test_a_cell_widget_paints_the_rows_own_background`, Cocoa only
+    since S37 (`[light]`, sometimes `[dark]`): a one-unit colour
+    difference; passes offscreen. An external 5K main display is the
+    suspect (UNVERIFIED).
 - **The real DB still holds three nested library locations**
-  (`Music`⊂`x9-pro`, `Test`⊂`x9-pro`, `Test`⊂`Music`), double-indexing
-  ~3,450 files. The guard, detection and merge exist; the merge needs
-  the X9 Pro mounted, so Kris runs Settings → Library → Fix…, keeping `Music` (rehearsed on a copy: 43 matches kept, 0
-  lost). [HISTORY §172](docs/history/151-180.md#172)
-- **CI is real and running (not billing-blocked) as of 2026-09-08 —
-  the S1.1/§117 "never completed a real run" finding is superseded.**
-  Confirmed live via `gh run list`/`gh run view`: ruff/mypy clean on
-  every run inspected so far. **S16 update, correcting the "never
-  anything new" claim this bullet used to make:** two more real,
-  CI-only pytest failures confirmed live since — the focus-search flake
-  above, and `test_history_refresh_button_refetches` (already tracked
-  above as a ~1-in-8 to 1-in-10 flake; this was one of those
-  recurrences, not a new defect). Both are known/tracked, neither is a
-  surprise, but "never anything new" was never re-verified after S14
-  wrote it and turned out false the moment it was actually checked
-  again — don't repeat an unverified claim as if re-confirmed.
-  The 29-vs-1 skipped-test mismatch an earlier round left as an open
-  question is now explained, not just observed: 29 = 28
-  `@requires_x9_pro`-gated tests (no such drive on a GitHub runner) + 1
-  `@requires_stress_opt_in` test (opt-in only) — exact arithmetic
-  match. The 1 skip everywhere else is real-hardware machines running
-  the x9_pro-gated tests for real and skipping only the opt-in stress
-  test.
+  (`Music`⊂`X9 Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`), double-indexing
+  ~3,450 files. The merge needs the X9 Pro mounted: Kris runs
+  Settings → Library → Fix…, keeping `Music` (rehearsed on a copy: 43
+  matches kept, 0 lost). [HISTORY §172](docs/history/151-180.md#172)
 
 ## Roadmap
 
