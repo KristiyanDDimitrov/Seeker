@@ -17,7 +17,8 @@ nine fields below follow the contract in
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
   `[dark]` and `[light]`, the same as S1, S2 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** see §3 for this push's run.
+- **CI:** `0032235`'s run `37831789311` green: `2018 passed, 29
+  skipped`, coverage 94.54 % (floor 92 %).
 
 ## 2. Where we are
 
@@ -35,7 +36,7 @@ tick.
   test now forces a real rebuild.
 - The close-out: HISTORY §195, one fact in `src/seeker/ui/CLAUDE.md`,
   the plan tick, this file.
-- CI: pending at the close-out commit; the next commit records it.
+- CI: run `37831789311`, green.
 
 ## 4. Key context
 
