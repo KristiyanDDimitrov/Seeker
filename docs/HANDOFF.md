@@ -14,7 +14,7 @@ nine fields below follow the contract in
   the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2013 passed, 1 skipped`, no failures.
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** the close-out's run is recorded in the commit after it.
+- **CI:** `4e6ee27`'s run `37742497790` green.
 
 ## 2. Where we are
 
