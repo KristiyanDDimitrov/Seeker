@@ -17,7 +17,8 @@ nine fields below follow the contract in
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
   `[dark]` and `[light]`, the same as S1–S5 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** see §3 for the S6 push's run.
+- **CI:** `ac7d9cf`'s run `37847947396` green: `2026 passed, 29
+  skipped`, coverage 94.57 % (floor 92 %).
 
 ## 2. Where we are
 
@@ -31,7 +32,7 @@ credentials: S-01, S-02, S-08, S-13). It waits for Kris to read
 
 - One commit: `AUDIT.md`, HISTORY §198 and its index line, the plan
   tick, the docs-index link, this file. No `src/` or test change.
-- Pushed; CI run: CI_LINE.
+- Pushed; CI run `37847947396` green.
 
 ## 4. Key context
 
