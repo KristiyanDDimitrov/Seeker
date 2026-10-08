@@ -11,47 +11,46 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S4 handoff, after the close-out (HISTORY §196). Tree clean apart from
+- **HEAD:** the S5 handoff, after the close-out (HISTORY §197). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 2051 passed, 1 skipped`.
+- **Local (Cocoa):** pytest `2 failed, 2052 passed, 1 skipped`.
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
-  `[dark]` and `[light]`, the same as S1–S3 and S37/S38 (S9 owns it).
+  `[dark]` and `[light]`, the same as S1–S4 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `b23ca8a`'s run `37835097871` green: `2025 passed, 29
-  skipped`, coverage 94.56 % (floor 92 %).
+- **CI:** the close-out's run is pending; the next commit records it.
 
 ## 2. Where we are
 
-**Round 12 S4 is done.** **Next: S5**, the Support page: the new
-contact email and "Support the artists" (BRIEF §5; `frontend-design`).
-Kris may veto the wording after seeing it on screen, so the HISTORY
-entry needs the before and after screenshots.
+**Round 12 S5 is done, and with it Phase A.** **Next: S6**, the
+security re-audit, read-only, which writes `AUDIT.md` (BRIEF §6;
+skills `security-review`, `security-pen-testing`,
+`dependency-auditor`, `adversarial-reviewer`). Its split point is
+after the threat model and items 1–6. S7/S8 are [ASK]: they wait for
+Kris to read `AUDIT.md`.
 
-## 3. Session report (S4)
+## 3. Session report (S5)
 
-- `b5cabe2`, §4.1–§4.2: the Dashboard's Status sorts by
-  `track_status.PROGRESS_RANK`. Two new tests (the order; a
-  progress-only poll keeps it).
-- `b5bc773`, §4.3: Downloads by `download_request.PROGRESS_RANK`;
-  a test that every `DownloadStatus` has a rank.
-- `e59f95a`, §4.4: the sweep's three more columns (Sharing's State
-  and Shared, Library's Tags; Cover art made explicit).
-- The close-out: HISTORY §196, one fact in `src/seeker/ui/CLAUDE.md`,
-  the plan tick, this file.
+- `c4623f6`, §5.1: the contact email is `kristiyanddimitrov@proton.me`
+  (the About dialog's author line, also on Support). The test pins the
+  mailto, the visible text and the old address's absence.
+- `00d3afa`, §5.2: Support leads with "Support the artists", the
+  brief's draft verbatim, above Donate. One new test (first in
+  on-screen order; the body is the constant, as rich text).
+- The close-out: HISTORY §197 with a before/after image, the plan
+  tick, this file.
 
 ## 4. Key context
 
-- **A status column sorts closest to done first** through a named
-  rank, never its label (the new ui/CLAUDE.md fact). A new state
-  needs a rank, or the lookup raises `KeyError` (Dashboard,
-  Downloads); `test_every_status_has_a_progress_rank` catches a new
-  `DownloadStatus`.
-- **The Dashboard's in-place progress path leaves status keys alone,**
-  correctly: it runs only when every row's state is unchanged.
+- **The Support page's sections are `static_pages._section`**, not
+  `theme.section_card` (the brief said "section_card-style, as the
+  page's other sections have"; they are `_section`, so the new one
+  is too).
+- **A rich-text list in a `QLabel`** packs its items tighter than the
+  page's paragraphs; `<li style="margin-bottom: 4px">` matched them
+  (read in the screenshots, both themes).
 - **Sharing's locations table** still rebuilds its per-row "Add to my
   SoulSeek share" button (with a tooltip) on every 20 s backend poll.
-  Not fixed (S3's scope was 2 s pollers). **For S15**, or a row of
-  its own.
+  **For S15**, or a row of its own.
 - **For S16: `uv build --wheel` packages whatever is in
   `src/seeker/`,** including a gitignored `_build_info_generated.py`
   left by a local DMG build. `wheel-exclude` already drops
@@ -72,18 +71,15 @@ entry needs the before and after screenshots.
 
 ## 5. Decisions made
 
-- **Downloads: locked above shortlisted.** The brief grouped them as
-  "Retrying (locked, shortlisted)"; distinct ranks keep the two labels
-  ("Retrying", "Queued as backup") from interleaving. Superseded is
-  ranked last so that every member has one.
-- **The sweep went past the brief's two columns** to Sharing's State
-  and Shared and Library's Tags/Cover art: the brief said "any other
-  status column … treat each one the same way". Page-derived labels
-  carry their rank with them (no model enum to sit beside).
-- **Ties keep no explicit second key:** within a rank, rows are equal
-  and Qt's sort keeps them as they come.
-- **No screenshots:** nothing is sorted until a header is clicked.
-- **Skills:** `tdd` was used (each change failed first for the stated
+- **The draft wording stands,** verbatim; the one change is of form
+  (item spacing). Typographic quotes around "track ID?".
+- **`SUPPORT_TAB_SUBTITLE` kept:** it frames the whole page and reads
+  straight into the artists' section, so it still leads.
+- **The history image is full colour (219 KB).** A palettized copy
+  was 62 KB but turned dark mode navy and light mode white, which
+  would misrecord the look.
+- **Skills:** `frontend-design` (the screenshot critique that found
+  the list spacing) and `tdd` (both items failed first for the stated
   reason). No skill contradicted the brief.
 
 ## 6. Blockers
@@ -92,20 +88,22 @@ None.
 
 ## 7. Files in progress
 
-None: S4 is committed whole.
+None: S5 is committed whole.
 
 ## 8. Waiting on Kris
 
-**A live check (S4):** on the Dashboard and on Downloads, click the
-Status header; the finished rows should come first.
+**The S5 wording veto:** open Support (or see HISTORY §197's image)
+and veto or edit "Support the artists" if you want to.
 
-**From S1–S3, still open:** the new colours (HISTORY §193), the spin
-arrows and `90.0` (§194), "Follow system" applying at once, and a
-Review tooltip staying up for 5 s under a still pointer (§195).
+**Live checks from S1–S4, still open:** the new colours (HISTORY
+§193), the spin arrows and `90.0` (§194), "Follow system" applying at
+once, a Review tooltip staying up for 5 s under a still pointer
+(§195), and clicking the Status header on the Dashboard and Downloads
+(finished rows first, §196).
 
-**Open gates:** reading `AUDIT.md` after S6, the S5 wording veto, the
-first live Cancel (S12) and cleanup (S13), and the S18 publishing
-commands. Also the wordmark's brows over "ee" (`9ff777b`).
+**Open gates:** reading `AUDIT.md` after S6, the first live Cancel
+(S12) and cleanup (S13), and the S18 publishing commands. Also the
+wordmark's brows over "ee" (`9ff777b`).
 
 **Live checks:** round 12 BRIEF §17, plus the carried list in
 `git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
