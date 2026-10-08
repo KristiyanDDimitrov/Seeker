@@ -70,8 +70,8 @@ investigation.
   bars, percentages and sort keys in place. Anything new a row bakes in at
   build time (a color, a setting) must join that key, or a change to it
   never reaches the table. `QTableWidget.setItem` measured ~2.4 ms a call
-  at 500 rows — mutate an existing item on a hot path. [HISTORY
-  §166](../../../docs/history/151-180.md#166)
+  at 500 rows — mutate an existing item on a hot path.
+  [HISTORY §166](../../../docs/history/151-180.md#166)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it
@@ -106,8 +106,17 @@ investigation.
   `TokenIconEngine`**, which swaps `currentColor` for a palette token
   on every draw (per mode and state, `IconColours`). The vendored
   Lucide files in `packaging/icons/lucide/` are never edited; a QSS
-  `image:` still needs one file per palette (`_palette_icon`).
-  [HISTORY §182](../../../docs/history/181-210.md#182)
+  `image:` still needs one file per palette (`_palette_icon`: the
+  combo chevron, the spin arrows, the tick). Fusion's own spin arrows
+  are a 2 px speck on Cocoa, so the spin buttons are styled in QSS.
+  [HISTORY §182](../../../docs/history/181-210.md#182),
+  [HISTORY §194](../../../docs/history/181-210.md#194)
+- **`styleHints().colorScheme()` reports the app's own
+  `setColorScheme()` override until `Unknown` clears it** (observed on
+  Cocoa; offscreen never moves it), so `apply_theme` sets or clears the
+  override before it resolves `"system"`. A test of that ordering
+  stubs the hints (`_CocoaStyleHints` in `test_theme.py`).
+  [HISTORY §194](../../../docs/history/181-210.md#194)
 - **Only a real surface paints a background.** The generic `QWidget`
   rule sets text colour only; `QMainWindow`/`QDialog` paint `BG_APP`,
   cards and tables their own; `QLabel`/`QCheckBox`/`QRadioButton` are

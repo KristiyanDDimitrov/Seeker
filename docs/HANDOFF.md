@@ -11,73 +11,62 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S1 close-out (HISTORY §193). Tree clean apart from
+- **HEAD:** the S2 close-out (HISTORY §194). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 2026 passed, 1 skipped`.
+- **Local (Cocoa):** pytest `2 failed, 2041 passed, 1 skipped`.
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
-  `[dark]` and `[light]`, the same as S37/S38 (see §4).
+  `[dark]` and `[light]`, the same as S1 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `f1627f7`'s run `37824275052` green: `2000 passed, 29
-  skipped`, coverage 94.53 % (floor 92 %).
+- **CI:** see §3 for the S2 push's run.
 
 ## 2. Where we are
 
-**Round 12 S1 is done.** **Next: S2**, "Follow system" applies at
-once, and the spin-box arrows in dark mode (BRIEF §2). S2 edits
-`theme.py` as S1 did; read `src/seeker/ui/CLAUDE.md` first.
+**Round 12 S2 is done.** **Next: S3**, Review's tooltips survive the
+2 s poll by rendering only on change (BRIEF §3; `focused-fix` and
+`tdd`). S4 follows it because both touch table rebuilds and sort keys.
+Read `src/seeker/ui/CLAUDE.md` first: its `_RenderedRows` fact (the
+Dashboard's render-on-change) is the pattern S3 likely wants.
 
-## 3. Session report (S1)
+## 3. Session report (S2)
 
-- `e69813f`: the round-12 planning docs, as planning left them.
-- `2311429`, §1.1: one selection pair, `TEXT` on a new `SELECTION`.
-- `1feb150`, §1.2: `CUE`, the lamp and meter amber, split from
-  `WARNING`.
-- The close-out: HISTORY §193 (with before and after images,
-  `docs/history/images/193-*.png`), the UI rule, the plan tick, this
-  file.
-- Evidence (probe tables, failing then passing tests, screens read):
-  HISTORY §193. CI: run `37824275052`, green.
+- `1f4b82d`, §2.1: `apply_theme` sets or clears the scheme override
+  before resolving `"system"`.
+- `2414ce5`, §2.2: spin-box buttons in QSS, up/down chevrons per
+  palette (`packaging/icons/spin_*`).
+- `06eac99`, §2.2: the match thresholds take `QLocale.c()`.
+- The close-out: HISTORY §194 (image `docs/history/images/194-spin-arrows.png`),
+  two facts and the §166 link fix in `src/seeker/ui/CLAUDE.md`, the
+  plan tick, this file.
+- CI: pending at the close-out commit; recorded by the follow-up.
 
 ## 4. Key context
 
-- **Light mode's field selection was broken too:** white text on
-  `#E9E4FB`. Fixed with the dark case in §1.1.
-- **`QStyleSheetStyle` writes a rule's `selection-*` into the
-  widget's palette.** A table's `Highlight` is therefore its
-  `selection-background-color`, not the app palette's. That is why
-  the Upgrade/Locked pill's "ACCENT" outline never showed. It now
-  reads `QPalette.Link`. Anything reading `option.palette` inside a
-  styled view gets the QSS colours.
-- **The token pin:** `tests/shell/test_theme_toggle.py::
-  test_palettes_carry_the_approved_tokens` pins every `Palette` field
-  in order. A new token goes there and in
-  `docs/design/visual-direction.md`.
-- **Screens diff:** `tools/screenshots.py` (offscreen, ~2 min, safe
-  beside a running suite). Copy `tools/.screens` to the scratchpad
-  before and after, then compare pixels with `QImage`. That lists
-  exactly which screens a change touched.
-- **Planning found, for later rows:** "Follow system" resolves the
-  palette before it clears the scheme override (`theme.py`
-  `apply_theme`; grep it, the lines moved by ~10). Review rebuilds
-  every row on each 2 s tick, which kills tooltips (S3). The
-  Dashboard's Status column sorts by label text (S4). The "daily"
-  retry never existed (S10). `urllib3 2.7.0` has three advisories,
-  fixed in 2.8.0, and CI has no dependency audit (S7). All of this is
-  in BRIEF §2–§10.
-- **CLAUDE.md is two files:** the root (29.9 KB) and
-  `src/seeker/ui/CLAUDE.md` (12.6 KB). Its link at line 74
-  (`HISTORY\n  §166`) wraps, so the `src/` history grep flags it.
-  This predates S1; fix it in passing.
+- **Cocoa's `colorScheme()` reports the app's own override** until
+  `setColorScheme(Unknown)`, and reverts synchronously; offscreen
+  stays `Unknown` throughout. A test of anything scheme-dependent
+  stubs `theme.QGuiApplication.styleHints` (`_CocoaStyleHints` in
+  `test_theme.py`).
+- **A "some pixel reaches 3:1" grab test can pass on a speck.** The
+  spin test measures the mark's width instead. The combo chevron and
+  tick tests still use the weaker floor; they pass because the marks
+  are real, but S15 could tighten them.
+- **Screens diff:** `tools/screenshots.py` wrote 76 PNGs this time
+  (S1 said 78). The harness runs under the Mac's comma locale, so
+  number formatting shows in it.
+- **Planning found, for later rows:** Review rebuilds every row on
+  each 2 s tick, which kills tooltips (S3). The Dashboard's Status
+  column sorts by label text (S4). The "daily" retry never existed
+  (S10). `urllib3 2.7.0` has three advisories, fixed in 2.8.0, and CI
+  has no dependency audit (S7). All in BRIEF §3–§10.
 - **For S16: `uv build --wheel` packages whatever is in
   `src/seeker/`,** including a gitignored `_build_info_generated.py`
   left by a local DMG build. `wheel-exclude` already drops
   `CLAUDE.md`.
 - **S9 owns:** the two radon-D functions and the two undiagnosed
-  tests. One is the CI flake
-  `test_search_download_best_passes_the_already_fetched_results`
-  (`37599402903`, §128's race shape). The other is the Cocoa-only
-  theme failure; its first untried check is a rerun with only the
-  built-in display.
+  tests (the CI flake
+  `test_search_download_best_passes_the_already_fetched_results`,
+  `37599402903`; the Cocoa-only theme failure, whose first untried
+  check is a rerun with only the built-in display).
 - **Carried:** set `set -o pipefail` before `pytest … | tail && git
   commit`. Never touch slskd or real data. The full suite takes
   ~4.5 min, so run it in the background. `git stash push -- <paths>`
@@ -86,20 +75,17 @@ once, and the spin-box arrows in dark mode (BRIEF §2). S2 edits
 
 ## 5. Decisions made
 
-- **One selection colour, for text and table rows alike** (the
-  brief: "apply it everywhere"). The nav's current page and menu
-  hover keep `ACCENT_SUBTLE`: they mark a place, not a selection.
-- **Light `SELECTION` `#E4DDFB`, not the stronger `#DCD3FA`**, so
-  that `CUE` keeps 3:1 on a selected row. The field test's
-  "stands off" floor is 1.2:1. The old colours, at 1.07 and 1.18,
-  fail it.
-- **Light `CUE` `#AD7400`:** the lightest golden amber that meets all
-  four floors. Higher hues read mustard in a swatch.
-- **The warning notice's left edge is a mark, so it takes `CUE`.**
-- **Images in HISTORY are new.** Two compact composites
-  (~35 KB each), not whole screens, to keep the repository light.
-  This diverges from earlier entries, which only named screens. The
-  brief asked to show the screens.
+- **Thresholds in `QLocale.c()`, not the system locale everywhere.**
+  Every score prints through `f"{score:.1f}"` (UI and CLI); the CLI
+  cannot follow Qt's locale, and the threshold is read against those
+  scores.
+- **The spin arrows reuse the combo chevron's geometry**, separate
+  files per direction and palette, as the brief asked
+  (`_palette_icon`). Buttons are transparent at rest, so the field
+  reads as one control; hover `BG_SURFACE_2`, pressed `BORDER`.
+- **The tdd skill asks to confirm seams with the user;** the brief
+  already named them (the applied palette; a grab of a spin box), so
+  no question was asked.
 
 ## 6. Blockers
 
@@ -107,13 +93,17 @@ None.
 
 ## 7. Files in progress
 
-None: S1 is committed whole.
+None: S2 is committed whole.
 
 ## 8. Waiting on Kris
 
 **A cheap veto:** the new colours. Dark selection is `#4A3799`, the
 light amber `#AD7400` (images in HISTORY §193). The pill outline now
-shows as ACCENT.
+shows as ACCENT. From S2: the spin arrows and `90.0` with a point
+(HISTORY §194's image).
+
+**A live check:** on the real Mac in Dark, choose Light, then Follow
+system; the app should turn dark at once.
 
 **Open gates:** reading `AUDIT.md` after S6, the S5 wording veto, the
 first live Cancel (S12) and cleanup (S13), and the S18 publishing
