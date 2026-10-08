@@ -110,10 +110,14 @@ accent tokens change.
 | `ACCENT_HOVER` / `_PRESSED` / `_SUBTLE` | `#AA91FF` / `#8A6BF5` / `#262236` | `#5734D6` / `#4A2BBD` / `#E9E4FB` |
 | `ON_ACCENT` | `#120E1F` | `#FFFFFF` |
 | `SELECTION` (added later, HISTORY §193) | `#4A3799` | `#E4DDFB` |
+| `CUE` (added later, HISTORY §193) | `#FFB020` | `#AD7400` |
 
 `SELECTION` is the one selection ground, text and rows alike, under
 `TEXT`: `_SUBTLE` barely stood off a dark field, and a field rule with
 no `selection-color` drew dark mode's selected text near-black.
+`CUE` fills the lamps, meters and the warning notice's edge at 3:1;
+`WARNING` keeps the 4.5:1 text role, which made light mode's fills
+read brown.
 
 | Pair | Floor | Dark | Light |
 |---|---|---|---|

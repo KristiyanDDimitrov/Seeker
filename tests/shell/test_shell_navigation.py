@@ -199,7 +199,7 @@ def test_activity_strip_renders_real_progress_when_reported(qtbot):
     assert window.activity_strip_bar.maximum() == 100
     assert window.activity_strip_bar.value() == 40
     # Work in progress is cue amber, as on the Dashboard's meters.
-    assert theme.active_palette().WARNING in (
+    assert theme.active_palette().CUE in (
         window.activity_strip_bar.styleSheet()
     )
 

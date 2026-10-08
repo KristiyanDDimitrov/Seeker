@@ -103,7 +103,7 @@ def test_a_ring_lamp_is_hollow(palette, qapp):
     assert centre.alpha() == 0
     assert ring.alpha() > 0
     assert (ring.red(), ring.green(), ring.blue()) == QColor(
-            palette.WARNING,
+            palette.CUE,
     ).getRgb()[:3]
 
 
@@ -121,4 +121,4 @@ def test_a_lamp_widget_paints_its_lamp_in_the_active_palette(
     centre = image.pixelColor(image.width() // 2, image.height() // 2)
 
     assert widget.size() == QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE)
-    assert centre == QColor(palette.WARNING)
+    assert centre == QColor(palette.CUE)

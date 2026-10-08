@@ -843,7 +843,7 @@ def test_a_download_is_a_segmented_amber_meter(qtbot):
     container = window._dashboard_page.track_table.cellWidget(0, 2)
     bar = container.findChild(QProgressBar)
     sheet = bar.styleSheet()
-    assert theme.active_palette().WARNING in sheet
+    assert theme.active_palette().CUE in sheet
     assert f"width: {theme.METER_SEGMENT_WIDTH}px" in sheet
     assert bar.isTextVisible() is False
     assert bar.width() == theme.METER_WIDTH

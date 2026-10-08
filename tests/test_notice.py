@@ -133,7 +133,7 @@ def test_the_dismiss_control_is_a_named_cross_not_a_letter(qtbot):
 _EDGE_TOKENS = {
     "info": "TEXT_MUTED",
     "success": "SUCCESS",
-    "warning": "WARNING",
+    "warning": "CUE",
     "error": "DANGER",
 }
 

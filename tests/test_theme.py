@@ -397,6 +397,29 @@ def test_status_colours_read_as_text_and_as_marks(palette, status):
         [theme.DARK, theme.LIGHT],
         ids=["dark", "light"],
 )
+@pytest.mark.parametrize(
+        "ground", ["BG_SURFACE", "BG_SURFACE_2", "BG_APP", "SELECTION"],
+)
+def test_the_cue_mark_meets_the_ui_component_floor(palette, ground):
+    # A cue lamp or meter segment is a mark, not text (WCAG 1.4.11's
+    # 3:1), on a card, a banded or selected row, or the page ground.
+    assert theme.contrast_ratio(palette.CUE, getattr(palette, ground)) >= 3.0
+
+
+def test_light_modes_cue_is_lighter_than_its_text_grade_warning():
+    # One token served both floors, so light mode's lamps and meters
+    # took the text-grade amber, dark enough to read brown.
+    surface = theme.LIGHT.BG_SURFACE
+    assert theme.contrast_ratio(theme.LIGHT.CUE, surface) < (
+        theme.contrast_ratio(theme.LIGHT.WARNING, surface)
+    )
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_native_highlighted_text_reads_on_the_highlight(palette):
     # Whatever Qt draws natively with the QPalette (a selectable
     # label, a selection no stylesheet rule covers): the same pair the

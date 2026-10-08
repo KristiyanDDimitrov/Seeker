@@ -182,7 +182,7 @@ def test_downloads_tab_progress_bar_indeterminate_with_no_bytes_yet(qtbot):
     assert bar.styleSheet() == ""
     # Busy in the working amber, not the accent.
     assert bar.palette().highlight().color().name().upper() == (
-        theme.active_palette().WARNING.upper()
+        theme.active_palette().CUE.upper()
     )
 
 

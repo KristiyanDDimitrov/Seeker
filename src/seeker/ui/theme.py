@@ -96,6 +96,7 @@ class Palette:
     SELECTION: str
     SUCCESS: str
     WARNING: str
+    CUE: str
     DANGER: str
     ON_ACCENT: str
 
@@ -103,9 +104,10 @@ class Palette:
 # "Booth" with a violet accent (docs/design/visual-direction.md):
 # neutral graphite surfaces, so the accent marks only selection, focus
 # and the primary action, and the status colours read like a CDJ's
-# lamps: SUCCESS is play (in library), WARNING is cue (working, or
-# waiting on you), DANGER is not found. test_theme.py asserts every
-# contrast pair this module relies on.
+# lamps: SUCCESS is play (in library), CUE is cue (working, or waiting
+# on you), DANGER is not found. WARNING is the cue's text-grade amber
+# (4.5:1); CUE fills the lamps and meters, which need only 3:1.
+# test_theme.py asserts every contrast pair this module relies on.
 DARK = Palette(
     BG_APP="#17191C",
     BG_SIDEBAR="#101113",
@@ -128,6 +130,7 @@ DARK = Palette(
     SELECTION="#4A3799",
     SUCCESS="#35D07F",
     WARNING="#FFB020",
+    CUE="#FFB020",
     DANGER="#FF6363",
     # Text on a saturated ACCENT/DANGER fill. Its own token because it
     # is not TEXT in either theme: dark ink on dark mode's lit accent,
@@ -156,6 +159,9 @@ LIGHT = Palette(
     SELECTION="#E4DDFB",
     SUCCESS="#11804A",
     WARNING="#9E5C00",
+    # The lightest golden amber still 3:1 on a card, the page ground
+    # and a selected row; text-grade WARNING reads brown as a fill.
+    CUE="#AD7400",
     DANGER="#C22B2B",
     ON_ACCENT="#FFFFFF",
 )
@@ -341,7 +347,7 @@ def style_meter(bar: QProgressBar) -> None:
     bar.setStyleSheet(
         f"QProgressBar {{ border-radius: {METER_RADIUS}px; }}"
         f"QProgressBar::chunk {{"
-        f"  background-color: {active_palette().WARNING};"
+        f"  background-color: {active_palette().CUE};"
         f"  width: {METER_SEGMENT_WIDTH}px;"
         f"  margin: {METER_SEGMENT_GAP}px;"
         f"  border-radius: 1px;"
@@ -364,7 +370,7 @@ def set_busy_meter(bar: QProgressBar) -> None:
     set_indeterminate(bar)
     palette = bar.palette()
     palette.setColor(
-        QPalette.ColorRole.Highlight, QColor(active_palette().WARNING),
+        QPalette.ColorRole.Highlight, QColor(active_palette().CUE),
     )
     bar.setPalette(palette)
 
@@ -1137,7 +1143,7 @@ InlineNotice[variant="success"] {{
 }}
 
 InlineNotice[variant="warning"] {{
-    border-left-color: {palette.WARNING};
+    border-left-color: {palette.CUE};
 }}
 
 InlineNotice[variant="error"] {{

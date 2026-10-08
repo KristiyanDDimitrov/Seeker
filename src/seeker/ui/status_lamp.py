@@ -23,7 +23,7 @@ from seeker.ui import theme
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.theme import Palette
 
-LampColour = Literal["SUCCESS", "WARNING", "DANGER", "TEXT_FAINT"]
+LampColour = Literal["SUCCESS", "CUE", "DANGER", "TEXT_FAINT"]
 
 
 @dataclass(frozen=True)
@@ -37,8 +37,8 @@ class Lamp:
 
 
 PLAY = Lamp("SUCCESS", lit=True)
-CUE = Lamp("WARNING", lit=True)
-CUE_WAITING = Lamp("WARNING", lit=False)
+CUE = Lamp("CUE", lit=True)
+CUE_WAITING = Lamp("CUE", lit=False)
 FAULT = Lamp("DANGER", lit=True)
 # Out of play: a request another one replaced.
 STANDBY = Lamp("TEXT_FAINT", lit=False)
