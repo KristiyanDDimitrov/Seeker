@@ -47,6 +47,7 @@ from seeker.models.track_status import (
     MISSING_STATES,
     NEEDS_REVIEW,
     NOT_FOUND,
+    PROGRESS_RANK,
     RETRYING,
     REVIEW_CANDIDATE,
     TrackStatus,
@@ -956,7 +957,12 @@ class DashboardPage(QWidget):
                 label_item.setData(Qt.ItemDataRole.UserRole, status.track.id)
                 self.track_table.setItem(row, 0, label_item)
 
-                status_item = QTableWidgetItem(_STATE_LABELS[status.state])
+                # Sorts by progress, not label. A progress-only change
+                # keeps every row's state, so the in-place update
+                # leaves this key alone.
+                status_item = SortKeyItem(
+                    _STATE_LABELS[status.state], PROGRESS_RANK[status.state],
+                )
                 status_item.setIcon(status_lamp.lamp_icon(
                     status_lamp.TRACK_LAMPS[status.state], palette,
                 ))

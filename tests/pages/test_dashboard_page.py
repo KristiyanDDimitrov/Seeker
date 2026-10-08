@@ -30,6 +30,7 @@ from seeker.models.track_status import (
     IN_LIBRARY,
     NEEDS_REVIEW,
     NOT_FOUND,
+    RETRYING,
     REVIEW_CANDIDATE,
     TrackStatus,
 )
@@ -1929,3 +1930,49 @@ def test_a_progress_only_poll_re_sorts_a_table_sorted_by_progress(qtbot):
         page.track_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         for row in range(2)
     ] == ["b", "a"]
+
+
+def test_status_sorts_closest_to_done_first(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    # Listed alphabetically by label, the order a text sort would keep.
+    page._render_track_statuses([
+        make_track_status(track_id=state, state=state)
+        for state in (
+            AWAITING_REVIEW, REVIEW_CANDIDATE, DOWNLOADING, IN_LIBRARY,
+            NEEDS_REVIEW, NOT_FOUND, RETRYING,
+        )
+    ])
+
+    page.track_table.sortItems(1, Qt.SortOrder.AscendingOrder)
+
+    assert [
+        page.track_table.item(row, 1).text()
+        for row in range(page.track_table.rowCount())
+    ] == [
+        "In library", "Downloading", "Retrying", "Awaiting review",
+        "Needs review", "Candidate to review", "Not found",
+    ]
+
+
+def test_a_progress_only_poll_keeps_a_table_sorted_by_status(qtbot):
+    def downloading(bytes_transferred: int) -> TrackStatus:
+        return TrackStatus(
+            track=make_track("d"), state=DOWNLOADING,
+            bytes_transferred=bytes_transferred, total_bytes=1_000,
+        )
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    not_found = make_track_status(track_id="n", state=NOT_FOUND)
+    page._render_track_statuses([not_found, downloading(100)])
+    page.track_table.sortItems(1, Qt.SortOrder.AscendingOrder)
+
+    page._render_track_statuses([not_found, downloading(500)])
+
+    assert [
+        page.track_table.item(row, 1).text() for row in range(2)
+    ] == ["Downloading", "Not found"]
+    assert page.track_table.item(0, 1).data(SECONDARY_ROLE) == "50%"

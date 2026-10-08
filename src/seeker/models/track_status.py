@@ -28,6 +28,21 @@ NOT_FOUND = "not_found"
 # request it. The review and retry states already have a request.
 MISSING_STATES = frozenset({NOT_FOUND, REVIEW_CANDIDATE})
 
+# How a status column sorts: closest to done first, so ascending reads
+# from what is finished down to what has no lead at all.
+PROGRESS_RANK = {
+    state: rank
+    for rank, state in enumerate((
+        IN_LIBRARY,
+        DOWNLOADING,
+        RETRYING,
+        AWAITING_REVIEW,
+        NEEDS_REVIEW,
+        REVIEW_CANDIDATE,
+        NOT_FOUND,
+    ))
+}
+
 
 @dataclass
 class TrackStatus:
