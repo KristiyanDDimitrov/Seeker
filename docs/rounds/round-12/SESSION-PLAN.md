@@ -32,7 +32,7 @@ after Kris's explicit yes.
 | # | Session | Executes | Est. | Split point if overrunning |
 |---|---|---|---|---|
 | **Phase A — Kris's walkthrough** | | | | |
-| ☐ S1 | Commit the round-12 docs; theme colours: dark selection, light amber | §1 | ~100 K | After §1.1 (selection) |
+| ☑ S1 | Commit the round-12 docs; theme colours: dark selection, light amber | §1 | ~100 K | After §1.1 (selection) |
 | ☐ S2 | "Follow system" applies at once; spin-box arrows in dark | §2 | ~90 K | After §2.1 |
 | ☐ S3 | Review's tooltips survive the 2 s poll (render only on change) | §3 | ~110 K | After the Review page; the other pages' audit can follow |
 | ☐ S4 | Status columns sort by progress (Dashboard, Downloads, others) | §4 | ~90 K | After the Dashboard |

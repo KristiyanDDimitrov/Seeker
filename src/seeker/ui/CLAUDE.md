@@ -94,6 +94,14 @@ investigation.
   are no module-level colour names (`theme.ACCENT` is gone); prefer a
   QSS rule over reading a token at all.
   [HISTORY §181](../../../docs/history/181-210.md#181)
+- **One selection pair: `TEXT` on `SELECTION`**, the palette's
+  `Highlight`/`HighlightedText` and every QSS `selection-*` alike. A
+  rule that sets a selection ground sets `selection-color` too: left
+  out, it falls back to the palette's (dark mode's field selection
+  drew near-black). **A mark is `CUE`, amber text is `WARNING`:**
+  lamps, meters, the busy bar and the warning notice's edge take
+  `CUE` (3:1); `WARNING` only where amber is text (4.5:1).
+  [HISTORY §193](../../../docs/history/181-210.md#193)
 - **A bundled line icon is a `QIcon` over `ui/icons.py`'s
   `TokenIconEngine`**, which swaps `currentColor` for a palette token
   on every draw (per mode and state, `IconColours`). The vendored
