@@ -9,6 +9,7 @@ from seeker.models.download_request import (
     BLOCKS_REDOWNLOAD,
     FAILED_OUTCOMES,
     IN_FLIGHT,
+    PROGRESS_RANK,
     RETRYING_IN_BACKGROUND,
     SHOWS_NO_FURTHER_PROGRESS,
     STAMPS_COMPLETED_AT,
@@ -50,6 +51,10 @@ def test_shows_no_further_progress_is_the_old_downloads_page_set():
     assert {
         "completed", "failed", "ready_for_review", "unavailable",
     } == SHOWS_NO_FURTHER_PROGRESS
+
+
+def test_every_status_has_a_progress_rank():
+    assert set(PROGRESS_RANK) == set(DownloadStatus)
 
 
 def test_the_schema_comment_describes_every_status():

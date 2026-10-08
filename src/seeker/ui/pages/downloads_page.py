@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import (
     FAILED_OUTCOMES,
+    PROGRESS_RANK,
     SHOWS_NO_FURTHER_PROGRESS,
     STAMPS_COMPLETED_AT,
     DownloadRequest,
@@ -104,7 +105,8 @@ def _status_note(request: DownloadRequest) -> str | None:
 
 def _build_status_item(request: DownloadRequest) -> QTableWidgetItem:
     label = _DOWNLOAD_STATUS_LABELS.get(request.status, request.status)
-    item = QTableWidgetItem(label)
+    # Sorts by progress, not label.
+    item = SortKeyItem(label, PROGRESS_RANK[request.status])
     lamp = status_lamp.DOWNLOAD_LAMPS.get(request.status)
     if lamp is not None:
         item.setIcon(status_lamp.lamp_icon(lamp, theme.active_palette()))

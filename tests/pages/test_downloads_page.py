@@ -824,3 +824,28 @@ def test_an_unavailable_download_says_it_stopped_retrying(qtbot):
     item = window._downloads_page.downloads_table.item(0, 2)
     assert item.text() == "Unavailable"
     assert item.data(SECONDARY_ROLE) == "Stopped retrying"
+
+
+def test_status_sorts_closest_to_done_first(qtbot):
+    # Listed alphabetically by label, the order a text sort would keep.
+    downloads = [
+        make_active_download(track_id=status, status=status)
+        for status in (
+            "completed", "downloading", "failed", "queued", "shortlisted",
+            "ready_for_review", "locked", "unavailable",
+        )
+    ]
+    window = MainWindow(FakeApplication(active_downloads=downloads))
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads(downloads)
+
+    page.downloads_table.sortItems(2, Qt.SortOrder.AscendingOrder)
+
+    assert [
+        page.downloads_table.item(row, 2).text()
+        for row in range(page.downloads_table.rowCount())
+    ] == [
+        "Completed", "Downloading", "Queued", "Retrying", "Queued as backup",
+        "Ready for review", "Failed", "Unavailable",
+    ]

@@ -50,6 +50,25 @@ BLOCKS_REDOWNLOAD = UNRESOLVED | {DownloadStatus.COMPLETED}
 # A row that will never report new transfer progress.
 SHOWS_NO_FURTHER_PROGRESS = STAMPS_COMPLETED_AT | AWAITING_A_HUMAN
 
+# How a status column sorts: closest to done first, mirroring the
+# Dashboard's `track_status.PROGRESS_RANK`. A ready-for-review file
+# waits on a person, so it sits below the rows Seeker is still moving
+# on its own. Superseded is last: an end no person sees.
+PROGRESS_RANK = {
+    status: rank
+    for rank, status in enumerate((
+        DownloadStatus.COMPLETED,
+        DownloadStatus.DOWNLOADING,
+        DownloadStatus.QUEUED,
+        DownloadStatus.LOCKED,
+        DownloadStatus.SHORTLISTED,
+        DownloadStatus.READY_FOR_REVIEW,
+        DownloadStatus.FAILED,
+        DownloadStatus.UNAVAILABLE,
+        DownloadStatus.SUPERSEDED,
+    ))
+}
+
 
 @dataclass
 class DownloadRequest:
