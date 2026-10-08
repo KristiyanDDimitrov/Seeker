@@ -162,7 +162,7 @@ class SharingPage(QWidget):
 
         self.sharing_locations_table = QTableWidget(0, 5)
         self.sharing_locations_table.setHorizontalHeaderLabels(
-            ["Location", "Shared", "Container Path", "Files", "Action"]
+            ["Location", "Shared", "Container path", "Files", "Action"]
         )
         theme.apply_table_defaults(self.sharing_locations_table)
         self.sharing_locations_table.setIconSize(

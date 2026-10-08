@@ -14,7 +14,7 @@ _SIZE = (960, 640)
 # none of these fails the walk below, so a new table has to say which
 # of its columns is primary.
 _PRIMARY_HEADERS = frozenset(
-    {"Track", "Filename", "Path", "File", "Container Path"},
+    {"Track", "Filename", "Path", "File", "Container path"},
 )
 # Narrow enough that the Dashboard's track table, the narrowest in the
 # app at 960 wide, can still hold it next to Status/Progress/Actions.

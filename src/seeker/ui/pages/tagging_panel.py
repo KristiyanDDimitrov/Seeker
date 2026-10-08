@@ -396,7 +396,7 @@ class TaggingPanel(QWidget):
         # work — an in-progress note beyond just the disabled button,
         # for anything wider than a single track.
         self._host.status_label.setText(
-                f"Tagging {len(track_ids)} selected track(s)..."
+                f"Tagging {len(track_ids)} selected track(s)…"
         )
 
     def _on_tag_playlist_clicked(self) -> None:
@@ -432,7 +432,7 @@ class TaggingPanel(QWidget):
             ),
             on_error=feedback.show_error,
         )
-        feedback.show_progress(f"Tagging playlist '{playlist_name}'...")
+        feedback.show_progress(f"Tagging playlist '{playlist_name}'…")
 
     def _on_fix_missing_art_clicked(self) -> None:
         self._fix_missing_art(self._host.feedback)
@@ -457,7 +457,7 @@ class TaggingPanel(QWidget):
             ),
             on_error=feedback.show_error,
         )
-        feedback.show_progress(f"Fixing cover art for '{playlist_name}'...")
+        feedback.show_progress(f"Fixing cover art for '{playlist_name}'…")
 
     def _render_fix_art_result(
             self,
@@ -488,7 +488,7 @@ class TaggingPanel(QWidget):
             on_finished=self._on_fill_missing_art_urls_finished,
         )
         self._host.status_label.setText(
-            f"Refreshing '{playlist.name}' from Spotify..."
+            f"Refreshing '{playlist.name}' from Spotify…"
         )
 
     def _on_fill_missing_art_urls_finished(

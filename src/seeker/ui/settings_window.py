@@ -1122,7 +1122,7 @@ class SettingsPage(QWidget):
             on_error=self.credentials_feedback.show_error,
         )
         self.update_credentials_status_label.setText(
-            "Checking which folder SoulSeek shares now..."
+            "Checking which folder SoulSeek shares now…"
         )
 
     def _recreate_with_credentials(
@@ -1156,7 +1156,7 @@ class SettingsPage(QWidget):
             on_error=self.credentials_feedback.show_error,
         )
         self.update_credentials_status_label.setText(
-            "Recreating SoulSeek container..."
+            "Recreating SoulSeek container…"
         )
 
     def _ask_which_location_to_share(self) -> str | None:

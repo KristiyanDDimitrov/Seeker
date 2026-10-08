@@ -591,7 +591,7 @@ def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
 
     qtbot.waitUntil(
         lambda: wizard.soulseek_status_label.text()
-        == "Waiting for SoulSeek to connect...",
+        == "Waiting for SoulSeek to connect…",
         timeout=2000,
     )
     # A real health-poll timer is now running — stop it so it doesn't
@@ -1302,7 +1302,7 @@ def test_each_wizard_step_has_one_primary_action(qtbot, tmp_path, monkeypatch):
 
     assert primaries == [
         ["Connect"],
-        ["Choose Folder..."],
+        ["Choose folder…"],
         ["Set up SoulSeek"],
         ["Go to Dashboard"],
     ]
@@ -1314,7 +1314,7 @@ def test_a_soulseek_outcome_replaces_the_progress_line(
     wizard, _completed = _build_wizard_at_soulseek_step(
         qtbot, tmp_path, monkeypatch,
     )
-    wizard.soulseek_status_label.setText("Waiting for SoulSeek to connect...")
+    wizard.soulseek_status_label.setText("Waiting for SoulSeek to connect…")
 
     wizard._handle_health_result(
         SlskdHealthCheckResult(SlskdHealthStatus.KICKED, detail="kicked"),

@@ -8,7 +8,7 @@ wipes it within seconds. InlineNotice lives outside that plumbing: it clears onl
 the user dismisses it or the caller replaces it (HISTORY §47).
 
 `status_label` remains for genuinely transient, disposable progress
-text ("Syncing...", "Tagging 3 selected track(s)...") — nothing a user
+text ("Syncing…", "Tagging 3 selected track(s)…") — nothing a user
 needs to still see a few seconds later belongs there anymore.
 """
 

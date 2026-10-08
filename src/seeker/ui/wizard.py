@@ -347,7 +347,7 @@ class OnboardingWizard(QMainWindow):
 
         # Last, because choosing the folder finishes the step: the
         # options above apply to it.
-        choose_button = QPushButton("Choose Folder...")
+        choose_button = QPushButton("Choose folder…")
         choose_button.setProperty("variant", "primary")
         choose_button.setToolTip(help_text.TOOLTIP_CHOOSE_LIBRARY_FOLDER)
         choose_button.clicked.connect(
@@ -671,7 +671,7 @@ class OnboardingWizard(QMainWindow):
         )
         self.slskd_chip.set_state(CUE, "Starting SoulSeek…")
         self.soulseek_progress.show()
-        self.soulseek_status_label.setText("Starting SoulSeek...")
+        self.soulseek_status_label.setText("Starting SoulSeek…")
 
     def _on_bring_up_failed(self, message: str) -> None:
         self.soulseek_progress.hide()
@@ -702,7 +702,7 @@ class OnboardingWizard(QMainWindow):
         self.soulseek_progress.show()
         self.slskd_chip.set_state(CUE, "Connecting to SoulSeek…")
         self.soulseek_status_label.setText(
-            "Waiting for SoulSeek to connect..."
+            "Waiting for SoulSeek to connect…"
         )
 
         self._health_poll_timer = QTimer(self)
