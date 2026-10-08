@@ -1485,13 +1485,33 @@ def is_real_support_link(url: str) -> bool:
 # --- Support page ------------------------------------------------------------
 # A real sidebar page, distinct from AboutDialog's brief support-links row —
 # framed the same honest, non-persuasive way SHARING_FRAMING_BODY is: a
-# statement of fact, not marketing copy. Reuses SUPPORT_LINKS/
+# statement of fact, not marketing copy. Its one appeal, first, is for
+# the artists, whom Seeker pays nothing. Reuses SUPPORT_LINKS/
 # is_real_support_link/ABOUT_DIALOG_AUTHOR_LINE/TOOLTIP_SUPPORT_LINK above
 # rather than duplicating any of them.
 
 SUPPORT_TAB_SUBTITLE = (
     "Seeker is free, with no telemetry and no paid tier. Nothing here is "
     "required."
+)
+
+SUPPORT_PAGE_ARTISTS_HEADING = "Support the artists"
+SUPPORT_PAGE_ARTISTS_BODY = (
+    "<p>Seeker helps you find music. It pays the people who made it "
+    "nothing. You can.</p>"
+    "<ul>"
+    "<li style=\"margin-bottom: 4px\"><b>Buy the tracks you play "
+    "out</b>, on Bandcamp, on Beatport, or straight from the label.</li>"
+    "<li style=\"margin-bottom: 4px\"><b>Go to their shows.</b> A "
+    "ticket goes further than a stream ever will.</li>"
+    "<li style=\"margin-bottom: 4px\"><b>Wear the merch, buy the "
+    "record.</b></li>"
+    "<li style=\"margin-bottom: 4px\"><b>Credit them.</b> Tag the "
+    "artist when you post a set, and answer the \u201ctrack ID?\u201d "
+    "question.</li>"
+    "</ul>"
+    "<p>Every set you play is built on someone's late nights in the "
+    "studio. Keep them in it.</p>"
 )
 
 SUPPORT_PAGE_DONATE_HEADING = "Donate"

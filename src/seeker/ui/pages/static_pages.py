@@ -183,6 +183,11 @@ class SupportPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.SPACING_LG)
 
+        artists_label = _prose(RichLabel(help_text.SUPPORT_PAGE_ARTISTS_BODY))
+        layout.addLayout(_section(
+            help_text.SUPPORT_PAGE_ARTISTS_HEADING, artists_label,
+        ))
+
         layout.addLayout(_section(
             help_text.SUPPORT_PAGE_DONATE_HEADING,
             _prose(PlainLabel(help_text.SUPPORT_PAGE_DONATE_BODY)),

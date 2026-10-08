@@ -4,11 +4,13 @@ S11.1) — the mirror of §9.3.1's own Help/Support extraction (S5).
 """
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton
 
 from fakes import FakeApplication
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
+from seeker.ui.plain_text import RichLabel
 
 
 def test_history_and_help_pages_exist_with_their_own_subtitles(qtbot):
@@ -272,3 +274,44 @@ def test_prose_is_never_clipped_by_its_reading_measure(qtbot, page):
         assert label.height() >= label.heightForWidth(label.width()), (
             label.text()[:40]
         )
+
+
+def test_support_page_leads_with_support_the_artists(qtbot):
+    # The first section, above Donate: Seeker pays the artists nothing,
+    # so the page asks for them before it asks for itself.
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.resize(1280, 820)
+    window.show()
+    qtbot.waitExposed(window)
+    window._nav_buttons["support"].click()
+    qtbot.wait(20)
+
+    page = window._support_page
+    headings = sorted(
+        (
+            label for label in page.findChildren(QLabel)
+            if label.objectName() == "sectionHeaderLabel"
+        ),
+        key=lambda label: label.mapTo(page, label.rect().topLeft()).y(),
+    )
+    assert [label.text() for label in headings[:2]] == [
+        help_text.SUPPORT_PAGE_ARTISTS_HEADING,
+        help_text.SUPPORT_PAGE_DONATE_HEADING,
+    ]
+
+    # Seeker's own copy, rendered as markup with nothing interpolated.
+    body = next(
+        label for label in page.findChildren(RichLabel)
+        if label.text() == help_text.SUPPORT_PAGE_ARTISTS_BODY
+    )
+    assert body.textFormat() == Qt.TextFormat.RichText
+    rendered = body.text()
+    for phrase in (
+        "It pays the people who made it nothing",
+        "Buy the tracks you play out",
+        "Go to their shows",
+        "Credit them",
+        "Keep them in it",
+    ):
+        assert phrase in rendered
