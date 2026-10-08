@@ -17,7 +17,7 @@ nine fields below follow the contract in
   and `[light]`. Not from S37: they fail the same at `1b415a4` and
   pass offscreen (see §4).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** CI_LINE
+- **CI:** `3a8b007`'s run `37752515681` green (offscreen, where the two theme tests pass).
 
 ## 2. Where we are
 
