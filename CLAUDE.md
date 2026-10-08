@@ -1,45 +1,36 @@
 # seeker
 
-Personal DJ music library management assistant. Syncs Spotify playlists to a
-local SQLite cache (to minimize API calls against Spotify's rate/quota
-limits), matches cached tracks against a scanned local library, and — for
-whatever's missing — searches SoulSeek (via a self-hosted `slskd` daemon)
-to identify and download the highest-quality available file for each
-track, then tags matched files with Spotify's canonical metadata. Ships
-both a CLI (`seeker`) and a desktop GUI (`seeker-ui`, PySide6) over the
-same service layer — see docs/cli.md for the command reference and which
-screen covers each command.
+Personal DJ music library assistant. Syncs Spotify playlists to a local
+SQLite cache (to spare Spotify's rate and quota limits), matches the
+cached tracks against a scanned local library, searches SoulSeek (via
+a self-hosted `slskd` daemon) for whatever is missing, downloads the
+best-quality file, and tags matched files with Spotify's metadata. A
+CLI (`seeker`) and a PySide6 GUI (`seeker-ui`) share one service
+layer; `docs/cli.md` maps each command to its screen.
 
-This is a portfolio project. Code quality, structure, and test coverage
-matter as much as functionality — prefer the idiomatic/correct approach over
-the fastest one.
+A portfolio project: code quality, structure and test coverage matter
+as much as function. Prefer the idiomatic, correct approach over the
+fastest one.
 
 ## Architecture
 
-Strict layering, always respected:
-
 ```
-Presentation layer (cli.py, ui/*)
-  -> Application / services (application.py, spotify/sync_service.py, dashboard_service.py)
+Presentation (cli.py, ui/*)
+  -> Application / services (application.py, *_service.py)
     -> Repositories (database/repositories/*)
       -> Database (database/connection.py, database/schema.py)
 ```
 
-Rule: presentation-layer code (CLI *or* UI) must never import or call a
-repository directly. Every CLI handler and every Qt widget goes through
-`Application` (or a service it exposes), the same way `handle_sync` goes
-through `application.sync_service` and `MainWindow` goes through
-`application.dashboard_service`. If a screen or command needs data,
-add/extend a method on the service layer rather than reaching past it —
-this is what `dashboard_service.py` exists for (see HISTORY §22):
-the dashboard's playlist-scoped track status was a real gap in the
-service layer, not something to assemble ad hoc from Qt code by calling
-multiple repositories directly.
-
-`tests/test_layering.py` sweeps every import in `src/seeker/` and fails
-the build: `ui/`, `cli.py` and the entry points never import
-`seeker.database`; `cli.py` never imports `seeker.ui`; only `ui/` and
-`main_ui.py` import Qt; `models/` imports only `models/`.
+Presentation code, CLI or UI, never imports or calls a repository: it
+goes through `Application` or a service it exposes
+(`application.sync_service`, `application.dashboard_service`). A
+screen or command that needs data gets a service method, never a
+result assembled from several repositories in Qt or CLI code; that gap
+is why `dashboard_service.py` exists. [§22](docs/history/001-024.md#22)
+`tests/test_layering.py` fails the build if `ui/`, `cli.py` or an
+entry point imports `seeker.database`, `cli.py` imports `seeker.ui`,
+anything but `ui/` and `main_ui.py` imports Qt, or `models/` imports
+outside `models/`.
 
 ## Layout
 
@@ -56,218 +47,156 @@ short, under `src/seeker/`:
 
 ## Conventions
 
-- Python 3.13, `uv` for env/build (not pip/poetry).
-- Type hints on everything; run mypy before considering work done.
-- Models are dataclasses (see `models/track.py`, `models/playlist.py`) —
-  keep it that way, no getter/setter classes.
-- The SoulSeek integration runs against `slskd` (self-hosted daemon, REST
-  API), not a raw protocol library. `SoulseekClient` is synchronous
-  `httpx`, matching `SpotifyClient` exactly — same pattern, same testing
-  approach (mock the HTTP layer).
-- DB access is raw SQL via the repository pattern (see `schema.py` /
-  `*_repository.py`), not an ORM. Keep new tables/queries consistent with
-  that style unless explicitly deciding to add SQLAlchemy.
-- Tests: pytest, mock all external HTTP (Spotify, SoulSeek) — never hit
-  real APIs in tests.
-- **Read discipline — never read a large file whole.** A
-  `docs/history/*.md` file (~150 KB each) and
-  `src/seeker/ui/main_window.py` each blow a session's budget alone if
-  read in full — `grep -n` for the symbol/section and read that range
-  instead. `uv run pytest -q`,
-  report only the summary line plus named failures. `git diff --stat`
-  by default. Don't re-read a file just edited — Edit/Write error on
-  failure already.
-- **Lint yes, format no — `ruff format` is deliberately not adopted.**
-  This codebase's hand-written house style doesn't match `ruff
-  format`'s output (confirmed via `ruff format --diff`: 4-space hang vs.
-  this project's 8-space compound-header hang) — reformatting the whole
-  tree would destroy `git blame` project-wide for no gain. `ruff check`
-  is the enforced gate. [HISTORY §115](docs/history/108-120.md#115)
-- **Hanging indent, verified by sampling, not assumed: 8 spaces for a
-  compound statement header that wraps** (`def`/`if`/`while`/`for`/
-  `with`/`class`/etc. — anything ending `:` with an indented body
-  next), **4 spaces for everything else** (calls, `return`/`raise`/
-  `assert`, assignments, comprehensions, imports) — the header's own
-  body is already +4, so its continuation goes +8 to stay visually
-  distinct. Trailing commas before a closing bracket; ~72-column prose
-  wrapping. [HISTORY §115 §4.8.1](docs/history/108-120.md#115)
-- **Line length: `ruff`'s enforced ceiling is 88, but ~72-79 stays the
-  house habit** for hand-wrapped prose/comments — 79 was tried as the
-  enforced ceiling and reverted (341 real violations, not the 106
-  first estimated; 88 is a ceiling the codebase can actually sit
-  near-zero on). [HISTORY §115](docs/history/108-120.md#115)
-- **CI enforces what a local run may not.** `uv sync --locked` (a
-  `pyproject.toml` dependency change ships with its `uv.lock`); branch
-  coverage at or above 92 % (`--cov-fail-under`, set to the measured
-  value minus one; 93.79 % without the X9 Pro tests, which CI skips);
-  actions SHA-pinned with a version comment, bumped by Dependabot.
-  A ruff preview rule is selected by its exact code: under
-  `explicit-preview-rules` a prefix such as `E30` selects none.
-  [HISTORY §149](docs/history/121-150.md#149),
-  [§167](docs/history/151-180.md#167)
-- **`assert` in `src/` narrows types/logic invariants; it never
-  validates user input or an external response** — `S101` is ignored
-  project-wide on this basis, every real finding read individually. A
-  new `assert` validating something user/externally controlled needs a
-  real `if`/`raise` instead. [HISTORY §115](docs/history/108-120.md#115)
-- **Never run `ruff check --fix` with a narrowed `--select`, especially
-  not `--select RUF100` alone** — `RUF100` flags a `noqa` as unused
-  against only the rules *enabled in that invocation*; narrowing to
-  `RUF100` makes every other rule's directive read as unused and
-  `--fix` deletes them all. Confirmed by direct reproduction.
-  [HISTORY §115](docs/history/108-120.md#115)
-- **Credential files (config.json, the Spotify token cache) go through
-  `seeker/files/atomic.py::write_text_locked()`** — the temp file is
-  0600 from `os.open(O_EXCL)` (never chmod'd after the write), fsync'd,
-  then renamed; never a bare `write_text()`.
-  [HISTORY §116](docs/history/108-120.md#116), [§146](docs/history/121-150.md#146)
-- **A tag write is saved by `audio/tags.py::save_tags()`, never
-  mutagen's own `save()`.** Tags that fit the padding save in place;
-  tags that outgrow it go through `files/atomic.py::rewrite_via_copy()`,
-  because mutagen grows a tag by shifting the audio in place and a
-  crash mid-shift corrupts MP3, FLAC and faststart M4A (measured).
-  A FLAC key goes to both `INITIALKEY` and `KEY`.
-  [HISTORY §167](docs/history/151-180.md#167)
-- **`.env` is read only by an entry point.** `config.py`'s values are
-  functions over `os.environ`, read at call time; `main()` in `main.py`
-  and `main_ui.py` calls `config.load_env_file()` (working directory
-  upward; never in a frozen app). Tests set environment variables,
-  never patch `config`. [HISTORY §146](docs/history/121-150.md#146)
-- **Not using the macOS Keychain for the Spotify token — deliberate,
-  not an omission.** It would add a dependency, a platform-specific
-  path, and a migration, to protect a file that's already 0600 in the
-  user's own per-account home directory. Revisit only if this stops
-  being a single-user local app. [HISTORY §116](docs/history/108-120.md#116)
-- **`.env` was committed twice in this repo's history, assessed, not a
-  live secret.** The Spotify client ID it held is PKCE-public by design
-  (this app has no client secret at all); the one field that could have
-  been secret was always the literal placeholder `your_…`. Decision: no
-  history rewrite.
-- **A comment earns its place by telling the next person something the
-  code cannot.** One that tells them what *happened* belongs in
-  `docs/history/` instead. Test is shelf life, not length: is this
-  still true and load-bearing next year, or a record of a decision?
-  Applied across S12/S13's comment triage — see [HISTORY
-  §119](docs/history/108-120.md#119) for the largest single example, the whole
-  Phase 6 extraction story moved out of the page modules' docstrings.
-- **No history in `src/`.** A comment, docstring or `--help` text
-  never says "round N", "item N", "Roadmap item N" or "§x.y"; where
-  an investigation matters it points at `HISTORY §N`. `grep -rcE
-  "Roadmap item|round [0-9]+|§[0-9]" src/` finds only those pointers.
-  [HISTORY §170](docs/history/151-180.md#170)
+- Python 3.13; `uv` for env and build. Type hints everywhere; `mypy
+  --strict` clean before work is done. Models are dataclasses, no
+  getter/setter classes.
+- slskd through its REST API, never a raw protocol library.
+  `SoulseekClient` is synchronous `httpx`, the same pattern as
+  `SpotifyClient`, tested the same way: mock the HTTP layer. No test
+  hits a real API.
+- DB access is raw SQL through repositories, no ORM, unless a
+  deliberate decision adds SQLAlchemy.
+- **Read discipline: never read a large file whole.** A
+  `docs/history/*.md` file (~150 KB) or `ui/main_window.py` alone
+  blows a session's budget: `grep -n`, then read the range. pytest:
+  the summary line plus named failures. `git diff --stat` by default.
+  Never re-read a file just edited.
+- **`ruff check` is the gate; `ruff format` is deliberately not
+  adopted.** The house style differs (an 8-space hang on wrapped
+  compound headers) and reformatting would wreck `git blame`. Never
+  run `ruff check --fix` with a narrowed `--select`: `RUF100` judges a
+  `noqa` against only the enabled rules, so `--select RUF100 --fix`
+  deletes every other directive (reproduced). A preview rule is
+  selected by exact code: under `explicit-preview-rules`, `E30`
+  selects none. [§115](docs/history/108-120.md#115),
+  [§149](docs/history/121-150.md#149)
+- **Indent: 8 spaces for a wrapped compound-statement header**
+  (anything ending `:` with a body: `def`, `if`, `with`, `class`, …),
+  **4 for everything else** (calls, `return`, assignments,
+  comprehensions, imports). Trailing commas before a closing bracket.
+  Line ceiling 88 (enforced; 79 was tried, 341 violations); prose and
+  comments wrap at ~72–79. [§115](docs/history/108-120.md#115)
+- **CI enforces what a local run may not:** `uv sync --locked` (a
+  dependency change ships with its `uv.lock`); branch coverage ≥ 92 %
+  (`--cov-fail-under`, the measured value minus one); actions
+  SHA-pinned with a version comment, bumped by Dependabot.
+  [§149](docs/history/121-150.md#149), [§167](docs/history/151-180.md#167)
+- **`assert` in `src/` narrows types and invariants; it never
+  validates user input or an external response** (an `if`/`raise`
+  does). `S101` is ignored on that basis.
+  [§115](docs/history/108-120.md#115)
 - **A fix starts with a failing test** that fails on unmodified
   `HEAD` for the stated reason. One commit per change; a refactor
   commit changes no behaviour, a behaviour commit refactors nothing.
-  [HISTORY §138](docs/history/121-150.md#138)
-- **The user's real data is read-only to a session.** Never write
-  the real database, `config.json`, the Spotify token, music files
-  or slskd state; `sqlite3 -readonly "$HOME/Library/Application
-  Support/Seeker/seeker.db"` is fine. A data migration is rehearsed
-  on a scratchpad copy with before and after counts, and runs for
-  real only when Kris next launches the app. Never start, stop or
-  recreate the slskd container (`docker inspect` and `docker compose
-  … config` are fine). [HISTORY §172](docs/history/151-180.md#172)
-- **The tracked Compose template is portable.** No `/Volumes/` or
-  `/Users/` literal; every bind source is a required variable
+  [§138](docs/history/121-150.md#138)
+- **The user's real data is read-only to a session.** Never write the
+  real database, `config.json`, the Spotify token, music files or
+  slskd state; `sqlite3 -readonly "$HOME/Library/Application
+  Support/Seeker/seeker.db"` is fine. A migration is rehearsed on a
+  scratchpad copy with before and after counts, and runs for real
+  only when Kris next launches the app. Never start, stop or recreate
+  the slskd container (`docker inspect`, `docker compose … config`
+  are fine). [§172](docs/history/151-180.md#172)
+- **Credential files (`config.json`, the Spotify token cache) go through
+  `files/atomic.py::write_text_locked()`:** a temp file 0600 from
+  `os.open(O_EXCL)` (never chmod'd after), fsync'd, renamed; never a bare
+  `write_text()`. No Keychain, deliberately: a dependency, a platform path
+  and a migration to protect a 0600 file in the user's home; revisit only
+  if this stops being a single-user app.
+  [§116](docs/history/108-120.md#116), [§146](docs/history/121-150.md#146)
+- **A tag write saves through `audio/tags.py::save_tags()`, never
+  mutagen's `save()`.** Tags that outgrow the padding go through
+  `files/atomic.py::rewrite_via_copy()`: mutagen shifts the audio in
+  place, and a crash mid-shift corrupts MP3, FLAC and faststart M4A
+  (measured). A FLAC key goes to both `INITIALKEY` and `KEY`.
+  [§167](docs/history/151-180.md#167)
+- **`.env` is read only by an entry point.** `config.py`'s values are
+  functions over `os.environ`, read at call time; `main()` in
+  `main.py`/`main_ui.py` calls `config.load_env_file()` (cwd upward;
+  never when frozen). Tests set environment variables, never patch
+  `config`. `.env` was committed twice; no history rewrite, since the
+  client ID is PKCE-public and the one secret-shaped field was always
+  a placeholder. [§146](docs/history/121-150.md#146)
+- **A comment tells the next person what the code cannot.** What
+  *happened* belongs in `docs/history/`; the test is shelf life. A
+  comment, docstring or `--help` text never says "round N", "item N",
+  "Roadmap item N" or "§x.y": it points at `HISTORY §N`, and `grep
+  -rcE "Roadmap item|round [0-9]+|§[0-9]" src/` finds only those.
+  [§119](docs/history/108-120.md#119), [§170](docs/history/151-180.md#170)
+- **Services log, never `print` or `input`.** Each module has
+  `logger = logging.getLogger(__name__)`; handlers exist only in
+  `main.py` (`StreamHandler`) and `main_ui.py` (`RotatingFileHandler`
+  under `platformdirs.user_log_dir("Seeker")`), which also installs
+  `ui/error_hooks.py` (`sys.excepthook`/`threading.excepthook` at
+  CRITICAL, Qt messages to `seeker.qt`). A message that is both
+  user-facing and diagnostic: the service logs and returns a result,
+  `cli.py` prints it. Prompts (the upgrade review too) live in
+  `cli.py`; diagnostics are `logger.debug`, enabled per logger at the
+  entry points (`SEEKER_DEBUG_POLL=1`). [§156](docs/history/151-180.md#156)
+- **Text a user reads about a failure comes from
+  `error_text.describe_error`**, in workers and the CLI alike. A new
+  external failure kind gets a branch there, never ad hoc text at a
+  call site; Seeker's own exception messages are kept, so write them
+  as sentences. [§150](docs/history/121-150.md#150)
+- **Every public error is a `SeekerError`** (`errors.py`), which
+  `cli.run` catches as one. One raised by several modules is defined
+  once in `errors.py`; any other sits beside its module.
+  `tests/test_errors.py` fails the build. [§153](docs/history/151-180.md#153)
+- **Download states are `DownloadStatus`/`DownloadRole`**
+  (`models/download_request.py`, `StrEnum`s equal to the stored
+  strings), grouped only through its named sets (`IN_FLIGHT`,
+  `UNRESOLVED`, `STAMPS_COMPLETED_AT`, …); a new grouping is a new set
+  there, never a literal at the call site. SQL takes them as
+  parameters. [§153](docs/history/151-180.md#153)
+- **A service result is a dataclass, never a string-keyed dict.** One the
+  CLI or `ui/` reads lives in `models/` (`download_result`,
+  `library_result`, `tag_result`, `fingerprint_result`); a count that must
+  agree with a list derives from it (`failed` is `len(failures)`). Detail
+  rows stay `{track_id, reason, message}` dicts.
+  [§154](docs/history/151-180.md#154), [§155](docs/history/151-180.md#155)
+- **`ui/` never touches `Application`'s underscore attributes**; it
+  goes through a public method (`application.settings`,
+  `update_settings(...)`, a service) so `Application` can invalidate
+  what depends on the change. An AST sweep in
+  `tests/test_ui_source_sweeps.py` fails the build.
+- **One `QWidget` per page in `ui/pages/`, never a `MainWindow`
+  mixin.** A page takes a `PageContext` (`ui/pages/context.py`) and
+  never reaches into `MainWindow`, the shell (nav, timers, tray). A
+  page owns its buttons' actions; the shell calls only public page
+  methods (`poll_*`, `refresh_*`, `on_shown`, `focus_track`).
+  Cross-page selection goes through `PageContext.playlist_selection`
+  (`ui/playlist_selection.py`), which Dashboard and Library both
+  write, playlist and track ids alike. `SLF001` is enforced over
+  `src/`; its one `noqa` is `sys._MEIPASS`.
+  [§119](docs/history/108-120.md#119), [§133](docs/history/121-150.md#133),
+  [§162](docs/history/151-180.md#162), [§185](docs/history/181-210.md#185)
+- **Five UI feedback channels, one job each.** The activity strip:
+  whatever `busy_actions` reports running anywhere, hidden when idle.
+  `next_step_notice`: the Dashboard's standing guidance. An
+  `InlineNotice` (persistent, dismissible): errors, warnings, results,
+  confirmations, anything read a few seconds later. A page's
+  `status_label`: disposable progress only, wiped at the start of
+  every `run_worker`/`run_busy_worker`, so a confirmation there is
+  lost (Sharing's was). Tray notifications: OS popups for background
+  attention. An action reports through the `FeedbackTarget`
+  (`ui/notice.py`) of the page it started from (a panel reached from
+  another page takes its caller's); a timer-driven `run_worker` never
+  passes `status_label`. [§120](docs/history/108-120.md#120),
+  [§150](docs/history/121-150.md#150)
+- **No widget guesses whether its text is HTML.** Labels are
+  `PlainLabel`, or `RichLabel` for Seeker's markup with data
+  `html.escape`d; message boxes go through `plain_text.question`/
+  `information`/`warning` or set `setTextFormat`; a data tooltip goes
+  through `plain_tooltip()`. Peer filenames, usernames and slskd text
+  otherwise render as markup. Four `ast` sweeps in
+  `tests/test_plain_text.py`; the CLI passes peer strings through
+  `cli.printable()`. [§148](docs/history/121-150.md#148)
+- **The tracked Compose template is portable:** no `/Volumes/` or
+  `/Users/` literal, every bind source a required variable
   (`${SLSKD_SHARE_PATH:?set by Seeker}`), the share mount read-only,
   the image pinned (`slskd/slskd:X.Y.Z`).
   `tests/test_compose_template.py` fails the build.
-  [HISTORY §140](docs/history/121-150.md#140)
-- **Services use `logging`, never `print` — `print` is the CLI's own
-  output channel, nothing else's.** Each service module gets its own
-  `logger = logging.getLogger(__name__)`; handlers are configured in
-  exactly two places, `main.py` (a `StreamHandler`) and `main_ui.py` (a
-  `RotatingFileHandler` under `platformdirs.user_log_dir("Seeker")`) —
-  never in library code. Where a message is both user-facing and
-  diagnostic, the service logs and returns a structured result, and
-  `cli.py` does the printing from that result. `main_ui.py` also
-  installs `ui/error_hooks.py`: `sys.excepthook`/`threading.excepthook`
-  log at CRITICAL, Qt messages go to `seeker.qt`. No service calls
-  `print` or `input`: interactive prompts (the one-by-one upgrade
-  review included) live in `cli.py`, and diagnostics are
-  `logger.debug`, switched on per logger at the entry points
-  (`SEEKER_DEBUG_POLL=1` for the poll trace).
-  [HISTORY §156](docs/history/151-180.md#156)
-- **`ui/` never reads or writes `Application`'s private
-  (underscore-prefixed) attributes** — go through a public method
-  (`application.settings`, `application.update_settings(...)`, a
-  service) instead, so `Application` can invalidate whatever depends on
-  the change. `test_no_private_application_attribute_access_in_ui`
-  (`tests/test_ui_source_sweeps.py`) is an AST sweep enforcing this — it fails
-  the build, not just the convention.
-- **Page widgets live in `ui/pages/`, one `QWidget` subclass per page,
-  never a `MainWindow` mixin.** Each takes a `PageContext`
-  (`ui/pages/context.py` — application, thread pool, busy-action
-  registry, `navigate`, `run_busy_worker`, and the rest) and never
-  reaches back into `MainWindow`; `MainWindow` itself is the shell
-  (nav, timers, tray). [HISTORY §119](docs/history/108-120.md#119)
-  Cross-page selection state goes through
-  `PageContext.playlist_selection` (`ui/playlist_selection.py`),
-  never through one page reading another's attributes; Dashboard and
-  Library both write it, the playlist and the track ids alike (both
-  track tables write `track_ids`; Library's shows it, signals
-  blocked). [HISTORY §133](docs/history/121-150.md#133),
-  [§185](docs/history/181-210.md#185)
-  A page owns the actions its own buttons start (Dashboard's Sync,
-  Scan, Match, Download, Load tracks), and the shell calls only a
-  page's **public** methods (`poll_*`, `refresh_*`, `on_shown`,
-  `focus_track`). `SLF001` is enforced over `src/` (tests exempt): a
-  new private reach across objects fails `ruff check`. The one `noqa`
-  is PyInstaller's `sys._MEIPASS`.
-  [HISTORY §162](docs/history/151-180.md#162)
-- **Five UI feedback channels, each with exactly one job — never blur
-  them.** Activity strip (top): GLOBAL, cross-page, whatever
-  `busy_actions` reports running anywhere, auto-hides when idle.
-  `next_step_notice`: Dashboard-only persistent proactive guidance.
-  `InlineNotice` (`dashboard_notice`/Library's `notice`/a page's own):
-  persistent, dismissible — errors/warnings/results/confirmations,
-  anything the user needs to still read a few seconds later. Page-local
-  `status_label`: ephemeral, disposable progress text only — wiped
-  unconditionally at the start of every `run_worker`/`run_busy_worker`
-  call, so nothing worth re-reading belongs there. Tray notifications:
-  background-attention, real OS popups independent of which page (if
-  any) is focused. A new page's confirmation/result message goes on its
-  own `InlineNotice`, never on its `status_label` — a real bug this
-  round (`sharing_page.py`'s confirmation was wiped before it could be
-  read) was exactly that mistake. [HISTORY §120](docs/history/108-120.md#120)
-  An action reports through the `FeedbackTarget` (`ui/notice.py`) of
-  the page it was **started from** — a panel reachable from another
-  page takes one from its caller (TaggingPanel's Tag from a Dashboard
-  row) — and a timer-driven `run_worker` never passes `status_label`.
-  [HISTORY §150](docs/history/121-150.md#150)
-- **Text a user reads about a failure comes from
-  `error_text.describe_error`.** Workers emit it and the CLI prints
-  it; a new external failure kind (a new HTTP peer, a new library's
-  error) gets a branch there, never ad hoc text at a call site. Your
-  own exception's message is kept as written, so write it as a
-  sentence. [HISTORY §150](docs/history/121-150.md#150)
-- **Every public error is a `SeekerError`** (`seeker/errors.py`), which
-  `cli.run` catches as one. An error raised by more than one module
-  lives in `errors.py`, defined once; any other stays beside its module
-  and subclasses `SeekerError`. `tests/test_errors.py` sweeps `src/`
-  and fails the build. [HISTORY §153](docs/history/151-180.md#153)
-- **Download states are `DownloadStatus`/`DownloadRole`**
-  (`models/download_request.py`, `StrEnum`, equal to the stored
-  strings). Group them only through its named sets (`IN_FLIGHT`,
-  `UNRESOLVED`, `STAMPS_COMPLETED_AT`, …); a new grouping is a new
-  named set there, never a literal set at the call site. SQL takes the
-  values as parameters. [HISTORY §153](docs/history/151-180.md#153)
-- **A service result is a dataclass, never a string-keyed dict.**
-  One the CLI or `ui/` reads lives in `models/` (`download_result`,
-  `library_result`, `tag_result`, `fingerprint_result`); counts that
-  must agree with a list are derived from it (`failed` is
-  `len(failures)`). Detail rows stay `{track_id, reason, message}`
-  dicts, as in `RenameResult`. [HISTORY §154](docs/history/151-180.md#154),
-  [§155](docs/history/151-180.md#155)
-- **No widget in `ui/` guesses whether its text is HTML.** Labels are
-  `PlainLabel`, or `RichLabel` for Seeker's own markup with any data
-  inside `html.escape`d; message boxes go through `plain_text.question`
-  /`information`/`warning` or set `setTextFormat` by hand; a tooltip
-  built from data goes through `plain_tooltip()`. Peer filenames,
-  usernames and slskd text otherwise render as markup. Four `ast`
-  sweeps in `tests/test_plain_text.py` fail the build. The CLI passes
-  peer strings through `cli.printable()`.
-  [HISTORY §148](docs/history/121-150.md#148)
+  [§140](docs/history/121-150.md#140)
 
 ## Commands
 
@@ -283,604 +212,315 @@ uv run python tools/screenshots.py  # every screen, both themes -> tools/.screen
 
 ## Standing facts and gotchas
 
-Present-tense rules that shape the next piece of code, grouped by area.
-Each links to the HISTORY entry where the full investigation lives;
-`docs/history/README.md` resolves any `HISTORY §N` to its file.
+Present-tense rules, each linked to the HISTORY entry holding its
+investigation; `docs/history/README.md` resolves any `§N`.
 
 ### Spotify / OAuth
 
-- `SpotifyClient` takes a `TokenSource` (`str | Callable[[], str]`), not a
-  bare string. On a 401 it calls an optional `force_refresh` callable and
-  retries **exactly once**; a second 401 raises
-  `SpotifyAuthenticationError` rather than a raw `httpx` error.
-  [HISTORY §92](docs/history/072-107.md#92)
-- Spotify rotates PKCE refresh tokens — two installs sharing one
-  account/client ID can invalidate each other's stored refresh token.
-  [HISTORY §92](docs/history/072-107.md#92)
-- **One token refresh at a time, per process.** `get_valid_token`
+- `SpotifyClient` takes a `TokenSource` (`str | Callable[[], str]`).
+  On a 401 it calls an optional `force_refresh` and retries **exactly
+  once**; a second 401 raises `SpotifyAuthenticationError`.
+  Spotify rotates PKCE refresh tokens: two installs sharing a client
+  ID can invalidate each other's. [§92](docs/history/072-107.md#92)
+- **One token refresh at a time per process:** `get_valid_token`
   refreshes under `auth_manager._TOKEN_LOCK` and re-reads the token
-  inside it; two concurrent refreshes would spend the same rotating
-  refresh token and send the loser to the browser.
-  [HISTORY §146](docs/history/121-150.md#146)
-- Playlist track entries come from `entry["item"]`, gated by
-  `item["type"] == "track"` (Feb 2026 API migration repurposed the old
-  `"track"` key as a type flag).
-  [HISTORY](docs/history/early-fixes.md#spotify-field-name-and-endpoint-history-get_playlist_tracks)
-- **A playlist's tracks are stale when `tracks_snapshot_id` (the
-  snapshot its cached tracks came from; NULL = never loaded) differs
-  from `snapshot_id`.** Only `sync_playlist_tracks` sets it; the list
-  refresh never does. `refresh_playlists()` re-syncs stale *loaded*
-  playlists only — never-loaded ones stay unloaded to protect the API
-  budget. The parser drops Spotify local files (no id) and the sync
-  keeps a repeated track's first listing.
-  [HISTORY §141](docs/history/121-150.md#141)
-- `get_current_user_playlists` reads `playlist["items"]["total"]`, never
-  `["tracks"]["total"]`.
-  [HISTORY](docs/history/early-fixes.md#spotify-field-name-history-get_current_user_playlists)
+  inside it, or two refreshes spend the same rotating token and send
+  the loser to the browser. [§146](docs/history/121-150.md#146)
+- Field names: playlist track entries come from `entry["item"]`, gated by
+  `item["type"] == "track"` ([early
+  fixes](docs/history/early-fixes.md#spotify-field-name-and-endpoint-history-get_playlist_tracks));
+  `get_current_user_playlists` reads `playlist["items"]["total"]`, never
+  `["tracks"]["total"]` ([early
+  fixes](docs/history/early-fixes.md#spotify-field-name-history-get_current_user_playlists)).
+- **A playlist's tracks are stale when `tracks_snapshot_id`** (the
+  snapshot its cached tracks came from; NULL = never loaded) **differs
+  from `snapshot_id`.** Only `sync_playlist_tracks` sets it.
+  `refresh_playlists()` re-syncs stale *loaded* playlists only, to
+  spare the API budget. The parser drops Spotify local files (no id);
+  a repeated track keeps its first listing.
+  [§141](docs/history/121-150.md#141)
 - `callback_server._LoopbackHTTPServer` overrides `server_bind()` to
-  skip `HTTPServer`'s reverse-DNS `socket.getfqdn()` between `bind()`
-  and `listen()` — keep it, never go back to a plain `HTTPServer`. The
-  CI-only `test_callback_server.py` timeouts stopped at the commit that
-  added it (all 39 CI runs since pass; mechanism still unexplained).
-  [HISTORY §136](docs/history/121-150.md#136)
-- The token cache path is resolved via `platformdirs`, not
-  CWD-relative — a double-clicked `.app`'s CWD can be unwritable.
-  [HISTORY §43](docs/history/032-046.md#43)
+  skip `HTTPServer`'s reverse-DNS `getfqdn()` between `bind()` and
+  `listen()`; keep it. CI's callback timeouts stopped at the commit
+  that added it (mechanism unexplained). [§136](docs/history/121-150.md#136)
+- The token cache path comes from `platformdirs`, never the cwd (a
+  double-clicked `.app`'s cwd can be unwritable).
+  [§43](docs/history/032-046.md#43)
 
 ### SoulSeek / slskd
 
-- **Quitting Seeker mid-download does not stop the transfer — only the
-  reconciliation.** slskd runs the transfer in its own Docker
-  container, independent of Seeker's process; Seeker only enqueues via
-  slskd's REST API and later reconciles via
-  `DownloadService.poll_downloads()`. Confirmed live (round 9 §2.1,
-  not just architecture): a real download kept transferring to
-  completion with zero `seeker` process running at all, then was
-  correctly picked up and moved into the library on the next
-  `poll_downloads()` call. Nothing is lost on quit; the finished file
-  just waits in slskd's own directory until Seeker is next opened.
-  [HISTORY §123](docs/history/121-150.md#123)
-- Two distinct credential pairs exist and are easy to confuse:
-  `SLSKD_SLSK_USERNAME`/`PASSWORD` is the **Soulseek network** login;
-  `SLSKD_USERNAME`/`PASSWORD` is the **web UI** login. Confirmed live
-  against a real container. [HISTORY §23](docs/history/001-024.md#23)
-- `GET /api/v0/searches/{id}` only returns populated `responses` with
-  `?includeResponses=true` — without it you get a real `isComplete` but
-  a silently empty `responses` array. [HISTORY §4](docs/history/001-024.md#4)
-- A locked file's `request_download` succeeds immediately; the
-  rejection only surfaces later via `get_download_status` as
-  `"Completed, Rejected"`. Three distinct rejection shapes exist total
-  (locked-file, a synchronous 404 at enqueue for a peer gone offline,
-  and a slow log-only bad-credentials/kicked distinction — `/api/v0/
-  application`'s `ServerState` carries no error/reason field at all, so
-  `check_slskd_health` reads `/api/v0/logs` with a `since:` filter).
-  [HISTORY §13](docs/history/001-024.md#13)
+- **Quitting Seeker mid-download stops only the reconciliation.**
+  slskd transfers in its own container; Seeker enqueues over REST and
+  reconciles in `poll_downloads()`. Observed: a transfer finished with
+  no Seeker running and was placed on the next poll.
+  [§123](docs/history/121-150.md#123)
+- Two credential pairs: `SLSKD_SLSK_USERNAME`/`PASSWORD` is the
+  **Soulseek network** login, `SLSKD_USERNAME`/`PASSWORD` the **web
+  UI** login. [§23](docs/history/001-024.md#23)
+- `GET /api/v0/searches/{id}` returns `responses` only with
+  `?includeResponses=true`; without it `isComplete` is real and
+  `responses` silently empty. [§4](docs/history/001-024.md#4)
+- **Rejections come in three shapes:** a locked file's `request_download`
+  succeeds and the rejection surfaces later in `get_download_status` as
+  `"Completed, Rejected"`; a peer gone offline is a synchronous 404 at
+  enqueue; bad credentials or a kick shows only in `/api/v0/logs`
+  (`ServerState` has no reason field), so `check_slskd_health` reads the
+  logs with a `since:` filter. `is_recognized_rejection()` applies to
+  every `download_requests.role`. [§13](docs/history/001-024.md#13)
+- Exponential backoff plus a terminal `unavailable` after 8 attempts
+  bounds any retry storm, whatever its cause (item 63).
+  [§66](docs/history/047-071.md#66)
 - **A finished download is never guessed and never lands on an
   existing file.** slskd writes `<remote parent>/<basename>`, or
-  `<stem>_<UtcNow.Ticks><suffix>` on a clash (its `FileService.MoveFile`);
-  `_locate_completed_file` accepts only the request's exact byte size
-  and refuses an ambiguous match. Placement goes through
-  `files.placement.resolve_collision` — the one collision rule, shared
-  with renames. [HISTORY §138](docs/history/121-150.md#138)
-- **A destination subfolder is validated, never rewritten.**
-  `validate_destination_subfolder` (`destination_resolution.py`)
-  accepts folder names joined by `/` (nested is real), each already
-  sanitized; it rejects `..`, absolute paths and unsafe names.
-  `set_destination` and resolution both call it, and the dialog
-  previews its result. Every Seeker-built file or folder name goes
-  through `clean_path_component`, which never leaves a leading dot.
-  [HISTORY §143](docs/history/121-150.md#143)
-- **One slskd bring-up: `Application.start_slskd(..., persist=)`.**
-  The wizard (saves after its health poll), Settings (saves at
-  once) and `restart_slskd()` (Start slskd after an outage: the live
-  share and saved login, else `SlskdStartRefusedError`, never a
-  guess) all go through it. Sharing's
-  recreate calls `docker_setup.bring_up_slskd` directly, since it
-  reuses the saved key/login and the live `/app` dir. The app only
-  ever runs the per-user Compose copy (`compose_file_path()`, dev and
-  frozen alike), never the tracked template, and a recreate keeps a
-  live container's `/app` data dir. The per-user copy is seeded once
-  and never re-seeded. [HISTORY §140](docs/history/121-150.md#140)
-- **slskd being down is an outage, never a per-request failure.**
+  `<stem>_<UtcNow.Ticks><suffix>` on a clash; `_locate_completed_file`
+  accepts only the request's exact byte size and refuses an ambiguous
+  match. Placement and renames share one collision rule,
+  `files.placement.resolve_collision`. [§138](docs/history/121-150.md#138)
+- **A destination subfolder is validated, never rewritten:**
+  `validate_destination_subfolder` takes `/`-joined sanitized names
+  and rejects `..`, absolute paths and unsafe names; `set_destination`,
+  resolution and the dialog's preview all use it. Every Seeker-built
+  name goes through `clean_path_component` (never a leading dot).
+  [§143](docs/history/121-150.md#143)
+- **One bring-up: `Application.start_slskd(..., persist=)`**, for the
+  wizard (saves after its health poll), Settings (saves at once) and
+  `restart_slskd()` (the live share and saved login, else
+  `SlskdStartRefusedError`, never a guess). Sharing's recreate calls
+  `docker_setup.bring_up_slskd` directly, reusing the saved key and
+  login. The app runs only the per-user Compose copy
+  (`compose_file_path()`), seeded once, never re-seeded, never the
+  tracked template; a recreate keeps the live `/app` data dir.
+  [§140](docs/history/121-150.md#140)
+- **slskd down is an outage, never a per-request failure.**
   `poll_downloads` turns any `httpx.TransportError` into
-  `SlskdUnreachableError` and aborts: nothing counted as failed, no
-  row changed, no locked-retry budget spent (a retry re-raises the
-  transport error before `_advance_locked_retry`). A new slskd call
-  inside the poll keeps that order: `except httpx.TransportError`
-  ahead of `except Exception`. The UI reads it from `SlskdStatus`
-  (`PageContext.slskd_status`), written only by the backend poll and
-  edge-triggered: the tray notifies once per outage, the first good
-  poll clears every notice. [HISTORY §151](docs/history/151-180.md#151),
+  `SlskdUnreachableError` and aborts: no row changed or counted
+  failed, no locked-retry budget spent (a retry re-raises before
+  `_advance_locked_retry`). A new slskd call in the poll
+  keeps `except httpx.TransportError` ahead of `except Exception`.
+  The UI reads `SlskdStatus` (`PageContext.slskd_status`), written only by the
+  backend poll and edge-triggered: one tray notice per outage, the
+  first good poll clears them all. [§151](docs/history/151-180.md#151),
   [§152](docs/history/151-180.md#152)
-- **Every slskd URL path segment is `quote(…, safe="")`d** — a
-  username is chosen by a remote peer, and a raw `?`, `#` or `../`
-  reaches a different endpoint. [HISTORY §146](docs/history/121-150.md#146)
-- `RECOGNIZED_REJECTION_PATTERNS`/`is_recognized_rejection()` apply
-  unconditionally to any `download_requests.role`, not just
-  `role='upgrade'`. [HISTORY §13](docs/history/001-024.md#13)
-- Exponential backoff plus a terminal `unavailable` status after 8
-  attempts structurally bounds any future retry storm's rate,
-  regardless of cause — added after a real, still-unexplained
-  production storm (see Open issues, item 63).
-  [HISTORY §66](docs/history/047-071.md#66)
-- A generated slskd web UI login only takes effect on a genuinely fresh
-  install — slskd silently refuses to let `SLSKD_USERNAME`/`PASSWORD`
-  override an already-customised login. Confirmed live both ways: a
-  fresh throwaway container accepts it (real `200` from
-  `POST /api/v0/session`); a container with a pre-existing login
-  returns a real `401` for the generated one.
-  `docker_setup.check_slskd_web_login()` checks this directly; Settings
-  only displays a credential once confirmed active.
-  [HISTORY §116](docs/history/108-120.md#116),
-  [§117](docs/history/108-120.md#117)
-- The slskd web UI is bound to loopback only
-  (`127.0.0.1:5030:5030`/`5031:5031`); `50300` must stay published on
-  every interface for real incoming Soulseek peer connections.
-  `SLSKD_REMOTE_CONFIGURATION=false`. [HISTORY §116](docs/history/108-120.md#116)
-- §6.1's original HIGH severity assumed a vendor-default `slskd`/`slskd`
-  web UI login; Kris's own machine had already changed it, so his real
-  exposure was lower than assessed — but the fix stays correct and
-  necessary, since a fresh install by anyone else lands on that
-  default. [HISTORY §116](docs/history/108-120.md#116)
+- **Every slskd URL path segment is `quote(…, safe="")`d:** a
+  username comes from a remote peer, and a raw `?`, `#` or `../`
+  reaches another endpoint. [§146](docs/history/121-150.md#146)
+- **The web UI binds to loopback only** (`127.0.0.1:5030`/`5031`);
+  `50300` stays published on every interface for incoming peers;
+  `SLSKD_REMOTE_CONFIGURATION=false`. A fresh install otherwise
+  exposes slskd's vendor-default `slskd`/`slskd` login. A generated
+  web login takes effect only on a fresh install (an existing one
+  answers it `401`, observed), so `check_slskd_web_login()` checks it
+  and Settings shows a credential only once confirmed.
+  [§116](docs/history/108-120.md#116), [§117](docs/history/108-120.md#117)
 
-### Qt, threading, and UI
+### Qt and threading
 
-- **The single seam every real quit route passes through, confirmed
-  live: `QEvent.Type.Quit` delivered to the `QApplication` instance
-  itself, before `aboutToQuit`.** Both `tray.py`'s `_on_tray_quit()`
-  (`app.quit()`) and the native macOS ⌘Q/Dock "Quit Seeker" menu item
-  deliver this same event to the app object — an installed
-  `QObject.eventFilter` catching it can decide synchronously whether
-  to let that exact event proceed (return `False`) or cancel the quit
-  outright (return `True`); `aboutToQuit`-connected cleanup
-  (`cleanup_before_quit`) fires too late for either. Do NOT re-post a
-  fresh `app.quit()` from inside the filter to "confirm and retry" —
-  confirmed live this exits the process silently without `aboutToQuit`
-  ever running, skipping all cleanup. `MainWindow.eventFilter`
-  (`ui/main_window.py`, deciding through `WindowLifecycleController`)
-  is the reference implementation — reusable for any future "confirm
-  before a real quit" need.
-  [HISTORY §124](docs/history/121-150.md#124)
-- PySide6 reports an exception raised in a slot through
-  `sys.excepthook` (observed live). pytest-qt swaps in its own hook
-  per test, so a test of Seeker's hook needs
-  `@pytest.mark.qt_no_exception_capture`. [HISTORY
-  §150](docs/history/121-150.md#150)
-- `ui/workers.py`'s `Worker`: one shared, permanently-connected
-  dispatcher QObject, never a fresh one per task —
-  connect/disconnect cycling through Qt's mutex pool per call caused a
-  real deadlock under heavy concurrent use. `setAutoDelete(False)` plus
-  a `task_id`-only signal (never `self`) plus a deferred native delete
-  are all independently required. [HISTORY §39](docs/history/032-046.md#39)
-- A `Worker` must be kept alive via a strong reference
-  (`_active_workers: set[Worker]`) until its own finished/error signal
-  fires — `QThreadPool.start()` returning early lets GC collect it
-  mid-flight. [HISTORY §22](docs/history/001-024.md#22)
-- `Qt.ConnectionType.SingleShotConnection` is required on
-  `run_worker`'s cross-thread connections — the reference cycle
-  otherwise formed is invisible to Python's GC (the Qt/shiboken side
-  isn't visible to the tracer), and a manual `disconnect()` from inside
-  its own handler mid-emission segfaults. [HISTORY §32](docs/history/032-046.md#32)
-- **The window lifecycle is `WindowLifecycleController`'s alone**
-  (`ui/window_lifecycle.py`): geometry, `_hidden_to_tray`,
-  `_hide_request_id`, `_reopen_filled`, the Dock-icon calls, the quit
-  confirmation and `cleanup_before_quit`. `MainWindow` keeps only what
-  a QObject must own (`closeEvent`, `showEvent`, the QApplication
-  `eventFilter`, the `applicationStateChanged` slot) and delegates;
-  the tray reopens through `MainWindow.reopen()`. A test patching the
-  Dock icon patches `window_lifecycle._set_dock_icon_visible`.
-  [HISTORY §163](docs/history/151-180.md#163)
-- `WA_DeleteOnClose` on a top-level window must be cleared the moment a
-  real tray icon exists, or the first close after that deletes the
-  window's C++ object and "reopen from tray" breaks permanently.
-  [HISTORY §114](docs/history/108-120.md#114)
-- `WA_DeleteOnClose`'s value is decided in exactly one place —
-  `TrayController._build_tray_icon()` (`ui/tray.py`), both branches
-  explicitly (`True` when no tray is available, `False` the moment one
-  is built). `MainWindow.__init__` does not set it at all. A future
-  change to this invariant belongs in that one method, not split
-  between it and `__init__` again. [HISTORY §125](docs/history/121-150.md#125)
-- A per-window `QThreadPool` (`MainWindow.thread_pool` — every real
-  `run_worker` call takes it as an explicit argument, never
-  `QThreadPool.globalInstance()`) blocks its own destructor on any
-  in-flight runnable, confirmed live via an isolated probe: `quit()`
-  itself always returns instantly, but the enclosing process stays
-  alive exactly as long as the slowest running task takes once nothing
-  else holds a reference to the pool. `cleanup_before_quit`
-  (`WindowLifecycleController`, logger `seeker.ui.window_lifecycle`) logs this
-  pool's active/max thread count at entry and its own elapsed time at
-  exit, specifically to localize a future recurrence of the
-  unreproduced "not responding" quit hang. [HISTORY
-  §125](docs/history/121-150.md#125)
-- `QHeaderView::section:horizontal:last-child` is invalid Qt QSS (valid
-  CSS, not Qt's dialect) and silently poisons the **entire**
-  `::section` rule — use `:last` alone.
-  [HISTORY §103](docs/history/072-107.md#103)
-- **A colour is read from `theme.active_palette()` at paint or render
-  time, never cached** — the palette `apply_theme` last applied. There
-  are no module-level colour names (`theme.ACCENT` is gone); prefer a
-  QSS rule over reading a token at all. [HISTORY
-  §181](docs/history/181-210.md#181)
-- **A bundled line icon is a `QIcon` over `ui/icons.py`'s
-  `TokenIconEngine`**, which swaps `currentColor` for a palette token
-  on every draw (per mode and state, `IconColours`). The vendored
-  Lucide files in `packaging/icons/lucide/` are never edited; a QSS
-  `image:` still needs one file per palette (`_palette_icon`).
-  [HISTORY §182](docs/history/181-210.md#182)
-- **Only a real surface paints a background.** The generic `QWidget`
-  rule sets text colour only; `QMainWindow`/`QDialog` paint `BG_APP`,
-  cards and tables their own; `QLabel`/`QCheckBox`/`QRadioButton` are
-  transparent. A new surface gets its own selector, never a
-  background on a generic type, which bands every nested widget.
-  Review a UI change in `tools/screenshots.py`'s images.
-  [HISTORY §173](docs/history/151-180.md#173)
-- **A button takes its size hint.** It goes in `theme.action_row()`
-  (or a row ending in `addStretch()`), never alone in a vertical or
-  form layout, where it stretches to the full width; a tall form
-  scrolls rather than squeezing rows (Settings' tabs).
-  `tests/shell/test_button_sizing.py` walks every harness screen and
-  fails the build. [HISTORY §174](docs/history/151-180.md#174)
-- **Focus is visible, and only keyboard focus.** `apply_theme` sets
-  Fusion through `_SeekerStyle` (buttons are `TabFocus`: a click never
-  focuses one), and every focusable control has a `:focus` rule. Test
-  a focused look by painting through `style().drawControl()` with
-  `State_HasFocus` on the option, never by real focus. A per-row
-  button gets `cell_widget(..., row_label=)` and an icon-only control
-  `setAccessibleName`; `tests/shell/test_keyboard_access.py` fails
-  the build.
-  [HISTORY §175](docs/history/151-180.md#175)
-- **Every table declares a `theme.ColumnLayout`** whose stretch
-  column is the one its rows are about (Track, Filename, Path).
-  `fit_widths` keeps that column's content width (180 px floor, 40 %
-  cap) and shrinks the widest other text columns first, never below
-  a header; a viewport filter refits on resize. Cells are one line:
-  `ElidedTextDelegate` shows the full text on hover only when elided,
-  and `ColumnLayout.paths` columns elide in the middle. A list of
-  names uses `elide_list_items`. `tests/shell/test_table_columns.py`
-  walks every harness screen at 960×640.
-  [HISTORY §176](docs/history/151-180.md#176)
-- **An empty table shows `ui/empty_state.EmptyState`** (a glyph, one
-  sentence, an optional action) inside its viewport, shown by the row
-  count itself; never a spanned placeholder row or a status-label
-  message. A page only changes its sentence (`set_text`) as the reason
-  changes. A short marker on a row ("Upgrade") is a `BADGE_ROLE`
-  pill on the primary cell, not a column of its own; quieter detail
-  beside a cell's text (a candidate's quality and peer) is
-  `SECONDARY_ROLE`, not a second line. Rows that come in groups band
-  every other group with `BAND_ROLE` (the palette's AlternateBase,
-  read at paint time) and span the group's own cells, never a
-  group-number column. A state in a cell is its
-  `status_lamp` lamp as the item's icon beside the label, never link
-  styling; where the label must read in full, the view sets
-  `set_secondary_min_share(view, 0.0)`. Determinate progress is
-  `theme.style_meter` (amber segments, no label: the percentage is
-  cell text); an in-table bar with no amount yet is
-  `theme.set_busy_meter` (the same amber), and a bar goes back to busy
-  only through `theme.set_indeterminate`, which drops the `::chunk`
-  sheet. [HISTORY §177](docs/history/151-180.md#177),
-  [§178](docs/history/151-180.md#178), [§184](docs/history/181-210.md#184)
-- **A titled section is `theme.section_card`** (its title in the
-  panel lettering, one muted sentence, then the controls), never a
-  `QGroupBox`, whose title draws in the system font; none is left in
-  `src/`. [HISTORY §189](docs/history/181-210.md#189)
-- **Background reading goes behind a `ui/disclosure.Disclosure`,
-  after the page's working content** (Sharing's "How sharing works"),
-  closed by default, its state a `SeekerConfig` field written on the
-  user's click only. Open, its body scrolls inside a share of the
-  height rather than squeezing the tables.
-  [HISTORY §187](docs/history/181-210.md#187)
-- **Prose wraps at 80 characters through `theme.reading_column`**
-  (Help, Support), which caps the whole column. Never cap one wrapped
-  label inside a wider layout row: the row asks its height at the
-  row's width and clips its last lines (`set_reading_measure` is only
-  for a label that is a scroll area's whole content). A link takes
-  `QPalette.Link`, which `build_qpalette` sets to `ACCENT`.
-  [HISTORY §188](docs/history/181-210.md#188)
-- Any `setStyleSheet()` call must carry a selector — a selector-less
-  rule parses as a universal `*` rule and silently strips styling off
-  every descendant widget's box model.
-  [HISTORY §114](docs/history/108-120.md#114)
-- `setSpan()` must be called **before** `setCellWidget()` on the
-  span-owning cell, and no widget of any kind belongs on the cells it
-  covers — a "blank placeholder" widget resolves to the same geometry
-  as the real span-owning widget and paints over it.
-  [HISTORY §77](docs/history/072-107.md#77)
-- A bare `QProgressBar`/`QPushButton` handed straight to
-  `setCellWidget` renders top-clamped or stretched to fill the whole
-  cell — always wrap it in a centering container widget. A structural
-  test walks every table for this.
-  [HISTORY §104](docs/history/072-107.md#104)
-- `QTableWidget::item { padding }` corrupts a `QPushButton` living
-  inside a cell widget (safe on `QListWidget`). A plain `QWidget`
-  subclass needs `WA_StyledBackground` to paint its own stylesheet
-  background/border at all. [HISTORY §47](docs/history/047-071.md#47)
-- Tests must exercise the real theme stack —
-  `tests/conftest.py` calls `theme.apply_theme()` in a session-scoped
-  autouse fixture — otherwise a `window.grab()` pixel/geometry
-  assertion runs against Qt's default style, not the shipped
-  Fusion+QSS+dark-palette one. [HISTORY §103](docs/history/072-107.md#103)
-- Under the offscreen QPA test platform: `colorSchemeChanged` never
-  actually fires, and a plain `QApplication.processEvents()` does
-  **not** flush Qt's deferred deletion — use
-  `QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)`.
-  [HISTORY §109](docs/history/108-120.md#109),
-  [§116](docs/history/108-120.md#116)
-- A `.hide()`'n `QWidgetItem`'s `setGeometry()` is a real no-op —
-  exclude hidden items from any `FlowLayout` geometry assertion.
-  [HISTORY §79](docs/history/072-107.md#79)
-- `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService` is
-  a **callable**, not a snapshot — a Settings change takes effect
-  immediately, no restart. [HISTORY §28](docs/history/025-031.md#28)
-  The match thresholds resolve through `matching.resolve_thresholds`
-  (`is None`, never `or`: 0 is a value Settings accepts).
-  [HISTORY §179](docs/history/151-180.md#179)
-- **One navigation model: the sidebar.** Every registered page has a
-  sidebar button, and no page gets its own "← Back" (Settings' was
-  removed). Settings' tabs are `SETTINGS_TAB_*` (General, Library,
-  Connections, Matching); select one by constant, never by index.
-  [HISTORY §179](docs/history/151-180.md#179)
-- A `setCellWidget`-only column (no `QTableWidgetItem`) sorts as a
-  silent no-op under click-to-sort — give it a `SortKeyItem`
-  (`ui/table_sort.py`) if it has real data to order by (see
-  Progress's fraction-complete key), never a bare display string.
-  `theme.configure_columns` already vetoes sorting entirely on
-  whichever column `ColumnLayout.actions` names, for every table, so
-  a new Actions column needs no per-page handling at all.
-  [HISTORY §122](docs/history/121-150.md#122)
-- **Never synchronously rebuild a widget from a handler that can run
-  inside that widget's own selection/data-changed emission** —
-  directly or via a shared signal like `PlaylistSelection.changed`.
-  Reproduced as a real SIGSEGV (Dashboard's `track_table` cleared
-  from inside its own `itemSelectionChanged`); defer with
-  `QTimer.singleShot(0, ...)`, as `_on_shared_selection_changed`
-  does. [HISTORY §134](docs/history/121-150.md#134)
-- **The Dashboard's track table rebuilds only when what its rows were
-  built from changes** (`_RenderedRows`: the visible statuses plus
-  the active palette, which the lamps bake in); a progress-only change
-  updates bars, percentages and sort keys in place. Anything new a row bakes in at build time (a color, a
-  setting) must join that key, or a change to it never reaches the
-  table. `QTableWidget.setItem` measured ~2.4 ms a call at 500 rows —
-  mutate an existing item on a hot path. [HISTORY
-  §166](docs/history/151-180.md#166)
-- **A button whose enabled state a render decides is never
-  `run_worker`'s `button=`.** Its finish handler re-enables the button
-  before `on_finished`, over any render that already ran; disable it
-  on click and let the render set it (Downloads' Clear finished,
-  reproduced deterministically). [HISTORY §145](docs/history/121-150.md#145)
-- A page inside `MainWindow`'s `QStackedWidget` has no real geometry
-  until first navigated to — restore saved splitter/size state from
-  its first real `showEvent`, never its constructor
-  (`ReviewPage._restore_splitter_state`). [HISTORY
-  §132](docs/history/121-150.md#132)
+UI-only rules (workers, window lifecycle, widgets, theme, tables)
+live in [`src/seeker/ui/CLAUDE.md`](src/seeker/ui/CLAUDE.md). Claude
+Code documents loading it when a session reads files in `ui/`
+(UNVERIFIED here); read it before any UI change regardless.
+
+- **Every real quit passes one seam: `QEvent.Type.Quit` delivered to
+  the `QApplication` itself, before `aboutToQuit`** (the tray's
+  `app.quit()` and macOS ⌘Q/Dock alike, observed). An `eventFilter`
+  there decides synchronously: `False` lets it proceed, `True`
+  cancels; `aboutToQuit` cleanup is too late for either. Never
+  re-post `app.quit()` from the filter: the process exits without
+  `aboutToQuit` (observed). Reference: `MainWindow.eventFilter`
+  through `WindowLifecycleController`. [§124](docs/history/121-150.md#124)
+- **`MainWindow.thread_pool` is passed to every `run_worker`, never
+  `globalInstance()`.** Its destructor waits for in-flight runnables
+  (observed in isolation): `quit()` returns at once but the process
+  lives as long as the slowest task. `cleanup_before_quit` logs the
+  pool's active/max threads and its elapsed time
+  (`seeker.ui.window_lifecycle`) for item 125.
+  [§125](docs/history/121-150.md#125)
+- `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService`
+  is a callable, not a snapshot: a Settings change applies at once
+  ([§28](docs/history/025-031.md#28)). Match thresholds resolve
+  through `matching.resolve_thresholds` (`is None`, never `or`: 0 is
+  valid). [§179](docs/history/151-180.md#179)
 
 ### Testing
 
 - **UI tests build over `tests/fakes.py`** (`FakeApplication`, the
-  `Fake*` services, shared builders such as `make_track`); no UI test
-  module imports from another. Page tests live in
-  `tests/pages/`, `MainWindow`'s own in `tests/shell/`, and the six
-  subprocess-only scripts in `tests/repro/`. No test directory has an
-  `__init__.py`, so **a test file's basename must be unique across
-  all of them** — a duplicate fails collection with "import file
-  mismatch" (reproduced). [HISTORY §161](docs/history/151-180.md#161)
-- **Local pytest runs on Cocoa; CI runs `QT_QPA_PLATFORM=offscreen`,
-  whose screen is 800×800.** A UI test that passes locally and fails
-  on CI is reproduced first with `QT_QPA_PLATFORM=offscreen uv run
-  pytest <test>`; a window bigger than 800×800 is fitted to the
-  screen when Qt restores its geometry.
-  [HISTORY §167](docs/history/151-180.md#167)
-- **Why one test always skips, and why that is correct:**
-  `tests/test_stress_e2e.py` is gated by `requires_stress_opt_in` on
-  `SEEKER_RUN_STRESS_TEST != "1"` — it drives the real Spotify/slskd/
-  X9 Pro pipeline for real wall-clock minutes and mutates the real
-  production database, so it must never run just because the
-  infrastructure happens to be connected (see the file's own
-  docstring). Run it deliberately via `SEEKER_RUN_STRESS_TEST=1 uv run
-  pytest tests/test_stress_e2e.py` after any change to worker/timer/
-  connection lifecycle code. [HISTORY §32](docs/history/032-046.md#32)
-  CI skips 29: that one plus 28 `@requires_x9_pro` tests (no such
-  drive on a runner).
+  `Fake*` services, `make_track`); no UI test module imports
+  from another. Pages in `tests/pages/`, the shell in `tests/shell/`,
+  subprocess scripts in `tests/repro/`. No `__init__.py`, so **a test
+  file's basename is unique across directories** (else "import file
+  mismatch"). [§161](docs/history/151-180.md#161)
+- **Tests run the real theme:** `conftest.py` applies `apply_theme()`
+  session-wide, so `grab()` assertions see the shipped style.
+  [§103](docs/history/072-107.md#103)
+- **Local runs use Cocoa; CI uses `QT_QPA_PLATFORM=offscreen`** (an
+  800×800 screen that fits restored windows to it). Reproduce a
+  CI-only failure with `QT_QPA_PLATFORM=offscreen uv run pytest
+  <test>`. Offscreen never fires `colorSchemeChanged`, and
+  `processEvents()` does not flush deferred deletes:
+  `QCoreApplication.sendPostedEvents(None,
+  QEvent.Type.DeferredDelete)`. A hidden `QWidgetItem`'s
+  `setGeometry()` is a no-op; exclude it from `FlowLayout`
+  assertions. [§167](docs/history/151-180.md#167),
+  [§109](docs/history/108-120.md#109), [§79](docs/history/072-107.md#79)
 - **A UI test waits for its flow's real end, never the fake's call
-  record.** A fake records the call on the worker thread, before the
-  main thread's finish handler runs: a test that returns or asserts
-  then races it. A late handler raises `RuntimeError: … already
-  deleted` reported at setup of the *next* test; look at the test
-  before it. Wait for the notice, label or button the finish handler
-  sets. [HISTORY §128](docs/history/121-150.md#128),
-  [§148](docs/history/121-150.md#148)
+  record**, which the worker writes before the main thread's finish
+  handler runs. A late handler raises `RuntimeError: … already
+  deleted` at setup of the *next* test; look at the one before it.
+  [§128](docs/history/121-150.md#128), [§148](docs/history/121-150.md#148)
+- **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
+  only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
+  the X9 Pro for minutes and mutates the production DB. Run it
+  deliberately after worker, timer or connection lifecycle changes. CI
+  skips 29: that one plus 28 `@requires_x9_pro`.
+  [§32](docs/history/032-046.md#32)
 
-### Database and migrations
+### Database
 
-- `local_files`' analysis/fingerprint columns (`bpm`, `camelot_key`,
-  `key_confidence`, `fingerprint*`) are excluded from `upsert()`'s
-  `ON CONFLICT DO UPDATE` — a routine scan must never wipe prior
-  analysis. [HISTORY §11](docs/history/001-024.md#11),
-  [§39](docs/history/032-046.md#39)
+- `local_files`' analysis columns (`bpm`, `camelot_key`,
+  `key_confidence`, `fingerprint*`) are excluded from
+  `upsert()`'s `ON CONFLICT DO UPDATE`: a scan never wipes analysis.
+  [§11](docs/history/001-024.md#11), [§39](docs/history/032-046.md#39)
 - **`local_files.has_art` is NULL until a read succeeds, never a
-  guessed 0.** The scanner reads it (a second, non-easy mutagen open)
-  and re-reads an unchanged file whose value is NULL, counting it
-  unchanged; tagging and Fix missing cover art set it only when they
-  embedded a picture. [HISTORY §185](docs/history/181-210.md#185)
-- `track_matches.confirmed_at` protects a human-confirmed match from
-  being silently demoted by a later `match_all()` re-run, which
-  otherwise has no provenance concept at all — but only while its
-  `local_file_id` is set.
-  [HISTORY §56](docs/history/047-071.md#56)
-- **A match pointing at no file is unmatched, everywhere.** Every
-  `local_files` delete goes through `LocalFileRepository`
-  (`delete_by_id`/`delete_by_ids`/`delete_all_for_location`), which
-  resets the dependent matches in the same transaction — never delete
-  `local_files` rows with raw SQL, or the `ON DELETE SET NULL`
-  cascade leaves a method/score/confirmation on a row pointing
-  nowhere. Removing a location also clears playlist destinations
-  (no `ON DELETE` on that FK) and, via `Application`, the default.
-  [HISTORY §139](docs/history/121-150.md#139)
-- **A Reject on the Review page is permanent, per track.** It writes
-  `rejected_local_matches` or `rejected_soulseek_candidates`;
-  `match_all` and `download_playlist` skip those pairs and fall
-  through to the next best. Only a download request makes a
-  `manual:` track real: it is saved just before its first request,
-  and `_migrate` deletes any with no request.
-  [HISTORY §144](docs/history/121-150.md#144)
-- **A `download_requests` row is dismissed, never deleted.** A failed
-  or unavailable row carries a readable `failure_reason` and stays on
-  the Downloads page until "Clear finished" sets `dismissed_at`;
-  deleting one would make a completed manual track an orphan for
-  `_migrate`. Any new failed/unavailable transition passes
-  `failure_reason=`. [HISTORY §145](docs/history/121-150.md#145)
-- **Library locations never nest.** Adding one inside or around
-  another is refused, by resolved path and on-disk identity (APFS is
-  case-insensitive). A nested pair already registered is merged by
-  `LibraryService.merge_location`: a merged row pairs only with the
-  kept row for the same physical file (`same_file`), analysis moves
-  only into an empty group with equal size and mtime, and the merged
-  location then goes through removal's own deletes.
-  [HISTORY §171](docs/history/151-180.md#171),
+  guessed 0.** The scan reads it and re-reads an unchanged file whose
+  value is NULL; tagging and Fix missing cover art set it only when
+  they embedded a picture. [§185](docs/history/181-210.md#185)
+- `track_matches.confirmed_at` protects a human-confirmed match from a
+  later `match_all()`, but only while its `local_file_id` is set.
+  [§56](docs/history/047-071.md#56)
+- **A match pointing at no file is unmatched.** Every `local_files`
+  delete goes through `LocalFileRepository` (`delete_by_id(s)`,
+  `delete_all_for_location`), which resets dependent matches in the
+  same transaction; never raw SQL (`ON DELETE SET NULL` leaves a
+  score and confirmation pointing nowhere). Removing a location also clears
+  playlist destinations (no `ON DELETE` on that FK) and, via
+  `Application`, the default. [§139](docs/history/121-150.md#139)
+- **A Review Reject is permanent, per track**
+  (`rejected_local_matches`, `rejected_soulseek_candidates`);
+  `match_all` and `download_playlist` fall through to the next best.
+  A `manual:` track is saved just before its first download request,
+  and `_migrate` deletes any without one. [§144](docs/history/121-150.md#144)
+- **A `download_requests` row is dismissed, never deleted:** a failed
+  or unavailable row carries a readable `failure_reason` (pass
+  `failure_reason=` on every such transition) until "Clear finished"
+  sets `dismissed_at`. [§145](docs/history/121-150.md#145)
+- **Library locations never nest:** adding one inside or around another is
+  refused, by resolved path and on-disk identity (APFS is
+  case-insensitive). `LibraryService.merge_location` merges a nested pair:
+  rows pair only for the same physical file (`same_file`), analysis moves
+  only into an empty group of equal size and mtime, then removal's own
+  deletes run. [§171](docs/history/151-180.md#171),
   [§172](docs/history/151-180.md#172)
-- Deleting a local file: DB row first, then the file on disk. Renaming
-  one: the opposite order, file then DB row.
-  [HISTORY §40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)
-- `Database.transaction()` opens a new connection per call — safe to
-  use across threads. [HISTORY §22](docs/history/001-024.md#22)
-- **No slow work inside a write transaction.** Walks, tag reads and
-  fuzzy passes run outside `Database.transaction()`; writes go in short
-  batches, and the write re-checks what may have changed meanwhile
-  (`match_all` keeps a confirmation made while it computed). Measured:
-  a first scan holding one transaction made concurrent writers fail
-  with "database is locked". Never bind one `?` per row either: SQLite
-  caps a statement at 32,766 parameters, so chunk (`delete_by_ids`).
-  [HISTORY §142](docs/history/121-150.md#142)
+- Delete a local file: DB row, then disk. Rename: disk, then DB row.
+  [§40](docs/history/032-046.md#40), [§67](docs/history/047-071.md#67)
+- **No slow work inside a write transaction.**
+  `Database.transaction()` opens a connection per call (thread-safe,
+  [§22](docs/history/001-024.md#22)). Walks, tag reads and fuzzy
+  passes run outside it; writes go in short batches that re-check what
+  changed meanwhile. One `?` per row is capped at 32,766 parameters:
+  chunk (`delete_by_ids`). [§142](docs/history/121-150.md#142)
+- A fingerprint is read only through
+  `get_all_for_location_with_fingerprints`; the default `local_files`
+  getters leave those columns out (the polls read ~32 MB otherwise).
+  [§165](docs/history/151-180.md#165)
 
 ### Packaging
 
-- `sys.frozen` gates every bundled-resource path lookup via
-  `sys._MEIPASS` (compose file, icons, everything) — the same pattern
-  any future bundled-resource lookup should follow.
-  [HISTORY §30](docs/history/025-031.md#30)
-- One-folder PyInstaller mode over one-file, deliberately — numba's
-  JIT cache only persists across runs in one-folder mode (~1s vs.
-  ~18-21s every run in one-file). [HISTORY §30](docs/history/025-031.md#30)
-- PyInstaller's `BUNDLE()`/`EXE()` already ad-hoc-sign by default with
-  no `codesign_identity` given — call it "ad-hoc signed, not
-  notarized," never "unsigned." [HISTORY §36](docs/history/032-046.md#36)
-- Build identity: `packaging/build_dmg.py` writes a gitignored
-  `src/seeker/_build_info_generated.py`; the tracked `_build_info.py`
-  only `try/except ImportError`s it, falling back to `"dev"` — never
-  write the tracked file directly (doing so once permanently dirtied
-  the tree on every real build). [HISTORY §83](docs/history/072-107.md#83)
-- GUI launches get launchd's bare minimal PATH —
+- `sys.frozen` gates every bundled-resource lookup through
+  `sys._MEIPASS`. One-folder mode, deliberately: numba's JIT cache
+  persists only there (~1 s against ~18–21 s a run).
+  [§30](docs/history/025-031.md#30)
+- PyInstaller ad-hoc-signs with no `codesign_identity`: say "ad-hoc
+  signed, not notarized", never "unsigned".
+  [§36](docs/history/032-046.md#36)
+- `packaging/build_dmg.py` writes the gitignored
+  `_build_info_generated.py`; the tracked `_build_info.py` only
+  imports it (fallback `"dev"`). Never write the tracked file.
+  [§83](docs/history/072-107.md#83)
+- A GUI launch gets launchd's minimal PATH:
   `docker_setup.ensure_full_path_environment()` merges `path_helper`
-  output plus explicit Homebrew/Docker-Desktop fallbacks into
-  `os.environ["PATH"]` once, at `Application.__init__`.
-  [HISTORY §44](docs/history/032-046.md#44)
+  and Homebrew/Docker Desktop fallbacks once, in
+  `Application.__init__`. [§44](docs/history/032-046.md#44)
 - `login_item.py` (`SMAppService`) is a no-op outside a frozen `.app`
-  — `is_supported()` needs `sys.frozen`, since a `uv run` process has
-  no bundle identifier. Its status is always read live, never
-  mirrored into `config.json`, so a System Settings revocation shows
-  immediately. Real register/unregister on a packaged build is still
-  UNVERIFIED. [HISTORY §131](docs/history/121-150.md#131)
+  (no bundle identifier); its status is read live, never stored.
+  Register/unregister on a packaged build is UNVERIFIED.
+  [§131](docs/history/121-150.md#131)
 
 ## Open issues
 
 Genuinely open only, checked against every CI run on record (187, to
-2026-10-08) in [HISTORY §192](docs/history/181-210.md#192).
+2026-10-08) in [§192](docs/history/181-210.md#192).
 
-- **Item 63 — a locked-file retry storm against production slskd**
-  (300+ retries of one row in ~18 min), cause unknown. Three
-  follow-up runs ruled out locked-row presence, a zero-locked
-  baseline and heavy load. One lead: a single `500` on
-  `/api/v0/transfers/downloads/batches` with the storm's error text.
-  Backoff plus a terminal `unavailable` after 8 attempts bounds the
-  rate whatever the cause. [HISTORY §63](docs/history/047-071.md#63)
-- **Item 70 — a stress-test hang at production scale (~3,100
-  files)**, cause unknown: 3/3 at scale, after sync/scan/match
-  settle, on Duplicates' Compute Fingerprints; 0/2 isolated (one at
-  1,500 files). A `faulthandler` watchdog never fired in ~38 stuck
-  minutes, which points at whole-process GIL starvation. Separate
-  from item 105's pytest stall. Lead (UNVERIFIED): until S22 the
-  Dashboard's 2 s poll and the 20 s history poll each read all ~32
-  MB of fingerprint text, and the Dashboard rebuilt every row each
-  tick; S22 cut those to 0.24 ms, 1.8 ms and 0.2 ms. S41's stress
-  run tests it. [HISTORY §70](docs/history/047-071.md#70),
-  [§165](docs/history/151-180.md#165), [§166](docs/history/151-180.md#166)
-- **Item 125 — a "not responding" quit hang**, reported once (close
-  to tray, then quit from the tray), unreproduced. Candidate,
-  confirmed in isolation: a per-window `QThreadPool`'s destructor
-  waits for in-flight runnables. `cleanup_before_quit` logs the
-  pool's active threads and its own elapsed time; next attempt: quit
-  while a scan, fingerprint or search worker is provably running.
-  [HISTORY §125](docs/history/121-150.md#125)
-- **Two test failures, not yet diagnosed.** Diagnose any recurrence;
-  never reach for `pytest-rerunfailures`.
-  - `test_search_download_best_passes_the_already_fetched_results`,
-    once on CI (`37599402903`): the status label was still empty. It
-    waits on the fake's call list, then reads a label the finish
-    handler writes — §128's race shape, UNVERIFIED until reproduced.
-  - `test_a_cell_widget_paints_the_rows_own_background`, Cocoa only
-    since S37 (`[light]`, sometimes `[dark]`): a one-unit colour
-    difference; passes offscreen. An external 5K main display is the
-    suspect (UNVERIFIED).
-- **The real DB still holds three nested library locations**
-  (`Music`⊂`X9 Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`), double-indexing
-  ~3,450 files. The merge needs the X9 Pro mounted: Kris runs
-  Settings → Library → Fix…, keeping `Music` (rehearsed on a copy: 43
-  matches kept, 0 lost). [HISTORY §172](docs/history/151-180.md#172)
+- **Item 63, a locked-file retry storm** against production slskd
+  (300+ retries of one row in ~18 min), cause unknown; locked rows, a
+  zero-locked baseline and heavy load are ruled out. Lead: one `500`
+  on `/api/v0/transfers/downloads/batches` with the storm's error
+  text. The backoff bounds it. [§63](docs/history/047-071.md#63)
+- **Item 70, a stress-test hang at production scale (~3,100
+  files)**, cause unknown: 3/3 at scale after sync/scan/match, on
+  Duplicates' Compute Fingerprints; 0/2 isolated; `faulthandler`
+  silent (GIL starvation?). Not item 105's pytest stall.
+  Lead (UNVERIFIED): until S22 the 2 s Dashboard and 20 s history
+  polls read all ~32 MB of fingerprints and the Dashboard rebuilt
+  every row each tick; S41's stress run tests it.
+  [§70](docs/history/047-071.md#70), [§165](docs/history/151-180.md#165),
+  [§166](docs/history/151-180.md#166)
+- **Item 125, a "not responding" quit hang**, once (close to tray,
+  quit from the tray), unreproduced. Candidate: the thread pool's
+  destructor (above). Next try: quit while a scan, fingerprint or
+  search worker is running. [§125](docs/history/121-150.md#125)
+- **Two undiagnosed test failures** (never `pytest-rerunfailures`):
+  `test_search_download_best_passes_the_already_fetched_results`, once
+  on CI (`37599402903`), likely the fake-call race above
+  (UNVERIFIED); `test_a_cell_widget_paints_the_rows_own_background`,
+  Cocoa only since S37, a one-unit colour difference, passes
+  offscreen (the external 5K display is suspected, UNVERIFIED).
+- **The real DB still holds three nested locations** (`Music`⊂`X9
+  Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
+  With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
+  keeping `Music` (rehearsed: 43 matches kept, 0 lost).
+  [§172](docs/history/151-180.md#172)
 
 ## Roadmap
 
 Forward-looking only; everything shipped is in `docs/history/`.
 
-- **Round 11, ending in the v0.1.0 release: S39–S42 left** (release
-  engineering, the update check, acceptance, publishing). Session
-  map: `docs/rounds/round-11/SESSION-PLAN.md`; task text: `BRIEF.md`;
-  findings: `AUDIT.md`. Every document: `docs/README.md`.
-- **Two functions above radon C stand between the round and its exit
-  criterion:** `dashboard_page._decide_next_step` (D, 21) and
+- **Round 11 ends in the v0.1.0 release; S39–S42 are left.** Plan:
+  `docs/rounds/round-11/SESSION-PLAN.md` (with `BRIEF.md`,
+  `AUDIT.md`); every document: `docs/README.md`.
+- **Two functions above radon C block the round's exit criterion:**
+  `dashboard_page._decide_next_step` (D, 21) and
   `sharing_service._insert_slskd_share_directory` (D, 26), measured
-  2026-10-08 with `uvx radon cc -n D -s src/seeker`. No row owns
-  them yet.
+  2026-10-08 (`uvx radon cc -n D -s src/seeker`). No row owns them.
 - **Windows and Linux packaging: written, never run on real
   hardware**; no Linux installer format is scoped
   ([docs/packaging.md](docs/packaging.md)).
-- **SoundCloud as a second source: deferred, not started.** An API
-  app needs a paid Artist Pro subscription and a confidential
-  `client_secret` even for a native app, which a distributed `.dmg`
-  with no secret and no proxy cannot hold. If picked up:
-  bring-your-own credentials in Settings, a source toggle on the
-  Dashboard. No code or schema exists.
+- **SoundCloud: deferred.** Its API needs a paid Artist Pro account
+  and a confidential `client_secret`, which a `.dmg` cannot hold. If
+  picked up: bring-your-own credentials, a Dashboard source toggle.
 
 ## Working agreements
 
 Hard-won, all five stay.
 
-1. **Two-tier docs.** This file holds only present-tense standing facts
-   short enough to read in full before starting; `docs/history/`
-   holds the full investigation narrative a future debugging session
-   needs. When closing an item: a condensed note here (over ~8 lines
-   belongs in HISTORY only, linked), and — only if genuine
-   investigation happened — a matching HISTORY entry. Move, never
-   delete: a "done" item's detail must land in HISTORY before it
-   leaves this file. A new entry appends to the last
-   `docs/history/` file with `<a name="N"></a>` directly above its
-   `### N — title`, plus one line in `docs/history/README.md`; link
-   entries as `docs/history/<file>#N`, never by title slug.
-   [HISTORY §137](docs/history/121-150.md#137)
-2. **Checking whether a test failure is "pre-existing": always `git
-   stash -u`, never a bare `git stash`.** A bare stash doesn't stash
-   untracked files, so it can't see a defect living in one (e.g. a
-   gitignored `_build_info_generated.py` from a real local build).
-3. **The pre-existing-failure count is a tracked number, not a label.**
-   Report the actual `pytest` summary line and name every failing test,
-   every time — never a paraphrase like "green with N pre-existing
-   failures." A count that changes between rounds is a regression to
-   diagnose, never a new baseline to quietly adopt.
-4. **A comment asserting platform or framework behavior must cite a
-   real observation or say UNVERIFIED plainly.** This codebase has been
-   burned twice by an unmarked confident claim turning out false (an
-   invalid `:last-child` QSS selector that silently poisoned a whole
-   rule; a macOS tray-click routing claim a real user's report
-   disproved).
-5. **Any `continue`/`skip` inside a sweep test must be justified in a
-   comment that names what it excludes and why that exclusion can't
-   hide the bug the test exists for.** A skip condition derived from
-   the same state a bug corrupts is not a guard; it's a blindfold.
+1. **Two-tier docs.** This file holds present-tense standing facts
+   short enough to read in full; `docs/history/` holds the
+   investigations. Closing an item: a condensed note here (anything
+   over ~8 lines goes to HISTORY only, linked) and, if real
+   investigation happened, a HISTORY entry. Move, never delete: the
+   detail lands in HISTORY before it leaves here. A new entry appends
+   to the last `docs/history/` file with `<a name="N"></a>` above its
+   `### N — title`, plus a line in `docs/history/README.md`; link it
+   as `docs/history/<file>#N`. [§137](docs/history/121-150.md#137)
+2. **Is a failure pre-existing? `git stash -u`, never a bare `git
+   stash`**, which leaves untracked files (a gitignored
+   `_build_info_generated.py`, say) in place.
+3. **The failure count is a tracked number.** Quote the `pytest`
+   summary line and name every failing test, every time. A changed
+   count is a regression to diagnose, never a new baseline.
+4. **A comment asserting platform or framework behaviour cites an
+   observation or says UNVERIFIED.** Unmarked confident claims have
+   burned this codebase twice (the `:last-child` selector; a macOS
+   tray-click claim a user's report disproved).
+5. **A `continue` or skip in a sweep test names what it excludes and
+   why that cannot hide the bug the test exists for.** A skip derived
+   from the state a bug corrupts is a blindfold, not a guard.
