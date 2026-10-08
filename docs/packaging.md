@@ -1,0 +1,132 @@
+# Building Seeker
+
+`seeker-ui` packages into a self-contained desktop app with
+[PyInstaller](https://pyinstaller.org/): no Python or `uv` needed on the
+machine that runs it. Docker is **not** bundled, and is not meant to
+be. slskd still runs in a separate Docker install, which the onboarding
+wizard detects and starts.
+
+| Platform | Status |
+|---|---|
+| macOS | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. |
+| Windows | **Written, never verified on real hardware.** `seeker.spec` is cross-platform and `packaging/seeker.iss` is a complete Inno Setup script, but neither has run on a Windows machine. |
+| Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
+
+Treat the Windows and Linux rows as unverified until someone runs the
+build on those platforms.
+
+## The app
+
+```
+uv sync --group dev                     # pulls in PyInstaller and dmgbuild
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+```
+
+Output lands in `dist/`: a one-folder build (`dist/Seeker/`) on every
+platform, plus `dist/Seeker.app` on macOS.
+
+- **Bundled resources:** `docker-compose.yml` (the template the wizard
+  copies before starting slskd), `packaging/icons/` and
+  `packaging/fonts/` (Barlow Semi Condensed, with its OFL licence).
+  A frozen build finds them through `sys._MEIPASS`; `sys.frozen` gates
+  every such lookup, and nothing else about a frozen run differs from
+  `uv run seeker-ui`.
+- **One folder, not one file, on purpose.** librosa's numba JIT cache
+  persists across runs only in a one-folder build: about 1 s warm
+  against 18–21 s on every launch of a one-file build, which
+  re-extracts to a fresh temporary directory each time.
+  [HISTORY §30](history/025-031.md#30)
+- **Runtime dependencies only.** A built app contains no pytest, mypy
+  or ruff files (checked in the bundle, not assumed).
+- **Build identity.** `packaging/build_dmg.py` writes the gitignored
+  `src/seeker/_build_info_generated.py` (the git SHA, `git describe`
+  and the build time), which About and Help show. The tracked
+  `_build_info.py` only imports it, falling back to `"dev"`; never
+  write the tracked file.
+  [HISTORY §83](history/072-107.md#83)
+
+## The macOS `.dmg`
+
+```
+uv run python packaging/build_dmg.py
+```
+
+This runs the PyInstaller build, then
+[`dmgbuild`](https://dmgbuild.readthedocs.io/) with
+`packaging/dmg_settings.py`, producing `dist/Seeker.dmg`. The two steps
+can also run on their own:
+
+```
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+uv run dmgbuild -s packaging/dmg_settings.py -Dapp=dist/Seeker.app Seeker dist/Seeker.dmg
+```
+
+The volume holds the app, an `/Applications` link and
+`Read Me First.txt`, in a sized window with no toolbar, sidebar or
+status bar. The custom icon (`packaging/icons/seeker_icon.icns`) is set
+on both the `.app` (`seeker.spec`'s `BUNDLE()`) and the volume
+(`dmg_settings.py`), and was confirmed to render on both.
+[HISTORY §31](history/025-031.md#31), [§42](history/032-046.md#42)
+
+### What was verified
+
+On 2026-08-29 the real `.app` was launched with `open dist/Seeker.app`
+against a real configuration, then a throwaway frozen build with the
+same `Analysis` was driven under `QT_QPA_PLATFORM=offscreen` (Qt's
+headless platform, so no Screen Recording or Accessibility permission
+was needed). The wizard opened at its Spotify step, Connect built a
+real PKCE authorization URL, Sync, Scan and Match completed against the
+real library, "Set up later" finished onboarding without Docker, and
+Settings showed the real configuration.
+
+The `.dmg` was then mounted and the app copied to `/Applications`,
+a different path from the build directory, and launched from there:
+17 of 17 checks passed, including the one a `.dmg` puts at risk, that
+`docker_setup.compose_file_path()` finds the bundled
+`docker-compose.yml` relative to wherever the running binary lives.
+The copies were removed afterwards.
+[HISTORY §30](history/025-031.md#30), [§31](history/025-031.md#31)
+
+### Signing and Gatekeeper
+
+The build is **ad-hoc signed, not notarized**, which is not the same
+as unsigned. PyInstaller ad-hoc-signs the executable and the bundle by
+default: `codesign -dvvv` shows `Signature=adhoc`, and
+`codesign --verify --deep --strict` passes. Gatekeeper still rejects
+it (`spctl --assess`), as it does every non-notarized build, so the
+first launch on any other Mac needs Control-click → Open, then Open
+again. `Read Me First.txt` on the volume says so.
+[HISTORY §36](history/032-046.md#36)
+
+Notarization needs a paid Apple Developer account. The hooks for it
+are marked in `packaging/seeker.spec`: `codesign_identity=` and
+`entitlements_file=` on `EXE(...)`, followed by `xcrun notarytool` and
+`stapler` on the built `.app`.
+
+## The Windows installer
+
+**Written, never verified on real hardware.**
+
+`packaging/seeker.iss` is an [Inno Setup](https://jrsoftware.org/isinfo.php)
+script wrapping the same one-folder build: a `Setup.exe` with Start
+Menu and Desktop shortcuts, an uninstall entry, and the icon
+`packaging/icons/seeker_icon.ico`. Inno Setup is a separate Windows
+tool that `uv` cannot install; put its compiler, `ISCC.exe`, on `PATH`
+(or pass `--iscc`).
+
+```
+uv run python packaging/build_windows_installer.py
+```
+
+or the two steps by hand:
+
+```
+uv run pyinstaller --noconfirm --clean packaging/seeker.spec
+ISCC.exe packaging\seeker.iss
+```
+
+Either produces `dist/SeekerSetup.exe`. The script's `AppId` is a
+fixed GUID that lets Inno Setup recognise an upgrade as the same app;
+never regenerate it. No code signing is configured, so SmartScreen will
+likely warn about the installer.
+[HISTORY §36](history/032-046.md#36)

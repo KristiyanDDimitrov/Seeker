@@ -151,8 +151,7 @@ coll = COLLECT(
 # On Windows/Linux the COLLECT output above (an "Seeker/" folder with
 # Seeker.exe / Seeker inside) is the actual deliverable — there's no
 # equivalent BUNDLE() step on those platforms. Unverified on real
-# Windows/Linux machines — see README's "Building a standalone app"
-# section.
+# Windows/Linux machines — see docs/packaging.md.
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,

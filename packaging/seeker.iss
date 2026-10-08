@@ -14,7 +14,7 @@
 ;
 ; WRITTEN BUT NOT VERIFIED ON A REAL WINDOWS MACHINE — no such
 ; environment exists in this project's development setup (see
-; HISTORY §36 and README's packaging section). Treat this
+; HISTORY §36 and docs/packaging.md). Treat this
 ; the same way seeker.spec's own Windows/Linux rows were already
 ; documented: cross-platform by construction, not proven by a real run.
 ;

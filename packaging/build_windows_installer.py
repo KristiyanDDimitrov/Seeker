@@ -19,7 +19,7 @@ this project's existing precedent of a real external prerequisite
 
 WRITTEN BUT NOT VERIFIED ON A REAL WINDOWS MACHINE — no such
 environment exists in this project's development setup. See
-HISTORY §36 and README's packaging section.
+HISTORY §36 and docs/packaging.md.
 """
 
 import argparse

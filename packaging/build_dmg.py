@@ -1,13 +1,12 @@
 """Convenience wrapper chaining packaging/seeker.spec's PyInstaller
 build with packaging/dmg_settings.py's dmgbuild step — the two
-commands documented in README's "Building a standalone app" section,
-run back to back:
+commands documented in docs/packaging.md, run back to back:
 
     uv run python packaging/build_dmg.py
 
 Produces dist/Seeker.app (via PyInstaller) and dist/Seeker.dmg (via
 dmgbuild) in one call. Either step can still be run on its own with
-the commands in the README — this is a convenience, not a
+the commands in docs/packaging.md — this is a convenience, not a
 replacement.
 """
 
