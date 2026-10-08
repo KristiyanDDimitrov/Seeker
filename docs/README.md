@@ -4,8 +4,18 @@ Every document in the repository, then where to start.
 
 ## Living documents
 
-- [`../README.md`](../README.md) — what Seeker does, install, every CLI
-  command and GUI screen.
+- [`../README.md`](../README.md) — what Seeker is, features, install,
+  quick start, a short architecture summary.
+- [`architecture.md`](architecture.md) — the layers and the rule
+  between them, the tech stack, the one canonical module map, the data
+  flow, the download state machine, the threading model, where data
+  lives.
+- [`cli.md`](cli.md) — every `seeker` command, configuring without the
+  wizard, running slskd by hand, and which screen covers each command.
+- [`packaging.md`](packaging.md) — building the `.app`, the `.dmg` and
+  the Windows installer; signing; what was verified (Windows and Linux:
+  written, never verified on real hardware).
+- [`../SECURITY.md`](../SECURITY.md) — reporting a vulnerability.
 - [`../CLAUDE.md`](../CLAUDE.md) — architecture, conventions, standing
   facts and gotchas, open issues. Present tense only.
 - [`HANDOFF.md`](HANDOFF.md) — the baton between Claude Code sessions:
@@ -25,6 +35,15 @@ Every document in the repository, then where to start.
   one invented dataset: `uv run python tools/screenshots.py` (into the
   gitignored `tools/.screens/`; `--page NAME` and `--theme` narrow it).
   Review a UI change against these before committing it.
+
+## Shipped with the app
+
+- [`../packaging/Read Me First.txt`](../packaging/Read%20Me%20First.txt)
+  — on the `.dmg` volume: opening an app that isn't notarized.
+- [`../packaging/fonts/OFL.txt`](../packaging/fonts/OFL.txt) — the
+  licence of the bundled Barlow Semi Condensed.
+- [`../packaging/icons/lucide/SOURCE.txt`](../packaging/icons/lucide/SOURCE.txt)
+  — where the vendored Lucide icons come from.
 
 ## Round archive (`rounds/`)
 
@@ -62,10 +81,11 @@ is its budgeted row-by-row map.
 - **A Claude Code session:** `HANDOFF.md` → your row in the current
   round's `SESSION-PLAN.md` → that brief's §0 plus your row's § →
   `../CLAUDE.md`. Nothing else until the task needs it.
-- **A new contributor:** `../README.md` → `../CLAUDE.md` (Architecture,
-  Conventions) → the current round's `AUDIT.md` for known weak spots →
-  `history/` entries as `CLAUDE.md` links them.
-- **A portfolio reviewer:** `../README.md` → `../CLAUDE.md` → the
-  round-11 `AUDIT.md` (an honest whole-repo audit) → any one round's
-  brief next to its `history/` entries, to see diagnosis turn into
-  a fix.
+- **A new contributor:** `../README.md` → `architecture.md` →
+  `../CLAUDE.md` (Conventions, Standing facts) → the current round's
+  `AUDIT.md` for known weak spots → `history/` entries as `CLAUDE.md`
+  links them.
+- **A portfolio reviewer:** `../README.md` → `architecture.md` →
+  `../CLAUDE.md` → the round-11 `AUDIT.md` (an honest whole-repo
+  audit) → any one round's brief next to its `history/` entries, to
+  see diagnosis turn into a fix.
