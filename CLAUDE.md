@@ -41,114 +41,18 @@ the build: `ui/`, `cli.py` and the entry points never import
 `seeker.database`; `cli.py` never imports `seeker.ui`; only `ui/` and
 `main_ui.py` import Qt; `models/` imports only `models/`.
 
-## Current layout
+## Layout
 
-Regenerated against the real tree (S14); `audio/`, `files/` and the
-slskd moves into `soulseek/` folded in (S21).
+The one module map is [docs/architecture.md → Module
+map](docs/architecture.md#module-map), regenerated from the tree. In
+short, under `src/seeker/`:
 
-```
-src/seeker/
-├── database/                 # connection.py, schema.py,
-│                              #   repositories/{playlist,track,track_match,
-│                              #   local_file,library_location,download_request,
-│                              #   duplicate_cleanup,soulseek_review_candidate,
-│                              #   rejection,location_merge}
-│                              #   _repository.py
-├── spotify/                   # auth*.py, token*.py, callback_server.py,
-│                              #   client.py (raw Web API calls), sync_service.py
-├── soulseek/                   # client.py (slskd REST wrapper), quality.py
-│                              #   (candidate filtering/selection),
-│                              #   download_service.py (destinations,
-│                              #   download_playlist, download_manual),
-│                              #   poller.py (poll_downloads: status,
-│                              #   cascade, locked retry), placement.py
-│                              #   (locate/move/index a finished
-│                              #   download), review_service.py
-│                              #   (candidate + upgrade decisions),
-│                              #   docker_setup.py (Docker/slskd detection,
-│                              #   bring-up, health checks),
-│                              #   sharing_service.py (slskd shares)
-├── library/                     # scanner.py, matcher.py, service.py,
-│                              #   metadata_service.py (writes Spotify tags/art),
-│                              #   duplicate_service.py (fingerprint clustering)
-├── audio/                     # analysis.py (librosa BPM + Krumhansl-
-│                              #   Schmuckler key), fingerprint.py (project-
-│                              #   owned libchromaprint ctypes binding),
-│                              #   formats.py (AUDIO_EXTENSIONS,
-│                              #   DOWNLOADABLE_EXTENSIONS), quality.py (a
-│                              #   local file's quality), tags.py
-│                              #   (write_text_tags/embed_album_art/
-│                              #   write_analysis_tags — ID3/FLAC/MP4
-│                              #   dispatch, used by metadata_service.py)
-├── ui/                          # seeker-ui (PySide6)
-│   ├── main_window.py           #   shell only: sidebar nav, menus, timers,
-│   │                          #   Qt event overrides (1,283 lines)
-│   ├── pages/                    #   PageContext (context.py) is the seam —
-│   │                          #   dashboard_page.py, tagging_panel.py,
-│   │                          #   search_page.py, downloads_page.py,
-│   │                          #   review_page.py, duplicates_page.py,
-│   │                          #   sharing_page.py, history_page.py,
-│   │                          #   static_pages.py (Help + Support)
-│   ├── dialogs.py                 #   About, Destination, RenamePreview,
-│   │                          #   BulkReplaceUpgrades, BulkResolveDuplicates
-│   ├── tray.py                     #   tray icon, menu, notifications
-│   ├── window_lifecycle.py         #   geometry, hide-to-tray, Dock icon,
-│   │                          #   quit (WindowLifecycleController)
-│   └── settings_window.py, wizard.py, theme.py, notice.py, flow_layout.py,
-│       busy_actions.py, workers.py (run_worker()), help_text.py,
-│       widgets.py (ThemeToggleButton, CloseButton),
-│       elided_text.py (one-line cells, full text on hover,
-│       BADGE_ROLE pills, BAND_ROLE group bands),
-│       empty_state.py (a table's empty state),
-│       disclosure.py (a remembered show/hide section),
-│       error_hooks.py (uncaught exceptions + Qt messages -> log),
-│       download_eta.py, upload_eta.py,
-│       library_location_picker.py, plain_text.py,
-│       slskd_status.py (shared outage state + Start slskd),
-│       status_lamp.py (each track/download state's LED: colour,
-│       lit or ring, its icon, StatusLamp, one as a widget, and
-│       StatusChip, a lamp and a sentence in a pill),
-│       step_indicator.py (the wizard's steps as a row of lamps),
-│       icons.py (Lucide nav icons drawn in palette tokens),
-│       wordmark.py (the sidebar wordmark and its brows)
-├── models/                     # dataclasses — playlist, track, track_match,
-│                              #   local_file, library_location, soulseek_file,
-│                              #   download_request, soulseek_review_candidate,
-│                              #   active_download, track_status, upgrade_review,
-│                              #   history_event, data_locations,
-│                              #   duplicate_cleanup, needs_review_match,
-│                              #   location_removal, location_merge,
-│                              #   nested_location, spotify_sync,
-│                              #   download_result, library_result,
-│                              #   tag_result, fingerprint_result
-├── matching.py                 # shared fuzzy artist/title matching — used by
-│                              #   BOTH library/matcher.py and soulseek/
-│                              #   quality.py, neither has its own copy
-├── destination_resolution.py    # resolve_playlist_destination — shared by
-│                              #   metadata_service.py and download_service.py
-├── error_text.py                # describe_error() — readable text for any
-│                              #   task error, shared by UI workers and CLI
-├── errors.py                    # SeekerError root + errors >1 module raises
-├── formatting.py                # format_file_size/format_timestamp/… —
-│                              #   pure, shared by cli.py and ui/
-├── dashboard_service.py, history_service.py
-├── config_store.py              # SeekerConfig — the UI-editable JSON store;
-│                              #   .env/config.py is the fallback when unset
-├── download_dedup.py, update_check.py, album_art_cache.py
-├── files/                     # atomic.py — write_text_atomic() (mode
-│                              #   kept) and write_text_locked() (0600) for
-│                              #   credential files and Sharing's
-│                              #   slskd.yml/Compose edits;
-│                              #   rewrite_via_copy() for tag saves;
-│                              #   deletion.py,
-│                              #   placement.py (resolve_collision),
-│                              #   sanitize.py, naming.py
-│                              #   (build_track_filename)
-├── config.py                     # .env-sourced fallback values
-├── application.py, cli.py
-├── main.py                       # `seeker` entry point
-└── main_ui.py                     # `seeker-ui` entry point
-```
+- `database/` (connection, schema, `repositories/`) · `models/` (dataclasses)
+- `spotify/` · `soulseek/` (slskd client, download, poll, placement,
+  review, Docker, sharing) · `library/` (scan, match, tags, duplicates)
+- `audio/` · `files/` · shared modules (`matching.py`, `errors.py`, …)
+- `ui/` — `main_window.py` (the shell), `pages/` (one per page),
+  dialogs, theme, widgets · `application.py`, `cli.py`, `main*.py`
 
 ## Conventions
 
