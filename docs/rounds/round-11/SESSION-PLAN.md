@@ -79,7 +79,7 @@ explicit yes.
 | ☑ S36 | README images and final visual QA (HISTORY §190) | §36 | ~80 K | None |
 | **Phase L — Docs** | | | | |
 | ☑ S37 | README and developer docs (HISTORY §191) | §37 | ~110 K | After §37.1 |
-| ☐ S38 | CLAUDE.md refresh | §38 | ~90 K | None |
+| ☑ S38 | CLAUDE.md refresh (HISTORY §192) | §38 | ~90 K | None |
 | **Phase M — Release** | | | | |
 | ☐ S39 | Release engineering | §39 | ~110 K | After §39.2 |
 | ☐ S40 | Automatic update check | §40 | ~90 K | None |
