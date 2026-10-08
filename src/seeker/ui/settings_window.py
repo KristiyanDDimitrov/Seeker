@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QLocale, QThreadPool
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -72,8 +72,11 @@ _AUTO_MATCH_WARNING_BELOW = 80.0
 
 
 def _threshold_spin_box() -> QDoubleSpinBox:
-    """A match score, 0-100: the fuzzy scores' own range."""
+    """A match score, 0-100: the fuzzy scores' own range. Written with
+    a point, as every score the app prints is (`f"{score:.1f}"`), not
+    in the system locale's decimal comma."""
     spin_box = QDoubleSpinBox()
+    spin_box.setLocale(QLocale.c())
     spin_box.setRange(0.0, 100.0)
     spin_box.setDecimals(1)
     spin_box.setSingleStep(1.0)

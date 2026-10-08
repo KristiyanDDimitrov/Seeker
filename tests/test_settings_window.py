@@ -2,7 +2,7 @@ import threading
 from dataclasses import replace
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QLocale, Qt
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -1296,6 +1296,33 @@ def test_thresholds_tab_prefilled_with_hardcoded_defaults_when_unset(
 
     assert window.auto_match_threshold_field.value() == 90.0
     assert window.needs_review_threshold_field.value() == 70.0
+
+
+@pytest.fixture
+def comma_locale():
+    previous = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.German, QLocale.Country.Germany))
+    yield
+    QLocale.setDefault(previous)
+
+
+def test_thresholds_read_with_a_point_as_review_prints_scores(
+        qtbot, tmp_path, monkeypatch, comma_locale,
+):
+    # Review and Search print a score as "72.6" whatever the locale; a
+    # threshold the user compares it with reads the same way, and
+    # takes a typed point.
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    field = window.auto_match_threshold_field
+    assert field.text() == "90.0"
+    field.lineEdit().selectAll()
+    qtbot.keyClicks(field.lineEdit(), "72.5")
+    field.interpretText()
+    assert field.value() == 72.5
 
 
 def test_thresholds_tab_prefilled_with_existing_config_value(
