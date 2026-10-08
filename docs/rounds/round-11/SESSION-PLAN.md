@@ -24,6 +24,10 @@ codebase worse than it found it.
 
 ## Session map
 
+**Round 11 stopped after S38 (2026-10-08).** Its remaining rows (→)
+carry to `docs/rounds/round-12/SESSION-PLAN.md`, which keeps their
+text here and in `BRIEF.md` by reference.
+
 `§` points into `BRIEF.md`. **[ASK]** rows start only after Kris's
 explicit yes.
 
@@ -81,13 +85,13 @@ explicit yes.
 | ☑ S37 | README and developer docs (HISTORY §191) | §37 | ~110 K | After §37.1 |
 | ☑ S38 | CLAUDE.md refresh (HISTORY §192) | §38 | ~90 K | None |
 | **Phase M — Release** | | | | |
-| ☐ S39 | Release engineering | §39 | ~110 K | After §39.2 |
-| ☐ S40 | Automatic update check | §40 | ~90 K | None |
-| ☐ S41 | Release-candidate acceptance (**Kris and Code**) | §41 | ~70 K | — |
-| ☐ S42 | Publish v0.1.0 (Kris approves the outward actions); close the round | §42 | ~60 K | — |
+| → S39 | Release engineering (carried to round 12 S16) | §39 | ~110 K | After §39.2 |
+| → S40 | Automatic update check (carried to round 12 S14) | §40 | ~90 K | None |
+| → S41 | Release-candidate acceptance (**Kris and Code**; carried to round 12 S17) | §41 | ~70 K | — |
+| → S42 | Publish v0.1.0 (Kris approves the outward actions); close the round (carried to round 12 S18) | §42 | ~60 K | — |
 | **Optional — [ASK]** | | | | |
-| ☐ X1 | Clean up leftover slskd downloads | §X1 | ~100 K | — |
-| ☐ X2 | Retry and cancel on the Downloads page | §X2 | ~110 K | — |
+| → X1 | Clean up leftover slskd downloads (approved; round 12 S13) | §X1 | ~100 K | — |
+| → X2 | Retry and cancel on the Downloads page (approved; round 12 S12) | §X2 | ~110 K | — |
 
 ### Why this order
 
@@ -224,12 +228,13 @@ the `tc-tracker` handoff format.
       2026-10-07: Booth with the violet accent (A′), no BPM or key on
       the Dashboard.** Recorded in `docs/design/visual-direction.md`
       → "Decision".
-- [ ] **S39 §39.3** — the bundle identifier. Recommended:
+- [x] **S39 §39.3** — the bundle identifier. **Answered 2026-10-08:
+      `io.github.kristiyanddimitrov.seeker`** (round 12 S16). Recommended:
       `io.github.kristiyanddimitrov.seeker`. It must change before the
       first release.
 - [ ] **S42** — the exact `git tag` and `gh release create` commands and
       release notes, before they run.
-- [ ] **X1, X2** — optional features: leftover-download cleanup;
+- [x] **X1, X2** — **Answered 2026-10-08: both in** (round 12 S13, S12). Optional features: leftover-download cleanup;
       retry and cancel on Downloads.
 
 **Real-desktop checks Code cannot do,** consolidated into S41's

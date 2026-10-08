@@ -5,6 +5,7 @@ first. Overwrite it last.** Keep it under about 120 lines: a baton, not a
 log. The log is `docs/history/` (index: `docs/history/README.md`). The
 nine fields below follow the contract in
 `docs/rounds/round-11/SESSION-PLAN.md`. Every document: `docs/README.md`.
+**The current round is 12:** `docs/rounds/round-12/SESSION-PLAN.md`.
 
 ---
 
@@ -21,24 +22,31 @@ nine fields below follow the contract in
 
 ## 2. Where we are
 
-S1–S38 ticked. **Next: S39, release engineering** (BRIEF §39). Its
-§39.3 waits on Kris's bundle identifier (§8).
+**Round 11 stopped after S38. Round 12 was planned on 2026-10-08**
+from Kris's hand walkthrough (`docs/rounds/round-12/BRIEF.md`,
+`SESSION-PLAN.md`). Round 11's S39–S42, X1 and X2 carry to it as round
+12's S16, S14, S17, S18, S13 and S12. **Next: round 12 S1.** Its first
+commit is the uncommitted planning docs: the round-12 folder, the
+round-11 plan's carried notes, the `docs/README.md` index line,
+CLAUDE.md's roadmap, and this file.
 
 ## 3. Session report (S38)
 
-Evidence in HISTORY §192.
-- `8b1761b` (§38.1): CLAUDE.md's 108-line layout → a link to
-  `docs/architecture.md#module-map` plus a seven-line summary.
-- `f60adc3` (§38.2): open issues checked against all 187 CI runs;
-  the focus-search and close-event flakes closed; a Search flake and
-  the Cocoa theme failure added; two Testing facts.
-- `01350db` (§38.3): the roadmap forward-looking only.
-- `71d6449` (§38.4): the round's rules (no history in `src/`, test
-  first, real-data safety, the portable Compose template).
-- `300368e` (§38.5): 53 KB → 29,794 bytes; the UI rules moved word for
-  word to `src/seeker/ui/CLAUDE.md`; `wheel-exclude` for it.
+Five commits, `8b1761b`…`300368e`; evidence in HISTORY §192. Planning
+round 12 made no commits.
 
 ## 4. Key context
+
+- **Planning found (2026-10-08):** dark-mode selected text is
+  near-black because the field QSS rule (`theme.py:1281`) sets a
+  selection background but no `selection-color`. "Follow system"
+  resolves the palette before clearing the scheme override
+  (`theme.py:1013` before `:1025`). Review rebuilds every row on each
+  2 s tick, which kills tooltips. The Dashboard's Status column sorts
+  by label text. The "daily" retry never existed: the locked loop
+  gives up after about 3 hours. `urllib3 2.7.0` has three
+  advisories (fixed in 2.8.0), and CI has no dependency audit. All of
+  it is in BRIEF §1–§10.
 
 - **CLAUDE.md is two files now.** The root (29.8 KB) and
   `src/seeker/ui/CLAUDE.md` (12 KB: workers, window lifecycle,
@@ -95,21 +103,21 @@ None: S38 is committed whole.
 
 ## 8. Waiting on Kris
 
-**Approval gates:** the S39 bundle identifier
-(`io.github.kristiyanddimitrov.seeker`; `seeker.spec` still says
-`com.seeker.app`), the S42 publishing commands, X1 and X2 (optional).
+**Answered 2026-10-08** (round 12 BRIEF §0.11): the daily sweep is
+opt-in, default off; the status order is closest to done first; the
+bundle ID is `io.github.kristiyanddimitrov.seeker`; X1 and X2 are in.
 
-**A cheap veto:** the brows over "ee" in the wordmark (`9ff777b`).
+**Open gates:** reading `AUDIT.md` after S6, the S5 wording veto, the
+first live Cancel (S12) and cleanup (S13), and the S18 publishing
+commands. **A cheap veto:** the brows over "ee" in the wordmark
+(`9ff777b`).
 
-**Live checks (S41 checklist):** unchanged from S37: view
-`docs/architecture.md` on github.com and confirm the Mermaid state
-diagram renders; everything else as carried in
+**Live checks:** round 12 BRIEF §17, plus the carried list in
 `git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
 three nested locations (re-read 2026-10-08).
 
 ## 9. Open questions
 
-- Should the two radon-D functions get their own row before S41?
 - Unchanged from S36: see `git show 1b415a4:docs/HANDOFF.md` §9 (the
   Downloads first-poll header, Settings' Reachable lamp, Duplicates'
   Quality at 960, and the carried items).
