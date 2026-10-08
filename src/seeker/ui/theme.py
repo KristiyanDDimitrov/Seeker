@@ -312,6 +312,16 @@ def combo_chevron_path(palette: Palette) -> Path:
     return _palette_icon("combo_chevron", palette)
 
 
+def spin_up_arrow_path(palette: Palette) -> Path:
+    """A spin box's up chevron, drawn in `palette.TEXT_MUTED`."""
+    return _palette_icon("spin_up", palette)
+
+
+def spin_down_arrow_path(palette: Palette) -> Path:
+    """A spin box's down chevron, drawn in `palette.TEXT_MUTED`."""
+    return _palette_icon("spin_down", palette)
+
+
 def check_tick_path(palette: Palette) -> Path:
     """A checked checkbox's tick, drawn in `palette.ON_ACCENT` over the
     ACCENT fill, so the state does not rest on colour alone."""
@@ -1321,6 +1331,53 @@ QComboBox::drop-down {{
 
 QComboBox::down-arrow {{
     image: url("{combo_chevron_path(palette).as_posix()}");
+    width: 10px;
+    height: 6px;
+}}
+
+/* Fusion's own spin arrows are a 2 px speck on Cocoa (HISTORY §194):
+the buttons get the combo's chevron, a pair stacked in the right-hand
+padding. */
+QSpinBox, QDoubleSpinBox {{
+    padding-right: 24px;
+}}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: padding;
+    width: 20px;
+    border: none;
+    background-color: transparent;
+}}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-position: top right;
+    border-top-right-radius: {RADIUS_CONTROL - 1}px;
+}}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: {RADIUS_CONTROL - 1}px;
+}}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background-color: {palette.BG_SURFACE_2};
+}}
+
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {{
+    background-color: {palette.BORDER};
+}}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url("{spin_up_arrow_path(palette).as_posix()}");
+    width: 10px;
+    height: 6px;
+}}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url("{spin_down_arrow_path(palette).as_posix()}");
     width: 10px;
     height: 6px;
 }}

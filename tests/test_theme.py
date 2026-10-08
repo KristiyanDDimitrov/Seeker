@@ -1,4 +1,5 @@
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QLabel,
     QLineEdit,
@@ -26,6 +28,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QStyle,
     QStyleOptionButton,
+    QStyleOptionSpinBox,
     QStyleOptionTab,
     QTabBar,
     QTableWidget,
@@ -567,6 +570,47 @@ def test_a_combo_box_shows_a_chevron_in_its_drop_down(
     assert best >= 3.0
 
 
+@pytest.mark.parametrize(
+        "button",
+        [QStyle.SubControl.SC_SpinBoxUp, QStyle.SubControl.SC_SpinBoxDown],
+        ids=["up", "down"],
+)
+def test_a_spin_box_shows_an_arrow_on_each_button(
+        qtbot, applied_palette, button,
+):
+    # Settings → Matching's thresholds: each button's arrow drew as a
+    # 2x1 px speck on Cocoa (5x3 offscreen), invisible in dark mode.
+    # Inside each button's own rect, the pixels reaching the 3:1
+    # UI-component floor against the button's ground (its most common
+    # pixel) span a mark near the combo chevron's 10 px width.
+    spin = QDoubleSpinBox()
+    spin.setValue(90.0)
+    form = QWidget()
+    layout = QVBoxLayout(form)
+    layout.addWidget(spin)
+    layout.addStretch()
+    at = _grab_card(qtbot, form)
+
+    option = QStyleOptionSpinBox()
+    spin.initStyleOption(option)
+    rect = spin.style().subControlRect(
+            QStyle.ComplexControl.CC_SpinBox, option, button, spin,
+    )
+    assert rect.width() > 4 and rect.height() > 2
+    pixels = [
+        (x, "#{:02X}{:02X}{:02X}".format(*at(spin, QPoint(x, y))))
+        for x in range(rect.left() + 1, rect.right())
+        for y in range(rect.top() + 1, rect.bottom())
+    ]
+    ground = Counter(colour for _, colour in pixels).most_common(1)[0][0]
+    marked = [
+        x for x, colour in pixels
+        if theme.contrast_ratio(colour, ground) >= 3.0
+    ]
+    assert marked, "no pixel reaches 3:1 on the button"
+    assert max(marked) - min(marked) + 1 >= 7
+
+
 def test_a_checked_checkbox_shows_a_tick(qtbot, applied_palette):
     # A checked box was a solid ACCENT square: the state rested on
     # colour alone. Inside the indicator, some pixel must stand off
@@ -718,6 +762,39 @@ def test_the_combo_chevron_is_drawn_in_the_palettes_muted_text(palette):
     assert path.is_file()
     assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
     assert path.as_posix() in theme.build_stylesheet(palette)
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+@pytest.mark.parametrize(
+        "arrow_path",
+        [theme.spin_up_arrow_path, theme.spin_down_arrow_path],
+        ids=["up", "down"],
+)
+def test_the_spin_arrows_are_drawn_in_the_palettes_muted_text(
+        palette, arrow_path,
+):
+    path = arrow_path(palette)
+    assert path.is_file()
+    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
+    assert path.as_posix() in theme.build_stylesheet(palette)
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
+@pytest.mark.parametrize("ground", ["BG_SURFACE_2", "BORDER"])
+def test_a_spin_arrow_reads_on_its_hover_and_pressed_grounds(palette, ground):
+    # The button's hover and pressed fills; the resting one is the
+    # field, which the grab test above covers.
+    assert theme.contrast_ratio(
+            palette.TEXT_MUTED, getattr(palette, ground),
+    ) >= 3.0
 
 
 def test_cell_widget_names_each_button_for_its_row(qtbot):
