@@ -35,7 +35,7 @@ after Kris's explicit yes.
 | ☑ S1 | Commit the round-12 docs; theme colours: dark selection, light amber | §1 | ~100 K | After §1.1 (selection) |
 | ☑ S2 | "Follow system" applies at once; spin-box arrows in dark | §2 | ~90 K | After §2.1 |
 | ☑ S3 | Review's tooltips survive the 2 s poll (render only on change) | §3 | ~110 K | After the Review page; the other pages' audit can follow |
-| ☐ S4 | Status columns sort by progress (Dashboard, Downloads, others) | §4 | ~90 K | After the Dashboard |
+| ☑ S4 | Status columns sort by progress (Dashboard, Downloads, others) | §4 | ~90 K | After the Dashboard |
 | ☐ S5 | Support page: new email; "Support the artists" | §5 | ~70 K | None |
 | **Phase B — Security and code health** | | | | |
 | ☐ S6 | Security re-audit, read-only → `AUDIT.md` | §6 | ~130 K | After the threat model and items 1–6 |

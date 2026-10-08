@@ -11,46 +11,46 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S3 close-out (HISTORY §195). Tree clean apart from
+- **HEAD:** the S4 close-out (HISTORY §196). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 2044 passed, 1 skipped`.
+- **Local (Cocoa):** pytest `2 failed, 2051 passed, 1 skipped`.
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
-  `[dark]` and `[light]`, the same as S1, S2 and S37/S38 (S9 owns it).
+  `[dark]` and `[light]`, the same as S1–S3 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `0032235`'s run `37831789311` green: `2018 passed, 29
-  skipped`, coverage 94.54 % (floor 92 %).
+- **CI:** the close-out's run, recorded in the follow-up handoff commit.
 
 ## 2. Where we are
 
-**Round 12 S3 is done.** **Next: S4**, status columns sort by
-progress, closest to done first (BRIEF §4; `tdd`). Its sort keys must
-survive S3's render-on-change. On Review nothing sorts by status, but
-the Dashboard updates sort keys in place on a progress-only change
-(`_update_progress_in_place`), and Downloads still rebuilds every
-tick.
+**Round 12 S4 is done.** **Next: S5**, the Support page: the new
+contact email and "Support the artists" (BRIEF §5; `frontend-design`).
+Kris may veto the wording after seeing it on screen, so the HISTORY
+entry needs the before and after screenshots.
 
-## 3. Session report (S3)
+## 3. Session report (S4)
 
-- `e9604d0`, §3.1–§3.2: each Review table keeps the rows it was last
-  built from and skips an equal tick. Three new tests; the checkbox
-  test now forces a real rebuild.
-- The close-out: HISTORY §195, one fact in `src/seeker/ui/CLAUDE.md`,
+- `b5cabe2`, §4.1–§4.2: the Dashboard's Status sorts by
+  `track_status.PROGRESS_RANK`. Two new tests (the order; a
+  progress-only poll keeps it).
+- `b5bc773`, §4.3: Downloads by `download_request.PROGRESS_RANK`;
+  a test that every `DownloadStatus` has a rank.
+- `e59f95a`, §4.4: the sweep's three more columns (Sharing's State
+  and Shared, Library's Tags; Cover art made explicit).
+- The close-out: HISTORY §196, one fact in `src/seeker/ui/CLAUDE.md`,
   the plan tick, this file.
-- CI: run `37831789311`, green.
 
 ## 4. Key context
 
-- **A shown tooltip dies with its widget, but survives its item being
-  replaced** (observed on Cocoa with real `QHelpEvent`s, HISTORY
-  §195). Only a rebuilt widget that carries a tooltip loses it.
-  Downloads' 2 s rebuild is therefore harmless to its tooltips.
-- **Waiting on a render that changes nothing:** S3's tests change
-  another table in the same tick and wait on that, since an equal
-  render leaves nothing to observe.
-- **Sharing's locations table** rebuilds its per-row "Add to my
-  SoulSeek share" button (with a tooltip) on every 20 s backend poll
-  after the first visit. Same bug class, not fixed: it is outside
-  S3's "2-second pollers" scope. **For S15**, or a row of its own.
+- **A status column sorts closest to done first** through a named
+  rank, never its label (the new ui/CLAUDE.md fact). A new state
+  needs a rank, or the lookup raises `KeyError` (Dashboard,
+  Downloads); `test_every_status_has_a_progress_rank` catches a new
+  `DownloadStatus`.
+- **The Dashboard's in-place progress path leaves status keys alone,**
+  correctly: it runs only when every row's state is unchanged.
+- **Sharing's locations table** still rebuilds its per-row "Add to my
+  SoulSeek share" button (with a tooltip) on every 20 s backend poll.
+  Not fixed (S3's scope was 2 s pollers). **For S15**, or a row of
+  its own.
 - **For S16: `uv build --wheel` packages whatever is in
   `src/seeker/`,** including a gitignored `_build_info_generated.py`
   left by a local DMG build. `wheel-exclude` already drops
@@ -60,10 +60,9 @@ tick.
   `test_search_download_best_passes_the_already_fetched_results`,
   `37599402903`; the Cocoa-only theme failure, whose first untried
   check is a rerun with only the built-in display).
-- **Planning found, for later rows:** the Dashboard's Status column
-  sorts by label text (S4). The "daily" retry never existed (S10).
-  `urllib3 2.7.0` has three advisories, fixed in 2.8.0, and CI has no
-  dependency audit (S7).
+- **Planning found, for later rows:** the "daily" retry never existed
+  (S10). `urllib3 2.7.0` has three advisories, fixed in 2.8.0, and CI
+  has no dependency audit (S7).
 - **Carried:** set `set -o pipefail` before `pytest … | tail && git
   commit`. Never touch slskd or real data. The full suite takes
   ~4.5 min, so run it in the background, and never stash `src/` while
@@ -72,16 +71,19 @@ tick.
 
 ## 5. Decisions made
 
-- **Review's key is the rows alone, without the palette** the brief's
-  suggested shape included. Nothing in a Review row bakes in a colour
-  (QSS buttons, `SECONDARY_ROLE` read at paint time). If a row ever
-  gains a lamp, the palette joins the key (the ui/CLAUDE.md rule).
-- **The key is the full row data, not only the ids:** a changed score
-  or filename for the same track must show.
-- **Skills:** `tdd` was used. `focused-fix` was not loaded: the brief
-  had already pinned the cause to one method in one module, and the
-  probe settled the audit. The seams were named by the brief
-  (`poll_review_items`, the row's button), so no question was asked.
+- **Downloads: locked above shortlisted.** The brief grouped them as
+  "Retrying (locked, shortlisted)"; distinct ranks keep the two labels
+  ("Retrying", "Queued as backup") from interleaving. Superseded is
+  ranked last so that every member has one.
+- **The sweep went past the brief's two columns** to Sharing's State
+  and Shared and Library's Tags/Cover art: the brief said "any other
+  status column … treat each one the same way". Page-derived labels
+  carry their rank with them (no model enum to sit beside).
+- **Ties keep no explicit second key:** within a rank, rows are equal
+  and Qt's sort keeps them as they come.
+- **No screenshots:** nothing is sorted until a header is clicked.
+- **Skills:** `tdd` was used (each change failed first for the stated
+  reason). No skill contradicted the brief.
 
 ## 6. Blockers
 
@@ -89,17 +91,16 @@ None.
 
 ## 7. Files in progress
 
-None: S3 is committed whole.
+None: S4 is committed whole.
 
 ## 8. Waiting on Kris
 
-**A live check (S3):** on Review, hover Confirm or Replace and keep
-the pointer still for 5 s or more; the tooltip should stay.
+**A live check (S4):** on the Dashboard and on Downloads, click the
+Status header; the finished rows should come first.
 
-**From S1/S2, still a cheap veto:** the new colours (images in
-HISTORY §193), the spin arrows and `90.0` (HISTORY §194). A live
-check: in Dark, choose Light, then Follow system; the app should turn
-dark at once.
+**From S1–S3, still open:** the new colours (HISTORY §193), the spin
+arrows and `90.0` (§194), "Follow system" applying at once, and a
+Review tooltip staying up for 5 s under a still pointer (§195).
 
 **Open gates:** reading `AUDIT.md` after S6, the S5 wording veto, the
 first live Cancel (S12) and cleanup (S13), and the S18 publishing

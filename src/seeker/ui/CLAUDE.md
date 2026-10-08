@@ -219,3 +219,8 @@ investigation.
   whichever column `ColumnLayout.actions` names, for every table, so
   a new Actions column needs no per-page handling at all.
   [HISTORY §122](../../../docs/history/121-150.md#122)
+- **A status column sorts closest to done first,** never by label: a
+  `SortKeyItem` over a named rank beside the states
+  (`track_status.PROGRESS_RANK`, `download_request.PROGRESS_RANK`), or
+  carried with a label the page derives (Sharing's `_UploadState.rank`).
+  [HISTORY §196](../../../docs/history/181-210.md#196)
