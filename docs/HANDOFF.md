@@ -16,7 +16,8 @@ nine fields below follow the contract in
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
   `[dark]` and `[light]`, the same as S37 (see §4).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** pending: the close-out push (see the commit after it).
+- **CI:** `329ebe8`'s run `37759819002` green: `1985 passed, 29
+  skipped`, coverage 94.53 % (floor 92 %).
 
 ## 2. Where we are
 
