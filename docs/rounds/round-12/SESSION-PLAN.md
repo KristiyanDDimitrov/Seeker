@@ -38,7 +38,7 @@ after Kris's explicit yes.
 | ☑ S4 | Status columns sort by progress (Dashboard, Downloads, others) | §4 | ~90 K | After the Dashboard |
 | ☑ S5 | Support page: new email; "Support the artists" | §5 | ~70 K | None |
 | **Phase B — Security and code health** | | | | |
-| ☐ S6 | Security re-audit, read-only → `AUDIT.md` | §6 | ~130 K | After the threat model and items 1–6 |
+| ☑ S6 | Security re-audit, read-only → `AUDIT.md` | §6 | ~130 K | After the threat model and items 1–6 |
 | ☐ S7 | **[ASK]** Security fixes I: `urllib3`, a dependency audit in CI, packaging | §7 | ~90 K | After §7.2 |
 | ☐ S8 | **[ASK]** Security fixes II: application findings | §8 | ~130 K | After the critical and high findings |
 | ☐ S9 | Code health: the two radon-D functions; the two undiagnosed tests | §9 | ~120 K | After §9.2 |

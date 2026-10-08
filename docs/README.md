@@ -79,7 +79,7 @@ is its budgeted row-by-row map.
 - [`round-12`](rounds/round-12/BRIEF.md) — Kris's pre-release
   walkthrough, a security re-audit, the daily sweep, Retry/Cancel and
   leftover cleanup, then the v0.1.0 release;
-  [session plan](rounds/round-12/SESSION-PLAN.md).
+  [session plan](rounds/round-12/SESSION-PLAN.md), [security audit](rounds/round-12/AUDIT.md).
 
 ## Reading orders
 
