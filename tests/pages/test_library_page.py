@@ -1043,6 +1043,23 @@ def test_library_lists_the_playlists_tracks_in_the_library_with_tag_state(
     }
 
 
+def test_library_states_sort_closest_to_done_first(qtbot):
+    window = _window_on_library(qtbot, _tag_state_application())
+    table = window._library_page.track_table
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+
+    def column_after_sorting(column: int) -> list[str]:
+        table.sortItems(column, Qt.SortOrder.AscendingOrder)
+        return [table.item(row, column).text() for row in range(4)]
+
+    assert column_after_sorting(1) == [
+        "Tagged", "Tagged", "Not tagged", "Not tagged",
+    ]
+    assert column_after_sorting(2) == [
+        "Embedded", "Missing", "Missing", "Not checked",
+    ]
+
+
 def test_library_track_selection_is_what_tag_selected_tags(qtbot):
     application = _tag_state_application()
     window = _window_on_library(qtbot, application)

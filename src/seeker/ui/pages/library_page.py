@@ -46,7 +46,7 @@ from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.pages.tagging_panel import TaggingPanel, TaggingPanelHost
 from seeker.ui.plain_text import PlainLabel
-from seeker.ui.table_sort import preserving_sort_order
+from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
 _TRACK_COLUMNS = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2))
@@ -64,23 +64,28 @@ class LibraryHost:
     refresh_track_table: Callable[[], None]
 
 
-def _tags_cell(status: TrackStatus) -> tuple[status_lamp.Lamp, str, str]:
+# A cell's lamp, label and quieter note, then its sort key: closest
+# to done first.
+_LampCell = tuple[status_lamp.Lamp, str, str, int]
+
+
+def _tags_cell(status: TrackStatus) -> _LampCell:
     if status.tagged_at is None:
-        return status_lamp.CUE_WAITING, "Not tagged", ""
-    return status_lamp.PLAY, "Tagged", ""
+        return status_lamp.CUE_WAITING, "Not tagged", "", 1
+    return status_lamp.PLAY, "Tagged", "", 0
 
 
-def _art_cell(status: TrackStatus) -> tuple[status_lamp.Lamp, str, str]:
+def _art_cell(status: TrackStatus) -> _LampCell:
     """The file's cover art, and what it takes to fix it: Fix missing
     cover art needs Spotify's image URL, which Get cover art from
     Spotify fetches."""
     if status.has_art is None:
-        return status_lamp.STANDBY, "Not checked", "Scan to check"
+        return status_lamp.STANDBY, "Not checked", "Scan to check", 2
     if status.has_art:
-        return status_lamp.PLAY, "Embedded", ""
+        return status_lamp.PLAY, "Embedded", "", 0
     if status.track.album_art_url is None:
-        return status_lamp.CUE_WAITING, "Missing", "Get from Spotify"
-    return status_lamp.CUE_WAITING, "Missing", ""
+        return status_lamp.CUE_WAITING, "Missing", "Get from Spotify", 1
+    return status_lamp.CUE_WAITING, "Missing", "", 1
 
 
 class LibraryPage(QWidget):
@@ -400,9 +405,10 @@ def _lamp_item(
         lamp: status_lamp.Lamp,
         text: str,
         secondary: str,
+        sort_key: int,
         palette: theme.Palette,
 ) -> QTableWidgetItem:
-    item = QTableWidgetItem(text)
+    item = SortKeyItem(text, sort_key)
     item.setIcon(status_lamp.lamp_icon(lamp, palette))
     if secondary:
         item.setData(SECONDARY_ROLE, secondary)

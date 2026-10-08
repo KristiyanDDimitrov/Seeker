@@ -52,11 +52,17 @@ _UPLOAD_ENDINGS = {
 }
 
 
+# A state Seeker has no word for sorts below every one it knows.
+_UNKNOWN_UPLOAD_RANK = 4
+
+
 @dataclass(frozen=True)
 class _UploadState:
     label: str
     lamp: status_lamp.Lamp | None = None
     note: str | None = None
+    # How the State column sorts: closest to done first.
+    rank: int = _UNKNOWN_UPLOAD_RANK
 
 
 def _upload_state(raw: str | None) -> _UploadState:
@@ -68,23 +74,29 @@ def _upload_state(raw: str | None) -> _UploadState:
     flags = {flag.strip() for flag in raw.split(",")}
     if "Completed" in flags:
         if "Succeeded" in flags:
-            return _UploadState("Sent", status_lamp.PLAY)
+            return _UploadState("Sent", status_lamp.PLAY, rank=0)
         ending = next(
             (_UPLOAD_ENDINGS[flag] for flag in flags if flag in _UPLOAD_ENDINGS),
             None,
         )
-        return _UploadState("Failed", status_lamp.FAULT, ending)
+        return _UploadState("Failed", status_lamp.FAULT, ending, rank=3)
     if "InProgress" in flags:
-        return _UploadState("Uploading", status_lamp.CUE)
+        return _UploadState("Uploading", status_lamp.CUE, rank=1)
     if flags & {"Queued", "Requested", "Initializing"}:
-        return _UploadState("Queued", status_lamp.CUE)
+        return _UploadState("Queued", status_lamp.CUE, rank=2)
     return _UploadState(raw)
 
 
 def _lamp_item(
-        label: str, lamp: status_lamp.Lamp | None, note: str | None = None,
+        label: str,
+        lamp: status_lamp.Lamp | None,
+        note: str | None = None,
+        sort_key: int | None = None,
 ) -> QTableWidgetItem:
-    item = QTableWidgetItem(label)
+    item = (
+        QTableWidgetItem(label) if sort_key is None
+        else SortKeyItem(label, sort_key)
+    )
     if lamp is not None:
         item.setIcon(status_lamp.lamp_icon(lamp, theme.active_palette()))
     if note is not None:
@@ -372,8 +384,11 @@ class SharingPage(QWidget):
                 table.setItem(row, 0, QTableWidgetItem(state.location.name))
                 table.setItem(
                     row, 1,
-                    _lamp_item("Shared", status_lamp.PLAY) if state.shared
-                    else _lamp_item("Not shared", status_lamp.STANDBY),
+                    _lamp_item("Shared", status_lamp.PLAY, sort_key=0)
+                    if state.shared
+                    else _lamp_item(
+                        "Not shared", status_lamp.STANDBY, sort_key=1,
+                    ),
                 )
                 table.setItem(
                     row, 2,
@@ -469,7 +484,9 @@ class SharingPage(QWidget):
                     row, 1, QTableWidgetItem(upload.filename or "")
                 )
                 state = _upload_state(upload.state)
-                state_item = _lamp_item(state.label, state.lamp, state.note)
+                state_item = _lamp_item(
+                    state.label, state.lamp, state.note, state.rank,
+                )
                 if upload.state:
                     state_item.setToolTip(plain_tooltip(
                         f"slskd: {upload.state}"

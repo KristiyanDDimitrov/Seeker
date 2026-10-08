@@ -7,6 +7,7 @@ structural sweep tests and Duplicates' own tests use them too.
 """
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 
 from fakes import (
@@ -417,3 +418,54 @@ def test_an_upload_row_shows_its_state_with_a_lamp(qtbot):
     assert item.data(SECONDARY_ROLE) == "Timed out"
     assert not item.icon().isNull()
     assert "Completed, TimedOut" in item.toolTip()
+
+
+def test_upload_state_sorts_closest_to_done_first(qtbot):
+    from seeker.soulseek.sharing_service import UploadStatus
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._sharing_page
+    # Listed alphabetically by label, the order a text sort would keep.
+    page._render_sharing_uploads_table([
+        UploadStatus(
+            username="peer", filename=state, state=state,
+            bytes_transferred=None, size=None,
+        )
+        for state in (
+            "Completed, Errored", "Queued, Remotely", "Completed, Succeeded",
+            "InProgress",
+        )
+    ])
+    table = page.sharing_uploads_table
+
+    table.sortItems(2, Qt.SortOrder.AscendingOrder)
+
+    assert [table.item(row, 2).text() for row in range(4)] == [
+        "Sent", "Uploading", "Queued", "Failed",
+    ]
+
+
+def test_shared_sorts_above_not_shared(qtbot):
+    from seeker.soulseek.sharing_service import LocationShareState
+
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._sharing_page
+    page._render_sharing_locations_table([
+        LocationShareState(
+            location=make_location(1, "Music", "/Volumes/Drive/Music"),
+            shared=True, share=None,
+        ),
+        LocationShareState(
+            location=make_location(2, "Other", "/Volumes/Drive/Other"),
+            shared=False, share=None,
+        ),
+    ])
+    table = page.sharing_locations_table
+
+    table.sortItems(1, Qt.SortOrder.AscendingOrder)
+
+    assert [table.item(row, 1).text() for row in range(2)] == [
+        "Shared", "Not shared",
+    ]
