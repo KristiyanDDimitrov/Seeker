@@ -11,13 +11,14 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S4 close-out (HISTORY §196). Tree clean apart from
+- **HEAD:** the S4 handoff, after the close-out (HISTORY §196). Tree clean apart from
   the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2 failed, 2051 passed, 1 skipped`.
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
   `[dark]` and `[light]`, the same as S1–S3 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** the close-out's run, recorded in the follow-up handoff commit.
+- **CI:** `b23ca8a`'s run `37835097871` green: `2025 passed, 29
+  skipped`, coverage 94.56 % (floor 92 %).
 
 ## 2. Where we are
 
