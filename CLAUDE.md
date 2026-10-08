@@ -150,6 +150,29 @@ short, under `src/seeker/`:
   Applied across S12/S13's comment triage — see [HISTORY
   §119](docs/history/108-120.md#119) for the largest single example, the whole
   Phase 6 extraction story moved out of the page modules' docstrings.
+- **No history in `src/`.** A comment, docstring or `--help` text
+  never says "round N", "item N", "Roadmap item N" or "§x.y"; where
+  an investigation matters it points at `HISTORY §N`. `grep -rcE
+  "Roadmap item|round [0-9]+|§[0-9]" src/` finds only those pointers.
+  [HISTORY §170](docs/history/151-180.md#170)
+- **A fix starts with a failing test** that fails on unmodified
+  `HEAD` for the stated reason. One commit per change; a refactor
+  commit changes no behaviour, a behaviour commit refactors nothing.
+  [HISTORY §138](docs/history/121-150.md#138)
+- **The user's real data is read-only to a session.** Never write
+  the real database, `config.json`, the Spotify token, music files
+  or slskd state; `sqlite3 -readonly "$HOME/Library/Application
+  Support/Seeker/seeker.db"` is fine. A data migration is rehearsed
+  on a scratchpad copy with before and after counts, and runs for
+  real only when Kris next launches the app. Never start, stop or
+  recreate the slskd container (`docker inspect` and `docker compose
+  … config` are fine). [HISTORY §172](docs/history/151-180.md#172)
+- **The tracked Compose template is portable.** No `/Volumes/` or
+  `/Users/` literal; every bind source is a required variable
+  (`${SLSKD_SHARE_PATH:?set by Seeker}`), the share mount read-only,
+  the image pinned (`slskd/slskd:X.Y.Z`).
+  `tests/test_compose_template.py` fails the build.
+  [HISTORY §140](docs/history/121-150.md#140)
 - **Services use `logging`, never `print` — `print` is the CLI's own
   output channel, nothing else's.** Each service module gets its own
   `logger = logging.getLogger(__name__)`; handlers are configured in
@@ -254,6 +277,7 @@ uv run seeker         # run the CLI
 uv run seeker-ui       # run the GUI (PySide6) — onboarding wizard on first launch
 uv run pytest         # run tests
 uv run mypy --strict src/  # type check — must stay clean
+uv run ruff check src tests tools  # lint — CI's exact gate, 0 findings
 uv run python tools/screenshots.py  # every screen, both themes -> tools/.screens/
 ```
 
