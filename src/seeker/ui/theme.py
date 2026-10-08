@@ -1022,12 +1022,10 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
     app.setStyle(_SeekerStyle(QStyleFactory.create("Fusion")))
 
     register_display_font()
-    palette = resolve_palette(mode)
-    _active.palette = palette
 
-    app.setPalette(build_qpalette(palette))
-    app.setStyleSheet(build_stylesheet(palette))
-
+    # Before resolving: `"system"` reads `colorScheme()`, which reports
+    # the last explicit choice until `Unknown` clears it (observed on
+    # Cocoa, HISTORY §194).
     style_hints = QGuiApplication.styleHints()
     if mode == "light":
         style_hints.setColorScheme(Qt.ColorScheme.Light)
@@ -1035,6 +1033,12 @@ def apply_theme(app: QApplication, mode: ThemeMode = "system") -> Palette:
         style_hints.setColorScheme(Qt.ColorScheme.Dark)
     else:
         style_hints.setColorScheme(Qt.ColorScheme.Unknown)
+
+    palette = resolve_palette(mode)
+    _active.palette = palette
+
+    app.setPalette(build_qpalette(palette))
+    app.setStyleSheet(build_stylesheet(palette))
 
     return palette
 

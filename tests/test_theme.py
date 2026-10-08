@@ -902,3 +902,51 @@ def test_title_roles_are_set_in_the_display_face(
     assert info.family() == theme.DISPLAY_FAMILY
     assert info.pixelSize() == size
     assert label.font().weight() == weight
+
+
+# --- "Follow system" follows the system --------------------------------------
+
+
+class _CocoaStyleHints:
+    """The style hints as Cocoa behaves (observed, HISTORY §194): an
+    explicit `setColorScheme()` is what `colorScheme()` reports until
+    `Unknown` clears it, and then the OS's own scheme shows again.
+    Offscreen never moves `colorScheme()` at all, so a test of the
+    ordering needs this stand-in."""
+
+    def __init__(self, platform: Qt.ColorScheme) -> None:
+        self.platform = platform
+        self.override = Qt.ColorScheme.Unknown
+
+    def colorScheme(self) -> Qt.ColorScheme:
+        if self.override != Qt.ColorScheme.Unknown:
+            return self.override
+        return self.platform
+
+    def setColorScheme(self, scheme: Qt.ColorScheme) -> None:
+        self.override = scheme
+
+
+@pytest.mark.parametrize(
+        ("platform", "explicit", "expected"),
+        [
+            (Qt.ColorScheme.Light, "dark", "LIGHT"),
+            (Qt.ColorScheme.Dark, "light", "DARK"),
+        ],
+)
+def test_follow_system_applies_the_systems_palette_at_once(
+        qapp, monkeypatch, platform, explicit, expected,
+):
+    hints = _CocoaStyleHints(platform)
+    monkeypatch.setattr(
+            theme.QGuiApplication, "styleHints", staticmethod(lambda: hints),
+    )
+    try:
+        theme.apply_theme(qapp, explicit)
+        applied = theme.apply_theme(qapp, "system")
+        assert applied is getattr(theme, expected)
+        assert theme.active_palette() is applied
+        assert applied.BG_SURFACE in qapp.styleSheet()
+    finally:
+        monkeypatch.undo()
+        theme.apply_theme(qapp)
