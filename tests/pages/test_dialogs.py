@@ -126,7 +126,9 @@ def test_about_dialog_shows_author_license_and_notices(qtbot):
     combined = "\n".join(labels_html)
 
     assert "Kristiyan Dimitrov" in combined
-    assert "mailto:kristiyanddimitrov@gmail.com" in combined
+    assert "mailto:kristiyanddimitrov@proton.me" in combined
+    assert ">kristiyanddimitrov@proton.me</a>" in combined
+    assert "gmail.com" not in combined
     assert "github.com/KristiyanDDimitrov/Seeker" in combined
     assert "MIT License" in combined
     assert "Third-party notices" in combined

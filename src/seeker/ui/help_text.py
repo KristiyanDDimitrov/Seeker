@@ -1430,8 +1430,8 @@ ABOUT_DIALOG_BODY = (
 
 ABOUT_DIALOG_AUTHOR_LINE = (
     "<p>Made by Kristiyan Dimitrov — "
-    "<a href=\"mailto:kristiyanddimitrov@gmail.com\">"
-    "kristiyanddimitrov@gmail.com</a> · "
+    "<a href=\"mailto:kristiyanddimitrov@proton.me\">"
+    "kristiyanddimitrov@proton.me</a> · "
     "<a href=\"https://github.com/KristiyanDDimitrov/Seeker\">"
     "GitHub</a></p>"
 )
