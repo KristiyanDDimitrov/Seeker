@@ -17,7 +17,8 @@ nine fields below follow the contract in
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
   `[dark]` and `[light]`, the same as S37/S38 (see §4).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** see §3's last line.
+- **CI:** `f1627f7`'s run `37824275052` green: `2000 passed, 29
+  skipped`, coverage 94.53 % (floor 92 %).
 
 ## 2. Where we are
 
@@ -35,7 +36,7 @@ once, and the spin-box arrows in dark mode (BRIEF §2). S2 edits
   `docs/history/images/193-*.png`), the UI rule, the plan tick, this
   file.
 - Evidence (probe tables, failing then passing tests, screens read):
-  HISTORY §193. CI: run id below.
+  HISTORY §193. CI: run `37824275052`, green.
 
 ## 4. Key context
 
