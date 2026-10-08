@@ -76,7 +76,7 @@ explicit yes.
 | ☑ S34 | Refresh: Dashboard and Library (part 1, the Dashboard: HISTORY §184; part 2, Library: HISTORY §185) | §34 | ~130 K | After the Dashboard |
 | ☑ S35a | Refresh: Search, Downloads, History, Duplicates (HISTORY §186) | §35 | ~120 K | Per page |
 | ☑ S35b | Refresh: Review, Sharing, Help, Support, Settings (part 1, Review and Sharing: HISTORY §187; part 2, Help and Support: HISTORY §188; part 3, Settings: HISTORY §189) | §35 | ~120 K | Per page |
-| ☐ S36 | README images and final visual QA | §36 | ~80 K | None |
+| ☑ S36 | README images and final visual QA (HISTORY §190) | §36 | ~80 K | None |
 | **Phase L — Docs** | | | | |
 | ☐ S37 | README and developer docs | §37 | ~110 K | After §37.1 |
 | ☐ S38 | CLAUDE.md refresh | §38 | ~90 K | None |

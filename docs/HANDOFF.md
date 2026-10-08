@@ -10,72 +10,57 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S35b part 3 close-out (HISTORY §189). Tree clean apart
-  from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2012 passed, 1 skipped`, no failures.
+- **HEAD:** the S36 close-out (HISTORY §190). Tree clean apart from
+  the untracked `Claude outputs/`.
+- **Local (Cocoa):** pytest `2013 passed, 1 skipped`, no failures.
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `b94dd66`'s run `37689872775` green.
+- **CI:** the close-out's run is recorded in the commit after it.
 
 ## 2. Where we are
 
-S1–S35b ticked (S35b closed: Review, Sharing; Help, Support;
-Settings). **Next: S36, README images and final visual QA** (BRIEF
-§36): `tools/screenshots.py --readme`, commit the images, then sweep
-every page in both themes at both sizes. Small nits are fixed in
-the row; larger ones become new rows here.
+S1–S36 ticked. Phase K (the visual refresh) is closed. **Next: S37,
+README and developer docs** (BRIEF §37). S36 already regenerated
+the README's images and added Library and the wizard to its table.
+S37 owns the rest of the README.
 
-## 3. Session report (S35b part 3)
+## 3. Session report (S36)
 
-Evidence in HISTORY §189.
-- `7e22087`: refactor — `locations_notice` → `library_notice`, at the
-  Library tab's top.
-- `ff72275`: Settings outcomes on the tab's notice (test first: five
-  tests timed out on `HEAD`); `connections_notice`;
-  `SpotifyAuthorizationWait.start(on_error=)`.
-- `1f1b6f9`: refactor — `tagging_panel._action_group` →
-  `theme.section_card`.
-- `28eb690`: Settings restyle — titled cards, reading column on
-  General/Connections/Matching, SoulSeek split from its credentials,
-  short subtitle, combos at a name's width.
-- `e711c7c`: the floating "About Seeker" button removed (Help menu
-  keeps About).
+Evidence in HISTORY §190.
+- `12f315d`: a secondary text that cannot show three letters before
+  its "…" takes no width (test first: `assert 37 == 0` on `HEAD`).
+  Downloads' Unavailable row at 960 showed a lone "…".
+- `cb48b02`: copy. "Choose folder…", "Container path", and "…" in
+  seven UI strings that still used "...".
+- `c2bc630`: `--readme` renders the wizard's first step
+  (`README_WIZARD`). Six README images regenerated, and the README's
+  table now shows Library and the wizard.
 
 ## 4. Key context
 
-- **A `QFormLayout` row `addRow("", widget)` makes a visible empty
-  label that still takes a line**, even when `widget` is hidden. Put
-  progress text beside its button (`theme.action_row(button, label)`)
-  and span an optional widget with `addRow(widget)`.
-- **`test_a_cell_widget_paints_the_rows_own_background` passed on
-  Cocoa this session** (failed in part 2 on two commits). Consistent
-  with part 2's display-profile suspicion, still UNVERIFIED; if it
-  fails again in S36, compare against offscreen before believing it.
-- **A tall grab:** set `SIZES` in `tools/screenshots.py` to
-  `((1280, 1300),)`, render with `--page`/`--theme`, then
-  `git checkout tools/screenshots.py` (no CLI flag exists).
-- **Offscreen spin boxes show "90,0"** (the machine's locale), not a
-  Settings bug.
-- Carried: a lamp bakes the palette in at render (a slow-poll table
-  needs a repaint hook in `on_theme_changed`); `set -o pipefail`
-  before `pytest … | tail && git commit`; never touch slskd or real
-  data; the full suite takes ~4.5 min, run it in the background (and
-  wait on pytest's ` in N.NNs` line, not "passed": ruff prints "All
-  checks passed!"); judge fine detail on a 2× Cocoa grab.
+- **The sweep's method:** `uv run python tools/screenshots.py` (~1
+  min, 76 images in `tools/.screens/`). Reading every image costs
+  ~1.5 K tokens. All dark images plus the light 1280s covered the
+  row; light at 960 only repeated what dark showed.
+- **`_secondary_share` now has a floor:** less room than three
+  characters plus "…" means 0. A test that sets a column narrower
+  than its secondary text's width under the default share now sees 0
+  (one test was adjusted for exactly this; HISTORY §190).
+- **macOS menu items and dialog titles stay in title case**
+  ("Focus Search", "Remove Location", "Quit Anyway"). Everything
+  else in Seeker's own UI is sentence case with a real "…".
+- Carried: offscreen spin boxes read "90,0" (the machine's locale);
+  a lamp bakes the palette in at render (a slow-poll table needs a
+  repaint hook in `on_theme_changed`); `set -o pipefail` before
+  `pytest … | tail && git commit`; never touch slskd or real data;
+  the full suite takes ~4.5 min, so run it in the background.
 
 ## 5. Decisions made
 
-- **A titled section is `theme.section_card`, never a `QGroupBox`**
-  (system-font title). None is left in `src/`. Promoted to CLAUDE.md.
-- **Each Settings tab reports on one notice at its top**
-  (`library_notice`, `connections_notice`, `thresholds_notice`);
-  a status label beside a button carries progress only. A cancelled
-  Spotify authorization stays in the status label: it answers the
-  user's own click, so it is not raised as an error.
-- **About lives only in the Help menu.** It is not a setting.
-- **Save default destination is no longer primary**: it was the only
-  primary save on the page.
-- **"Update SoulSeek credentials" keeps its text** (comments in
-  `application.py` name it); its card is "SoulSeek credentials".
+- **Three small nits were fixed in the row. Larger ones are listed
+  for a row of their own (§9), not done here**, per BRIEF §36.
+- **A secondary text that cannot show a word is not drawn.** The
+  hover still carries it, so nothing is lost; a lone "…" told the
+  reader nothing.
 
 ## 6. Blockers
 
@@ -83,7 +68,7 @@ None.
 
 ## 7. Files in progress
 
-None: S35b is committed whole.
+None: S36 is committed whole.
 
 ## 8. Waiting on Kris
 
@@ -92,33 +77,38 @@ None: S35b is committed whole.
 X1 and X2 (optional).
 
 **A cheap veto:** the brows over "ee" in the wordmark (`9ff777b`).
+The README images now show it to everyone.
 
-**Live checks (S41 checklist):** Settings on a real display, both
-themes (cards, the reading column, a real Re-authorize's progress
-beside its button); Support's links in both themes; a real upload on
-Sharing (does slskd's state read as Queued/Uploading/Sent?); S35a's
-(Downloads lamps, meter and busy bar; the dark Duplicates band),
-S34's (Library's Cover art column, the first scan's time on the X9
-Pro, the Dashboard's lamps and meter, playlist counts) and everything
+**Live checks (S41 checklist):** unchanged from S35b. Settings on a
+real display in both themes; Support's links; a real upload on
+Sharing; S35a's and S34's look on a real display; and everything
 carried in `git show cd3ba1a:docs/HANDOFF.md` §8 (fresh-account
-wizard with Docker, nested-location Fix… — now Settings → Library →
+wizard with Docker, nested-location Fix… under Settings → Library →
 Fix…, the stress test, `qsvg`, Barlow and nav icons in the packaged
 app, keyboard focus and VoiceOver).
 
 ## 9. Open questions
 
-- **Refresh playlists drops the Dashboard's selection** (pre-existing:
-  `_populate_playlists`' `clear()` fires `currentItemChanged(None)`).
-  A test-first fix of its own; not part of §35.
-- Settings' locations table and destinations list leave empty space
-  under a few rows. Cosmetic: S36's sweep can judge them.
-- Carried from S35a/S35b: a Downloads failure reason elides at 960; a
-  Duplicates group's first row is taller; History says "MP3 320kbps"
-  where Search says "MP3, 320 kbps" (Review too: stored
-  `quality_descriptor`); the Dashboard's table does not show a Library
-  selection; `poll_selected_playlist` renders a pre-switch result for
+**Candidate rows from S36's sweep** (HISTORY §190 has the detail):
+- On the first poll, the Downloads header says "Waiting for transfers
+  to start · 0 transferring" while a row shows 66 % and
+  "Calculating…". The aggregate needs two samples. Also, the harness's
+  demo requests have no `id`, so the header never counts them.
+- Settings → Library's Reachable column is a bare Yes/No. It should
+  be a lamp (`PLAY`; `STANDBY` for an unmounted drive), which needs a
+  theme-repaint hook like Sharing's `refresh_lamps`.
+- Duplicates at 960 elides Quality to "MP3, …".
+
+**Carried:**
+- Refresh playlists drops the Dashboard's selection (`clear()` fires
+  `currentItemChanged(None)`). This needs a test-first fix of its own.
+- Settings' locations table leaves empty space under a few rows.
+- History says "MP3 320kbps" where Search says "MP3, 320 kbps"
+  (Review too: the stored `quality_descriptor`). A Duplicates group's
+  first row is taller. The Dashboard's table does not show a Library
+  selection. `poll_selected_playlist` renders a pre-switch result for
   one tick.
-- Carried unchanged: `git show cd3ba1a:docs/HANDOFF.md` §9 and
+- `git show cd3ba1a:docs/HANDOFF.md` §9 and
   `git show 8eee663:docs/HANDOFF.md` §9 (the wizard's empty progress
   row).
 
