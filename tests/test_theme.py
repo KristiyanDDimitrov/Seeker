@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -11,13 +11,16 @@ from PySide6.QtGui import (
     QImage,
     QPainter,
     QPalette,
+    QTextCursor,
 )
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
     QLabel,
+    QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QRadioButton,
@@ -386,7 +389,7 @@ def test_status_colours_read_as_text_and_as_marks(palette, status):
     colour = getattr(palette, status)
     assert theme.contrast_ratio(colour, palette.BG_SURFACE) >= 4.5
     assert theme.contrast_ratio(colour, palette.BG_APP) >= 3.0
-    assert theme.contrast_ratio(colour, palette.ACCENT_SUBTLE) >= 3.0
+    assert theme.contrast_ratio(colour, palette.SELECTION) >= 3.0
 
 
 @pytest.mark.parametrize(
@@ -395,13 +398,17 @@ def test_status_colours_read_as_text_and_as_marks(palette, status):
         ids=["dark", "light"],
 )
 def test_native_highlighted_text_reads_on_the_highlight(palette):
-    # Whatever Qt draws natively with the QPalette (a menu's current
-    # item, a selection no stylesheet rule covers).
+    # Whatever Qt draws natively with the QPalette (a selectable
+    # label, a selection no stylesheet rule covers): the same pair the
+    # stylesheet's selection-* rules use.
     qpalette = theme.build_qpalette(palette)
     assert theme.contrast_ratio(
             qpalette.color(QPalette.ColorRole.HighlightedText).name(),
             qpalette.color(QPalette.ColorRole.Highlight).name(),
     ) >= 4.5
+    assert qpalette.color(QPalette.ColorRole.Highlight).name().upper() == (
+        palette.SELECTION
+    )
 
 
 # --- Backgrounds: only real surfaces paint one (§27.1) ----------------------
@@ -562,6 +569,108 @@ def test_a_checked_checkbox_shows_a_tick(qtbot, applied_palette):
         for pixel in inside
     )
     assert best >= 3.0
+
+
+# --- Selected text reads, on a selection that shows ------------------------
+
+
+def _selectable_label():
+    # A label's text sits at the left of its contents, centred on it.
+    label = QLabel(_SELECTED)
+    label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+    )
+    label.setSelection(0, len(_SELECTED))
+
+    def band():
+        contents = label.contentsRect()
+        half = label.fontMetrics().ascent() // 2
+        return label, QRect(
+                contents.left(), contents.center().y() - half,
+                label.fontMetrics().horizontalAdvance(_SELECTED), 2 * half,
+        )
+
+    return label, band
+
+
+def _selected_line_edit():
+    field = QLineEdit(_SELECTED)
+    field.setCursorPosition(0)
+
+    def band():
+        start = field.cursorRect()
+        field.selectAll()
+        end = field.cursorRect()
+        return field, QRect(start.center(), end.center()).adjusted(
+                0, -start.height() // 4, 0, start.height() // 4,
+        )
+
+    return field, band
+
+
+def _selected_plain_text_edit():
+    field = QPlainTextEdit(_SELECTED)
+
+    def band():
+        cursor = field.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        start = field.cursorRect(cursor)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        end = field.cursorRect(cursor)
+        field.selectAll()
+        return field.viewport(), QRect(start.center(), end.center()).adjusted(
+                0, -start.height() // 4, 0, start.height() // 4,
+        )
+
+    return field, band
+
+
+_SELECTED = "Nova Reyes - Voltage Drop"
+
+
+@pytest.mark.parametrize(
+        "make_widget",
+        [_selected_line_edit, _selected_plain_text_edit, _selectable_label],
+        ids=["line-edit", "plain-text-edit", "label"],
+)
+def test_selected_text_reads_on_a_selection_that_stands_off_the_field(
+        qtbot, applied_palette, make_widget,
+):
+    # The field rule set a selection ground but no selection-color, so
+    # selected text fell back to the palette's HighlightedText: dark
+    # ink, near-black on dark mode's selection, and white on light
+    # mode's pale one. Across the selected text, its own ground is the
+    # commonest pixel; the glyph pixel furthest from it must reach
+    # 4.5:1, and the ground must visibly differ from the field.
+    widget, measure = make_widget()
+    widget.setFixedWidth(320)
+    form = QWidget()
+    layout = QVBoxLayout(form)
+    layout.addWidget(widget)
+    layout.addStretch()
+    card = theme.make_card(form)
+    qtbot.addWidget(card)
+    card.resize(640, 240)
+    card.show()
+    qtbot.waitExposed(card)
+    widget.setFocus()
+    qtbot.waitUntil(widget.hasFocus)
+    painted, rect = measure()
+    image = card.grab().toImage()
+    dpr = image.width() / card.width()
+
+    band = []
+    for x in range(rect.left() + 2, rect.right() - 2):
+        for y in range(rect.top(), rect.bottom()):
+            mapped = painted.mapTo(card, QPoint(x, y))
+            band.append("#{:02X}{:02X}{:02X}".format(*_rgb(
+                    image, QPoint(round(mapped.x() * dpr),
+                                  round(mapped.y() * dpr)),
+            )))
+    ground = max(set(band), key=band.count)
+    best = max(theme.contrast_ratio(pixel, ground) for pixel in band)
+    assert best >= 4.5, ground
+    assert theme.contrast_ratio(ground, applied_palette.BG_SURFACE) >= 1.2
 
 
 @pytest.mark.parametrize(

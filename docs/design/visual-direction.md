@@ -109,6 +109,11 @@ accent tokens change.
 | `ACCENT` | `#9A7DFF` | `#6440E6` |
 | `ACCENT_HOVER` / `_PRESSED` / `_SUBTLE` | `#AA91FF` / `#8A6BF5` / `#262236` | `#5734D6` / `#4A2BBD` / `#E9E4FB` |
 | `ON_ACCENT` | `#120E1F` | `#FFFFFF` |
+| `SELECTION` (added later, HISTORY §193) | `#4A3799` | `#E4DDFB` |
+
+`SELECTION` is the one selection ground, text and rows alike, under
+`TEXT`: `_SUBTLE` barely stood off a dark field, and a field rule with
+no `selection-color` drew dark mode's selected text near-black.
 
 | Pair | Floor | Dark | Light |
 |---|---|---|---|

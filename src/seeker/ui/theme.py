@@ -93,6 +93,7 @@ class Palette:
     ACCENT_HOVER: str
     ACCENT_PRESSED: str
     ACCENT_SUBTLE: str
+    SELECTION: str
     SUCCESS: str
     WARNING: str
     DANGER: str
@@ -121,6 +122,10 @@ DARK = Palette(
     ACCENT_HOVER="#AA91FF",
     ACCENT_PRESSED="#8A6BF5",
     ACCENT_SUBTLE="#262236",
+    # Selected text and rows: TEXT on a mid violet, which stands off
+    # the field (ACCENT_SUBTLE barely does) and keeps every status lamp
+    # at 3:1. The one selection pair, palette and stylesheet alike.
+    SELECTION="#4A3799",
     SUCCESS="#35D07F",
     WARNING="#FFB020",
     DANGER="#FF6363",
@@ -148,6 +153,7 @@ LIGHT = Palette(
     ACCENT_HOVER="#5734D6",
     ACCENT_PRESSED="#4A2BBD",
     ACCENT_SUBTLE="#E9E4FB",
+    SELECTION="#E4DDFB",
     SUCCESS="#11804A",
     WARNING="#9E5C00",
     DANGER="#C22B2B",
@@ -933,9 +939,9 @@ def build_qpalette(palette: Palette) -> QPalette:
         QPalette.ColorRole.ToolTipBase, QColor(palette.BG_SURFACE_2),
     )
     qpalette.setColor(QPalette.ColorRole.ToolTipText, QColor(palette.TEXT))
-    qpalette.setColor(QPalette.ColorRole.Highlight, QColor(palette.ACCENT))
+    qpalette.setColor(QPalette.ColorRole.Highlight, QColor(palette.SELECTION))
     qpalette.setColor(
-        QPalette.ColorRole.HighlightedText, QColor(palette.ON_ACCENT),
+        QPalette.ColorRole.HighlightedText, QColor(palette.TEXT),
     )
     qpalette.setColor(
         QPalette.ColorRole.PlaceholderText, QColor(palette.TEXT_FAINT),
@@ -1283,7 +1289,8 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit {{
     border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CONTROL}px;
     padding: 4px 8px;
-    selection-background-color: {palette.ACCENT_SUBTLE};
+    selection-background-color: {palette.SELECTION};
+    selection-color: {palette.TEXT};
 }}
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
@@ -1311,7 +1318,7 @@ QComboBox::down-arrow {{
 QComboBox QAbstractItemView {{
     background-color: {palette.BG_SURFACE};
     border: 1px solid {palette.BORDER_STRONG};
-    selection-background-color: {palette.ACCENT_SUBTLE};
+    selection-background-color: {palette.SELECTION};
     selection-color: {palette.TEXT};
 }}
 
@@ -1326,7 +1333,7 @@ QTableWidget, QListWidget {{
     border: 1px solid {palette.BORDER};
     border-radius: {RADIUS_CARD}px;
     gridline-color: {palette.BORDER};
-    selection-background-color: {palette.ACCENT_SUBTLE};
+    selection-background-color: {palette.SELECTION};
     selection-color: {palette.TEXT};
     alternate-background-color: {palette.BG_SURFACE_2};
 }}

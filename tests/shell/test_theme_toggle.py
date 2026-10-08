@@ -139,13 +139,13 @@ def test_cleanup_before_quit_disconnects_the_system_scheme_signal(qtbot):
             (theme.DARK, (
                 "#17191C", "#101113", "#1E2125", "#282C31", "#353A40",
                 "#4C535B", "#E8EAEC", "#A0A7AE", "#737B83", "#9A7DFF",
-                "#AA91FF", "#8A6BF5", "#262236", "#35D07F", "#FFB020",
+                "#AA91FF", "#8A6BF5", "#262236", "#4A3799", "#35D07F", "#FFB020",
                 "#FF6363", "#120E1F",
             )),
             (theme.LIGHT, (
                 "#E8EAEC", "#DDE0E3", "#F9FAFA", "#F0F2F3", "#CBD0D5",
                 "#9BA3AB", "#15181B", "#4D555D", "#757D85", "#6440E6",
-                "#5734D6", "#4A2BBD", "#E9E4FB", "#11804A", "#9E5C00",
+                "#5734D6", "#4A2BBD", "#E9E4FB", "#E4DDFB", "#11804A", "#9E5C00",
                 "#C22B2B", "#FFFFFF",
             )),
         ],

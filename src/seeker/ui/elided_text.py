@@ -266,13 +266,13 @@ class ElidedTextDelegate(QStyledItemDelegate):
             reserved - 2 * _BADGE_GAP,
             metrics.height() + 4,
         )
-        # The palette `theme.apply_theme` sets (Highlight is ACCENT),
-        # so the pill follows a theme switch; theme.py imports this
+        # The palette `theme.apply_theme` sets (Link is ACCENT), so
+        # the pill follows a theme switch; theme.py imports this
         # module, so it cannot read the tokens itself.
         palette = option.palette
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(palette.color(QPalette.ColorRole.Highlight))
+        painter.setPen(palette.color(QPalette.ColorRole.Link))
         painter.setBrush(palette.color(QPalette.ColorRole.AlternateBase))
         radius = pill.height() / 2
         painter.drawRoundedRect(pill, radius, radius)
