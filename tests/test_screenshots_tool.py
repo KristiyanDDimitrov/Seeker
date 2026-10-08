@@ -45,3 +45,7 @@ def test_every_readme_image_names_a_real_screen(screenshots):
     for _file, screen, image_theme in screenshots.README_IMAGES:
         assert screen in names
         assert image_theme in screenshots.THEMES
+
+    _file, step, wizard_theme = screenshots.README_WIZARD
+    assert step in screenshots.WIZARD_STEPS
+    assert wizard_theme in screenshots.THEMES

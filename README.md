@@ -14,15 +14,18 @@ find and download the highest-quality available copy of each track.
 
 ## Screenshots
 
-Dashboard, Review and Duplicates, plus the dark/light theme pair. All
-captured against invented data (`FakeApplication`, the same test double
-the UI tests use, from `tests/fakes.py`) — no real playlist names, library paths or
-SoulSeek usernames.
+Dashboard, Library, Review, Duplicates and the setup wizard's first
+step, plus the Dashboard in both themes. All captured against invented
+data (`FakeApplication`, the same test double the UI tests use, from
+`tests/fakes.py`) — no real playlist names, library paths or SoulSeek
+usernames. `uv run python tools/screenshots.py --readme` regenerates
+them.
 
 | | |
 |---|---|
 | ![Dashboard](docs/screenshots/dashboard-dark.png) Dashboard (dark) | ![Dashboard, light theme](docs/screenshots/dashboard-light.png) Dashboard (light) |
 | ![Review](docs/screenshots/review.png) Review | ![Duplicates](docs/screenshots/duplicates.png) Duplicates |
+| ![Library](docs/screenshots/library-dark.png) Library | ![Setup wizard, first step](docs/screenshots/wizard.png) Setup wizard |
 
 ## What it does
 

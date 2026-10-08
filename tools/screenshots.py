@@ -680,6 +680,8 @@ README_IMAGES = (
     ("review.png", "review", "dark"),
     ("duplicates.png", "duplicates", "dark"),
 )
+# The wizard's first step, which a new user meets before any page.
+README_WIZARD = ("wizard.png", "spotify", "dark")
 
 
 def capture_window(
@@ -721,10 +723,11 @@ def capture_wizard(
         theme_name: str,
         sizes: Sequence[tuple[int, int]],
         name_for: Callable[[str, tuple[int, int]], Path],
+        steps: Sequence[str] = WIZARD_STEPS,
 ) -> list[Path]:
-    """Each onboarding step, shown by index. Step 3 renders before its
-    Docker check runs: that check probes the real machine, which a
-    screenshot must not depend on."""
+    """Each of `steps`, shown by its index in the wizard. The SoulSeek
+    step renders before its Docker check runs: that check probes the
+    real machine, which a screenshot must not depend on."""
     application = build_demo_application()
     application.spotify_configured = False
     application.set_theme_mode(theme_name)
@@ -733,8 +736,8 @@ def capture_wizard(
     written: list[Path] = []
     try:
         wizard.show()
-        for index, step in enumerate(WIZARD_STEPS):
-            wizard.stack.setCurrentIndex(index)
+        for step in steps:
+            wizard.stack.setCurrentIndex(WIZARD_STEPS.index(step))
             for size in sizes:
                 wizard.resize(*size)
                 settle(app, wizard, 0.3)
@@ -792,6 +795,11 @@ def render_readme(app: QApplication, out_dir: Path) -> list[Path]:
             app, theme_name, [screen for _, screen in wanted], SIZES[:1],
             lambda screen, _size, files=files: out_dir / files[screen],
         )
+    file_name, step, wizard_theme = README_WIZARD
+    written += capture_wizard(
+        app, wizard_theme, SIZES[:1],
+        lambda _screen, _size: out_dir / file_name, steps=(step,),
+    )
     return written
 
 
