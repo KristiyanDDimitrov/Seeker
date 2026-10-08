@@ -275,9 +275,9 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
 def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
         qtbot,
 ):
-    # Roadmap item R2.1/R2.6 — the 2s poll_timer rebuilds this table's
-    # checkboxes from scratch every tick; before this fix, checking the
-    # box and letting even one more tick land would silently reset it.
+    # Roadmap item R2.1/R2.6 — a rebuild of this table builds new
+    # checkboxes; before this fix, checking the box and letting a
+    # rebuild land would silently reset it.
     details = [
             make_upgrade_details(request_id=7, old_file_path="/music/old.mp3")
     ]
@@ -287,15 +287,18 @@ def test_review_tab_delete_checkbox_state_survives_rerender_across_poll_ticks(
 
     window._review_page._render_pending_upgrades(details)
     actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
-    actions.findChildren(QCheckBox)[0].setChecked(True)
+    old_checkbox = actions.findChildren(QCheckBox)[0]
+    old_checkbox.setChecked(True)
     assert window._review_page._upgrade_delete_checked == {7}
 
-    # Three more "poll ticks" — a brand-new checkbox widget each time.
-    for _ in range(3):
-        window._review_page._render_pending_upgrades(details)
+    # A second upgrade arrives: the table rebuilds, a new checkbox.
+    window._review_page._render_pending_upgrades(
+        [*details, make_upgrade_details(request_id=8)],
+    )
 
     actions = window._review_page.review_upgrades_table.cellWidget(0, 3)
     checkbox = actions.findChildren(QCheckBox)[0]
+    assert checkbox is not old_checkbox
     assert checkbox.isChecked() is True
     assert window._review_page._upgrade_delete_checked == {7}
 
@@ -669,3 +672,72 @@ def test_review_rows_stay_one_line_when_rendered_before_first_shown(qtbot):
         )
         for row in range(table.rowCount()):
             assert table.rowHeight(row) < ceiling
+
+
+def _action_button(table, text):
+    actions = table.cellWidget(0, table.columnCount() - 1)
+    return {b.text(): b for b in actions.findChildren(QPushButton)}[text]
+
+
+def test_a_poll_with_unchanged_rows_keeps_their_buttons(qtbot):
+    # A rebuild destroys the button under the pointer and its tooltip
+    # with it, so a 2 s tick that changes nothing must keep the rows.
+    application = FakeApplication(
+        review_candidates=[(make_track("t1"), make_review_candidate("t1"))],
+        needs_review_matches=[make_needs_review_match()],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    confirm = _action_button(page.review_needs_table, "Confirm")
+    local_confirm = _action_button(page.review_local_table, "Confirm")
+
+    # The upgrades table changes, so the render's real end is visible.
+    application.review_service._pending_upgrades = [make_upgrade_details()]
+    page.poll_review_items()
+    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1)
+
+    assert _action_button(page.review_needs_table, "Confirm") is confirm
+    assert _action_button(page.review_local_table, "Confirm") is local_confirm
+
+
+def test_a_poll_with_unchanged_upgrades_keeps_their_buttons(qtbot):
+    application = FakeApplication(pending_upgrades=[make_upgrade_details()])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1)
+    replace_button = _action_button(page.review_upgrades_table, "Replace")
+
+    application.review_service._review_candidates = [
+        (make_track("t1"), make_review_candidate("t1")),
+    ]
+    page.poll_review_items()
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+
+    assert (
+        _action_button(page.review_upgrades_table, "Replace")
+        is replace_button
+    )
+
+
+def test_a_poll_with_a_changed_row_rebuilds_its_table(qtbot):
+    application = FakeApplication(
+        review_candidates=[
+            (make_track("t1"), make_review_candidate("t1", score=60.0)),
+        ],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+
+    application.review_service._review_candidates = [
+        (make_track("t1"), make_review_candidate("t1", score=70.0)),
+    ]
+    page.poll_review_items()
+
+    qtbot.waitUntil(
+        lambda: page.review_needs_table.item(0, 1).text() == "70.0",
+    )

@@ -59,6 +59,16 @@ from seeker.ui.workers import run_worker
 NeedsReviewCandidates = list[tuple[Track, SoulseekReviewCandidate]]
 PendingUpgrades = list[UpgradeReviewDetails]
 
+# What a table's rows were last built from. A tick that brings the
+# same rows keeps them: a rebuild destroys the button under the
+# pointer, and its tooltip with it. Nothing in these rows bakes in a
+# palette colour (the buttons take QSS, the secondary text is read at
+# paint time), so unlike the Dashboard's key the palette is not part
+# of it.
+_RenderedCandidates = tuple[tuple[Track, SoulseekReviewCandidate], ...]
+_RenderedUpgrades = tuple[UpgradeReviewDetails, ...]
+_RenderedMatches = tuple[NeedsReviewMatch, ...]
+
 # The three tables below never grew a column IntEnum of their own —
 # their layouts are declared the same way, just against plain column
 # indices. In the two match tables the track and the file it is
@@ -250,13 +260,15 @@ class ReviewPage(QWidget):
 
         layout.addWidget(self.review_splitter)
 
-        # The 2s poll_timer rebuilds this table's checkboxes from
-        # scratch every tick; nothing carried the checked state across
-        # that rebuild before this fix. Keyed by the stable
+        # A rebuild of the upgrades table builds new checkboxes, so
+        # the checked state lives here, across rebuilds. Keyed by the stable
         # UpgradeReviewDetails.request_id, never row index — pruned to
         # only rows still present on every render (HISTORY §86).
         self._upgrade_delete_checked: set[int] = set()
         self._current_pending_upgrades: PendingUpgrades = []
+        self._rendered_candidates: _RenderedCandidates | None = None
+        self._rendered_upgrades: _RenderedUpgrades | None = None
+        self._rendered_matches: _RenderedMatches | None = None
 
         page = build_page(
             "Review", help_text.REVIEW_TAB_SUBTITLE, content,
@@ -396,6 +408,11 @@ class ReviewPage(QWidget):
         # itself is pure waste while hidden (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
+
+        rendered = tuple(candidates)
+        if rendered == self._rendered_candidates:
+            return
+        self._rendered_candidates = rendered
 
         action_widgets: list[QWidget] = []
 
@@ -550,6 +567,11 @@ class ReviewPage(QWidget):
         # unbounded across a long session (HISTORY §86).
         live_request_ids = {details.request_id for details in upgrades}
         self._upgrade_delete_checked &= live_request_ids
+
+        rendered = tuple(upgrades)
+        if rendered == self._rendered_upgrades:
+            return
+        self._rendered_upgrades = rendered
 
         action_widgets: list[QWidget] = []
 
@@ -733,6 +755,11 @@ class ReviewPage(QWidget):
         # (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
+
+        rendered = tuple(matches)
+        if rendered == self._rendered_matches:
+            return
+        self._rendered_matches = rendered
 
         action_widgets: list[QWidget] = []
 
