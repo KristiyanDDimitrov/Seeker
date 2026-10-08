@@ -72,6 +72,13 @@ investigation.
   never reaches the table. `QTableWidget.setItem` measured ~2.4 ms a call
   at 500 rows — mutate an existing item on a hot path.
   [HISTORY §166](../../../docs/history/151-180.md#166)
+- **A polled table with buttons rebuilds only when its rows change.**
+  A shown tooltip dies with its widget, so a rebuild under the pointer
+  kills a button's tooltip; an item's tooltip survives its item being
+  replaced (both observed on Cocoa). Review keeps each table's last
+  rows (`_rendered_candidates`, …) and skips an equal tick; Sharing's
+  20 s rebuild still replaces its per-row button.
+  [HISTORY §195](../../../docs/history/181-210.md#195)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it

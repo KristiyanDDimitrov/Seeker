@@ -11,54 +11,45 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S2 close-out (HISTORY §194). Tree clean apart from
+- **HEAD:** the S3 close-out (HISTORY §195). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 2041 passed, 1 skipped`.
+- **Local (Cocoa):** pytest `2 failed, 2044 passed, 1 skipped`.
   Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
-  `[dark]` and `[light]`, the same as S1 and S37/S38 (S9 owns it).
+  `[dark]` and `[light]`, the same as S1, S2 and S37/S38 (S9 owns it).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `c99803e`'s run `37828388802` green: `2015 passed, 29
-  skipped`, coverage 94.53 % (floor 92 %).
+- **CI:** see §3 for this push's run.
 
 ## 2. Where we are
 
-**Round 12 S2 is done.** **Next: S3**, Review's tooltips survive the
-2 s poll by rendering only on change (BRIEF §3; `focused-fix` and
-`tdd`). S4 follows it because both touch table rebuilds and sort keys.
-Read `src/seeker/ui/CLAUDE.md` first: its `_RenderedRows` fact (the
-Dashboard's render-on-change) is the pattern S3 likely wants.
+**Round 12 S3 is done.** **Next: S4**, status columns sort by
+progress, closest to done first (BRIEF §4; `tdd`). Its sort keys must
+survive S3's render-on-change. On Review nothing sorts by status, but
+the Dashboard updates sort keys in place on a progress-only change
+(`_update_progress_in_place`), and Downloads still rebuilds every
+tick.
 
-## 3. Session report (S2)
+## 3. Session report (S3)
 
-- `1f4b82d`, §2.1: `apply_theme` sets or clears the scheme override
-  before resolving `"system"`.
-- `2414ce5`, §2.2: spin-box buttons in QSS, up/down chevrons per
-  palette (`packaging/icons/spin_*`).
-- `06eac99`, §2.2: the match thresholds take `QLocale.c()`.
-- The close-out: HISTORY §194 (image `docs/history/images/194-spin-arrows.png`),
-  two facts and the §166 link fix in `src/seeker/ui/CLAUDE.md`, the
-  plan tick, this file.
-- CI: run `37828388802`, green.
+- `e9604d0`, §3.1–§3.2: each Review table keeps the rows it was last
+  built from and skips an equal tick. Three new tests; the checkbox
+  test now forces a real rebuild.
+- The close-out: HISTORY §195, one fact in `src/seeker/ui/CLAUDE.md`,
+  the plan tick, this file.
+- CI: pending at the close-out commit; the next commit records it.
 
 ## 4. Key context
 
-- **Cocoa's `colorScheme()` reports the app's own override** until
-  `setColorScheme(Unknown)`, and reverts synchronously; offscreen
-  stays `Unknown` throughout. A test of anything scheme-dependent
-  stubs `theme.QGuiApplication.styleHints` (`_CocoaStyleHints` in
-  `test_theme.py`).
-- **A "some pixel reaches 3:1" grab test can pass on a speck.** The
-  spin test measures the mark's width instead. The combo chevron and
-  tick tests still use the weaker floor; they pass because the marks
-  are real, but S15 could tighten them.
-- **Screens diff:** `tools/screenshots.py` wrote 76 PNGs this time
-  (S1 said 78). The harness runs under the Mac's comma locale, so
-  number formatting shows in it.
-- **Planning found, for later rows:** Review rebuilds every row on
-  each 2 s tick, which kills tooltips (S3). The Dashboard's Status
-  column sorts by label text (S4). The "daily" retry never existed
-  (S10). `urllib3 2.7.0` has three advisories, fixed in 2.8.0, and CI
-  has no dependency audit (S7). All in BRIEF §3–§10.
+- **A shown tooltip dies with its widget, but survives its item being
+  replaced** (observed on Cocoa with real `QHelpEvent`s, HISTORY
+  §195). Only a rebuilt widget that carries a tooltip loses it.
+  Downloads' 2 s rebuild is therefore harmless to its tooltips.
+- **Waiting on a render that changes nothing:** S3's tests change
+  another table in the same tick and wait on that, since an equal
+  render leaves nothing to observe.
+- **Sharing's locations table** rebuilds its per-row "Add to my
+  SoulSeek share" button (with a tooltip) on every 20 s backend poll
+  after the first visit. Same bug class, not fixed: it is outside
+  S3's "2-second pollers" scope. **For S15**, or a row of its own.
 - **For S16: `uv build --wheel` packages whatever is in
   `src/seeker/`,** including a gitignored `_build_info_generated.py`
   left by a local DMG build. `wheel-exclude` already drops
@@ -68,25 +59,28 @@ Dashboard's render-on-change) is the pattern S3 likely wants.
   `test_search_download_best_passes_the_already_fetched_results`,
   `37599402903`; the Cocoa-only theme failure, whose first untried
   check is a rerun with only the built-in display).
+- **Planning found, for later rows:** the Dashboard's Status column
+  sorts by label text (S4). The "daily" retry never existed (S10).
+  `urllib3 2.7.0` has three advisories, fixed in 2.8.0, and CI has no
+  dependency audit (S7).
 - **Carried:** set `set -o pipefail` before `pytest … | tail && git
   commit`. Never touch slskd or real data. The full suite takes
-  ~4.5 min, so run it in the background. `git stash push -- <paths>`
-  to test HEAD's `src/` with the new tests: a bare stash takes the
-  tests too.
+  ~4.5 min, so run it in the background, and never stash `src/` while
+  it runs. `git stash push -- <paths>` to test HEAD's `src/` with the
+  new tests.
 
 ## 5. Decisions made
 
-- **Thresholds in `QLocale.c()`, not the system locale everywhere.**
-  Every score prints through `f"{score:.1f}"` (UI and CLI); the CLI
-  cannot follow Qt's locale, and the threshold is read against those
-  scores.
-- **The spin arrows reuse the combo chevron's geometry**, separate
-  files per direction and palette, as the brief asked
-  (`_palette_icon`). Buttons are transparent at rest, so the field
-  reads as one control; hover `BG_SURFACE_2`, pressed `BORDER`.
-- **The tdd skill asks to confirm seams with the user;** the brief
-  already named them (the applied palette; a grab of a spin box), so
-  no question was asked.
+- **Review's key is the rows alone, without the palette** the brief's
+  suggested shape included. Nothing in a Review row bakes in a colour
+  (QSS buttons, `SECONDARY_ROLE` read at paint time). If a row ever
+  gains a lamp, the palette joins the key (the ui/CLAUDE.md rule).
+- **The key is the full row data, not only the ids:** a changed score
+  or filename for the same track must show.
+- **Skills:** `tdd` was used. `focused-fix` was not loaded: the brief
+  had already pinned the cause to one method in one module, and the
+  probe settled the audit. The seams were named by the brief
+  (`poll_review_items`, the row's button), so no question was asked.
 
 ## 6. Blockers
 
@@ -94,17 +88,17 @@ None.
 
 ## 7. Files in progress
 
-None: S2 is committed whole.
+None: S3 is committed whole.
 
 ## 8. Waiting on Kris
 
-**A cheap veto:** the new colours. Dark selection is `#4A3799`, the
-light amber `#AD7400` (images in HISTORY §193). The pill outline now
-shows as ACCENT. From S2: the spin arrows and `90.0` with a point
-(HISTORY §194's image).
+**A live check (S3):** on Review, hover Confirm or Replace and keep
+the pointer still for 5 s or more; the tooltip should stay.
 
-**A live check:** on the real Mac in Dark, choose Light, then Follow
-system; the app should turn dark at once.
+**From S1/S2, still a cheap veto:** the new colours (images in
+HISTORY §193), the spin arrows and `90.0` (HISTORY §194). A live
+check: in Dark, choose Light, then Follow system; the app should turn
+dark at once.
 
 **Open gates:** reading `AUDIT.md` after S6, the S5 wording veto, the
 first live Cancel (S12) and cleanup (S13), and the S18 publishing
@@ -116,6 +110,8 @@ three nested locations.
 
 ## 9. Open questions
 
+- Should Sharing's 20 s rebuild get the same fix in S15, or a row of
+  its own? (§4 above.)
 - Unchanged from S36: see `git show 1b415a4:docs/HANDOFF.md` §9 (the
   Downloads first-poll header, Settings' Reachable lamp, Duplicates'
   Quality at 960, and the carried items).
