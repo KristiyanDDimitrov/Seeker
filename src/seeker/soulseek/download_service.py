@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 # reruns the same refusals (a locked file sits in a share its peer
 # opened to some users only; UNVERIFIED how often one reopens).
 # Another peer's copy is still requested. Untuned.
-UNAVAILABLE_COOLDOWN = timedelta(days=30)
+FAILED_CANDIDATE_COOLDOWN = timedelta(days=30)
 
 
 class NoDestinationConfiguredError(SeekerError):
@@ -532,7 +532,7 @@ class DownloadService:
     def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
         """Searches again for a failed or unavailable request's track,
         rather than re-asking the peer that failed it: a failed or
-        unavailable candidate stays skipped for UNAVAILABLE_COOLDOWN.
+        unavailable candidate stays skipped for FAILED_CANDIDATE_COOLDOWN.
         Once a new request is made, the retried row is dismissed: the
         new row stands for the track now. Otherwise it stays, still the
         user's to act on."""
@@ -914,13 +914,13 @@ class DownloadService:
     ) -> list[SoulseekFile]:
         """`files` less a person's Rejects for this track, and less any
         peer's file that went failed or unavailable for it, a person's
-        cancel included, within UNAVAILABLE_COOLDOWN."""
-        since = (datetime.now(UTC) - UNAVAILABLE_COOLDOWN).isoformat()
+        cancel included, within FAILED_CANDIDATE_COOLDOWN."""
+        since = (datetime.now(UTC) - FAILED_CANDIDATE_COOLDOWN).isoformat()
 
         with self.database.transaction() as connection:
             excluded = self.rejections.get_rejected_soulseek_candidates(
                 track_id, connection,
-            ) | self.download_requests.get_unavailable_candidates_since(
+            ) | self.download_requests.get_failed_candidates_since(
                 track_id, since, connection,
             )
 

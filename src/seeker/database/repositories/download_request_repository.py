@@ -388,7 +388,7 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
-    def get_unavailable_candidates_since(
+    def get_failed_candidates_since(
             self,
             track_id: str,
             since: str,
