@@ -105,6 +105,12 @@ class SeekerConfig:
     # check tries again.
     auto_sweep_enabled: bool = False
     last_sweep_at: str | None = None
+    # The automatic update check asks GitHub for the latest release at
+    # startup, at most once every 24 hours (update_check.py). Opt-in.
+    # last_update_check_at is the UTC ISO-8601 time the last automatic
+    # check started, None until one has.
+    auto_update_check: bool = False
+    last_update_check_at: str | None = None
 
 
 def resolve_config_path() -> Path:

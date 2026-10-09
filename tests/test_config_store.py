@@ -315,6 +315,20 @@ def test_load_config_sweep_fields_round_trip(tmp_path):
     assert loaded.last_sweep_at == "2026-10-09T08:00:00+00:00"
 
 
+def test_load_config_without_update_check_fields_leaves_the_check_off(
+        tmp_path,
+):
+    # Opt-in: a config.json from before the automatic update check must
+    # not start asking GitHub, and must read as "never checked".
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.auto_update_check is False
+    assert loaded.last_update_check_at is None
+
+
 @skip_on_windows
 def test_save_config_sets_restrictive_permissions(tmp_path):
     path = tmp_path / "config.json"

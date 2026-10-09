@@ -1399,6 +1399,9 @@ SETTINGS_DAILY_SWEEP_TEXT = (
     "still missing from loaded playlists and request what turns up. "
     "No Spotify calls."
 )
+SETTINGS_UPDATES_TEXT = (
+    "When Seeker starts, at most once a day, ask GitHub for a newer version."
+)
 SETTINGS_LOCATIONS_TEXT = (
     "The folders Seeker scans for your music and matches playlists "
     "against."
@@ -1462,6 +1465,12 @@ TOOLTIP_AUTO_SWEEP_CHECKBOX = (
     "Up to 50 searches a day, least recently searched first, for "
     "playlists with a download destination. Paused downloads pause it "
     "too."
+)
+
+TOOLTIP_AUTO_UPDATE_CHECK_CHECKBOX = (
+    "One request to GitHub's releases API; nothing about your library is "
+    "sent. A newer version gets a notification. Help > Check for updates… "
+    "works either way."
 )
 
 # --- Start at login ----------------------------------------------------------

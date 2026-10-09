@@ -1264,6 +1264,7 @@ class SettingsPage(QWidget):
         layout.addWidget(self._build_startup_group())
         layout.addWidget(self._build_daily_sweep_group())
         layout.addWidget(self._build_notifications_group())
+        layout.addWidget(self._build_updates_group())
         layout.addStretch()
         return theme.reading_column(tab)
 
@@ -1412,6 +1413,35 @@ class SettingsPage(QWidget):
 
         return theme.section_card(
             "Daily sweep", help_text.SETTINGS_DAILY_SWEEP_TEXT, controls,
+        )
+
+    # --- Updates ----------------------------------------------------
+
+    def _build_updates_group(self) -> QFrame:
+        # Saves itself on toggle. The shell reads it once, at startup,
+        # so turning it on takes effect from the next launch.
+        controls = QWidget()
+        layout = QVBoxLayout(controls)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.auto_update_check_checkbox = QCheckBox(
+            "Check for updates when Seeker starts"
+        )
+        self.auto_update_check_checkbox.setToolTip(
+            help_text.TOOLTIP_AUTO_UPDATE_CHECK_CHECKBOX
+        )
+        self.auto_update_check_checkbox.setChecked(
+            self.application.settings.auto_update_check
+        )
+        self.auto_update_check_checkbox.toggled.connect(
+            lambda checked: self.application.update_settings(
+                auto_update_check=checked,
+            )
+        )
+        layout.addWidget(self.auto_update_check_checkbox)
+
+        return theme.section_card(
+            "Updates", help_text.SETTINGS_UPDATES_TEXT, controls,
         )
 
     # --- Start at login ----------------------------------------------
