@@ -453,6 +453,25 @@ Code documents loading it when a session reads files in `ui/`
   Register/unregister on a packaged build is UNVERIFIED.
   [§131](docs/history/121-150.md#131)
 
+### Accepted risks
+
+Each accepted in round 12's audit, with Kris's decision and the full
+reason under its finding in `docs/rounds/round-12/AUDIT.md`
+([§200](docs/history/181-210.md#200)). Revisit any of them if Seeker
+stops being a single-user desktop app.
+
+- **Peer files reach native decoders unsandboxed** (S-03): libsndfile
+  for analysis, ffmpeg for fingerprints. No content-against-extension
+  check, by decision. `docs/packaging.md` → "Native libraries" tracks
+  their open advisories; a fix is taken at the next release.
+- **No size cap on slskd, Spotify or GitHub JSON bodies** (S-09);
+  only album art streams with one.
+- **slskd's secrets sit in its container's environment** (S-10):
+  reading them needs the Docker socket, and `config.json` holds the
+  same values at 0600.
+- **`docker`, `ffmpeg`, `open` and libchromaprint resolve from
+  Homebrew prefixes** (S-11): planting one needs same-user access.
+
 ## Open issues
 
 Genuinely open only, checked against every CI run on record (187, to

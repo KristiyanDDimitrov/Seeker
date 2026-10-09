@@ -56,6 +56,11 @@ S-07, S-12) approved. S-06: sanitize at placement. S-03: accept and
 track, (a) and (b) only, with no format/extension check. S-09: accept
 for slskd, Spotify and GitHub alike, with no cap. S-04 (the GPL
 wording) is still open for S16.
+**Fixed in S8 (HISTORY §200):** S-05 (`e3c0154`), S-07 (`17b67c0`),
+S-12 (`7123da0`), S-06 (`a4baed4`). **Accepted in writing in S8:**
+S-03 (a)+(b), S-09, S-10 and S-11, each under its finding below and
+in CLAUDE.md → "Accepted risks". Open: S-04 and S-14 (S16), S-15
+(S14).
 
 ---
 
@@ -353,6 +358,15 @@ does not match its extension (`soundfile.info().format` against
 the name). That changes which files are analysed, so it needs
 Kris's yes.
 
+**Status (S8): accepted, (a) and (b); no (c), by Kris's decision.**
+The reason: Seeker is a single-user desktop tool, Kris chooses each
+download and its peer, and the one complete fix (decoding in a
+sandboxed subprocess) costs more than the exposure, which today is a
+crashed analysis worker. Tracking: `docs/packaging.md` → "Native
+libraries" lists the advisories open against libsndfile 1.2.2; the
+first soundfile wheel or ffmpeg release that fixes one is taken at the
+next release.
+
 ### S-04 — The DMG ships GPL/LGPL code with no licence texts · Medium **[ASK]**
 
 **Evidence.** §9 and §10. The bundle contains mutagen
@@ -391,6 +405,8 @@ injection.
 request's `error` is shown. Test first: a wrong-state `error=`
 request followed by a good callback still succeeds.
 
+**Status: fixed in S8 (`e3c0154`).**
+
 ### S-06 — A peer's basename is placed unsanitized · Low **[ASK]**
 
 **Evidence.** `placement.py:250-256` builds the destination name from
@@ -410,6 +426,11 @@ it that strips control and bidi characters and a leading dot, while
 `_locate_completed_file` keeps matching the raw name slskd wrote.
 Test first, with the three names above.
 
+**Status: fixed in S8 (`a4baed4`)** through `files/naming.py::
+clean_peer_filename`. APFS took a 504-byte name (its limit counts
+characters, observed), so a long name reaches slskd's folder on a Mac
+and failed only on an ext4 or ExFAT destination.
+
 ### S-07 — Data, log and download dirs take the umask · Low
 
 **Evidence.** §4: everything except the two credential files is
@@ -425,6 +446,8 @@ downloads. slskd's image sets `SLSKD_UMASK=0022` for what it writes
 plus a `chmod` of an existing dir) where they are first made. Test
 first on a temp dir. The DB file itself can stay at the umask behind
 a 0700 dir.
+
+**Status: fixed in S8 (`17b67c0`)**, the album-art cache dir too.
 
 ### S-08 — The slskd image is pinned by tag, not digest · Low
 
@@ -456,6 +479,13 @@ For slskd's `includeResponses` fetch, optionally stream it with a cap
 (say 64 MB) and treat an overflow as a failed search. Kris's call on
 whether it is worth a commit.
 
+**Status (S8): accepted for all three hosts, no cap, by Kris's
+decision.** The reason: Spotify and GitHub are reached over
+authenticated TLS. slskd is Kris's own loopback daemon, and a hostile
+one already holds the Soulseek login and every download, so a large
+body is the least it could do. The worst outcome is a memory denial
+of service of a desktop app that Kris can restart.
+
 ### S-10 — slskd secrets live in the container's environment · Low (accept)
 
 **Evidence.** `docker_setup.py:370-389` passes the network password,
@@ -470,6 +500,8 @@ values are in `config.json` at 0600. Moving them into an `slskd.yml`
 at 0600 would need a migration of every existing install, to protect
 against an attacker who already has the socket.
 
+**Status:** written into CLAUDE.md → "Accepted risks" in S8.
+
 ### S-11 — Binaries and libraries resolve from Homebrew prefixes · Info (accept)
 
 `docker`, `ffmpeg` and `open` resolve through the merged PATH, and
@@ -478,6 +510,8 @@ libchromaprint loads from `/opt/homebrew/lib` or `/usr/local/lib`
 planting a binary there needs same-user access, which is outside the
 threat model (§1). Accepted. `open` could be `/usr/bin/open`
 outright, as a nicety, not a fix.
+
+**Status:** written into CLAUDE.md → "Accepted risks" in S8.
 
 ### S-12 — The plain-text sweeps have blind spots · Info
 
@@ -490,6 +524,10 @@ are clean by hand (§6).
 constant, or a name assigned only from constants and
 `html.escape(...)` within the same function, else it fails. Also add
 `main_ui.py` to the scanned files.
+
+**Status: fixed in S8 (`7123da0`).** The message-box blind spot (a
+`setTextFormat` in one branch) and a later `setText` stay, written in
+the test module's docstring.
 
 ### S-13 — CI checkout persists its token; chromaprint is unpinned · Info
 

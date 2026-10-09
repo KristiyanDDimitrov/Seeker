@@ -11,90 +11,87 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S7 close-out (HISTORY §199). Tree clean apart from
+- **HEAD:** the S8 close-out (HISTORY §200). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `6 failed, 2063 passed, 1 skipped` (+15 tests).
-  Failing: the six
-  `tests/test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
-  cases (`dark-`/`light-` × `line-edit`, `plain-text-edit`, `label`).
-  This is **pre-existing**: the same six fail at `e85e951`. It replaces
-  the old two (`test_a_cell_widget_paints_the_rows_own_background`),
-  which now pass in a full run but still fail when `test_theme.py`
-  runs alone. S9 owns both. `mypy --strict src/` clean, 138 files;
-  `ruff check src tests tools` 0.
-- **CI:** `e9bee33`'s run `37926496543` green: `check` `2041 passed,
-  29 skipped`, coverage 94.57 % (floor 92 %); the new `audit` job, no
-  known vulnerabilities. Dependabot's runs on the new
-  `docker-compose` entry succeeded.
+- **Local (Cocoa):** pytest `6 failed, 2080 passed, 1 skipped` (+17
+  tests). Failing: the six pre-existing
+  `test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
+  cases. S8's earlier full run failed the old pair instead (below).
+  `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
+- **CI:** pending for the S8 push (recorded in the follow-up commit).
 
 ## 2. Where we are
 
-**Round 12 S7 is done:** S-01, S-02, S-08 and S-13 are fixed.
-**Next: S8**, approved by Kris on 2026-10-09. It covers S-05, S-07
-and S-12 (pure hardening), then S-06 (sanitize at placement, decided),
-then the written acceptances: S-03 (a)+(b), S-09 (all three hosts,
-no cap), S-10 and S-11, into AUDIT.md and CLAUDE.md. The decisions are
-in `AUDIT.md` → Summary → Status.
+**Round 12 S8 is done.** Every AUDIT finding S8 owned is fixed
+(S-05, S-06, S-07, S-12) or accepted in writing (S-03 a+b, S-09,
+S-10, S-11), in AUDIT.md and in CLAUDE.md → "Accepted risks".
+**Next: S9**, code health: the two radon-D functions
+(`dashboard_page._decide_next_step`, `sharing_service.
+_insert_slskd_share_directory`) and the flip-flopping theme failures.
 
-## 3. Session report (S7)
+## 3. Session report (S8)
 
-- `d2dc571` urllib3 2.8.0 · `4fbcd8e` `tools/audit_dependencies.py`,
-  the CI `audit` job (push, PR, weekly) and the native-library record
-  in `docs/packaging.md` · `c67b589` the slskd digest, plus Dependabot's
-  `docker-compose` ecosystem · `06319a1` `persist-credentials: false`
-  · `34ce3a3` the adversarial review's fix (a wrong-shaped ignore
-  list is refused in a sentence) · the close-out (HISTORY §199,
-  AUDIT status, CLAUDE.md, the plan tick, this file).
-- Each fix had its failing check first (pip-audit's three IDs; the
-  missing tool; `assert None` on the image line; `AttributeError` on
-  the shapes).
+- `e3c0154` S-05: `create_callback_server(expected_state, …)`; a
+  wrong-state `/callback` gets a 400 and the wait goes on; `_authorize`
+  checks state before `error`.
+- `17b67c0` S-07: `files/atomic.py::make_private_dir()` (0700) for
+  the data, log and album-art cache dirs. `ccb02d2`: a refused
+  `chmod` is logged, not raised (review fix).
+- `7123da0` S-12: the RichLabel-escaping sweep; every sweep scans
+  `main_ui.py`. The red was shown by planting, since the change is
+  test-only.
+- `a4baed4` S-06: `files/naming.py::clean_peer_filename()` at
+  placement. `24f13da` splits the stem and extension first (review
+  fix: `.mp3` became `_mp3`). `63b2c75`: naming.py's APFS comment.
+- The close-out: AUDIT statuses, CLAUDE.md "Accepted risks", the
+  advisories tracked in `docs/packaging.md`, HISTORY §200, the plan
+  tick and this file.
 
 ## 4. Key context
 
-- **The audit tool:** `uv run --no-project tools/audit_dependencies.py`.
-  It audits the dev group too (beyond the brief's `--no-dev`), since
-  that group builds the DMG. `PIP_AUDIT` is bumped by hand, because
-  Dependabot cannot see it.
-- **The slskd digest** is the 0.26.0 index digest, read from the
-  registry. It was not compared with Kris's local image, because
-  Docker was not running.
-- **For S8, S-06:** run the peer basename through
-  `clean_path_component` or a peer-name variant at placement, while
-  `_locate_completed_file` keeps matching slskd's raw name. Test
-  first with `.hidden.mp3`, a U+202E name and a name over 255 bytes.
-- **For S9:** the failure flip above. Lead, UNVERIFIED: whether the
-  window is active (QPalette Active vs Inactive), since the two tests
-  fail inversely. Each full Cocoa run takes ~5 min; don't start
-  another Qt pytest process during it.
-- **Carried:** Sharing's 20 s per-row rebuild (S15). `uv build
+- **Observed: APFS limits a name to 255 characters, not bytes** (it
+  took a 504-byte name of "é"). ext4's 255 bytes is the binding limit.
+- **The local failure set flips between full runs.** S8's first run
+  failed the old two (`test_a_cell_widget_paints_the_rows_own_background`
+  `[dark|light]`) and passed S7's six selection cases. The last run
+  failed the six. S8 touched no theme code, so this is not S8's doing. S9 owns it. The lead is still
+  UNVERIFIED: the window's active state (QPalette Active vs Inactive).
+- **Left as notes by the review:** the callback handler has no socket
+  timeout, so a silent local connection blocks the wait past its
+  deadline and past Cancel (pre-existing). `_is_fixed_text` trusts
+  any UPPER_CASE attribute.
+- **Carried:** Sharing's 20 s per-row rebuild (S15); `uv build
   --wheel` picks up a gitignored `_build_info_generated.py` (S16).
-  The radon-D pair (S9). Set `set -o pipefail` before `pytest … |
-  tail && git commit`. Never touch slskd or real data.
+  Set `set -o pipefail` before `pytest … | tail && git commit`. Never
+  touch slskd or real data.
 
 ## 5. Decisions made
 
-- **Kris, 2026-10-09:** S7 yes; S8 hardening yes; S-06 sanitize;
-  S-03 accept + track, no extension check; S-09 accept for all hosts.
-- The `audit` job runs on `ubuntu-24.04`: it reads only `uv.lock`,
-  so it needs no Mac.
-- **Skills:** `adversarial-reviewer` ran before close-out, as the plan
-  asks, and found the wrong-shape bug. `tdd` and `env-secrets-manager`
-  were not loaded. The row had no secrets work, and the failing-check-
-  first rule was followed directly. That is a divergence, recorded
-  here.
+- **Kris, 2026-10-09** (unchanged): S-06 sanitize; S-03 accept +
+  track, no extension check; S-09 accept for all hosts.
+- The S-07 helper also covers the album-art cache dir: the same
+  exposure and one line, beyond the finding's letter.
+- **Skills:** `tdd` was loaded. Its "confirm seams with the user" step
+  was taken as met by AUDIT's "Test first" lines, which Kris
+  approved. That is a divergence, recorded here. `adversarial-reviewer`
+  ran and found two warnings, both fixed. `env-secrets-manager` was
+  not needed.
 
 ## 6. Blockers
 
-None for S8.
+None for S9.
 
 ## 7. Files in progress
 
-None: S7 is committed whole.
+None: S8 is committed whole.
 
 ## 8. Waiting on Kris
 
-- **S-04:** the GPL wording for the DMG (an S16 decision).
-- **Still open from S1–S6:** the live checks of §193–§196, the S5
+- **S-04:** the GPL wording for the DMG (S16).
+- **Visible from S8:** a downloaded file whose peer name has `:`, `?`
+  or `|` now lands with `-` in their place, and one named with a
+  leading dot lands with `_`.
+- **Still open from S1–S7:** the live checks of §193–§196, the S5
   wording veto, the wordmark's brows (`9ff777b`), BRIEF §17, and
   `git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
   three nested locations.
@@ -105,7 +102,8 @@ None: S7 is committed whole.
   (AUDIT §8, UNVERIFIED; it needs a throwaway container.)
 - Does Dependabot's `docker-compose` ecosystem bump a `tag@digest`
   line as a pair? The first PR will show.
-- Sharing's 20 s rebuild: S15, or a row of its own?
+- Should the callback handler get a socket timeout (the review's
+  pre-existing note)? It is small, but no row owns it.
 - Unchanged from S36: `git show 1b415a4:docs/HANDOFF.md` §9.
 
 ---
