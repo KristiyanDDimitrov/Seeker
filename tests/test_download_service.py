@@ -32,6 +32,7 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
 from seeker.models.download_request import DownloadRequest, DownloadStatus
 from seeker.models.download_result import (
+    CancelOutcome,
     PollResult,
     TrackFailure,
     TrackSearchOutcome,
@@ -50,6 +51,7 @@ from seeker.soulseek.client import (
     TransferStatus,
 )
 from seeker.soulseek.download_service import (
+    DownloadNotCancellableError,
     DownloadNotRetryableError,
     DownloadService,
     NoDestinationConfiguredError,
@@ -164,6 +166,7 @@ class FakeSoulseekClient:
         # care about progress at all, only the state transition.
         self.progress = progress or {}
         self.get_download_status_calls: list[tuple[str, str]] = []
+        self.cancel_download_calls: list[tuple[str, str]] = []
 
     def search(self, query: str) -> list[SoulseekFile]:
         self.search_calls.append(query)
@@ -199,6 +202,14 @@ class FakeSoulseekClient:
             raise result
 
         return result or f"retry-transfer-for-{filename}"
+
+    def cancel_download(self, username: str, transfer_id: str) -> None:
+        # slskd's own behaviour: a finished transfer stays as it was;
+        # anything else ends "Completed, Cancelled".
+        self.cancel_download_calls.append((username, transfer_id))
+
+        if "Succeeded" not in self.states.get(transfer_id, ""):
+            self.states[transfer_id] = "Completed, Cancelled"
 
 
 def make_service(
@@ -4456,3 +4467,93 @@ def test_retry_refuses_a_row_that_has_not_failed(tmp_path):
         service.retry_download(999)
 
     assert service.soulseek.search_calls == []
+
+
+# --- Cancel from the Downloads page -----------------------------------------
+
+def _status_by_username(service: DownloadService) -> dict[str, str]:
+    with service.database.transaction() as connection:
+        return {
+            request.username: request.status
+            for request in service.download_requests.get_all(connection)
+        }
+
+
+def test_cancel_stops_the_transfer_and_fails_the_row(tmp_path):
+    service = make_service(tmp_path, states={"live": "Queued, Remotely"})
+    seed_pending_request(service, "live", username="peer1")
+
+    outcome = service.cancel_download(1)
+
+    assert outcome == CancelOutcome.CANCELLED
+    assert service.soulseek.cancel_download_calls == [("peer1", "live")]
+    cancelled = _request(service, 1)
+    assert cancelled.status == DownloadStatus.FAILED
+    assert cancelled.failure_reason == "Cancelled by you"
+    assert cancelled.completed_at is not None
+
+
+def test_cancel_leaves_a_transfer_that_already_finished_to_the_poll(
+        tmp_path,
+):
+    service = make_service(tmp_path, states={"done": "Completed, Succeeded"})
+    seed_pending_request(service, "done", status="downloading")
+
+    outcome = service.cancel_download(1)
+
+    assert outcome == CancelOutcome.ALREADY_FINISHED
+    assert _request(service, 1).status == DownloadStatus.DOWNLOADING
+
+
+def test_cancel_of_a_row_slskd_never_took_asks_slskd_nothing(tmp_path):
+    service = make_service(tmp_path, states={})
+    seed_pending_request(service, None)
+
+    outcome = service.cancel_download(1)
+
+    assert outcome == CancelOutcome.CANCELLED
+    assert service.soulseek.cancel_download_calls == []
+    assert _request(service, 1).failure_reason == "Cancelled by you"
+
+
+def test_cancelling_an_upgrade_ends_it_rather_than_trying_the_backups(
+        tmp_path,
+):
+    service = make_service(tmp_path, states={"active": "Queued, Remotely"})
+    seed_pending_request(
+        service, "locked", track_id="t1", role="upgrade", status="locked",
+        rank=1, username="locked-peer",
+    )
+    seed_pending_request(
+        service, "active", track_id="t1", role="upgrade", rank=2,
+        username="active-peer",
+    )
+    seed_pending_request(
+        service, None, track_id="t1", role="upgrade", status="shortlisted",
+        rank=3, username="backup-peer",
+    )
+
+    service.cancel_download(2)
+
+    assert _status_by_username(service) == {
+        "locked-peer": DownloadStatus.SUPERSEDED,
+        "active-peer": DownloadStatus.FAILED,
+        "backup-peer": DownloadStatus.SUPERSEDED,
+    }
+    service.poll_downloads()
+    assert service.soulseek.request_download_calls == []
+
+
+def test_cancel_refuses_a_row_that_is_not_in_flight(tmp_path):
+    service = make_service(tmp_path, states={})
+    request_id = _seed_finished_request(
+        service, tmp_path, DownloadStatus.FAILED,
+    )
+
+    with pytest.raises(DownloadNotCancellableError):
+        service.cancel_download(request_id)
+
+    with pytest.raises(DownloadNotCancellableError):
+        service.cancel_download(999)
+
+    assert service.soulseek.cancel_download_calls == []

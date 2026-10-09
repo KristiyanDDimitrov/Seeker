@@ -294,6 +294,20 @@ class SoulseekClient:
             exception=data.get("exception"),
         )
 
+    def cancel_download(self, username: str, transfer_id: str) -> None:
+        """Asks slskd to cancel a transfer, keeping its record
+        (`remove=false`) so its state can still be read. slskd 0.26.0
+        answers 204 even for an unknown or finished transfer (read in
+        its source, HISTORY §205), so only `get_download_status` says
+        what became of it."""
+        response = httpx.delete(
+            self._transfer_url(username, transfer_id),
+            params={"remove": "false"},
+            headers=self._headers(),
+            timeout=10.0,
+        )
+        response.raise_for_status()
+
 
 def _parse_search_response(data: dict[str, Any]) -> list[SoulseekFile]:
     results = []

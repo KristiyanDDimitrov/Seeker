@@ -577,3 +577,37 @@ def test_transfer_lookups_encode_the_username_as_one_path_segment(
     )
     assert url.query == b""
     assert url.fragment == ""
+
+
+def test_cancel_download_deletes_the_transfer_and_keeps_its_record(
+        monkeypatch,
+):
+    sent: list[httpx.Request] = []
+
+    def fake_delete(url, headers=None, timeout=None, params=None):
+        request = httpx.Request("DELETE", url, params=params, headers=headers)
+        sent.append(request)
+        return httpx.Response(204, request=request)
+
+    monkeypatch.setattr(httpx, "delete", fake_delete)
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    client.cancel_download("peer 1", "transfer-abc")
+
+    [request] = sent
+    assert request.url.raw_path.decode() == (
+        "/api/v0/transfers/downloads/peer%201/transfer-abc?remove=false"
+    )
+    assert request.headers["X-API-Key"] == "test-api-key"
+
+
+def test_cancel_download_raises_on_an_error_status(monkeypatch):
+    def fake_delete(url, headers=None, timeout=None, params=None):
+        request = httpx.Request("DELETE", url, params=params)
+        return httpx.Response(500, request=request)
+
+    monkeypatch.setattr(httpx, "delete", fake_delete)
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(httpx.HTTPStatusError):
+        client.cancel_download("peer1", "transfer-abc")

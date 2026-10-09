@@ -14,6 +14,14 @@ class TrackSearchOutcome(StrEnum):
     NO_CANDIDATE = "no_candidate"
 
 
+class CancelOutcome(StrEnum):
+    """What `DownloadService.cancel_download` did with one request."""
+
+    CANCELLED = "cancelled"
+    # slskd had already finished the transfer; the poll places it.
+    ALREADY_FINISHED = "already_finished"
+
+
 @dataclass(frozen=True)
 class TrackFailure:
     track: str  # "Artist - Title"

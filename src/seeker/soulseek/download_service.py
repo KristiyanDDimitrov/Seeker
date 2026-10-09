@@ -43,11 +43,13 @@ from seeker.errors import (
 from seeker.matching import resolve_thresholds
 from seeker.models.download_request import (
     FAILED_OUTCOMES,
+    IN_FLIGHT,
     DownloadRequest,
     DownloadRole,
     DownloadStatus,
 )
 from seeker.models.download_result import (
+    CancelOutcome,
     ManualDownloadResult,
     PlaylistDownloadResult,
     PollResult,
@@ -103,6 +105,21 @@ class DownloadNotRetryableError(SeekerError):
             "That download is no longer a failed one, so there is "
             "nothing to retry."
         )
+
+
+class DownloadNotCancellableError(SeekerError):
+    """Cancel was asked for a request that is gone or no longer in
+    slskd's queue: the poll moved it on, or another window cleared
+    it."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "That download is no longer queued or downloading, so there "
+            "is nothing to cancel."
+        )
+
+
+CANCELLED_BY_YOU = "Cancelled by you"
 
 
 def _build_search_query(artist: str, title: str) -> str:
@@ -509,6 +526,52 @@ class DownloadService:
                 )
 
         return outcome
+
+    def cancel_download(self, download_request_id: int) -> CancelOutcome:
+        """Cancels a queued or downloading request in slskd and marks it
+        failed, "Cancelled by you". A transfer slskd had already
+        finished is left to the poll, which places it. Cancelling an
+        upgrade ends it: its backups are superseded, never tried."""
+        with self.database.transaction() as connection:
+            request = self.download_requests.get_by_id(
+                download_request_id, connection,
+            )
+
+        if request is None or request.status not in IN_FLIGHT:
+            raise DownloadNotCancellableError
+
+        if request.transfer_id is not None:
+            self.soulseek.cancel_download(
+                request.username, request.transfer_id,
+            )
+            # slskd answers the cancel alike whatever the transfer's
+            # state, so only its state afterwards says what happened.
+            state = self.soulseek.get_download_status(
+                request.username, request.transfer_id,
+            ).state
+
+            if "Succeeded" in state:
+                return CancelOutcome.ALREADY_FINISHED
+
+        with self.database.transaction() as connection:
+            # A poll since the read above may have moved the row on;
+            # only a row still in flight is the cancel's to end.
+            current = self.download_requests.get_by_id(
+                download_request_id, connection,
+            )
+
+            if current is not None and current.status in IN_FLIGHT:
+                self.download_requests.mark_status(
+                    download_request_id, DownloadStatus.FAILED, connection,
+                    failure_reason=CANCELLED_BY_YOU,
+                )
+
+                if current.role == DownloadRole.UPGRADE:
+                    self.download_requests.supersede_other_active_for_track(
+                        current.track_id, download_request_id, connection,
+                    )
+
+        return CancelOutcome.CANCELLED
 
     def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
         """A real SoulSeek search for a track that isn't in any Spotify
