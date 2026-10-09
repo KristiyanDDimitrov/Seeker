@@ -16,7 +16,11 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2172 passed, 1 skipped`, 0 failed (+10
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** pending at the close-out commit; see the commit after it.
+- **CI:** `5b8c068`'s run `37977966814` green on rerun: `check`
+  `2144 passed, 29 skipped`, coverage 94.74 % (floor 92 %); `audit`,
+  no known vulnerabilities. Its first attempt failed only on
+  `test_library_track_list_refreshes_after_a_tag_run`, the open
+  issue's second CI timeout (CLAUDE.md → Open issues; HISTORY §207).
 
 ## 2. Where we are
 
