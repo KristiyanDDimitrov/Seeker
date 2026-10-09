@@ -16,7 +16,9 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2140 passed, 1 skipped`, 0 failed (+11
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `radon cc -n D` nothing.
-- **CI:** see §3's last bullet for the close-out push's run.
+- **CI:** `a8d6327`'s run `37961766546` green: `check` `2112 passed,
+  29 skipped`, coverage 94.71 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
@@ -40,7 +42,7 @@ Evidence for each is in HISTORY §204.
 - `8bb9e7d` §12: the Actions column and Retry (busy key
   `retry_download`, one search at a time, outcome in the notice).
 - Close-out: HISTORY §204, `ui/CLAUDE.md` (two facts), the plan's ◐,
-  this file. CI run: recorded in the follow-up handoff commit.
+  this file. CI run `37961766546` green (§1).
 
 ## 4. Key context for Cancel (the rest of S12)
 
