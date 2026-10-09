@@ -1,3 +1,4 @@
+import functools
 import html
 import logging
 from collections.abc import Callable
@@ -77,6 +78,7 @@ from seeker.ui.sweep_scheduler import (
     SweepSchedulerHost,
 )
 from seeker.ui.tray import TrayController, TrayHost
+from seeker.ui.update_scheduler import UpdateScheduler, UpdateSchedulerHost
 from seeker.ui.widgets import ThemeToggleButton
 from seeker.ui.window_lifecycle import (
     WindowLifecycleController,
@@ -183,6 +185,11 @@ class MainWindow(QMainWindow):
             run_busy_worker=self._run_busy_worker,
             notify_requested=self._tray.notify_sweep_requested,
         ))
+        self._update_scheduler = UpdateScheduler(UpdateSchedulerHost(
+            application=self.application,
+            run_worker=functools.partial(run_worker, self.thread_pool),
+            on_update_available=self._on_update_available,
+        ))
         self._lifecycle = self._build_lifecycle_controller()
         self._connect_application_events()
 
@@ -207,6 +214,10 @@ class MainWindow(QMainWindow):
 
         self._load_initial_page_state()
         self._start_poll_timers()
+        # The automatic update check, once per launch: after
+        # construction, so the window shows first. `self` is the
+        # context: a window deleted before the tick runs nothing.
+        QTimer.singleShot(0, self, self._update_scheduler.run)
 
     def _init_shared_state(self) -> None:
         self.thread_pool = QThreadPool()
@@ -960,9 +971,18 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._on_about_clicked)
         help_menu.addAction(about_action)
 
-        # Real, live GitHub call — user-triggered ONLY (this one menu
-        # action), never on a timer or anywhere near startup/
-        # construction. See update_check.py's own docstring for why.
+        # Hidden until the automatic check finds a newer version; it
+        # shows that answer again without asking GitHub.
+        self._available_update: UpdateCheckResult | None = None
+        self.update_available_action = QAction(self)
+        self.update_available_action.setVisible(False)
+        self.update_available_action.triggered.connect(
+            self._on_update_available_clicked
+        )
+        help_menu.addAction(self.update_available_action)
+
+        # A real, live GitHub call: here only on a click, and at startup
+        # only through UpdateScheduler. See update_check.py's docstring.
         self.check_for_updates_action = QAction(
             help_text.CHECK_FOR_UPDATES_MENU_TEXT, self,
         )
@@ -970,6 +990,22 @@ class MainWindow(QMainWindow):
             self._on_check_for_updates_clicked
         )
         help_menu.addAction(self.check_for_updates_action)
+
+    def _on_update_available(self, result: UpdateCheckResult) -> None:
+        self._available_update = result
+        # The tag passed packaging's Version, so it holds no "&" for Qt
+        # to read as a mnemonic.
+        self.update_available_action.setText(
+            help_text.UPDATE_AVAILABLE_MENU_TEXT.format(
+                version=result.latest_version,
+            )
+        )
+        self.update_available_action.setVisible(True)
+        self._tray.notify_update_available(result.latest_version or "")
+
+    def _on_update_available_clicked(self) -> None:
+        if self._available_update is not None:
+            self._show_update_check_result(self._available_update)
 
     def _on_about_clicked(self) -> None:
         dialog = AboutDialog(self)

@@ -3,10 +3,10 @@
 A real, unauthenticated external dependency — one GET against
 api.github.com's `/releases/latest` endpoint, subject to GitHub's own
 per-source-IP unauthenticated rate limit (60 requests/hour, confirmed
-live, HISTORY §55). Treated with the same caution as this project's
-other live-dependency checks (Docker/slskd health): never called
-automatically, never on a timer or at startup — only from an explicit
-user action (Help -> "Check for updates...", see ui/main_window.py).
+live, HISTORY §55). It runs from Help -> "Check for updates..." (see
+ui/main_window.py) and, only when the user turns it on in Settings, at
+startup at most once every UPDATE_CHECK_INTERVAL
+(ui/update_scheduler.py); never on a timer.
 `check_for_update()` itself never raises — every real failure mode
 (network error, timeout, an unexpected/malformed response, an
 unparseable version tag) is caught and reported as UNAVAILABLE with a
@@ -16,11 +16,14 @@ already established.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from importlib.metadata import PackageNotFoundError, version
 
 import httpx
 from packaging.version import InvalidVersion, Version
+
+from seeker.due import is_due
 
 REPO = "KristiyanDDimitrov/Seeker"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -31,6 +34,8 @@ _REPO_PAGE_PREFIX = f"https://github.com/{REPO}/"
 # long enough for a slow real connection, short enough that a hung
 # request doesn't leave a user-triggered check spinning indefinitely.
 REQUEST_TIMEOUT_SECONDS = 10.0
+
+UPDATE_CHECK_INTERVAL = timedelta(hours=24)
 
 
 class UpdateStatus(Enum):
@@ -61,6 +66,14 @@ class UpdateCheckResult:
     # never a raw exception/traceback (this is shown directly in a
     # dialog).
     reason: str | None = None
+
+
+def update_check_due(
+        now: datetime, last_update_check_at: str | None, enabled: bool,
+) -> bool:
+    """Whether the automatic check should run at `now` (timezone-aware):
+    enabled, and due by `is_due` over UPDATE_CHECK_INTERVAL."""
+    return enabled and is_due(now, last_update_check_at, UPDATE_CHECK_INTERVAL)
 
 
 def _installed_version() -> str | None:

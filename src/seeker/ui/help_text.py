@@ -1603,10 +1603,12 @@ ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
 # --- Update check ------------------------------------------------------
 # GitHub-releases-based — see update_check.py's own docstring for the
 # real external-dependency caution (rate limits, "never raises").
-# User-triggered only, from this one menu action.
 
 CHECK_FOR_UPDATES_MENU_TEXT = "Check for updates…"
 UPDATE_CHECK_DIALOG_TITLE = "Check for Updates"
+# The Help menu entry an available update adds; {version} is the
+# release's tag.
+UPDATE_AVAILABLE_MENU_TEXT = "Update available: {version}…"
 
 # --- Support-the-creator links ---------------------------------------------
 # Both are real links. A future new entry

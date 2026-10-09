@@ -465,6 +465,18 @@ class TrayController:
 
         self._last_notified_review_count = total
 
+    def notify_update_available(self, version: str) -> None:
+        # Under no notification toggle: the automatic check is opt-in
+        # on its own, and this is its only answer the user hears.
+        if self._tray_icon is None:
+            return
+
+        self._tray_icon.showMessage(
+            "Seeker",
+            f"Seeker {version} is available. The Help menu has the link.",
+            QSystemTrayIcon.MessageIcon.Information,
+        )
+
     def notify_outage(self, message: str) -> None:
         # Not rate-limited like notify_error: the caller notifies only
         # on the reachable-to-unreachable edge (SlskdStatus), so this

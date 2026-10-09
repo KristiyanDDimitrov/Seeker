@@ -104,7 +104,7 @@ src/seeker/
 ├── dashboard_service.py     # playlist-scoped track status, active downloads
 ├── history_service.py       # derived view of downloads and tags (no table)
 ├── album_art_cache.py       # cover art downloaded once per URL
-├── update_check.py          # one GitHub Releases request, user-triggered
+├── update_check.py          # one GitHub Releases request; Help, or opt-in at startup
 ├── login_item.py            # macOS "start at login" (SMAppService)
 ├── _build_info.py           # build identity; "dev" outside a packaged build
 │
@@ -174,6 +174,8 @@ src/seeker/
     ├── busy_actions.py      # which named actions are running
     ├── playlist_selection.py  # the selection Dashboard and Library share
     ├── slskd_status.py      # shared slskd outage state
+    ├── sweep_scheduler.py   # the daily sweep, while the app runs
+    ├── update_scheduler.py  # the opt-in update check at startup
     ├── theme.py             # palette tokens, QSS, apply_theme(), layouts
     ├── icons.py, wordmark.py, status_lamp.py, step_indicator.py
     ├── notice.py            # InlineNotice, FeedbackTarget

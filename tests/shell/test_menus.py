@@ -38,9 +38,9 @@ def test_main_window_has_help_menu_with_about_action(qtbot):
 
 
 # --- Check for updates (roadmap Phase 11) -----------------------------------
-# check_for_update() must fire ONLY from this one Help menu action —
-# never at construction, never on a timer. See main_window.py's own
-# _build_help_menu/_on_check_for_updates_clicked and update_check.py's
+# check_for_update() fires from this Help menu action, never during
+# construction or on a timer; at startup only through UpdateScheduler,
+# when turned on (test_update_scheduler.py). See update_check.py's
 # docstring for the real-external-dependency reasoning.
 
 def test_check_for_update_is_not_called_during_construction(
