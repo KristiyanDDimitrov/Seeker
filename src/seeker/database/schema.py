@@ -104,29 +104,36 @@ CREATE TABLE IF NOT EXISTS download_requests (
     --                    which. Final, never retried.
     --   locked           rejected as locked ("File not shared"). Retried
     --                    on each poll, no sooner than next_retry_at.
-    --                    Mostly upgrades; a settled row gets here from a
-    --                    person-confirmed needs-review candidate, which
-    --                    is never filtered on lock status.
+    --                    Either role: a settled row also locks when its
+    --                    peer is offline at enqueue, and a
+    --                    person-confirmed needs-review candidate is never
+    --                    filtered on lock status.
     --   ready_for_review upgrade only: downloaded, waiting in slskd's
     --                    folder for a person to confirm the replacement.
-    --   shortlisted      upgrade rank 2/3: a known candidate, never sent
-    --                    to slskd until every better-ranked one for the
-    --                    track is rejected; then activated in place.
-    --   superseded       another entry for the track reached
-    --                    ready_for_review first, or this row is an older
-    --                    duplicate of the same candidate
+    --   shortlisted      an upgrade (rank 2/3) or a settled backup (rank
+    --                    2-4): a known candidate, never sent to slskd
+    --                    until every better-ranked one of its role for
+    --                    the track fails or locks; then activated in
+    --                    place.
+    --   superseded       another entry of its role for the track won (an
+    --                    upgrade reached ready_for_review, a settled file
+    --                    was placed), a person cancelled one of its role,
+    --                    or this row is an older duplicate of the same
+    --                    candidate
     --                    (seeker/download_dedup.py). Final, and distinct
     --                    from failed: nothing went wrong with it.
     --   unavailable      locked through LOCKED_RETRY_MAX_ATTEMPTS
     --                    retries. Final; failure_reason says why. Does
     --                    not block a later search from another peer.
     --
-    -- Initial value: 'queued' for settled rows and rank-1 upgrades,
-    -- 'shortlisted' for ranks 2 and 3.
+    -- Initial value: 'queued' for the settled row and rank-1 upgrades
+    -- ('locked' for a settled row refused at enqueue), 'shortlisted' for
+    -- the ranks behind them.
     --
     -- Transitions (DownloadService.poll_downloads):
     --   queued/downloading -> completed/failed/ready_for_review/locked
-    --   shortlisted -> queued/downloading/locked/failed (upgrade only)
+    --   shortlisted -> queued/downloading/locked/failed/ready_for_review
+    --                  (ready_for_review: an upgrade finished at once)
     --   locked -> queued/downloading/locked/completed/ready_for_review/
     --             unavailable (a successful retry: completed for a
     --             settled row, ready_for_review for an upgrade)
@@ -145,9 +152,9 @@ CREATE TABLE IF NOT EXISTS download_requests (
     -- enqueue API requires it) — the exact same candidate, not a fresh
     -- search.
     size INTEGER,
-    -- 1 = immediately requested, 2/3 = shortlisted (persisted, not yet
-    -- sent to slskd until a higher rank is rejected). NULL for
-    -- role='settled' — ranking only applies to the upgrade shortlist.
+    -- 1 = immediately requested, 2 and up = shortlisted (persisted, not
+    -- yet sent to slskd until a higher rank of its role fails or locks).
+    -- NULL for the settled row itself; its backups rank from 2.
     rank INTEGER,
     requested_at TEXT NOT NULL,
     completed_at TEXT,

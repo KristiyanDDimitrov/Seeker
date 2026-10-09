@@ -255,6 +255,12 @@ ACTIVE_DOWNLOADS = [
         request=_request(TRACKS[5], DownloadStatus.QUEUED),
         track=TRACKS[5], playlist_name="Deep House Essentials",
     ),
+    # A settled file's backup, requested only if the file ahead of it
+    # fails or locks.
+    ActiveDownload(
+        request=_request(TRACKS[5], DownloadStatus.SHORTLISTED),
+        track=TRACKS[5], playlist_name="Deep House Essentials",
+    ),
     ActiveDownload(
         request=_request(TRACKS[8], DownloadStatus.LOCKED),
         track=TRACKS[8], playlist_name="Peak Time Techno",
@@ -277,6 +283,14 @@ ACTIVE_DOWNLOADS = [
         request=_request(
             TRACKS[3], DownloadStatus.FAILED,
             failure_reason="The peer went offline before the transfer.",
+        ),
+        track=TRACKS[3], playlist_name="Warehouse Anthems",
+    ),
+    # Its backup, requested the moment it failed.
+    ActiveDownload(
+        request=_request(
+            TRACKS[3], DownloadStatus.DOWNLOADING,
+            progress=(9_000_000, 38_000_000),
         ),
         track=TRACKS[3], playlist_name="Warehouse Anthems",
     ),

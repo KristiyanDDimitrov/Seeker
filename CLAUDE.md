@@ -315,16 +315,25 @@ investigation; `docs/history/README.md` resolves any `§N`.
   recently searched first (`tracks.last_searched_at`, stamped before
   every search). An outage, a pause or its `stop` event stops it and
   records no `last_sweep_at`. Every search skips a (peer, file) that
-  went `unavailable` for that track within 30 days. The GUI runs it
+  went `failed` or `unavailable` for that track within 30 days, a
+  cancel included (`FAILED_CANDIDATE_COOLDOWN`). The GUI runs it
   from `ui/sweep_scheduler.py`: after the first poll that reaches
   slskd, then hourly, one at a time (`busy_actions`), stopped on quit
   (the pool's destructor would wait out a ~40 min sweep).
   [§202](docs/history/181-210.md#202), [§203](docs/history/181-210.md#203)
 - **slskd's cancel answers `204` whatever the transfer's state**
   (unknown, finished or live), so `cancel_download` reads the state
-  afterwards: a `Succeeded` transfer is left to the poll. A cancelled
-  upgrade supersedes its backups, never cascades.
+  afterwards: a `Succeeded` transfer is left to the poll. A cancel
+  supersedes the other rows of its role (backups too), never cascades.
   [§204](docs/history/181-210.md#204), [§205](docs/history/181-210.md#205)
+- **A settled file falls back; a role never crosses.** Up to three
+  unlocked backups ride behind it as `shortlisted` settled rows (ranks
+  2–4). A failed or locked settled row, refused at enqueue too,
+  activates the next one at once (`_cascade(track_id, role)`; the
+  locked row keeps its retry loop); the first settled file placed
+  supersedes the rest. An upgrade cascades only to upgrades. A
+  person's choice gets no backups. [§206](docs/history/181-210.md#206),
+  [§207](docs/history/181-210.md#207)
 - **Every slskd URL path segment is `quote(…, safe="")`d:** a
   username comes from a remote peer, and a raw `?`, `#` or `../`
   reaches another endpoint. [§146](docs/history/121-150.md#146)
