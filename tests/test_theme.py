@@ -505,6 +505,12 @@ def test_a_cell_widget_paints_the_rows_own_background(
     for column in range(4):
         table.setColumnWidth(column, 150)
     table.setRowHeight(0, 40)
+    # When the card wins window activation (Cocoa, timing-dependent;
+    # offscreen never), the table takes keyboard focus, its current
+    # item becomes (0, 0), and Fusion tints that item with its focus
+    # frame (#252537 over dark's #1E2125, observed). That is a focus
+    # state, not the row's ground, so the table never takes focus.
+    table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     at = _grab_card(qtbot, table)
 
     viewport = table.viewport()
