@@ -60,6 +60,7 @@ from seeker.soulseek.docker_setup import (
     slskd_data_dir,
 )
 from seeker.soulseek.download_service import DownloadService
+from seeker.soulseek.leftovers import LeftoverService
 from seeker.soulseek.review_service import ReviewService
 from seeker.soulseek.sharing_service import SharingService
 from seeker.soulseek.sweep import SweepService
@@ -136,6 +137,7 @@ class Application:
         self._history_service: HistoryService | None = None
         self._sharing_service: SharingService | None = None
         self._sweep_service: SweepService | None = None
+        self._leftover_service: LeftoverService | None = None
 
     @property
     def settings(self) -> SeekerConfig:
@@ -836,6 +838,20 @@ class Application:
             )
 
         return self._sweep_service
+
+    @property
+    def leftover_service(self) -> LeftoverService:
+        if self._leftover_service is None:
+            # The client and the download folder are read on every
+            # call, so a SoulSeek settings change reaches it at once.
+            self._leftover_service = LeftoverService(
+                self.database,
+                DownloadRequestRepository(),
+                soulseek=lambda: self.soulseek_client,
+                download_dir=lambda: self.slskd_download_dir,
+            )
+
+        return self._leftover_service
 
     def _record_sweep(self, finished_at: str) -> None:
         self.update_settings(last_sweep_at=finished_at)

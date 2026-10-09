@@ -375,6 +375,7 @@ def test_request_download_does_not_wrap_unrecognized_error(
         ("get_application", "/api/v0/application"),
         ("get_shares", "/api/v0/shares"),
         ("get_uploads", "/api/v0/transfers/uploads"),
+        ("get_downloads", "/api/v0/transfers/downloads"),
     ],
 )
 def test_sharing_getters_return_the_decoded_body(monkeypatch, method, path):
@@ -391,7 +392,8 @@ def test_sharing_getters_return_the_decoded_body(monkeypatch, method, path):
 
 
 @pytest.mark.parametrize(
-    "method", ["get_application", "get_shares", "get_uploads"],
+    "method",
+    ["get_application", "get_shares", "get_uploads", "get_downloads"],
 )
 def test_sharing_getters_turn_401_into_a_readable_error(monkeypatch, method):
     monkeypatch.setattr(

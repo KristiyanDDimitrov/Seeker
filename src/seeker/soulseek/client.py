@@ -123,8 +123,9 @@ class SoulseekClient:
 
         return response.json()
 
-    # The three getters below return slskd's decoded JSON unparsed; the
-    # Sharing service owns those shapes.
+    # The getters below return slskd's decoded JSON unparsed; the
+    # Sharing service owns those shapes, and the leftover cleanup
+    # (soulseek/leftovers.py) the downloads list's.
 
     def get_application(self) -> Any:
         return self._get_json_or_raise_unauthorized("/api/v0/application")
@@ -135,6 +136,11 @@ class SoulseekClient:
     def get_uploads(self) -> Any:
         return self._get_json_or_raise_unauthorized(
             "/api/v0/transfers/uploads"
+        )
+
+    def get_downloads(self) -> Any:
+        return self._get_json_or_raise_unauthorized(
+            "/api/v0/transfers/downloads"
         )
 
     def _transfer_url(self, username: str, transfer_id: str) -> str:

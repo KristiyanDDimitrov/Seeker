@@ -1168,3 +1168,34 @@ def test_restart_slskd_without_a_saved_login_points_at_settings(
         app.restart_slskd()
 
     assert calls == []
+
+
+def test_leftover_service_reads_the_download_folder_at_call_time(
+        tmp_path, monkeypatch,
+):
+    from seeker.soulseek.leftovers import LeftoverFolderUnknownError
+
+    monkeypatch.chdir(tmp_path)
+    data_dir = tmp_path / "platformdirs-data"
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(data_dir),
+    )
+    data_dir.mkdir(parents=True)
+    save_config(
+        SeekerConfig(
+            slskd_base_url="http://slskd.test",
+            slskd_api_key="key",
+            slskd_download_dir=str(tmp_path / "first"),
+        ),
+        data_dir / "config.json",
+    )
+    app = Application()
+    service = app.leftover_service
+
+    app.persist_soulseek_config(
+        "http://slskd.test", "key", str(tmp_path / "second"), "user", "pass",
+    )
+
+    with pytest.raises(LeftoverFolderUnknownError, match="second"):
+        service.list_leftover_files()
