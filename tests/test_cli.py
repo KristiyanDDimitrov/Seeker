@@ -1491,7 +1491,7 @@ def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
             "{add,list,remove,check,merge,scan,match,tag,fix-art,fingerprint,"
             "duplicates,rename}",
         ),
-        ("downloads", "{status,sweep,review}"),
+        ("downloads", "{status,sweep,cleanup,review}"),
         ("sharing", "{status}"),
     ],
 )
