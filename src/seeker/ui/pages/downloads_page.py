@@ -1,5 +1,6 @@
 """The Downloads page (HISTORY §119)."""
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from enum import IntEnum
@@ -70,6 +71,10 @@ _DOWNLOADS_COLUMNS = theme.ColumnLayout(
 # The busy_actions key of a Retry's search. One searches at a time:
 # every Retry button waits while it runs.
 RETRY_DOWNLOAD_KEY = "retry_download"
+# The busy keys of the Actions column's buttons. The render decides
+# each button's enabled state from its key, so the rendered rows carry
+# them all.
+_ROW_ACTION_KEYS = (RETRY_DOWNLOAD_KEY,)
 
 # A status's label beside its lamp. The words are the Dashboard's where
 # the state is the same one ("Retrying"), so a track reads alike on both
@@ -149,9 +154,12 @@ def _has_meter(request: DownloadRequest) -> bool:
 # A row apart from the bytes that update in place, and whether it has a
 # meter to update.
 _RowLayout = tuple[ActiveDownload, bool]
-# The palette the rows' lamps were drawn in, whether a Retry was
-# searching (its buttons' enabled state), and each row's layout.
-_RenderedRows = tuple[theme.Palette, bool, tuple[_RowLayout, ...]]
+# The palette the rows' lamps were drawn in, which row actions were
+# running (their buttons' enabled state, by `_ROW_ACTION_KEYS`), and
+# each row's layout.
+_RenderedRows = tuple[
+    theme.Palette, tuple[bool, ...], tuple[_RowLayout, ...],
+]
 
 
 def _row_layout(download: ActiveDownload) -> _RowLayout:
@@ -245,7 +253,8 @@ class DownloadsPage(QWidget):
         # changes only bytes updates them in place (ui/CLAUDE.md).
         self._rendered_rows: _RenderedRows | None = None
         self._rendered_downloads: list[ActiveDownload] = []
-        self._retry_buttons: list[QPushButton] = []
+        # The Actions column's buttons, by their busy key.
+        self._action_buttons: dict[str, list[QPushButton]] = {}
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -381,7 +390,10 @@ class DownloadsPage(QWidget):
         # must rebuild even when the rows are unchanged.
         rendered: _RenderedRows = (
             theme.active_palette(),
-            self._context.busy_actions.is_running(RETRY_DOWNLOAD_KEY),
+            tuple(
+                self._context.busy_actions.is_running(key)
+                for key in _ROW_ACTION_KEYS
+            ),
             tuple(_row_layout(download) for download in downloads),
         )
         self._rendered_downloads = downloads
@@ -403,7 +415,7 @@ class DownloadsPage(QWidget):
         # rebuild (see preserving_sort_order's own docstring for why)
         # and restored afterward.
         action_widgets: list[QWidget] = []
-        self._retry_buttons = []
+        self._action_buttons = {key: [] for key in _ROW_ACTION_KEYS}
         with preserving_sort_order(self.downloads_table):
             self.downloads_table.setRowCount(len(downloads))
 
@@ -473,18 +485,30 @@ class DownloadsPage(QWidget):
             return QWidget()
 
         request_id = request.id
-        retry_button = QPushButton("Retry")
+        retry_button = self._action_button(
+            "Retry", RETRY_DOWNLOAD_KEY,
+            lambda: self._retry(request_id, label),
+        )
         retry_button.setToolTip(help_text.TOOLTIP_RETRY_DOWNLOAD)
+        return theme.cell_widget(retry_button, row_label=label)
+
+    def _action_button(
+            self,
+            text: str,
+            busy_key: str,
+            on_click: Callable[[], None],
+    ) -> QPushButton:
+        button = QPushButton(text)
         # The render owns its enabled state, never a worker's finish
         # handler (ui/CLAUDE.md).
-        retry_button.setEnabled(
-            not self._context.busy_actions.is_running(RETRY_DOWNLOAD_KEY)
-        )
-        retry_button.clicked.connect(
-            lambda: self._retry(request_id, label)
-        )
-        self._retry_buttons.append(retry_button)
-        return theme.cell_widget(retry_button, row_label=label)
+        button.setEnabled(not self._context.busy_actions.is_running(busy_key))
+        button.clicked.connect(on_click)
+        self._action_buttons[busy_key].append(button)
+        return button
+
+    def _disable_action_buttons(self, busy_key: str) -> None:
+        for button in self._action_buttons.get(busy_key, []):
+            button.setEnabled(False)
 
     def _update_progress_in_place(self) -> None:
         table = self.downloads_table
@@ -532,14 +556,13 @@ class DownloadsPage(QWidget):
         # No button= for the busy worker: it would re-enable a button
         # the next rebuild has already deleted. The rendered key holds
         # the busy state, so the render after the search re-enables.
-        for button in self._retry_buttons:
-            button.setEnabled(False)
+        self._disable_action_buttons(RETRY_DOWNLOAD_KEY)
         self._context.run_busy_worker(
             RETRY_DOWNLOAD_KEY, None,
             lambda: self._context.application.download_service
             .retry_download(request_id),
             on_finished=lambda outcome: self._on_retried(outcome, label),
-            on_error=self._on_retry_failed,
+            on_error=self._on_row_action_failed,
         )
 
     def _on_retried(self, outcome: TrackSearchOutcome, label: str) -> None:
@@ -549,7 +572,7 @@ class DownloadsPage(QWidget):
         )
         self.poll_active_downloads()
 
-    def _on_retry_failed(self, message: str) -> None:
+    def _on_row_action_failed(self, message: str) -> None:
         self.feedback.show_error(message)
         self.poll_active_downloads()
 
