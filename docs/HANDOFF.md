@@ -16,8 +16,9 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2206 passed, 1 skipped`, 0 failed (+34
   tests). `mypy --strict src/` clean, 143 files; `ruff check src tests
   tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** pending on the close-out push; the handoff commit after it
-  records the run.
+- **CI:** `1fe6eb7`'s run `37983354387` green: `check` `2178 passed,
+  29 skipped`, coverage 94.71 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
