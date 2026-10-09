@@ -26,18 +26,25 @@ class BusyActionRegistry:
     """
 
     def __init__(self) -> None:
-        self._running: dict[str, tuple[QAbstractButton, str]] = {}
+        self._running: dict[str, tuple[QAbstractButton | None, str]] = {}
 
     def begin(
             self,
             key: str,
-            button: QAbstractButton,
+            button: QAbstractButton | None,
             busy_text: str | None = None,
     ) -> None:
         if key in self._running:
             # Already running -- never clobber the stored original text
             # with what's currently showing (which may already be the
             # busy text from this very call).
+            return
+
+        if button is None:
+            # A background action with no button (the daily sweep):
+            # registered only for the activity strip and its own
+            # overlap check.
+            self._running[key] = (None, "")
             return
 
         self._running[key] = (button, button.text())
@@ -53,6 +60,10 @@ class BusyActionRegistry:
             return
 
         button, original_text = entry
+
+        if button is None:
+            return
+
         button.setText(original_text)
         button.setEnabled(True)
 

@@ -65,6 +65,12 @@ from seeker.ui.playlist_selection import PlaylistSelection
 from seeker.ui.settings_window import SettingsPage
 from seeker.ui.slskd_status import START_SLSKD_KEY, SlskdStatus
 from seeker.ui.status_lamp import CUE, StatusLamp
+from seeker.ui.sweep_scheduler import (
+    SWEEP_CHECK_INTERVAL_MS,
+    SWEEP_KEY,
+    SweepScheduler,
+    SweepSchedulerHost,
+)
 from seeker.ui.tray import TrayController, TrayHost
 from seeker.ui.widgets import ThemeToggleButton
 from seeker.ui.window_lifecycle import (
@@ -128,6 +134,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     "history_refresh": "Loading history…",
     "search_manual": "Searching SoulSeek…",
     "download_manual": "Requesting download…",
+    SWEEP_KEY: "Looking again for missing tracks…",
 }
 
 
@@ -198,6 +205,12 @@ class MainWindow(QMainWindow):
         self.playlist_selection = PlaylistSelection()
         # Written only by _trigger_backend_poll.
         self.slskd_status = SlskdStatus()
+        self._sweep_scheduler = SweepScheduler(SweepSchedulerHost(
+            application=self.application,
+            busy_actions=self.busy_actions,
+            slskd_status=self.slskd_status,
+            run_busy_worker=self._run_busy_worker,
+        ))
         # Keyed the same as busy_actions; populated by a
         # run_worker(on_progress=...) callback (via
         # _on_activity_progress), consulted by _render_activity_strip.
@@ -307,6 +320,13 @@ class MainWindow(QMainWindow):
             self._sharing_page.poll_sharing
         )
         self.backend_poll_timer.start()
+
+        # The daily sweep's due check; the first one runs after the
+        # first backend poll that reaches slskd (_trigger_backend_poll).
+        self.sweep_timer = QTimer(self)
+        self.sweep_timer.setInterval(SWEEP_CHECK_INTERVAL_MS)
+        self.sweep_timer.timeout.connect(self._sweep_scheduler.check)
+        self.sweep_timer.start()
 
     def _build_tray_controller(self) -> TrayController:
         # The tray/notification group (ui/tray.py). The `window`,
@@ -1055,6 +1075,7 @@ class MainWindow(QMainWindow):
 
             if outage is None:
                 self.slskd_status.mark_reachable()
+                self._sweep_scheduler.on_backend_poll_reached_slskd()
             elif self.slskd_status.mark_unreachable(str(outage)):
                 self._tray.notify_outage(str(outage))
 
@@ -1084,7 +1105,7 @@ class MainWindow(QMainWindow):
     def _run_busy_worker(
             self,
             key: str,
-            button: QPushButton,
+            button: QPushButton | None,
             fn: Callable[[], Any] | Callable[[Callable[[str, int, int], None]], Any],
             *,
             busy_text: str | None = None,
@@ -1187,6 +1208,8 @@ class MainWindow(QMainWindow):
         # WindowLifecycleHost.release_shell).
         self.poll_timer.stop()
         self.backend_poll_timer.stop()
+        self.sweep_timer.stop()
+        self._sweep_scheduler.stop()
 
         # Unlike window geometry, there is no hide-to-tray visibility
         # race to guard against: the Review page's splitter keeps

@@ -36,6 +36,7 @@ from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
+from seeker.models.sweep_result import SweepResult
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.models.track_status import (
@@ -576,6 +577,23 @@ class FakeDownloadService:
         return self._download_manual_result
 
 
+class FakeSweepService:
+    """Returns `result`. A test that needs a sweep still running sets
+    `hold` and later releases it; `calls` records each run's stop event.
+    """
+
+    def __init__(self, result: SweepResult | None = None):
+        self.result = result or SweepResult()
+        self.hold: threading.Event | None = None
+        self.calls: list[threading.Event | None] = []
+
+    def run_sweep(self, stop: threading.Event | None = None) -> SweepResult:
+        self.calls.append(stop)
+        if self.hold is not None:
+            self.hold.wait(timeout=5)
+        return self.result
+
+
 class FakeMetadataService:
     def __init__(
             self,
@@ -692,6 +710,7 @@ class FakeApplication:
         )
         self.soulseek_configured = soulseek_configured
         self.sharing_service = sharing_service or FakeSharingService()
+        self.sweep_service = FakeSweepService()
         # settings_window.py already reaches into this attribute
         # directly on the real Application (see its own §threshold/
         # §connection tabs) — mirrored here rather than adding a
