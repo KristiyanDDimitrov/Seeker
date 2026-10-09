@@ -11,8 +11,10 @@ from seeker.errors import PlaylistNotFoundError, SeekerError
 from seeker.formatting import format_file_size, format_timestamp
 from seeker.history_service import DEFAULT_LIMIT as DEFAULT_HISTORY_LIMIT
 from seeker.library.metadata_service import RenamePlan
+from seeker.models.leftover_result import LeftoverFolder
 from seeker.models.playlist import Playlist
 from seeker.soulseek.download_service import NoDestinationConfiguredError
+from seeker.soulseek.leftovers import RECENTLY_WRITTEN_SECONDS
 from seeker.soulseek.quality import rank_candidates
 from seeker.spotify.sync_service import find_close_playlist_matches
 
@@ -251,6 +253,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     downloads_sweep_parser.set_defaults(handler=handle_downloads_sweep)
+
+    downloads_cleanup_parser = downloads_subparsers.add_parser(
+        "cleanup",
+        help=(
+            "List the files left in slskd's download and incomplete "
+            "folders that no request or transfer is using."
+        ),
+    )
+    downloads_cleanup_parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="Delete the listed files, after a confirmation.",
+    )
+    downloads_cleanup_parser.set_defaults(handler=handle_downloads_cleanup)
 
     downloads_review_parser = downloads_subparsers.add_parser(
         "review",
@@ -671,6 +687,69 @@ def handle_downloads_sweep(
 
     if result.paused:
         print("Stopped: downloads are paused. Resume them to sweep the rest.")
+
+
+def handle_downloads_cleanup(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    listing = application.leftover_service.list_leftover_files()
+
+    if listing.files:
+        print(
+            f"{len(listing.files)} leftover file(s) in slskd's folders, "
+            f"{format_file_size(listing.total_bytes)}:"
+        )
+        sizes = [format_file_size(file.size) for file in listing.files]
+        width = max(map(len, sizes))
+        folder_width = max(map(len, LeftoverFolder))
+        for size, file in zip(sizes, listing.files, strict=True):
+            print(
+                f"  {size:>{width}}  {file.folder:<{folder_width}}  "
+                f"{printable(file.path)}"
+            )
+    else:
+        print("No leftover files in slskd's folders.")
+
+    if listing.held_back:
+        print(
+            f"{listing.held_back} more held back: written in the last "
+            f"{RECENTLY_WRITTEN_SECONDS // 60} minutes."
+        )
+
+    if not listing.files:
+        return
+
+    if not parsed.delete:
+        print("Dry run only — pass --delete to delete them.")
+        return
+
+    answer = input(
+        f"Delete {len(listing.files)} file(s), "
+        f"{format_file_size(listing.total_bytes)}? [y/N] "
+    ).strip().lower()
+
+    if answer != "y":
+        print("Cancelled — nothing deleted.")
+        return
+
+    cleanup = application.leftover_service.delete_leftover_files(
+        listing.files,
+    )
+    print(
+        f"Deleted {len(cleanup.deleted)} file(s), freeing "
+        f"{format_file_size(cleanup.freed_bytes)}."
+    )
+    if cleanup.kept:
+        print(
+            f"Kept {len(cleanup.kept)}: changed or came into use since "
+            f"the listing."
+        )
+    for failure in cleanup.failures:
+        print(
+            f"  Failed: {printable(failure.file.path)}: "
+            f"{printable(failure.message)}"
+        )
 
 
 def handle_downloads_review(

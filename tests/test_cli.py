@@ -2240,3 +2240,107 @@ def test_no_help_text_carries_development_history():
     ]
 
     assert leaks == []
+
+
+def _leftover(name: str, size: int, folder: str = "downloads"):
+    from seeker.models.leftover_result import LeftoverFile, LeftoverFolder
+
+    return LeftoverFile(f"/slskd/{folder}/{name}", LeftoverFolder(folder), size, 0.0)
+
+
+class _FakeLeftovers:
+    def __init__(self, listing, cleanup=None):
+        self.listing = listing
+        self.cleanup = cleanup
+        self.deleted_with = None
+
+    def list_leftover_files(self):
+        return self.listing
+
+    def delete_leftover_files(self, files):
+        self.deleted_with = list(files)
+        return self.cleanup
+
+
+def _run_cleanup(capsys, leftovers, args, answers=()):
+    from types import SimpleNamespace
+
+    replies = iter(answers)
+    application = SimpleNamespace(leftover_service=leftovers)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("builtins.input", lambda prompt: (
+            print(prompt, end=""), next(replies),
+        )[1])
+        cli.run(application, ["downloads", "cleanup", *args])
+    return capsys.readouterr().out
+
+
+def test_downloads_cleanup_lists_leftovers_without_deleting(capsys):
+    from seeker.models.leftover_result import LeftoverListing
+
+    leftovers = _FakeLeftovers(LeftoverListing(
+        [_leftover("Old.mp3", 2048), _leftover("P\x1b.mp3", 5, "incomplete")],
+        held_back=1,
+    ))
+
+    out = _run_cleanup(capsys, leftovers, [])
+
+    assert out == (
+        "2 leftover file(s) in slskd's folders, 2.0 KB:\n"
+        "  2.0 KB  downloads   /slskd/downloads/Old.mp3\n"
+        "     5 B  incomplete  /slskd/incomplete/P.mp3\n"
+        "1 more held back: written in the last 10 minutes.\n"
+        "Dry run only — pass --delete to delete them.\n"
+    )
+    assert leftovers.deleted_with is None
+
+
+def test_downloads_cleanup_with_nothing_left_says_so(capsys):
+    from seeker.models.leftover_result import LeftoverListing
+
+    out = _run_cleanup(capsys, _FakeLeftovers(LeftoverListing()), ["--delete"])
+
+    assert out == "No leftover files in slskd's folders.\n"
+
+
+def test_downloads_cleanup_delete_asks_first_and_can_be_cancelled(capsys):
+    from seeker.models.leftover_result import LeftoverListing
+
+    leftovers = _FakeLeftovers(LeftoverListing([_leftover("Old.mp3", 5)]))
+
+    out = _run_cleanup(capsys, leftovers, ["--delete"], answers=["n"])
+
+    assert out.endswith(
+        "Delete 1 file(s), 5 B? [y/N] Cancelled — nothing deleted.\n"
+    )
+    assert leftovers.deleted_with is None
+
+
+def test_downloads_cleanup_delete_reports_what_it_did(capsys):
+    from seeker.models.leftover_result import (
+        LeftoverCleanup,
+        LeftoverFailure,
+        LeftoverListing,
+    )
+
+    old, kept, stuck = (
+        _leftover("Old.mp3", 5), _leftover("Kept.mp3", 7),
+        _leftover("Stuck.mp3", 9),
+    )
+    leftovers = _FakeLeftovers(
+        LeftoverListing([stuck, kept, old]),
+        LeftoverCleanup(
+            deleted=[old], kept=[kept],
+            failures=[LeftoverFailure(stuck, "Permission denied")],
+        ),
+    )
+
+    out = _run_cleanup(capsys, leftovers, ["--delete"], answers=["y"])
+
+    assert leftovers.deleted_with == [stuck, kept, old]
+    assert out.endswith(
+        "Delete 3 file(s), 21 B? [y/N] "
+        "Deleted 1 file(s), freeing 5 B.\n"
+        "Kept 1: changed or came into use since the listing.\n"
+        "  Failed: /slskd/downloads/Stuck.mp3: Permission denied\n"
+    )
