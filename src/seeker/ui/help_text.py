@@ -568,6 +568,11 @@ TOOLTIP_REJECT_LOCAL_MATCH = (
 )
 TOOLTIP_DOUBLE_CLICK_TO_REVIEW = "Double-click to review this track."
 
+TOOLTIP_NEEDS_REVIEW_WITH_CANDIDATE = (
+    "A local file and a SoulSeek file both wait for your review. "
+    "Double-click to review this track."
+)
+
 # --- Duplicates tab ---------------------------------------------------------
 
 TOOLTIP_DUPLICATES_LOCATION_COMBO = (

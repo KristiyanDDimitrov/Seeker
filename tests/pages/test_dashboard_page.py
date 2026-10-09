@@ -34,7 +34,7 @@ from seeker.models.track_status import (
     REVIEW_CANDIDATE,
     TrackStatus,
 )
-from seeker.ui import status_lamp, theme
+from seeker.ui import help_text, status_lamp, theme
 from seeker.ui.dialogs import DestinationDialog
 from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
@@ -1848,7 +1848,9 @@ def test_a_review_status_is_a_lamp_not_a_link(qtbot):
     assert item.toolTip() != ""
 
 
-def test_a_found_candidate_is_quieter_text_beside_needs_review(qtbot):
+def test_a_found_candidate_beside_needs_review_is_told_on_hover(qtbot):
+    # Beside the label it elided to "Candidate fo…" at 1280 px; the
+    # cell holds the state, the hover the detail.
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
     page = window._dashboard_page
@@ -1861,7 +1863,8 @@ def test_a_found_candidate_is_quieter_text_beside_needs_review(qtbot):
 
     item = page.track_table.item(0, 1)
     assert item.text() == "Needs review"
-    assert item.data(SECONDARY_ROLE) == "Candidate found"
+    assert item.data(SECONDARY_ROLE) is None
+    assert item.toolTip() == help_text.TOOLTIP_NEEDS_REVIEW_WITH_CANDIDATE
 
 
 def test_a_download_shows_its_percentage_beside_the_lamp(qtbot):

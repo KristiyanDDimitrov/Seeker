@@ -991,15 +991,6 @@ class DashboardPage(QWidget):
                 status_item.setIcon(status_lamp.lamp_icon(
                     status_lamp.TRACK_LAMPS[status.state], palette,
                 ))
-                # dashboard_service sets a candidate on NEEDS_REVIEW only;
-                # REVIEW_CANDIDATE's own label already says as much.
-                if (
-                        status.state == NEEDS_REVIEW
-                        and status.soulseek_candidate is not None
-                ):
-                    status_item.setData(
-                        SECONDARY_ROLE, "Candidate found",
-                    )
                 if _has_progress_bar(status):
                     status_item.setData(SECONDARY_ROLE, _percent(status))
 
@@ -1011,9 +1002,20 @@ class DashboardPage(QWidget):
                         AWAITING_REVIEW,
                         REVIEW_CANDIDATE,
                 ):
-                    status_item.setToolTip(
-                        help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
-                    )
+                    # A NEEDS_REVIEW row with a SoulSeek candidate too
+                    # says so on hover: beside the label it would elide.
+                    # REVIEW_CANDIDATE's own label already says as much.
+                    if (
+                            status.state == NEEDS_REVIEW
+                            and status.soulseek_candidate is not None
+                    ):
+                        status_item.setToolTip(
+                            help_text.TOOLTIP_NEEDS_REVIEW_WITH_CANDIDATE
+                        )
+                    else:
+                        status_item.setToolTip(
+                            help_text.TOOLTIP_DOUBLE_CLICK_TO_REVIEW
+                        )
 
                 self.track_table.setItem(row, 1, status_item)
 
