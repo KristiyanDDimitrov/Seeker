@@ -133,7 +133,7 @@ class SpotifyAuthManager:
         # redirected straight back with no consent screen to slow it
         # down, and the callback can otherwise land before anything is
         # listening for it.
-        server = create_callback_server()
+        server = create_callback_server(state)
 
         logger.info("Opening Spotify authorization page...")
         webbrowser.open(authorization_url)
@@ -147,14 +147,15 @@ class SpotifyAuthManager:
         if timed_out:
             raise RuntimeError("Authorization timed out — try again.")
 
-        if error:
-            raise RuntimeError(
-                f"Spotify authorization failed: {error}"
-            )
-
+        # State first: an `error` is Spotify's only if the state is.
         if returned_state != state:
             raise RuntimeError(
                 "Spotify state validation failed."
+            )
+
+        if error:
+            raise RuntimeError(
+                f"Spotify authorization failed: {error}"
             )
 
         if not code:

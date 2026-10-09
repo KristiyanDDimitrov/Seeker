@@ -24,7 +24,7 @@ def test_serve_until_callback_parses_code_and_state_from_real_request():
     # thread, so it is provably ready before any client connects —
     # only serve_until_callback() itself runs in the background. Port 0
     # picks a real ephemeral port, read back from server_address.
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-1", port=0)
     port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
@@ -50,7 +50,7 @@ def test_serve_until_callback_parses_code_and_state_from_real_request():
 
 
 def test_serve_until_callback_captures_error_param():
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-1", port=0)
     port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
@@ -77,7 +77,7 @@ def test_callback_handler_returns_404_but_keeps_waiting_for_the_real_callback():
     # WITHOUT consuming serve_until_callback()'s one chance to see the real
     # authorization — the old behavior treated any request as "the"
     # request and returned empty-handed from here on.
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-2", port=0)
     port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
@@ -115,7 +115,7 @@ def test_serve_until_callback_times_out_when_nothing_ever_arrives():
     # authorization tab. A real (short, test-scoped) timeout must
     # return a distinct outcome rather than hang.
     code, state, error, timed_out = serve_until_callback(
-        create_callback_server(port=0), timeout_seconds=0.2,
+        create_callback_server("state-1", port=0), timeout_seconds=0.2,
     )
 
     assert code is None
@@ -131,7 +131,7 @@ def test_two_consecutive_runs_do_not_leak_state_between_them():
     # attempt in the same process. Each create_callback_server() call
     # must get genuinely fresh state — two separate ephemeral-port
     # servers stand in for two separate real authorize attempts.
-    first_server = create_callback_server(port=0)
+    first_server = create_callback_server("state-1", port=0)
     first_port = first_server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
@@ -140,14 +140,14 @@ def test_two_consecutive_runs_do_not_leak_state_between_them():
     thread.start()
     httpx.get(
         f"http://127.0.0.1:{first_port}/callback",
-        params={"error": "access_denied"},
+        params={"error": "access_denied", "state": "state-1"},
         timeout=5.0,
     )
     thread.join(timeout=5.0)
     first_error = result_queue.get(timeout=1.0)[2]
     assert first_error == "access_denied"
 
-    second_server = create_callback_server(port=0)
+    second_server = create_callback_server("state-3", port=0)
     second_port = second_server.server_address[1]
     result_queue = Queue()
     thread = threading.Thread(
@@ -189,7 +189,7 @@ def test_error_callback_page_says_authorization_was_cancelled():
     # Spotify redirects with error=access_denied when the user clicks
     # Cancel on its consent screen; the page must not claim success.
     response = _get_in_background(
-        create_callback_server(port=0),
+        create_callback_server("state-1", port=0),
         error="access_denied", state="state-1",
     )
 
@@ -201,7 +201,7 @@ def test_error_callback_page_says_authorization_was_cancelled():
 
 def test_callback_responses_are_not_cached_framed_or_referred():
     response = _get_in_background(
-        create_callback_server(port=0), code="auth-code", state="state-1",
+        create_callback_server("state-1", port=0), code="auth-code", state="state-1",
     )
 
     assert response.headers["Cache-Control"] == "no-store"
@@ -210,7 +210,7 @@ def test_callback_responses_are_not_cached_framed_or_referred():
 
 
 def test_stray_request_404_carries_the_same_security_headers():
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-1", port=0)
     port = server.server_address[1]
     result_queue: Queue = Queue()
     thread = threading.Thread(
@@ -230,7 +230,7 @@ def test_cancel_returns_promptly_and_frees_the_port():
     # A mistyped Client ID leaves Spotify on its own INVALID_CLIENT
     # page, which never redirects: without a cancel the wait holds the
     # port for the full CALLBACK_TIMEOUT_SECONDS.
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-1", port=0)
     port = server.server_address[1]
     cancel = threading.Event()
     raised: Queue = Queue()
@@ -253,12 +253,12 @@ def test_cancel_returns_promptly_and_frees_the_port():
     assert isinstance(raised.get(timeout=1.0), AuthorizationCancelledError)
 
     # A second attempt after the cancel binds the same port.
-    second = create_callback_server(port=port)
+    second = create_callback_server("state-1", port=port)
     second.server_close()
 
 
 def test_already_cancelled_wait_serves_nothing_and_closes_the_socket():
-    server = create_callback_server(port=0)
+    server = create_callback_server("state-1", port=0)
     cancel = threading.Event()
     cancel.set()
 

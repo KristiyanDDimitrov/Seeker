@@ -77,7 +77,7 @@ class _CallbackResult:
 
 
 def _build_handler_class(
-        result: _CallbackResult,
+        result: _CallbackResult, expected_state: str,
 ) -> type[BaseHTTPRequestHandler]:
     # A fresh handler class per call, closing over this call's own
     # _CallbackResult — so there is no class-level state: no shared
@@ -96,8 +96,18 @@ def _build_handler_class(
                 return
 
             query = parse_qs(parsed_url.query)
+            returned_state = query.get("state", [None])[0]
+            if returned_state != expected_state:
+                # Any web page open in the browser, or any local
+                # process, can reach this port during the wait. Only
+                # the redirect carrying this attempt's state ends it,
+                # so a forged request can neither cancel the login nor
+                # put its own `error` text in front of the user.
+                self.send_error(400)
+                return
+
             result.authorization_code = query.get("code", [None])[0]
-            result.returned_state = query.get("state", [None])[0]
+            result.returned_state = returned_state
             result.error = query.get("error", [None])[0]
             result.received = True
 
@@ -167,15 +177,20 @@ class _LoopbackHTTPServer(HTTPServer):
         self.server_port = self.server_address[1]
 
 
-def create_callback_server(port: int = CALLBACK_PORT) -> HTTPServer:
+def create_callback_server(
+        expected_state: str, port: int = CALLBACK_PORT,
+) -> HTTPServer:
     """Binds (and starts listening on) the local callback socket and
     returns it, without serving any request yet — the caller decides
     when to start serving via `serve_until_callback()`. The split is
     what lets `auth_manager._authorize()` bind the socket *before*
     opening the browser, instead of after.
+
+    Only a /callback request whose `state` equals `expected_state`
+    ends the wait; any other gets a 400 and the wait goes on.
     """
     result = _CallbackResult()
-    handler_class = _build_handler_class(result)
+    handler_class = _build_handler_class(result, expected_state)
     return _LoopbackHTTPServer(("127.0.0.1", port), handler_class, result)
 
 

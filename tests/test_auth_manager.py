@@ -144,7 +144,8 @@ def test_authorize_raises_actionable_error_on_callback_timeout(
     # generic failure or hanging.
     manager = make_manager(tmp_path)
     monkeypatch.setattr(
-        "seeker.spotify.auth_manager.create_callback_server", object,
+        "seeker.spotify.auth_manager.create_callback_server",
+        lambda state: object(),
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.serve_until_callback",
@@ -195,7 +196,7 @@ def test_connect_spotify_flow_does_not_reauthorize_on_the_next_call(
         "seeker.spotify.auth_manager.webbrowser.open", fake_webbrowser_open,
     )
 
-    def fake_create_callback_server():
+    def fake_create_callback_server(state):
         call_order.append("create")
         return object()
 
@@ -371,7 +372,8 @@ def test_cancelled_authorization_raises_and_releases_the_token_lock(
         raise AuthorizationCancelledError
 
     monkeypatch.setattr(
-        "seeker.spotify.auth_manager.create_callback_server", object,
+        "seeker.spotify.auth_manager.create_callback_server",
+        lambda state: object(),
     )
     monkeypatch.setattr(
         "seeker.spotify.auth_manager.serve_until_callback",
@@ -386,3 +388,84 @@ def test_cancelled_authorization_raises_and_releases_the_token_lock(
 
     assert forwarded == [cancel]
     assert not auth_manager._TOKEN_LOCK.locked()
+
+
+def test_a_forged_error_callback_does_not_end_the_authorization(
+        tmp_path, monkeypatch,
+):
+    # Any web page Kris has open can fire a GET at the loopback
+    # callback while Seeker waits. Without the expected state it must
+    # neither end the wait nor put its text into Seeker's error.
+    manager = make_manager(tmp_path)
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.generate_state", lambda: "real-state",
+    )
+    servers = []
+    real_create = auth_manager.create_callback_server
+
+    def create_on_an_ephemeral_port(*args, **kwargs):
+        server = real_create(*args, port=0, **kwargs)
+        servers.append(server)
+        return server
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.create_callback_server",
+        create_on_an_ephemeral_port,
+    )
+    forged_statuses: list[int] = []
+
+    def browser_then_forger(url):
+        port = servers[0].server_address[1]
+        callback = f"http://127.0.0.1:{port}/callback"
+
+        def requests() -> None:
+            forged = httpx.get(
+                callback,
+                params={"error": "Visit evil.example", "state": "forged"},
+                timeout=5.0,
+            )
+            forged_statuses.append(forged.status_code)
+            httpx.get(
+                callback,
+                params={"code": "real-code", "state": "real-state"},
+                timeout=5.0,
+            )
+
+        threading.Thread(target=requests, daemon=True).start()
+
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open", browser_then_forger,
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.exchange_code_for_token",
+        lambda **kwargs: SpotifyToken(
+            access_token="real-access",
+            refresh_token="real-refresh",
+            expires_at=time.time() + 3600,
+        ),
+    )
+
+    token = manager.get_valid_token()
+
+    assert token.access_token == "real-access"
+    assert forged_statuses == [400]
+
+
+def test_an_error_with_the_wrong_state_reports_the_state_not_its_text(
+        tmp_path, monkeypatch,
+):
+    manager = make_manager(tmp_path)
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.create_callback_server",
+        lambda *args: object(),
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.serve_until_callback",
+        lambda server, cancel=None: (None, "forged", "Visit evil.example", False),
+    )
+    monkeypatch.setattr(
+        "seeker.spotify.auth_manager.webbrowser.open", lambda url: None,
+    )
+
+    with pytest.raises(RuntimeError, match="state validation failed"):
+        manager.get_valid_token()
