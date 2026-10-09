@@ -80,9 +80,11 @@ investigation.
   keys its rows apart from their bytes and updates progress in place;
   Sharing's 20 s rebuild still replaces its per-row button. A busy
   action whose buttons a rebuild can delete passes `button=None` and
-  puts its busy state in the rendered key (Downloads' Retry).
+  puts its busy state in the rendered key (Downloads' Retry and
+  Cancel, through `_ROW_ACTION_KEYS`).
   [HISTORY §195](../../../docs/history/181-210.md#195),
-  [HISTORY §204](../../../docs/history/181-210.md#204)
+  [HISTORY §204](../../../docs/history/181-210.md#204),
+  [HISTORY §205](../../../docs/history/181-210.md#205)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it

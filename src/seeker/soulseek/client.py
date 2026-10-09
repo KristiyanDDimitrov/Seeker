@@ -298,7 +298,7 @@ class SoulseekClient:
         """Asks slskd to cancel a transfer, keeping its record
         (`remove=false`) so its state can still be read. slskd 0.26.0
         answers 204 even for an unknown or finished transfer (read in
-        its source, HISTORY §205), so only `get_download_status` says
+        its source, HISTORY §204), so only `get_download_status` says
         what became of it."""
         response = httpx.delete(
             self._transfer_url(username, transfer_id),

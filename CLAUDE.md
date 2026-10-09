@@ -320,6 +320,11 @@ investigation; `docs/history/README.md` resolves any `§N`.
   slskd, then hourly, one at a time (`busy_actions`), stopped on quit
   (the pool's destructor would wait out a ~40 min sweep).
   [§202](docs/history/181-210.md#202), [§203](docs/history/181-210.md#203)
+- **slskd's cancel answers `204` whatever the transfer's state**
+  (unknown, finished or live), so `cancel_download` reads the state
+  afterwards: a `Succeeded` transfer is left to the poll. A cancelled
+  upgrade supersedes its backups, never cascades.
+  [§204](docs/history/181-210.md#204), [§205](docs/history/181-210.md#205)
 - **Every slskd URL path segment is `quote(…, safe="")`d:** a
   username comes from a remote peer, and a raw `?`, `#` or `../`
   reaches another endpoint. [§146](docs/history/121-150.md#146)

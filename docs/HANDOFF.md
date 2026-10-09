@@ -11,59 +11,54 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S12 close-out (HISTORY §204). Tree clean apart from
+- **HEAD:** the S12 close-out (HISTORY §205). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2140 passed, 1 skipped`, 0 failed (+11
+- **Local (Cocoa):** pytest `2152 passed, 1 skipped`, 0 failed (+12
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `radon cc -n D` nothing.
-- **CI:** `a8d6327`'s run `37961766546` green: `check` `2112 passed,
-  29 skipped`, coverage 94.71 % (floor 92 %); `audit`, no known
-  vulnerabilities.
+- **CI:** see §3's last line for the close-out's run.
 
 ## 2. Where we are
 
-**Round 12 S12 stopped at its split point, "After Retry"** (the
-session reached its budget). Retry is built; **Cancel is next**, and
-it is still S12 (the plan's row is marked ◐). BRIEF §12. The first
-live Cancel needs Kris at the keyboard.
+**Round 12 S12 is complete** (☑): Retry (§204) and Cancel (§205) on
+the Downloads page. **Next: S13, X1, "Clean up leftover slskd
+downloads"** (BRIEF §13; split point "After the listing (no
+delete)"). The first live Cancel and the first real cleanup both wait
+for Kris at the keyboard.
 
-## 3. Session report (S12, Retry)
+## 3. Session report (S12, Cancel)
 
-Evidence for each is in HISTORY §204.
-- `352055b`: Downloads rebuilds its table only when its rows change;
-  a progress-only tick updates meters, ETA, percentage and sort keys
-  in place.
-- `a54b5df`: `DownloadService.retry_download(id)`: `search_and_request`
-  for the row's track; dismisses the row once something is requested;
-  `DownloadNotRetryableError` otherwise.
-- `e7e9d07`: `elided_text.label_floor`: a noted column in a
-  read-in-full view is never cut below its widest label (Downloads'
-  new column and the Dashboard's "Candidate to review" elided).
-- `8bb9e7d` §12: the Actions column and Retry (busy key
-  `retry_download`, one search at a time, outcome in the notice).
-- Close-out: HISTORY §204, `ui/CLAUDE.md` (two facts), the plan's ◐,
-  this file. CI run `37961766546` green (§1).
+Evidence for each is in HISTORY §205.
+- `1c1f775`: `SoulseekClient.cancel_download` (`DELETE
+  …/downloads/{user}/{id}?remove=false`) and
+  `DownloadService.cancel_download(id)` → `CancelOutcome`: reads
+  slskd's state after the `DELETE`; `Succeeded` is left to the poll,
+  anything else is `failed`, "Cancelled by you", only if still
+  `IN_FLIGHT`; a cancelled upgrade supersedes its backups.
+- `a4180d1`, refactor: `_action_button` and `_ROW_ACTION_KEYS` in
+  `downloads_page.py`; tooltips stay at the call site (the plain-text
+  sweep needs to see fixed text).
+- `992a972` §12: Cancel on queued rows, busy key `cancel_download`,
+  one at a time, outcome in the notice.
+- Close-out: HISTORY §205, CLAUDE.md (slskd cancel fact),
+  `ui/CLAUDE.md`, the plan's ☑, this file, a comment's citation fixed
+  (§205 → §204 in `client.py`). CI: recorded in the push commit.
 
-## 4. Key context for Cancel (the rest of S12)
+## 4. Key context for S13
 
-- **Endpoint, verified read-only against the 0.26.0 tag's source:**
-  `DELETE /api/v0/transfers/downloads/{username}/{id}?remove=false`;
-  build it with `SoulseekClient._transfer_url` (already quotes both
-  segments). It answers `204` even for an unknown id or a finished
-  transfer; a stuck unfinished record becomes `Completed, Cancelled`.
-  So after the `DELETE`, read `get_download_status`: a `Succeeded`
-  transfer is left to the poll; otherwise mark the row `failed` with
-  `failure_reason="Cancelled by you"`, re-reading the row in the same
-  transaction and only if it is still `IN_FLIGHT`.
-- **Race:** a poll that read the row before the cancel may itself
-  mark it `failed` "Cancelled" (`FAILED_STATE_MARKERS`); harmless.
-- **An upgrade row:** its `shortlisted` siblings are only chased when
-  it fails in the poll (`_cascade_upgrade`). A user-cancelled upgrade
-  would strand them as "Queued as backup"; decide (supersede them, or
-  cascade) and say which in HISTORY.
-- **UI:** Cancel goes in the same Actions cell on `queued` rows, the
-  Retry idiom (render owns enabled state; the busy key in
-  `_RenderedRows`). A `DELETE` against the real slskd waits for Kris.
+- BRIEF §13: list files in slskd's download and incomplete folders
+  that no pending or ready-for-review request references; show sizes;
+  explicit confirmation; never delete what an active transfer uses.
+  **Test against a scratch tree only;** the real slskd folders are
+  read-only to the session.
+- Downloads already has an Actions column and the
+  `_action_button`/`_ROW_ACTION_KEYS` idiom; a page-level action goes
+  in the header row beside "Clear finished" (`theme.action_row()`).
+- Placement facts (CLAUDE.md → SoulSeek): slskd writes `<remote
+  parent>/<basename>` or `<stem>_<ticks><suffix>`;
+  `_locate_completed_file` matches by exact byte size. A
+  `ready_for_review` upgrade's file waits in slskd's folder, so it is
+  referenced and must never be listed.
 - **Carried:** `test_library_track_list_refreshes_after_a_tag_run`'s
   one CI timeout; the callback handler has no socket timeout;
   Sharing's 20 s per-row rebuild (S15); `uv build --wheel` picks up a
@@ -72,31 +67,31 @@ Evidence for each is in HISTORY §204.
 
 ## 5. Decisions made
 
-- **One retry searches at a time**; every Retry button waits.
-- **A retried row is dismissed only when the retry requested
-  something**; a retry finding nothing, or only a needs-review
-  candidate, leaves the failure listed.
-- **A `failed` row's own peer is not skipped** on retry (the 30-day
-  cooldown covers `unavailable` only).
-- **The label floor applies to every read-in-full table** (Dashboard,
-  Library, History, Downloads); only Dashboard's and Downloads'
-  screens changed (Library and History byte-identical).
-- **Skills:** `tdd` (red first for each commit); `frontend-design` not
-  loaded: one button column in the existing `cell_widget` idiom,
-  checked in screenshots in both themes at both sizes.
+- **A cancelled upgrade ends:** its locked and shortlisted backups are
+  superseded, never cascaded to (answers §204's open question).
+- **Cancel is on `queued` rows only**, as the brief says; a
+  downloading row has no button.
+- **No confirmation dialog for Cancel**; the tooltip says the queue
+  place is lost, and Retry is on the row it leaves.
+- **Skills:** `tdd`, red first for each behaviour commit. Divergence:
+  the seams came from the brief and §204's handoff, not a fresh
+  confirmation with Kris (HISTORY §205). `frontend-design` not loaded:
+  one more button in an existing column, checked in screenshots in
+  both themes at both sizes.
 
 ## 6. Blockers
 
-None for Cancel's code. Its first live `DELETE` needs Kris present.
+None for S13's code. Its first real deletion is Kris's to click.
 
 ## 7. Files in progress
 
-None: Retry is committed whole. Cancel has no code yet.
+None: S12 is committed whole. S13 has no code yet.
 
 ## 8. Waiting on Kris
 
-- **New:** veto, if wanted, §5's retry decisions; see Retry on the
-  Downloads page.
+- **New:** the first live Cancel, at the keyboard (the plan's S12
+  gate); veto, if wanted, §5's Cancel decisions.
+- **From S12 Retry:** HISTORY §204's retry decisions.
 - **From S11:** the four sweep decisions (HISTORY §203); the "Daily
   sweep" card.
 - **From S10:** the cooldown's reach into manual Download, the 30-day
@@ -110,8 +105,8 @@ None: Retry is committed whole. Cancel has no code yet.
 
 ## 9. Open questions
 
-- Should a cancelled upgrade supersede its shortlisted siblings, or
-  cascade to the next one (§4)?
+- Should a downloading row get Cancel too (a transfer stuck at a few
+  per cent)?
 - Should Downloads get a "Retry all" for many failures?
 - Should the sweep skip a track whose needs-review candidate is still
   waiting on a person?
