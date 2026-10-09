@@ -680,13 +680,17 @@ class DownloadsPage(QWidget):
         # here previously folded it into the header's "queued (no
         # estimate)" figure, which reads as actively waiting rather than
         # already finished (HISTORY §56).
-        pairs = [
-            (download.request.id, download.request.total_bytes)
+        rows = [
+            (
+                download.request.id,
+                download.request.total_bytes,
+                download.request.bytes_transferred,
+            )
             for download in downloads
             if download.request.id is not None
             and download.request.status not in SHOWS_NO_FURTHER_PROGRESS
         ]
-        result = self._eta_tracker.aggregate(pairs)
+        result = self._eta_tracker.aggregate(rows)
         self.downloads_eta_label.setText(format_aggregate_header(result))
         self.downloads_eta_label.setToolTip(AGGREGATE_ETA_TOOLTIP)
 

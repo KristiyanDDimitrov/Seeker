@@ -68,9 +68,11 @@ class AggregateEta:
     synthetic samples alone.
     """
     eta_seconds: float | None
+    # Every download with bytes moving: the ones contributing to the
+    # estimate, plus any still calculating whose row already holds
+    # bytes (it reads "Downloading" before a speed exists).
     transferring_count: int
-    # Everything NOT contributing to the estimate — genuinely queued
-    # (no bytes yet), still calculating (too few samples), stalled, or
+    # Everything else — genuinely queued (no bytes yet), stalled, or
     # missing a known total_bytes entirely. Deliberately one bucket,
     # not several — see format_aggregate_header()'s own docstring for
     # why splitting it further wouldn't give the user anything actionable.
@@ -184,23 +186,27 @@ class DownloadEtaTracker:
         )
 
     def aggregate(
-            self, downloads: list[tuple[int, int | None]],
+            self, downloads: list[tuple[int, int | None, int | None]],
     ) -> AggregateEta:
-        """downloads: (request_id, total_bytes) for every currently
-        active download shown on the Downloads page — queued and
-        stalled ones included, not just ones with a real speed. Only
-        actively-transferring downloads (>= 2 samples, a positive
-        latest delta, not stalled, AND a known total_bytes to measure
-        "remaining" against) contribute to the estimate itself; every
-        other download is counted but not included in the sum.
+        """downloads: (request_id, total_bytes, bytes_transferred) for
+        every currently active download shown on the Downloads page —
+        queued and stalled ones included, not just ones with a real
+        speed. Only actively-transferring downloads (>= 2 samples, a
+        positive latest delta, not stalled, AND a known total_bytes to
+        measure "remaining" against) contribute to the estimate itself;
+        every other download is counted but not included in the sum.
+        A calculating download whose row already holds bytes counts as
+        transferring, before its first sample too, so the header agrees
+        with its row; it joins the estimate once it has a speed.
         """
         total = len(downloads)
         total_remaining = 0
         total_speed = 0.0
         contributing = 0
+        moving_without_speed = 0
         stalled = 0
 
-        for request_id, total_bytes in downloads:
+        for request_id, total_bytes, bytes_transferred in downloads:
             if total_bytes is None:
                 # No known size to measure "remaining bytes" against —
                 # can't contribute regardless of transfer state. Not
@@ -220,16 +226,21 @@ class DownloadEtaTracker:
                 contributing += 1
             elif contribution.state == _ContributionState.STALLED:
                 stalled += 1
+            elif bytes_transferred:
+                moving_without_speed += 1
 
-        no_estimate_count = total - contributing
+        transferring = contributing + moving_without_speed
+        no_estimate_count = total - transferring
 
         if contributing == 0:
             return AggregateEta(
                 eta_seconds=None,
-                transferring_count=0,
+                transferring_count=transferring,
                 no_estimate_count=no_estimate_count,
                 all_non_contributors_stalled=(
-                    no_estimate_count > 0 and stalled == no_estimate_count
+                    transferring == 0
+                    and no_estimate_count > 0
+                    and stalled == no_estimate_count
                 ),
             )
 
@@ -238,7 +249,7 @@ class DownloadEtaTracker:
         # (see _classify above), so this can never divide by zero.
         return AggregateEta(
             eta_seconds=total_remaining / total_speed,
-            transferring_count=contributing,
+            transferring_count=transferring,
             no_estimate_count=no_estimate_count,
             all_non_contributors_stalled=False,
         )
@@ -259,6 +270,8 @@ def format_aggregate_header(result: AggregateEta) -> str:
     """
     if result.eta_seconds is not None:
         headline = f"About {format_eta_seconds(result.eta_seconds)} remaining"
+    elif result.transferring_count > 0:
+        headline = "Estimating time remaining"
     elif result.all_non_contributors_stalled:
         headline = "All active transfers stalled"
     else:

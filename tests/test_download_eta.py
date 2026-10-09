@@ -185,7 +185,7 @@ def test_aggregate_sums_remaining_bytes_over_speed_for_contributors_only():
 
     # Combined: (800 + 0) remaining ... actually sum(remaining)/sum(speed).
     # remaining_1 = 1_000 - 400 = 600, remaining_2 = 2_000 - 1_000 = 1_000.
-    result = tracker.aggregate([(1, 1_000), (2, 2_000)])
+    result = tracker.aggregate([(1, 1_000, 400), (2, 2_000, 1_000)])
 
     assert result.transferring_count == 2
     assert result.no_estimate_count == 0
@@ -200,7 +200,7 @@ def test_aggregate_excludes_queued_downloads_with_no_samples_yet():
     tracker.record(1, 400, now)
     # Request 2 has never been sampled — a genuinely queued transfer.
 
-    result = tracker.aggregate([(1, 1_000), (2, 5_000)])
+    result = tracker.aggregate([(1, 1_000, 400), (2, 5_000, None)])
 
     assert result.transferring_count == 1
     assert result.no_estimate_count == 1
@@ -220,7 +220,7 @@ def test_aggregate_excludes_downloads_with_unknown_total_bytes():
     # a real row shown on the Downloads page with no estimate), just
     # never toward all_non_contributors_stalled (an unknown size isn't
     # evidence the transfer has stopped).
-    result = tracker.aggregate([(1, 1_000), (2, None)])
+    result = tracker.aggregate([(1, 1_000, 400), (2, None, 300)])
 
     assert result.transferring_count == 1
     assert result.no_estimate_count == 1
@@ -230,16 +230,59 @@ def test_aggregate_returns_none_eta_with_no_contributors():
     tracker = DownloadEtaTracker()
     now = datetime.now(UTC)
 
-    # Only one sample each — still "Calculating…", not stalled.
-    tracker.record(1, 100, now)
-    tracker.record(2, 200, now)
+    # Only one sample each, and no bytes yet — still waiting to start.
+    tracker.record(1, 0, now)
+    tracker.record(2, 0, now)
 
-    result = tracker.aggregate([(1, 1_000), (2, 2_000)])
+    result = tracker.aggregate([(1, 1_000, 0), (2, 2_000, 0)])
 
     assert result.eta_seconds is None
     assert result.transferring_count == 0
     assert result.no_estimate_count == 2
     assert result.all_non_contributors_stalled is False
+
+
+def test_aggregate_counts_a_moving_download_with_no_speed_yet_as_transferring():
+    # The first poll: the row already shows 66 % and "Calculating…";
+    # the header said "Waiting for transfers to start · 0 transferring".
+    tracker = DownloadEtaTracker()
+    now = datetime.now(UTC)
+
+    tracker.record(1, 660, now)
+    tracker.record(2, 0, now)
+
+    result = tracker.aggregate([(1, 1_000, 660), (2, 1_000, 0)])
+
+    assert result.eta_seconds is None
+    assert result.transferring_count == 1
+    assert result.no_estimate_count == 1
+    assert result.all_non_contributors_stalled is False
+
+
+def test_aggregate_counts_a_moving_download_before_its_first_sample():
+    # Rows render from the database before the first backend poll has
+    # sampled anything; one already holding bytes is transferring.
+    tracker = DownloadEtaTracker()
+
+    result = tracker.aggregate([(1, 1_000, 660), (2, 1_000, None)])
+
+    assert result.transferring_count == 1
+    assert result.no_estimate_count == 1
+
+
+def test_aggregate_estimates_from_measured_speeds_beside_a_new_mover():
+    tracker = DownloadEtaTracker()
+    now = datetime.now(UTC)
+
+    tracker.record(1, 200, now - timedelta(seconds=1))
+    tracker.record(1, 400, now)
+    tracker.record(2, 500, now)
+
+    result = tracker.aggregate([(1, 1_000, 400), (2, 1_000, 500)])
+
+    assert result.transferring_count == 2
+    assert result.no_estimate_count == 0
+    assert result.eta_seconds == (1_000 - 400) / 200
 
 
 def test_aggregate_flags_all_non_contributors_stalled():
@@ -250,7 +293,7 @@ def test_aggregate_flags_all_non_contributors_stalled():
         tracker.record(1, 500, now - timedelta(seconds=offset))
         tracker.record(2, 800, now - timedelta(seconds=offset))
 
-    result = tracker.aggregate([(1, 1_000), (2, 2_000)])
+    result = tracker.aggregate([(1, 1_000, 500), (2, 2_000, 800)])
 
     assert result.eta_seconds is None
     assert result.no_estimate_count == 2
@@ -263,9 +306,9 @@ def test_aggregate_not_all_stalled_when_mixed_with_still_calculating():
 
     for offset in (2, 1, 0):
         tracker.record(1, 500, now - timedelta(seconds=offset))
-    tracker.record(2, 100, now)  # only one sample — calculating, not stalled
+    tracker.record(2, 0, now)  # one sample, no bytes — waiting, not stalled
 
-    result = tracker.aggregate([(1, 1_000), (2, 2_000)])
+    result = tracker.aggregate([(1, 1_000, 500), (2, 2_000, 0)])
 
     assert result.no_estimate_count == 2
     assert result.all_non_contributors_stalled is False
@@ -302,6 +345,18 @@ def test_format_aggregate_header_waiting_for_transfers_to_start():
     assert format_aggregate_header(result) == (
         "Waiting for transfers to start · 0 transferring · "
         "4 queued (no estimate)"
+    )
+
+
+def test_format_aggregate_header_estimating_while_transfers_move():
+    result = AggregateEta(
+        eta_seconds=None, transferring_count=1,
+        no_estimate_count=2, all_non_contributors_stalled=False,
+    )
+
+    assert format_aggregate_header(result) == (
+        "Estimating time remaining · 1 transferring · "
+        "2 queued (no estimate)"
     )
 
 
