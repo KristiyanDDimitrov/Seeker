@@ -74,7 +74,7 @@ _RenderedMatches = tuple[NeedsReviewMatch, ...]
 # indices. In the two match tables the track and the file it is
 # judged against both stretch: they are the comparison.
 _REVIEW_NEEDS_COLUMNS = theme.ColumnLayout(
-    stretch=(0, 2), fit_content=(1, 3), actions=4,
+    stretch=(0, 2, 3), fit_content=(1,), actions=4,
 )
 _REVIEW_UPGRADES_COLUMNS = theme.ColumnLayout(
     stretch=(0,), fit_content=(1, 2), actions=3,
@@ -454,17 +454,23 @@ class ReviewPage(QWidget):
                 # The second-best-scoring candidate in the same
                 # needs_review band, when one was found (quality.py's
                 # find_best_needs_review_candidate) — what the winner
-                # beat, not just its own score in isolation. "—" when
-                # only one real candidate existed.
+                # beat, not just its own score in isolation. Read like
+                # the Candidate column, its score where the quality
+                # sits there. "—" when only one real candidate existed.
                 if candidate.runner_up_username is not None:
+                    runner_up_filename = candidate.runner_up_filename or ""
+                    runner_up_source = (
+                        f"scored {candidate.runner_up_score:.1f}, "
+                        f"from {candidate.runner_up_username}"
+                    )
                     runner_up_item = SortKeyItem(
-                        f"{candidate.runner_up_username} "
-                        f"({candidate.runner_up_score:.1f})",
+                        remote_basename(runner_up_filename),
                         candidate.runner_up_score,
                     )
-                    runner_up_item.setToolTip(
-                        plain_tooltip(candidate.runner_up_filename or "")
-                    )
+                    runner_up_item.setData(SECONDARY_ROLE, runner_up_source)
+                    runner_up_item.setToolTip(plain_tooltip(
+                        f"{runner_up_filename}\n{runner_up_source}",
+                    ))
                 else:
                     runner_up_item = SortKeyItem("—", -1.0)
                 self.review_needs_table.setItem(row, 3, runner_up_item)

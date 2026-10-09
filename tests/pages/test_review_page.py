@@ -96,13 +96,14 @@ def test_review_tab_renders_needs_review_candidates(qtbot):
 
 def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
     # Round 8 §12.10 — the score alone doesn't tell a human what it
-    # beat; the runner-up column shows the competing candidate inline.
+    # beat; the runner-up column shows the competing candidate inline,
+    # read like the Candidate column: the file name, then its source.
     candidates = [
         (
             make_track(),
             make_review_candidate(
                 runner_up_username="peer2",
-                runner_up_filename="Artist - Title (alt).mp3",
+                runner_up_filename="@@music\\Artist - Title (alt).mp3",
                 runner_up_score=68.5,
             ),
         ),
@@ -114,8 +115,12 @@ def test_review_tab_renders_the_runner_up_when_one_exists(qtbot):
     window._review_page._render_needs_review_candidates(candidates)
 
     runner_up_item = window._review_page.review_needs_table.item(0, 3)
-    assert runner_up_item.text() == "peer2 (68.5)"
-    assert runner_up_item.toolTip() == plain_tooltip("Artist - Title (alt).mp3")
+    assert runner_up_item.text() == "Artist - Title (alt).mp3"
+    assert runner_up_item.data(SECONDARY_ROLE) == "scored 68.5, from peer2"
+    assert runner_up_item.toolTip() == plain_tooltip(
+        "@@music\\Artist - Title (alt).mp3\nscored 68.5, from peer2",
+    )
+    assert runner_up_item.sort_key == 68.5
 
 
 def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
