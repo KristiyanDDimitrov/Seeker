@@ -22,6 +22,7 @@ from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
     PollResult,
+    TrackSearchOutcome,
 )
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
@@ -523,9 +524,23 @@ class FakeDownloadService:
         self._download_playlist_result = (
             download_playlist_result or PlaylistDownloadResult()
         )
+        self.retry_outcome = TrackSearchOutcome.REQUESTED
+        self.retry_error: Exception | None = None
+        self.retry_download_calls: list[int] = []
+        # When set, retry_download() holds the worker until the test
+        # sets it: a retry still searching.
+        self.retry_gate: threading.Event | None = None
 
     def get_resolved_destination(self, playlist_name: str) -> tuple | None:
         return self._resolved_destination
+
+    def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
+        self.retry_download_calls.append(download_request_id)
+        if self.retry_gate is not None:
+            self.retry_gate.wait(timeout=5)
+        if self.retry_error is not None:
+            raise self.retry_error
+        return self.retry_outcome
 
     def set_destination(
             self,
@@ -836,9 +851,13 @@ def make_active_download(
         bytes_transferred: int | None = 500,
         total_bytes: int | None = 1_000,
         playlist_name: str = "Playlist A",
+        request_id: int | None = None,
+        failure_reason: str | None = None,
 ) -> ActiveDownload:
     return ActiveDownload(
         request=DownloadRequest(
+            id=request_id,
+            failure_reason=failure_reason,
             track_id=track_id,
             username="peer1",
             filename="file.flac",

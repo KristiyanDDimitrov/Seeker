@@ -49,7 +49,7 @@ from seeker.ui.pages.dashboard_page import (
     _decide_next_step,  # noqa: F401
     _NextStepFacts,  # noqa: F401
 )
-from seeker.ui.pages.downloads_page import DownloadsPage
+from seeker.ui.pages.downloads_page import RETRY_DOWNLOAD_KEY, DownloadsPage
 from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.history_page import HistoryPage
 from seeker.ui.pages.library_page import LibraryHost, LibraryPage
@@ -135,6 +135,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     "search_manual": "Searching SoulSeek…",
     "download_manual": "Requesting download…",
     SWEEP_KEY: "Looking again for missing tracks…",
+    RETRY_DOWNLOAD_KEY: "Searching again…",
 }
 
 

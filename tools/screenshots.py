@@ -17,6 +17,7 @@ reached the way a user reaches it: a sidebar click, a button press, a
 tab. No private method is called.
 """
 import argparse
+import itertools
 import os
 import sys
 import time
@@ -218,6 +219,11 @@ LOCATIONS = [
 ]
 
 
+# Every harness request has an id, as a stored one does: Downloads
+# offers its row actions only on a stored request.
+_REQUEST_IDS = itertools.count(1)
+
+
 def _request(
         track: Track,
         status: DownloadStatus,
@@ -227,6 +233,7 @@ def _request(
 ) -> DownloadRequest:
     transferred, total = progress or (None, None)
     return DownloadRequest(
+        id=next(_REQUEST_IDS),
         track_id=track.id, username="demo_peer_1",
         filename=f"{track.artist} - {track.title}.flac", format="flac",
         requested_at="2026-09-03T18:00:00+00:00", role=role,

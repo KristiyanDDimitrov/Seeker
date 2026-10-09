@@ -20,6 +20,7 @@ from seeker.models.download_result import (
     ManualDownloadResult,
     PlaylistDownloadResult,
     TrackFailure,
+    TrackSearchOutcome,
 )
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.location_merge import LocationMergeSummary
@@ -935,6 +936,36 @@ TOOLTIP_DOWNLOADS_CLEAR_FINISHED = (
     "Remove completed, failed and unavailable downloads from this list. "
     "Nothing is deleted, and History is unaffected."
 )
+TOOLTIP_RETRY_DOWNLOAD = (
+    "Search SoulSeek again for this track and request the best copy "
+    "found. A peer that stopped responding is skipped for 30 days."
+)
+_RETRY_OUTCOME_TEXT = {
+    TrackSearchOutcome.REQUESTED: "Found {label} again and requested it.",
+    TrackSearchOutcome.NEEDS_REVIEW: (
+        "Only a close match for {label} turned up. It is waiting on "
+        "the Review page."
+    ),
+    TrackSearchOutcome.NO_CANDIDATE: (
+        "Nobody is sharing {label} right now. Try again later."
+    ),
+    TrackSearchOutcome.ALREADY_IN_PROGRESS: (
+        "{label} is already downloading, or already downloaded."
+    ),
+}
+# Whether a retry's outcome is good news.
+RETRY_OUTCOME_KIND = {
+    TrackSearchOutcome.REQUESTED: "success",
+    TrackSearchOutcome.NEEDS_REVIEW: "info",
+    TrackSearchOutcome.NO_CANDIDATE: "warning",
+    TrackSearchOutcome.ALREADY_IN_PROGRESS: "info",
+}
+
+
+def retry_outcome_text(outcome: TrackSearchOutcome, label: str) -> str:
+    return _RETRY_OUTCOME_TEXT[outcome].format(label=label)
+
+
 TOOLTIP_HISTORY_REFRESH_BUTTON = (
     "Re-check current data for recently downloaded and tagged tracks."
 )

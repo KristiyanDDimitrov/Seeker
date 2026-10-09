@@ -3,11 +3,12 @@ verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.3) — the
 mirror of §9.3.1's own Downloads extraction (S7).
 """
 
+import threading
 from datetime import UTC, datetime, timedelta
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextDocument
-from PySide6.QtWidgets import QLabel, QProgressBar
+from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from fakes import (
     FakeApplication,
@@ -17,6 +18,7 @@ from fakes import (
 )
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.download_result import TrackSearchOutcome
 from seeker.models.track import Track
 from seeker.ui import help_text, theme
 from seeker.ui.elided_text import BADGE_ROLE, SECONDARY_ROLE
@@ -806,7 +808,7 @@ def test_downloads_marks_an_upgrade_with_a_badge_not_a_column(qtbot):
         table.horizontalHeaderItem(column).text()
         for column in range(table.columnCount())
     ]
-    assert headers == ["Track", "Playlist", "Status", "Progress"]
+    assert headers == ["Track", "Playlist", "Status", "Progress", "Actions"]
     assert table.item(0, 0).data(BADGE_ROLE) is None
     assert table.item(1, 0).data(BADGE_ROLE) == help_text.UPGRADE_BADGE_TEXT
     assert table.item(1, 0).data(Qt.ItemDataRole.AccessibleTextRole) == (
@@ -894,3 +896,116 @@ def test_a_status_change_rebuilds_the_row(qtbot):
 
     assert page.downloads_table.item(0, 2).text() == "Downloading"
     assert page.downloads_table.cellWidget(0, 3).findChild(QProgressBar)
+
+
+# --- Retry ------------------------------------------------------------------
+
+def _row_button(page, row: int, text: str) -> QPushButton | None:
+    container = page.downloads_table.cellWidget(row, 4)
+    if container is None:
+        return None
+    return next(
+        (
+            button for button in container.findChildren(QPushButton)
+            if button.text() == text
+        ),
+        None,
+    )
+
+
+def test_only_a_failed_or_unavailable_row_offers_retry(qtbot):
+    downloads = [
+        make_active_download(track_id=status, status=status, request_id=row)
+        for row, status in enumerate((
+            "failed", "unavailable", "downloading", "completed", "locked",
+        ))
+    ]
+    window = MainWindow(FakeApplication(active_downloads=downloads))
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads(downloads)
+
+    offered = [
+        _row_button(page, row, "Retry") is not None for row in range(5)
+    ]
+
+    assert offered == [True, True, False, False, False]
+    button = _row_button(page, 0, "Retry")
+    assert button.accessibleName() == "Retry Artist - Title"
+    assert button.toolTip() == help_text.TOOLTIP_RETRY_DOWNLOAD
+
+
+def test_retry_searches_again_and_reports_what_it_found(qtbot):
+    failed = make_active_download(
+        status="failed", request_id=7, failure_reason="Peer offline",
+        bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication(active_downloads=[failed])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([failed])
+
+    _row_button(page, 0, "Retry").click()
+
+    qtbot.waitUntil(
+        lambda: page.notice.text()
+        == help_text.retry_outcome_text(
+            TrackSearchOutcome.REQUESTED, "Artist - Title",
+        ),
+        timeout=2000,
+    )
+    assert application.download_service.retry_download_calls == [7]
+
+
+def test_retry_stays_disabled_across_renders_while_it_searches(qtbot):
+    failed = make_active_download(
+        status="failed", request_id=7,
+        bytes_transferred=None, total_bytes=None,
+    )
+    other = make_active_download(
+        track_id="t2", status="unavailable", request_id=8,
+        bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication(active_downloads=[failed, other])
+    gate = threading.Event()
+    application.download_service.retry_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([failed, other])
+
+    _row_button(page, 0, "Retry").click()
+    # A theme switch rebuilds every row while the search runs.
+    page._rendered_rows = None
+    page._render_active_downloads([failed, other])
+
+    # One retry searches at a time.
+    assert not _row_button(page, 0, "Retry").isEnabled()
+    assert not _row_button(page, 1, "Retry").isEnabled()
+    gate.set()
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+    page._rendered_rows = None
+    page._render_active_downloads([failed, other])
+    assert _row_button(page, 1, "Retry").isEnabled()
+
+
+def test_a_retry_that_fails_says_why(qtbot):
+    failed = make_active_download(
+        status="failed", request_id=7,
+        bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication(active_downloads=[failed])
+    application.download_service.retry_error = RuntimeError(
+        "slskd went away."
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([failed])
+
+    _row_button(page, 0, "Retry").click()
+
+    qtbot.waitUntil(
+        lambda: "slskd went away." in page.notice.text(), timeout=2000,
+    )
