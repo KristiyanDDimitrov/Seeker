@@ -387,6 +387,25 @@ class DownloadRequestRepository:
 
         return [_row_to_download_request(row) for row in rows]
 
+    def get_unavailable_candidates_since(
+            self,
+            track_id: str,
+            since: str,
+            connection: sqlite3.Connection,
+    ) -> set[tuple[str, str]]:
+        """The (username, filename) pairs that went unavailable for this
+        track at or after `since`, an ISO-8601 UTC time."""
+        rows = connection.execute(
+            """
+            SELECT username, filename
+            FROM download_requests
+            WHERE track_id = ? AND status = ? AND completed_at >= ?
+            """,
+            (track_id, DownloadStatus.UNAVAILABLE, since),
+        ).fetchall()
+
+        return {(row["username"], row["filename"]) for row in rows}
+
     def get_requests_blocking_redownload(
             self,
             track_id: str,

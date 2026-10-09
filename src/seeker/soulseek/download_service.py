@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from seeker.audio.formats import (
@@ -66,6 +66,13 @@ from seeker.soulseek.poller import DownloadPoller
 from seeker.soulseek.quality import select_downloads
 
 logger = logging.getLogger(__name__)
+
+# How long a peer's file that ran out its locked-retry budget stays out
+# of a new search for the same track: asking again soon most likely
+# reruns the same refusals (a locked file sits in a share its peer
+# opened to some users only; UNVERIFIED how often one reopens).
+# Another peer's copy is still requested. Untuned.
+UNAVAILABLE_COOLDOWN = timedelta(days=30)
 
 
 class NoDestinationConfiguredError(SeekerError):
@@ -745,14 +752,21 @@ class DownloadService:
             track_id: str,
             files: list[SoulseekFile],
     ) -> list[SoulseekFile]:
+        """`files` less a person's Rejects for this track, and less any
+        peer's file that went unavailable for it within
+        UNAVAILABLE_COOLDOWN."""
+        since = (datetime.now(UTC) - UNAVAILABLE_COOLDOWN).isoformat()
+
         with self.database.transaction() as connection:
-            rejected = self.rejections.get_rejected_soulseek_candidates(
+            excluded = self.rejections.get_rejected_soulseek_candidates(
                 track_id, connection,
+            ) | self.download_requests.get_unavailable_candidates_since(
+                track_id, since, connection,
             )
 
         return [
             file for file in files
-            if (file.username, file.filename) not in rejected
+            if (file.username, file.filename) not in excluded
         ]
 
     def poll_downloads(self) -> PollResult:

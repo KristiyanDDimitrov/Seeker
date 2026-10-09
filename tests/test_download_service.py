@@ -474,6 +474,52 @@ def test_download_playlist_counts_a_track_once_when_its_upgrade_peer_refuses(
     assert (result.requested, result.skipped, result.failed) == (1, 0, 0)
 
 
+@pytest.mark.parametrize(("days_ago", "requested_from"), [
+    (1, ["other"]),
+    (31, ["other", "refused"]),
+])
+def test_download_playlist_skips_a_candidate_that_went_unavailable_recently(
+        tmp_path, days_ago, requested_from,
+):
+    # 'unavailable' means this peer refused this file through a whole
+    # locked-retry budget. Asking again within the window would only
+    # rerun the same ~3 hours of refusals; another peer is still fair.
+    refused = make_soulseek_file(
+        username="refused", filename="Dom Dolla - Title t1.flac",
+        locked=True,
+    )
+    other = make_soulseek_file(
+        username="other", filename="Dom Dolla - Title t1.mp3",
+        extension="mp3",
+    )
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={"Dom Dolla Title t1": [refused, other]},
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+    seed_pending_request(
+        service, "old-transfer", track_id="t1", role="upgrade",
+        status="locked", username=refused.username,
+        filename=refused.filename,
+    )
+    went_unavailable = datetime.now(UTC) - timedelta(days=days_ago)
+    with service.database.transaction() as connection:
+        connection.execute(
+            "UPDATE download_requests SET status = 'unavailable', "
+            "completed_at = ?",
+            (went_unavailable.isoformat(),),
+        )
+
+    result = service.download_playlist("Test")
+
+    assert result.requested == 1
+    assert [
+        username for username, _, _ in
+        service.soulseek.request_download_calls
+    ] == requested_from
+
+
 def test_download_playlist_requests_locked_only_candidate_as_upgrade(
         tmp_path,
 ):
