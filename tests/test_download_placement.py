@@ -493,6 +493,9 @@ def test_a_dot_dot_basename_is_unlocatable(tmp_path):
         # 284 UTF-8 bytes: APFS takes it (its limit counts characters),
         # ext4 and ExFAT library drives refuse it. The extension stays.
         ("é" * 140 + ".mp3", "é" * 125 + ".mp3"),
+        # Nothing before the extension: the extension still survives,
+        # or the scanner would never index the file.
+        (".mp3", "Untitled.mp3"),
     ],
 )
 def test_a_peers_basename_is_cleaned_before_it_is_placed(

@@ -1,6 +1,6 @@
 """Build a filename from a track's canonical Spotify metadata, matching
 what the file's own tags say rather than whatever a SoulSeek peer named
-it.
+it, and clean a peer's own name for the placement that comes first.
 
 A pure function, no I/O, no Qt, no DB access, so it's directly
 testable and stays the one copy of the naming rule. Composes with
@@ -10,7 +10,6 @@ duplicating it. See HISTORY §67.
 
 import re
 import unicodedata
-from pathlib import PurePosixPath
 
 from seeker.files.sanitize import clean_path_component
 
@@ -114,13 +113,19 @@ def clean_peer_filename(basename: str) -> str:
         character for character in basename
         if unicodedata.category(character) not in _INVISIBLE_CATEGORIES
     )
-    cleaned = PurePosixPath(clean_path_component(visible) or _FALLBACK_STEM)
-    if len(str(cleaned).encode()) <= MAX_FILENAME_BYTES:
-        return str(cleaned)
+    # Split on the last dot first, as the extension gate does
+    # (client.derive_extension): cleaning the whole name would turn
+    # ".mp3" into "_mp3", a file the scanner never indexes.
+    stem, dot, ext = visible.rpartition(".")
+    if not dot:
+        stem, ext = visible, ""
+    stem = clean_path_component(stem) or _FALLBACK_STEM
+    ext = clean_path_component(ext)
 
-    ext = cleaned.suffix.lstrip(".")
-    stem = _truncate_to_byte_budget(cleaned.stem, ext) or _FALLBACK_STEM
-    return f"{stem}.{ext}" if ext else stem
+    if ext:
+        stem = _truncate_to_byte_budget(stem, ext) or _FALLBACK_STEM
+        return f"{stem}.{ext}"
+    return _truncate_to_byte_budget(stem, "") or _FALLBACK_STEM
 
 
 def _truncate_to_byte_budget(base: str, ext: str) -> str:
