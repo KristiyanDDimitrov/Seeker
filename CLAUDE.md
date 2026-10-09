@@ -193,7 +193,7 @@ short, under `src/seeker/`:
   `html.escape`d; message boxes go through `plain_text.question`/
   `information`/`warning` or set `setTextFormat`; a data tooltip goes
   through `plain_tooltip()`. Peer filenames, usernames and slskd text
-  otherwise render as markup. Four `ast` sweeps in
+  otherwise render as markup. Five `ast` sweeps (`ui/`, `main_ui.py`) in
   `tests/test_plain_text.py`; the CLI passes peer strings through
   `cli.printable()`. [§148](docs/history/121-150.md#148)
 - **The tracked Compose template is portable:** no `/Volumes/` or

@@ -4,8 +4,13 @@ A peer's filename or username, a playlist name, slskd's log text: left
 at Qt's `AutoText`, a label, tooltip or message box renders any of them
 as HTML once something tag-like appears before the first line break.
 The sweeps below are structural (`ast`), so a label, message box or
-tooltip added anywhere in `ui/` later is covered without a test of its
-own.
+tooltip added anywhere in `ui/` or `main_ui.py` later is covered
+without a test of its own.
+
+What they cannot see: the message-box sweep accepts a function that
+calls `setTextFormat` anywhere in it, even in one branch, and nothing
+follows a label's text set after construction (`setText`). Both were
+clean by hand at the last audit.
 """
 
 import ast
@@ -22,16 +27,22 @@ from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 PEER_FILENAME = '<a href="https://evil.example">Update Seeker</a>.mp3'
 
 _UI_DIR = Path(ui_package.__file__).parent
+_SEEKER_DIR = _UI_DIR.parent
 # The one module allowed to build these directly: it is where the
 # explicit format is set.
 _HELPER = _UI_DIR / "plain_text.py"
 
 
+def _swept_files() -> list[Path]:
+    # main_ui.py is the one module outside ui/ that may import Qt
+    # (test_layering), so it is the one other place a widget is built.
+    paths = [*sorted(_UI_DIR.rglob("*.py")), _SEEKER_DIR / "main_ui.py"]
+    return [path for path in paths if path != _HELPER]
+
+
 def _ui_calls() -> list[tuple[Path, ast.Call]]:
     calls = []
-    for path in sorted(_UI_DIR.rglob("*.py")):
-        if path == _HELPER:
-            continue
+    for path in _swept_files():
         tree = ast.parse(path.read_text(), filename=str(path))
         calls.extend(
             (path, node) for node in ast.walk(tree)
@@ -41,7 +52,7 @@ def _ui_calls() -> list[tuple[Path, ast.Call]]:
 
 
 def _where(path: Path, node: ast.AST) -> str:
-    return f"{path.relative_to(_UI_DIR)}:{node.lineno}"
+    return f"{path.relative_to(_SEEKER_DIR)}:{node.lineno}"
 
 
 def test_no_label_in_ui_is_left_to_guess_its_text_format():
@@ -77,9 +88,7 @@ def test_every_hand_built_message_box_sets_its_text_format():
     # so a function that constructs one and never calls setTextFormat
     # left it at AutoText.
     violations = []
-    for path in sorted(_UI_DIR.rglob("*.py")):
-        if path == _HELPER:
-            continue
+    for path in _swept_files():
         tree = ast.parse(path.read_text(), filename=str(path))
         for function in ast.walk(tree):
             if not isinstance(function, ast.FunctionDef):
@@ -146,6 +155,124 @@ def test_every_dynamic_tooltip_goes_through_plain_tooltip():
     assert violations == [], (
         "a tooltip auto-detects rich text; wrap dynamic text in "
         "plain_tooltip():\n" + "\n".join(violations)
+    )
+
+
+def _is_escaped_markup(node: ast.expr) -> bool:
+    # Seeker's own text, html.escape(...) of anything, or a `+` or
+    # f-string built only from those.
+    if _is_fixed_text(node):
+        return True
+    if isinstance(node, ast.Call):
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "escape"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "html"
+        )
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _is_escaped_markup(node.left) and _is_escaped_markup(node.right)
+    if isinstance(node, ast.JoinedStr):
+        return all(
+            isinstance(part, ast.Constant)
+            or (
+                isinstance(part, ast.FormattedValue)
+                and _is_escaped_markup(part.value)
+            )
+            for part in node.values
+        )
+    return False
+
+
+def _values_assigned_to(function: ast.AST, name: str) -> list[ast.expr]:
+    values: list[ast.expr] = []
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets = [node.target]
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            values.append(node.value)
+    return values
+
+
+def _unescaped_rich_label_arguments(tree: ast.AST) -> list[ast.Call]:
+    """`RichLabel(x)` calls whose text may carry unescaped data.
+
+    The argument passes if it is escaped markup itself, or a local name
+    every assignment of which, in the enclosing function, is. A name
+    with no assignment there (a parameter, a global) fails: its origin
+    is out of sight.
+    """
+    violations = []
+    for function in ast.walk(tree):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for call in ast.walk(function):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+                and call.func.id == "RichLabel"
+                and call.args
+            ):
+                continue
+            text = call.args[0]
+            if isinstance(text, ast.Name) and not text.id.isupper():
+                values = _values_assigned_to(function, text.id)
+                safe = bool(values) and all(map(_is_escaped_markup, values))
+            else:
+                safe = _is_escaped_markup(text)
+            if not safe:
+                violations.append(call)
+    return violations
+
+
+def test_the_rich_label_sweep_tells_escaped_markup_from_raw_data():
+    unsafe = """
+def peer(name):
+    RichLabel(name)
+
+def built(name):
+    body = "<p>Hello</p>"
+    body += f"<p>{name}</p>"
+    RichLabel(body)
+
+def inline(name):
+    RichLabel("<b>" + name + "</b>")
+"""
+    safe = """
+def about(version):
+    body = help_text.ABOUT_BODY
+    body += f"<p>Version {html.escape(version)}</p>"
+    RichLabel(body)
+
+def fixed():
+    RichLabel(help_text.HELP_BODY)
+    RichLabel("<b>" + html.escape(x) + "</b>")
+"""
+
+    flagged = [
+        call.lineno for call in _unescaped_rich_label_arguments(ast.parse(unsafe))
+    ]
+
+    assert flagged == [3, 8, 11]
+    assert _unescaped_rich_label_arguments(ast.parse(safe)) == []
+
+
+def test_every_rich_label_escapes_the_data_in_its_markup():
+    violations = []
+    for path in _swept_files():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        violations.extend(
+            f"{_where(path, call)}: {ast.unparse(call.args[0])}"
+            for call in _unescaped_rich_label_arguments(tree)
+        )
+
+    assert violations == [], (
+        "RichLabel renders its text as HTML; html.escape the data in "
+        "it, or use PlainLabel:\n" + "\n".join(violations)
     )
 
 
