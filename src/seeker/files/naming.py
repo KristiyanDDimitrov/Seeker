@@ -9,6 +9,8 @@ duplicating it. See HISTORY §67.
 """
 
 import re
+import unicodedata
+from pathlib import PurePosixPath
 
 from seeker.files.sanitize import clean_path_component
 
@@ -89,6 +91,36 @@ def build_track_filename(
         return None
 
     return f"{_truncate_to_byte_budget(base, ext)}.{ext}"
+
+
+# Control (Cc) and format (Cf) characters: invisible in a file browser,
+# and Cf holds the bidi overrides (U+202E makes "song\u202egpj.mp3" read
+# as "song3pm.jpg") and zero-width characters.
+_INVISIBLE_CATEGORIES = frozenset({"Cc", "Cf"})
+
+_FALLBACK_STEM = "Untitled"
+
+
+def clean_peer_filename(basename: str) -> str:
+    """A SoulSeek peer's file name, made safe to place in a library.
+
+    Drops control and format characters, then applies
+    `clean_path_component` (no separator or reserved character, never
+    a leading dot) and the 255-byte budget, keeping the extension. Only
+    the placed name changes: slskd wrote the raw name, and locating the
+    finished file still matches that.
+    """
+    visible = "".join(
+        character for character in basename
+        if unicodedata.category(character) not in _INVISIBLE_CATEGORIES
+    )
+    cleaned = PurePosixPath(clean_path_component(visible) or _FALLBACK_STEM)
+    if len(str(cleaned).encode()) <= MAX_FILENAME_BYTES:
+        return str(cleaned)
+
+    ext = cleaned.suffix.lstrip(".")
+    stem = _truncate_to_byte_budget(cleaned.stem, ext) or _FALLBACK_STEM
+    return f"{stem}.{ext}" if ext else stem
 
 
 def _truncate_to_byte_budget(base: str, ext: str) -> str:

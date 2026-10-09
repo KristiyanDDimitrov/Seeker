@@ -286,8 +286,10 @@ investigation; `docs/history/README.md` resolves any `§N`.
   `validate_destination_subfolder` takes `/`-joined sanitized names
   and rejects `..`, absolute paths and unsafe names; `set_destination`,
   resolution and the dialog's preview all use it. Every Seeker-built
-  name goes through `clean_path_component` (never a leading dot).
-  [§143](docs/history/121-150.md#143)
+  name goes through `clean_path_component` (never a leading dot); a
+  peer's basename too, at placement, through `clean_peer_filename`
+  (no control or bidi character, 255 bytes), while the lookup still
+  matches slskd's raw name. [§143](docs/history/121-150.md#143)
 - **One bring-up: `Application.start_slskd(..., persist=)`**, for the
   wizard (saves after its health poll), Settings (saves at once) and
   `restart_slskd()` (the live share and saved login, else

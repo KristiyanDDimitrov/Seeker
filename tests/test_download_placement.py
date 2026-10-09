@@ -18,6 +18,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from db_seed import add_playlist_track
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
@@ -479,3 +481,30 @@ def test_a_dot_dot_basename_is_unlocatable(tmp_path):
 
     assert scenario.status() == "downloading"
     assert (scenario.slskd / "A" / "Song.mp3").exists()
+
+
+@pytest.mark.parametrize(
+    ("peer_name", "placed_name"),
+    [
+        # Finder hides a dot-led name.
+        (".hidden.mp3", "_hidden.mp3"),
+        # U+202E reverses what follows: Finder shows "cover3pm.jpg".
+        ("cover\u202egpj.mp3", "covergpj.mp3"),
+        # 284 UTF-8 bytes: APFS takes it (its limit counts characters),
+        # ext4 and ExFAT library drives refuse it. The extension stays.
+        ("é" * 140 + ".mp3", "é" * 125 + ".mp3"),
+    ],
+)
+def test_a_peers_basename_is_cleaned_before_it_is_placed(
+        tmp_path, peer_name, placed_name,
+):
+    scenario = make_scenario(tmp_path, {"tx-1": "Completed, Succeeded"})
+    source = write(scenario.slskd / "Album" / peer_name, "download")
+    add_request(scenario, f"@@peer\\Music\\Album\\{peer_name}", size=8)
+
+    scenario.service.poll_downloads()
+
+    assert scenario.status() == "completed"
+    assert not source.exists()
+    assert scenario.matched_path() == scenario.destination / placed_name
+    assert (scenario.destination / placed_name).read_text() == "download"

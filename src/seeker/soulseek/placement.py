@@ -28,6 +28,7 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.destination_resolution import resolve_playlist_destination
+from seeker.files.naming import clean_peer_filename
 from seeker.files.placement import resolve_collision
 from seeker.library.matcher import find_best_match
 from seeker.library.scanner import index_single_file
@@ -247,7 +248,9 @@ class DownloadPlacement:
             self._report_unlocatable(request, lookup.problem)
             return None
 
-        basename = PurePosixPath(request.filename.replace("\\", "/")).name
+        basename = clean_peer_filename(
+            PurePosixPath(request.filename.replace("\\", "/")).name,
+        )
         destination_dir = Path(location.path)
 
         if subfolder:
