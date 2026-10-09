@@ -120,7 +120,8 @@ investigation.
   on every draw (per mode and state, `IconColours`). The vendored
   Lucide files in `packaging/icons/lucide/` are never edited; a QSS
   `image:` still needs one file per palette (`_palette_icon`: the
-  combo chevron, the spin arrows, the tick). Fusion's own spin arrows
+  combo chevron, the spin arrows, the tick, the radio dot). Fusion's
+  own spin arrows
   are a 2 px speck on Cocoa, so the spin buttons are styled in QSS.
   [HISTORY §182](../../../docs/history/181-210.md#182),
   [HISTORY §194](../../../docs/history/181-210.md#194)
