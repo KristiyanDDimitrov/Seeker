@@ -63,6 +63,7 @@ from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track
 from seeker.soulseek.client import (
     SoulseekClient,
     SoulseekDownloadError,
+    is_recognized_rejection,
 )
 from seeker.soulseek.placement import DownloadPlacement
 from seeker.soulseek.poller import DownloadPoller
@@ -472,11 +473,31 @@ class DownloadService:
             logger.info("No candidates found.")
             return TrackSearchOutcome.NO_CANDIDATE
 
-        self._request_and_record(track, settled, role=DownloadRole.SETTLED)
-        logger.info(
-            "Requested from %s: %s", settled.username,
-            settled.filename,
-        )
+        refused = False
+
+        try:
+            self._request_and_record(track, settled, role=DownloadRole.SETTLED)
+        except SoulseekDownloadError as error:
+            # A peer offline at enqueue is classified as the poll
+            # classifies a shortlisted entry: locked, so its own retry
+            # loop asks again while the backups are tried.
+            if not is_recognized_rejection(str(error)):
+                raise
+
+            self._record_unrequested(
+                track, settled, role=DownloadRole.SETTLED,
+                status=DownloadStatus.LOCKED,
+            )
+            refused = True
+            logger.info(
+                "Locked at enqueue from %s: %s", settled.username,
+                settled.filename,
+            )
+        else:
+            logger.info(
+                "Requested from %s: %s", settled.username,
+                settled.filename,
+            )
 
         # Ranked from 2, behind the settled file, as an upgrade
         # shortlist is; the poll requests the next backup only when the
@@ -490,6 +511,9 @@ class DownloadService:
                 "Backup from %s: %s (rank %d)",
                 backup.username, backup.filename, rank,
             )
+
+        if refused:
+            self.poller.fall_back(track.id, DownloadRole.SETTLED)
 
         if upgrade_shortlist:
             # The settled file is already on its way, so a peer

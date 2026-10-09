@@ -321,6 +321,12 @@ class DownloadPoller:
             describe_transfer_failure(transfer.state, transfer.exception),
         )
 
+    def fall_back(self, track_id: str, role: DownloadRole) -> None:
+        """Requests the track's next shortlisted entry of `role` now,
+        past any refused at once: for a request refused before the
+        poll ever sees it."""
+        self._cascade(track_id, role, PollResult())
+
     def _cascade(
             self,
             track_id: str,

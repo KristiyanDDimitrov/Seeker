@@ -5,6 +5,9 @@
 poll requests the next one, in turn, when a settled row fails or
 locks, and places a backup like any settled download (HISTORY §206).
 """
+import httpx
+import pytest
+
 from db_seed import add_playlist_track
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
@@ -32,6 +35,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
+from seeker.soulseek.client import SoulseekDownloadError
 from seeker.soulseek.download_service import (
     DownloadService,
     TrackSearchOutcome,
@@ -272,3 +276,86 @@ def test_a_backup_finished_at_once_is_placed_by_the_next_poll(tmp_path):
     assert counts.completed == 1
     assert get_status(service, "b2") == "completed"
     assert (music / "backup2.flac").read_bytes() == content
+
+
+def _offline(file: SoulseekFile) -> SoulseekDownloadError:
+    # The client's own wrapping of slskd's synchronous 404.
+    message = f"User {file.username} appears to be offline"
+    return SoulseekDownloadError(
+        f"slskd rejected the download of '{file.filename}' from "
+        f"'{file.username}': {message}",
+        reason=message,
+    )
+
+
+def test_a_settled_peer_offline_at_enqueue_locks_and_falls_back_at_once(
+        tmp_path,
+):
+    files = [_flac(peer, queue_length=peer) for peer in range(1, 4)]
+    service = make_service(
+        tmp_path,
+        states={"b2": "Requested"},
+        search_results={QUERY: files},
+        retry_results={
+            files[0].filename: _offline(files[0]),
+            files[1].filename: "b2",
+        },
+    )
+    _save_track(service)
+
+    outcome = service.search_and_request(TRACK, THRESHOLDS)
+
+    assert outcome == TrackSearchOutcome.REQUESTED
+    assert [call[0] for call in service.soulseek.request_download_calls] == [
+        "peer1", "peer2",
+    ]
+    assert [
+        (row.username, row.status, row.rank, row.transfer_id)
+        for row in _rows(service)
+    ] == [
+        ("peer1", "locked", None, None),
+        ("peer2", "queued", 2, "b2"),
+        ("peer3", "shortlisted", 3, None),
+    ]
+
+
+def test_a_settled_offline_peer_with_no_backup_still_counts_requested(
+        tmp_path,
+):
+    # The locked row's own retry loop is the request: the peer may come
+    # back within its budget.
+    only = _flac(1, queue_length=0)
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={QUERY: [only]},
+        retry_results={only.filename: _offline(only)},
+    )
+    _save_track(service)
+
+    outcome = service.search_and_request(TRACK, THRESHOLDS)
+
+    assert outcome == TrackSearchOutcome.REQUESTED
+    assert [(row.username, row.status) for row in _rows(service)] == [
+        ("peer1", "locked"),
+    ]
+
+
+def test_an_unrecognized_settled_enqueue_error_stays_loud(tmp_path):
+    first, second = _flac(1, queue_length=0), _flac(2, queue_length=1)
+    error = httpx.HTTPStatusError(
+        "500", request=httpx.Request("POST", "http://slskd"),
+        response=httpx.Response(500),
+    )
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={QUERY: [first, second]},
+        retry_results={first.filename: error},
+    )
+    _save_track(service)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        service.search_and_request(TRACK, THRESHOLDS)
+
+    assert _rows(service) == []
