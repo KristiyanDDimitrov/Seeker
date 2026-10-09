@@ -359,3 +359,84 @@ def test_an_unrecognized_settled_enqueue_error_stays_loud(tmp_path):
         service.search_and_request(TRACK, THRESHOLDS)
 
     assert _rows(service) == []
+
+
+def test_a_placed_backup_supersedes_the_other_settled_rows_only(tmp_path):
+    # The settled row is still in its locked retry loop; once a backup
+    # is in the library, asking that peer again would fetch a second
+    # copy. The upgrade is a different question and stays.
+    content = b"backup audio"
+    client = FakeSoulseekClient(states={"b2": "Completed, Succeeded"})
+    service, _music, slskd_dir = _placing_service(tmp_path, client)
+    seed_pending_request(
+        service, None, status="locked", filename="settled.flac",
+        username="peer1",
+    )
+    seed_pending_request(
+        service, "b2", filename="backup2.flac", username="peer2", rank=2,
+        size=len(content),
+    )
+    seed_pending_request(
+        service, None, status="shortlisted", rank=3,
+        filename="backup3.flac", username="peer3",
+    )
+    seed_pending_request(
+        service, None, role="upgrade", status="shortlisted", rank=2,
+        filename="upgrade.flac", username="peer9",
+    )
+    (slskd_dir / "backup2.flac").write_bytes(content)
+
+    service.poll_downloads()
+
+    assert _status_by_filename(service) == {
+        "settled.flac": "superseded",
+        "backup2.flac": "completed",
+        "backup3.flac": "superseded",
+        "upgrade.flac": "shortlisted",
+    }
+    # Superseded, so its retry loop never asked the peer again.
+    assert client.request_download_calls == []
+
+
+def test_a_locked_settled_row_placed_on_retry_supersedes_its_backup(
+        tmp_path,
+):
+    content = b"settled audio"
+    client = FakeSoulseekClient(
+        states={"t9": "Completed, Succeeded", "b2": "InProgress"},
+        retry_results={"settled.flac": "t9"},
+    )
+    service, _music, slskd_dir = _placing_service(tmp_path, client)
+    seed_pending_request(
+        service, None, status="locked", filename="settled.flac",
+        username="peer1", size=len(content),
+    )
+    seed_pending_request(
+        service, "b2", status="downloading", filename="backup2.flac",
+        username="peer2", rank=2,
+    )
+    (slskd_dir / "settled.flac").write_bytes(content)
+
+    service.poll_downloads()
+
+    assert _status_by_filename(service) == {
+        "settled.flac": "completed",
+        "backup2.flac": "superseded",
+    }
+
+
+def test_cancelling_a_settled_row_supersedes_its_backups_only(tmp_path):
+    service = make_service(tmp_path, states={"t1": "InProgress"})
+    _seed_settled_with_backups(service)
+    settled_id = next(
+        row.id for row in _rows(service) if row.filename == "settled.flac"
+    )
+
+    service.cancel_download(settled_id)
+
+    assert _status_by_filename(service) == {
+        "settled.flac": "failed",
+        "backup2.flac": "superseded",
+        "backup3.flac": "superseded",
+        "upgrade.flac": "shortlisted",
+    }

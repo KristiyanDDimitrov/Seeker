@@ -567,8 +567,9 @@ class DownloadService:
     def cancel_download(self, download_request_id: int) -> CancelOutcome:
         """Cancels a queued or downloading request in slskd and marks it
         failed, "Cancelled by you". A transfer slskd had already
-        finished is left to the poll, which places it. Cancelling an
-        upgrade ends it: its backups are superseded, never tried."""
+        finished is left to the poll, which places it. Cancelling ends
+        the request's role for the track: the other rows of that role,
+        backups included, are superseded, never tried."""
         with self.database.transaction() as connection:
             request = self.download_requests.get_by_id(
                 download_request_id, connection,
@@ -603,11 +604,10 @@ class DownloadService:
                     failure_reason=CANCELLED_BY_YOU,
                 )
 
-                if current.role == DownloadRole.UPGRADE:
-                    self.download_requests.supersede_other_active_for_track(
-                        current.track_id, download_request_id,
-                        DownloadRole.UPGRADE, connection,
-                    )
+                self.download_requests.supersede_other_active_for_track(
+                    current.track_id, download_request_id, current.role,
+                    connection,
+                )
 
         return CancelOutcome.CANCELLED
 

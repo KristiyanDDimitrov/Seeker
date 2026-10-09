@@ -260,6 +260,12 @@ class DownloadPoller:
 
                 if move_result is not None:
                     self._update_status(request.id, DownloadStatus.COMPLETED)
+                    # Whichever settled file is placed first wins; the
+                    # track's other settled rows would only fetch a
+                    # second copy.
+                    self._supersede_others_for_track(
+                        request.track_id, request.id, DownloadRole.SETTLED,
+                    )
                     counts.completed += 1
                     self.placement.index_and_match(
                         request, move_result, counts,
@@ -638,14 +644,10 @@ class DownloadPoller:
             return _in_flight_status(state)
 
         # role='upgrade' still needs a human's confirmation via
-        # ready_for_review, exactly as before. role='settled' is only
-        # reachable here at all via a human-confirmed needs-review
-        # candidate that turned out to be locked
-        # (find_best_needs_review_candidate never filters on lock
-        # status — HISTORY §26) — that candidate was already
-        # human-confirmed once, so it auto-moves into the library like
-        # an ordinary settled success, not a second confirmation via
-        # ready_for_review.
+        # ready_for_review. A locked role='settled' row (a settled file
+        # refused, or a human-confirmed needs-review candidate that
+        # turned out to be locked, HISTORY §26) auto-moves into the
+        # library like an ordinary settled success.
         if request.role == DownloadRole.UPGRADE:
             return DownloadStatus.READY_FOR_REVIEW
 
@@ -700,6 +702,11 @@ class DownloadPoller:
         if status == DownloadStatus.READY_FOR_REVIEW:
             self._supersede_others_for_track(
                 request.track_id, request.id, DownloadRole.UPGRADE,
+            )
+
+        if status == DownloadStatus.COMPLETED:
+            self._supersede_others_for_track(
+                request.track_id, request.id, DownloadRole.SETTLED,
             )
 
     def _advance_locked_retry(
