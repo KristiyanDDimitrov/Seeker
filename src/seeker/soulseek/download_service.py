@@ -51,6 +51,7 @@ from seeker.models.download_result import (
     PlaylistDownloadResult,
     PollResult,
     TrackFailure,
+    TrackSearchOutcome,
 )
 from seeker.models.library_location import LibraryLocation
 from seeker.models.soulseek_file import SoulseekFile
@@ -282,14 +283,13 @@ class DownloadService:
         # just be wasted work. Still re-resolved on every
         # download_playlist() call, so a Settings-driven change takes
         # effect on the next run with no restart needed.
-        config = self._get_config()
-        auto_match_threshold, needs_review_threshold = resolve_thresholds(
-            config.auto_match_threshold, config.needs_review_threshold,
-        )
+        thresholds = self.current_thresholds()
 
         result = PlaylistDownloadResult(total=len(unmatched_tracks))
 
         for track in unmatched_tracks:
+            label = f"{track.artist} - {track.title}"
+
             # One bad track (search timeout, malformed response, a
             # transient network error — anything) must not silently
             # abort every track after it in the batch. Every track ends
@@ -297,134 +297,157 @@ class DownloadService:
             # candidates), or failed (with a printed reason) — never
             # dropped without being counted anywhere.
             try:
-                with self.database.transaction() as connection:
-                    blocking = (
-                        self.download_requests
-                        .get_requests_blocking_redownload(
-                            track.id, connection,
-                        )
-                    )
-
-                if blocking:
-                    # A request for this exact track is already in
-                    # flight (queued/downloading/locked/shortlisted/
-                    # ready_for_review) OR already completed —
-                    # re-running download_playlist must not pile on a
-                    # duplicate, otherwise-identical row for the same
-                    # candidate, and must not re-download a track
-                    # that's already sitting in the library
-                    # (HISTORY §16, §45).
-                    statuses = ", ".join(
-                        sorted({request.status for request in blocking})
-                    )
-                    logger.info(
-                        "Already in progress for %s - %s (%s) — skipping.",
-                        track.artist, track.title, statuses,
-                    )
-                    result.skipped += 1
-                    result.already_in_progress.append(
-                        f"{track.artist} - {track.title}"
-                    )
-                    continue
-
-                logger.info("Searching: %s - %s", track.artist, track.title)
-
-                files = self._without_rejected(
-                    track.id,
-                    self.soulseek.search(
-                        _build_search_query(track.artist, track.title)
-                    ),
-                )
-                selection = select_downloads(
-                    track, files, auto_match_threshold, needs_review_threshold,
-                )
-                settled = selection.settled
-                upgrade_shortlist = selection.upgrade_shortlist
-                needs_review = selection.needs_review
-
-                if settled is not None or upgrade_shortlist:
-                    # Something real and auto-tier exists for this track
-                    # now (downloaded, or locked but chased via the
-                    # upgrade cascade) — any needs_review row from an
-                    # earlier, worse run is stale information and must
-                    # not keep being surfaced by `seeker check`.
-                    self._clear_review_candidate(track.id)
-
-                if settled is None:
-                    if upgrade_shortlist:
-                        # Nothing practical/unlocked, but select_downloads
-                        # still found a real, above-threshold candidate —
-                        # e.g. every filtered match is locked. Request it
-                        # the same way an upgrade is normally requested
-                        # (role='upgrade') so it lands in poll_downloads'
-                        # existing locked-retry cascade instead of being
-                        # silently discarded. Counted as requested, not
-                        # skipped — a real download WAS requested, just
-                        # not a settled one.
-                        logger.info(
-                            "No practical candidate — requesting "
-                            "locked/upgrade-only candidate(s)."
-                        )
-                        self._request_upgrade_shortlist(
-                            track, upgrade_shortlist
-                        )
-                        result.requested += 1
-                    elif needs_review is not None:
-                        # No auto-tier candidate at all, but a real,
-                        # plausible one exists (70-89) — record it for
-                        # `seeker check` to surface, rather than letting
-                        # it silently vanish. Never requested from slskd
-                        # on its own; a human confirms manually.
-                        review_file, review_score, runner_up = needs_review
-                        self._record_review_candidate(
-                            track, review_file, review_score, runner_up,
-                        )
-                        logger.info(
-                            "No auto-match candidate — needs-review "
-                            "candidate found (score %.1f): %s: %s",
-                            review_score, review_file.username,
-                            review_file.filename,
-                        )
-                        result.skipped += 1
-                        result.needs_review.append(
-                            f"{track.artist} - {track.title}"
-                        )
-                    else:
-                        logger.info("No candidates found.")
-                        result.skipped += 1
-                    continue
-
-                self._request_and_record(track, settled, role=DownloadRole.SETTLED)
-                logger.info(
-                    "Requested from %s: %s", settled.username,
-                    settled.filename,
-                )
-
-                if upgrade_shortlist:
-                    # The settled file is already on its way, so a
-                    # peer refusing the upgrade leaves the track
-                    # requested, not failed.
-                    try:
-                        self._request_upgrade_shortlist(
-                            track, upgrade_shortlist,
-                        )
-                    except SoulseekDownloadError as error:
-                        logger.warning(
-                            "Upgrade not requested for %s - %s: %s",
-                            track.artist, track.title, error,
-                        )
-
-                result.requested += 1
+                outcome = self.search_and_request(track, thresholds)
             except Exception as error:
                 result.failures.append(TrackFailure(
-                    f"{track.artist} - {track.title}",
-                    describe_error(error, details_hint=""),
+                    label, describe_error(error, details_hint=""),
                 ))
                 logger.warning(
                     "Failed: %s - %s: %s", track.artist, track.title, error,
                 )
+                continue
+
+            if outcome == TrackSearchOutcome.REQUESTED:
+                result.requested += 1
+                continue
+
+            result.skipped += 1
+
+            if outcome == TrackSearchOutcome.ALREADY_IN_PROGRESS:
+                result.already_in_progress.append(label)
+            elif outcome == TrackSearchOutcome.NEEDS_REVIEW:
+                result.needs_review.append(label)
 
         return result
+
+    def current_thresholds(self) -> tuple[float, float]:
+        """The auto-match and needs-review thresholds in force now."""
+        config = self._get_config()
+
+        return resolve_thresholds(
+            config.auto_match_threshold, config.needs_review_threshold,
+        )
+
+    def search_and_request(
+            self,
+            track: Track,
+            thresholds: tuple[float, float],
+    ) -> TrackSearchOutcome:
+        """Searches slskd for one unmatched track and requests or
+        records the best candidate. Raises whatever the search or the
+        request raises; a caller running a batch decides what one
+        track's failure means for the rest."""
+        auto_match_threshold, needs_review_threshold = thresholds
+
+        with self.database.transaction() as connection:
+            blocking = (
+                self.download_requests
+                .get_requests_blocking_redownload(
+                    track.id, connection,
+                )
+            )
+
+        if blocking:
+            # A request for this exact track is already in
+            # flight (queued/downloading/locked/shortlisted/
+            # ready_for_review) OR already completed —
+            # re-running download_playlist must not pile on a
+            # duplicate, otherwise-identical row for the same
+            # candidate, and must not re-download a track
+            # that's already sitting in the library
+            # (HISTORY §16, §45).
+            statuses = ", ".join(
+                sorted({request.status for request in blocking})
+            )
+            logger.info(
+                "Already in progress for %s - %s (%s) — skipping.",
+                track.artist, track.title, statuses,
+            )
+            return TrackSearchOutcome.ALREADY_IN_PROGRESS
+
+        logger.info("Searching: %s - %s", track.artist, track.title)
+
+        files = self._without_rejected(
+            track.id,
+            self.soulseek.search(
+                _build_search_query(track.artist, track.title)
+            ),
+        )
+        selection = select_downloads(
+            track, files, auto_match_threshold, needs_review_threshold,
+        )
+        settled = selection.settled
+        upgrade_shortlist = selection.upgrade_shortlist
+        needs_review = selection.needs_review
+
+        if settled is not None or upgrade_shortlist:
+            # Something real and auto-tier exists for this track
+            # now (downloaded, or locked but chased via the
+            # upgrade cascade) — any needs_review row from an
+            # earlier, worse run is stale information and must
+            # not keep being surfaced by `seeker check`.
+            self._clear_review_candidate(track.id)
+
+        if settled is None:
+            if upgrade_shortlist:
+                # Nothing practical/unlocked, but select_downloads
+                # still found a real, above-threshold candidate —
+                # e.g. every filtered match is locked. Request it
+                # the same way an upgrade is normally requested
+                # (role='upgrade') so it lands in poll_downloads'
+                # existing locked-retry cascade instead of being
+                # silently discarded. Counted as requested, not
+                # skipped — a real download WAS requested, just
+                # not a settled one.
+                logger.info(
+                    "No practical candidate — requesting "
+                    "locked/upgrade-only candidate(s)."
+                )
+                self._request_upgrade_shortlist(
+                    track, upgrade_shortlist
+                )
+                return TrackSearchOutcome.REQUESTED
+
+            if needs_review is not None:
+                # No auto-tier candidate at all, but a real,
+                # plausible one exists (70-89) — record it for
+                # `seeker check` to surface, rather than letting
+                # it silently vanish. Never requested from slskd
+                # on its own; a human confirms manually.
+                review_file, review_score, runner_up = needs_review
+                self._record_review_candidate(
+                    track, review_file, review_score, runner_up,
+                )
+                logger.info(
+                    "No auto-match candidate — needs-review "
+                    "candidate found (score %.1f): %s: %s",
+                    review_score, review_file.username,
+                    review_file.filename,
+                )
+                return TrackSearchOutcome.NEEDS_REVIEW
+
+            logger.info("No candidates found.")
+            return TrackSearchOutcome.NO_CANDIDATE
+
+        self._request_and_record(track, settled, role=DownloadRole.SETTLED)
+        logger.info(
+            "Requested from %s: %s", settled.username,
+            settled.filename,
+        )
+
+        if upgrade_shortlist:
+            # The settled file is already on its way, so a peer
+            # refusing the upgrade leaves the track requested, not
+            # failed.
+            try:
+                self._request_upgrade_shortlist(track, upgrade_shortlist)
+            except SoulseekDownloadError as error:
+                logger.warning(
+                    "Upgrade not requested for %s - %s: %s",
+                    track.artist, track.title, error,
+                )
+
+        return TrackSearchOutcome.REQUESTED
 
     def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
         """A real SoulSeek search for a track that isn't in any Spotify

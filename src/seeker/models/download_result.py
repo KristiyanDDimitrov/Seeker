@@ -1,6 +1,17 @@
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from seeker.models.download_request import DownloadStatus
+
+
+class TrackSearchOutcome(StrEnum):
+    """What `DownloadService.search_and_request` did with one track.
+    Only `ALREADY_IN_PROGRESS` returns without searching slskd."""
+
+    ALREADY_IN_PROGRESS = "already_in_progress"
+    REQUESTED = "requested"
+    NEEDS_REVIEW = "needs_review"
+    NO_CANDIDATE = "no_candidate"
 
 
 @dataclass(frozen=True)
