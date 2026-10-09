@@ -1272,6 +1272,11 @@ SETTINGS_STARTUP_TEXT = "Open Seeker when you log in to this Mac."
 SETTINGS_NOTIFICATIONS_TEXT = (
     "Which events Seeker announces with a macOS notification."
 )
+SETTINGS_DAILY_SWEEP_TEXT = (
+    "Once a day while Seeker runs, search SoulSeek again for tracks "
+    "still missing from loaded playlists and request what turns up. "
+    "No Spotify calls."
+)
 SETTINGS_LOCATIONS_TEXT = (
     "The folders Seeker scans for your music and matches playlists "
     "against."
@@ -1328,6 +1333,12 @@ TOOLTIP_NOTIFY_NEEDS_DECISION_CHECKBOX = (
 TOOLTIP_NOTIFY_ERRORS_CHECKBOX = (
     "Notify when Seeker can't reach slskd. Rate-limited so a genuinely "
     "unreachable slskd doesn't notify on every poll."
+)
+
+TOOLTIP_AUTO_SWEEP_CHECKBOX = (
+    "Up to 50 searches a day, least recently searched first, for "
+    "playlists with a download destination. Paused downloads pause it "
+    "too."
 )
 
 # --- Start at login ----------------------------------------------------------

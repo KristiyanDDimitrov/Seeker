@@ -117,7 +117,7 @@ call:
 | `library tag`, `library fix-art`, `library rename` | Library |
 | `search` | Search |
 | `downloads status` | Downloads (and a 20-second background poll) |
-| `downloads sweep` | None yet; Settings → General's daily sweep runs it (planned) |
+| `downloads sweep` | Settings → General → Daily sweep runs it once a day, when turned on |
 | `review`, `downloads review` | Review, which also confirms or rejects SoulSeek needs-review candidates |
 | `library fingerprint`, `library duplicates` | Duplicates, which can also delete the copies you don't keep |
 | `sharing status` | Sharing, which can also add a location to the share |

@@ -173,7 +173,7 @@ def test_settings_tabs_group_settings_by_job(qtbot, tmp_path, monkeypatch):
     ] == ["General", "Library", "Connections", "Matching"]
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_GENERAL,
-    ) == {"Appearance", "Startup", "Notifications"}
+    ) == {"Appearance", "Startup", "Daily sweep", "Notifications"}
     assert {"Library locations", "Playlist destinations"} <= (
         _group_titles_on_tab(window, settings_window.SETTINGS_TAB_LIBRARY)
     )
@@ -1828,3 +1828,23 @@ def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(
     qtbot.waitUntil(
         window.reauthorize_spotify_button.isEnabled, timeout=2000,
     )
+
+
+def test_daily_sweep_checkbox_starts_off_and_round_trips(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    assert window.auto_sweep_checkbox.isChecked() is False
+
+    window.auto_sweep_checkbox.setChecked(True)
+
+    reloaded = SettingsPage(Application())
+    qtbot.addWidget(reloaded)
+    assert reloaded.auto_sweep_checkbox.isChecked() is True
+
+    reloaded.auto_sweep_checkbox.setChecked(False)
+
+    assert Application().settings.auto_sweep_enabled is False

@@ -1262,6 +1262,7 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(tab)
         layout.addWidget(self._build_appearance_group())
         layout.addWidget(self._build_startup_group())
+        layout.addWidget(self._build_daily_sweep_group())
         layout.addWidget(self._build_notifications_group())
         layout.addStretch()
         return theme.reading_column(tab)
@@ -1381,6 +1382,36 @@ class SettingsPage(QWidget):
         return theme.section_card(
             "Notifications", help_text.SETTINGS_NOTIFICATIONS_TEXT,
             checkboxes,
+        )
+
+    # --- Daily sweep -------------------------------------------------
+
+    def _build_daily_sweep_group(self) -> QFrame:
+        # Saves itself on toggle, like the notification flags. The
+        # shell's hourly due check reads the setting live, so the first
+        # sweep after turning it on starts within the hour.
+        controls = QWidget()
+        layout = QVBoxLayout(controls)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.auto_sweep_checkbox = QCheckBox(
+            "Look again for missing tracks once a day"
+        )
+        self.auto_sweep_checkbox.setToolTip(
+            help_text.TOOLTIP_AUTO_SWEEP_CHECKBOX
+        )
+        self.auto_sweep_checkbox.setChecked(
+            self.application.settings.auto_sweep_enabled
+        )
+        self.auto_sweep_checkbox.toggled.connect(
+            lambda checked: self.application.update_settings(
+                auto_sweep_enabled=checked,
+            )
+        )
+        layout.addWidget(self.auto_sweep_checkbox)
+
+        return theme.section_card(
+            "Daily sweep", help_text.SETTINGS_DAILY_SWEEP_TEXT, controls,
         )
 
     # --- Start at login ----------------------------------------------
