@@ -91,6 +91,28 @@ def test_seeker_data_and_log_dirs_are_private_to_the_user(
     assert stat.S_IMODE(seeker_dir.stat().st_mode) == 0o700
 
 
+def test_a_data_dir_that_refuses_chmod_still_opens(
+        tmp_path, monkeypatch, caplog,
+):
+    # A dir owned by another user (one made under sudo, say) refuses
+    # chmod with EPERM. Privacy is hardening; it must not stop Seeker
+    # starting.
+    seeker_dir = tmp_path / "Seeker"
+    seeker_dir.mkdir()
+    monkeypatch.setattr(
+        "seeker.application.platformdirs.user_data_dir",
+        _fake_user_data_dir(seeker_dir),
+    )
+
+    def refuse(self, mode):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr("pathlib.Path.chmod", refuse)
+
+    assert _resolve_database_path() == seeker_dir / "seeker.db"
+    assert "Could not make" in caplog.text
+
+
 def test_application_fresh_install_creates_database_at_new_location(
         tmp_path, monkeypatch,
 ):

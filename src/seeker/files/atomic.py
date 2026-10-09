@@ -1,9 +1,12 @@
 import contextlib
+import logging
 import os
 import shutil
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def write_text_atomic(path: Path, text: str) -> None:
@@ -42,9 +45,16 @@ def make_private_dir(path: Path) -> None:
     directory an earlier version created. Missing parents keep the
     umask: they are the platform's. On Windows `chmod` sets only the
     read-only flag, which 0700 leaves clear.
+
+    A refused `chmod` (a directory owned by another user, one made
+    under sudo, say) is logged, not raised: the directory still works,
+    and privacy is no reason for Seeker not to start.
     """
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.chmod(0o700)
+    try:
+        path.chmod(0o700)
+    except OSError as error:
+        logger.warning("Could not make %s private to this user: %s", path, error)
 
 
 def _write_atomic(path: Path, text: str, mode: int | None) -> None:
