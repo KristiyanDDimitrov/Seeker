@@ -605,7 +605,8 @@ class DownloadService:
 
                 if current.role == DownloadRole.UPGRADE:
                     self.download_requests.supersede_other_active_for_track(
-                        current.track_id, download_request_id, connection,
+                        current.track_id, download_request_id,
+                        DownloadRole.UPGRADE, connection,
                     )
 
         return CancelOutcome.CANCELLED

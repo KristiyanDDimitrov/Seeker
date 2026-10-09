@@ -576,14 +576,14 @@ class DownloadRequestRepository:
             self,
             track_id: str,
             keep_id: int,
+            role: DownloadRole,
             connection: sqlite3.Connection,
     ) -> None:
-        # Called the moment one upgrade candidate for a track reaches
-        # 'ready_for_review' — every other still-in-the-running entry for
-        # the same track (queued/downloading/locked/shortlisted) is
-        # dropped as 'superseded', not retried further. Scoped to
-        # role='upgrade' defensively — settled-role rows are a separate
-        # concept entirely and must never be touched here.
+        # Called the moment one candidate for a track wins: every other
+        # still-in-the-running entry of the same role for the track
+        # (queued/downloading/locked/shortlisted) is dropped as
+        # 'superseded', not retried further. Never another role's: an
+        # upgrade's win leaves the settled file alone, and the reverse.
         supersedable, supersedable_params = _status_in(_SUPERSEDABLE_STATUSES)
         connection.execute(
             f"""
@@ -595,8 +595,8 @@ class DownloadRequestRepository:
             AND {supersedable}
             """,  # noqa: S608
             (
-                DownloadStatus.SUPERSEDED, track_id, keep_id,
-                DownloadRole.UPGRADE, *supersedable_params,
+                DownloadStatus.SUPERSEDED, track_id, keep_id, role,
+                *supersedable_params,
             ),
         )
 

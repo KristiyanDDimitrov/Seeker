@@ -240,7 +240,7 @@ class DownloadPoller:
                     # below.
                     self._update_status(request.id, DownloadStatus.READY_FOR_REVIEW)
                     self._supersede_others_for_track(
-                        request.track_id, request.id,
+                        request.track_id, request.id, DownloadRole.UPGRADE,
                     )
                     continue
 
@@ -252,7 +252,7 @@ class DownloadPoller:
                     # this settled download is now an upgrade candidate.
                     self._update_status(request.id, DownloadStatus.READY_FOR_REVIEW)
                     self._supersede_others_for_track(
-                        request.track_id, request.id,
+                        request.track_id, request.id, DownloadRole.UPGRADE,
                     )
                     continue
 
@@ -366,7 +366,9 @@ class DownloadPoller:
                 return
 
             if status == DownloadStatus.READY_FOR_REVIEW:
-                self._supersede_others_for_track(track_id, next_entry.id)
+                self._supersede_others_for_track(
+                    track_id, next_entry.id, DownloadRole.UPGRADE,
+                )
                 return
 
     def _activate_shortlisted_entry(
@@ -444,10 +446,11 @@ class DownloadPoller:
             self,
             track_id: str,
             keep_id: int,
+            role: DownloadRole,
     ) -> None:
         with self.database.transaction() as connection:
             self.download_requests.supersede_other_active_for_track(
-                track_id, keep_id, connection,
+                track_id, keep_id, role, connection,
             )
 
     def _track_already_has_a_matched_file(self, track_id: str) -> bool:
@@ -695,7 +698,9 @@ class DownloadPoller:
             self._advance_locked_retry(request, retry_count)
 
         if status == DownloadStatus.READY_FOR_REVIEW:
-            self._supersede_others_for_track(request.track_id, request.id)
+            self._supersede_others_for_track(
+                request.track_id, request.id, DownloadRole.UPGRADE,
+            )
 
     def _advance_locked_retry(
             self, request: DownloadRequest, current_retry_count: int,
