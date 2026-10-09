@@ -1202,3 +1202,40 @@ def test_insert_slskd_share_directory_ignores_a_nested_directories_key():
         "    - /shared/music",
         "    - /shared/new",
     ]
+
+
+def test_insert_slskd_share_directory_fills_an_empty_directories_list():
+    text = "shares:\n  directories:\n  filters:\n    - \\.ini$\n"
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.splitlines() == [
+        "shares:",
+        "  directories:",
+        "    - /shared/new",
+        "  filters:",
+        "    - \\.ini$",
+    ]
+
+
+def test_insert_slskd_share_directory_goes_after_an_entrys_continuation():
+    # A line deeper than the entries continues the entry above it
+    # (a folded scalar here), so the new entry goes after it.
+    text = (
+        "shares:\n"
+        "  directories:\n"
+        "    - >-\n"
+        "      /shared/music\n"
+        "  filters:\n"
+        "    - \\.ini$\n"
+    )
+
+    updated = _insert_slskd_share_directory(text, "    - /shared/new")
+
+    assert updated.splitlines()[:5] == [
+        "shares:",
+        "  directories:",
+        "    - >-",
+        "      /shared/music",
+        "    - /shared/new",
+    ]
