@@ -1491,7 +1491,7 @@ def test_downloads_status_with_slskd_down_prints_the_outage_and_fails(
             "{add,list,remove,check,merge,scan,match,tag,fix-art,fingerprint,"
             "duplicates,rename}",
         ),
-        ("downloads", "{status,review}"),
+        ("downloads", "{status,sweep,review}"),
         ("sharing", "{status}"),
     ],
 )
@@ -1934,6 +1934,85 @@ def test_downloads_status_prints_every_count(tmp_path, capsys):
         "Ready for review: 5, Locked (retrying): 6, "
         "Shortlisted (pending): 7, Superseded: 8, Unavailable: 9.\n"
     )
+
+
+# --- downloads sweep --------------------------------------------------
+
+
+def _run_sweep_printing(capsys, result) -> str:
+    from types import SimpleNamespace
+
+    application = SimpleNamespace(
+        sweep_service=SimpleNamespace(run_sweep=lambda: result),
+    )
+    cli.run(application, ["downloads", "sweep"])
+    return capsys.readouterr().out
+
+
+def test_downloads_sweep_prints_what_it_searched_and_skipped(capsys):
+    from seeker.models.download_result import TrackFailure
+    from seeker.models.sweep_result import SweepResult
+
+    out = _run_sweep_printing(capsys, SweepResult(
+        requested=["A - One"],
+        still_missing=["A - Two", "A - Three"],
+        failures=[TrackFailure("A - Four", "Timed out")],
+        already_in_progress=["A - Five"],
+        deferred=["A - Six", "A - Seven"],
+        playlists_without_destination=["Gym", "Road"],
+    ))
+
+    assert out == (
+        "Searched 4 missing track(s): requested 1, still missing 2, "
+        "failed 1.\n"
+        "Skipped: 1 already in progress; 2 left for the next sweep; "
+        "playlists with no destination: Gym, Road.\n"
+        "  Failed: A - Four: Timed out\n"
+    )
+
+
+def test_downloads_sweep_with_nothing_to_do_says_so(capsys):
+    from seeker.models.sweep_result import SweepResult
+
+    assert _run_sweep_printing(capsys, SweepResult()) == (
+        "Searched 0 missing track(s): requested 0, still missing 0, "
+        "failed 0.\n"
+    )
+
+
+def test_downloads_sweep_while_paused_says_why_it_stopped(capsys):
+    from seeker.models.sweep_result import SweepResult
+
+    out = _run_sweep_printing(
+        capsys, SweepResult(still_missing=["A - One"], paused=True),
+    )
+
+    assert out == (
+        "Searched 1 missing track(s): requested 0, still missing 1, "
+        "failed 0.\n"
+        "Stopped: downloads are paused. Resume them to sweep the rest.\n"
+    )
+
+
+def test_downloads_sweep_with_slskd_down_prints_the_outage_and_fails(
+        capsys,
+):
+    from types import SimpleNamespace
+
+    from seeker.soulseek.client import SlskdUnreachableError
+
+    def run_sweep():
+        raise SlskdUnreachableError("http://127.0.0.1:5030")
+
+    application = SimpleNamespace(
+        sweep_service=SimpleNamespace(run_sweep=run_sweep),
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.run(application, ["downloads", "sweep"])
+
+    assert exit_info.value.code == 1
+    assert "SoulSeek isn't reachable" in capsys.readouterr().out
 
 
 # --- downloads review, one at a time ---------------------------------

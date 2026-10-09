@@ -92,6 +92,7 @@ keeping slskd's default.
 | `download <playlist>` | Search SoulSeek for the playlist's unmatched tracks and request the best candidate for each. Uses the default destination when the playlist has none. |
 | `search <artist> <title> [--download]` | Search SoulSeek for a track in no playlist. Lists results; `--download` requests the best one into the default destination's `Manual` subfolder. |
 | `downloads status` | Poll transfers and move finished files into place. Never prompts: safe to run from a scheduler. |
+| `downloads sweep` | Search SoulSeek again for every loaded playlist's missing tracks (Not found, or a request that failed or went unavailable) and request what turns up. Up to 50 searches a run, least recently searched first; no Spotify calls. Never prompts: safe to run from a scheduler. |
 | `downloads review [--all]` | Confirm or decline each finished upgrade; `--all` replaces every pending one after a single question about deleting the old files. |
 | `sharing status` | Report what slskd shares, whether Seeker manages it, and each location's share state. |
 | `history [--limit N]` | List recently downloaded and tagged tracks (default 50). |
@@ -116,6 +117,7 @@ call:
 | `library tag`, `library fix-art`, `library rename` | Library |
 | `search` | Search |
 | `downloads status` | Downloads (and a 20-second background poll) |
+| `downloads sweep` | None yet; Settings → General's daily sweep runs it (planned) |
 | `review`, `downloads review` | Review, which also confirms or rejects SoulSeek needs-review candidates |
 | `library fingerprint`, `library duplicates` | Duplicates, which can also delete the copies you don't keep |
 | `sharing status` | Sharing, which can also add a location to the share |

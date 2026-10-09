@@ -242,6 +242,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     downloads_status_parser.set_defaults(handler=handle_downloads_status)
 
+    downloads_sweep_parser = downloads_subparsers.add_parser(
+        "sweep",
+        help=(
+            "Search SoulSeek again for every loaded playlist's missing "
+            "tracks and request what turns up. No Spotify calls; "
+            "non-interactive, safe to run from a scheduler."
+        ),
+    )
+    downloads_sweep_parser.set_defaults(handler=handle_downloads_sweep)
+
     downloads_review_parser = downloads_subparsers.add_parser(
         "review",
         help=(
@@ -623,6 +633,44 @@ def handle_downloads_status(
         f"Superseded: {counts.superseded}, "
         f"Unavailable: {counts.unavailable}."
     )
+
+
+def handle_downloads_sweep(
+        application: Application,
+        parsed: argparse.Namespace,
+) -> None:
+    result = application.sweep_service.run_sweep()
+
+    print(
+        f"Searched {result.searched} missing track(s): "
+        f"requested {len(result.requested)}, "
+        f"still missing {len(result.still_missing)}, "
+        f"failed {len(result.failures)}."
+    )
+
+    skipped = []
+    if result.already_in_progress:
+        skipped.append(
+            f"{len(result.already_in_progress)} already in progress"
+        )
+    if result.deferred:
+        skipped.append(f"{len(result.deferred)} left for the next sweep")
+    if result.playlists_without_destination:
+        names = ", ".join(
+            printable(name) for name in result.playlists_without_destination
+        )
+        skipped.append(f"playlists with no destination: {names}")
+    if skipped:
+        print(f"Skipped: {'; '.join(skipped)}.")
+
+    for failure in result.failures:
+        print(
+            f"  Failed: {printable(failure.track)}: "
+            f"{printable(failure.reason)}"
+        )
+
+    if result.paused:
+        print("Stopped: downloads are paused. Resume them to sweep the rest.")
 
 
 def handle_downloads_review(
