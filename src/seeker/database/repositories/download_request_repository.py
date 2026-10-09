@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from seeker.models.download_request import (
     BLOCKS_REDOWNLOAD,
+    FAILED_OUTCOMES,
     IN_FLIGHT,
     RETRYING_IN_BACKGROUND,
     STAMPS_COMPLETED_AT,
@@ -393,15 +394,17 @@ class DownloadRequestRepository:
             since: str,
             connection: sqlite3.Connection,
     ) -> set[tuple[str, str]]:
-        """The (username, filename) pairs that went unavailable for this
-        track at or after `since`, an ISO-8601 UTC time."""
+        """The (username, filename) pairs that went failed or
+        unavailable for this track at or after `since`, an ISO-8601 UTC
+        time."""
+        failed, failed_params = _status_in(FAILED_OUTCOMES)
         rows = connection.execute(
-            """
+            f"""
             SELECT username, filename
             FROM download_requests
-            WHERE track_id = ? AND status = ? AND completed_at >= ?
-            """,
-            (track_id, DownloadStatus.UNAVAILABLE, since),
+            WHERE track_id = ? AND {failed} AND completed_at >= ?
+            """,  # noqa: S608
+            (track_id, *failed_params, since),
         ).fetchall()
 
         return {(row["username"], row["filename"]) for row in rows}

@@ -531,11 +531,11 @@ class DownloadService:
 
     def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
         """Searches again for a failed or unavailable request's track,
-        rather than re-asking the peer that failed it; an unavailable
-        candidate stays skipped for UNAVAILABLE_COOLDOWN. Once a new
-        request is made, the retried row is dismissed: the new row
-        stands for the track now. Otherwise it stays, still the user's
-        to act on."""
+        rather than re-asking the peer that failed it: a failed or
+        unavailable candidate stays skipped for UNAVAILABLE_COOLDOWN.
+        Once a new request is made, the retried row is dismissed: the
+        new row stands for the track now. Otherwise it stays, still the
+        user's to act on."""
         with self.database.transaction() as connection:
             request = self.download_requests.get_by_id(
                 download_request_id, connection,
@@ -913,8 +913,8 @@ class DownloadService:
             files: list[SoulseekFile],
     ) -> list[SoulseekFile]:
         """`files` less a person's Rejects for this track, and less any
-        peer's file that went unavailable for it within
-        UNAVAILABLE_COOLDOWN."""
+        peer's file that went failed or unavailable for it, a person's
+        cancel included, within UNAVAILABLE_COOLDOWN."""
         since = (datetime.now(UTC) - UNAVAILABLE_COOLDOWN).isoformat()
 
         with self.database.transaction() as connection:

@@ -51,6 +51,7 @@ from seeker.soulseek.client import (
     TransferStatus,
 )
 from seeker.soulseek.download_service import (
+    CANCELLED_BY_YOU,
     DownloadNotCancellableError,
     DownloadNotRetryableError,
     DownloadService,
@@ -490,16 +491,22 @@ def test_download_playlist_counts_a_track_once_when_its_upgrade_peer_refuses(
     assert (result.requested, result.skipped, result.failed) == (1, 0, 0)
 
 
+@pytest.mark.parametrize(("status", "failure_reason"), [
+    ("unavailable", "Unavailable after 8 attempts"),
+    ("failed", "The transfer failed (Completed, Errored)."),
+    ("failed", CANCELLED_BY_YOU),
+])
 @pytest.mark.parametrize(("days_ago", "requested_from"), [
     (1, ["other"]),
     (31, ["other", "refused"]),
 ])
-def test_download_playlist_skips_a_candidate_that_went_unavailable_recently(
-        tmp_path, days_ago, requested_from,
+def test_download_playlist_skips_a_candidate_that_failed_recently(
+        tmp_path, status, failure_reason, days_ago, requested_from,
 ):
     # 'unavailable' means this peer refused this file through a whole
-    # locked-retry budget. Asking again within the window would only
-    # rerun the same ~3 hours of refusals; another peer is still fair.
+    # locked-retry budget, and 'failed' that the transfer itself ended
+    # badly or a person cancelled it. Asking again within the window
+    # would only repeat that; another peer is still fair.
     refused = make_soulseek_file(
         username="refused", filename="Dom Dolla - Title t1.flac",
         locked=True,
@@ -519,12 +526,12 @@ def test_download_playlist_skips_a_candidate_that_went_unavailable_recently(
         status="locked", username=refused.username,
         filename=refused.filename,
     )
-    went_unavailable = datetime.now(UTC) - timedelta(days=days_ago)
+    ended = datetime.now(UTC) - timedelta(days=days_ago)
     with service.database.transaction() as connection:
         connection.execute(
-            "UPDATE download_requests SET status = 'unavailable', "
+            "UPDATE download_requests SET status = ?, failure_reason = ?, "
             "completed_at = ?",
-            (went_unavailable.isoformat(),),
+            (status, failure_reason, ended.isoformat()),
         )
 
     result = service.download_playlist("Test")
