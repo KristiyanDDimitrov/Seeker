@@ -334,6 +334,13 @@ investigation; `docs/history/README.md` resolves any `§N`.
   supersedes the rest. An upgrade cascades only to upgrades. A
   person's choice gets no backups. [§206](docs/history/181-210.md#206),
   [§207](docs/history/181-210.md#207)
+- **A leftover is a file no claim names, and slskd must answer.**
+  `LeftoverService` claims the basename of every `UNRESOLVED` request
+  and every live slskd transfer (letters and digits only, `_<ticks>`
+  stripped), holds back a file written in the last 10 minutes, and
+  refuses a download folder not named `downloads` beside `slskd.yml`.
+  A cleanup re-lists and deletes only unchanged confirmed files.
+  [§208](docs/history/181-210.md#208)
 - **Every slskd URL path segment is `quote(…, safe="")`d:** a
   username comes from a remote peer, and a raw `?`, `#` or `../`
   reaches another endpoint. [§146](docs/history/121-150.md#146)

@@ -11,101 +11,91 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S12b close-out (HISTORY §207). Tree clean apart from
+- **HEAD:** the S13 close-out (HISTORY §208). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2172 passed, 1 skipped`, 0 failed (+10
-  tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
+- **Local (Cocoa):** pytest `2206 passed, 1 skipped`, 0 failed (+34
+  tests). `mypy --strict src/` clean, 143 files; `ruff check src tests
   tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** `5b8c068`'s run `37977966814` green on rerun: `check`
-  `2144 passed, 29 skipped`, coverage 94.74 % (floor 92 %); `audit`,
-  no known vulnerabilities. Its first attempt failed only on
-  `test_library_track_list_refreshes_after_a_tag_run`, the open
-  issue's second CI timeout (CLAUDE.md → Open issues; HISTORY §207).
+- **CI:** pending on the close-out push; the handoff commit after it
+  records the run.
 
 ## 2. Where we are
 
-**Round 12 S12b is complete** (☑). A settled download falls back to
-up to three backups: in the poll, at enqueue, and a placed settled
-file supersedes the rest; a re-search skips a file that failed within
-30 days. **Next: S13, X1: clean up leftover slskd downloads** (BRIEF
-§13). The first live Cancel and the first real cleanup both wait for
-Kris at the keyboard.
+**Round 12 S13 is complete** (☑). Downloads → "Clean up leftover
+files…" and `seeker downloads cleanup [--delete]` list the files in
+slskd's `downloads/` and `incomplete/` that nothing claims, and delete
+confirmed ones that are still unchanged. **Next: S14, the automatic
+app-update check** (BRIEF §14, R11 §40), reusing S11's due-check
+pattern.
 
-## 3. Session report (S12b, §12b.3–§12b.6)
+## 3. Session report (S13)
 
-Evidence for each is in HISTORY §207.
-- `56cbd13` refactor: `_record_unrequested(…, status, rank=None)`.
-- `6ada558` §12b.3: a peer offline at enqueue records the settled row
-  `locked`, then `DownloadPoller.fall_back` requests its backup at
-  once; the track counts requested. An unrecognized HTTP error stays
-  loud.
-- `c77576f` refactor: `supersede_other_active_for_track` takes a role.
-- `c594075` §12b.4: a placed settled file (pending loop or locked
-  retry) supersedes the other settled rows, never upgrades; a cancel
-  supersedes the other rows of its role.
-- `bb4588e` §12b.5: the cooldown covers `FAILED_OUTCOMES`; `0ffa46b`
-  renames it `FAILED_CANDIDATE_COOLDOWN` / `get_failed_candidates_since`.
-- Close-out: `schema.py` comments, CLAUDE.md (sweep line, a
-  settled-fallback fact), the screenshot fixture's two backup rows,
-  HISTORY §207, the plan tick, this file.
+Evidence for each is in HISTORY §208.
+- `2700cbd` §13.1: `LeftoverService`, `models/leftover_result.py`,
+  `SoulseekClient.get_downloads`, `Application.leftover_service`.
+- `084c756` §13.2: `seeker downloads cleanup`; `2f95a30` updates the
+  usage test it missed.
+- `07be846` §13.3: the Downloads button, `LeftoverCleanupDialog`,
+  `LeftoverFile.relative_path` (the dialog's first version elided
+  every filename away).
+- Close-out: HISTORY §208, a CLAUDE.md fact, `docs/cli.md`, the plan
+  tick, this file.
+- Dry run (no delete) over the dev tree in the repository and a DB
+  copy: 27 files, 728 MB, the A-52 figure.
 
-## 4. Key context for S13
+## 4. Key context for S14
 
-- BRIEF §13: list files in slskd's download and incomplete folders
-  that no pending or ready-for-review request references; show sizes;
-  explicit confirmation; never delete what an active transfer uses.
-  **Test against a scratch tree only;** the real slskd folders are
-  read-only to the session.
-- **New since planning (S12b):** a superseded row's transfer is never
-  cancelled in slskd, so a superseded settled backup's file (and a
-  superseded upgrade's) becomes a leftover. A `shortlisted` row has no
-  file; a `locked` row's last attempt may have left a partial one in
-  the incomplete folder.
-- Downloads already has an Actions column and the
-  `_action_button`/`_ROW_ACTION_KEYS` idiom; a page-level action goes
-  in the header row beside "Clear finished" (`theme.action_row()`).
-- Placement facts (CLAUDE.md → SoulSeek): slskd writes `<remote
-  parent>/<basename>` or `<stem>_<ticks><suffix>`;
-  `_locate_completed_file` matches by exact byte size. A
-  `ready_for_review` upgrade's file waits in slskd's folder, so it is
-  referenced and must never be listed.
+- BRIEF §14 and R11 §40. S11's `sweep_due`/`ui/sweep_scheduler.py` is
+  the due-check pattern to reuse; the shell's pool and
+  `busy_actions` run it.
 - **Carried:** `test_library_track_list_refreshes_after_a_tag_run`'s
-  one CI timeout; the callback handler has no socket timeout;
-  Sharing's 20 s per-row rebuild (S15); `uv build --wheel` picks up a
+  CI timeouts; the callback handler has no socket timeout; Sharing's
+  20 s per-row rebuild (S15); `uv build --wheel` picks up a
   gitignored `_build_info_generated.py` (S16). Run the full suite in
   the foreground (~5 min). Never touch slskd or real data.
 
 ## 5. Decisions made
 
-- **An unrecognized `SoulseekDownloadError` at enqueue still fails
-  the track**: the brief named only the offline peer.
-- **A cancel supersedes by the cancelled row's role**, so cancelling a
-  running backup also ends the settled row still in its locked retry
-  loop.
-- **Hypothesis 2 needs no change:** "… is already downloading, or
-  already downloaded" is true beside a running backup. **Hypothesis
-  3 recorded:** with every settled file failed, a landed upgrade
-  waits in Review and the track has no file.
-- **Skills:** `tdd`, red first per behaviour commit; refactors in
-  their own commits ahead of the behaviour. Divergence, as in S12:
-  the seams came from the brief Kris approved, not a fresh
-  confirmation.
-
-S12b's earlier decisions: HISTORY §206; S12's Cancel: §205.
+- **Claims match by name, loosely** (letters and digits, `_<ticks>`
+  stripped), never by path: slskd's sanitizing is not replicated, and
+  a looser match only protects more.
+- **slskd must answer.** No transfer list, no listing: a superseded
+  backup's transfer can still be writing, and only slskd knows.
+- **Only slskd's own folder:** `downloads` beside `slskd.yml`, its
+  sibling `incomplete/` the other root. Anything else is refused.
+- **A 10-minute hold-back** for a file whose transfer the names miss.
+- **Skills:** `tdd`, red first per behaviour commit (the service's red
+  was its missing module, so a mutation run backs its tests).
 
 ## 6. Blockers
 
-None for S13's code. S13's first real deletion is Kris's to click.
+**Kris's slskd container was recreated by a test run** (HISTORY §208
+→ "Observed"). `docker inspect slskd`: created 2026-10-07 13:03 UTC,
+during S33; `/app` and `/shared/music` are bound to deleted pytest
+temp directories, and it answers Seeker's saved API key `401`. So the
+real app cannot reach slskd now, and slskd's state lives nowhere real.
+The sessions must not restart or recreate the container; Kris does
+that (Settings → SoulSeek, or `docker compose up` from the per-user
+copy). Then a row should find which test reached the real
+`bring_up_slskd` (the mounts name `test_wizard_content_is_one_centred_column`
+and `test_bring_up_soulseek_real_compose_failure_surfaces_stderr`;
+a late worker after monkeypatch teardown is the first guess,
+UNVERIFIED) and add a guard so no test can run `docker compose`.
 
 ## 7. Files in progress
 
-None uncommitted. S12b is closed at its row boundary.
+None uncommitted. S13 is closed at its row boundary.
 
 ## 8. Waiting on Kris
 
-- **New (S12b):** veto, if wanted, §5's decisions, HISTORY §206's
-  backup decisions and BRIEF §12b's "Code's calls" (3 backups; none
-  for a person's choice).
+- **New (S13):** recreate slskd (§6). Then the first real cleanup,
+  yours to click: Downloads → "Clean up leftover files…". The
+  configured `SLSKD_DOWNLOAD_DIR` in `.env` is relative
+  (`./slskd-data/downloads`), so it resolves against the launch
+  directory; Settings' saved value wins when set. Veto, if wanted,
+  §5's decisions.
+- **From S12b:** HISTORY §206/§207's backup decisions; BRIEF §12b's
+  "Code's calls".
 - **From S12:** the first live Cancel, at the keyboard; HISTORY
   §204's retry and §205's Cancel decisions.
 - **From S11:** the four sweep decisions (HISTORY §203); the "Daily
@@ -121,13 +111,14 @@ None uncommitted. S12b is closed at its row boundary.
 
 ## 9. Open questions
 
+- Should a superseded row's transfer be cancelled in slskd, so its
+  file never becomes a leftover?
+- Should the cleanup also offer slskd's own "remove finished
+  transfers" (its transfer list grows too)?
 - How long may a settled file sit in a remote queue before Seeker
-  gives up or falls back? There is no limit today (BRIEF §12b → "Not
-  in this row").
-- Should an activated backup's row say it is a backup? Once
-  requested it reads plain "Downloading" (HISTORY §207 → Screens).
-- Should a downloading row get Cancel too (a transfer stuck at a few
-  per cent)?
+  gives up or falls back?
+- Should an activated backup's row say it is a backup?
+- Should a downloading row get Cancel too?
 - Should Downloads get a "Retry all" for many failures?
 - Should the sweep skip a track whose needs-review candidate is still
   waiting on a person?
