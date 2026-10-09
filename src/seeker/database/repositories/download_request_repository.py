@@ -531,10 +531,12 @@ class DownloadRequestRepository:
     def get_next_shortlisted(
             self,
             track_id: str,
+            role: DownloadRole,
             connection: sqlite3.Connection,
     ) -> DownloadRequest | None:
-        # Lowest surviving rank for this track — the entry the cascade
-        # should activate next.
+        # Lowest surviving rank for this track and role — the entry the
+        # cascade should activate next. A settled failure must never
+        # activate an upgrade, nor an upgrade failure a settled backup.
         row = connection.execute(
             """
             SELECT
@@ -558,11 +560,11 @@ class DownloadRequestRepository:
                 failure_reason,
                 dismissed_at
             FROM download_requests
-            WHERE track_id = ? AND status = ?
+            WHERE track_id = ? AND role = ? AND status = ?
             ORDER BY rank ASC
             LIMIT 1
             """,
-            (track_id, DownloadStatus.SHORTLISTED),
+            (track_id, role, DownloadStatus.SHORTLISTED),
         ).fetchone()
 
         if row is None:

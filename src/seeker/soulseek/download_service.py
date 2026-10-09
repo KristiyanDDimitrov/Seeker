@@ -478,6 +478,18 @@ class DownloadService:
             settled.filename,
         )
 
+        # Ranked from 2, behind the settled file, as an upgrade
+        # shortlist is; the poll requests the next backup only when the
+        # one before it fails or locks.
+        for rank, backup in enumerate(selection.settled_backups, start=2):
+            self._record_shortlisted(
+                track, backup, role=DownloadRole.SETTLED, rank=rank,
+            )
+            logger.info(
+                "Backup from %s: %s (rank %d)",
+                backup.username, backup.filename, rank,
+            )
+
         if upgrade_shortlist:
             # The settled file is already on its way, so a peer
             # refusing the upgrade leaves the track requested, not
@@ -762,7 +774,9 @@ class DownloadService:
         )
 
         for rank, candidate in enumerate(upgrade_shortlist[1:], start=2):
-            self._record_shortlisted(track, candidate, rank=rank)
+            self._record_shortlisted(
+                track, candidate, role=DownloadRole.UPGRADE, rank=rank,
+            )
             logger.info(
                 "Shortlisted upgrade candidate from %s: %s (rank %d)",
                 candidate.username, candidate.filename, rank,
@@ -805,11 +819,12 @@ class DownloadService:
             self,
             track: Track,
             file: SoulseekFile,
+            role: DownloadRole,
             rank: int,
     ) -> None:
         # Known and persisted, but not yet sent to slskd — request_download
-        # only happens once a higher-ranked entry for this track is
-        # rejected (see DownloadPoller._cascade_upgrade).
+        # only happens once a higher-ranked entry of the same role for
+        # this track fails (see DownloadPoller._cascade).
         with self.database.transaction() as connection:
             self.download_requests.add(
                 DownloadRequest(
@@ -818,7 +833,7 @@ class DownloadService:
                     filename=file.filename,
                     format=file.extension,
                     quality_descriptor=_quality_descriptor(file),
-                    role=DownloadRole.UPGRADE,
+                    role=role,
                     status=DownloadStatus.SHORTLISTED,
                     rank=rank,
                     size=file.size,

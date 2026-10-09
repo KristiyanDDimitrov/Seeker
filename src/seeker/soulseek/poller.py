@@ -201,20 +201,14 @@ class DownloadPoller:
                     if status == DownloadStatus.FAILED:
                         counts.failed += 1
 
-                    if request.role == DownloadRole.UPGRADE:
-                        # Try the next shortlisted candidate for this
-                        # track immediately, in this same run, regardless
-                        # of why this one was rejected — the exact same
-                        # candidate has already failed either way, so
-                        # there's no reason to wait a day before trying
-                        # the next best one. Scoped to role=='upgrade'
-                        # only — 'settled' has no shortlist concept, and
-                        # get_next_shortlisted() isn't itself
-                        # role-scoped, so calling this for a 'settled'
-                        # rejection could incorrectly activate an
-                        # unrelated upgrade-role shortlist entry for the
-                        # same track.
-                        self._cascade_upgrade(request.track_id, counts)
+                    # Try the next shortlisted candidate of the same role
+                    # immediately, in this same run, regardless of why
+                    # this one was rejected — the exact same candidate
+                    # has already failed either way, so there's no reason
+                    # to wait before trying the next best one. A settled
+                    # row falls back to its backups, an upgrade to the
+                    # next upgrade; neither ever activates the other.
+                    self._cascade(request.track_id, request.role, counts)
 
                     continue
 
@@ -327,7 +321,12 @@ class DownloadPoller:
             describe_transfer_failure(transfer.state, transfer.exception),
         )
 
-    def _cascade_upgrade(self, track_id: str, counts: PollResult) -> None:
+    def _cascade(
+            self,
+            track_id: str,
+            role: DownloadRole,
+            counts: PollResult,
+    ) -> None:
         # Sequential, not simultaneous: try one candidate, and only move
         # to the next once this one is confirmed unavailable — never
         # multiple in-flight requests for the same track at once. The
@@ -338,7 +337,7 @@ class DownloadPoller:
         while True:
             with self.database.transaction() as connection:
                 next_entry = self.download_requests.get_next_shortlisted(
-                    track_id, connection,
+                    track_id, role, connection,
                 )
 
             if next_entry is None:
@@ -373,7 +372,7 @@ class DownloadPoller:
         # properly classified locked-vs-failed, exactly like a
         # first-time request in the main poll_downloads loop.
         #
-        # Both loaded from the DB by every real caller (_cascade_upgrade
+        # Both loaded from the DB by every real caller (_cascade
         # fetches via get_next_shortlisted, which only returns persisted
         # rows; size is always set at creation time in
         # _request_and_record/_record_shortlisted).
@@ -418,8 +417,12 @@ class DownloadPoller:
 
         if any(marker in state for marker in FAILED_STATE_MARKERS):
             status, reason = self._classify_failed_transfer(transfer)
-        elif "Succeeded" in state:
+        elif "Succeeded" in state and request.role == DownloadRole.UPGRADE:
             status = DownloadStatus.READY_FOR_REVIEW
+        elif "Succeeded" in state:
+            # A settled backup is placed like any settled download:
+            # left in flight, the next poll's pending loop moves it.
+            status = DownloadStatus.DOWNLOADING
         else:
             status = _in_flight_status(state)
 

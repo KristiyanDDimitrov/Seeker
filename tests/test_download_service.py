@@ -2167,10 +2167,8 @@ def test_rejected_settled_role_with_other_reason_still_marks_failed(
 
 
 def test_settled_role_rejection_does_not_trigger_upgrade_cascade(tmp_path):
-    # The Phase 4 cascade stays role-specific even after broadening the
-    # rejection classification itself — get_next_shortlisted() isn't
-    # role-scoped, so calling the cascade for a settled rejection could
-    # otherwise incorrectly activate an unrelated upgrade-role
+    # The cascade is role-scoped: a settled rejection falls back to the
+    # track's settled backups only, never to an unrelated upgrade-role
     # shortlist entry for the same track.
     service = make_service(
         tmp_path,
@@ -2761,7 +2759,7 @@ def test_cascade_activation_recognizes_peer_offline_and_locks_not_stuck(
 ):
     # The real bug case: before the fix, a peer-offline 404 during
     # cascade activation propagated a bare httpx.HTTPStatusError out of
-    # _activate_shortlisted_entry, up through _cascade_upgrade, into
+    # _activate_shortlisted_entry, up through _cascade, into
     # poll_downloads' main-loop outer per-request handler — leaving the
     # row stuck at 'shortlisted' forever, never touched by mark_status,
     # since the classification code (is_recognized_rejection) was never
