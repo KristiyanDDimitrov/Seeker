@@ -189,6 +189,28 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     every global prerequisite already satisfied — the existing empty-
     state panel already covers "pick a playlist" there).
     """
+    setup_step = _setup_step(facts)
+    if setup_step is not None:
+        return setup_step
+
+    if facts.selected_playlist_name is None or facts.track_statuses is None:
+        if facts.stale_playlist_names:
+            return _NextStep(
+                help_text.format_stale_playlist_message(
+                    facts.stale_playlist_names,
+                ),
+                "info", "Refresh playlists", "sync",
+            )
+        return None
+
+    return _playlist_step(
+        facts, facts.selected_playlist_name, facts.track_statuses,
+    )
+
+
+def _setup_step(facts: _NextStepFacts) -> _NextStep | None:
+    """The step for a missing global prerequisite, in the order a new
+    user meets them, or None once every one is met."""
     # First: while slskd is down, nothing below can finish downloading.
     if facts.slskd_unreachable_message is not None:
         return _NextStep(
@@ -215,25 +237,23 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
             "info", "Refresh playlists", "sync",
         )
 
-    if facts.selected_playlist_name is None or facts.track_statuses is None:
-        if facts.stale_playlist_names:
-            return _NextStep(
-                help_text.format_stale_playlist_message(
-                    facts.stale_playlist_names,
-                ),
-                "info", "Refresh playlists", "sync",
-            )
-        return None
+    return None
 
-    playlist_name = facts.selected_playlist_name
 
+def _playlist_step(
+        facts: _NextStepFacts,
+        playlist_name: str,
+        track_statuses: list[TrackStatus],
+) -> _NextStep:
+    """The step for the selected playlist, once every global
+    prerequisite is met."""
     if playlist_name in facts.stale_playlist_names:
         return _NextStep(
             help_text.format_stale_playlist_message([playlist_name]),
             "info", "Refresh tracks", "sync_tracks",
         )
 
-    if not facts.track_statuses:
+    if not track_statuses:
         return _NextStep(
             f"Load '{playlist_name}''s tracks to see what's missing.",
             "info", "Load tracks", "sync_tracks",
@@ -255,29 +275,16 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
     # already-in-progress, so counting them here would overstate what
     # clicking Download actually does (HISTORY §66).
     missing_count = sum(
-        1 for status in facts.track_statuses
+        1 for status in track_statuses
         if status.state in MISSING_STATES
     )
+    if missing_count > 0:
+        return _download_step(facts, playlist_name, missing_count)
+
     untagged_count = sum(
-        1 for status in facts.track_statuses
+        1 for status in track_statuses
         if status.state == IN_LIBRARY and status.tagged_at is None
     )
-
-    if missing_count > 0:
-        if not facts.soulseek_configured:
-            return _NextStep(
-                "Set up SoulSeek downloading to fetch what's missing.",
-                "info", "Set up SoulSeek", "settings_connection",
-            )
-
-        plural = "s" if missing_count != 1 else ""
-        return _NextStep(
-            f"{missing_count} track{plural} missing from "
-            f"'{playlist_name}'.",
-            "info", f"Download {missing_count} missing track{plural}",
-            "download",
-        )
-
     if untagged_count > 0:
         plural = "s" if untagged_count != 1 else ""
         return _NextStep(
@@ -288,6 +295,24 @@ def _decide_next_step(facts: _NextStepFacts) -> _NextStep | None:
 
     return _NextStep(
         f"You're all set for '{playlist_name}'.", "success", None, None,
+    )
+
+
+def _download_step(
+        facts: _NextStepFacts, playlist_name: str, missing_count: int,
+) -> _NextStep:
+    """The step for a playlist with tracks still to download."""
+    if not facts.soulseek_configured:
+        return _NextStep(
+            "Set up SoulSeek downloading to fetch what's missing.",
+            "info", "Set up SoulSeek", "settings_connection",
+        )
+
+    plural = "s" if missing_count != 1 else ""
+    return _NextStep(
+        f"{missing_count} track{plural} missing from '{playlist_name}'.",
+        "info", f"Download {missing_count} missing track{plural}",
+        "download",
     )
 
 
