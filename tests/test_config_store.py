@@ -44,6 +44,22 @@ def test_resolve_config_path_creates_directory_and_uses_platformdirs(
     assert fake_data_dir.is_dir()
 
 
+def test_resolve_config_path_makes_an_existing_data_dir_private(
+        tmp_path, monkeypatch,
+):
+    fake_data_dir = tmp_path / "Seeker"
+    fake_data_dir.mkdir(mode=0o755)
+    fake_data_dir.chmod(0o755)
+    monkeypatch.setattr(
+        "seeker.config_store.platformdirs.user_data_dir",
+        _fake_user_data_dir(fake_data_dir),
+    )
+
+    resolve_config_path()
+
+    assert stat.S_IMODE(fake_data_dir.stat().st_mode) == 0o700
+
+
 def test_save_then_load_round_trips(tmp_path):
     path = tmp_path / "config.json"
 

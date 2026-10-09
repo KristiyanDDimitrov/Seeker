@@ -31,6 +31,22 @@ def write_text_locked(path: Path, text: str) -> None:
     _write_atomic(path, text, mode=0o600)
 
 
+def make_private_dir(path: Path) -> None:
+    """Create `path` if it is missing and leave it 0700.
+
+    For Seeker's own data, log and cache directories: on Linux their
+    parents are commonly 0755, so a directory at the umask would let
+    another local user read the database, the logs and slskd's
+    downloads. `mkdir(mode=)` is masked by the umask and never touches
+    an existing directory, so the `chmod` does the work, and it fixes a
+    directory an earlier version created. Missing parents keep the
+    umask: they are the platform's. On Windows `chmod` sets only the
+    read-only flag, which 0700 leaves clear.
+    """
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.chmod(0o700)
+
+
 def _write_atomic(path: Path, text: str, mode: int | None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")

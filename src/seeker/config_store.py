@@ -7,7 +7,7 @@ from typing import get_args
 
 import platformdirs
 
-from seeker.files.atomic import write_text_locked
+from seeker.files.atomic import make_private_dir, write_text_locked
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ def resolve_config_path() -> Path:
     # Same per-user app-data directory the database lives in (see
     # application.py's _resolve_database_path) — one location, not two.
     data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
-    data_dir.mkdir(parents=True, exist_ok=True)
+    make_private_dir(data_dir)
 
     return data_dir / "config.json"
 

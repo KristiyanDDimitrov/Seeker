@@ -1,3 +1,5 @@
+import os
+import stat
 from dataclasses import replace
 
 import pytest
@@ -6,6 +8,7 @@ from seeker.application import (
     Application,
     _resolve_database_path,
     _resolve_spotify_token_path,
+    resolve_log_dir,
 )
 from seeker.config_store import (
     SeekerConfig,
@@ -50,6 +53,42 @@ def test_resolve_database_path_creates_directory_and_uses_platformdirs(
 
     assert db_path == fake_data_dir / "seeker.db"
     assert fake_data_dir.is_dir()
+
+
+@pytest.fixture
+def umask_022():
+    # The common default, which leaves a new directory 0755.
+    previous = os.umask(0o022)
+    yield
+    os.umask(previous)
+
+
+@pytest.mark.parametrize("pre_existing", [False, True])
+@pytest.mark.parametrize(
+    ("platformdirs_name", "resolve"),
+    [
+        ("user_data_dir", _resolve_database_path),
+        ("user_data_dir", _resolve_spotify_token_path),
+        ("user_log_dir", resolve_log_dir),
+    ],
+)
+def test_seeker_data_and_log_dirs_are_private_to_the_user(
+        tmp_path, monkeypatch, umask_022, platformdirs_name, resolve,
+        pre_existing,
+):
+    # On Linux the parents are usually 0755, so a dir at the umask
+    # lets another local user read the DB, the logs and the downloads.
+    seeker_dir = tmp_path / "Seeker"
+    if pre_existing:
+        seeker_dir.mkdir(mode=0o755)
+    monkeypatch.setattr(
+        f"seeker.application.platformdirs.{platformdirs_name}",
+        _fake_user_data_dir(seeker_dir),
+    )
+
+    resolve()
+
+    assert stat.S_IMODE(seeker_dir.stat().st_mode) == 0o700
 
 
 def test_application_fresh_install_creates_database_at_new_location(

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import platformdirs
 
+from seeker.files.atomic import make_private_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +81,7 @@ class AlbumArtCache:
         key = self._key_for(url)
 
         try:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            make_private_dir(self.cache_dir)
             (self.cache_dir / f"{key}.bin").write_bytes(image_bytes)
             (self.cache_dir / f"{key}.json").write_text(
                 json.dumps({"url": url, "mime_type": mime_type})

@@ -37,6 +37,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.files.atomic import make_private_dir
 from seeker.history_service import HistoryService
 from seeker.library.duplicate_service import DuplicateService
 from seeker.library.matcher import TrackMatcher
@@ -72,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 def _resolve_database_path() -> Path:
     data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
-    data_dir.mkdir(parents=True, exist_ok=True)
+    make_private_dir(data_dir)
 
     return data_dir / "seeker.db"
 
@@ -82,7 +83,7 @@ def resolve_log_dir() -> Path:
     # data_locations below — one resolved path, never a second,
     # drifting copy.
     log_dir = Path(platformdirs.user_log_dir("Seeker", appauthor=False))
-    log_dir.mkdir(parents=True, exist_ok=True)
+    make_private_dir(log_dir)
 
     return log_dir
 
@@ -92,7 +93,7 @@ def _resolve_spotify_token_path() -> Path:
     # never CWD-relative: macOS starts a double-clicked .app with its
     # CWD at `/`, the read-only system volume (HISTORY §43).
     data_dir = Path(platformdirs.user_data_dir("Seeker", appauthor=False))
-    data_dir.mkdir(parents=True, exist_ok=True)
+    make_private_dir(data_dir)
 
     return data_dir / "spotify_token.json"
 

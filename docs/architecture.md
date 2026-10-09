@@ -145,7 +145,7 @@ src/seeker/
 │   ├── quality.py           # a local file's format and bitrate
 │   └── tags.py              # read and write ID3/FLAC/MP4 tags; save_tags()
 ├── files/
-│   ├── atomic.py            # atomic writes; 0600 writes; rewrite_via_copy()
+│   ├── atomic.py            # atomic writes; 0600 writes; 0700 dirs; rewrite_via_copy()
 │   ├── deletion.py          # delete a file the library knows about
 │   ├── placement.py         # resolve_collision(): never land on a file
 │   ├── sanitize.py          # clean_path_component()

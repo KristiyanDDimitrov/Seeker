@@ -1,4 +1,6 @@
+import os
 import shutil
+import stat
 
 from seeker.album_art_cache import AlbumArtCache
 
@@ -87,3 +89,15 @@ def test_memory_keeps_only_the_most_recently_used_entries(tmp_path):
     assert cache.get(urls[1]) is None
     assert cache.get(urls[0]) == (urls[0].encode(), "image/jpeg")
     assert cache.get(urls[-1]) == (b"last", "image/jpeg")
+
+
+def test_put_creates_the_cache_dir_private_to_the_user(tmp_path):
+    previous = os.umask(0o022)
+    try:
+        AlbumArtCache(tmp_path / "art").put(
+            "https://i.scdn.co/image/fake", b"jpeg", "image/jpeg",
+        )
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE((tmp_path / "art").stat().st_mode) == 0o700
