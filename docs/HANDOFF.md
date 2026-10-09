@@ -18,7 +18,9 @@ nine fields below follow the contract in
   `test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
   cases. S8's earlier full run failed the old pair instead (below).
   `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** pending for the S8 push (recorded in the follow-up commit).
+- **CI:** `385ac92`'s run `37929658913` green: `check` `2058 passed,
+  29 skipped`, coverage 94.55 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
