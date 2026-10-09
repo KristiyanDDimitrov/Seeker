@@ -801,6 +801,20 @@ def test_the_checkbox_tick_is_drawn_in_on_accent(palette):
         [theme.DARK, theme.LIGHT],
         ids=["dark", "light"],
 )
+def test_a_selected_radio_button_has_an_on_accent_dot(palette):
+    # Without one, a selected radio was a solid ACCENT disc: the state
+    # rested on colour alone, unlike the checkbox's tick.
+    path = theme.radio_dot_path(palette)
+    assert path.is_file()
+    assert f'fill="{palette.ON_ACCENT}"' in path.read_text()
+    assert path.as_posix() in theme.build_stylesheet(palette)
+
+
+@pytest.mark.parametrize(
+        "palette",
+        [theme.DARK, theme.LIGHT],
+        ids=["dark", "light"],
+)
 def test_the_combo_chevron_is_drawn_in_the_palettes_muted_text(palette):
     path = theme.combo_chevron_path(palette)
     assert path.is_file()

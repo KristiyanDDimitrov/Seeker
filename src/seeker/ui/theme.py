@@ -332,6 +332,12 @@ def check_tick_path(palette: Palette) -> Path:
     return _palette_icon("check_tick", palette)
 
 
+def radio_dot_path(palette: Palette) -> Path:
+    """A selected radio button's dot, filled in `palette.ON_ACCENT` over
+    the ACCENT fill, the radio's counterpart of `check_tick_path`."""
+    return _palette_icon("radio_dot", palette)
+
+
 def set_dynamic_property(widget: QWidget, name: str, value: str | None) -> None:
     """Set a dynamic property used by a `[name="value"]` stylesheet
     selector (e.g. QPushButton's `variant`, QLabel's `badge`) and force
@@ -1612,6 +1618,10 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
 
 QCheckBox::indicator:checked {{
     image: url("{check_tick_path(palette).as_posix()}");
+}}
+
+QRadioButton::indicator:checked {{
+    image: url("{radio_dot_path(palette).as_posix()}");
 }}
 
 /* Keyboard focus thickens the indicator's border to 2px inside the
