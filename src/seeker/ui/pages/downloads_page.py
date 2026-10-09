@@ -1,5 +1,6 @@
 """The Downloads page (HISTORY §119)."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from enum import IntEnum
 
@@ -85,6 +86,10 @@ _DOWNLOAD_STATUS_NOTES = {
 }
 
 
+# A meter's ETA before the tracker has two samples to estimate from.
+_CALCULATING = "Calculating…"
+
+
 def _status_note(request: DownloadRequest) -> str | None:
     """The secondary text of a row's Status cell: a failure's reason,
     the percentage of a transfer with real bytes, or a fixed note."""
@@ -120,6 +125,37 @@ def _build_status_item(request: DownloadRequest) -> QTableWidgetItem:
         # The cell elides a long reason; the tooltip never does.
         item.setToolTip(plain_tooltip(f"{label} — {note}"))
     return item
+
+
+def _has_meter(request: DownloadRequest) -> bool:
+    """Whether a row's Progress cell is a determinate meter, the one
+    cell a progress-only tick updates in place."""
+    return (
+        request.status == DownloadStatus.DOWNLOADING
+        and bool(request.total_bytes)
+        and request.bytes_transferred is not None
+    )
+
+
+# A row apart from the bytes that update in place, and whether it has a
+# meter to update.
+_RowLayout = tuple[ActiveDownload, bool]
+# The palette the rows' lamps were drawn in, and each row's layout.
+_RenderedRows = tuple[theme.Palette, tuple[_RowLayout, ...]]
+
+
+def _row_layout(download: ActiveDownload) -> _RowLayout:
+    request = download.request
+    if request.status != DownloadStatus.DOWNLOADING:
+        return download, False
+
+    return (
+        replace(
+            download,
+            request=replace(request, bytes_transferred=None, total_bytes=None),
+        ),
+        _has_meter(request),
+    )
 
 
 def _progress_sort_key(request: DownloadRequest) -> float:
@@ -161,7 +197,7 @@ def _build_progress_widget(
     bar = QProgressBar()
     bar.setFixedWidth(theme.METER_WIDTH)
 
-    if not (request.total_bytes and request.bytes_transferred is not None):
+    if not _has_meter(request):
         # Started, no bytes reported yet: busy, not a 0%-forever meter
         # that looks identical to being stuck. No ETA either: nothing
         # determinate to estimate against. Wrapped like the meter
@@ -170,13 +206,15 @@ def _build_progress_widget(
         theme.set_busy_meter(bar)
         return theme.wrap_progress_bar(bar, None)
 
+    # _has_meter's own conditions, for mypy.
+    assert request.total_bytes and request.bytes_transferred is not None
     bar.setRange(0, request.total_bytes)
     bar.setValue(request.bytes_transferred)
     theme.style_meter(bar)
 
     # ETA only ever shown once the bar is determinate (HISTORY §20); the
     # percentage is the Status cell's secondary text.
-    return theme.wrap_progress_bar(bar, eta_text or "Calculating…")
+    return theme.wrap_progress_bar(bar, eta_text or _CALCULATING)
 
 
 class DownloadsPage(QWidget):
@@ -193,6 +231,10 @@ class DownloadsPage(QWidget):
         # via a delegating property, same as every other tray count
         # (HISTORY §90).
         self.active_downloads_count = 0
+        # What the table's rows were last built from; a tick that
+        # changes only bytes updates them in place (ui/CLAUDE.md).
+        self._rendered_rows: _RenderedRows | None = None
+        self._rendered_downloads: list[ActiveDownload] = []
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -324,6 +366,27 @@ class DownloadsPage(QWidget):
         )
         self._render_aggregate_eta(downloads)
 
+        # The lamps bake in the palette's colours, so a theme switch
+        # must rebuild even when the rows are unchanged.
+        rendered: _RenderedRows = (
+            theme.active_palette(),
+            tuple(_row_layout(download) for download in downloads),
+        )
+        self._rendered_downloads = downloads
+
+        if rendered == self._rendered_rows:
+            self._update_progress_in_place()
+            return
+
+        self._rebuild_rows(downloads)
+        self._rendered_rows = rendered
+
+    def _eta_text(self, request: DownloadRequest) -> str | None:
+        if request.id is None or not request.total_bytes:
+            return None
+        return self._eta_tracker.describe(request.id, request.total_bytes)
+
+    def _rebuild_rows(self, downloads: list[ActiveDownload]) -> None:
         # Sorting is live on this table; disabled for the body of this
         # rebuild (see preserving_sort_order's own docstring for why)
         # and restored afterward.
@@ -334,6 +397,9 @@ class DownloadsPage(QWidget):
                 track = download.track
                 label = f"{track.artist} - {track.title}"
                 track_item = QTableWidgetItem(label)
+                # The row's anchor into _rendered_downloads, whatever
+                # order a sort leaves the rows in.
+                track_item.setData(Qt.ItemDataRole.UserRole, row)
                 # Only an upgrade is marked: a plain download is what
                 # every other row is.
                 if download.request.role == DownloadRole.UPGRADE:
@@ -367,13 +433,7 @@ class DownloadsPage(QWidget):
                         self._eta_tracker.evict(request.id)
                     eta_text = None
                 else:
-                    eta_text = (
-                        self._eta_tracker.describe(
-                            request.id, request.total_bytes,
-                        )
-                        if request.id is not None and request.total_bytes
-                        else None
-                    )
+                    eta_text = self._eta_text(request)
 
                 self.downloads_table.setCellWidget(
                     row, _DownloadsColumn.PROGRESS,
@@ -385,6 +445,48 @@ class DownloadsPage(QWidget):
                 )
 
         theme.size_columns(self.downloads_table, _DOWNLOADS_COLUMNS, [])
+
+    def _update_progress_in_place(self) -> None:
+        table = self.downloads_table
+        with preserving_sort_order(table):
+            for row in range(table.rowCount()):
+                anchor = table.item(row, _DownloadsColumn.TRACK)
+                assert anchor is not None
+                request = self._rendered_downloads[
+                    anchor.data(Qt.ItemDataRole.UserRole)
+                ].request
+                if not _has_meter(request):
+                    continue
+                # _has_meter's own conditions, for mypy.
+                assert (
+                    request.total_bytes
+                    and request.bytes_transferred is not None
+                )
+
+                # The rebuild gave every meter row its meter and ETA
+                # label, and an unchanged layout keeps both.
+                container = table.cellWidget(row, _DownloadsColumn.PROGRESS)
+                assert container is not None
+                bar = container.findChild(QProgressBar)
+                eta_label = container.findChild(PlainLabel)
+                assert bar is not None and eta_label is not None
+                bar.setMaximum(request.total_bytes)
+                bar.setValue(request.bytes_transferred)
+                eta_label.setText(self._eta_text(request) or _CALCULATING)
+
+                # In place, not setItem: ~2.4 ms a call (HISTORY §166).
+                # preserving_sort_order re-sorts by the new keys.
+                sort_item = table.item(row, _DownloadsColumn.PROGRESS)
+                assert isinstance(sort_item, SortKeyItem)
+                sort_item.sort_key = _progress_sort_key(request)
+                status_item = table.item(row, _DownloadsColumn.STATUS)
+                assert status_item is not None
+                note = _status_note(request)
+                status_item.setData(SECONDARY_ROLE, note)
+                status_item.setData(
+                    Qt.ItemDataRole.AccessibleTextRole,
+                    f"{status_item.text()}: {note}",
+                )
 
     def _clear_finished(self) -> None:
         # Not run_worker's button=: it re-enables the button when the

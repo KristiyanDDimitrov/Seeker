@@ -849,3 +849,48 @@ def test_status_sorts_closest_to_done_first(qtbot):
         "Completed", "Downloading", "Queued", "Retrying", "Queued as backup",
         "Ready for review", "Failed", "Unavailable",
     ]
+
+
+def test_a_progress_only_tick_keeps_every_rows_widgets(qtbot):
+    # A rebuild under the pointer kills a cell widget's shown tooltip
+    # and a click pressed across it, so a tick that moves only bytes
+    # updates the row in place (ui/CLAUDE.md, HISTORY §195).
+    downloads = [
+        make_active_download(track_id="t1", bytes_transferred=100),
+        make_active_download(track_id="t2", status="queued"),
+    ]
+    window = MainWindow(FakeApplication(active_downloads=downloads))
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    table = page.downloads_table
+    page._render_active_downloads(downloads)
+    table.sortItems(0, Qt.SortOrder.DescendingOrder)
+    before = [table.cellWidget(row, 3) for row in range(table.rowCount())]
+
+    page._render_active_downloads([
+        make_active_download(track_id="t1", bytes_transferred=750),
+        make_active_download(track_id="t2", status="queued"),
+    ])
+
+    assert [
+        table.cellWidget(row, 3) for row in range(table.rowCount())
+    ] == before
+    row = next(
+        row for row in range(table.rowCount())
+        if table.item(row, 2).text() == "Downloading"
+    )
+    assert table.cellWidget(row, 3).findChild(QProgressBar).value() == 750
+    assert table.item(row, 2).data(SECONDARY_ROLE) == "75%"
+    assert table.item(row, 3).sort_key == 0.75
+
+
+def test_a_status_change_rebuilds_the_row(qtbot):
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([make_active_download(status="queued")])
+
+    page._render_active_downloads([make_active_download(status="downloading")])
+
+    assert page.downloads_table.item(0, 2).text() == "Downloading"
+    assert page.downloads_table.cellWidget(0, 3).findChild(QProgressBar)
