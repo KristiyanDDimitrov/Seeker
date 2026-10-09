@@ -401,6 +401,36 @@ def set_secondary_min_share(view: QAbstractItemView, share: float) -> None:
         delegate.secondary_min_share = share
 
 
+def label_floor(view: QTableView, column: int) -> int:
+    """The width `column`'s widest label needs, beside its icon and
+    badge but without its secondary text, when the column has secondary
+    text in a view whose labels read in full
+    (`set_secondary_min_share(view, 0.0)`). 0 otherwise: a column of
+    plain text elides."""
+    delegate = view.itemDelegate()
+    if (
+            not isinstance(delegate, ElidedTextDelegate)
+            or delegate.secondary_min_share > 0
+    ):
+        return 0
+
+    model = view.model()
+    option = QStyleOptionViewItem()
+    view.initViewItemOption(option)
+    indexes = [model.index(row, column) for row in range(model.rowCount())]
+    if not any(index.data(SECONDARY_ROLE) for index in indexes):
+        return 0
+    # The grid line takes a pixel of the section, as
+    # sizeHintForColumn counts it (observed: without it, the widest
+    # label elided by its last letter).
+    grid = 1 if view.showGrid() else 0
+    return grid + max(
+        delegate.sizeHint(option, index).width()
+        - _secondary_width(option, index)
+        for index in indexes
+    )
+
+
 def elide_list_items(widget_list: QListWidget) -> None:
     """Items as wide as the list, elided, never a sideways scrollbar."""
     widget_list.setWordWrap(False)

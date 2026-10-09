@@ -9,6 +9,7 @@ from PySide6.QtGui import (
     QFont,
     QFontDatabase,
     QFontInfo,
+    QFontMetrics,
     QImage,
     QPainter,
     QPalette,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.ui import theme
+from seeker.ui.elided_text import SECONDARY_ROLE, set_secondary_min_share
 from seeker.ui.plain_text import RichLabel
 from seeker.ui.widgets import ThemeToggleButton
 
@@ -237,6 +239,37 @@ def test_a_table_refits_its_columns_when_it_narrows(qtbot):
 
     assert header.sectionSize(0) >= theme.STRETCH_COLUMN_FLOOR
     assert not table.horizontalScrollBar().isVisible()
+
+
+def test_a_label_that_reads_in_full_is_never_cut_for_width(qtbot):
+    # set_secondary_min_share(view, 0.0) promises a status reads in
+    # full: when the table is too narrow, its note gives way, never
+    # the label itself.
+    table = QTableWidget(1, 3)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["Track", "Playlist", "Status"])
+    table.setItem(0, 0, QTableWidgetItem("Nova Reyes - Voltage Drop"))
+    table.setItem(0, 1, QTableWidgetItem("Deep House Essentials"))
+    status = QTableWidgetItem("Unavailable")
+    status.setData(SECONDARY_ROLE, "Every candidate was locked " * 3)
+    table.setItem(0, 2, status)
+    theme.apply_table_defaults(table)
+    set_secondary_min_share(table, 0.0)
+    layout = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2))
+    table.resize(320, 200)
+    table.show()
+
+    theme.size_columns(table, layout, [])
+
+    # Qt's item text margin, on each side of the text.
+    margin = table.style().pixelMetric(
+        QStyle.PixelMetric.PM_FocusFrameHMargin, None, table,
+    ) + 1
+    label_width = (
+        QFontMetrics(table.font()).horizontalAdvance("Unavailable")
+        + 2 * margin
+    )
+    assert table.horizontalHeader().sectionSize(2) >= label_width
 
 
 def test_header_section_has_a_right_hand_divider():

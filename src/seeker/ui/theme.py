@@ -64,7 +64,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seeker.ui.elided_text import elide_table_cells, set_path_columns
+from seeker.ui.elided_text import (
+    elide_table_cells,
+    label_floor,
+    set_path_columns,
+)
 from seeker.ui.plain_text import PlainLabel
 
 logger = logging.getLogger(__name__)
@@ -784,7 +788,9 @@ def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
         return
     header = table.horizontalHeader()
     floors = {
-        column: header_label_floor(table, column)
+        column: max(
+            header_label_floor(table, column), label_floor(table, column),
+        )
         for column in layout.fit_content
     }
     wants = {
