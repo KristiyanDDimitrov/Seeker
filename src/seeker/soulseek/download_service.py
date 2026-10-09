@@ -58,6 +58,7 @@ from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track
 from seeker.soulseek.client import (
     SoulseekClient,
+    SoulseekDownloadError,
 )
 from seeker.soulseek.placement import DownloadPlacement
 from seeker.soulseek.poller import DownloadPoller
@@ -398,10 +399,22 @@ class DownloadService:
                     "Requested from %s: %s", settled.username,
                     settled.filename,
                 )
-                result.requested += 1
 
                 if upgrade_shortlist:
-                    self._request_upgrade_shortlist(track, upgrade_shortlist)
+                    # The settled file is already on its way, so a
+                    # peer refusing the upgrade leaves the track
+                    # requested, not failed.
+                    try:
+                        self._request_upgrade_shortlist(
+                            track, upgrade_shortlist,
+                        )
+                    except SoulseekDownloadError as error:
+                        logger.warning(
+                            "Upgrade not requested for %s - %s: %s",
+                            track.artist, track.title, error,
+                        )
+
+                result.requested += 1
             except Exception as error:
                 result.failures.append(TrackFailure(
                     f"{track.artist} - {track.title}",

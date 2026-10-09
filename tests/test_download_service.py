@@ -443,6 +443,37 @@ def test_download_playlist_failure_carries_its_track_and_readable_reason(
     assert result.failed == 1
 
 
+def test_download_playlist_counts_a_track_once_when_its_upgrade_peer_refuses(
+        tmp_path,
+):
+    # The settled file was requested; the better (locked) one's peer
+    # then turned out to be offline, a synchronous 404 at enqueue. The
+    # track is downloading, so it is requested and nothing else.
+    settled = make_soulseek_file(
+        username="fast", filename="Dom Dolla - Title t1.mp3",
+        extension="mp3",
+    )
+    upgrade = make_soulseek_file(
+        username="gone", filename="Dom Dolla - Title t1.flac",
+        locked=True,
+    )
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={"Dom Dolla Title t1": [settled, upgrade]},
+        retry_results={
+            upgrade.filename: SoulseekDownloadError(
+                "slskd rejected it", reason="User gone appears to be offline",
+            ),
+        },
+    )
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+
+    result = service.download_playlist("Test")
+
+    assert (result.requested, result.skipped, result.failed) == (1, 0, 0)
+
+
 def test_download_playlist_requests_locked_only_candidate_as_upgrade(
         tmp_path,
 ):
