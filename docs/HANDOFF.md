@@ -11,86 +11,92 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S11 close-out (HISTORY §203). Tree clean apart from
+- **HEAD:** the S12 close-out (HISTORY §204). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2129 passed, 1 skipped`, 0 failed (+14
+- **Local (Cocoa):** pytest `2140 passed, 1 skipped`, 0 failed (+11
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `radon cc -n D` nothing.
-- **CI:** `ae58295`'s run `37956280425` green: `check` `2101 passed,
-  29 skipped`, coverage 94.67 % (floor 92 %); `audit`, no known
-  vulnerabilities.
+- **CI:** see §3's last bullet for the close-out push's run.
 
 ## 2. Where we are
 
-**Round 12 S11 is done** (daily sweep II: the Settings toggle, the
-shell's scheduler, the tray summary). **Next: S12**, X2: Retry and
-Cancel on the Downloads page, BRIEF §12. The live Cancel needs Kris at
-the keyboard (plan → "Waiting on Kris").
+**Round 12 S12 stopped at its split point, "After Retry"** (the
+session reached its budget). Retry is built; **Cancel is next**, and
+it is still S12 (the plan's row is marked ◐). BRIEF §12. The first
+live Cancel needs Kris at the keyboard.
 
-## 3. Session report (S11)
+## 3. Session report (S12, Retry)
 
-Evidence for each is in HISTORY §203.
-- `48e7051` §11.1: Settings → General → "Daily sweep" card, its
-  checkbox off by default, saved on toggle; `docs/cli.md`'s GUI map.
-- `21651ec`: `run_sweep(stop)`, a `threading.Event` read before every
-  search; `SweepResult.stopped`. Without it a quit mid-sweep kept the
-  process alive up to ~40 min (the pool's destructor waits).
-- `2e8fc50` §11.2: `ui/sweep_scheduler.py` (`SweepScheduler`,
-  `SWEEP_KEY`, hourly `MainWindow.sweep_timer`); first check after
-  the first poll that reaches slskd; `BusyActionRegistry.begin` and
-  `_run_busy_worker` accept `button=None`.
-- `6afbec0` §11.3: `TrayController.notify_sweep_requested`, under
-  "Downloads finished"; silence when nothing was requested.
-- The close-out: HISTORY §203, CLAUDE.md's sweep fact, the plan tick,
-  this file. CI run `37956280425` green (§1).
+Evidence for each is in HISTORY §204.
+- `352055b`: Downloads rebuilds its table only when its rows change;
+  a progress-only tick updates meters, ETA, percentage and sort keys
+  in place.
+- `a54b5df`: `DownloadService.retry_download(id)`: `search_and_request`
+  for the row's track; dismisses the row once something is requested;
+  `DownloadNotRetryableError` otherwise.
+- `e7e9d07`: `elided_text.label_floor`: a noted column in a
+  read-in-full view is never cut below its widest label (Downloads'
+  new column and the Dashboard's "Candidate to review" elided).
+- `8bb9e7d` §12: the Actions column and Retry (busy key
+  `retry_download`, one search at a time, outcome in the notice).
+- Close-out: HISTORY §204, `ui/CLAUDE.md` (two facts), the plan's ◐,
+  this file. CI run: recorded in the follow-up handoff commit.
 
-## 4. Key context for S12
+## 4. Key context for Cancel (the rest of S12)
 
-- **Retry** on `failed`/`unavailable` rows: one track through
-  `DownloadService.search_and_request(track, thresholds)` with
-  `current_thresholds()` (S10's extraction). The 30-day
-  `UNAVAILABLE_COOLDOWN` already skips the peer and file that failed.
-- **Cancel** on `queued` rows: verify slskd's transfer-cancel endpoint
-  read-only first (the pinned version's API docs, `docker inspect`);
-  a `DELETE` on a real transfer waits for Kris's yes. The row becomes
-  `failed` with `failure_reason="Cancelled by you"`. Every slskd path
-  segment is `quote(…, safe="")`d.
-- **Downloads' buttons:** `cell_widget(..., row_label=)`. A button
-  whose enabled state a render decides is never `run_worker`'s
-  `button=` (ui/CLAUDE.md). A polled table rebuilds only on change.
+- **Endpoint, verified read-only against the 0.26.0 tag's source:**
+  `DELETE /api/v0/transfers/downloads/{username}/{id}?remove=false`;
+  build it with `SoulseekClient._transfer_url` (already quotes both
+  segments). It answers `204` even for an unknown id or a finished
+  transfer; a stuck unfinished record becomes `Completed, Cancelled`.
+  So after the `DELETE`, read `get_download_status`: a `Succeeded`
+  transfer is left to the poll; otherwise mark the row `failed` with
+  `failure_reason="Cancelled by you"`, re-reading the row in the same
+  transaction and only if it is still `IN_FLIGHT`.
+- **Race:** a poll that read the row before the cancel may itself
+  mark it `failed` "Cancelled" (`FAILED_STATE_MARKERS`); harmless.
+- **An upgrade row:** its `shortlisted` siblings are only chased when
+  it fails in the poll (`_cascade_upgrade`). A user-cancelled upgrade
+  would strand them as "Queued as backup"; decide (supersede them, or
+  cascade) and say which in HISTORY.
+- **UI:** Cancel goes in the same Actions cell on `queued` rows, the
+  Retry idiom (render owns enabled state; the busy key in
+  `_RenderedRows`). A `DELETE` against the real slskd waits for Kris.
 - **Carried:** `test_library_track_list_refreshes_after_a_tag_run`'s
-  one CI timeout (no row owns it); the callback handler has no socket
-  timeout; Sharing's 20 s per-row rebuild (S15); `uv build --wheel`
-  picks up a gitignored `_build_info_generated.py` (S16). Run the
-  full suite in the foreground (~5 min). Never touch slskd or real
-  data.
+  one CI timeout; the callback handler has no socket timeout;
+  Sharing's 20 s per-row rebuild (S15); `uv build --wheel` picks up a
+  gitignored `_build_info_generated.py` (S16). Run the full suite in
+  the foreground (~5 min). Never touch slskd or real data.
 
 ## 5. Decisions made
 
-- **The sweep's tray notice uses "Downloads finished"**, not a new
-  toggle; that tooltip says so. Kris can ask for a fourth toggle.
-- **Turning the sweep on starts the first sweep within the hour**
-  (the next hourly check), not at once.
-- **A failed sweep is logged at WARNING only**; an outage already
-  gets the backend poll's one notice.
-- **After an outage the sweep waits for the next hourly check**; only
-  the very first good poll after launch triggers one.
-- **Skills:** `tdd`; `observability-designer` for log levels only.
-  `frontend-design` was not loaded: one card in the existing
-  `section_card` idiom, checked in screenshots in both themes.
+- **One retry searches at a time**; every Retry button waits.
+- **A retried row is dismissed only when the retry requested
+  something**; a retry finding nothing, or only a needs-review
+  candidate, leaves the failure listed.
+- **A `failed` row's own peer is not skipped** on retry (the 30-day
+  cooldown covers `unavailable` only).
+- **The label floor applies to every read-in-full table** (Dashboard,
+  Library, History, Downloads); only Dashboard's and Downloads'
+  screens changed (Library and History byte-identical).
+- **Skills:** `tdd` (red first for each commit); `frontend-design` not
+  loaded: one button column in the existing `cell_widget` idiom,
+  checked in screenshots in both themes at both sizes.
 
 ## 6. Blockers
 
-None for S12. Its live Cancel needs Kris present.
+None for Cancel's code. Its first live `DELETE` needs Kris present.
 
 ## 7. Files in progress
 
-None: S11 is committed whole.
+None: Retry is committed whole. Cancel has no code yet.
 
 ## 8. Waiting on Kris
 
-- **New:** veto, if wanted, the four §5 decisions above; see the
-  "Daily sweep" card on screen (Settings → General).
+- **New:** veto, if wanted, §5's retry decisions; see Retry on the
+  Downloads page.
+- **From S11:** the four sweep decisions (HISTORY §203); the "Daily
+  sweep" card.
 - **From S10:** the cooldown's reach into manual Download, the 30-day
   and 50-search numbers; the real `tracks.last_searched_at` migration
   runs on the next launch.
@@ -102,12 +108,13 @@ None: S11 is committed whole.
 
 ## 9. Open questions
 
+- Should a cancelled upgrade supersede its shortlisted siblings, or
+  cascade to the next one (§4)?
+- Should Downloads get a "Retry all" for many failures?
 - Should the sweep skip a track whose needs-review candidate is still
-  waiting on a person? Today it searches it again (as `download_playlist`
-  does), which can find an auto-tier candidate.
+  waiting on a person?
 - Should a GUI sweep and a cron `seeker downloads sweep` guard against
-  running at the same time? Nothing stops both today (UNVERIFIED how
-  the two would interleave over `last_searched_at`).
+  running at the same time? (UNVERIFIED how they interleave.)
 - Does slskd 0.26.0 share anything by default on a fresh container?
   (AUDIT §8, UNVERIFIED.)
 - Does Dependabot's `docker-compose` ecosystem bump a `tag@digest`

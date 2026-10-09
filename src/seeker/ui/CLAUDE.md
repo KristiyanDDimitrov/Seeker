@@ -76,9 +76,13 @@ investigation.
   A shown tooltip dies with its widget, so a rebuild under the pointer
   kills a button's tooltip; an item's tooltip survives its item being
   replaced (both observed on Cocoa). Review keeps each table's last
-  rows (`_rendered_candidates`, …) and skips an equal tick; Sharing's
-  20 s rebuild still replaces its per-row button.
-  [HISTORY §195](../../../docs/history/181-210.md#195)
+  rows (`_rendered_candidates`, …) and skips an equal tick; Downloads
+  keys its rows apart from their bytes and updates progress in place;
+  Sharing's 20 s rebuild still replaces its per-row button. A busy
+  action whose buttons a rebuild can delete passes `button=None` and
+  puts its busy state in the rendered key (Downloads' Retry).
+  [HISTORY §195](../../../docs/history/181-210.md#195),
+  [HISTORY §204](../../../docs/history/181-210.md#204)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it
@@ -150,7 +154,10 @@ investigation.
   column is the one its rows are about (Track, Filename, Path).
   `fit_widths` keeps that column's content width (180 px floor, 40 %
   cap) and shrinks the widest other text columns first, never below
-  a header; a viewport filter refits on resize. Cells are one line:
+  a header, nor, in a view whose labels read in full
+  (`set_secondary_min_share(view, 0.0)`), below a noted column's
+  widest label (`label_floor`, HISTORY §204); a viewport filter
+  refits on resize. Cells are one line:
   `ElidedTextDelegate` shows the full text on hover only when elided,
   and `ColumnLayout.paths` columns elide in the middle. A list of
   names uses `elide_list_items`. `tests/shell/test_table_columns.py`
