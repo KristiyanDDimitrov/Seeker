@@ -16,7 +16,9 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2162 passed, 1 skipped`, 0 failed (+10
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0.
-- **CI:** see §3 for this push's run.
+- **CI:** `1ef5c62`'s run `37972529609` green: `check` `2134 passed,
+  29 skipped`, coverage 94.75 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
@@ -41,7 +43,7 @@ Evidence for each is in HISTORY §206.
   `downloading` and is placed by the next poll (BRIEF hypothesis 1,
   confirmed with a two-poll placement test and a one-line revert).
 - Close-out: HISTORY §206, the plan row's progress note, this file.
-  CI: pushed with this commit; run id below if recorded.
+  CI run `37972529609` green (§1).
 
 ## 4. Key context for the rest of S12b
 
