@@ -756,25 +756,9 @@ def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
         ),
         len(lines),
     )
-    children = [
-        index for index in range(shares_index + 1, block_end)
-        if not _is_blank_or_comment(lines[index])
-    ]
-    child_indent = _indent_of(lines[children[0]]) if children else 2
-    directories_index = None
-
-    for index in children:
-        if _indent_of(lines[index]) != child_indent:
-            continue  # inside another child (e.g. under filters:)
-
-        stripped = lines[index].strip()
-
-        if _DIRECTORIES_KEY.match(stripped):
-            directories_index = index
-            break
-
-        if stripped.startswith("directories:"):
-            raise _unsupported_slskd_yml("an inline 'directories:' value")
+    directories_index, child_indent = _find_directories_key(
+        lines, shares_index, block_end,
+    )
 
     if directories_index is None:
         lines[shares_index + 1:shares_index + 1] = [
@@ -783,9 +767,49 @@ def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
         ]
         return "\n".join(lines) + "\n"
 
-    # After the list's last entry, at that entry's own indentation (YAML
-    # also allows a list level with its key, "  - x" under
-    # "  directories:"). Deeper lines continue the entry above them.
+    insert_at, entry_indent = _directories_insert_point(
+        lines, directories_index, block_end,
+    )
+    lines.insert(insert_at, " " * entry_indent + entry)
+
+    return "\n".join(lines) + "\n"
+
+
+def _find_directories_key(
+        lines: list[str], shares_index: int, block_end: int,
+) -> tuple[int | None, int]:
+    """The index of the `directories:` key directly under `shares:`
+    (None when there is none), and the indentation of that block's
+    children."""
+    children = [
+        index for index in range(shares_index + 1, block_end)
+        if not _is_blank_or_comment(lines[index])
+    ]
+    child_indent = _indent_of(lines[children[0]]) if children else 2
+
+    for index in children:
+        if _indent_of(lines[index]) != child_indent:
+            continue  # inside another child (e.g. under filters:)
+
+        stripped = lines[index].strip()
+
+        if _DIRECTORIES_KEY.match(stripped):
+            return index, child_indent
+
+        if stripped.startswith("directories:"):
+            raise _unsupported_slskd_yml("an inline 'directories:' value")
+
+    return None, child_indent
+
+
+def _directories_insert_point(
+        lines: list[str], directories_index: int, block_end: int,
+) -> tuple[int, int]:
+    """Where a new entry goes in the `directories:` list, and at which
+    indentation: after the list's last entry, at that entry's own
+    indentation (YAML also allows a list level with its key, "  - x"
+    under "  directories:"). Deeper lines continue the entry above
+    them."""
     directories_indent = _indent_of(lines[directories_index])
     entry_indent: int | None = None
     insert_at = directories_index + 1
@@ -816,9 +840,7 @@ def _insert_slskd_share_directory(slskd_yml_text: str, new_line: str) -> str:
     if entry_indent is None:
         entry_indent = directories_indent + 2
 
-    lines.insert(insert_at, " " * entry_indent + entry)
-
-    return "\n".join(lines) + "\n"
+    return insert_at, entry_indent
 
 
 def _unsupported_slskd_yml(shape: str) -> RuntimeError:
