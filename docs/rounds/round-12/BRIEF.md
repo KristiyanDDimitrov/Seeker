@@ -450,6 +450,125 @@ try it live. A cancelled row becomes `failed` with
 passes `failure_reason=`). Buttons go through `cell_widget(...,
 row_label=)` (ui/CLAUDE.md).
 
+## §12b — Fall back to the next-best file (S12b)
+
+Added 2026-10-09, after S12. Kris asked whether automatic downloading
+"tries the best quality one, and if it doesn't work, tries the next".
+It does that for upgrades only. Line numbers are from `376519b`.
+
+**Established (read in code at `376519b`).**
+- `select_downloads` (`quality.py:218`) ranks with `_sort_key` (tier,
+  bitrate, unlocked first, shorter queue). It returns one *settled*
+  file, plus up to `MAX_UPGRADE_SHORTLIST = 3` *upgrades* ranked
+  ahead of it. When the top file is unlocked and practical
+  (`quality.py:243`), it returns that file alone. Every file ranked
+  behind it is discarded with the search results.
+- Only an upgrade cascades (`poller.py:217` → `_cascade_upgrade`,
+  sequential by design, HISTORY §14). A rejected settled row becomes
+  `locked`, which re-asks the same peer 8 times over ~3 hours and then
+  becomes `unavailable`, or it becomes `failed`. Neither tries another
+  file. `test_settled_role_rejection_does_not_trigger_upgrade_cascade`
+  (`tests/test_download_service.py:2169`) pins this. Its purpose is
+  to keep a settled failure from activating the *upgrade* shortlist,
+  and it stays true.
+- **A settled peer offline at enqueue fails the whole track.**
+  `search_and_request` calls `_request_and_record` (`:475`), and the
+  synchronous 404's `SoulseekDownloadError` propagates out of it.
+  `download_playlist` counts a track failure and writes no row, so a
+  later search is not steered away from that peer either. A
+  shortlisted upgrade that gets the same 404 is handled: it becomes
+  `locked` (`_activate_shortlisted_entry`).
+- **A re-search skips only `unavailable` pairs and Review Rejects**
+  (`_without_rejected`, `download_service.py:867`; the cooldown is
+  `UNAVAILABLE_COOLDOWN`, 30 days). A `failed` pair, including
+  "Cancelled by you", can be picked again by Retry or the sweep.
+  `completed_at` is stamped on `failed` as well
+  (`STAMPS_COMPLETED_AT`), so the same window query can cover it.
+- The parts that can be reused:
+  - `status='shortlisted'` and `rank` exist with no CHECK on `role`,
+    so no migration is needed. `get_next_shortlisted` (repository
+    `:531`) is **not** role-scoped.
+  - `supersede_other_active_for_track` (`:573`) is hard-scoped to
+    `role='upgrade'`.
+  - Downloads already labels `shortlisted` "Queued as backup", and
+    its upgrade badge keys on role.
+  - The Dashboard's track state takes `IN_FLIGHT` first, then
+    `RETRYING_IN_BACKGROUND`, so a settled backup reads correctly
+    with no change.
+- Nothing supersedes anything when a settled file completes. Today
+  there is never a second settled row to supersede.
+
+**Kris's answers (2026-10-09).** These are decisions; do not ask
+again.
+- **A locked settled file falls back at once**, the way an upgrade
+  does. The locked row keeps its quiet retry loop. Whichever settled
+  row is placed first wins, and the other active settled rows for that
+  track are superseded.
+- **A re-search skips a (peer, file) that went `failed` or
+  `unavailable` for the track within 30 days**, cancellations
+  included. One window, one rule.
+
+**Code's calls (veto in the handoff if wanted).**
+- Up to 3 backups (`MAX_SETTLED_BACKUPS`, untuned like
+  `MAX_UPGRADE_SHORTLIST`): the files ranked next behind settled, by
+  the same rule that chose settled (practical and unlocked first, then
+  unlocked). A locked file is never a backup, since it would only lock
+  again.
+- A person's choice gets no backups: a confirmed needs-review
+  candidate (`review_service.py:188`) or a manual download. The
+  person picked that file.
+- **Cancelling a settled row ends it**: its backups are superseded,
+  as a cancelled upgrade's are (HISTORY §205).
+- A superseded row's transfer is not cancelled in slskd; the database
+  is the only thing changed, as upgrades work today. Its file becomes
+  a leftover, which is one reason this row comes before S13's cleanup.
+
+**Hypotheses to confirm before building.**
+- `_activate_shortlisted_entry` marks an at-once `Succeeded` as
+  `READY_FOR_REVIEW` (`poller.py:422`). That is right for an upgrade
+  and wrong for a settled backup, which must reach placement. Confirm
+  it, and confirm that leaving a settled backup `downloading` lets the
+  next poll place it.
+- While its backup runs, a `failed` settled row still offers Retry,
+  which answers `ALREADY_IN_PROGRESS`. Check what the notice says on
+  screen. If it reads wrong, fix the wording; don't hide the button.
+- If every settled backup fails while an upgrade lands, the upgrade
+  goes to Review and the track has no file. That is pre-existing, so
+  confirm and record it, don't change it.
+
+**Do (one commit each, a failing test first).**
+- **§12b.1** `select_downloads` returns `settled_backups` beside
+  `settled`. This is a pure function, so test it on the clean case,
+  the impractical-top case and the all-locked case (no backups).
+- **§12b.2** `search_and_request` records the backups as `shortlisted`
+  settled rows, ranked 2–4. `get_next_shortlisted` takes a role.
+  `_cascade_upgrade` becomes one cascade over a role: a settled row
+  that goes `failed` or `locked` activates the next settled backup in
+  the same poll, and never an upgrade (the 2169 test stays green). An
+  at-once success leaves the backup in flight for placement.
+- **§12b.3** A settled peer offline at enqueue is recorded `locked`
+  (the same classification as a shortlisted entry), its backup is
+  requested at once, and the track counts *requested*. An unrecognized
+  HTTP error stays loud, as today.
+- **§12b.4** A settled completion supersedes the track's other active
+  *settled* rows (a role-parameterized supersede), never its upgrades.
+  `cancel_download` on a settled row supersedes its backups.
+- **§12b.5** `_without_rejected` skips `FAILED_OUTCOMES` pairs inside
+  the window; rename the constant and the repository query to say so.
+  Test inside and outside the window, and with "Cancelled by you".
+- **§12b.6** Close-out:
+  - CLAUDE.md's SoulSeek facts: the sweep line's "went `unavailable`"
+    and a settled-fallback line.
+  - `schema.py`'s `shortlisted` comment ("upgrade rank 2/3").
+  - Screenshots of Downloads with a backup row, in both themes
+    (§0.13).
+  - HISTORY.
+
+**Not in this row.** A remote queue that never moves has no time
+limit: a settled file can wait in "Queued, Remotely" indefinitely.
+That is a separate decision (how long, and whether to then fall back)
+and it joins the handoff's open questions.
+
 ## §13 — X1: Clean up leftover slskd downloads (S13)
 
 R11 §X1, approved 2026-10-08. A Downloads-page action, "Clean up

@@ -46,6 +46,7 @@ after Kris's explicit yes.
 | ☑ S10 | Daily sweep I: config, service, `sweep_due`, CLI | §10 | ~120 K | After §10.3 |
 | ☑ S11 | Daily sweep II: Settings toggle, scheduler, tray summary | §11 | ~110 K | After §11.2 |
 | ☑ S12 | X2: Retry and Cancel on Downloads (live cancel needs Kris's yes) — Retry §204, Cancel §205 | §12 | ~120 K | After Retry |
+| ☐ S12b | Fall back to the next-best file when the settled one fails; skip recently failed files on a re-search | §12b | ~120 K | After §12b.2 (the poll's fallback) |
 | ☐ S13 | X1: Clean up leftover slskd downloads | §13 | ~110 K | After the listing (no delete) |
 | ☐ S14 | Automatic app-update check (R11 §40) | §14 | ~90 K | None |
 | **Phase D — Fresh-eyes QA** | | | | |
@@ -74,6 +75,10 @@ after Kris's explicit yes.
 - **S10 before S11:** the service and CLI are testable without Qt;
   the UI then only schedules and reports. **S14 after S11** reuses
   its due-check pattern.
+- **S12b, added 2026-10-09, before S13:** the fallback changes which
+  rows are active and leaves superseded transfers' files in slskd's
+  folder. S13's leftover listing should be written against the final
+  set of download states.
 - **S15 after every UI change**, so the sweep sees the finished UI
   once.
 - **Phase E last**, acceptance (S17) before publishing (S18), as in
@@ -88,7 +93,7 @@ List your available skills and resolve their real names first.
 | Rows | Reach for |
 |---|---|
 | S1, S2, S5, S15 | `frontend-design` (critique screenshots, keep a quality floor) |
-| S2–S4, S9–S13 | `tdd` (failing test first); `focused-fix` for S3 |
+| S2–S4, S9–S13 (S12b too) | `tdd` (failing test first); `focused-fix` for S3 |
 | S6 | `security-review`, `security-pen-testing`, `dependency-auditor`, `adversarial-reviewer` |
 | S7, S8 | `tdd`, `env-secrets-manager`; `adversarial-reviewer` before each close-out |
 | S9 | `tech-debt-tracker` (show the radon counts drop) |

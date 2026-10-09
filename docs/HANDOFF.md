@@ -23,10 +23,10 @@ nine fields below follow the contract in
 ## 2. Where we are
 
 **Round 12 S12 is complete** (☑): Retry (§204) and Cancel (§205) on
-the Downloads page. **Next: S13, X1, "Clean up leftover slskd
-downloads"** (BRIEF §13; split point "After the listing (no
-delete)"). The first live Cancel and the first real cleanup both wait
-for Kris at the keyboard.
+the Downloads page. **Next: S12b, added 2026-10-09: fall back to
+the next-best file when the settled one fails** (BRIEF §12b; split
+point "After §12b.2"). Then S13, X1 (BRIEF §13). The first live Cancel
+and the first real cleanup both wait for Kris at the keyboard.
 
 ## 3. Session report (S12, Cancel)
 
@@ -46,7 +46,16 @@ Evidence for each is in HISTORY §205.
   `ui/CLAUDE.md`, the plan's ☑, this file, a comment's citation fixed
   (§205 → §204 in `client.py`). CI run `37966868374` green (§1).
 
-## 4. Key context for S13
+## 4. Key context for S12b, then S13
+
+- **S12b:** BRIEF §12b holds everything: what was read in code, Kris's
+  two answers (a locked settled file falls back at once; a re-search
+  skips `failed` and `unavailable` pairs for 30 days), Code's calls,
+  three hypotheses, and §12b.1–§12b.6. Its main trap:
+  `_activate_shortlisted_entry` sends an at-once success to Review,
+  which is right for an upgrade and wrong for a settled backup.
+
+**S13:**
 
 - BRIEF §13: list files in slskd's download and incomplete folders
   that no pending or ready-for-review request references; show sizes;
@@ -107,6 +116,9 @@ None: S12 is committed whole. S13 has no code yet.
 
 ## 9. Open questions
 
+- How long may a settled file sit in a remote queue before Seeker
+  gives up or falls back? There is no limit today (BRIEF §12b → "Not
+  in this row").
 - Should a downloading row get Cancel too (a transfer stuck at a few
   per cent)?
 - Should Downloads get a "Retry all" for many failures?
