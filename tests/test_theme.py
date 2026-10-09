@@ -726,8 +726,13 @@ def test_selected_text_reads_on_a_selection_that_stands_off_the_field(
     card.resize(640, 240)
     card.show()
     qtbot.waitExposed(card)
+    # Focus, the user's case, arrives only if the window wins
+    # activation: on Cocoa that is timing-dependent (another pytest
+    # process can hold it), offscreen it never happens. So never wait
+    # on it. Unfocused, each widget paints its selection from the
+    # Inactive group, the same colours; with selected text planted in
+    # the field's own ground, all six cases fail either way (observed).
     widget.setFocus()
-    qtbot.waitUntil(widget.hasFocus)
     painted, rect = measure()
     image = card.grab().toImage()
     dpr = image.width() / card.width()
