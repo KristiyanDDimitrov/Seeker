@@ -11,100 +11,97 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S6 close-out (HISTORY §198). Tree clean apart from
+- **HEAD:** the S7 close-out (HISTORY §199). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2 failed, 2052 passed, 1 skipped`.
-  Failing: `tests/test_theme.py::test_a_cell_widget_paints_the_rows_own_background`
-  `[dark]` and `[light]`, the same as S1–S5 (S9 owns it).
-  `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `ac7d9cf`'s run `37847947396` green: `2026 passed, 29
-  skipped`, coverage 94.57 % (floor 92 %).
+- **Local (Cocoa):** pytest `6 failed, 2063 passed, 1 skipped` (+15 tests).
+  Failing: the six
+  `tests/test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
+  cases (`dark-`/`light-` × `line-edit`, `plain-text-edit`, `label`).
+  This is **pre-existing**: the same six fail at `e85e951`. It replaces
+  the old two (`test_a_cell_widget_paints_the_rows_own_background`),
+  which now pass in a full run but still fail when `test_theme.py`
+  runs alone. S9 owns both. `mypy --strict src/` clean, 138 files;
+  `ruff check src tests tools` 0.
+- **CI:** CI_PLACEHOLDER
 
 ## 2. Where we are
 
-**Round 12 S6 is done:** `docs/rounds/round-12/AUDIT.md`, S-01 to
-S-15, no critical or high finding. **Next: S7, which is [ASK]**
-(urllib3, a CI dependency audit, the image digest, checkout
-credentials: S-01, S-02, S-08, S-13). It waits for Kris to read
-`AUDIT.md` and say yes. S8 follows the same gate.
+**Round 12 S7 is done:** S-01, S-02, S-08 and S-13 are fixed.
+**Next: S8**, approved by Kris on 2026-10-09. It covers S-05, S-07
+and S-12 (pure hardening), then S-06 (sanitize at placement, decided),
+then the written acceptances: S-03 (a)+(b), S-09 (all three hosts,
+no cap), S-10 and S-11, into AUDIT.md and CLAUDE.md. The decisions are
+in `AUDIT.md` → Summary → Status.
 
-## 3. Session report (S6)
+## 3. Session report (S7)
 
-- One commit: `AUDIT.md`, HISTORY §198 and its index line, the plan
-  tick, the docs-index link, this file. No `src/` or test change.
-- Pushed; CI run `37847947396` green.
+- `d2dc571` urllib3 2.8.0 · `4fbcd8e` `tools/audit_dependencies.py`,
+  the CI `audit` job (push, PR, weekly) and the native-library record
+  in `docs/packaging.md` · `c67b589` the slskd digest, plus Dependabot's
+  `docker-compose` ecosystem · `06319a1` `persist-credentials: false`
+  · `34ce3a3` the adversarial review's fix (a wrong-shaped ignore
+  list is refused in a sentence) · the close-out (HISTORY §199,
+  AUDIT status, CLAUDE.md, the plan tick, this file).
+- Each fix had its failing check first (pip-audit's three IDs; the
+  missing tool; `assert None` on the image line; `AttributeError` on
+  the shapes).
 
 ## 4. Key context
 
-- **Medium findings:** S-01 urllib3 (unreachable, but `pip-audit` 0
-  is an exit criterion), S-02 no CI audit (and native libraries are
-  invisible to `pip-audit`: record their versions), S-03 peer files
-  reach libsndfile 1.2.2 and ffmpeg, which sniff content past the
-  extension gate, S-04 the DMG has no GPL/LGPL licence texts.
-- **For S8:** S-05 (check OAuth `state` before showing `error`; a
-  wrong-state request must not end the wait) and S-07 (data and log
-  dirs 0700) are pure hardening. S-06 (sanitize the peer basename),
-  S-03(c) and S-09 change behaviour: [ASK].
-- **For S14:** S-15. The automatic check must stay disclosed (opt-in
-  or a visible toggle), link-only, at most once a day.
-- **For S16:** S-04 (a `licenses/` folder, plus GPL wording Kris
-  approves) and S-14 (the bundle ID is still `com.seeker.app`).
-- **A new, undiagnosed Cocoa observation (for S9):** S6's first full
-  run reported `6 failed, 2048 passed, 1 skipped`. At least five were
-  `test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
-  (`dark-plain-text-edit`, `dark-label`, `light-line-edit`,
-  `light-plain-text-edit`, `light-label`; only the summary's tail was
-  kept, so the sixth is unknown). mypy and ruff ran alongside it.
-  `test_theme.py` alone, and a second full run, gave the baseline
-  of 2. The docs-only change cannot reach it. Not reproduced, so not
-  diagnosed.
-- **Carried:** Sharing's 20 s rebuild of its per-row button (S15).
-  `uv build --wheel` picks up a gitignored `_build_info_generated.py`
-  (S16). S9 owns the radon-D pair and the two undiagnosed tests.
-  Set `set -o pipefail` before `pytest … | tail && git commit`. Never
-  touch slskd or real data.
+- **The audit tool:** `uv run --no-project tools/audit_dependencies.py`.
+  It audits the dev group too (beyond the brief's `--no-dev`), since
+  that group builds the DMG. `PIP_AUDIT` is bumped by hand, because
+  Dependabot cannot see it.
+- **The slskd digest** is the 0.26.0 index digest, read from the
+  registry. It was not compared with Kris's local image, because
+  Docker was not running.
+- **For S8, S-06:** run the peer basename through
+  `clean_path_component` or a peer-name variant at placement, while
+  `_locate_completed_file` keeps matching slskd's raw name. Test
+  first with `.hidden.mp3`, a U+202E name and a name over 255 bytes.
+- **For S9:** the failure flip above. Lead, UNVERIFIED: whether the
+  window is active (QPalette Active vs Inactive), since the two tests
+  fail inversely. Each full Cocoa run takes ~5 min; don't start
+  another Qt pytest process during it.
+- **Carried:** Sharing's 20 s per-row rebuild (S15). `uv build
+  --wheel` picks up a gitignored `_build_info_generated.py` (S16).
+  The radon-D pair (S9). Set `set -o pipefail` before `pytest … |
+  tail && git commit`. Never touch slskd or real data.
 
 ## 5. Decisions made
 
-- **Severity scale written into AUDIT.md**, so that "no critical or
-  high" is checkable: critical is RCE or credential theft without
-  user action.
-- **Same-user attackers are outside the model** (S-10, S-11 accepted
-  on that basis); they can already read every asset.
-- **Skills:** only `security-pen-testing` was loaded (the report
-  shape). `security-review` targets a diff, which this row did not
-  have. `dependency-auditor` and `adversarial-reviewer` were
-  replaced by running `pip-audit` and `pip-licenses` directly, to
-  keep the row in budget. That is a divergence from the plan's
-  skills list, recorded here.
+- **Kris, 2026-10-09:** S7 yes; S8 hardening yes; S-06 sanitize;
+  S-03 accept + track, no extension check; S-09 accept for all hosts.
+- The `audit` job runs on `ubuntu-24.04`: it reads only `uv.lock`,
+  so it needs no Mac.
+- **Skills:** `adversarial-reviewer` ran before close-out, as the plan
+  asks, and found the wrong-shape bug. `tdd` and `env-secrets-manager`
+  were not loaded. The row had no secrets work, and the failing-check-
+  first rule was followed directly. That is a divergence, recorded
+  here.
 
 ## 6. Blockers
 
-S7 and S8 wait for Kris's yes on `AUDIT.md`.
+None for S8.
 
 ## 7. Files in progress
 
-None: S6 is committed whole.
+None: S7 is committed whole.
 
 ## 8. Waiting on Kris
 
-**Read `docs/rounds/round-12/AUDIT.md`** and answer:
-1. Yes to S7 (no behaviour change)?
-2. S8: yes to S-05 and S-07; decide S-06 (rename peer files with a
-   leading dot or control characters?), S-03 (accept, and optionally
-   skip analysing a file whose content does not match its
-   extension?), and S-09 (cap slskd's search body, or accept?).
-3. S-04: the GPL wording for the DMG (an S16 decision).
-
-**Still open from S1–S5:** the live checks of §193–§196, the S5
-wording veto, the wordmark's brows (`9ff777b`), BRIEF §17, and
-`git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
-three nested locations.
+- **S-04:** the GPL wording for the DMG (an S16 decision).
+- **Still open from S1–S6:** the live checks of §193–§196, the S5
+  wording veto, the wordmark's brows (`9ff777b`), BRIEF §17, and
+  `git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
+  three nested locations.
 
 ## 9. Open questions
 
 - Does slskd 0.26.0 share anything by default on a fresh container?
   (AUDIT §8, UNVERIFIED; it needs a throwaway container.)
+- Does Dependabot's `docker-compose` ecosystem bump a `tag@digest`
+  line as a pair? The first PR will show.
 - Sharing's 20 s rebuild: S15, or a row of its own?
 - Unchanged from S36: `git show 1b415a4:docs/HANDOFF.md` §9.
 

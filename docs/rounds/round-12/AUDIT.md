@@ -49,6 +49,14 @@ precondition. **Medium:** real exposure with a hard precondition, or
 a release gate. **Low:** defence in depth. **Info:** recorded, no
 change needed.
 
+**Status.** Fixed in S7 (HISTORY §199): S-01 (`d2dc571`), S-02
+(`4fbcd8e`, `34ce3a3`), S-08 (`c67b589`), S-13 (`06319a1`).
+**Kris's decisions (2026-10-09):** S7 and S8's hardening (S-05,
+S-07, S-12) approved. S-06: sanitize at placement. S-03: accept and
+track, (a) and (b) only, with no format/extension check. S-09: accept
+for slskd, Spotify and GitHub alike, with no cap. S-04 (the GPL
+wording) is still open for S16.
+
 ---
 
 ## 1. Threat model

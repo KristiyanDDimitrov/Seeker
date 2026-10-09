@@ -79,8 +79,13 @@ short, under `src/seeker/`:
 - **CI enforces what a local run may not:** `uv sync --locked` (a
   dependency change ships with its `uv.lock`); branch coverage ≥ 92 %
   (`--cov-fail-under`, the measured value minus one); actions
-  SHA-pinned with a version comment, bumped by Dependabot.
-  [§149](docs/history/121-150.md#149), [§167](docs/history/151-180.md#167)
+  SHA-pinned with a version comment, bumped by Dependabot; a
+  dependency audit, `tools/audit_dependencies.py` (pip-audit over
+  every locked group, weekly too), whose `audit_ignore.toml` entries
+  each carry a reason and an expiry date. pip-audit cannot see native
+  libraries: `docs/packaging.md` records them for each release.
+  [§149](docs/history/121-150.md#149), [§167](docs/history/151-180.md#167),
+  [§199](docs/history/181-210.md#199)
 - **`assert` in `src/` narrows types and invariants; it never
   validates user input or an external response** (an `if`/`raise`
   does). `S101` is ignored on that basis.
@@ -194,7 +199,8 @@ short, under `src/seeker/`:
 - **The tracked Compose template is portable:** no `/Volumes/` or
   `/Users/` literal, every bind source a required variable
   (`${SLSKD_SHARE_PATH:?set by Seeker}`), the share mount read-only,
-  the image pinned (`slskd/slskd:X.Y.Z`).
+  the image pinned by tag and digest
+  (`slskd/slskd:X.Y.Z@sha256:…`).
   `tests/test_compose_template.py` fails the build.
   [§140](docs/history/121-150.md#140)
 

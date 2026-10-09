@@ -39,7 +39,7 @@ after Kris's explicit yes.
 | ☑ S5 | Support page: new email; "Support the artists" | §5 | ~70 K | None |
 | **Phase B — Security and code health** | | | | |
 | ☑ S6 | Security re-audit, read-only → `AUDIT.md` | §6 | ~130 K | After the threat model and items 1–6 |
-| ☐ S7 | **[ASK]** Security fixes I: `urllib3`, a dependency audit in CI, packaging | §7 | ~90 K | After §7.2 |
+| ☑ S7 | **[ASK]** Security fixes I: `urllib3`, a dependency audit in CI, packaging | §7 | ~90 K | After §7.2 |
 | ☐ S8 | **[ASK]** Security fixes II: application findings | §8 | ~130 K | After the critical and high findings |
 | ☐ S9 | Code health: the two radon-D functions; the two undiagnosed tests | §9 | ~120 K | After §9.2 |
 | **Phase C — Features** | | | | |
@@ -135,8 +135,9 @@ is `io.github.kristiyanddimitrov.seeker`; X1 and X2 are both in. See
 BRIEF §0.11.
 
 **Approval gates:**
-- [ ] **S6 → S7/S8:** read `AUDIT.md`; say yes to the fix rows and
-      to any finding that changes behaviour.
+- [x] **S6 → S7/S8:** read `AUDIT.md`; say yes to the fix rows and
+      to any finding that changes behaviour. Answered 2026-10-09:
+      AUDIT.md → Summary → Status.
 - [ ] **S5:** veto or edit the "Support the artists" wording, if you
       want to, after seeing it on screen.
 - [ ] **S12:** the first live slskd Cancel, with you at the keyboard.
