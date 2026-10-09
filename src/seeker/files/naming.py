@@ -27,12 +27,12 @@ _FEAT_CLAUSE_PATTERN = re.compile(
     r"\((?:feat\.|ft\.|featuring)\s+([^)]+)\)", re.IGNORECASE,
 )
 
-# Filesystem limit this targets — 255 bytes is the real ceiling on most
-# modern filesystems (APFS, ext4, NTFS all use it, though NTFS's is
-# technically UTF-16 code units, not UTF-8 bytes — untested against a
-# real NTFS volume, a disclosed gap, not assumed correct). UTF-8 bytes,
-# not characters: this library's own accented artist/track names (René
-# Amesz, Mangueleña, ...) make that difference real, not theoretical
+# 255 UTF-8 bytes is ext4's limit, the strictest a library drive is
+# likely to have: APFS counts 255 characters instead (observed: it took
+# a 504-byte name of "é"), and NTFS and ExFAT count UTF-16 units
+# (UNVERIFIED, no such volume tested). A name within the byte budget
+# fits all of them. Bytes, not characters: this library's own accented
+# names (René Amesz, Mangueleña, ...) make the difference real
 # (HISTORY §39).
 MAX_FILENAME_BYTES = 255
 
