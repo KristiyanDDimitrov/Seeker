@@ -1,4 +1,4 @@
-
+import threading
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -269,6 +269,28 @@ def test_pausing_mid_sweep_stops_before_the_next_search(tmp_path):
     assert result.paused is True
     assert sweep.slskd.searches == [query("t1")]
     assert result.still_missing == ["Dom Dolla - Title t1"]
+    assert sweep.stamps == []
+
+
+def test_a_stop_request_ends_the_sweep_before_the_next_search(tmp_path):
+    # Seeker quitting mid-sweep: the thread pool's destructor waits for
+    # the worker, so the sweep must end within one search.
+    sweep = Sweep(tmp_path, FakeSlskd({}), SeekerConfig())
+    sweep.add_playlist("Loaded", ["t1", "t2"])
+    stop = threading.Event()
+    search = sweep.slskd.search
+
+    def search_then_stop(text: str) -> list[SoulseekFile]:
+        stop.set()
+        return search(text)
+
+    sweep.slskd.search = search_then_stop  # type: ignore[method-assign]
+
+    result = sweep.service().run_sweep(stop)
+
+    assert result.stopped is True
+    assert result.paused is False
+    assert sweep.slskd.searches == [query("t1")]
     assert sweep.stamps == []
 
 

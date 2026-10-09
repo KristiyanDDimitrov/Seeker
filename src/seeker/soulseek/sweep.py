@@ -7,6 +7,7 @@ peer (HISTORY §202). The sweep never calls Spotify: it works from the
 cached playlists, so it costs no API budget.
 """
 import logging
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
@@ -80,9 +81,12 @@ class SweepService:
         self._record_sweep = record_sweep
         self._max_searches = max_searches
 
-    def run_sweep(self) -> SweepResult:
+    def run_sweep(self, stop: threading.Event | None = None) -> SweepResult:
         """Searches for up to `max_searches` missing tracks and requests
         what it finds, through download_playlist's own per-track step.
+
+        A set `stop` ends the sweep before its next search, unrecorded,
+        like a pause: the app sets it on quit.
 
         Raises SlskdUnreachableError, recording no sweep, when slskd
         stops answering: every later search would fail the same way.
@@ -133,6 +137,10 @@ class SweepService:
                 result.paused = True
                 break
 
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                break
+
             try:
                 outcome = downloads.search_and_request(track, thresholds)
             except httpx.TransportError as error:
@@ -157,12 +165,12 @@ class SweepService:
             else:
                 result.still_missing.append(label)
 
-        if result.paused:
+        if result.paused or result.stopped:
             # Not recorded: the next due check starts it again, oldest
             # tracks first.
             logger.info(
-                "Sweep stopped: downloads were paused after %d searches.",
-                result.searched,
+                "Sweep stopped after %d searches: %s.", result.searched,
+                "downloads were paused" if result.paused else "Seeker is quitting",
             )
             return result
 

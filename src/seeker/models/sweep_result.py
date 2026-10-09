@@ -12,7 +12,8 @@ class SweepResult:
     `already_in_progress` (a request is underway or done), `deferred`
     (past this sweep's search cap; the next sweep starts with them).
     Labels are "Artist - Title". `paused` means downloads were paused,
-    before or during the sweep, and it stopped there.
+    before or during the sweep, and it stopped there; `stopped`, that
+    its caller asked it to stop (Seeker quitting).
     """
     requested: list[str] = field(default_factory=list)
     # Searched, and nothing was requested: no candidate, or only one a
@@ -24,6 +25,7 @@ class SweepResult:
     # Loaded playlists skipped because no destination resolves.
     playlists_without_destination: list[str] = field(default_factory=list)
     paused: bool = False
+    stopped: bool = False
 
     @property
     def searched(self) -> int:
