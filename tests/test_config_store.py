@@ -287,6 +287,34 @@ def test_load_config_window_reopen_filled_round_trips(tmp_path):
     assert loaded.window_reopen_filled is True
 
 
+def test_load_config_without_sweep_fields_leaves_the_sweep_off(tmp_path):
+    # Opt-in: a config.json from before the daily sweep existed must
+    # not start one, and must read as "never swept".
+    path = tmp_path / "config.json"
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+
+    loaded = load_config(path)
+
+    assert loaded.auto_sweep_enabled is False
+    assert loaded.last_sweep_at is None
+
+
+def test_load_config_sweep_fields_round_trip(tmp_path):
+    path = tmp_path / "config.json"
+    save_config(
+        SeekerConfig(
+            auto_sweep_enabled=True,
+            last_sweep_at="2026-10-09T08:00:00+00:00",
+        ),
+        path,
+    )
+
+    loaded = load_config(path)
+
+    assert loaded.auto_sweep_enabled is True
+    assert loaded.last_sweep_at == "2026-10-09T08:00:00+00:00"
+
+
 @skip_on_windows
 def test_save_config_sets_restrictive_permissions(tmp_path):
     path = tmp_path / "config.json"

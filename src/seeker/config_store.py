@@ -98,6 +98,13 @@ class SeekerConfig:
     # window_geometry blob from a fullscreen close still carries Qt's
     # own FullScreen state bit and has to be corrected there too).
     window_reopen_filled: bool = False
+    # The daily sweep searches slskd again for loaded playlists'
+    # missing tracks (soulseek/sweep.py). Opt-in. last_sweep_at is the
+    # UTC ISO-8601 time the last sweep finished, None until one has;
+    # an outage aborts a sweep without stamping it, so the next due
+    # check tries again.
+    auto_sweep_enabled: bool = False
+    last_sweep_at: str | None = None
 
 
 def resolve_config_path() -> Path:
