@@ -47,6 +47,9 @@ def load_ignored(text: str) -> list[Ignored]:
     """Parses the ignore list. Each `[[ignore]]` entry needs a
     non-empty `id` and `reason`, and an `expires` TOML date."""
     entries = tomllib.loads(text).get("ignore", [])
+    if not (isinstance(entries, list)
+            and all(isinstance(entry, dict) for entry in entries)):
+        raise ValueError("Write each ignore entry as an [[ignore]] table.")
     ignored = []
     for index, entry in enumerate(entries):
         advisory = entry.get("id")

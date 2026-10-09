@@ -4,7 +4,7 @@ rules and the commands built from it are."""
 import importlib.util
 import subprocess
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import ModuleType
 
@@ -37,7 +37,7 @@ def test_the_committed_ignore_list_parses_and_has_not_expired(audit):
     # job alone, which a local run never reaches.
     ignored = audit.load_ignored(audit.IGNORE_FILE.read_text(encoding="utf-8"))
 
-    assert audit.expired(ignored, date.today()) == []  # noqa: DTZ011
+    assert audit.expired(ignored, datetime.now(UTC).date()) == []
 
 
 def test_an_entry_carries_its_id_reason_and_expiry(audit):
@@ -64,6 +64,16 @@ def test_an_entry_carries_its_id_reason_and_expiry(audit):
 def test_an_entry_without_an_id_reason_and_real_date_is_refused(audit, entry):
     with pytest.raises(ValueError, match="ignore"):
         audit.load_ignored(f"[[ignore]]\n{entry}\n")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['[ignore]\nid = "X"\n', 'ignore = ["X"]\n', 'ignore = "X"\n'],
+    ids=["one-table", "list-of-strings", "string"],
+)
+def test_an_ignore_list_of_the_wrong_shape_is_refused(audit, text):
+    with pytest.raises(ValueError, match=r"\[\[ignore\]\]"):
+        audit.load_ignored(text)
 
 
 def test_an_entry_stops_applying_on_its_expiry_date(audit):
