@@ -12,11 +12,14 @@ class LeftoverFolder(StrEnum):
 class LeftoverFile:
     """A file in slskd's folders that nothing is waiting for. `size`
     and `modified_at` (the file's mtime) are what the listing saw; a
-    cleanup deletes the file only while both still hold."""
+    cleanup deletes the file only while both still hold. `relative_path`
+    is `path` inside slskd's app directory (`downloads/Album/x.mp3`),
+    the part worth showing."""
     path: str
     folder: LeftoverFolder
     size: int
     modified_at: float
+    relative_path: str
 
 
 @dataclass

@@ -51,6 +51,7 @@ from seeker.ui.pages.dashboard_page import (
 )
 from seeker.ui.pages.downloads_page import (
     CANCEL_DOWNLOAD_KEY,
+    CLEAN_UP_LEFTOVERS_KEY,
     RETRY_DOWNLOAD_KEY,
     DownloadsPage,
 )
@@ -141,6 +142,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     SWEEP_KEY: "Looking again for missing tracks…",
     RETRY_DOWNLOAD_KEY: "Searching again…",
     CANCEL_DOWNLOAD_KEY: "Cancelling download…",
+    CLEAN_UP_LEFTOVERS_KEY: "Cleaning up leftover files…",
 }
 
 

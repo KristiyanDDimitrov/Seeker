@@ -7,6 +7,7 @@ from enum import IntEnum
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QProgressBar,
     QPushButton,
@@ -27,7 +28,9 @@ from seeker.models.download_request import (
     DownloadStatus,
 )
 from seeker.models.download_result import CancelOutcome, TrackSearchOutcome
+from seeker.models.leftover_result import LeftoverCleanup, LeftoverListing
 from seeker.ui import help_text, status_lamp, theme
+from seeker.ui.dialogs import LeftoverCleanupDialog
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
     DownloadEtaTracker,
@@ -73,6 +76,8 @@ _DOWNLOADS_COLUMNS = theme.ColumnLayout(
 RETRY_DOWNLOAD_KEY = "retry_download"
 # The busy_actions key of a Cancel. One runs at a time, as Retry's does.
 CANCEL_DOWNLOAD_KEY = "cancel_download"
+# The busy_actions key of a leftover listing and of the cleanup after.
+CLEAN_UP_LEFTOVERS_KEY = "clean_up_leftovers"
 # The busy keys of the Actions column's buttons. The render decides
 # each button's enabled state from its key, so the rendered rows carry
 # them all.
@@ -288,12 +293,17 @@ class DownloadsPage(QWidget):
         self.clear_finished_button.setEnabled(False)
         self.clear_finished_button.clicked.connect(self._clear_finished)
 
+        self.clean_up_button = QPushButton(help_text.CLEAN_UP_LEFTOVERS_TEXT)
+        self.clean_up_button.setToolTip(help_text.TOOLTIP_CLEAN_UP_LEFTOVERS)
+        self.clean_up_button.clicked.connect(self._clean_up_leftovers)
+
         # The progress line shares the header's row: empty, it would
         # hold a blank line of its own above the table.
         header_row = QHBoxLayout()
         header_row.addWidget(self.downloads_eta_label)
         header_row.addWidget(self.status_label)
         header_row.addStretch()
+        header_row.addWidget(self.clean_up_button)
         header_row.addWidget(self.clear_finished_button)
         layout.addLayout(header_row)
 
@@ -618,6 +628,40 @@ class DownloadsPage(QWidget):
             self._context.application.dashboard_service
             .clear_finished_downloads,
             on_finished=lambda _cleared: self.poll_active_downloads(),
+        )
+
+    def _clean_up_leftovers(self) -> None:
+        self._context.run_busy_worker(
+            CLEAN_UP_LEFTOVERS_KEY, self.clean_up_button,
+            self._context.application.leftover_service.list_leftover_files,
+            on_finished=self._confirm_leftover_cleanup,
+            on_error=self.feedback.show_error,
+        )
+
+    def _confirm_leftover_cleanup(self, listing: LeftoverListing) -> None:
+        if not listing.files:
+            self.feedback.show_outcome(
+                help_text.leftover_listing_empty_text(listing.held_back),
+            )
+            return
+
+        dialog = LeftoverCleanupDialog(self, listing)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        files = listing.files
+        self._context.run_busy_worker(
+            CLEAN_UP_LEFTOVERS_KEY, self.clean_up_button,
+            lambda: self._context.application.leftover_service
+            .delete_leftover_files(files),
+            on_finished=self._on_leftovers_cleaned,
+            on_error=self.feedback.show_error,
+        )
+
+    def _on_leftovers_cleaned(self, cleanup: LeftoverCleanup) -> None:
+        self.feedback.show_outcome(
+            help_text.leftover_cleanup_outcome_text(cleanup),
+            kind=help_text.leftover_cleanup_outcome_kind(cleanup),
         )
 
     def _render_aggregate_eta(self, downloads: list[ActiveDownload]) -> None:

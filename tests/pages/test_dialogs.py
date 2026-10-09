@@ -209,3 +209,55 @@ def test_about_dialog_filters_out_a_placeholder_support_link(
         if widget.text().startswith("Support on")
     ]
     assert [button.text() for button in buttons] == ["Support on Revolut"]
+
+
+def test_leftover_cleanup_dialog_names_every_file_and_its_cost(qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QListWidget
+
+    from seeker.models.leftover_result import (
+        LeftoverFile,
+        LeftoverFolder,
+        LeftoverListing,
+    )
+    from seeker.ui.dialogs import LeftoverCleanupDialog
+    from seeker.ui.plain_text import plain_tooltip
+
+    listing = LeftoverListing(
+        [
+            LeftoverFile(
+                "/slskd/incomplete/peer/<b>Bold</b>.mp3",
+                LeftoverFolder.INCOMPLETE, 3 * 1024 * 1024, 0.0,
+                "incomplete/peer/<b>Bold</b>.mp3",
+            ),
+            LeftoverFile(
+                "/slskd/downloads/Old.mp3", LeftoverFolder.DOWNLOADS, 512, 0.0,
+                "downloads/Old.mp3",
+            ),
+        ],
+        held_back=2,
+    )
+    parent = QLabel()
+    qtbot.addWidget(parent)
+
+    dialog = LeftoverCleanupDialog(parent, listing)
+
+    [files] = dialog.findChildren(QListWidget)
+    texts = [files.item(row).text() for row in range(files.count())]
+    assert texts == [
+        "3.0 MB · incomplete/peer/<b>Bold</b>.mp3",
+        "512 B · downloads/Old.mp3",
+    ]
+    assert files.item(0).toolTip() == plain_tooltip(
+        "/slskd/incomplete/peer/<b>Bold</b>.mp3",
+    )
+    # The file's name, at the end of its path, outlasts the folders.
+    delegate = files.itemDelegate()
+    assert delegate.elide_mode(files.model().index(0, 0)) == (
+        Qt.TextElideMode.ElideMiddle
+    )
+    assert dialog.confirm_button.text() == "Delete 2 files (3.0 MB)"
+    assert dialog.confirm_button.property("variant") == "danger"
+    labels = " ".join(label.text() for label in dialog.findChildren(QLabel))
+    assert help_text.leftover_cleanup_intro(listing) in labels
+    assert "2 more" in labels

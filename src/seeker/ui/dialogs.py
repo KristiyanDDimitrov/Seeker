@@ -32,11 +32,14 @@ from seeker.destination_resolution import (
     validate_destination_subfolder,
 )
 from seeker.files.sanitize import sanitize_path_component
+from seeker.formatting import format_file_size
 from seeker.library.duplicate_service import GroupResolutionPlan
 from seeker.library.metadata_service import RenamePlan
+from seeker.models.leftover_result import LeftoverListing
 from seeker.models.library_location import LibraryLocation
 from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.ui import help_text, theme
+from seeker.ui.elided_text import ElidedTextDelegate, elide_list_items
 from seeker.ui.plain_text import PlainLabel, RichLabel, plain_tooltip
 
 
@@ -586,6 +589,67 @@ class BulkResolveDuplicatesDialog(QDialog):
         button_row.addWidget(self.confirm_button)
         button_row.addStretch()
         cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(cancel_button)
+        layout.addLayout(button_row)
+
+
+class LeftoverCleanupDialog(QDialog):
+    """slskd's leftover files, each with its size and folder, before
+    any is deleted. Nothing is deleted unless the user clicks Delete;
+    the service then re-checks each file (`LeftoverService`)."""
+
+    def __init__(self, parent: QWidget, listing: LeftoverListing):
+        super().__init__(parent)
+        self.setWindowTitle(help_text.LEFTOVER_CLEANUP_DIALOG_TITLE)
+        self.resize(640, 420)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACING_LG, theme.SPACING_LG,
+            theme.SPACING_LG, theme.SPACING_LG,
+        )
+        layout.setSpacing(theme.SPACING_MD)
+
+        intro = PlainLabel(help_text.leftover_cleanup_intro(listing))
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        list_widget = QListWidget()
+        list_widget.setAlternatingRowColors(False)
+        elide_list_items(list_widget)
+        # Elided in the middle, so the file's name outlasts its folders.
+        delegate = list_widget.itemDelegate()
+        assert isinstance(delegate, ElidedTextDelegate)
+        delegate.path_columns = frozenset({0})
+        for file in listing.files:
+            item = QListWidgetItem(
+                f"{format_file_size(file.size)} · {file.relative_path}"
+            )
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            item.setToolTip(plain_tooltip(file.path))
+            list_widget.addItem(item)
+        layout.addWidget(theme.make_card(list_widget), 1)
+
+        if listing.held_back:
+            held_back = PlainLabel(
+                help_text.leftover_held_back_text(listing.held_back)
+            )
+            held_back.setWordWrap(True)
+            held_back.setProperty("badge", "muted")
+            layout.addWidget(held_back)
+
+        button_row = QHBoxLayout()
+        self.confirm_button = QPushButton(
+            help_text.leftover_confirm_text(listing)
+        )
+        self.confirm_button.setProperty("variant", "danger")
+        self.confirm_button.setEnabled(bool(listing.files))
+        self.confirm_button.clicked.connect(self.accept)
+        button_row.addWidget(self.confirm_button)
+        button_row.addStretch()
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setDefault(True)
         cancel_button.clicked.connect(self.reject)
         button_row.addWidget(cancel_button)
         layout.addLayout(button_row)

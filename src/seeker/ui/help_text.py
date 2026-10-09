@@ -14,7 +14,7 @@ copy would need to live in two call sites and could drift.
 from datetime import datetime
 from typing import Any
 
-from seeker.formatting import format_timestamp
+from seeker.formatting import format_file_size, format_timestamp
 from seeker.library.metadata_service import RenameResult
 from seeker.models.download_result import (
     CancelOutcome,
@@ -24,11 +24,13 @@ from seeker.models.download_result import (
     TrackSearchOutcome,
 )
 from seeker.models.fingerprint_result import FingerprintResult
+from seeker.models.leftover_result import LeftoverCleanup, LeftoverListing
 from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.nested_location import NestedLocation
 from seeker.models.spotify_sync import PlaylistRefreshResult
 from seeker.models.tag_result import FixArtResult, TagResult
+from seeker.soulseek.leftovers import RECENTLY_WRITTEN_SECONDS
 
 # --- Persistent tab/section subtitles (not hover-dependent) --------------
 # One line under each tab's own header, aimed at someone who never reads
@@ -937,6 +939,77 @@ TOOLTIP_DOWNLOADS_CLEAR_FINISHED = (
     "Remove completed, failed and unavailable downloads from this list. "
     "Nothing is deleted, and History is unaffected."
 )
+CLEAN_UP_LEFTOVERS_TEXT = "Clean up leftover files…"
+TOOLTIP_CLEAN_UP_LEFTOVERS = (
+    "List the files slskd left in its download and incomplete folders "
+    "that no download is using, then choose whether to delete them."
+)
+LEFTOVER_CLEANUP_DIALOG_TITLE = "Clean up leftover files"
+
+
+def _files(count: int) -> str:
+    return f"{count} file" if count == 1 else f"{count} files"
+
+
+def _held_back_note(held_back: int) -> str:
+    return (
+        f"{_files(held_back)} written in the last "
+        f"{RECENTLY_WRITTEN_SECONDS // 60} minutes "
+        f"{'is' if held_back == 1 else 'are'} left alone, in case a "
+        f"transfer is still using {'it' if held_back == 1 else 'them'}."
+    )
+
+
+def leftover_listing_empty_text(held_back: int) -> str:
+    text = "slskd's folders hold no leftover files."
+    if held_back:
+        text += f" {_held_back_note(held_back)}"
+    return text
+
+
+def leftover_cleanup_intro(listing: LeftoverListing) -> str:
+    return (
+        f"No download or transfer is using these "
+        f"{_files(len(listing.files))} in slskd's folders. Deleting them "
+        f"frees {format_file_size(listing.total_bytes)} and can't be "
+        f"undone."
+    )
+
+
+def leftover_held_back_text(held_back: int) -> str:
+    return f"{held_back} more not listed: {_held_back_note(held_back)}"
+
+
+def leftover_confirm_text(listing: LeftoverListing) -> str:
+    return (
+        f"Delete {_files(len(listing.files))} "
+        f"({format_file_size(listing.total_bytes)})"
+    )
+
+
+def leftover_cleanup_outcome_text(cleanup: LeftoverCleanup) -> str:
+    text = (
+        f"Deleted {_files(len(cleanup.deleted))} from slskd's folders, "
+        f"freeing {format_file_size(cleanup.freed_bytes)}."
+    )
+    if cleanup.kept:
+        text += (
+            f" Kept {_files(len(cleanup.kept))} that changed or came into "
+            f"use after the list was made."
+        )
+    if cleanup.failures:
+        first = cleanup.failures[0]
+        text += (
+            f" Couldn't delete {_files(len(cleanup.failures))}; the first, "
+            f"{first.file.path}: {first.message}"
+        )
+    return text
+
+
+def leftover_cleanup_outcome_kind(cleanup: LeftoverCleanup) -> str:
+    return "warning" if cleanup.failures else "success"
+
+
 TOOLTIP_RETRY_DOWNLOAD = (
     "Search SoulSeek again for this track and request the best copy "
     "found. A peer that stopped responding is skipped for 30 days."

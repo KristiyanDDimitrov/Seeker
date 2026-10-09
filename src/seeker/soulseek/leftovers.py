@@ -187,6 +187,7 @@ class LeftoverService:
                 listing.files.append(
                     LeftoverFile(
                         str(path), folder, status.st_size, status.st_mtime,
+                        str(path.relative_to(root.parent)),
                     ),
                 )
 

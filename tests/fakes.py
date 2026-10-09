@@ -27,6 +27,11 @@ from seeker.models.download_result import (
 )
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.history_event import DOWNLOADED, HistoryEvent
+from seeker.models.leftover_result import (
+    LeftoverCleanup,
+    LeftoverFile,
+    LeftoverListing,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import (
     MatchResult,
@@ -624,6 +629,26 @@ class FakeSweepService:
         return self.result
 
 
+class FakeLeftoverService:
+    """Returns `listing`, or raises `error`; a cleanup records the
+    files it was given and returns `cleanup`."""
+
+    def __init__(self):
+        self.listing = LeftoverListing()
+        self.cleanup = LeftoverCleanup()
+        self.error: Exception | None = None
+        self.delete_calls: list[list[LeftoverFile]] = []
+
+    def list_leftover_files(self) -> LeftoverListing:
+        if self.error is not None:
+            raise self.error
+        return self.listing
+
+    def delete_leftover_files(self, files) -> LeftoverCleanup:
+        self.delete_calls.append(list(files))
+        return self.cleanup
+
+
 class FakeMetadataService:
     def __init__(
             self,
@@ -741,6 +766,7 @@ class FakeApplication:
         self.soulseek_configured = soulseek_configured
         self.sharing_service = sharing_service or FakeSharingService()
         self.sweep_service = FakeSweepService()
+        self.leftover_service = FakeLeftoverService()
         # settings_window.py already reaches into this attribute
         # directly on the real Application (see its own §threshold/
         # §connection tabs) — mirrored here rather than adding a

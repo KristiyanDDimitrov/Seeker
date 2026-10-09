@@ -1096,3 +1096,108 @@ def test_a_cancel_that_fails_says_why(qtbot):
     qtbot.waitUntil(
         lambda: "slskd went away." in page.notice.text(), timeout=2000,
     )
+
+
+def _leftover(name: str, size: int):
+    from seeker.models.leftover_result import LeftoverFile, LeftoverFolder
+
+    return LeftoverFile(
+        f"/slskd/downloads/{name}", LeftoverFolder.DOWNLOADS, size, 0.0,
+        f"downloads/{name}",
+    )
+
+
+def _cleanup_page(qtbot, monkeypatch, answer):
+    from seeker.ui.dialogs import LeftoverCleanupDialog
+
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    shown: list[LeftoverCleanupDialog] = []
+
+    def fake_exec(dialog):
+        shown.append(dialog)
+        return answer
+
+    monkeypatch.setattr(LeftoverCleanupDialog, "exec", fake_exec)
+    return application.leftover_service, window._downloads_page, shown
+
+
+def test_clean_up_with_no_leftovers_says_so_and_asks_nothing(
+        qtbot, monkeypatch,
+):
+    from PySide6.QtWidgets import QDialog
+
+    leftovers, page, shown = _cleanup_page(
+        qtbot, monkeypatch, QDialog.DialogCode.Accepted,
+    )
+
+    page.clean_up_button.click()
+
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
+    assert page.notice.text() == help_text.leftover_listing_empty_text(0)
+    assert shown == []
+    assert leftovers.delete_calls == []
+
+
+def test_clean_up_declined_deletes_nothing(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from seeker.models.leftover_result import LeftoverListing
+
+    leftovers, page, shown = _cleanup_page(
+        qtbot, monkeypatch, QDialog.DialogCode.Rejected,
+    )
+    leftovers.listing = LeftoverListing([_leftover("Old.mp3", 5)])
+
+    page.clean_up_button.click()
+
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    assert leftovers.delete_calls == []
+    assert page.notice.isHidden()
+
+
+def test_clean_up_confirmed_deletes_the_listed_files_and_reports(
+        qtbot, monkeypatch,
+):
+    from PySide6.QtWidgets import QDialog
+
+    from seeker.models.leftover_result import LeftoverCleanup, LeftoverListing
+
+    leftovers, page, shown = _cleanup_page(
+        qtbot, monkeypatch, QDialog.DialogCode.Accepted,
+    )
+    files = [_leftover("Big.mp3", 30), _leftover("Old.mp3", 5)]
+    leftovers.listing = LeftoverListing(files)
+    leftovers.cleanup = LeftoverCleanup(deleted=files)
+
+    page.clean_up_button.click()
+
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    assert len(shown) == 1
+    assert leftovers.delete_calls == [files]
+    assert page.notice.text() == help_text.leftover_cleanup_outcome_text(
+        leftovers.cleanup,
+    )
+    assert page.notice.property("variant") == "success"
+
+
+def test_clean_up_shows_why_it_could_not_list(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from seeker.soulseek.leftovers import LeftoverFolderUnknownError
+
+    leftovers, page, shown = _cleanup_page(
+        qtbot, monkeypatch, QDialog.DialogCode.Accepted,
+    )
+    leftovers.error = LeftoverFolderUnknownError("Not slskd's folder.")
+
+    page.clean_up_button.click()
+
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    assert page.notice.text() == "Not slskd's folder."
+    assert page.notice.property("variant") == "error"
+    assert shown == []

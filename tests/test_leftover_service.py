@@ -133,6 +133,9 @@ def test_lists_unreferenced_files_in_both_folders_largest_first(
         ("Partial.flac", LeftoverFolder.INCOMPLETE, 50),
         ("Old - Song.mp3", LeftoverFolder.DOWNLOADS, 30),
     ]
+    assert [file.relative_path for file in listing.files] == [
+        "incomplete/peer/Music/Partial.flac", "downloads/Album/Old - Song.mp3",
+    ]
     assert listing.total_bytes == 80
     assert listing.held_back == 0
 
@@ -313,7 +316,7 @@ def test_cleanup_never_deletes_a_file_it_did_not_list(
     forged = [
         LeftoverFile(
             str(precious), LeftoverFolder.DOWNLOADS, 10,
-            precious.stat().st_mtime,
+            precious.stat().st_mtime, "downloads/Precious.flac",
         ),
     ]
 

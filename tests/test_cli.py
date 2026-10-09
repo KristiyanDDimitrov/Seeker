@@ -2245,7 +2245,10 @@ def test_no_help_text_carries_development_history():
 def _leftover(name: str, size: int, folder: str = "downloads"):
     from seeker.models.leftover_result import LeftoverFile, LeftoverFolder
 
-    return LeftoverFile(f"/slskd/{folder}/{name}", LeftoverFolder(folder), size, 0.0)
+    return LeftoverFile(
+        f"/slskd/{folder}/{name}", LeftoverFolder(folder), size, 0.0,
+        f"{folder}/{name}",
+    )
 
 
 class _FakeLeftovers:
