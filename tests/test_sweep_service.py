@@ -304,13 +304,7 @@ NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
     ((NOW - timedelta(hours=24)).isoformat(), True, True),
     ((NOW - timedelta(hours=24) + timedelta(seconds=1)).isoformat(), True,
      False),
-    (NOW.isoformat(), True, False),
-    # The clock went back past the last sweep: waiting for it to catch
-    # up could mean days with no sweep.
-    ((NOW + timedelta(hours=1)).isoformat(), True, True),
-    # A hand-edited value: sweep, and the stamp repairs it.
-    ("yesterday", True, True),
-    ("2026-10-09T08:00:00", True, True),
 ])
 def test_sweep_due(last_sweep_at, enabled, due):
+    # The edge cases of the time itself are is_due's (test_due.py).
     assert sweep_due(NOW, last_sweep_at, enabled) is due

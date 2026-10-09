@@ -97,6 +97,7 @@ src/seeker/
 ├── errors.py                # SeekerError, and errors raised by >1 module
 ├── error_text.py            # describe_error(): readable text for any failure
 ├── formatting.py            # sizes, timestamps, speeds (CLI and UI)
+├── due.py                   # is_due(): the sweep's and update check's interval
 ├── matching.py              # fuzzy artist/title scoring, thresholds
 ├── destination_resolution.py  # where a playlist's files go; subfolder validation
 ├── download_dedup.py        # "the same candidate" key

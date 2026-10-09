@@ -19,6 +19,7 @@ from seeker.database.repositories.playlist_repository import (
     PlaylistRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.due import is_due
 from seeker.error_text import describe_error
 from seeker.models.download_result import TrackFailure, TrackSearchOutcome
 from seeker.models.sweep_result import SweepResult
@@ -36,28 +37,9 @@ SWEEP_INTERVAL = timedelta(hours=24)
 
 
 def sweep_due(now: datetime, last_sweep_at: str | None, enabled: bool) -> bool:
-    """Whether the automatic sweep should run at `now` (timezone-aware).
-
-    Due when enabled and it has never run, or SWEEP_INTERVAL has
-    passed. A last_sweep_at that does not parse as an aware time, or
-    lies in the future (the clock went back), counts as due: the
-    sweep's own stamp then repairs it.
-    """
-    if not enabled:
-        return False
-
-    if last_sweep_at is None:
-        return True
-
-    try:
-        last = datetime.fromisoformat(last_sweep_at)
-    except ValueError:
-        return True
-
-    if last.tzinfo is None or last > now:
-        return True
-
-    return now - last >= SWEEP_INTERVAL
+    """Whether the automatic sweep should run at `now` (timezone-aware):
+    enabled, and due by `is_due` over SWEEP_INTERVAL."""
+    return enabled and is_due(now, last_sweep_at, SWEEP_INTERVAL)
 
 
 class SweepService:
