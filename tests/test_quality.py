@@ -364,6 +364,82 @@ def test_select_downloads_shortlist_capped_at_three_and_ranked():
     assert [f.queue_length for f in selection.upgrade_shortlist] == [10, 50, 200]
 
 
+def _peer_flac(peer: int, **overrides) -> SoulseekFile:
+    # A distinct peer id per file keeps the fuzzy title match clean
+    # (see the shortlist test above) while queue length and lock status
+    # tell candidates apart.
+    return make_file(
+        filename=f"@@peer{peer}\\Dom Dolla - Rhyme Dust.flac", **overrides,
+    )
+
+
+def test_select_downloads_backups_are_the_next_ranked_after_a_practical_top():
+    track = make_track()
+    top = _peer_flac(0, queue_length=0)
+    # Scrambled input order; one locked file that can never be a backup,
+    # and one more practical file than the cap allows.
+    others = [
+        _peer_flac(1, queue_length=30),
+        _peer_flac(2, queue_length=5, locked=True),
+        _peer_flac(3, queue_length=10),
+        _peer_flac(4, queue_length=20),
+        _peer_flac(5, queue_length=40),
+    ]
+
+    selection = select_downloads(track, [*others, top])
+
+    assert selection.settled is top
+    assert selection.upgrade_shortlist == []
+    assert [f.queue_length for f in selection.settled_backups] == [10, 20, 30]
+
+
+def _peer_mp3(peer: int, bit_rate: int, **overrides) -> SoulseekFile:
+    return make_file(
+        filename=f"@@peer{peer}\\Dom Dolla - Rhyme Dust.mp3",
+        extension="mp3",
+        bit_rate=bit_rate,
+        is_variable_bitrate=False,
+        bit_depth=None,
+        **overrides,
+    )
+
+
+def test_select_downloads_backups_take_practical_files_before_slow_ones():
+    # The flac has a long queue, so settled is the first practical file
+    # and the flac becomes an upgrade, never also a backup. Behind
+    # settled, a slow 320 outranks a practical 192, but the practical
+    # one is the first backup, by the rule that chose settled.
+    track = make_track()
+    slow_flac = _peer_flac(0, queue_length=500)
+    practical_320 = _peer_mp3(1, 320, queue_length=2)
+    slow_320 = _peer_mp3(2, 320, queue_length=600)
+    practical_192 = _peer_mp3(3, 192, queue_length=3)
+
+    selection = select_downloads(
+        track, [slow_320, practical_192, slow_flac, practical_320],
+    )
+
+    assert selection.settled is practical_320
+    assert selection.upgrade_shortlist == [slow_flac]
+    assert selection.settled_backups == [practical_192, slow_320]
+
+
+def test_select_downloads_has_no_backups_when_every_file_is_locked():
+    track = make_track()
+    locked = [_peer_flac(i, queue_length=i, locked=True) for i in range(3)]
+
+    selection = select_downloads(track, locked)
+
+    assert selection.settled is None
+    assert selection.settled_backups == []
+
+
+def test_select_downloads_has_no_backups_when_nothing_matches():
+    selection = select_downloads(make_track(), [])
+
+    assert selection.settled_backups == []
+
+
 # Real search data captured live (2026-08-27) for two of the real "Test"
 # playlist's unmatched tracks — both genuinely landed in the 70-89
 # needs_review band, real DJ-pool filename noise ("(Clean) 4A 87",

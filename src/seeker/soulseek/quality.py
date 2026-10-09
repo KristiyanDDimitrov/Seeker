@@ -88,11 +88,14 @@ class DownloadSelection:
     candidate is). `upgrade_shortlist` ranks up to
     `MAX_UPGRADE_SHORTLIST` better-or-equal files to chase later; when
     `settled` is None it holds every locked candidate instead.
-    `needs_review` is independent of both: the best below-auto-threshold
-    candidate, for a human to judge.
+    `settled_backups` ranks up to `MAX_SETTLED_BACKUPS` unlocked files
+    from behind `settled`, to fall back to if it fails; empty when
+    `settled` is None. `needs_review` is independent of all three: the
+    best below-auto-threshold candidate, for a human to judge.
     """
     settled: SoulseekFile | None
     upgrade_shortlist: list[SoulseekFile]
+    settled_backups: list[SoulseekFile]
     needs_review: NeedsReviewCandidate | None
 
 
@@ -172,6 +175,10 @@ def is_practical(
 # data shows how often rank 2/3 actually get used. See HISTORY §14.
 MAX_UPGRADE_SHORTLIST = 3
 
+# Untuned like MAX_UPGRADE_SHORTLIST: how many files ranked behind the
+# settled one to fall back to, in turn, if it fails. HISTORY §206.
+MAX_SETTLED_BACKUPS = 3
+
 
 def _sort_key(file: SoulseekFile) -> tuple[int, int, int, int]:
     # A locked file only outranks an otherwise-equal unlocked one when
@@ -232,7 +239,7 @@ def select_downloads(
     )
 
     if not filtered:
-        return DownloadSelection(None, [], needs_review)
+        return DownloadSelection(None, [], [], needs_review)
 
     ranked = rank_candidates(filtered)
     top = ranked[0]
@@ -241,7 +248,9 @@ def select_downloads(
     # downloaded at all right now, which is a harder blocker than a long
     # queue, so it's checked separately from is_practical().
     if not top.locked and is_practical(top):
-        return DownloadSelection(top, [], needs_review)
+        return DownloadSelection(
+            top, [], _settled_backups(ranked[1:]), needs_review,
+        )
 
     settled_eligible = [
         file for file in ranked if not file.locked and is_practical(file)
@@ -264,13 +273,25 @@ def select_downloads(
         # right now, but the whole ranked list is upgrade-shortlist
         # material for the locked-retry and upgrade cycle.
         return DownloadSelection(
-            None, ranked[:MAX_UPGRADE_SHORTLIST], needs_review,
+            None, ranked[:MAX_UPGRADE_SHORTLIST], [], needs_review,
         )
 
     # Everything ranked ahead of settled (by the same tiebreak-aware key)
     # is genuinely better-or-equal and worth chasing as an upgrade;
-    # anything ranked behind it is a downgrade, not an upgrade.
+    # anything ranked behind it is a downgrade, not an upgrade, but can
+    # stand in for settled if settled fails.
     settled_index = next(i for i, f in enumerate(ranked) if f is settled)
     shortlist = ranked[:settled_index][:MAX_UPGRADE_SHORTLIST]
+    backups = _settled_backups(ranked[settled_index + 1:])
 
-    return DownloadSelection(settled, shortlist, needs_review)
+    return DownloadSelection(settled, shortlist, backups, needs_review)
+
+
+def _settled_backups(behind: list[SoulseekFile]) -> list[SoulseekFile]:
+    """The files to fall back to, in order, from those ranked behind
+    settled: by the rule that chose settled, practical and unlocked
+    first, then unlocked. A locked file would only lock again."""
+    unlocked = [file for file in behind if not file.locked]
+    practical = [file for file in unlocked if is_practical(file)]
+    slow = [file for file in unlocked if not is_practical(file)]
+    return [*practical, *slow][:MAX_SETTLED_BACKUPS]
