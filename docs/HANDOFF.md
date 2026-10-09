@@ -11,92 +11,90 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S8 close-out (HISTORY §200). Tree clean apart from
+- **HEAD:** the S9 close-out (HISTORY §201). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `6 failed, 2080 passed, 1 skipped` (+17
-  tests). Failing: the six pre-existing
-  `test_theme.py::test_selected_text_reads_on_a_selection_that_stands_off_the_field`
-  cases. S8's earlier full run failed the old pair instead (below).
-  `mypy --strict src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `385ac92`'s run `37929658913` green: `check` `2058 passed,
-  29 skipped`, coverage 94.55 % (floor 92 %); `audit`, no known
-  vulnerabilities.
+- **Local (Cocoa):** pytest `2088 passed, 1 skipped`, 0 failed for the first time since S37 (+2 tests). `mypy --strict
+  src/` clean, 138 files; `ruff check src tests tools` 0.
+- **CI:** `@@CI@@`.
 
 ## 2. Where we are
 
-**Round 12 S8 is done.** Every AUDIT finding S8 owned is fixed
-(S-05, S-06, S-07, S-12) or accepted in writing (S-03 a+b, S-09,
-S-10, S-11), in AUDIT.md and in CLAUDE.md → "Accepted risks".
-**Next: S9**, code health: the two radon-D functions
-(`dashboard_page._decide_next_step`, `sharing_service.
-_insert_slskd_share_directory`) and the flip-flopping theme failures.
+**Round 12 S9 is done**, and so is Phase B. `uvx radon cc -n D -s
+src/seeker` reports nothing (an exit criterion), and both of CLAUDE.md's
+"undiagnosed failures" are diagnosed and fixed. **Next: S10**, daily
+sweep I (config, service, `sweep_due`, CLI), BRIEF §10.
 
-## 3. Session report (S8)
+## 3. Session report (S9)
 
-- `e3c0154` S-05: `create_callback_server(expected_state, …)`; a
-  wrong-state `/callback` gets a 400 and the wait goes on; `_authorize`
-  checks state before `error`.
-- `17b67c0` S-07: `files/atomic.py::make_private_dir()` (0700) for
-  the data, log and album-art cache dirs. `ccb02d2`: a refused
-  `chmod` is logged, not raised (review fix).
-- `7123da0` S-12: the RichLabel-escaping sweep; every sweep scans
-  `main_ui.py`. The red was shown by planting, since the change is
-  test-only.
-- `a4baed4` S-06: `files/naming.py::clean_peer_filename()` at
-  placement. `24f13da` splits the stem and extension first (review
-  fix: `.mp3` became `_mp3`). `63b2c75`: naming.py's APFS comment.
-- The close-out: AUDIT statuses, CLAUDE.md "Accepted risks", the
-  advisories tracked in `docs/packaging.md`, HISTORY §200, the plan
-  tick and this file.
+Evidence for each is in HISTORY §201.
+- `4939e22` §9.1: `_decide_next_step` D 21 → A 5 (`_setup_step`,
+  `_playlist_step` C 12, `_download_step`).
+- `3a88615` §9.2: two characterization tests (empty `directories:`, a
+  continuation line). `87f7213`: `_insert_slskd_share_directory` D 26
+  → C 11 (`_find_directories_key`, `_directories_insert_point`).
+- `a1d209a` §9.3: `FakeDownloadService._download_manual_gate`; the
+  Search download-best test holds the fake and waits on the notice.
+- `d724d2a` §9.4: the cell-background test's table is `NoFocus`.
+- `82823e7` §9.4: the selection-contrast test no longer waits on
+  `hasFocus()`.
+- The close-out: HISTORY §201, CLAUDE.md (Testing gains the activation
+  rule; Open issues and Roadmap lose the closed items), the plan tick
+  and this file.
 
 ## 4. Key context
 
-- **Observed: APFS limits a name to 255 characters, not bytes** (it
-  took a 504-byte name of "é"). ext4's 255 bytes is the binding limit.
-- **The local failure set flips between full runs.** S8's first run
-  failed the old two (`test_a_cell_widget_paints_the_rows_own_background`
-  `[dark|light]`) and passed S7's six selection cases. The last run
-  failed the six. S8 touched no theme code, so this is not S8's doing. S9 owns it. The lead is still
-  UNVERIFIED: the window's active state (QPalette Active vs Inactive).
-- **Left as notes by the review:** the callback handler has no socket
-  timeout, so a silent local connection blocks the wait past its
-  deadline and past Cancel (pre-existing). `_is_fixed_text` trusts
-  any UPPER_CASE attribute.
-- **Carried:** Sharing's 20 s per-row rebuild (S15); `uv build
-  --wheel` picks up a gitignored `_build_info_generated.py` (S16).
-  Set `set -o pipefail` before `pytest … | tail && git commit`. Never
-  touch slskd or real data.
+- **The Cocoa theme flip-flop was window activation.** Whether a test
+  window becomes active is timing-dependent; a second pytest process
+  can take activation. Active: a table gets keyboard focus and Fusion
+  tints its current item. Inactive: `hasFocus()` never comes. Now in
+  CLAUDE.md → Testing. A full local run should now be all green;
+  any theme failure is a new one.
+- **A probe that pins the inactive state:** `card.setWindowFlag(Qt.
+  WindowType.WindowDoesNotAcceptFocus)` before `show()`.
+- **`QApplication.setActiveWindow` is deprecated** in PySide6 6.11, and
+  pyproject turns a `DeprecationWarning` into an error. Don't use it to
+  force activation.
+- **`FakeDownloadService._download_manual_gate`** is there for any
+  test that needs the window between the worker's call record and
+  the finish handler. Always `set()` it in a `finally`, or the
+  thread pool's destructor hangs teardown (§125).
+- **Carried:** the callback handler has no socket timeout (S8 review
+  note); Sharing's 20 s per-row rebuild (S15); `uv build --wheel`
+  picks up a gitignored `_build_info_generated.py` (S16). Set `set -o
+  pipefail` before `pytest … | tail && git commit`. Never touch slskd
+  or real data.
 
 ## 5. Decisions made
 
-- **Kris, 2026-10-09** (unchanged): S-06 sanitize; S-03 accept +
-  track, no extension check; S-09 accept for all hosts.
-- The S-07 helper also covers the album-art cache dir: the same
-  exposure and one line, beyond the finding's letter.
-- **Skills:** `tdd` was loaded. Its "confirm seams with the user" step
-  was taken as met by AUDIT's "Test first" lines, which Kris
-  approved. That is a divergence, recorded here. `adversarial-reviewer`
-  ran and found two warnings, both fixed. `env-secrets-manager` was
-  not needed.
+- **§9.4 fixes the tests, not the product.** The focus frame on a
+  focused table's current item is intended (visible keyboard focus,
+  §175). Unfocused selection paints the same colours, and the test
+  still catches its bug in both states (probed).
+- **Skills:** `tdd` was loaded. Its "confirm the seams" step was taken
+  as met by BRIEF §9, which names each test (the S8 divergence again).
+  `tech-debt-tracker` was loaded, but radon measured the drop, since
+  the brief's criterion is radon's (the skill's how, the brief's
+  what).
 
 ## 6. Blockers
 
-None for S9.
+None for S10.
 
 ## 7. Files in progress
 
-None: S8 is committed whole.
+None: S9 is committed whole.
 
 ## 8. Waiting on Kris
 
+- **§9.4, optional:** the brief asked for a rerun on the built-in
+  display only. The Mac is in clamshell with only the LG 5K attached,
+  and the mechanism doesn't involve the display, so this is a
+  confirmation, not a need.
 - **S-04:** the GPL wording for the DMG (S16).
-- **Visible from S8:** a downloaded file whose peer name has `:`, `?`
-  or `|` now lands with `-` in their place, and one named with a
-  leading dot lands with `_`.
-- **Still open from S1–S7:** the live checks of §193–§196, the S5
-  wording veto, the wordmark's brows (`9ff777b`), BRIEF §17, and
-  `git show 1b415a4:docs/HANDOFF.md` §8. The real DB still has the
-  three nested locations.
+- **Still open from S1–S8:** the live checks of §193–§196, the S5
+  wording veto, the wordmark's brows (`9ff777b`), BRIEF §17, S8's
+  visible peer-filename change, and `git show 1b415a4:docs/HANDOFF.md`
+  §8. The real DB still has the three nested locations.
 
 ## 9. Open questions
 
@@ -104,8 +102,8 @@ None: S8 is committed whole.
   (AUDIT §8, UNVERIFIED; it needs a throwaway container.)
 - Does Dependabot's `docker-compose` ecosystem bump a `tag@digest`
   line as a pair? The first PR will show.
-- Should the callback handler get a socket timeout (the review's
-  pre-existing note)? It is small, but no row owns it.
+- Should the callback handler get a socket timeout? Small, but no row
+  owns it.
 - Unchanged from S36: `git show 1b415a4:docs/HANDOFF.md` §9.
 
 ---

@@ -375,6 +375,11 @@ Code documents loading it when a session reads files in `ui/`
   handler runs. A late handler raises `RuntimeError: … already
   deleted` at setup of the *next* test; look at the one before it.
   [§128](docs/history/121-150.md#128), [§148](docs/history/121-150.md#148)
+- **On Cocoa a test window may or may not become the active one**
+  (timing, or another pytest process holding activation); offscreen
+  never does. Never wait on `hasFocus()`. An active window hands a
+  table keyboard focus, and Fusion tints its current item: sample a
+  row's ground from a `NoFocus` table. [§201](docs/history/181-210.md#201)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
@@ -495,12 +500,6 @@ Genuinely open only, checked against every CI run on record (187, to
   quit from the tray), unreproduced. Candidate: the thread pool's
   destructor (above). Next try: quit while a scan, fingerprint or
   search worker is running. [§125](docs/history/121-150.md#125)
-- **Two undiagnosed test failures** (never `pytest-rerunfailures`):
-  `test_search_download_best_passes_the_already_fetched_results`, once
-  on CI (`37599402903`), likely the fake-call race above
-  (UNVERIFIED); `test_a_cell_widget_paints_the_rows_own_background`,
-  Cocoa only since S37, a one-unit colour difference, passes
-  offscreen (the external 5K display is suspected, UNVERIFIED).
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
@@ -515,10 +514,6 @@ Forward-looking only; everything shipped is in `docs/history/`.
   a security re-audit, the daily sweep, X1/X2, then round 11's carried
   release rows. Plan: `docs/rounds/round-12/SESSION-PLAN.md` (with
   `BRIEF.md`); every document: `docs/README.md`.
-- **Two functions above radon C block the round's exit criterion:**
-  `dashboard_page._decide_next_step` (D, 21) and
-  `sharing_service._insert_slskd_share_directory` (D, 26), measured
-  2026-10-08 (`uvx radon cc -n D -s src/seeker`). Round 12 S9 owns them.
 - **Windows and Linux packaging: written, never run on real
   hardware**; no Linux installer format is scoped
   ([docs/packaging.md](docs/packaging.md)).
