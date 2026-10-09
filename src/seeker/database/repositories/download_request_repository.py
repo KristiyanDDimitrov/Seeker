@@ -638,6 +638,17 @@ class DownloadRequestRepository:
 
         return cursor.rowcount
 
+    def dismiss(
+            self,
+            download_request_id: int,
+            dismissed_at: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            "UPDATE download_requests SET dismissed_at = ? WHERE id = ?",
+            (dismissed_at, download_request_id),
+        )
+
     def update_transfer_id_and_status(
             self,
             download_request_id: int,

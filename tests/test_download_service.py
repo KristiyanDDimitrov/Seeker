@@ -30,8 +30,12 @@ from seeker.database.repositories.track_match_repository import (
 )
 from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import PlaylistNotFoundError
-from seeker.models.download_request import DownloadRequest
-from seeker.models.download_result import PollResult, TrackFailure
+from seeker.models.download_request import DownloadRequest, DownloadStatus
+from seeker.models.download_result import (
+    PollResult,
+    TrackFailure,
+    TrackSearchOutcome,
+)
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
@@ -46,6 +50,7 @@ from seeker.soulseek.client import (
     TransferStatus,
 )
 from seeker.soulseek.download_service import (
+    DownloadNotRetryableError,
     DownloadService,
     NoDestinationConfiguredError,
     UnsupportedDownloadFormatError,
@@ -4341,3 +4346,113 @@ def test_poll_downloads_unreachable_slskd_spends_no_locked_retry_budget(
     assert (row["status"], row["retry_count"], row["next_retry_at"]) == (
         "locked", 0, None,
     )
+
+
+# --- Retry from the Downloads page ------------------------------------------
+
+def _seed_finished_request(
+        service: DownloadService,
+        tmp_path,
+        status: DownloadStatus,
+        username: str = "peer1",
+        filename: str = "Dom Dolla - Title t1.flac",
+) -> int:
+    """A playlist track whose one request ended in `status`; its id."""
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+    seed_pending_request(
+        service, transfer_id="old", track_id="t1", status="queued",
+        username=username, filename=filename,
+    )
+
+    with service.database.transaction() as connection:
+        (request,) = service.download_requests.get_all(connection)
+        assert request.id is not None
+        service.download_requests.mark_status(
+            request.id, status, connection, failure_reason="Peer offline",
+        )
+
+    return request.id
+
+
+def _request(service: DownloadService, request_id: int) -> DownloadRequest:
+    with service.database.transaction() as connection:
+        request = service.download_requests.get_by_id(request_id, connection)
+
+    assert request is not None
+    return request
+
+
+def test_retry_searches_again_and_dismisses_the_retried_row(tmp_path):
+    query = _build_search_query("Dom Dolla", "Title t1")
+    service = make_service(
+        tmp_path, states={}, search_results={
+            query: [make_soulseek_file(
+                username="peer2", filename="Dom Dolla - Title t1.flac",
+            )],
+        },
+    )
+    request_id = _seed_finished_request(
+        service, tmp_path, DownloadStatus.FAILED,
+    )
+
+    outcome = service.retry_download(request_id)
+
+    assert outcome == TrackSearchOutcome.REQUESTED
+    assert service.soulseek.search_calls == [query]
+    assert service.soulseek.request_download_calls == [
+        ("peer2", "Dom Dolla - Title t1.flac", 1_000_000),
+    ]
+    # A failure the retry replaced is no longer the user's to act on.
+    retried = _request(service, request_id)
+    assert retried.status == DownloadStatus.FAILED
+    assert retried.dismissed_at is not None
+
+
+def test_retry_of_an_unavailable_row_never_asks_the_same_peer(tmp_path):
+    query = _build_search_query("Dom Dolla", "Title t1")
+    same = make_soulseek_file(
+        username="peer1", filename="Dom Dolla - Title t1.flac",
+        upload_speed=9_000_000,
+    )
+    other = make_soulseek_file(
+        username="peer2", filename="Dom Dolla - Title t1.flac",
+    )
+    service = make_service(
+        tmp_path, states={}, search_results={query: [same, other]},
+    )
+    request_id = _seed_finished_request(
+        service, tmp_path, DownloadStatus.UNAVAILABLE,
+    )
+
+    service.retry_download(request_id)
+
+    assert [
+        username for username, _filename, _size
+        in service.soulseek.request_download_calls
+    ] == ["peer2"]
+
+
+def test_a_retry_that_finds_nothing_keeps_the_failure_visible(tmp_path):
+    service = make_service(tmp_path, states={})
+    request_id = _seed_finished_request(
+        service, tmp_path, DownloadStatus.FAILED,
+    )
+
+    outcome = service.retry_download(request_id)
+
+    assert outcome == TrackSearchOutcome.NO_CANDIDATE
+    assert _request(service, request_id).dismissed_at is None
+
+
+def test_retry_refuses_a_row_that_has_not_failed(tmp_path):
+    service = make_service(tmp_path, states={})
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1"])
+    seed_pending_request(service, transfer_id="live", track_id="t1")
+
+    with pytest.raises(DownloadNotRetryableError):
+        service.retry_download(1)
+
+    with pytest.raises(DownloadNotRetryableError):
+        service.retry_download(999)
+
+    assert service.soulseek.search_calls == []

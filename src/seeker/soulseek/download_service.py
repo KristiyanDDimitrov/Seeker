@@ -42,6 +42,7 @@ from seeker.errors import (
 )
 from seeker.matching import resolve_thresholds
 from seeker.models.download_request import (
+    FAILED_OUTCOMES,
     DownloadRequest,
     DownloadRole,
     DownloadStatus,
@@ -90,6 +91,17 @@ class UnsupportedDownloadFormatError(SeekerError):
         super().__init__(
             f"Seeker only downloads {downloadable_formats_text()} — this one is "
             f".{extension.lower().lstrip('.')}."
+        )
+
+
+class DownloadNotRetryableError(SeekerError):
+    """Retry was asked for a request that is gone or has not failed:
+    another window cleared it, or the poll moved it on."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "That download is no longer a failed one, so there is "
+            "nothing to retry."
         )
 
 
@@ -462,6 +474,41 @@ class DownloadService:
                 )
 
         return TrackSearchOutcome.REQUESTED
+
+    def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
+        """Searches again for a failed or unavailable request's track,
+        rather than re-asking the peer that failed it; an unavailable
+        candidate stays skipped for UNAVAILABLE_COOLDOWN. Once a new
+        request is made, the retried row is dismissed: the new row
+        stands for the track now. Otherwise it stays, still the user's
+        to act on."""
+        with self.database.transaction() as connection:
+            request = self.download_requests.get_by_id(
+                download_request_id, connection,
+            )
+            track = (
+                self.tracks.get_by_id(request.track_id, connection)
+                if request is not None
+                else None
+            )
+
+        if (
+                request is None
+                or request.status not in FAILED_OUTCOMES
+                or track is None
+        ):
+            raise DownloadNotRetryableError
+
+        outcome = self.search_and_request(track, self.current_thresholds())
+
+        if outcome == TrackSearchOutcome.REQUESTED:
+            with self.database.transaction() as connection:
+                self.download_requests.dismiss(
+                    download_request_id, datetime.now(UTC).isoformat(),
+                    connection,
+                )
+
+        return outcome
 
     def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
         """A real SoulSeek search for a track that isn't in any Spotify
