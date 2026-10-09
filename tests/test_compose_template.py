@@ -2,8 +2,8 @@
 
 Every Seeker install copies this file, so nothing in it may name one
 person's machine: a personal bind-mount source fails (or shares the
-wrong folder) on anyone else's Mac, and an untagged image silently
-upgrades slskd under a pinned client.
+wrong folder) on anyone else's Mac, and an image pinned by tag alone
+can change under a pinned client.
 
 The file is parsed line by line rather than with a YAML library: it is
 Seeker's own template, its shape is fixed, and the project carries no
@@ -85,7 +85,9 @@ def test_the_share_mount_is_read_only():
     assert share_entries[0].endswith(":ro")
 
 
-def test_image_carries_an_explicit_version_tag():
+def test_image_carries_a_version_tag_and_its_digest():
+    # A tag can be moved on Docker Hub; the digest cannot. The tag stays
+    # for the reader (and Dependabot), the digest is what Docker pulls.
     image_lines = [
         line.strip() for line in _uncommented(_template_lines())
         if line.strip().startswith("image:")
@@ -93,7 +95,9 @@ def test_image_carries_an_explicit_version_tag():
 
     assert len(image_lines) == 1
     image = image_lines[0].removeprefix("image:").strip()
-    assert re.fullmatch(r"slskd/slskd:\d+\.\d+\.\d+", image), image
+    assert re.fullmatch(
+        r"slskd/slskd:\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", image,
+    ), image
 
 
 def test_restart_policy_respects_a_user_stopping_slskd():

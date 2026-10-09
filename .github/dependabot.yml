@@ -8,3 +8,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # docker-compose.yml's slskd image. That it bumps the tag and the
+  # digest together is UNVERIFIED until its first PR. Seeker
+  # never re-seeds an install's own copy (HISTORY §140), so a bump here
+  # reaches new installs only.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
