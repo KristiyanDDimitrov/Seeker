@@ -103,6 +103,36 @@ are marked in `packaging/seeker.spec`: `codesign_identity=` and
 `entitlements_file=` on `EXE(...)`, followed by `xcrun notarytool` and
 `stapler` on the built `.app`.
 
+### Native libraries
+
+CI's audit job (`tools/audit_dependencies.py`) runs pip-audit over
+`uv.lock`. pip-audit reads Python package metadata, so it cannot see
+the native code bundled inside wheels or the interpreter. Those
+versions are recorded here instead. At each release, re-read them,
+compare, and check each one that changed or has a new advisory
+against its upstream security notes.
+
+| Library | Version (2026-10-09) | Arrives with | Reads peer files? |
+|---|---|---|---|
+| libsndfile | 1.2.2 | soundfile 0.14.0's wheel | yes: BPM, key, loudness |
+| Qt | 6.11.2 | PySide6 6.11.2 | no |
+| OpenSSL | 3.5.7 | Python 3.13.15 | no |
+| SQLite | 3.53.1 | Python 3.13.15 | no |
+| ffmpeg | 9.0.1 | Homebrew, not bundled | yes: fingerprints |
+| libchromaprint | 1.6.1 | Homebrew, not bundled | decoded audio only |
+
+The bundled four, from the environment the build uses:
+
+```
+uv run python -c "import ssl, sqlite3, soundfile; from PySide6 import QtCore; print(ssl.OPENSSL_VERSION, sqlite3.sqlite_version, soundfile.__libsndfile_version__, QtCore.qVersion())"
+```
+
+`ffmpeg -version` and `brew list --versions chromaprint` read the
+other two. The bundled four match the security audit's reading of
+the `dist/Seeker.app` built on 2026-10-08 (`docs/rounds/round-12/
+AUDIT.md` §9).
+[HISTORY §199](history/181-210.md#199)
+
 ## The Windows installer
 
 **Written, never verified on real hardware.**

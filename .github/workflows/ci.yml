@@ -1,5 +1,10 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  # A new advisory arrives without a commit; the weekly run reports it.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -22,6 +27,8 @@ jobs:
     # macos-latest resolves to). Dependabot does not update this line;
     # bump it by hand.
     runs-on: macos-26
+    # The weekly run is for the audit job alone.
+    if: github.event_name != 'schedule'
     timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
@@ -37,3 +44,16 @@ jobs:
       - run: >-
           uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
           --cov-fail-under=92
+
+  audit:
+    # pip-audit over every locked dependency (tools/audit_dependencies.py
+    # says what it can and cannot see). Linux, because it reads only
+    # uv.lock; pinned for the same reason as macos-26 above.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv run --no-project --python 3.13 tools/audit_dependencies.py

@@ -1,0 +1,9 @@
+# Advisories `tools/audit_dependencies.py` tolerates, each until its
+# expiry date. An entry stops applying on `expires`, and an expired
+# entry fails the audit. Example:
+#
+# [[ignore]]
+# id = "PYSEC-2026-0000"
+# reason = "Why it is unreachable, or why no fix can be taken yet."
+# expires = 2026-12-31
+ignore = []
