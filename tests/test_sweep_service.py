@@ -1,4 +1,6 @@
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 
@@ -31,7 +33,7 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.soulseek.download_service import DownloadService
-from seeker.soulseek.sweep import SweepService
+from seeker.soulseek.sweep import SweepService, sweep_due
 
 
 class FakeSlskd:
@@ -268,3 +270,25 @@ def test_pausing_mid_sweep_stops_before_the_next_search(tmp_path):
     assert sweep.slskd.searches == [query("t1")]
     assert result.still_missing == ["Dom Dolla - Title t1"]
     assert sweep.stamps == []
+
+
+NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(("last_sweep_at", "enabled", "due"), [
+    (None, False, False),
+    ((NOW - timedelta(days=3)).isoformat(), False, False),
+    (None, True, True),
+    ((NOW - timedelta(hours=24)).isoformat(), True, True),
+    ((NOW - timedelta(hours=24) + timedelta(seconds=1)).isoformat(), True,
+     False),
+    (NOW.isoformat(), True, False),
+    # The clock went back past the last sweep: waiting for it to catch
+    # up could mean days with no sweep.
+    ((NOW + timedelta(hours=1)).isoformat(), True, True),
+    # A hand-edited value: sweep, and the stamp repairs it.
+    ("yesterday", True, True),
+    ("2026-10-09T08:00:00", True, True),
+])
+def test_sweep_due(last_sweep_at, enabled, due):
+    assert sweep_due(NOW, last_sweep_at, enabled) is due

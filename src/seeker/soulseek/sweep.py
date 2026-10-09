@@ -8,7 +8,7 @@ cached playlists, so it costs no API budget.
 """
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -30,6 +30,33 @@ logger = logging.getLogger(__name__)
 # (SoulseekClient.search's 45 s deadline plus a poll), so 50 bounds a
 # sweep near 40 minutes. Untuned.
 SWEEP_MAX_SEARCHES = 50
+
+SWEEP_INTERVAL = timedelta(hours=24)
+
+
+def sweep_due(now: datetime, last_sweep_at: str | None, enabled: bool) -> bool:
+    """Whether the automatic sweep should run at `now` (timezone-aware).
+
+    Due when enabled and it has never run, or SWEEP_INTERVAL has
+    passed. A last_sweep_at that does not parse as an aware time, or
+    lies in the future (the clock went back), counts as due: the
+    sweep's own stamp then repairs it.
+    """
+    if not enabled:
+        return False
+
+    if last_sweep_at is None:
+        return True
+
+    try:
+        last = datetime.fromisoformat(last_sweep_at)
+    except ValueError:
+        return True
+
+    if last.tzinfo is None or last > now:
+        return True
+
+    return now - last >= SWEEP_INTERVAL
 
 
 class SweepService:
