@@ -286,9 +286,9 @@ class DownloadPoller:
         # Re-issue request_download for every request that was already
         # 'locked' before this run started (not ones that just became
         # locked above, or via the cascade below — those wait for the
-        # next run, matching the "daily cadence" design). Same exact
-        # username+filename each time — retrying access to the same
-        # candidate, not a fresh search.
+        # next run). Same exact username+filename each time — retrying
+        # access to the same candidate, not a fresh search; the daily
+        # sweep (sweep.py) is what searches again (HISTORY §202).
         for request in locked:
             # Same principle as above — one bad retry must not stop the
             # rest of the locked shortlist from being retried this run.
