@@ -15,11 +15,10 @@ nine fields below follow the contract in
   the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2088 passed, 1 skipped`, 0 failed for the first time since S37 (+2 tests). `mypy --strict
   src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `1c994eb`'s run `37932732255` **failed**: `check` `1 failed,
-  2059 passed, 29 skipped`, coverage 94.60 % (floor 92 %); `audit`, no
-  known vulnerabilities. The one failure is new and outside S9's code:
-  `test_library_page.py::test_library_track_list_refreshes_after_a_tag_run`
-  (`waitUntil timed out in 2000 milliseconds`). See §4.
+- **CI:** `04f8f04`'s run `37933912241` green: `check` `2060 passed,
+  29 skipped`, coverage 94.60 % (floor 92 %); `audit`, no known
+  vulnerabilities. The run before it (`37932732255`, `1c994eb`) failed
+  one new, intermittent test, with no code change between the two. See §4.
 
 ## 2. Where we are
 
