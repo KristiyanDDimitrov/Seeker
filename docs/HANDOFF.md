@@ -16,7 +16,9 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2129 passed, 1 skipped`, 0 failed (+14
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `radon cc -n D` nothing.
-- **CI:** see §3's last line (the close-out push).
+- **CI:** `ae58295`'s run `37956280425` green: `check` `2101 passed,
+  29 skipped`, coverage 94.67 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
@@ -40,8 +42,7 @@ Evidence for each is in HISTORY §203.
 - `6afbec0` §11.3: `TrayController.notify_sweep_requested`, under
   "Downloads finished"; silence when nothing was requested.
 - The close-out: HISTORY §203, CLAUDE.md's sweep fact, the plan tick,
-  this file. CI: recorded in the final message of the S11 session
-  (`git log` the push; `gh run list --limit 1`).
+  this file. CI run `37956280425` green (§1).
 
 ## 4. Key context for S12
 
