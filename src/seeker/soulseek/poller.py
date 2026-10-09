@@ -375,7 +375,7 @@ class DownloadPoller:
         # Both loaded from the DB by every real caller (_cascade
         # fetches via get_next_shortlisted, which only returns persisted
         # rows; size is always set at creation time in
-        # _request_and_record/_record_shortlisted).
+        # _request_and_record/_record_unrequested).
         assert request.id is not None
         assert request.size is not None
 
