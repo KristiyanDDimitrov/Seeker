@@ -808,6 +808,18 @@ def test_persist_default_destination_reflected_by_download_service_immediately(
     assert service._get_config().default_download_location_id == 7
 
 
+def test_a_finished_sweep_is_saved_as_last_sweep_at(tmp_path, monkeypatch):
+    # The due check reads it after a restart, so it must reach
+    # config.json, not only the in-memory settings.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    app.sweep_service.run_sweep()
+
+    saved = load_config(resolve_config_path()).last_sweep_at
+    assert saved is not None
+    assert app.settings.last_sweep_at == saved
+
+
 def test_download_service_constructs_without_soulseek_configured(
         tmp_path, monkeypatch,
 ):

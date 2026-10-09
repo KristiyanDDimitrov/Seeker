@@ -62,6 +62,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.review_service import ReviewService
 from seeker.soulseek.sharing_service import SharingService
+from seeker.soulseek.sweep import SweepService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.spotify.client import SpotifyClient
@@ -134,6 +135,7 @@ class Application:
         self._duplicate_service: DuplicateService | None = None
         self._history_service: HistoryService | None = None
         self._sharing_service: SharingService | None = None
+        self._sweep_service: SweepService | None = None
 
     @property
     def settings(self) -> SeekerConfig:
@@ -817,6 +819,26 @@ class Application:
             )
 
         return self._sharing_service
+
+    @property
+    def sweep_service(self) -> SweepService:
+        if self._sweep_service is None:
+            # Reaches the download service through this property on
+            # every sweep, so a SoulSeek settings change (which drops
+            # the cached one) is never swept with a stale client.
+            self._sweep_service = SweepService(
+                self.database,
+                lambda: self.download_service,
+                PlaylistRepository(),
+                TrackRepository(),
+                get_config=lambda: self._config_store,
+                record_sweep=self._record_sweep,
+            )
+
+        return self._sweep_service
+
+    def _record_sweep(self, finished_at: str) -> None:
+        self.update_settings(last_sweep_at=finished_at)
 
     @property
     def data_locations(self) -> DataLocations:

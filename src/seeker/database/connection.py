@@ -64,6 +64,7 @@ class Database:
 # than one.
 def _migrate(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(connection, "tracks", "album_art_url", "TEXT")
+    _add_column_if_missing(connection, "tracks", "last_searched_at", "TEXT")
     _add_column_if_missing(connection, "local_files", "bpm", "REAL")
     _add_column_if_missing(connection, "local_files", "camelot_key", "TEXT")
     _add_column_if_missing(

@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS tracks (
     artist TEXT NOT NULL,
     album TEXT NOT NULL,
     duration_ms INTEGER NOT NULL,
-    album_art_url TEXT
+    album_art_url TEXT,
+    -- When Seeker last searched slskd for this track (UTC ISO-8601);
+    -- NULL until it has. The daily sweep searches the oldest first.
+    last_searched_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS playlist_tracks (

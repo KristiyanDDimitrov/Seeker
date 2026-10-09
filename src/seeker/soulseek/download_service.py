@@ -374,6 +374,13 @@ class DownloadService:
 
         logger.info("Searching: %s - %s", track.artist, track.title)
 
+        # Stamped before the search, so a track whose search keeps
+        # failing still moves to the back of the sweep's queue.
+        with self.database.transaction() as connection:
+            self.tracks.mark_searched(
+                track.id, datetime.now(UTC).isoformat(), connection,
+            )
+
         files = self._without_rejected(
             track.id,
             self.soulseek.search(

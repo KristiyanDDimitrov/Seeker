@@ -130,6 +130,54 @@ class TrackRepository:
 
         return [_row_to_track(row) for row in rows]
 
+    def get_unmatched_for_playlists(
+            self,
+            playlist_ids: list[str],
+            connection: sqlite3.Connection,
+    ) -> list[Track]:
+        """The unmatched tracks on any of `playlist_ids`, each once,
+        least recently searched first (never searched before any)."""
+        if not playlist_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in playlist_ids)
+        rows = connection.execute(
+            f"""
+            SELECT DISTINCT
+                t.id,
+                t.title,
+                t.artist,
+                t.album,
+                t.duration_ms,
+                t.album_art_url,
+                t.last_searched_at
+            FROM tracks t
+            JOIN playlist_tracks pt ON pt.track_id = t.id
+            LEFT JOIN track_matches tm ON tm.track_id = t.id
+            WHERE pt.playlist_id IN ({placeholders})
+            AND (
+                tm.track_id IS NULL
+                OR tm.match_method IS NULL
+                OR tm.local_file_id IS NULL
+            )
+            ORDER BY t.last_searched_at IS NOT NULL, t.last_searched_at, t.id
+            """,  # noqa: S608 -- only "?" placeholders are interpolated
+            playlist_ids,
+        ).fetchall()
+
+        return [_row_to_track(row) for row in rows]
+
+    def mark_searched(
+            self,
+            track_id: str,
+            searched_at: str,
+            connection: sqlite3.Connection,
+    ) -> None:
+        connection.execute(
+            "UPDATE tracks SET last_searched_at = ? WHERE id = ?",
+            (searched_at, track_id),
+        )
+
     def get_auto_matched_for_playlist(
             self,
             playlist_id: str,
