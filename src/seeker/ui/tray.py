@@ -427,6 +427,24 @@ class TrayController:
         if events:
             self._last_notified_download_at = events[0].occurred_at
 
+    def notify_sweep_requested(self, count: int) -> None:
+        # Under the "Downloads finished" toggle: it is the one about
+        # downloads, and the sweep is opt-in in its own right.
+        if self._tray_icon is None:
+            return
+
+        if not self._host.application.settings.notify_downloads_finished:
+            return
+
+        tracks = "track" if count == 1 else "tracks"
+        them = "it" if count == 1 else "them"
+        self._tray_icon.showMessage(
+            "Seeker",
+            f"The daily sweep found {count} missing {tracks} and "
+            f"requested {them}.",
+            QSystemTrayIcon.MessageIcon.Information,
+        )
+
     def check_for_needs_decision_notification(self, total: int) -> None:
         # Fires only on a genuine INCREASE from the last-seen total,
         # never on every poll tick the count happens to still be

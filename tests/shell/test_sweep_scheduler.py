@@ -5,17 +5,23 @@ import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from fakes import FakeApplication, FakeSweepService
+from fakes import FakeApplication, FakeSweepService, force_tray_available
+from seeker.models.sweep_result import SweepResult
 from seeker.ui.main_window import MainWindow
 from seeker.ui.sweep_scheduler import SWEEP_KEY
 
 
-def _window(qtbot, *, enabled=True, last_sweep_at=None, configured=True):
+def _window(
+        qtbot, *, enabled=True, last_sweep_at=None, configured=True,
+        result=None, notify_downloads_finished=True,
+):
     application = FakeApplication(soulseek_configured=configured)
+    application.sweep_service = FakeSweepService(result)
     application._config_store = replace(
         application._config_store,
         auto_sweep_enabled=enabled,
         last_sweep_at=last_sweep_at,
+        notify_downloads_finished=notify_downloads_finished,
     )
     window = MainWindow(application)
     qtbot.addWidget(window)
@@ -142,3 +148,58 @@ def test_no_sweep_without_soulseek_configured(qtbot):
 
     assert sweeps.calls == []
     assert isinstance(sweeps, FakeSweepService)
+
+
+def _tray_messages(monkeypatch, window):
+    messages: list[str] = []
+    monkeypatch.setattr(
+        window._tray._tray_icon, "showMessage",
+        lambda title, message, *a, **k: messages.append(message),
+    )
+    return messages
+
+
+def test_a_sweep_that_requested_downloads_sends_one_notification(
+        qtbot, monkeypatch,
+):
+    force_tray_available(monkeypatch, True)
+    window, _ = _window(qtbot, result=SweepResult(
+        requested=["A - One", "B - Two"], still_missing=["C - Three"],
+    ))
+    messages = _tray_messages(monkeypatch, window)
+
+    _first_good_poll(qtbot, window)
+    _wait_for_the_sweep_to_end(qtbot, window)
+
+    assert messages == [
+        "The daily sweep found 2 missing tracks and requested them."
+    ]
+
+
+def test_a_sweep_that_found_nothing_is_silent(qtbot, monkeypatch):
+    force_tray_available(monkeypatch, True)
+    window, _ = _window(
+        qtbot, result=SweepResult(still_missing=["C - Three"]),
+    )
+    messages = _tray_messages(monkeypatch, window)
+
+    _first_good_poll(qtbot, window)
+    _wait_for_the_sweep_to_end(qtbot, window)
+
+    assert messages == []
+
+
+def test_the_sweep_notification_follows_the_downloads_finished_toggle(
+        qtbot, monkeypatch,
+):
+    force_tray_available(monkeypatch, True)
+    window, _ = _window(
+        qtbot, result=SweepResult(requested=["A - One"]),
+        notify_downloads_finished=False,
+    )
+    messages = _tray_messages(monkeypatch, window)
+
+    _first_good_poll(qtbot, window)
+    _wait_for_the_sweep_to_end(qtbot, window)
+
+    assert messages == []

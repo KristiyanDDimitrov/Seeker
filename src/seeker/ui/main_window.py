@@ -168,6 +168,13 @@ class MainWindow(QMainWindow):
         # here (HISTORY §125).
         self._init_shared_state()
         self._tray = self._build_tray_controller()
+        self._sweep_scheduler = SweepScheduler(SweepSchedulerHost(
+            application=self.application,
+            busy_actions=self.busy_actions,
+            slskd_status=self.slskd_status,
+            run_busy_worker=self._run_busy_worker,
+            notify_requested=self._tray.notify_sweep_requested,
+        ))
         self._lifecycle = self._build_lifecycle_controller()
         self._connect_application_events()
 
@@ -205,12 +212,6 @@ class MainWindow(QMainWindow):
         self.playlist_selection = PlaylistSelection()
         # Written only by _trigger_backend_poll.
         self.slskd_status = SlskdStatus()
-        self._sweep_scheduler = SweepScheduler(SweepSchedulerHost(
-            application=self.application,
-            busy_actions=self.busy_actions,
-            slskd_status=self.slskd_status,
-            run_busy_worker=self._run_busy_worker,
-        ))
         # Keyed the same as busy_actions; populated by a
         # run_worker(on_progress=...) callback (via
         # _on_activity_progress), consulted by _render_activity_strip.

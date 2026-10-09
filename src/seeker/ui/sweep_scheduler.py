@@ -32,12 +32,14 @@ SWEEP_CHECK_INTERVAL_MS = 60 * 60 * 1000
 @dataclass(frozen=True)
 class SweepSchedulerHost:
     """What the scheduler needs from the shell: its busy registry (the
-    one record of a running sweep), the backend poll's slskd status and
-    `MainWindow._run_busy_worker`, which runs on the shell's pool."""
+    one record of a running sweep), the backend poll's slskd status,
+    `MainWindow._run_busy_worker`, which runs on the shell's pool, and
+    the tray's summary of a sweep that requested downloads."""
     application: Application
     busy_actions: BusyActionRegistry
     slskd_status: SlskdStatus
     run_busy_worker: Callable[..., None]
+    notify_requested: Callable[[int], None]
 
 
 class SweepScheduler:
@@ -97,8 +99,10 @@ class SweepScheduler:
         self._stop.set()
 
     def _on_sweep_finished(self, result: SweepResult) -> None:
-        # The service logs the sweep's own summary.
-        pass
+        # One notice for a sweep that found something; one that found
+        # nothing stays silent. The service logs either at INFO.
+        if result.requested:
+            self._host.notify_requested(len(result.requested))
 
     def _on_sweep_failed(self, message: str) -> None:
         # An outage reaches the user through the backend poll's own

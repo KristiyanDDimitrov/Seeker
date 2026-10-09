@@ -1324,7 +1324,8 @@ TOOLTIP_SAVE_THRESHOLDS = (
 
 TOOLTIP_NOTIFY_DOWNLOADS_FINISHED_CHECKBOX = (
     "Notify when downloads finish, batched into one notification per "
-    "playlist rather than one per track."
+    "playlist rather than one per track, and when the daily sweep "
+    "requests missing tracks."
 )
 TOOLTIP_NOTIFY_NEEDS_DECISION_CHECKBOX = (
     "Notify when a new SoulSeek candidate or upgrade needs your "
