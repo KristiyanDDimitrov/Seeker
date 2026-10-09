@@ -539,8 +539,8 @@ Genuinely open only, checked against every CI run on record (187, to
   destructor (above). Next try: quit while a scan, fingerprint or
   search worker is running. [§125](docs/history/121-150.md#125)
 - **`test_library_track_list_refreshes_after_a_tag_run` timed out
-  twice on CI** (`37932732255`; `37977966814`'s first attempt, a
-  commit that touched no `ui/` code); it does not reproduce locally,
+  on CI** (`37932732255`; `37977966814`'s first attempt, a
+  commit that touched no `ui/` code; both attempts of `37994812022`); it does not reproduce locally,
   offscreen included. Lead (UNVERIFIED): `LibraryPage.refresh_tracks()`
   keeps no recency guard, so an earlier load landing last repaints
   stale statuses. [§201](docs/history/181-210.md#201),

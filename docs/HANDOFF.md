@@ -16,8 +16,13 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2230 passed, 1 skipped`, 0 failed (+6
   tests). `mypy --strict src/` clean, 145 files; `ruff check src tests
   tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** pending for the close-out push (recorded in the follow-up
-  commit).
+- **CI: red.** `8a784fd`'s run `37994812022` failed both attempts
+  on one test, `test_library_track_list_refreshes_after_a_tag_run`
+  (`waitUntil` timed out, 2000 ms), the known open issue: `check`
+  `1 failed, 2201 passed, 29 skipped`, coverage 94.72 % (floor 92 %).
+  It passes 3/3 offscreen locally, and no S15 commit touches Library,
+  tagging or `refresh_tracks()`. Before this its CI failures were one
+  attempt at a time; two in a row is new.
 
 ## 2. Where we are
 
@@ -73,6 +78,12 @@ Evidence for each is in HISTORY §210.
   only its self-critique applied.
 
 ## 6. Blockers
+
+**CI is red on the known Library flake** (§1). Next session, first:
+re-run `37994812022`. If it fails again, the flake has become the
+row's blocker: its lead is `LibraryPage.refresh_tracks()`, which has
+no recency guard, so an earlier load landing last repaints stale
+statuses (UNVERIFIED). A fix is test-first and its own commit.
 
 **Kris's slskd container was recreated by a test run** (HISTORY §208
 → "Observed"). It is bound to deleted pytest temp directories and
