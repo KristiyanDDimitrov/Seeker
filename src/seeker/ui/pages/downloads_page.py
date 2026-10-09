@@ -26,7 +26,7 @@ from seeker.models.download_request import (
     DownloadRole,
     DownloadStatus,
 )
-from seeker.models.download_result import TrackSearchOutcome
+from seeker.models.download_result import CancelOutcome, TrackSearchOutcome
 from seeker.ui import help_text, status_lamp, theme
 from seeker.ui.download_eta import (
     AGGREGATE_ETA_TOOLTIP,
@@ -71,10 +71,12 @@ _DOWNLOADS_COLUMNS = theme.ColumnLayout(
 # The busy_actions key of a Retry's search. One searches at a time:
 # every Retry button waits while it runs.
 RETRY_DOWNLOAD_KEY = "retry_download"
+# The busy_actions key of a Cancel. One runs at a time, as Retry's does.
+CANCEL_DOWNLOAD_KEY = "cancel_download"
 # The busy keys of the Actions column's buttons. The render decides
 # each button's enabled state from its key, so the rendered rows carry
 # them all.
-_ROW_ACTION_KEYS = (RETRY_DOWNLOAD_KEY,)
+_ROW_ACTION_KEYS = (RETRY_DOWNLOAD_KEY, CANCEL_DOWNLOAD_KEY)
 
 # A status's label beside its lamp. The words are the Dashboard's where
 # the state is the same one ("Retrying"), so a track reads alike on both
@@ -481,16 +483,27 @@ class DownloadsPage(QWidget):
         )
 
     def _build_actions(self, request: DownloadRequest, label: str) -> QWidget:
-        if request.status not in FAILED_OUTCOMES or request.id is None:
+        if request.id is None:
             return QWidget()
 
         request_id = request.id
-        retry_button = self._action_button(
-            "Retry", RETRY_DOWNLOAD_KEY,
-            lambda: self._retry(request_id, label),
-        )
-        retry_button.setToolTip(help_text.TOOLTIP_RETRY_DOWNLOAD)
-        return theme.cell_widget(retry_button, row_label=label)
+
+        if request.status in FAILED_OUTCOMES:
+            button = self._action_button(
+                "Retry", RETRY_DOWNLOAD_KEY,
+                lambda: self._retry(request_id, label),
+            )
+            button.setToolTip(help_text.TOOLTIP_RETRY_DOWNLOAD)
+        elif request.status == DownloadStatus.QUEUED:
+            button = self._action_button(
+                "Cancel", CANCEL_DOWNLOAD_KEY,
+                lambda: self._cancel(request_id, label),
+            )
+            button.setToolTip(help_text.TOOLTIP_CANCEL_DOWNLOAD)
+        else:
+            return QWidget()
+
+        return theme.cell_widget(button, row_label=label)
 
     def _action_button(
             self,
@@ -574,6 +587,24 @@ class DownloadsPage(QWidget):
 
     def _on_row_action_failed(self, message: str) -> None:
         self.feedback.show_error(message)
+        self.poll_active_downloads()
+
+    def _cancel(self, request_id: int, label: str) -> None:
+        # No button=, as for Retry: the rendered key holds the busy
+        # state.
+        self._disable_action_buttons(CANCEL_DOWNLOAD_KEY)
+        self._context.run_busy_worker(
+            CANCEL_DOWNLOAD_KEY, None,
+            lambda: self._context.application.download_service
+            .cancel_download(request_id),
+            on_finished=lambda outcome: self._on_cancelled(outcome, label),
+            on_error=self._on_row_action_failed,
+        )
+
+    def _on_cancelled(self, outcome: CancelOutcome, label: str) -> None:
+        self.feedback.show_outcome(
+            help_text.cancel_outcome_text(outcome, label), kind="info",
+        )
         self.poll_active_downloads()
 
     def _clear_finished(self) -> None:

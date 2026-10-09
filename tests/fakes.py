@@ -19,6 +19,7 @@ from seeker.models.active_download import ActiveDownload
 from seeker.models.data_locations import DataLocations
 from seeker.models.download_request import DownloadRequest
 from seeker.models.download_result import (
+    CancelOutcome,
     ManualDownloadResult,
     PlaylistDownloadResult,
     PollResult,
@@ -530,6 +531,12 @@ class FakeDownloadService:
         # When set, retry_download() holds the worker until the test
         # sets it: a retry still searching.
         self.retry_gate: threading.Event | None = None
+        self.cancel_outcome = CancelOutcome.CANCELLED
+        self.cancel_error: Exception | None = None
+        self.cancel_download_calls: list[int] = []
+        # When set, cancel_download() holds the worker until the test
+        # sets it: a cancel still waiting on slskd.
+        self.cancel_gate: threading.Event | None = None
 
     def get_resolved_destination(self, playlist_name: str) -> tuple | None:
         return self._resolved_destination
@@ -541,6 +548,14 @@ class FakeDownloadService:
         if self.retry_error is not None:
             raise self.retry_error
         return self.retry_outcome
+
+    def cancel_download(self, download_request_id: int) -> CancelOutcome:
+        self.cancel_download_calls.append(download_request_id)
+        if self.cancel_gate is not None:
+            self.cancel_gate.wait(timeout=5)
+        if self.cancel_error is not None:
+            raise self.cancel_error
+        return self.cancel_outcome
 
     def set_destination(
             self,

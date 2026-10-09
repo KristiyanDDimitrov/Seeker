@@ -17,6 +17,7 @@ from typing import Any
 from seeker.formatting import format_timestamp
 from seeker.library.metadata_service import RenameResult
 from seeker.models.download_result import (
+    CancelOutcome,
     ManualDownloadResult,
     PlaylistDownloadResult,
     TrackFailure,
@@ -964,6 +965,23 @@ RETRY_OUTCOME_KIND = {
 
 def retry_outcome_text(outcome: TrackSearchOutcome, label: str) -> str:
     return _RETRY_OUTCOME_TEXT[outcome].format(label=label)
+
+
+TOOLTIP_CANCEL_DOWNLOAD = (
+    "Stop waiting for this peer and remove the request from SoulSeek. "
+    "Its place in the peer's queue is lost; Retry searches again."
+)
+_CANCEL_OUTCOME_TEXT = {
+    CancelOutcome.CANCELLED: "Cancelled {label}.",
+    CancelOutcome.ALREADY_FINISHED: (
+        "{label} had already finished downloading, so it was kept. It "
+        "is placed on the next check."
+    ),
+}
+
+
+def cancel_outcome_text(outcome: CancelOutcome, label: str) -> str:
+    return _CANCEL_OUTCOME_TEXT[outcome].format(label=label)
 
 
 TOOLTIP_HISTORY_REFRESH_BUTTON = (

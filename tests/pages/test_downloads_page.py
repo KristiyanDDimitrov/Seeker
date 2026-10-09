@@ -6,6 +6,7 @@ mirror of §9.3.1's own Downloads extraction (S7).
 import threading
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
@@ -18,7 +19,7 @@ from fakes import (
 )
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
-from seeker.models.download_result import TrackSearchOutcome
+from seeker.models.download_result import CancelOutcome, TrackSearchOutcome
 from seeker.models.track import Track
 from seeker.ui import help_text, theme
 from seeker.ui.elided_text import BADGE_ROLE, SECONDARY_ROLE
@@ -1005,6 +1006,92 @@ def test_a_retry_that_fails_says_why(qtbot):
     page._render_active_downloads([failed])
 
     _row_button(page, 0, "Retry").click()
+
+    qtbot.waitUntil(
+        lambda: "slskd went away." in page.notice.text(), timeout=2000,
+    )
+
+
+# --- Cancel -----------------------------------------------------------------
+
+def test_only_a_queued_row_offers_cancel(qtbot):
+    downloads = [
+        make_active_download(track_id=status, status=status, request_id=row)
+        for row, status in enumerate((
+            "queued", "downloading", "failed", "locked", "shortlisted",
+        ))
+    ]
+    window = MainWindow(FakeApplication(active_downloads=downloads))
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads(downloads)
+
+    offered = [
+        _row_button(page, row, "Cancel") is not None for row in range(5)
+    ]
+
+    assert offered == [True, False, False, False, False]
+    button = _row_button(page, 0, "Cancel")
+    assert button.accessibleName() == "Cancel Artist - Title"
+    assert button.toolTip() == help_text.TOOLTIP_CANCEL_DOWNLOAD
+
+
+@pytest.mark.parametrize("outcome", list(CancelOutcome))
+def test_cancel_stops_the_download_and_says_what_happened(qtbot, outcome):
+    queued = make_active_download(status="queued", request_id=7)
+    application = FakeApplication(active_downloads=[queued])
+    application.download_service.cancel_outcome = outcome
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([queued])
+
+    _row_button(page, 0, "Cancel").click()
+
+    qtbot.waitUntil(
+        lambda: page.notice.text()
+        == help_text.cancel_outcome_text(outcome, "Artist - Title"),
+        timeout=2000,
+    )
+    assert application.download_service.cancel_download_calls == [7]
+
+
+def test_cancel_stays_disabled_across_renders_while_it_runs(qtbot):
+    queued = make_active_download(status="queued", request_id=7)
+    other = make_active_download(track_id="t2", status="queued", request_id=8)
+    application = FakeApplication(active_downloads=[queued, other])
+    gate = threading.Event()
+    application.download_service.cancel_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([queued, other])
+
+    _row_button(page, 0, "Cancel").click()
+    page._rendered_rows = None
+    page._render_active_downloads([queued, other])
+
+    assert not _row_button(page, 0, "Cancel").isEnabled()
+    assert not _row_button(page, 1, "Cancel").isEnabled()
+    gate.set()
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+    page._rendered_rows = None
+    page._render_active_downloads([queued, other])
+    assert _row_button(page, 1, "Cancel").isEnabled()
+
+
+def test_a_cancel_that_fails_says_why(qtbot):
+    queued = make_active_download(status="queued", request_id=7)
+    application = FakeApplication(active_downloads=[queued])
+    application.download_service.cancel_error = RuntimeError(
+        "slskd went away."
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([queued])
+
+    _row_button(page, 0, "Cancel").click()
 
     qtbot.waitUntil(
         lambda: "slskd went away." in page.notice.text(), timeout=2000,
