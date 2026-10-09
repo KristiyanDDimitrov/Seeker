@@ -48,7 +48,7 @@ after Kris's explicit yes.
 | ☑ S12 | X2: Retry and Cancel on Downloads (live cancel needs Kris's yes) — Retry §204, Cancel §205 | §12 | ~120 K | After Retry |
 | ☑ S12b | Fall back to the next-best file when the settled one fails; skip recently failed files on a re-search — §206, §207 | §12b | ~120 K | After §12b.2 (the poll's fallback) |
 | ☑ S13 | X1: Clean up leftover slskd downloads — §208 | §13 | ~110 K | After the listing (no delete) |
-| ☐ S14 | Automatic app-update check (R11 §40) | §14 | ~90 K | None |
+| ☑ S14 | Automatic app-update check (R11 §40) — §209 | §14 | ~90 K | None |
 | **Phase D — Fresh-eyes QA** | | | | |
 | ☐ S15 | QA sweep over all 78 screens; small fixes, the rest listed | §15 | ~120 K | After the planning-time findings |
 | **Phase E — Release (carried)** | | | | |

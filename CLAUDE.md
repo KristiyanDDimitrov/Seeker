@@ -481,6 +481,12 @@ Code documents loading it when a session reads files in `ui/`
   `_build_info_generated.py`; the tracked `_build_info.py` only
   imports it (fallback `"dev"`). Never write the tracked file.
   [§83](docs/history/072-107.md#83)
+- **Seeker asks GitHub for a release only from Help, or at startup
+  when Settings → General → Updates is on** (`ui/update_scheduler.py`):
+  at most once in 24 hours (`is_due`), stamped before the request.
+  Only `UPDATE_AVAILABLE` reaches the user (one tray notice and a Help
+  entry); `check_for_update()` never raises.
+  [§209](docs/history/181-210.md#209)
 - A GUI launch gets launchd's minimal PATH:
   `docker_setup.ensure_full_path_environment()` merges `path_helper`
   and Homebrew/Docker Desktop fallbacks once, in

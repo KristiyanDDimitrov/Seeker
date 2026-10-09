@@ -11,44 +11,40 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S13 close-out (HISTORY §208). Tree clean apart from
+- **HEAD:** the S14 close-out (HISTORY §209). Tree clean apart from
   the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2206 passed, 1 skipped`, 0 failed (+34
-  tests). `mypy --strict src/` clean, 143 files; `ruff check src tests
+- **Local (Cocoa):** pytest `2224 passed, 1 skipped`, 0 failed (+18
+  tests). `mypy --strict src/` clean, 145 files; `ruff check src tests
   tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** `1fe6eb7`'s run `37983354387` green: `check` `2178 passed,
-  29 skipped`, coverage 94.71 % (floor 92 %); `audit`, no known
-  vulnerabilities.
+- **CI:** pending for this push (see §3).
 
 ## 2. Where we are
 
-**Round 12 S13 is complete** (☑). Downloads → "Clean up leftover
-files…" and `seeker downloads cleanup [--delete]` list the files in
-slskd's `downloads/` and `incomplete/` that nothing claims, and delete
-confirmed ones that are still unchanged. **Next: S14, the automatic
-app-update check** (BRIEF §14, R11 §40), reusing S11's due-check
-pattern.
+**Round 12 S14 is complete** (☑), and with it Phase C. Settings →
+General → "Updates" turns on a check at startup, at most once a day;
+a newer release gets one tray notice and a Help entry, "Update
+available: X…". **Next: S15, the fresh-eyes QA sweep** over every
+screen (BRIEF §15).
 
-## 3. Session report (S13)
+## 3. Session report (S14)
 
-Evidence for each is in HISTORY §208.
-- `2700cbd` §13.1: `LeftoverService`, `models/leftover_result.py`,
-  `SoulseekClient.get_downloads`, `Application.leftover_service`.
-- `084c756` §13.2: `seeker downloads cleanup`; `2f95a30` updates the
-  usage test it missed.
-- `07be846` §13.3: the Downloads button, `LeftoverCleanupDialog`,
-  `LeftoverFile.relative_path` (the dialog's first version elided
-  every filename away).
-- Close-out: HISTORY §208, a CLAUDE.md fact, `docs/cli.md`, the plan
-  tick, this file.
-- Dry run (no delete) over the dev tree in the repository and a DB
-  copy: 27 files, 728 MB, the A-52 figure.
+Evidence for each is in HISTORY §209.
+- `c91085a` §14.1 (refactor): `seeker/due.py`'s `is_due`; `sweep_due`
+  delegates to it.
+- `22cb652` §14.2: `auto_update_check`, `last_update_check_at`; the
+  "Updates" card.
+- `71b6bb2` §14.3: `ui/update_scheduler.py`, the tray notice, the Help
+  entry; six mutations back the 11 new tests.
+- Close-out: HISTORY §209, a CLAUDE.md fact (Packaging), the module
+  map, the plan tick, this file.
 
-## 4. Key context for S14
+## 4. Key context for S15
 
-- BRIEF §14 and R11 §40. S11's `sweep_due`/`ui/sweep_scheduler.py` is
-  the due-check pattern to reuse; the shell's pool and
-  `busy_actions` run it.
+- BRIEF §15. `uv run python tools/screenshots.py` writes every screen
+  to `tools/.screens/` in about two minutes. Settings → General now
+  has five cards and scrolls at both harness sizes. The Help menu's
+  "Update available" entry is not in any screenshot (it is hidden
+  until a check finds a release).
 - **Carried:** `test_library_track_list_refreshes_after_a_tag_run`'s
   CI timeouts; the callback handler has no socket timeout; Sharing's
   20 s per-row rebuild (S15); `uv build --wheel` picks up a
@@ -57,16 +53,15 @@ Evidence for each is in HISTORY §208.
 
 ## 5. Decisions made
 
-- **Claims match by name, loosely** (letters and digits, `_<ticks>`
-  stripped), never by path: slskd's sanitizing is not replicated, and
-  a looser match only protects more.
-- **slskd must answer.** No transfer list, no listing: a superseded
-  backup's transfer can still be writing, and only slskd knows.
-- **Only slskd's own folder:** `downloads` beside `slskd.yml`, its
-  sibling `incomplete/` the other root. Anything else is refused.
-- **A 10-minute hold-back** for a file whose transfer the names miss.
-- **Skills:** `tdd`, red first per behaviour commit (the service's red
-  was its missing module, so a mutation run backs its tests).
+- **The stamp goes down before the request:** at most one check a
+  day, even offline or rate-limited.
+- **Turning it on takes effect at the next launch** (startup only).
+- **The tray notice has no notification toggle**; the check is
+  opt-in on its own.
+- **The badge is a Help menu entry**, not a changed menu title
+  (macOS treats "Help" specially; UNVERIFIED what a rename loses).
+- **A manual check neither stamps nor shows the entry.**
+- **Skills:** none is listed for S14; red first per behaviour item.
 
 ## 6. Blockers
 
@@ -85,25 +80,20 @@ UNVERIFIED) and add a guard so no test can run `docker compose`.
 
 ## 7. Files in progress
 
-None uncommitted. S13 is closed at its row boundary.
+None uncommitted. S14 is closed at its row boundary.
 
 ## 8. Waiting on Kris
 
-- **New (S13):** recreate slskd (§6). Then the first real cleanup,
-  yours to click: Downloads → "Clean up leftover files…". The
-  configured `SLSKD_DOWNLOAD_DIR` in `.env` is relative
-  (`./slskd-data/downloads`), so it resolves against the launch
-  directory; Settings' saved value wins when set. Veto, if wanted,
-  §5's decisions.
-- **From S12b:** HISTORY §206/§207's backup decisions; BRIEF §12b's
-  "Code's calls".
-- **From S12:** the first live Cancel, at the keyboard; HISTORY
-  §204's retry and §205's Cancel decisions.
-- **From S11:** the four sweep decisions (HISTORY §203); the "Daily
-  sweep" card.
-- **From S10:** the cooldown's reach into manual Download, the 30-day
-  and 50-search numbers; the real `tracks.last_searched_at` migration
-  runs on the next launch.
+- **New (S14):** turn on Settings → General → Updates and relaunch.
+  Until v0.1.0 is published, the check logs `NO_RELEASES_PUBLISHED`
+  and shows nothing. Veto, if wanted, §5's decisions.
+- **From S13:** recreate slskd (§6). Then the first real cleanup,
+  yours to click: Downloads → "Clean up leftover files…" (a relative
+  `SLSKD_DOWNLOAD_DIR` in `.env` resolves against the launch
+  directory; Settings' saved value wins). HISTORY §208's decisions.
+- **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
+  §12b's "Code's calls"; the first live Cancel, at the keyboard; the
+  real `tracks.last_searched_at` migration runs on the next launch.
 - **Still open:** S-04's GPL wording (S16); the live checks of
   §193–§196; the S5 wording veto; the wordmark's brows (`9ff777b`);
   BRIEF §17; S8's visible peer-filename change; `git show
