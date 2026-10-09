@@ -15,7 +15,11 @@ nine fields below follow the contract in
   the untracked `Claude outputs/`.
 - **Local (Cocoa):** pytest `2088 passed, 1 skipped`, 0 failed for the first time since S37 (+2 tests). `mypy --strict
   src/` clean, 138 files; `ruff check src tests tools` 0.
-- **CI:** `@@CI@@`.
+- **CI:** `1c994eb`'s run `37932732255` **failed**: `check` `1 failed,
+  2059 passed, 29 skipped`, coverage 94.60 % (floor 92 %); `audit`, no
+  known vulnerabilities. The one failure is new and outside S9's code:
+  `test_library_page.py::test_library_track_list_refreshes_after_a_tag_run`
+  (`waitUntil timed out in 2000 milliseconds`). See §4.
 
 ## 2. Where we are
 
@@ -42,6 +46,19 @@ Evidence for each is in HISTORY §201.
   and this file.
 
 ## 4. Key context
+
+- **New CI failure, undiagnosed:**
+  `test_library_track_list_refreshes_after_a_tag_run` timed out on CI
+  `37932732255` (Python 3.14.7 under coverage). Locally it passes 10/10
+  alone offscreen, its module offscreen, and both Cocoa full runs. S9
+  touched no Library or tagging code. Lead, UNVERIFIED:
+  `LibraryPage.refresh_tracks()` starts a worker per call, and
+  `_on_tracks_loaded` checks the playlist id, not recency. So an
+  earlier load still in flight could land after the post-tag refresh
+  and repaint pre-tag statuses. If so, it's a product bug (a stale
+  response wins). Test first: hold the first load's fake call and
+  release it after the second. No row owns it yet; it's listed in
+  CLAUDE.md → Open issues.
 
 - **The Cocoa theme flip-flop was window activation.** Whether a test
   window becomes active is timing-dependent; a second pytest process

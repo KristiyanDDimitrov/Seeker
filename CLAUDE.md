@@ -500,6 +500,11 @@ Genuinely open only, checked against every CI run on record (187, to
   quit from the tray), unreproduced. Candidate: the thread pool's
   destructor (above). Next try: quit while a scan, fingerprint or
   search worker is running. [§125](docs/history/121-150.md#125)
+- **`test_library_track_list_refreshes_after_a_tag_run` timed out
+  once on CI** (`37932732255`); it does not reproduce locally. Lead
+  (UNVERIFIED): `LibraryPage.refresh_tracks()` keeps no recency guard,
+  so an earlier load landing last repaints stale statuses.
+  [§201](docs/history/181-210.md#201)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
