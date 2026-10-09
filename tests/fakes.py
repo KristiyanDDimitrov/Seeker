@@ -509,6 +509,11 @@ class FakeDownloadService:
         self._search_manual_error: Exception | None = None
         self.search_manual_calls: list[tuple[str, str]] = []
         self.download_manual_calls: list[tuple] = []
+        # When set, download_manual() records its call and then holds
+        # the worker until the test sets the event: the window in which
+        # the call record exists but the page's finish handler has not
+        # run yet.
+        self._download_manual_gate: threading.Event | None = None
         # None means "no resolvable destination" — the roadmap item 6
         # §3 dead-end case the DestinationDialog exists to close.
         self._resolved_destination = resolved_destination
@@ -564,6 +569,8 @@ class FakeDownloadService:
             files=None,
     ) -> dict:
         self.download_manual_calls.append((artist, title, chosen, files))
+        if self._download_manual_gate is not None:
+            self._download_manual_gate.wait()
         if self._download_manual_error is not None:
             raise self._download_manual_error
         return self._download_manual_result

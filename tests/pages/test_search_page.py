@@ -3,6 +3,8 @@ verbatim out of test_ui_smoke.py (round 8, §9.3.4, session S11.2) — the
 mirror of §9.3.1's own Search extraction (S6).
 """
 
+import threading
+
 from PySide6.QtWidgets import QPushButton
 
 from fakes import FakeApplication
@@ -132,20 +134,30 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
         window._search_page.download_best_button.isEnabled, timeout=2000,
     )
 
-    window._search_page.download_best_button.click()
+    # The fake records its call on the worker thread before the finish
+    # handler runs on the main thread. Holding it there makes that gap
+    # certain, so only a wait on what the handler writes passes.
+    gate = threading.Event()
+    application.download_service._download_manual_gate = gate
+    try:
+        window._search_page.download_best_button.click()
 
-    qtbot.waitUntil(
-        lambda: bool(application.download_service.download_manual_calls),
-        timeout=2000,
-    )
-    artist, title, chosen, files = (
-        application.download_service.download_manual_calls[0]
-    )
-    assert (artist, title) == ("Dom Dolla", "Rhyme Dust")
-    assert chosen is None
-    # Roadmap item 82 — reuses the already-fetched results, no second
-    # real 20-45s network search.
-    assert files == [file]
+        qtbot.waitUntil(
+            lambda: bool(application.download_service.download_manual_calls),
+            timeout=2000,
+        )
+        artist, title, chosen, files = (
+            application.download_service.download_manual_calls[0]
+        )
+        assert (artist, title) == ("Dom Dolla", "Rhyme Dust")
+        assert chosen is None
+        # Reuses the already-fetched results, no second real 20-45s
+        # network search.
+        assert files == [file]
+        assert "Requested from peer1" not in window._search_page.notice.text()
+    finally:
+        gate.set()
+
     qtbot.waitUntil(
         lambda: "Requested from peer1" in window._search_page.notice.text(),
         timeout=2000,
