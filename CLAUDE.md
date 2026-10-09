@@ -313,10 +313,13 @@ investigation; `docs/history/README.md` resolves any `§N`.
   runs `search_and_request`, `download_playlist`'s own per-track step,
   over loaded playlists with a destination: ≤ 50 searches, least
   recently searched first (`tracks.last_searched_at`, stamped before
-  every search). An outage or a pause stops it and records no
-  `last_sweep_at`. Every search skips a (peer, file) that went
-  `unavailable` for that track within 30 days.
-  [§202](docs/history/181-210.md#202)
+  every search). An outage, a pause or its `stop` event stops it and
+  records no `last_sweep_at`. Every search skips a (peer, file) that
+  went `unavailable` for that track within 30 days. The GUI runs it
+  from `ui/sweep_scheduler.py`: after the first poll that reaches
+  slskd, then hourly, one at a time (`busy_actions`), stopped on quit
+  (the pool's destructor would wait out a ~40 min sweep).
+  [§202](docs/history/181-210.md#202), [§203](docs/history/181-210.md#203)
 - **Every slskd URL path segment is `quote(…, safe="")`d:** a
   username comes from a remote peer, and a raw `?`, `#` or `../`
   reaches another endpoint. [§146](docs/history/121-150.md#146)

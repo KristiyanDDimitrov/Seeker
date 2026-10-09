@@ -44,7 +44,7 @@ after Kris's explicit yes.
 | ☑ S9 | Code health: the two radon-D functions; the two undiagnosed tests | §9 | ~120 K | After §9.2 |
 | **Phase C — Features** | | | | |
 | ☑ S10 | Daily sweep I: config, service, `sweep_due`, CLI | §10 | ~120 K | After §10.3 |
-| ☐ S11 | Daily sweep II: Settings toggle, scheduler, tray summary | §11 | ~110 K | After §11.2 |
+| ☑ S11 | Daily sweep II: Settings toggle, scheduler, tray summary | §11 | ~110 K | After §11.2 |
 | ☐ S12 | X2: Retry and Cancel on Downloads (live cancel needs Kris's yes) | §12 | ~120 K | After Retry |
 | ☐ S13 | X1: Clean up leftover slskd downloads | §13 | ~110 K | After the listing (no delete) |
 | ☐ S14 | Automatic app-update check (R11 §40) | §14 | ~90 K | None |
