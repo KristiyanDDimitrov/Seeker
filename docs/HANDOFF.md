@@ -22,7 +22,10 @@ nine fields below follow the contract in
   which now pass in a full run but still fail when `test_theme.py`
   runs alone. S9 owns both. `mypy --strict src/` clean, 138 files;
   `ruff check src tests tools` 0.
-- **CI:** CI_PLACEHOLDER
+- **CI:** `e9bee33`'s run `37926496543` green: `check` `2041 passed,
+  29 skipped`, coverage 94.57 % (floor 92 %); the new `audit` job, no
+  known vulnerabilities. Dependabot's runs on the new
+  `docker-compose` entry succeeded.
 
 ## 2. Where we are
 
