@@ -16,7 +16,9 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2152 passed, 1 skipped`, 0 failed (+12
   tests). `mypy --strict src/` clean, 141 files; `ruff check src tests
   tools` 0; `radon cc -n D` nothing.
-- **CI:** see §3's last line for the close-out's run.
+- **CI:** `bb827d8`'s run `37966868374` green: `check` `2124 passed,
+  29 skipped`, coverage 94.72 % (floor 92 %); `audit`, no known
+  vulnerabilities.
 
 ## 2. Where we are
 
@@ -42,7 +44,7 @@ Evidence for each is in HISTORY §205.
   one at a time, outcome in the notice.
 - Close-out: HISTORY §205, CLAUDE.md (slskd cancel fact),
   `ui/CLAUDE.md`, the plan's ☑, this file, a comment's citation fixed
-  (§205 → §204 in `client.py`). CI: recorded in the push commit.
+  (§205 → §204 in `client.py`). CI run `37966868374` green (§1).
 
 ## 4. Key context for S13
 
