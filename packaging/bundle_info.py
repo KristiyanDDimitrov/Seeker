@@ -8,7 +8,9 @@ copyright LICENSE's own line.
 import tomllib
 from pathlib import Path
 
-BUNDLE_IDENTIFIER = "com.seeker.app"
+# Decided before the first release and never changed after it: the
+# login item, notification permission and Launch Services key on it.
+BUNDLE_IDENTIFIER = "io.github.kristiyanddimitrov.seeker"
 
 # The highest `minos` among the binaries the bundle ships: PySide6's
 # and shiboken6's own libraries declare 15.0 (measured with `otool -l`

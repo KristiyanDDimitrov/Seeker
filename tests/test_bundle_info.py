@@ -41,3 +41,11 @@ def test_bundle_declares_its_category_and_minimum_system():
 
     assert plist["LSApplicationCategoryType"] == "public.app-category.music"
     assert plist["LSMinimumSystemVersion"] == "15.0"
+
+
+def test_bundle_identifier_is_the_release_one():
+    """The login item, notification permission and Launch Services all
+    key on it, so it never changes after the first release."""
+    assert _load_bundle_info().BUNDLE_IDENTIFIER == (
+        "io.github.kristiyanddimitrov.seeker"
+    )

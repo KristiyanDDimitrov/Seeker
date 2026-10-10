@@ -643,6 +643,9 @@ R11 §41 unchanged, plus these checks from this round:
   on the real config and waits a day;
 - Retry, Cancel and Clean up on the real slskd (§12, §13), with Kris
   at the keyboard;
+- "Start Seeker at login" turned on again once on the packaged app:
+  the bundle identifier changed in S16, so the old registration is
+  for `com.seeker.app` (§16);
 - the carried live checks in R11's session plan → "Waiting on Kris".
 
 Any failure becomes a fix row before S18.
