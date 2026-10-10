@@ -11,47 +11,45 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S15 part-three close-out (HISTORY §212). Tree clean
-  apart from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2238 passed, 1 skipped`, 0 failed (+4
+- **HEAD:** the pre-S16 clean-up's close-out (HISTORY §213). Tree
+  clean apart from the untracked `Claude outputs/`.
+- **Local (Cocoa):** pytest `2240 passed, 1 skipped`, 0 failed (+2
   tests). The X9 Pro was mounted, so only the stress test skipped
   (CI skips 29). `mypy --strict src/` clean, 145 files; `ruff check
   src tests tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI: green on the first attempt.** `6e2f232`'s run `38044339287`:
-  `check` and `audit` both passed, the Library flake included.
+- **CI:** see the follow-up commit for the close-out's run.
 
 ## 2. Where we are
 
-**Round 12 S15 is done** (☑). Part three read the rest of the sweep
-and fixed three small findings. **Next: S16, release engineering**
-(BRIEF §16, R11 §39; the bundle ID is decided). The Library flake
-(§6) may deserve a row of its own first; that is Kris's call.
+**S15 and the pre-release clean-up (S15b, §213) are done.** Nothing
+from S15's handoff blocks release: both §6 blockers are closed.
+**Next: S16, release engineering** (BRIEF §16, R11 §39; the bundle ID
+is decided).
 
-## 3. Session report (S15, part three)
+## 3. Session report (S15b)
 
-Evidence for each is in HISTORY §212.
-- `e7d8c66` §15.7: `ElidedTextDelegate`'s size hint counted a lamp
-  and label 6 px narrower than its paint, so a column sized to its
-  hint elided its secondary text (Library's "Get from Spo…" at 1280).
-  `_primary_width` now serves both.
-- `18af077` §15.8: Sharing's counts read "3,180 files", "1
-  directory" (`help_text.share_counts`).
-- `1e2c459` §15.9: Library's header reads "2 of its 8 tracks are in
-  your library" once the list loads (`help_text.library_acting_on`).
-- Not a bug: Downloads' "Calculating…" is whole (78 px of 78).
+Evidence for each is in HISTORY §213.
+- `8d51517`: the Library flake's real cause. A tag run never reloaded
+  Library's track list (`_render_tag_result` never called
+  `refresh_track_table`); the test passed only when a second initial
+  load landed after its mutation. It now drains those loads first and
+  failed 3/3 on HEAD.
+- `caaf9ca`: the old lead, real but not the cause. Only the latest
+  track-list load renders (`_tracks_load`).
+- `314a14f`: `conftest.py` refuses any `docker` spawn for the whole
+  session and fails the test that tried. The current suite reaches
+  docker nowhere.
 
 ## 4. Key context for S16
 
-- **Every harness screen has now been read** in both themes and at
-  both sizes. `settings-library-light-1280x1300.png` in
-  `tools/.screens/` is stale (the harness writes 76 images).
-- **Seen, not fixed (HISTORY §211 and §212 have detail):** Sharing
-  offers "Add to my SoulSeek share" for a missing folder (touches the
-  recreate path); History's stored "MP3 320kbps"; Search's "—" means
-  the filename doesn't name the artist, yet `rank_candidates` sorts by
-  quality alone, so such a file can top the list; Settings →
-  Connections' cards each align their own label column; Support's
-  tight bullets; the harness's unconfigured Connections tab.
+- **Kris's slskd container no longer exists** (`docker ps -a` is empty
+  in both contexts; removed outside Seeker). S17's acceptance needs a
+  bring-up first: Settings → Connections, by Kris.
+- **Seen, not fixed (HISTORY §211 and §212):** Sharing offers "Add to
+  my SoulSeek share" for a missing folder; History's stored "MP3
+  320kbps"; Search's "—" scores; Settings → Connections' label
+  columns; Support's tight bullets; the harness's unconfigured
+  Connections tab. Each is a question in §9, none a release blocker.
 - **Carried:** Sharing's 20 s per-row rebuild; R11's carried list
   (`git show 1b415a4:docs/HANDOFF.md` §9); `uv build --wheel` picks up
   `_build_info_generated.py` (S16). Run the full suite in the
@@ -59,30 +57,18 @@ Evidence for each is in HISTORY §212.
 
 ## 5. Decisions made
 
-- **A size hint is what the paint needs** (§15.7). One measure for
-  both, never two that agree by luck.
-- **A header counts what its list shows** (§15.9).
-- **Skills:** `frontend-design` was not loaded; §210 found only its
-  self-critique applies to Qt.
+- **A flake's test fails on HEAD deterministically first:** it drains
+  what it does not test rather than relying on timing (§213).
+- **Refuse docker at `Popen`, not at `bring_up_slskd`:** read-only
+  probes too, so no outcome depends on the machine running Docker.
 
 ## 6. Blockers
 
-**The Library flake** (`test_library_track_list_refreshes_after_a_tag_run`)
-failed 3 of the 6 CI attempts before this session, and never locally.
-Its lead: `LibraryPage.refresh_tracks()` drops a load for another
-playlist but not an older load for the same one, so an earlier load
-landing last repaints stale statuses (UNVERIFIED). A fix is
-test-first and its own commit. §15.9 touched `_on_tracks_loaded` but
-not that ordering.
-
-**Kris's slskd container** is still bound to deleted pytest temp
-directories (HISTORY §208 → "Observed"). Sessions must not restart or
-recreate it; Kris does. A later row should find which test reached
-the real `bring_up_slskd` and add a guard.
+None.
 
 ## 7. Files in progress
 
-None uncommitted. S15 is closed.
+None uncommitted.
 
 ## 8. Waiting on Kris
 
@@ -93,8 +79,9 @@ None uncommitted. S15 is closed.
 - **From S15 part one:** the tooltip and the Runner-up wording ("scored
   64.0, from peer").
 - **From S14:** turn on Settings → General → Updates and relaunch.
-- **From S13:** recreate slskd (§6), then the first real cleanup,
-  yours to click: Downloads → "Clean up leftover files…".
+- **From S13 and §213:** bring slskd up again (its container is
+  gone), then the first real cleanup, yours to click: Downloads →
+  "Clean up leftover files…".
 - **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
   §12b's "Code's calls"; the first live Cancel, at the keyboard; the
   real `tracks.last_searched_at` migration runs on the next launch.

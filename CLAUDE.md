@@ -412,6 +412,12 @@ Code documents loading it when a session reads files in `ui/`
   never does. Never wait on `hasFocus()`. An active window hands a
   table keyboard focus, and Fusion tints its current item: sample a
   row's ground from a `NoFocus` table. [§201](docs/history/181-210.md#201)
+- **No test runs the real `docker`.** `conftest.py` refuses any
+  `docker` spawn at `Popen` for the whole session (as a missing
+  executable) and fails the test that tried, a leaked worker's too;
+  fake `detect_docker_state`, `bring_up_slskd` or `subprocess.run`.
+  A run once recreated Kris's slskd container.
+  [§213](docs/history/211-240.md#213)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
@@ -538,13 +544,6 @@ Genuinely open only, checked against every CI run on record (187, to
   quit from the tray), unreproduced. Candidate: the thread pool's
   destructor (above). Next try: quit while a scan, fingerprint or
   search worker is running. [§125](docs/history/121-150.md#125)
-- **`test_library_track_list_refreshes_after_a_tag_run` timed out
-  on CI** (`37932732255`; `37977966814`'s first attempt, a
-  commit that touched no `ui/` code; both attempts of `37994812022`); it does not reproduce locally,
-  offscreen included. Lead (UNVERIFIED): `LibraryPage.refresh_tracks()`
-  keeps no recency guard, so an earlier load landing last repaints
-  stale statuses. [§201](docs/history/181-210.md#201),
-  [§207](docs/history/181-210.md#207)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
