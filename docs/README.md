@@ -15,6 +15,10 @@ Every document in the repository, then where to start.
 - [`packaging.md`](packaging.md) — building the `.app`, the `.dmg` and
   the Windows installer; signing; what was verified (Windows and Linux:
   written, never verified on real hardware).
+- [`../CHANGELOG.md`](../CHANGELOG.md) — what each release added or
+  changed, in Keep a Changelog format.
+- [`../RELEASING.md`](../RELEASING.md) — cutting a release: build,
+  verify, tag, publish, check for updates, roll back.
 - [`../SECURITY.md`](../SECURITY.md) — reporting a vulnerability.
 - [`../CLAUDE.md`](../CLAUDE.md) — architecture, conventions, standing
   facts and gotchas, open issues. Present tense only.
