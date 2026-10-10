@@ -15,6 +15,7 @@ import httpx
 import platformdirs
 
 from seeker.errors import SeekerError
+from seeker.models.slskd_start import SlskdDataFolderState
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,23 @@ class SlskdBringUpError(SeekerError):
 class SlskdStartRefusedError(SeekerError):
     """Seeker will not start slskd from here; the message says why and
     what the user can do instead."""
+
+
+class SlskdSetupNeededError(SlskdStartRefusedError):
+    """A refusal Settings → Connections' Start slskd form resolves: a
+    login, a folder to share or a data folder Seeker hasn't got."""
+
+
+def slskd_data_folder_state(data_dir: str) -> SlskdDataFolderState:
+    folder = Path(data_dir)
+
+    if not folder.is_dir():
+        return SlskdDataFolderState.MISSING
+
+    if (folder / "slskd.yml").is_file():
+        return SlskdDataFolderState.HOLDS_STATE
+
+    return SlskdDataFolderState.FRESH
 
 
 def bring_up_slskd(

@@ -18,9 +18,11 @@ from seeker.config_store import (
     save_config,
 )
 from seeker.models.library_location import LibraryLocation
+from seeker.models.slskd_start import SlskdDataFolderState
 from seeker.soulseek.docker_setup import (
     DockerState,
     SlskdBringUpError,
+    SlskdSetupNeededError,
     SlskdStartRefusedError,
 )
 from seeker.soulseek.sharing_service import ContainerPresence
@@ -1343,6 +1345,7 @@ def test_start_slskd_uses_a_chosen_data_folder_over_the_live_one(
     calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
     _fake_live_slskd_mounts(monkeypatch, {"/app": str(tmp_path / "live")})
     chosen = tmp_path / "chosen"
+    chosen.mkdir()
 
     result = app.start_slskd(
         "netuser", "netpass", "/music", persist=False, data_dir=str(chosen),
@@ -1365,6 +1368,131 @@ def test_start_slskd_refuses_a_relative_data_folder(tmp_path, monkeypatch):
         )
 
     assert calls == []
+
+
+def test_start_slskd_never_creates_a_chosen_data_folder(tmp_path, monkeypatch):
+    # A chosen folder on an unplugged drive would otherwise become an
+    # empty one under /Volumes, and slskd would start with no state.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    missing = tmp_path / "Unplugged" / "slskd-data"
+
+    with pytest.raises(SlskdSetupNeededError, match="isn't there"):
+        app.start_slskd(
+            "netuser", "netpass", "/music",
+            persist=True, data_dir=str(missing),
+        )
+
+    assert not missing.exists()
+    assert calls == []
+
+
+def test_start_slskd_creates_the_default_data_folder_when_named(
+        tmp_path, monkeypatch,
+):
+    # The form always names its folder; on a fresh install the default
+    # one doesn't exist until the first bring-up.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    defaults = app.slskd_start_defaults()
+
+    app.start_slskd(
+        "netuser", "netpass", "/music",
+        persist=True, data_dir=defaults.data_dir,
+    )
+
+    assert defaults.data_dir_state is SlskdDataFolderState.FRESH
+    assert (tmp_path / "slskd-data").is_dir()
+    assert calls[0]["slskd_data_dir"] == str(tmp_path / "slskd-data")
+
+
+def test_restart_refusals_settings_can_resolve_are_setup_needed(
+        tmp_path, monkeypatch,
+):
+    app, _ = _deleted_container(tmp_path, monkeypatch)
+
+    with pytest.raises(SlskdSetupNeededError):
+        app.restart_slskd()
+
+    present, _ = _restartable_slskd(tmp_path, monkeypatch, self_managed=False)
+
+    with pytest.raises(SlskdSetupNeededError):
+        present.restart_slskd()
+
+    present.persist_soulseek_config("http://127.0.0.1:5030", "k", "/dl", "", "")
+    monkeypatch.setattr(
+        "seeker.soulseek.sharing_service.SharingService.is_self_managed",
+        lambda self: True,
+    )
+
+    with pytest.raises(SlskdSetupNeededError, match="login"):
+        present.restart_slskd()
+
+
+def test_a_docker_refusal_is_not_one_settings_can_resolve(
+        tmp_path, monkeypatch,
+):
+    app, _ = _restartable_slskd(
+        tmp_path, monkeypatch, presence=ContainerPresence.UNKNOWN,
+    )
+
+    with pytest.raises(SlskdStartRefusedError) as refusal:
+        app.restart_slskd()
+
+    assert not isinstance(refusal.value, SlskdSetupNeededError)
+
+
+def test_start_defaults_prefer_the_live_container_then_the_record(
+        tmp_path, monkeypatch,
+):
+    app, _ = _restartable_slskd(tmp_path, monkeypatch)
+    app.update_settings(
+        slskd_share_path="/recorded/share",
+        slskd_data_dir="/recorded/slskd-data",
+    )
+
+    defaults = app.slskd_start_defaults()
+
+    assert defaults.username == "netuser"
+    assert defaults.password == "netpass"
+    assert defaults.share_path == "/Volumes/Music/Shared"
+    assert defaults.data_dir == str(tmp_path / "slskd-data")
+
+    _fake_live_slskd_mounts(monkeypatch, {})
+
+    defaults = app.slskd_start_defaults()
+
+    assert defaults.share_path == "/recorded/share"
+    assert defaults.data_dir == "/recorded/slskd-data"
+    assert defaults.data_dir_state is SlskdDataFolderState.MISSING
+
+
+def test_start_defaults_with_nothing_saved_offer_the_default_folder(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    defaults = app.slskd_start_defaults()
+
+    assert (defaults.username, defaults.password) == ("", "")
+    assert defaults.share_path is None
+    assert defaults.data_dir == str(tmp_path / "slskd-data")
+
+
+def test_a_data_folder_state_says_what_slskd_keeps(tmp_path):
+    from seeker.soulseek.docker_setup import slskd_data_folder_state
+
+    assert slskd_data_folder_state(str(tmp_path / "gone")) is (
+        SlskdDataFolderState.MISSING
+    )
+    assert slskd_data_folder_state(str(tmp_path)) is SlskdDataFolderState.FRESH
+
+    (tmp_path / "slskd.yml").write_text("soulseek: {}\n")
+
+    assert slskd_data_folder_state(str(tmp_path)) is (
+        SlskdDataFolderState.HOLDS_STATE
+    )
 
 
 def test_leftover_service_reads_the_download_folder_at_call_time(

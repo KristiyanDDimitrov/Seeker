@@ -46,11 +46,16 @@ from seeker.library.service import LibraryService
 from seeker.models.data_locations import DataLocations
 from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
-from seeker.models.slskd_start import SlskdStartResult
+from seeker.models.slskd_start import (
+    SlskdDataFolderState,
+    SlskdStartDefaults,
+    SlskdStartResult,
+)
 from seeker.soulseek.client import SoulseekClient
 from seeker.soulseek.docker_setup import (
     SLSKD_LOCAL_BASE_URL,
     DockerState,
+    SlskdSetupNeededError,
     SlskdStartRefusedError,
     bring_up_slskd,
     compose_file_path,
@@ -58,6 +63,7 @@ from seeker.soulseek.docker_setup import (
     ensure_full_path_environment,
     generate_api_key,
     slskd_data_dir,
+    slskd_data_folder_state,
 )
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.leftovers import LeftoverService
@@ -326,12 +332,24 @@ class Application:
         saved key and login and the live container's data directory,
         so it calls `docker_setup.bring_up_slskd` directly.
 
-        `data_dir` is the folder mounted as /app; without one, an
-        existing container keeps its own, else the per-user default.
+        `data_dir` is the folder mounted as /app, and must already
+        exist unless it is the per-user default; without one, an
+        existing container keeps its own, else that default.
         """
         if data_dir is not None and not Path(data_dir).is_absolute():
             raise SlskdStartRefusedError(
                 f"slskd's data folder must be a full path, not {data_dir}."
+            )
+
+        # Never created: on an unplugged drive it would become an empty
+        # folder under /Volumes, and slskd would start with no state.
+        if data_dir is not None and (
+                self.slskd_data_folder_state(data_dir)
+                is SlskdDataFolderState.MISSING
+        ):
+            raise SlskdSetupNeededError(
+                f"{data_dir} isn't there, so Seeker won't start slskd with "
+                "it. Connect the drive, or choose another data folder."
             )
 
         api_key = generate_api_key()
@@ -412,7 +430,7 @@ class Application:
         password = self._config_store.slskd_password
 
         if not username or not password:
-            raise SlskdStartRefusedError(
+            raise SlskdSetupNeededError(
                 "Seeker has no saved SoulSeek login. Enter it in "
                 "Settings → Connections."
             )
@@ -428,7 +446,7 @@ class Application:
         )
 
         if share_path is None:
-            raise SlskdStartRefusedError(
+            raise SlskdSetupNeededError(
                 "Seeker can't find the slskd container it set up, so it "
                 "won't guess what to share. Start slskd where it runs, or "
                 "set it up again in Settings → Connections."
@@ -456,7 +474,7 @@ class Application:
         ]
 
         if missing:
-            raise SlskdStartRefusedError(
+            raise SlskdSetupNeededError(
                 "slskd's container is gone, and Seeker hasn't saved "
                 f"{_join_with_and(missing)} to recreate it with. Set "
                 f"{'them' if len(missing) > 1 else 'it'} in "
@@ -468,7 +486,7 @@ class Application:
         gone = [folder for folder in folders if not Path(folder).is_dir()]
 
         if gone:
-            raise SlskdStartRefusedError(
+            raise SlskdSetupNeededError(
                 f"{_join_with_and(gone)} "
                 f"{'aren' if len(gone) > 1 else 'isn'}'t there, so Seeker "
                 "won't recreate slskd. Connect the drive, or choose "
@@ -476,6 +494,41 @@ class Application:
             )
 
         return folders
+
+    def slskd_start_defaults(self) -> SlskdStartDefaults:
+        """What Settings' Start slskd form opens with: the live
+        container's folders, else the recorded ones, and the saved
+        login. Asks Docker, so callers run it on a worker."""
+        settings = self._config_store
+        data_dir = (
+            self.sharing_service.current_data_dir()
+            or settings.slskd_data_dir
+            or str(slskd_data_dir())
+        )
+
+        return SlskdStartDefaults(
+            username=settings.slskd_username or "",
+            password=settings.slskd_password or "",
+            share_path=(
+                self.sharing_service.current_share_path()
+                or settings.slskd_share_path
+            ),
+            data_dir=data_dir,
+            data_dir_state=self.slskd_data_folder_state(data_dir),
+        )
+
+    def slskd_data_folder_state(self, data_dir: str) -> SlskdDataFolderState:
+        """What slskd would find in `data_dir`. The per-user default is
+        created at the first bring-up, so a missing one is fresh."""
+        state = slskd_data_folder_state(data_dir)
+
+        if (
+                state is SlskdDataFolderState.MISSING
+                and Path(data_dir) == slskd_data_dir()
+        ):
+            return SlskdDataFolderState.FRESH
+
+        return state
 
     def _record_slskd_bring_up(self, share_path: str, data_dir: str) -> None:
         self.update_settings(slskd_share_path=share_path, slskd_data_dir=data_dir)
