@@ -26,7 +26,9 @@ nine fields below follow the contract in
 
 **S16b is done** (SESSION-PLAN): the CI flake fixed first, every
 licence text in the bundle, and the GPL-3.0 statement Kris approved.
-**Next: S17, release-candidate acceptance (Kris and Code).**
+**Next: S16c** (added 2026-10-10 at Kris's request): bring slskd back
+when its container is gone. BRIEF §16c holds the read-only diagnosis.
+Then S17, release-candidate acceptance (Kris and Code).
 
 ## 3. Session report (S16b)
 
@@ -50,8 +52,10 @@ Evidence for each is in HISTORY §215.
 - **BRIEF §17** is the acceptance list; R11's real-desktop checks
   (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
   is the runbook: tag locally, then build.
-- **Kris's slskd container no longer exists;** S17 needs a bring-up
-  first (Settings → Connections, by Kris).
+- **Kris's slskd container no longer exists, and the app can't bring
+  it back** ("Start slskd" refuses without a live container; the
+  saved SoulSeek login is `null`; the old data folder is the repo's
+  `slskd-data/`). S16c fixes that, and Kris then does the bring-up.
 - **Gatekeeper's Open Anyway flow is UNVERIFIED** until S17 tries it
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second

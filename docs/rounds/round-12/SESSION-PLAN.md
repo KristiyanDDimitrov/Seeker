@@ -55,6 +55,7 @@ after Kris's explicit yes.
 | **Phase E — Release (carried)** | | | | |
 | ☑ S16 | Release engineering (R11 §39; bundle ID decided) — §214; S-04 split to S16b | §16 | ~110 K | After R11 §39.2 |
 | ☑ S16b | **[ASK]** S-04: licence texts in the bundle (measured in §214); Kris approves the GPL wording for the README and release notes — §215 (GPL-3.0, approved; the CI flake fixed first) | AUDIT S-04 | ~70 K | After the bundled texts (before the wording) |
+| ☐ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☐ S17 | Release-candidate acceptance (**Kris and Code**) | §17 | ~70 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
@@ -85,6 +86,9 @@ after Kris's explicit yes.
   once.
 - **Phase E last**, acceptance (S17) before publishing (S18), as in
   round 11.
+- **S16c, added 2026-10-10, before S17:** Kris deleted the slskd
+  container and the app could not bring it back; S17's acceptance
+  starts with a bring-up.
 
 ---
 
@@ -149,6 +153,8 @@ BRIEF §0.11.
       want to, after seeing it on screen.
 - [ ] **S12:** the first live slskd Cancel, with you at the keyboard.
 - [ ] **S13:** the first real leftover-file cleanup is yours to click.
+- [ ] **S16c:** the first real bring-up of a deleted container, at
+      the keyboard, choosing which slskd data folder to keep.
 - [ ] **S18:** the exact `git tag` and `gh release create` commands and
       the release notes.
 

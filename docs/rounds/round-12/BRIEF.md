@@ -631,6 +631,61 @@ R11 §39 unchanged, with §39.3 answered: the bundle identifier is
 re-enables "Start Seeker at login" once on the packaged app. Put that
 on S17's checklist.
 
+## §16c — Bring slskd back when its container is gone (S16c)
+
+**Kris, 2026-10-10:** "I recently deleted the slskd container within
+Docker and now I can't seem to bring it back up from the app." Added
+as a row before S17, which needs slskd up.
+
+**Measured at planning (read-only, nothing started):** Docker 29.8.1
+is running; no `slskd` container exists.
+- **"Start slskd" refuses by design.** `Application.restart_slskd()`
+  reads the share folder from the *live* container
+  (`sharing_service.current_share_path()`), so a deleted container
+  gives `SlskdStartRefusedError` ("can't find the slskd container it
+  set up"). It also needs the saved SoulSeek network login.
+- **The only working path is hidden.** Settings → Connections →
+  "Update SoulSeek credentials" recreates a missing container
+  (retype the login, then a picker asks which location to share).
+  Nothing says it is the way back, and it is UNVERIFIED end to end
+  against a deleted container.
+- **Kris's config can't drive a recreate:** `slskd_username` and
+  `slskd_password` are `null` (an install from before Seeker saved
+  them); `slskd_download_dir` is the *relative*
+  `./slskd-data/downloads`.
+- **The old container's data is not where a recreate would look.**
+  Its `/app` was the repository's `slskd-data/` (`slskd.yml`, `data/`,
+  17 entries in `downloads/`). A recreate today uses
+  `slskd_data_dir()` (the app-data `slskd-data/`, which holds only
+  the per-user Compose file), so slskd's state and those downloads
+  would be left behind.
+
+**The work, one commit each, a failing test first** (fake
+`subprocess.run`/`detect_docker_state`; no test runs the real
+`docker`):
+1. **Every bring-up Seeker makes records what a recreate needs:** the
+   share path and the data folder, both absolute, in `config.json`
+   (through `write_text_locked`). That means `start_slskd`, and
+   Sharing's recreate too. The download folder is saved absolute from
+   now on. The relative one is a bug: a `.app`'s cwd is not the repo.
+2. **`restart_slskd()` recreates a missing container from what was
+   recorded**, still never guessing: with Docker up and no container,
+   it uses the saved share, data folder and login. It refuses only
+   for what is actually missing, and says which.
+3. **A visible way back in the UI.** When "Start slskd" is refused
+   for missing facts, the notice offers Settings → Connections, where
+   a "Start slskd" form (or the existing section, renamed and made
+   clear) shows the login (saved values prefilled), the folder to
+   share (the saved one first) and the data folder (saved, else the
+   default, with "Choose…" so Kris can point it at the old one). The
+   wording says what happens to slskd's state.
+
+**Code's calls:** the form's exact shape; whether a found data folder
+(one with a `slskd.yml`) is offered by name. **Kris, live, at the
+keyboard (never Code):** the first real bring-up, choosing the old
+`slskd-data/` or a fresh one. Never start, stop or recreate the
+container from a session. Screenshots per §0.13.
+
 ## §17 — Release-candidate acceptance (S17) — Kris and Code
 
 R11 §41 unchanged, plus these checks from this round:
