@@ -336,6 +336,7 @@ class Application:
             web_password=web_password,
             library_location_path=share_path,
         )
+        self._record_slskd_bring_up(share_path, str(data_dir))
 
         result = SlskdStartResult(
             api_key=api_key, download_dir=str(data_dir / "downloads"),
@@ -396,6 +397,9 @@ class Application:
             )
 
         return self.start_slskd(username, password, share_path, persist=True)
+
+    def _record_slskd_bring_up(self, share_path: str, data_dir: str) -> None:
+        self.update_settings(slskd_share_path=share_path, slskd_data_dir=data_dir)
 
     def ensure_slskd_web_credentials(self) -> tuple[str, str]:
         """Return the slskd WEB UI login, generating and persisting it
@@ -818,6 +822,7 @@ class Application:
                 self.database,
                 LibraryLocationRepository(),
                 get_config=lambda: self._config_store,
+                record_bring_up=self._record_slskd_bring_up,
             )
 
         return self._sharing_service

@@ -193,6 +193,7 @@ class SharingService:
             compose_path: Path | None = None,
             container_name: str = SLSKD_CONTAINER_NAME,
             get_config: Callable[[], SeekerConfig] | None = None,
+            record_bring_up: Callable[[str, str], None] | None = None,
     ) -> None:
         self._soulseek_client = soulseek_client
         self.database = database
@@ -209,6 +210,9 @@ class SharingService:
         # effect on the very next add_location_to_share call, no
         # restart or service-reconstruction needed.
         self._get_config = get_config or SeekerConfig
+        # Saves (share path, data dir) after a successful recreate, so a
+        # later one can work without a container to read them from.
+        self._record_bring_up = record_bring_up or (lambda share, data: None)
 
     @property
     def soulseek(self) -> SoulseekClient:
@@ -376,6 +380,7 @@ class SharingService:
             self._roll_back(originals, container.slskd_yml_path)
             raise
 
+        self._record_bring_up(container.share_host_path, container.data_dir)
         became_ready = self._wait_until_share_ready()
         status_after = self.get_status()
 

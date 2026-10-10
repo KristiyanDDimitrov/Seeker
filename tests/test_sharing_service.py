@@ -61,7 +61,11 @@ class FakeCompletedProcess:
 
 
 def make_service(
-        tmp_path, compose_path=None, soulseek_client=None, config=CONFIGURED,
+        tmp_path,
+        compose_path=None,
+        soulseek_client=None,
+        config=CONFIGURED,
+        record_bring_up=None,
 ):
     database = Database(tmp_path / "seeker.db")
     database.initialize()
@@ -74,6 +78,7 @@ def make_service(
         LibraryLocationRepository(),
         compose_path=compose_path or (tmp_path / "docker-compose.yml"),
         get_config=lambda: config,
+        record_bring_up=record_bring_up,
     )
 
 
@@ -994,7 +999,9 @@ _ROBUSTNESS_COMPOSE = (
 _ROBUSTNESS_SLSKD_YML = "shares:\n  directories:\n    - /shared/music\n"
 
 
-def _ready_share_scenario(tmp_path, monkeypatch, compose_up_returncode=0):
+def _ready_share_scenario(
+        tmp_path, monkeypatch, compose_up_returncode=0, record_bring_up=None,
+):
     compose_path = tmp_path / "docker-compose.yml"
     compose_path.write_text(_ROBUSTNESS_COMPOSE)
     data_dir = tmp_path / "slskd-data"
@@ -1002,7 +1009,9 @@ def _ready_share_scenario(tmp_path, monkeypatch, compose_up_returncode=0):
     slskd_yml_path = data_dir / "slskd.yml"
     slskd_yml_path.write_text(_ROBUSTNESS_SLSKD_YML)
 
-    service = make_service(tmp_path, compose_path=compose_path)
+    service = make_service(
+        tmp_path, compose_path=compose_path, record_bring_up=record_bring_up,
+    )
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
 
     def fake_get(url, headers=None, timeout=None, params=None):
@@ -1041,6 +1050,38 @@ def test_add_location_to_share_restores_both_files_when_recreate_fails(
 
     assert compose_path.read_text() == _ROBUSTNESS_COMPOSE
     assert slskd_yml_path.read_text() == _ROBUSTNESS_SLSKD_YML
+
+
+def test_add_location_to_share_records_what_it_recreated_with(
+        tmp_path, monkeypatch,
+):
+    recorded: list[tuple[str, str]] = []
+    service, location, _, _ = _ready_share_scenario(
+        tmp_path,
+        monkeypatch,
+        record_bring_up=lambda share, data: recorded.append((share, data)),
+    )
+
+    service.add_location_to_share(location, confirm=True)
+
+    assert recorded == [("/Volumes/Drive/Music", str(tmp_path / "slskd-data"))]
+
+
+def test_add_location_to_share_records_nothing_when_recreate_fails(
+        tmp_path, monkeypatch,
+):
+    recorded: list[tuple[str, str]] = []
+    service, location, _, _ = _ready_share_scenario(
+        tmp_path,
+        monkeypatch,
+        compose_up_returncode=1,
+        record_bring_up=lambda share, data: recorded.append((share, data)),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.add_location_to_share(location, confirm=True)
+
+    assert recorded == []
 
 
 def test_add_location_to_share_never_leaves_a_half_written_file(

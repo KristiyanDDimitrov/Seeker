@@ -29,6 +29,12 @@ class SeekerConfig:
     # and never rotated silently afterward. HISTORY §23, §116.
     slskd_web_username: str | None = None
     slskd_web_password: str | None = None
+    # The absolute host folders the last bring-up mounted as the music
+    # share and as /app (slskd.yml, its state, its downloads). Recorded
+    # by every bring-up Seeker makes, so a recreate after the container
+    # is deleted, when Docker can no longer report them, never guesses.
+    slskd_share_path: str | None = None
+    slskd_data_dir: str | None = None
     # None means "use matching.py's hardcoded default" — same
     # unset-means-unchanged discipline as every optional override in
     # this codebase (e.g. the BPM-range feature). Resolved per-call by

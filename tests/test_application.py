@@ -1,6 +1,7 @@
 import os
 import stat
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -695,6 +696,55 @@ def test_start_slskd_compose_failure_propagates_and_persists_nothing(
     after = load_config(resolve_config_path())
     assert after.slskd_api_key == before.slskd_api_key != "generated-key"
     assert after.slskd_username == before.slskd_username
+
+
+def test_start_slskd_records_the_share_and_data_folder_it_used(
+        tmp_path, monkeypatch,
+):
+    # A recreate after the container is deleted can't read them from
+    # Docker any more, so every bring-up saves them, the wizard's
+    # deferred-persist one included.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    app.start_slskd("netuser", "netpass", "/music", persist=False)
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_share_path == "/music"
+    assert reloaded.slskd_data_dir == str(tmp_path / "slskd-data")
+    assert Path(reloaded.slskd_data_dir).is_absolute()
+    assert app.settings.slskd_data_dir == reloaded.slskd_data_dir
+
+
+def test_start_slskd_records_nothing_when_compose_fails(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    def failing_bring_up(**kwargs):
+        raise SlskdBringUpError("docker compose up failed: boom")
+
+    monkeypatch.setattr("seeker.application.bring_up_slskd", failing_bring_up)
+
+    with pytest.raises(SlskdBringUpError):
+        app.start_slskd("netuser", "netpass", "/music", persist=True)
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_share_path is None
+    assert reloaded.slskd_data_dir is None
+
+
+def test_sharing_recreate_records_the_share_and_data_folder(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+
+    app.sharing_service._record_bring_up("/Volumes/Music", "/data/slskd")
+
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_share_path == "/Volumes/Music"
+    assert reloaded.slskd_data_dir == "/data/slskd"
 
 
 def test_persist_default_destination_updates_store_and_disk(
