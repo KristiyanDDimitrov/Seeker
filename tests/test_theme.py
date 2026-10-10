@@ -272,6 +272,27 @@ def test_a_label_that_reads_in_full_is_never_cut_for_width(qtbot):
     assert table.horizontalHeader().sectionSize(2) >= label_width
 
 
+def test_a_column_that_reads_whole_is_never_cut_for_width(qtbot):
+    # When the table is too narrow, the stretch column gives way
+    # instead of a value someone chooses between rows by.
+    table = QTableWidget(1, 3)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["Path", "Location", "Quality"])
+    table.setItem(0, 0, QTableWidgetItem("Techno/Nova Reyes - Voltage Drop.mp3"))
+    table.setItem(0, 1, QTableWidgetItem("Music"))
+    table.setItem(0, 2, QTableWidgetItem("MP3, 320 kbps"))
+    theme.apply_table_defaults(table)
+    layout = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2), whole=(2,))
+    table.resize(320, 200)
+    table.show()
+
+    theme.size_columns(table, layout, [])
+
+    assert table.horizontalHeader().sectionSize(2) >= (
+        table.sizeHintForColumn(2)
+    )
+
+
 def test_header_section_has_a_right_hand_divider():
     # Roadmap item 97 (B2.4) — a real regression from item 47:
     # QHeaderView::section's own `border: none` removed the native

@@ -85,6 +85,7 @@ _DUPLICATES_COLUMNS = theme.ColumnLayout(
     ),
     actions=_DuplicatesColumn.ACTIONS,
     paths=(_DuplicatesColumn.PATH,),
+    whole=(_DuplicatesColumn.QUALITY,),
 )
 
 

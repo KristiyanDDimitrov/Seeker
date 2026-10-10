@@ -505,6 +505,29 @@ def test_render_duplicate_groups_populates_table(qtbot):
     assert table.rowSpan(0, similarity) == 2
 
 
+def test_a_files_quality_reads_in_full_in_a_narrow_window(qtbot):
+    # Quality is what a person keeps a file by; the path elides first.
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.resize(960, 640)
+    window.show()
+    _switch_to_duplicates_tab(window)
+    group = make_duplicate_group()
+    for duplicate in group.files:
+        duplicate.local_file.relative_path = (
+            "Techno/Nova Reyes - Voltage Drop (Extended Mix) "
+            + duplicate.local_file.relative_path
+        )
+
+    window._duplicates_page._render_duplicate_groups([group])
+
+    table = window._duplicates_page.duplicates_table
+    quality = _duplicates_column(window, "Quality")
+    assert table.horizontalHeader().sectionSize(quality) >= (
+        table.sizeHintForColumn(quality)
+    )
+
+
 def test_render_duplicate_groups_preselects_the_best_quality_file_to_keep(
         qtbot,
 ):

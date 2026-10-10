@@ -748,7 +748,8 @@ class ColumnLayout:
     columns keep theirs (at least `stretch_floor`, at most 40 % of the
     table); when the table is too narrow for both, the widest
     fit-content text columns give way first, down to their header
-    label (`fit_widths`).
+    label (`fit_widths`), except a `whole` column, which keeps its
+    content and lets the stretch columns give way instead.
     """
     stretch: tuple[int, ...]
     fit_content: tuple[int, ...]
@@ -757,6 +758,9 @@ class ColumnLayout:
     stretch_floor: int = STRETCH_COLUMN_FLOOR
     # Columns of file paths, which elide in the middle.
     paths: tuple[int, ...] = ()
+    # Fit-content columns that never elide: a value people choose a
+    # row by (Duplicates' Quality).
+    whole: tuple[int, ...] = ()
 
 
 def fit_widths(
@@ -806,7 +810,7 @@ def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
     # Text elides; a cell widget (a progress bar, a radio) clips
     # instead, so a column holding one keeps its content's width.
     for column in layout.fit_content:
-        if any(
+        if column in layout.whole or any(
             table.cellWidget(row, column) is not None
             for row in range(table.rowCount())
         ):
