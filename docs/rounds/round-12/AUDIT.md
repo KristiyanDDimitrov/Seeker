@@ -59,8 +59,10 @@ wording) is still open for S16.
 **Fixed in S8 (HISTORY §200):** S-05 (`e3c0154`), S-07 (`17b67c0`),
 S-12 (`7123da0`), S-06 (`a4baed4`). **Accepted in writing in S8:**
 S-03 (a)+(b), S-09, S-10 and S-11, each under its finding below and
-in CLAUDE.md → "Accepted risks". Open: S-04 and S-14 (S16), S-15
-(S14).
+in CLAUDE.md → "Accepted risks". **Fixed in S16 (HISTORY §214):**
+S-14's bundle ID (`28d5ecd`). **Fixed in S16b (HISTORY §215):** S-04
+(`e45eed4`, `1a1f867`), stated as GPL-3.0 with Kris's approval (see
+the finding). Open: S-15 (S14).
 
 ---
 
@@ -385,6 +387,12 @@ full GPL-2.0, LGPL-3.0 and LGPL-2.1 texts, plus each package's own
 notice). State in the README and the release notes that the macOS
 binary is distributed under GPL-2.0-or-later as a combined work,
 with its source at the tagged commit. Kris decides the wording.
+
+**Done (S16b, HISTORY §215).** Every runtime distribution's texts,
+not only the copyleft ones, plus LGPL-3.0 and GPL-3.0 vendored for
+PySide6. The statement says **GPL version 3**, not 2-or-later: Qt's
+LGPL-3.0-only is incompatible with GPL-2.0-only, so the combined
+work ships under mutagen's "or later" option. Kris approved it.
 
 ### S-05 — The OAuth callback trusts `error` before it checks `state` · Low
 
