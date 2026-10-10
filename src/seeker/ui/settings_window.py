@@ -1,12 +1,14 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from PySide6.QtCore import QLocale, QSize, QThreadPool
+from PySide6.QtCore import QLocale, QSize, QThreadPool, Signal
+from PySide6.QtGui import QShowEvent, QStandardItemModel
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -32,6 +34,7 @@ from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.nested_location import NestedLocation
 from seeker.models.playlist import Playlist
+from seeker.models.slskd_start import SlskdDataFolderState, SlskdStartDefaults
 from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
@@ -47,6 +50,12 @@ from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
+
+_DATA_DIR_STATE_TEXT = {
+    SlskdDataFolderState.HOLDS_STATE: help_text.SLSKD_DATA_DIR_HOLDS_STATE_TEXT,
+    SlskdDataFolderState.FRESH: help_text.SLSKD_DATA_DIR_FRESH_TEXT,
+    SlskdDataFolderState.MISSING: help_text.SLSKD_DATA_DIR_MISSING_TEXT,
+}
 
 
 # A one-off, on-demand check, not a poll loop tracking a specific
@@ -113,6 +122,20 @@ def _folder_state_item(reachable: bool) -> QTableWidgetItem:
     return item
 
 
+class _ShownTab(QWidget):
+    """A tab body that says when it is shown, by a tab switch or by
+    Settings opening on it, so what it reads from Docker is read only
+    once someone looks."""
+
+    shown = Signal()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+
+        if not event.spontaneous():
+            self.shown.emit()
+
+
 class SettingsPage(QWidget):
     """An in-window Settings page, not a separate top-level window: in
     fullscreen, a second window reads as a dead end with no way back to
@@ -142,6 +165,11 @@ class SettingsPage(QWidget):
         # had already customised). None until the background check in
         # _refresh_web_login_status() completes.
         self._web_login_status: SlskdWebLoginStatus | None = None
+        # The Start slskd form's share before anyone changes it: the
+        # live container's, else the recorded one.
+        self._default_share_path: str | None = None
+        self._slskd_data_dir: str | None = None
+        self._slskd_data_dir_state: SlskdDataFolderState | None = None
         # MainWindow's own _apply_theme_mode, so the sidebar toggle and
         # this tab's radio group stay in sync in both directions. None
         # only in tests that construct SettingsPage standalone.
@@ -399,6 +427,7 @@ class SettingsPage(QWidget):
         # every other table with this column (theme.size_action_column's
         # own docstring).
         theme.size_columns(self.locations_table, _LOCATIONS_COLUMNS, action_widgets)
+        self._render_share_choices(self._selected_share_path())
 
     def _on_add_location_clicked(self) -> None:
         self.library_notice.dismiss()
@@ -733,7 +762,8 @@ class SettingsPage(QWidget):
     # --- Connection management -----------------------------------------
 
     def _build_connection_tab(self) -> QWidget:
-        tab = QWidget()
+        tab = _ShownTab()
+        tab.shown.connect(self._load_start_slskd_form)
         layout = QVBoxLayout(tab)
 
         # Starts hidden; only shown by _refresh_connection_display()
@@ -848,64 +878,69 @@ class SettingsPage(QWidget):
             "SoulSeek", help_text.SETTINGS_SOULSEEK_TEXT, soulseek_form,
         ))
 
-        credentials_form = QFormLayout()
+        start_form = QFormLayout()
 
-        self.new_soulseek_username_field = QLineEdit()
-        self.new_soulseek_username_field.setPlaceholderText(
-            "SoulSeek username"
+        self.slskd_username_field = QLineEdit()
+        self.slskd_username_field.setPlaceholderText("SoulSeek username")
+        self.slskd_username_field.setToolTip(
+            help_text.TOOLTIP_SLSKD_USERNAME_FIELD
         )
-        self.new_soulseek_username_field.setToolTip(
-            help_text.TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD
+        # One obvious submit target (Start slskd), which validates
+        # every field and says what is missing.
+        self.slskd_username_field.returnPressed.connect(
+            self._on_start_slskd_clicked
         )
-        # One obvious submit target (Update credentials);
-        # _on_update_credentials_clicked already validates non-empty and
-        # writes a real status message.
-        self.new_soulseek_username_field.returnPressed.connect(
-            self._on_update_credentials_clicked
-        )
-        credentials_form.addRow(
-            "New username:", self.new_soulseek_username_field
-        )
+        start_form.addRow("Username:", self.slskd_username_field)
 
-        self.new_soulseek_password_field = QLineEdit()
-        self.new_soulseek_password_field.setPlaceholderText(
-            "SoulSeek password"
+        self.slskd_password_field = QLineEdit()
+        self.slskd_password_field.setPlaceholderText("SoulSeek password")
+        self.slskd_password_field.setEchoMode(QLineEdit.EchoMode.Password)
+        self.slskd_password_field.setToolTip(
+            help_text.TOOLTIP_SLSKD_PASSWORD_FIELD
         )
-        self.new_soulseek_password_field.setEchoMode(
-            QLineEdit.EchoMode.Password
+        self.slskd_password_field.returnPressed.connect(
+            self._on_start_slskd_clicked
         )
-        self.new_soulseek_password_field.setToolTip(
-            help_text.TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD
-        )
-        self.new_soulseek_password_field.returnPressed.connect(
-            self._on_update_credentials_clicked
-        )
-        credentials_form.addRow(
-            "New password:", self.new_soulseek_password_field
-        )
+        start_form.addRow("Password:", self.slskd_password_field)
 
-        self.update_credentials_button = QPushButton(
-            "Update SoulSeek credentials"
+        self.slskd_share_combo = QComboBox()
+        self.slskd_share_combo.setPlaceholderText("Choose a library location")
+        self.slskd_share_combo.setToolTip(help_text.TOOLTIP_SLSKD_SHARE_FIELD)
+        start_form.addRow("Folder to share:", self.slskd_share_combo)
+
+        data_dir_row = QHBoxLayout()
+        self.slskd_data_dir_field = QLineEdit()
+        self.slskd_data_dir_field.setReadOnly(True)
+        data_dir_row.addWidget(self.slskd_data_dir_field, 1)
+        self.choose_slskd_data_dir_button = QPushButton("Choose…")
+        self.choose_slskd_data_dir_button.setToolTip(
+            help_text.TOOLTIP_CHOOSE_SLSKD_DATA_DIR
         )
-        self.update_credentials_button.setToolTip(
-            help_text.TOOLTIP_UPDATE_CREDENTIALS
+        self.choose_slskd_data_dir_button.clicked.connect(
+            self._on_choose_slskd_data_dir_clicked
         )
-        self.update_credentials_button.clicked.connect(
-            self._on_update_credentials_clicked
-        )
-        self.update_credentials_status_label = PlainLabel("")
-        credentials_form.addRow("", theme.action_row(
-            self.update_credentials_button,
-            self.update_credentials_status_label,
+        data_dir_row.addWidget(self.choose_slskd_data_dir_button)
+        start_form.addRow("Data folder:", data_dir_row)
+
+        # What happens to slskd's state, for the folder shown above.
+        self.slskd_data_dir_state_label = PlainLabel("")
+        self.slskd_data_dir_state_label.setProperty("badge", "muted")
+        self.slskd_data_dir_state_label.setWordWrap(True)
+        start_form.addRow("", self.slskd_data_dir_state_label)
+
+        self.start_slskd_button = QPushButton("Start slskd")
+        self.start_slskd_button.setToolTip(help_text.TOOLTIP_START_SLSKD)
+        self.start_slskd_button.clicked.connect(self._on_start_slskd_clicked)
+        self.start_slskd_status_label = PlainLabel("")
+        start_form.addRow("", theme.action_row(
+            self.start_slskd_button, self.start_slskd_status_label,
         ))
-        self.credentials_feedback = FeedbackTarget(
-            self.update_credentials_status_label, self.connections_notice,
+        self.start_slskd_feedback = FeedbackTarget(
+            self.start_slskd_status_label, self.connections_notice,
         )
 
         layout.addWidget(theme.section_card(
-            "SoulSeek credentials",
-            help_text.SETTINGS_SOULSEEK_CREDENTIALS_TEXT,
-            credentials_form,
+            "Start slskd", help_text.SETTINGS_START_SLSKD_TEXT, start_form,
         ))
         layout.addStretch()
         return theme.reading_column(tab)
@@ -1117,99 +1152,144 @@ class SettingsPage(QWidget):
                 "SoulSeek isn't connected right now.", kind="warning",
             )
 
-    def _on_update_credentials_clicked(self) -> None:
-        username = self.new_soulseek_username_field.text().strip()
-        password = self.new_soulseek_password_field.text()
+    def _load_start_slskd_form(self) -> None:
+        run_worker(
+            self.thread_pool,
+            self.application.slskd_start_defaults,
+            on_finished=self._render_start_slskd_form,
+            on_error=self.start_slskd_feedback.show_error,
+        )
 
-        if not username or not password:
-            self.credentials_feedback.show_outcome(
-                "Enter both a username and password.", kind="warning",
-            )
+    def _render_start_slskd_form(self, defaults: SlskdStartDefaults) -> None:
+        self.slskd_username_field.setText(defaults.username)
+        self.slskd_password_field.setText(defaults.password)
+        self._default_share_path = defaults.share_path
+        self._render_share_choices(defaults.share_path)
+        self._render_slskd_data_dir(defaults.data_dir, defaults.data_dir_state)
+
+    def _selected_share_path(self) -> str | None:
+        if self.slskd_share_combo.currentIndex() < 0:
+            return self._default_share_path
+
+        data = self.slskd_share_combo.currentData()
+        return data if isinstance(data, str) else None
+
+    def _render_share_choices(self, selected: str | None) -> None:
+        """Every library location, an unconnected one listed but not
+        choosable: Compose would create its folder, empty. A share
+        that is no location (an older container's) is offered by its
+        path, so the form never changes what is shared unasked."""
+        combo = self.slskd_share_combo
+        combo.clear()
+        model = combo.model()
+        assert isinstance(model, QStandardItemModel)
+
+        for location, reachable in self._rendered_locations:
+            if reachable:
+                combo.addItem(location.name, location.path)
+            else:
+                combo.addItem(f"{location.name} (not connected)", location.path)
+                model.item(combo.count() - 1).setEnabled(False)
+
+        if selected is not None and combo.findData(selected) < 0:
+            combo.insertItem(0, selected, selected)
+
+        combo.setCurrentIndex(
+            combo.findData(selected) if selected is not None else -1,
+        )
+
+    def _render_slskd_data_dir(
+            self, data_dir: str, state: SlskdDataFolderState,
+    ) -> None:
+        self._slskd_data_dir = data_dir
+        self._slskd_data_dir_state = state
+        self.slskd_data_dir_field.setText(data_dir)
+        self.slskd_data_dir_field.setCursorPosition(0)
+        self.slskd_data_dir_state_label.setText(_DATA_DIR_STATE_TEXT[state])
+
+    def _on_choose_slskd_data_dir_clicked(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Choose slskd's data folder", self._slskd_data_dir or "",
+        )
+
+        if not chosen:
             return
 
-        if not self._locations_by_name:
-            self.credentials_feedback.show_outcome(
-                "Register a library location before setting up SoulSeek.",
-                kind="warning",
+        # The dialog has just listed this folder, so a stat here is
+        # cheap even on a slow drive.
+        self._render_slskd_data_dir(
+            chosen, self.application.slskd_data_folder_state(chosen),
+        )
+
+    def _start_slskd_problem(self) -> str | None:
+        """Why the form can't start slskd as filled in, or None."""
+        if (
+                not self.slskd_username_field.text().strip()
+                or not self.slskd_password_field.text()
+        ):
+            return "Enter both a username and password."
+
+        if not self._rendered_locations:
+            return "Register a library location before setting up SoulSeek."
+
+        index = self.slskd_share_combo.currentIndex()
+
+        if index < 0:
+            return "Choose a library location to share."
+
+        model = self.slskd_share_combo.model()
+        assert isinstance(model, QStandardItemModel)
+
+        if not model.item(index).isEnabled():
+            return (
+                f"{self.slskd_share_combo.currentText()} isn't connected. "
+                "Connect its drive, or choose another location to share."
             )
+
+        if (
+                self._slskd_data_dir is None
+                or self._slskd_data_dir_state is SlskdDataFolderState.MISSING
+        ):
+            return help_text.SLSKD_DATA_DIR_MISSING_TEXT
+
+        return None
+
+    def _on_start_slskd_clicked(self) -> None:
+        problem = self._start_slskd_problem()
+
+        if problem is not None:
+            self.start_slskd_feedback.show_outcome(problem, kind="warning")
             return
 
+        username = self.slskd_username_field.text().strip()
+        password = self.slskd_password_field.text()
+        share_path = self._selected_share_path()
+        data_dir = self._slskd_data_dir
+        assert share_path is not None and data_dir is not None
         self.connections_notice.dismiss()
 
-        # A credential update must never change what is shared: keep the
-        # running container's share, and ask only when none is running.
-        run_worker(
-            self.thread_pool,
-            self.application.sharing_service.current_share_path,
-            button=self.update_credentials_button,
-            status_label=self.update_credentials_status_label,
-            on_finished=lambda share_path: self._recreate_with_credentials(
-                username, password, share_path,
-            ),
-            on_error=self.credentials_feedback.show_error,
-        )
-        self.update_credentials_status_label.setText(
-            "Checking which folder SoulSeek shares now…"
-        )
-
-    def _recreate_with_credentials(
-            self,
-            username: str,
-            password: str,
-            live_share_path: str | None,
-    ) -> None:
-        library_location_path = live_share_path
-
-        if library_location_path is None:
-            library_location_path = self._ask_which_location_to_share()
-
-        if library_location_path is None:
-            self.credentials_feedback.show_outcome(
-                "Cancelled — SoulSeek was not changed.",
-            )
-            return
-
-        def do_update() -> None:
+        def start() -> None:
             self.application.start_slskd(
-                username, password, library_location_path, persist=True,
+                username, password, share_path,
+                persist=True, data_dir=data_dir,
             )
 
         run_worker(
             self.thread_pool,
-            do_update,
-            button=self.update_credentials_button,
-            status_label=self.update_credentials_status_label,
-            on_finished=lambda _: self._on_credentials_updated(),
-            on_error=self.credentials_feedback.show_error,
+            start,
+            button=self.start_slskd_button,
+            status_label=self.start_slskd_status_label,
+            on_finished=lambda _: self._on_slskd_started(),
+            on_error=self.start_slskd_feedback.show_error,
         )
-        self.update_credentials_status_label.setText(
-            "Recreating SoulSeek container…"
-        )
+        self.start_slskd_status_label.setText("Starting slskd…")
 
-    def _ask_which_location_to_share(self) -> str | None:
-        names = list(self._locations_by_name)
-        name, accepted = QInputDialog.getItem(
-            self,
-            "Share a folder",
-            "SoulSeek isn't running, so there's no current share to keep.\n"
-            "Which library location should SoulSeek share (read-only)?",
-            names,
-            0,
-            False,
-        )
-
-        if not accepted or name not in self._locations_by_name:
-            return None
-
-        return self._locations_by_name[name].path
-
-    def _on_credentials_updated(self) -> None:
-        self.new_soulseek_username_field.clear()
-        self.new_soulseek_password_field.clear()
+    def _on_slskd_started(self) -> None:
+        self._default_share_path = self._selected_share_path()
         self._refresh_connection_display()
-        self.credentials_feedback.show_outcome(
-            "Credentials updated. Container recreated with new "
-            "credentials — use Test connection to confirm.",
+        self.start_slskd_feedback.show_outcome(
+            "slskd is starting with this login. Use Test connection to "
+            "confirm it signs in.",
             kind="success",
         )
 

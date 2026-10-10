@@ -285,7 +285,7 @@ class Application:
     ) -> None:
         """Persist real SoulSeek connection details to the config
         store. Shared by the onboarding wizard's first bring-up and
-        Settings' "Update SoulSeek credentials" action, so both write
+        Settings' Start slskd form, so both write
         the identical shape, including the network username/password.
         """
         config_path = resolve_config_path()
@@ -542,7 +542,7 @@ class Application:
         return them unchanged — never rotate a real, working login
         silently. This is the upgrade path for an existing install:
         nothing changes until the next real `bring_up_slskd` call
-        (wizard bring-up, "Update SoulSeek credentials," or a Sharing
+        (wizard bring-up, Settings' Start slskd, or a Sharing
         add-location recreate), at which point it gets a real generated
         password instead of the vendor default, exactly once. See
         HISTORY §116.

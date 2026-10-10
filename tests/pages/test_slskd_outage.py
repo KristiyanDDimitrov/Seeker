@@ -7,8 +7,12 @@ from dataclasses import replace
 from fakes import FakeApplication, force_tray_available
 from seeker.models.download_result import PollResult
 from seeker.soulseek.client import SlskdUnreachableError
-from seeker.soulseek.docker_setup import SlskdStartRefusedError
+from seeker.soulseek.docker_setup import (
+    SlskdSetupNeededError,
+    SlskdStartRefusedError,
+)
 from seeker.ui.main_window import MainWindow
+from seeker.ui.settings_window import SETTINGS_TAB_CONNECTIONS
 from seeker.ui.slskd_status import SlskdStatus
 
 OUTAGE = str(SlskdUnreachableError("http://localhost:5030"))
@@ -168,3 +172,28 @@ def test_start_slskd_refusal_reports_on_downloads(qtbot, monkeypatch):
     qtbot.waitUntil(lambda: notice.text() == refusal, timeout=2000)
     assert application.restart_slskd_calls == 1
     assert window._dashboard_page.dashboard_notice.isHidden()
+    assert notice.action_button.isHidden()
+
+
+def test_a_refusal_settings_can_resolve_offers_settings(qtbot, monkeypatch):
+    application, window = _outage_window(qtbot, monkeypatch)
+    refusal = (
+        "Seeker has no saved SoulSeek login. Enter it in "
+        "Settings → Connections."
+    )
+    application.restart_slskd_error = SlskdSetupNeededError(refusal)
+    _poll(qtbot, window)
+
+    window._downloads_page.outage_notice.action_button.click()
+
+    notice = window._downloads_page.notice
+    qtbot.waitUntil(lambda: notice.text() == refusal, timeout=2000)
+    assert notice.property("variant") == "error"
+    assert not notice.action_button.isHidden()
+
+    notice.action_button.click()
+
+    tabs = window.settings_page.tabs
+    assert window._current_page_key == "settings"
+    assert tabs.tabText(tabs.currentIndex()) == SETTINGS_TAB_CONNECTIONS
+    assert notice.isHidden()

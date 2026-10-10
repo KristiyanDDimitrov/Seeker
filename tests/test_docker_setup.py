@@ -92,8 +92,8 @@ def test_is_non_loopback_http_url_allows_loopback_or_encrypted(url):
 def test_slskd_data_dir_uses_platformdirs_and_slskd_data_subdir(
         tmp_path, monkeypatch,
 ):
-    # Moved here from ui/wizard.py (Step 8 §3) so Settings' "Update
-    # SoulSeek credentials" action can resolve the identical path
+    # Moved here from ui/wizard.py (Step 8 §3) so Settings' Start
+    # slskd form can resolve the identical path
     # without importing a UI module — same platformdirs directory the
     # DB/config store already live in.
     monkeypatch.setattr(

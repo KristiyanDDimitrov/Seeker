@@ -440,6 +440,7 @@ class MainWindow(QMainWindow):
             render_activity_strip=self._render_activity_strip,
             playlist_selection=self.playlist_selection,
             slskd_status=self.slskd_status,
+            open_settings=self._on_settings_clicked,
         )
 
         self._page_indices: dict[str, int] = {}

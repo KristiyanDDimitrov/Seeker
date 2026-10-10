@@ -141,9 +141,17 @@ class FeedbackTarget:
     def show_progress(self, text: str) -> None:
         self.status_label.setText(text)
 
-    def show_outcome(self, text: str, kind: str = "info") -> None:
+    def show_outcome(
+            self,
+            text: str,
+            kind: str = "info",
+            action_text: str | None = None,
+            on_action: Callable[[], None] | None = None,
+    ) -> None:
         self.status_label.setText("")
-        self.notice.show_message(text, kind=kind)
+        self.notice.show_message(
+            text, kind=kind, action_text=action_text, on_action=on_action,
+        )
 
     def show_error(self, message: str) -> None:
         self.show_outcome(message, kind="error")

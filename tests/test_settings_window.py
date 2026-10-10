@@ -119,9 +119,11 @@ def test_settings_window_controls_have_tooltips(qtbot, tmp_path, monkeypatch):
             window.reauthorize_spotify_button,
             window.reveal_api_key_button,
             window.test_connection_button,
-            window.new_soulseek_username_field,
-            window.new_soulseek_password_field,
-            window.update_credentials_button,
+            window.slskd_username_field,
+            window.slskd_password_field,
+            window.slskd_share_combo,
+            window.choose_slskd_data_dir_button,
+            window.start_slskd_button,
             window.auto_match_threshold_field,
             window.needs_review_threshold_field,
             window.save_thresholds_button,
@@ -180,7 +182,7 @@ def test_settings_tabs_group_settings_by_job(qtbot, tmp_path, monkeypatch):
     )
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_CONNECTIONS,
-    ) == {"Spotify", "SoulSeek", "SoulSeek credentials"}
+    ) == {"Spotify", "SoulSeek", "Start slskd"}
     assert _group_titles_on_tab(
         window, settings_window.SETTINGS_TAB_MATCHING,
     ) == {"Match thresholds"}
@@ -1060,63 +1062,6 @@ def test_test_connection_without_config_shows_message_and_makes_no_call(
     assert "configured" in window.connections_notice.text().lower()
 
 
-def test_update_credentials_calls_bring_up_and_persists_on_success(
-        qtbot, tmp_path, monkeypatch,
-):
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Main", tmp_path / "music")
-    _fake_live_mounts(
-        monkeypatch, {"/shared/music": str(tmp_path / "music")},
-    )
-
-    bring_up_calls = []
-
-    class FakeResult:
-        returncode = 0
-        stderr = ""
-
-    def fake_bring_up(**kwargs):
-        bring_up_calls.append(kwargs)
-        return FakeResult()
-
-    monkeypatch.setattr(
-        "seeker.application.bring_up_slskd", fake_bring_up,
-    )
-    monkeypatch.setattr(
-        "seeker.application.generate_api_key",
-        lambda: "generated-key",
-    )
-    monkeypatch.setattr(
-        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
-    )
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-
-    # _locations_by_name is populated by the async _refresh_locations()
-    # call in __init__ — _on_update_credentials_clicked needs it
-    # populated to resolve library_location_path.
-    qtbot.waitUntil(
-        lambda: window._locations_by_name != {}, timeout=2000,
-    )
-
-    window.new_soulseek_username_field.setText("realuser")
-    window.new_soulseek_password_field.setText("realpass")
-    window.update_credentials_button.click()
-
-    _wait_for_credentials_update(qtbot, window, bring_up_calls)
-    assert bring_up_calls[0]["soulseek_username"] == "realuser"
-    assert bring_up_calls[0]["soulseek_password"] == "realpass"
-    assert bring_up_calls[0]["api_key"] == "generated-key"
-
-    qtbot.waitUntil(
-        lambda: application._config_store.slskd_username == "realuser",
-        timeout=2000,
-    )
-    assert application._config_store.slskd_password == "realpass"
-    assert application._config_store.slskd_api_key == "generated-key"
-
-
 def _fake_live_mounts(monkeypatch, mounts: dict[str, str]) -> None:
     monkeypatch.setattr(
         "seeker.soulseek.sharing_service._get_live_container_mounts",
@@ -1139,182 +1084,301 @@ def _fake_successful_bring_up(monkeypatch, tmp_path) -> list[dict]:
         "seeker.application.bring_up_slskd", fake_bring_up,
     )
     monkeypatch.setattr(
+        "seeker.application.generate_api_key", lambda: "generated-key",
+    )
+    monkeypatch.setattr(
         "seeker.application.slskd_data_dir",
         lambda: tmp_path / "slskd-data",
     )
     return bring_up_calls
 
 
-def _wait_for_credentials_update(qtbot, window, bring_up_calls) -> None:
+def _old_slskd_data(tmp_path):
+    """An earlier container's /app, as the repository's slskd-data/."""
+    folder = tmp_path / "repo" / "slskd-data"
+    folder.mkdir(parents=True)
+    (folder / "slskd.yml").write_text("soulseek: {}\n")
+    return folder
+
+
+def _start_form_page(qtbot, tmp_path, monkeypatch, mounts: dict[str, str]):
+    """A Settings page over Desktop and Music, its Start slskd form
+    loaded the way showing the Connections tab loads it."""
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Desktop", tmp_path / "Desktop")
+    add_location(application, "Music", tmp_path / "Music")
+    _fake_live_mounts(monkeypatch, mounts)
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    window._load_start_slskd_form()
+    qtbot.waitUntil(
+        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+    )
+    return application, window, bring_up_calls
+
+
+def _wait_for_slskd_start(qtbot, window, bring_up_calls) -> None:
     # The fake records its call on the worker thread; the finish
     # handler (which re-enables the button) runs later on the main
     # thread. Returning on the call alone let that handler run after
     # teardown, against a deleted button (seen on CI, HISTORY §148).
     qtbot.waitUntil(
         lambda: bring_up_calls != []
-        and window.connections_notice.text().startswith(
-            "Credentials updated"
-        ),
+        and window.connections_notice.text().startswith("slskd is starting"),
         timeout=2000,
     )
 
 
-def _click_update_credentials(qtbot, window) -> None:
-    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
-    window.new_soulseek_username_field.setText("realuser")
-    window.new_soulseek_password_field.setText("realpass")
-    window.update_credentials_button.click()
+def _select_share(window, name: str) -> None:
+    window.slskd_share_combo.setCurrentIndex(
+        window.slskd_share_combo.findText(name),
+    )
 
 
-def test_update_credentials_keeps_sharing_the_live_share_not_the_first_location(
+def test_start_form_opens_with_the_saved_login_and_the_live_folders(
         qtbot, tmp_path, monkeypatch,
 ):
-    # "Desktop" sorts before "Music"; the container shares Music. Updating
-    # credentials must never swap the share for whichever location
-    # happens to sort first.
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Desktop", tmp_path / "Desktop")
-    add_location(application, "Music", tmp_path / "Music")
-    _fake_live_mounts(monkeypatch, {
-        "/app": str(tmp_path / "slskd-data"),
-        "/shared/music": str(tmp_path / "Music"),
-    })
-    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
-    monkeypatch.setattr(
-        QInputDialog, "getItem",
-        lambda *a, **k: pytest.fail("must not ask when a share is live"),
-    )
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-    _click_update_credentials(qtbot, window)
-
-    _wait_for_credentials_update(qtbot, window, bring_up_calls)
-    assert bring_up_calls[0]["library_location_path"] == str(
-        tmp_path / "Music"
-    )
-
-
-def test_update_credentials_without_a_container_asks_which_location(
+    # "Desktop" sorts before "Music"; the container shares Music. The
+    # form must never offer whichever location happens to sort first.
+    old_data = _old_slskd_data(tmp_path)
+    application, window, _ = _start_form_page(
         qtbot, tmp_path, monkeypatch,
-):
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Desktop", tmp_path / "Desktop")
-    add_location(application, "Music", tmp_path / "Music")
-    _fake_live_mounts(monkeypatch, {})
-    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
-    offered: list[list[str]] = []
-
-    def fake_get_item(parent, title, label, items, *args, **kwargs):
-        offered.append(list(items))
-        return "Music", True
-
-    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-    _click_update_credentials(qtbot, window)
-
-    _wait_for_credentials_update(qtbot, window, bring_up_calls)
-    assert offered == [["Desktop", "Music"]]
-    assert bring_up_calls[0]["library_location_path"] == str(
-        tmp_path / "Music"
+        {"/app": str(old_data), "/shared/music": str(tmp_path / "Music")},
     )
-
-
-def test_update_credentials_cancelling_the_share_question_starts_nothing(
-        qtbot, tmp_path, monkeypatch,
-):
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Music", tmp_path / "Music")
-    _fake_live_mounts(monkeypatch, {})
-    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
-    asked: list[bool] = []
-
-    def fake_get_item(*args, **kwargs):
-        asked.append(True)
-        return "", False
-
-    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-    _click_update_credentials(qtbot, window)
-
-    qtbot.waitUntil(lambda: asked != [], timeout=2000)
-    qtbot.waitUntil(window.update_credentials_button.isEnabled, timeout=2000)
-    assert bring_up_calls == []
-    assert "cancel" in window.connections_notice.text().lower()
-
-
-def test_soulseek_password_return_pressed_calls_update_credentials(
-        qtbot, tmp_path, monkeypatch,
-):
-    # Roadmap item 95 (B1.3) — the SoulSeek credentials form the brief
-    # names directly.
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Main", tmp_path / "music")
-    _fake_live_mounts(
-        monkeypatch, {"/shared/music": str(tmp_path / "music")},
+    application.persist_soulseek_config(
+        "http://127.0.0.1:5030", "key", "/dl", "netuser", "netpass",
     )
-
-    bring_up_calls = []
-
-    class FakeResult:
-        returncode = 0
-        stderr = ""
-
-    def fake_bring_up(**kwargs):
-        bring_up_calls.append(kwargs)
-        return FakeResult()
-
-    monkeypatch.setattr(
-        "seeker.application.bring_up_slskd", fake_bring_up,
-    )
-    monkeypatch.setattr(
-        "seeker.application.generate_api_key",
-        lambda: "generated-key",
-    )
-    monkeypatch.setattr(
-        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
-    )
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
+    window._load_start_slskd_form()
 
     qtbot.waitUntil(
-        lambda: window._locations_by_name != {}, timeout=2000,
+        lambda: window.slskd_username_field.text() == "netuser",
+        timeout=2000,
+    )
+    assert window.slskd_password_field.text() == "netpass"
+    assert window.slskd_share_combo.currentText() == "Music"
+    assert window.slskd_data_dir_field.text() == str(old_data)
+    assert window.slskd_data_dir_state_label.text() == (
+        help_text.SLSKD_DATA_DIR_HOLDS_STATE_TEXT
     )
 
-    window.new_soulseek_username_field.setText("realuser")
-    window.new_soulseek_password_field.setText("realpass")
-    window.new_soulseek_password_field.returnPressed.emit()
 
-    _wait_for_credentials_update(qtbot, window, bring_up_calls)
-    assert bring_up_calls[0]["soulseek_username"] == "realuser"
-    assert bring_up_calls[0]["soulseek_password"] == "realpass"
-
-
-def test_update_credentials_without_username_or_password_makes_no_call(
+def test_start_slskd_starts_with_what_the_form_shows(
         qtbot, tmp_path, monkeypatch,
 ):
-    application = make_application(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(
-        "seeker.application.bring_up_slskd",
-        lambda **kwargs: calls.append(1),
+    old_data = _old_slskd_data(tmp_path)
+    application, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/app": str(old_data), "/shared/music": str(tmp_path / "Music")},
     )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    window.start_slskd_button.click()
+
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert bring_up_calls[0]["soulseek_username"] == "realuser"
+    assert bring_up_calls[0]["soulseek_password"] == "realpass"
+    assert bring_up_calls[0]["library_location_path"] == str(tmp_path / "Music")
+    assert bring_up_calls[0]["slskd_data_dir"] == str(old_data)
+    saved = application.settings
+    assert (saved.slskd_username, saved.slskd_password) == (
+        "realuser", "realpass",
+    )
+    assert saved.slskd_api_key == "generated-key"
+    assert saved.slskd_download_dir == str(old_data / "downloads")
+    assert saved.slskd_share_path == str(tmp_path / "Music")
+
+
+def test_without_a_known_share_the_form_waits_for_a_choice(
+        qtbot, tmp_path, monkeypatch,
+):
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch, {},
+    )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    assert window.slskd_share_combo.currentIndex() == -1
+    assert window.slskd_data_dir_field.text() == str(tmp_path / "slskd-data")
+    assert window.slskd_data_dir_state_label.text() == (
+        help_text.SLSKD_DATA_DIR_FRESH_TEXT
+    )
+
+    window.start_slskd_button.click()
+
+    assert bring_up_calls == []
+    assert "choose" in window.connections_notice.text().lower()
+
+    _select_share(window, "Music")
+    window.start_slskd_button.click()
+
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert bring_up_calls[0]["library_location_path"] == str(tmp_path / "Music")
+    assert bring_up_calls[0]["slskd_data_dir"] == str(tmp_path / "slskd-data")
+
+
+def test_the_form_prefers_the_recorded_folders_when_no_container_is_left(
+        qtbot, tmp_path, monkeypatch,
+):
+    old_data = _old_slskd_data(tmp_path)
+    application = make_application(tmp_path, monkeypatch)
+    application.update_settings(
+        slskd_share_path=str(tmp_path / "Music"),
+        slskd_data_dir=str(old_data),
+    )
+    add_location(application, "Desktop", tmp_path / "Desktop")
+    add_location(application, "Music", tmp_path / "Music")
+    _fake_live_mounts(monkeypatch, {})
 
     window = SettingsPage(application)
     qtbot.addWidget(window)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    window._load_start_slskd_form()
 
-    window.update_credentials_button.click()
+    qtbot.waitUntil(
+        lambda: window.slskd_share_combo.currentText() == "Music",
+        timeout=2000,
+    )
+    assert window.slskd_data_dir_field.text() == str(old_data)
 
-    assert calls == []
+
+def test_choosing_a_data_folder_says_what_slskd_keeps(
+        qtbot, tmp_path, monkeypatch,
+):
+    _, window, _ = _start_form_page(qtbot, tmp_path, monkeypatch, {})
+    old_data = _old_slskd_data(tmp_path)
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory",
+        lambda *args, **kwargs: str(old_data),
+    )
+
+    window.choose_slskd_data_dir_button.click()
+
+    assert window.slskd_data_dir_field.text() == str(old_data)
+    assert window.slskd_data_dir_state_label.text() == (
+        help_text.SLSKD_DATA_DIR_HOLDS_STATE_TEXT
+    )
+
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *args, **kwargs: "",
+    )
+    window.choose_slskd_data_dir_button.click()
+
+    assert window.slskd_data_dir_field.text() == str(old_data)
+
+
+def test_start_slskd_refuses_a_data_folder_that_is_not_there(
+        qtbot, tmp_path, monkeypatch,
+):
+    missing = tmp_path / "Unplugged" / "slskd-data"
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/app": str(missing), "/shared/music": str(tmp_path / "Music")},
+    )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    assert window.slskd_data_dir_state_label.text() == (
+        help_text.SLSKD_DATA_DIR_MISSING_TEXT
+    )
+
+    window.start_slskd_button.click()
+
+    assert bring_up_calls == []
+    assert window.connections_notice.text() == (
+        help_text.SLSKD_DATA_DIR_MISSING_TEXT
+    )
+    assert not missing.exists()
+
+
+def test_an_unconnected_location_is_never_shared(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Compose would create the missing folder, empty, where the drive
+    # mounts.
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Music", tmp_path / "Music")
+    add_location(application, "X9 Pro", tmp_path / "X9 Pro")
+    (tmp_path / "X9 Pro").rmdir()
+    _fake_live_mounts(monkeypatch, {})
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    window._load_start_slskd_form()
+    qtbot.waitUntil(
+        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+    )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    index = window.slskd_share_combo.findData(str(tmp_path / "X9 Pro"))
+    assert not window.slskd_share_combo.model().item(index).isEnabled()
+
+    window.slskd_share_combo.setCurrentIndex(index)
+    window.start_slskd_button.click()
+
+    assert bring_up_calls == []
+    assert "isn't connected" in window.connections_notice.text()
+
+
+def test_showing_the_connections_tab_loads_the_start_form(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application.persist_soulseek_config(
+        "http://127.0.0.1:5030", "key", "/dl", "netuser", "netpass",
+    )
+    _fake_live_mounts(monkeypatch, {})
+    _fake_successful_bring_up(monkeypatch, tmp_path)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window.slskd_username_field.text() == ""
+
+    window.select_tab(settings_window.SETTINGS_TAB_CONNECTIONS)
+
+    qtbot.waitUntil(
+        lambda: window.slskd_username_field.text() == "netuser",
+        timeout=2000,
+    )
+
+
+def test_soulseek_password_return_pressed_starts_slskd(
+        qtbot, tmp_path, monkeypatch,
+):
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/shared/music": str(tmp_path / "Music")},
+    )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    window.slskd_password_field.returnPressed.emit()
+
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert bring_up_calls[0]["soulseek_username"] == "realuser"
+
+
+def test_start_slskd_without_username_or_password_makes_no_call(
+        qtbot, tmp_path, monkeypatch,
+):
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/shared/music": str(tmp_path / "Music")},
+    )
+
+    window.start_slskd_button.click()
+
+    assert bring_up_calls == []
     assert "username" in window.connections_notice.text().lower()
 
 
-def test_update_credentials_without_a_library_location_shows_message(
+def test_start_slskd_without_a_library_location_shows_message(
         qtbot, tmp_path, monkeypatch,
 ):
     application = make_application(tmp_path, monkeypatch)
@@ -1327,9 +1391,9 @@ def test_update_credentials_without_a_library_location_shows_message(
     window = SettingsPage(application)
     qtbot.addWidget(window)
 
-    window.new_soulseek_username_field.setText("realuser")
-    window.new_soulseek_password_field.setText("realpass")
-    window.update_credentials_button.click()
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+    window.start_slskd_button.click()
 
     assert calls == []
     assert "location" in window.connections_notice.text().lower()
@@ -1835,28 +1899,26 @@ def test_a_failed_connection_test_is_reported_on_a_notice(
     qtbot.waitUntil(window.test_connection_button.isEnabled, timeout=2000)
 
 
-def test_a_failed_credentials_update_is_reported_on_a_notice(
+def test_a_failed_slskd_start_is_reported_on_a_notice(
         qtbot, tmp_path, monkeypatch,
 ):
-    application = make_application(tmp_path, monkeypatch)
-    add_location(application, "Main", tmp_path / "music")
-    _fake_live_mounts(
-        monkeypatch, {"/shared/music": str(tmp_path / "music")},
+    application, window, _ = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/shared/music": str(tmp_path / "Music")},
     )
 
     def fail(*args, **kwargs):
         raise RuntimeError("Docker isn't running.")
 
     monkeypatch.setattr(application, "start_slskd", fail)
-
-    window = SettingsPage(application)
-    qtbot.addWidget(window)
-    _click_update_credentials(qtbot, window)
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+    window.start_slskd_button.click()
 
     notice = _wait_for_notice(qtbot, window, "Docker isn't running.")
     assert notice.property("variant") == "error"
-    assert window.update_credentials_status_label.text() == ""
-    qtbot.waitUntil(window.update_credentials_button.isEnabled, timeout=2000)
+    assert window.start_slskd_status_label.text() == ""
+    qtbot.waitUntil(window.start_slskd_button.isEnabled, timeout=2000)
 
 
 def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(

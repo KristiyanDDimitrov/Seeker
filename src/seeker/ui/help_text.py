@@ -1408,15 +1408,23 @@ TOOLTIP_TEST_CONNECTION = (
     "Check whether Seeker can reach slskd right now with the currently "
     "saved connection details."
 )
-TOOLTIP_NEW_SOULSEEK_USERNAME_FIELD = (
+TOOLTIP_SLSKD_USERNAME_FIELD = (
         "Your SoulSeek network username (not slskd's own web login)."
 )
-TOOLTIP_NEW_SOULSEEK_PASSWORD_FIELD = (
+TOOLTIP_SLSKD_PASSWORD_FIELD = (
         "Your SoulSeek network password (not slskd's own web login)."
 )
-TOOLTIP_UPDATE_CREDENTIALS = (
-    "Recreate the slskd container with these credentials and a freshly "
-    "generated API key."
+TOOLTIP_SLSKD_SHARE_FIELD = (
+    "The library location slskd shares with other SoulSeek users, "
+    "read-only."
+)
+TOOLTIP_CHOOSE_SLSKD_DATA_DIR = (
+    "Choose the folder slskd keeps its settings, transfer history and "
+    "finished downloads in, such as an earlier container's slskd-data."
+)
+TOOLTIP_START_SLSKD = (
+    "Start slskd, or recreate its container, with this login, share and "
+    "data folder and a freshly generated API key."
 )
 
 # --- Settings: General and Matching tabs ------------------------------------
@@ -1456,9 +1464,23 @@ SETTINGS_SOULSEEK_TEXT = (
     "Seeker searches and downloads through slskd, the SoulSeek client "
     "it runs in Docker."
 )
-SETTINGS_SOULSEEK_CREDENTIALS_TEXT = (
-    "Recreates the slskd container with a new SoulSeek login and a "
-    "fresh API key. What it shares stays the same."
+SETTINGS_START_SLSKD_TEXT = (
+    "Starts slskd in Docker, recreating its container if it is gone, "
+    "with this SoulSeek login and a fresh API key. Use it to change the "
+    "login, too."
+)
+# What slskd finds in the data folder, keyed by SlskdDataFolderState.
+SLSKD_DATA_DIR_HOLDS_STATE_TEXT = (
+    "slskd carries on with the settings, transfer history and finished "
+    "downloads already in this folder."
+)
+SLSKD_DATA_DIR_FRESH_TEXT = (
+    "No slskd data here yet, so slskd starts fresh, with no transfer "
+    "history. Another data folder's settings and downloads stay where "
+    "they are."
+)
+SLSKD_DATA_DIR_MISSING_TEXT = (
+    "This folder isn't there. Connect its drive, or choose another."
 )
 SETTINGS_THRESHOLDS_TEXT = (
     "A match scoring at or above the auto-match threshold is accepted; "

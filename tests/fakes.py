@@ -834,6 +834,26 @@ class FakeApplication:
         if self.restart_slskd_error is not None:
             raise self.restart_slskd_error
 
+    def slskd_start_defaults(self):
+        from seeker.models.slskd_start import (
+            SlskdDataFolderState,
+            SlskdStartDefaults,
+        )
+
+        settings = self._config_store
+        return SlskdStartDefaults(
+            username=settings.slskd_username or "",
+            password=settings.slskd_password or "",
+            share_path=settings.slskd_share_path,
+            data_dir=settings.slskd_data_dir or "/fake/slskd-data",
+            data_dir_state=SlskdDataFolderState.FRESH,
+        )
+
+    def slskd_data_folder_state(self, data_dir: str):
+        from seeker.soulseek.docker_setup import slskd_data_folder_state
+
+        return slskd_data_folder_state(data_dir)
+
     @property
     def downloads_paused(self) -> bool:
         return self._config_store.downloads_paused

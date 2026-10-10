@@ -40,6 +40,7 @@ class PageContext:
     playlist/track selection without reaching into DashboardPage's own
     attributes through a Host callable (HISTORY §133). `slskd_status`
     carries the backend poll's outage state to every page that shows it.
+    `open_settings` opens Settings on a named tab (`SETTINGS_TAB_*`).
     """
     application: Application
     thread_pool: QThreadPool
@@ -51,6 +52,7 @@ class PageContext:
     render_activity_strip: Callable[[], None]
     playlist_selection: PlaylistSelection
     slskd_status: SlskdStatus
+    open_settings: Callable[[str], None]
 
 
 # A subtitle wraps at about this many characters, a readable measure

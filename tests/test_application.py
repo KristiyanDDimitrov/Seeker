@@ -561,7 +561,7 @@ def test_ensure_slskd_web_credentials_never_rotates_an_existing_value(
         tmp_path, monkeypatch,
 ):
     # Roadmap item 116 (round 8, §6.1.2) — a second call (e.g. a later
-    # "Update SoulSeek credentials" or Sharing add-location recreate)
+    # Settings' Start slskd or Sharing's add-location recreate)
     # must return the SAME login, not silently generate a new one that
     # would lock the user out of a web UI session they're already in.
     app = _application_with_tmp_config(tmp_path, monkeypatch)
