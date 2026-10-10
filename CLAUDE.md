@@ -297,8 +297,11 @@ investigation; `docs/history/README.md` resolves any `§N`.
   `docker_setup.bring_up_slskd` directly, reusing the saved key and
   login. The app runs only the per-user Compose copy
   (`compose_file_path()`), seeded once, never re-seeded, never the
-  tracked template; a recreate keeps the live `/app` data dir.
-  [§140](docs/history/121-150.md#140)
+  tracked template; a recreate keeps the live `/app` data dir. A
+  refusal Settings → Connections' Start slskd form resolves is a
+  `SlskdSetupNeededError`, and its notice offers Open Settings; a
+  named data folder is never created (but the per-user default).
+  [§140](docs/history/121-150.md#140), [§217](docs/history/211-240.md#217)
 - **slskd down is an outage, never a per-request failure.**
   `poll_downloads` turns any `httpx.TransportError` into
   `SlskdUnreachableError` and aborts: no row changed or counted

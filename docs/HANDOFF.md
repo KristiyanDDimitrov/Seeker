@@ -11,71 +11,64 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S16c part one's close-out (HISTORY §216). Tree clean apart
+- **HEAD:** S16c part two's close-out (HISTORY §217). Tree clean apart
   from the untracked `Claude outputs/`. `dist/` is still S16b's build.
-- **Local (Cocoa):** pytest `2275 passed, 1 skipped`, 0 failed (+19
+- **Local (Cocoa):** pytest `2287 passed, 1 skipped`, 0 failed (+12
   tests); only the stress test skipped (CI skips 29). `mypy --strict
   src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
   cc -n D -s src/seeker` nothing.
-- **CI: green.** `8e6c72f`'s run `38069989521`: `check` and `audit`
-  both passed on the first attempt.
+- **CI:** pending for the close-out push; recorded in the follow-up
+  handoff commit.
 
 ## 2. Where we are
 
-**S16c is half done:** stopped at its split point (after §16c.2) on
-budget. **Next: S16c part two**, BRIEF §16c item 3, the UI way back.
-Then S17, release-candidate acceptance (Kris and Code).
+**S16c is done** (§216, §217). **Next: S17**, release-candidate
+acceptance (Kris and Code), which starts with Kris's bring-up.
 
-## 3. Session report (S16c, part one)
+## 3. Session report (S16c, part two)
 
-Evidence for each is in HISTORY §216.
-- `97b942a` §16c.1: `SeekerConfig.slskd_share_path`/`slskd_data_dir`,
-  absolute, written after every successful bring-up: `start_slskd`
-  (persist or not) and Sharing's recreate (`record_bring_up`).
-- `aaf2a72` §16c.2: `SharingService.container_presence()` (exact name
-  over `docker ps -a --format {{.Names}}`; Docker failing → UNKNOWN).
-  `restart_slskd`: present → the live share as before; absent → the
-  recorded share and data folder plus the saved login, naming every
-  missing fact in one `SlskdStartRefusedError` and refusing a folder
-  not on disk; unknown → refuse. `start_slskd(..., data_dir=)` must
-  be absolute.
+Evidence for each is in HISTORY §217.
+- `5cb71c3` §16c.3a: `SlskdSetupNeededError` (a
+  `SlskdStartRefusedError`) for the four refusals Settings resolves;
+  `Application.slskd_start_defaults()` (live folders, else recorded;
+  saved login) and `slskd_data_folder_state()`; `start_slskd` never
+  creates a named data folder but the per-user default.
+- `4a047bd` §16c.3b: Settings → Connections' last section is **Start
+  slskd** (login prefilled, share combo with unconnected locations
+  disabled, data folder with Choose… and a sentence on what slskd
+  keeps); it reads Docker only when the tab is shown. A
+  `SlskdSetupNeededError` from Start slskd shows its text with **Open
+  Settings** (`PageContext.open_settings`).
 
-## 4. Key context for S16c part two, then S17
+## 4. Key context for S17
 
 - **BRIEF §17** is the acceptance list; R11's real-desktop checks
   (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
   is the runbook: tag locally, then build.
-- **Part two's job (BRIEF §16c item 3):** when Start slskd is refused
-  for missing facts, the notice offers Settings → Connections, where a
-  "Start slskd" form (or the existing "Update SoulSeek credentials"
-  section, renamed) takes the login (saved values prefilled), the
-  folder to share (recorded first) and the data folder (recorded, else
-  `slskd_data_dir()`, with "Choose…"; Kris's old one is the repo's
-  `slskd-data/`), then calls `start_slskd(..., persist=True,
-  data_dir=)`. Say what happens to slskd's state. Read
-  `src/seeker/ui/CLAUDE.md` first; screenshots per BRIEF §0.13. The
-  refusal comes from `Application.restart_slskd`, shown by
-  `ui/slskd_status.py` and the Dashboard/Downloads Start buttons.
-- **Kris's install today:** nothing recorded, login `null`, so Start
-  slskd refuses naming all three until part two's form exists.
+- **Kris's bring-up first:** Start slskd refuses (nothing recorded,
+  login `null`) → Open Settings → fill the login, pick the share,
+  Choose… the repository's `slskd-data/` (the sentence should read
+  "carries on with the settings…") or keep the app-data default
+  (fresh) → Start slskd. Code never clicks it.
 - **Gatekeeper's Open Anyway flow is UNVERIFIED** until S17 tries it
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second
   paragraph with the tag named (RELEASING.md step 4).
-- **Carried:** Sharing's 20 s per-row rebuild. Run the full suite in
-  the background (~5 min). Never touch slskd or real data, and never
+- **Carried:** Sharing's 20 s per-row rebuild; the Start slskd card's
+  ~13 px of extra top spacing (§217). Run the full suite in the
+  background (~5 min). Never touch slskd or real data, and never
   launch the built app (it migrates the real data); in S17 Kris
   launches it.
 
 ## 5. Decisions made
 
-- **Folders are recorded at every successful bring-up, even the
-  wizard's unconfirmed one:** they describe the container that now
-  exists, whatever its login turns out to be.
-- **A recorded folder not on disk is refused, not created:** Compose
-  would make an empty bind source (an unplugged drive's path).
-- **Container presence compares exact names** over `docker ps -a`,
-  not `--filter name=` (a substring match).
+- **The old "SoulSeek credentials" section became the Start slskd
+  form,** not a second form beside it; it changes the login too.
+- **The form names no found data folder:** a `.app` can't know where
+  an old repository sits; the state sentence describes the one shown.
+- **An unconnected location is listed but disabled:** Compose would
+  create its folder, empty, where the drive mounts.
+- **The form reads Docker on show, never at construction.**
 
 ## 6. Blockers
 
@@ -83,8 +76,7 @@ None.
 
 ## 7. Files in progress
 
-None uncommitted. S16c stopped after §16c.2 (its split point); item 3
-not started.
+None uncommitted.
 
 ## 8. Waiting on Kris
 
@@ -97,9 +89,10 @@ not started.
 - **From S15 part one:** the tooltip and the Runner-up wording ("scored
   64.0, from peer").
 - **From S14:** turn on Settings → General → Updates and relaunch.
-- **From S13 and §213:** bring slskd up again (its container is
-  gone), then the first real cleanup, yours to click: Downloads →
-  "Clean up leftover files…".
+- **From S16c and §213:** bring slskd up again through Settings →
+  Connections → Start slskd (choose the repository's `slskd-data/` or
+  a fresh one), then the first real cleanup, yours to click:
+  Downloads → "Clean up leftover files…".
 - **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
   §12b's "Code's calls"; the first live Cancel, at the keyboard; the
   real `tracks.last_searched_at` migration runs on the next launch.
@@ -114,7 +107,8 @@ not started.
 - Should a CLI command start slskd (`restart_slskd` has none)? Not in
   the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose
-  folder isn't there?
+  folder isn't there? Should `start_slskd` itself refuse a share not
+  on disk (only the form guards it; the wizard passes a location)?
 - Should Search list files a playlist download would take (scored)
   above unscored ones, or say what "—" means?
 - Should "Queued as backup" rows count in the Downloads header's
