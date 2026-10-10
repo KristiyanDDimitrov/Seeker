@@ -18,6 +18,7 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SlskdUnauthorizedError, SoulseekClient
 from seeker.soulseek.sharing_service import (
+    ContainerPresence,
     ShareAlreadyExistsError,
     SharingService,
     SharingWriteNotAllowedError,
@@ -352,6 +353,51 @@ def test_is_self_managed_false_when_docker_unreachable(tmp_path, monkeypatch):
     )
 
     assert service.is_self_managed() is False
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        ("slskd-test\nslskd\n", ContainerPresence.PRESENT),
+        ("slskd-test\nother,slskd\n", ContainerPresence.PRESENT),
+        ("slskd-test\nnot-slskd\n", ContainerPresence.ABSENT),
+        ("", ContainerPresence.ABSENT),
+    ],
+)
+def test_container_presence_matches_the_exact_container_name(
+        tmp_path, monkeypatch, names, expected,
+):
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        return FakeCompletedProcess(stdout=names)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert make_service(tmp_path).container_presence() is expected
+    assert commands == [["docker", "ps", "-a", "--format", "{{.Names}}"]]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError(),
+        subprocess.CalledProcessError(1, "docker"),
+        subprocess.TimeoutExpired("docker", 10),
+    ],
+)
+def test_container_presence_unknown_when_docker_cannot_answer(
+        tmp_path, monkeypatch, error,
+):
+    def fake_run(cmd, **kwargs):
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert make_service(tmp_path).container_presence() is (
+        ContainerPresence.UNKNOWN
+    )
 
 
 def test_preview_add_location_derives_alias_and_readonly_mount(tmp_path):

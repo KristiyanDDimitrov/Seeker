@@ -62,7 +62,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.leftovers import LeftoverService
 from seeker.soulseek.review_service import ReviewService
-from seeker.soulseek.sharing_service import SharingService
+from seeker.soulseek.sharing_service import ContainerPresence, SharingService
 from seeker.soulseek.sweep import SweepService
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
@@ -98,6 +98,13 @@ def _resolve_spotify_token_path() -> Path:
     make_private_dir(data_dir)
 
     return data_dir / "spotify_token.json"
+
+
+def _join_with_and(items: list[str]) -> str:
+    if len(items) == 1:
+        return items[0]
+
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 class Application:
@@ -304,6 +311,7 @@ class Application:
             share_path: str,
             *,
             persist: bool,
+            data_dir: str | None = None,
     ) -> SlskdStartResult:
         """(Re)create the slskd container with a freshly generated API
         key, sharing `share_path` read-only. Blocks on `docker compose
@@ -317,13 +325,24 @@ class Application:
         Sharing's recreate does not come through here — it keeps the
         saved key and login and the live container's data directory,
         so it calls `docker_setup.bring_up_slskd` directly.
+
+        `data_dir` is the folder mounted as /app; without one, an
+        existing container keeps its own, else the per-user default.
         """
+        if data_dir is not None and not Path(data_dir).is_absolute():
+            raise SlskdStartRefusedError(
+                f"slskd's data folder must be a full path, not {data_dir}."
+            )
+
         api_key = generate_api_key()
         # An existing container keeps its data directory (slskd's own
         # state and any finished downloads), wherever it was created.
-        live_data_dir = self.sharing_service.current_data_dir()
-        data_dir = Path(live_data_dir) if live_data_dir else slskd_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
+        app_dir = Path(
+            data_dir
+            or self.sharing_service.current_data_dir()
+            or slskd_data_dir()
+        )
+        app_dir.mkdir(parents=True, exist_ok=True)
         web_username, web_password = self.ensure_slskd_web_credentials()
 
         bring_up_slskd(
@@ -331,15 +350,15 @@ class Application:
             soulseek_username=soulseek_username,
             soulseek_password=soulseek_password,
             api_key=api_key,
-            slskd_data_dir=str(data_dir),
+            slskd_data_dir=str(app_dir),
             web_username=web_username,
             web_password=web_password,
             library_location_path=share_path,
         )
-        self._record_slskd_bring_up(share_path, str(data_dir))
+        self._record_slskd_bring_up(share_path, str(app_dir))
 
         result = SlskdStartResult(
-            api_key=api_key, download_dir=str(data_dir / "downloads"),
+            api_key=api_key, download_dir=str(app_dir / "downloads"),
         )
 
         if persist:
@@ -355,13 +374,14 @@ class Application:
 
     def restart_slskd(self) -> SlskdStartResult:
         """Start slskd again after an outage through `start_slskd`,
-        sharing exactly what the stopped container shares and logging
-        in with the saved SoulSeek login. Blocks on Docker, so callers
-        run it on a worker.
+        logging in with the saved SoulSeek login. A stopped container
+        keeps sharing exactly what it shares; a deleted one is
+        recreated from the share and data folder the last bring-up
+        recorded. Blocks on Docker, so callers run it on a worker.
 
-        Raises `SlskdStartRefusedError` rather than guess: when Docker
-        is not up, when the container is not one Seeker created (or is
-        gone, so its share cannot be read), or when no login is saved.
+        Raises `SlskdStartRefusedError` rather than guess, saying what
+        is missing: Docker, a container Seeker created, a saved login,
+        a recorded folder, or the folder itself (an unplugged drive).
         """
         docker_state = detect_docker_state()
 
@@ -375,6 +395,33 @@ class Application:
                 "Docker isn't running. Open Docker Desktop, then try again."
             )
 
+        presence = self.sharing_service.container_presence()
+
+        if presence is ContainerPresence.UNKNOWN:
+            raise SlskdStartRefusedError(
+                "Seeker couldn't ask Docker whether slskd's container "
+                "exists. Try again in a moment."
+            )
+
+        if presence is ContainerPresence.ABSENT:
+            share_path, data_dir = self._recorded_slskd_folders()
+        else:
+            share_path, data_dir = self._live_slskd_share(), None
+
+        username = self._config_store.slskd_username
+        password = self._config_store.slskd_password
+
+        if not username or not password:
+            raise SlskdStartRefusedError(
+                "Seeker has no saved SoulSeek login. Enter it in "
+                "Settings → Connections."
+            )
+
+        return self.start_slskd(
+            username, password, share_path, persist=True, data_dir=data_dir,
+        )
+
+    def _live_slskd_share(self) -> str:
         share_path = (
             self.sharing_service.current_share_path()
             if self.sharing_service.is_self_managed() else None
@@ -387,16 +434,48 @@ class Application:
                 "set it up again in Settings → Connections."
             )
 
-        username = self._config_store.slskd_username
-        password = self._config_store.slskd_password
+        return share_path
 
-        if not username or not password:
+    def _recorded_slskd_folders(self) -> tuple[str, str]:
+        """The share and data folder to recreate a deleted container
+        with, refusing for each one not recorded or not on disk:
+        Compose would create a missing bind source as an empty folder.
+        """
+        settings = self._config_store
+        missing = [
+            fact
+            for fact, saved in (
+                ("the folder to share", settings.slskd_share_path),
+                ("slskd's data folder", settings.slskd_data_dir),
+                (
+                    "your SoulSeek login",
+                    settings.slskd_username and settings.slskd_password,
+                ),
+            )
+            if not saved
+        ]
+
+        if missing:
             raise SlskdStartRefusedError(
-                "Seeker has no saved SoulSeek login. Enter it in "
+                "slskd's container is gone, and Seeker hasn't saved "
+                f"{_join_with_and(missing)} to recreate it with. Set "
+                f"{'them' if len(missing) > 1 else 'it'} in "
                 "Settings → Connections."
             )
 
-        return self.start_slskd(username, password, share_path, persist=True)
+        assert settings.slskd_share_path and settings.slskd_data_dir
+        folders = (settings.slskd_share_path, settings.slskd_data_dir)
+        gone = [folder for folder in folders if not Path(folder).is_dir()]
+
+        if gone:
+            raise SlskdStartRefusedError(
+                f"{_join_with_and(gone)} "
+                f"{'aren' if len(gone) > 1 else 'isn'}'t there, so Seeker "
+                "won't recreate slskd. Connect the drive, or choose "
+                "another folder in Settings → Connections."
+            )
+
+        return folders
 
     def _record_slskd_bring_up(self, share_path: str, data_dir: str) -> None:
         self.update_settings(slskd_share_path=share_path, slskd_data_dir=data_dir)

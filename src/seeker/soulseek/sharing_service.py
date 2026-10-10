@@ -48,6 +48,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 
 import httpx
@@ -178,6 +179,13 @@ class _RecreateContext:
     slskd_yml_path: Path
 
 
+class ContainerPresence(Enum):
+    PRESENT = "present"
+    ABSENT = "absent"
+    # Docker couldn't be asked (not installed, not running, timed out).
+    UNKNOWN = "unknown"
+
+
 @dataclass
 class _OriginalTexts:
     compose: str
@@ -299,6 +307,37 @@ class SharingService:
         container. A recreate reuses it so slskd keeps its state."""
         mounts = _get_live_container_mounts(self._container_name)
         return mounts.get("/app")
+
+    def container_presence(self) -> ContainerPresence:
+        """Whether a container with slskd's name exists, running or
+        stopped. Compares every listed name exactly rather than through
+        `--filter name=`, which matches substrings."""
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "-a", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+            )
+        except (
+                FileNotFoundError,
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+        ):
+            return ContainerPresence.UNKNOWN
+
+        # A container with legacy links lists them comma-separated.
+        names = {
+            name
+            for line in result.stdout.splitlines()
+            for name in line.split(",")
+        }
+
+        if self._container_name in names:
+            return ContainerPresence.PRESENT
+
+        return ContainerPresence.ABSENT
 
     def is_self_managed(self) -> bool:
         """True only when the running slskd container was created by

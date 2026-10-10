@@ -23,6 +23,7 @@ from seeker.soulseek.docker_setup import (
     SlskdBringUpError,
     SlskdStartRefusedError,
 )
+from seeker.soulseek.sharing_service import ContainerPresence
 from seeker.spotify.auth_manager import SpotifyAuthManager
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
@@ -1123,7 +1124,11 @@ def test_set_login_item_enabled_delegates_to_login_item_module(
 
 
 def _restartable_slskd(
-        tmp_path, monkeypatch, *, self_managed: bool = True,
+        tmp_path,
+        monkeypatch,
+        *,
+        self_managed: bool = True,
+        presence: ContainerPresence = ContainerPresence.PRESENT,
 ) -> tuple[Application, list[dict]]:
     """An app whose saved SoulSeek login and self-managed, stopped
     container make "Start slskd" possible."""
@@ -1134,6 +1139,10 @@ def _restartable_slskd(
     )
     monkeypatch.setattr(
         "seeker.application.detect_docker_state", lambda: DockerState.RUNNING,
+    )
+    monkeypatch.setattr(
+        "seeker.soulseek.sharing_service.SharingService.container_presence",
+        lambda self: presence,
     )
     monkeypatch.setattr(
         "seeker.soulseek.sharing_service.SharingService.is_self_managed",
@@ -1216,6 +1225,144 @@ def test_restart_slskd_without_a_saved_login_points_at_settings(
 
     with pytest.raises(SlskdStartRefusedError, match="Settings"):
         app.restart_slskd()
+
+    assert calls == []
+
+
+def _deleted_container(tmp_path, monkeypatch) -> tuple[Application, list[dict]]:
+    """An app whose slskd container is gone, with nothing to inspect."""
+    app, calls = _restartable_slskd(
+        tmp_path,
+        monkeypatch,
+        self_managed=False,
+        presence=ContainerPresence.ABSENT,
+    )
+    _fake_live_slskd_mounts(monkeypatch, {})
+    return app, calls
+
+
+def test_restart_slskd_recreates_a_deleted_container_from_the_record(
+        tmp_path, monkeypatch,
+):
+    app, calls = _deleted_container(tmp_path, monkeypatch)
+    share = tmp_path / "Music"
+    data_dir = tmp_path / "repo" / "slskd-data"
+    share.mkdir()
+    data_dir.mkdir(parents=True)
+    app.update_settings(
+        slskd_share_path=str(share), slskd_data_dir=str(data_dir),
+    )
+
+    app.restart_slskd()
+
+    assert len(calls) == 1
+    assert calls[0]["library_location_path"] == str(share)
+    assert calls[0]["slskd_data_dir"] == str(data_dir)
+    assert calls[0]["soulseek_username"] == "netuser"
+    assert calls[0]["soulseek_password"] == "netpass"
+    reloaded = load_config(resolve_config_path())
+    assert reloaded.slskd_api_key == "generated-key"
+    assert reloaded.slskd_download_dir == str(data_dir / "downloads")
+
+
+@pytest.mark.parametrize(
+    ("record", "login", "named", "not_named"),
+    [
+        (
+            {}, ("netuser", "netpass"),
+            ["the folder to share", "slskd's data folder"],
+            ["SoulSeek login"],
+        ),
+        (
+            {"slskd_share_path": "SHARE"}, ("netuser", ""),
+            ["slskd's data folder", "SoulSeek login"],
+            ["the folder to share"],
+        ),
+    ],
+)
+def test_restart_slskd_says_which_saved_facts_a_recreate_lacks(
+        tmp_path, monkeypatch, record, login, named, not_named,
+):
+    app, calls = _deleted_container(tmp_path, monkeypatch)
+    app.persist_soulseek_config(
+        "http://127.0.0.1:5030", "old-key", "/dl", *login,
+    )
+    app.update_settings(**{
+        field: str(tmp_path) for field in record
+    })
+
+    with pytest.raises(SlskdStartRefusedError) as refusal:
+        app.restart_slskd()
+
+    message = str(refusal.value)
+    assert "Settings → Connections" in message
+    assert all(fact in message for fact in named)
+    assert not any(fact in message for fact in not_named)
+    assert calls == []
+
+
+def test_restart_slskd_never_recreates_onto_a_folder_that_is_not_there(
+        tmp_path, monkeypatch,
+):
+    # Compose creates a missing bind source, so an unplugged drive
+    # would get an empty folder under /Volumes instead of slskd's data.
+    app, calls = _deleted_container(tmp_path, monkeypatch)
+    share = tmp_path / "Music"
+    share.mkdir()
+    missing = tmp_path / "Unplugged" / "slskd-data"
+    app.update_settings(
+        slskd_share_path=str(share), slskd_data_dir=str(missing),
+    )
+
+    with pytest.raises(SlskdStartRefusedError, match="isn't there") as refusal:
+        app.restart_slskd()
+
+    assert str(missing) in str(refusal.value)
+    assert str(share) not in str(refusal.value)
+    assert not missing.exists()
+    assert calls == []
+
+
+def test_restart_slskd_refuses_when_docker_cannot_say_if_it_exists(
+        tmp_path, monkeypatch,
+):
+    app, calls = _restartable_slskd(
+        tmp_path, monkeypatch, presence=ContainerPresence.UNKNOWN,
+    )
+
+    with pytest.raises(SlskdStartRefusedError, match="Try again"):
+        app.restart_slskd()
+
+    assert calls == []
+
+
+def test_start_slskd_uses_a_chosen_data_folder_over_the_live_one(
+        tmp_path, monkeypatch,
+):
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    _fake_live_slskd_mounts(monkeypatch, {"/app": str(tmp_path / "live")})
+    chosen = tmp_path / "chosen"
+
+    result = app.start_slskd(
+        "netuser", "netpass", "/music", persist=False, data_dir=str(chosen),
+    )
+
+    assert calls[0]["slskd_data_dir"] == str(chosen)
+    assert result.download_dir == str(chosen / "downloads")
+
+
+def test_start_slskd_refuses_a_relative_data_folder(tmp_path, monkeypatch):
+    # A .app's working directory is not the repository, so a relative
+    # folder would point somewhere else on every launch.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+
+    with pytest.raises(SlskdStartRefusedError, match="full path"):
+        app.start_slskd(
+            "netuser", "netpass", "/music",
+            persist=True, data_dir="./slskd-data",
+        )
 
     assert calls == []
 
