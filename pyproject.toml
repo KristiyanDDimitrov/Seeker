@@ -32,8 +32,9 @@ requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# Agent instructions beside the code, not part of the package.
-wheel-exclude = ["**/CLAUDE.md"]
+# Agent instructions beside the code, not part of the package; and the
+# build identity packaging/build_dmg.py generates for the frozen app.
+wheel-exclude = ["**/CLAUDE.md", "**/_build_info_generated.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

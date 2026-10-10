@@ -40,9 +40,10 @@ platform, plus `dist/Seeker.app` on macOS.
   or ruff files (checked in the bundle, not assumed).
 - **Build identity.** `packaging/build_dmg.py` writes the gitignored
   `src/seeker/_build_info_generated.py` (the git SHA, `git describe`
-  and the build time), which About and Help show. The tracked
-  `_build_info.py` only imports it, falling back to `"dev"`; never
-  write the tracked file.
+  and the build time), which About and Help show, and deletes it once
+  the build ends, failed or not. The tracked `_build_info.py` imports
+  it only when frozen, falling back to `"dev"`; never write the
+  tracked file. The wheel excludes it too.
   [HISTORY §83](history/072-107.md#83)
 
 ## The macOS `.dmg`

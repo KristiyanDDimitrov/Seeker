@@ -102,10 +102,8 @@ def test_about_dialog_opens_without_crashing(qtbot):
 
 
 def test_about_dialog_shows_build_identity(qtbot):
-    # Roadmap item 81 (0.1) — "dev" is the committed _build_info.py
-    # fallback. Reliable regardless of real local build state (RR1.2 —
-    # see conftest.py's autouse fixture and test_main_window_
-    # constructs_without_crashing's own identical comment).
+    # "dev" is the committed _build_info.py fallback, and the only
+    # identity an unfrozen run reads (test_build_info.py).
     dialog = AboutDialog()
     qtbot.addWidget(dialog)
 

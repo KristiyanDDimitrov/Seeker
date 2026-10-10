@@ -59,7 +59,15 @@ def main() -> None:
         )
 
     _write_build_info()
+    try:
+        _build()
+    finally:
+        # Only the frozen build reads it; left behind, `uv build --wheel`
+        # would pack it.
+        BUILD_INFO_PATH.unlink(missing_ok=True)
 
+
+def _build() -> None:
     subprocess.run(
         [
             sys.executable, "-m", "PyInstaller",
