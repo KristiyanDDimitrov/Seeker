@@ -14,7 +14,6 @@ file instead would dirty the tree on every build and risk committing a
 real SHA over the fallback. See HISTORY §81, §83.
 """
 
-import contextlib
 import sys
 
 __all__ = ["BUILT_AT", "GIT_DESCRIBE", "GIT_SHA"]
@@ -24,13 +23,15 @@ GIT_DESCRIBE = "dev"
 BUILT_AT = "dev"
 
 if getattr(sys, "frozen", False):
-    with contextlib.suppress(ImportError):
+    try:
         # No blanket `# type: ignore` here: the pyproject.toml
         # `[[tool.mypy.overrides]]` for this exact module name
         # (`ignore_missing_imports = true`) is what makes this clean
         # under --strict whether or not the generated module exists.
-        from seeker._build_info_generated import (
-            BUILT_AT,
-            GIT_DESCRIBE,
-            GIT_SHA,
-        )
+        import seeker._build_info_generated as _generated
+    except ImportError:
+        pass
+    else:
+        GIT_SHA = _generated.GIT_SHA
+        GIT_DESCRIBE = _generated.GIT_DESCRIBE
+        BUILT_AT = _generated.BUILT_AT
