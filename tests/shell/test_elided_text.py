@@ -359,3 +359,29 @@ def test_secondary_text_with_no_room_for_a_word_is_left_to_the_hover(
 
     assert _secondary_share(option, index) == 0
     assert reason in _tooltip_at(table, index)
+
+
+@pytest.mark.parametrize("min_share", [None, 0.0])
+def test_a_column_as_wide_as_its_size_hint_elides_nothing(qtbot, min_share):
+    # A fit-content column takes its content's size hint. Library's
+    # "Missing · Get from Spotify" elided to "Get from Spo…" at 1280
+    # wide, with room to spare: the hint counted the lamp and label
+    # narrower than the paint reserves for them.
+    from PySide6.QtCore import QSize
+
+    from seeker.ui import status_lamp
+    from seeker.ui.elided_text import SECONDARY_ROLE, set_secondary_min_share
+
+    table = _table(qtbot, "Tomas Wren - Signal Path")
+    item = table.item(0, 1)
+    item.setText("Missing")
+    item.setData(SECONDARY_ROLE, "Get from Spotify")
+    item.setIcon(status_lamp.lamp_icon(status_lamp.CUE_WAITING, theme.DARK))
+    size = status_lamp.LAMP_SIZE
+    table.setIconSize(QSize(size, size))
+    if min_share is not None:
+        set_secondary_min_share(table, min_share)
+
+    table.setColumnWidth(1, table.sizeHintForColumn(1))
+
+    assert _tooltip_at(table, table.model().index(0, 1)) == ""

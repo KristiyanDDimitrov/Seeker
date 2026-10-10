@@ -130,6 +130,18 @@ def _icon_width(option: QStyleOptionViewItem) -> int:
     return text.left() - option.rect.left()
 
 
+def _primary_width(option: QStyleOptionViewItem, index: _Index) -> int:
+    """The width a cell's icon, label and badge keep clear of its
+    secondary text. `option` is a styled one (see `_icon_width`)."""
+    return (
+        _icon_width(option)
+        + option.fontMetrics.horizontalAdvance(
+            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+        + 2 * _BADGE_GAP + _badge_width(option, index)
+    )
+
+
 def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
     """What the secondary text takes from this cell's width: what it
     wants, out of what the icon and primary text leave or the view's
@@ -139,13 +151,7 @@ def _secondary_share(option: QStyleOptionViewItem, index: _Index) -> int:
     if not wanted:
         return 0
     cell = option.rect.width()
-    primary = (
-        _icon_width(option)
-        + option.fontMetrics.horizontalAdvance(
-            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
-        )
-        + 2 * _BADGE_GAP + _badge_width(option, index)
-    )
+    primary = _primary_width(option, index)
     delegate = (
         option.widget.itemDelegate()
         if isinstance(option.widget, QAbstractItemView) else None
@@ -312,10 +318,16 @@ class ElidedTextDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option: QStyleOptionViewItem, index: _Index) -> QSize:
         hint = super().sizeHint(option, index)
-        hint.setWidth(
-            hint.width() + _badge_width(option, index)
-            + _secondary_width(option, index),
-        )
+        width = hint.width() + _badge_width(option, index)
+        secondary = _secondary_width(option, index)
+        if secondary:
+            # As wide as the paint keeps the label clear of the
+            # secondary text (`_secondary_share`), or a column sized to
+            # this hint elides the secondary text it has room for.
+            styled = QStyleOptionViewItem(option)
+            self.initStyleOption(styled, index)
+            width = max(width, _primary_width(styled, index)) + secondary
+        hint.setWidth(width)
         if self._fill_width:
             # In list mode an item spans the wider of its own hint and
             # the viewport (probed: a zero-width hint tracks the
