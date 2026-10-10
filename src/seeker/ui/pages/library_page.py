@@ -96,6 +96,8 @@ class LibraryPage(QWidget):
         # The playlist the track list was last loaded for; a change of
         # track selection alone reloads nothing.
         self._loaded_playlist_id: str | None = None
+        # Counts track-list loads; only the latest one may render.
+        self._tracks_load = 0
         # How many of a playlist's tracks its last load found in the
         # library, by playlist id: the header counts what the list shows.
         self._in_library_count: tuple[str, int] | None = None
@@ -167,6 +169,8 @@ class LibraryPage(QWidget):
         after a run here changes the files."""
         playlist = self._context.playlist_selection.playlist
         self._loaded_playlist_id = None if playlist is None else playlist.id
+        self._tracks_load += 1
+        load = self._tracks_load
 
         if playlist is None:
             self._render_tracks([])
@@ -181,7 +185,7 @@ class LibraryPage(QWidget):
             lambda: self._context.application.dashboard_service
             .get_playlist_track_status(playlist.name),
             on_finished=lambda statuses: self._on_tracks_loaded(
-                playlist_id, statuses,
+                load, playlist_id, statuses,
             ),
         )
 
@@ -218,11 +222,12 @@ class LibraryPage(QWidget):
         return self.track_table
 
     def _on_tracks_loaded(
-            self, playlist_id: str, statuses: list[TrackStatus],
+            self, load: int, playlist_id: str, statuses: list[TrackStatus],
     ) -> None:
-        # A load for a playlist since replaced is dropped; the load for
-        # the new one is already running.
-        if playlist_id != self._loaded_playlist_id:
+        # A load since superseded is dropped, whichever playlist it was
+        # for: it may have read the files before a run changed them,
+        # and the newer load is already running.
+        if load != self._tracks_load:
             return
 
         in_library = [
