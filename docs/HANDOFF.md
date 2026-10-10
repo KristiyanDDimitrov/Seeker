@@ -17,7 +17,8 @@ nine fields below follow the contract in
   tests). The X9 Pro was mounted, so only the stress test skipped
   (CI skips 29). `mypy --strict src/` clean, 145 files; `ruff check
   src tests tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI:** see the follow-up commit for the close-out's run.
+- **CI: green on the first attempt.** `21f941a`'s run `38061644943`:
+  `check` and `audit` both passed.
 
 ## 2. Where we are
 
