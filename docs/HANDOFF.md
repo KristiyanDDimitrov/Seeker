@@ -17,8 +17,8 @@ nine fields below follow the contract in
   tests); only the stress test skipped (CI skips 29). `mypy --strict
   src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
   cc -n D -s src/seeker` nothing.
-- **CI:** pending for the close-out push; recorded in the follow-up
-  handoff commit.
+- **CI: green.** `86c9d3e`'s run `38073243710`: `check` and `audit`
+  both passed on the first attempt.
 
 ## 2. Where we are
 
