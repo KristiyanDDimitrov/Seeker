@@ -18,7 +18,9 @@ nine fields below follow the contract in
   tests); only the stress test skipped (CI skips 29). `mypy --strict
   src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
   cc -n D -s src/seeker` nothing.
-- **CI:** CIRESULT
+- **CI: green on the re-run.** `5fd8d2c`'s run `38063506444`:
+  attempt 1 failed (`check`: 1 failed, 2219 passed, 29 skipped; §6
+  below), attempt 2 green, `check` and `audit` both.
 
 ## 2. Where we are
 
@@ -72,7 +74,14 @@ Evidence for each is in HISTORY §214.
 
 ## 6. Blockers
 
-None. S16b's wording waits on Kris.
+- **A new CI flake, first:**
+  `test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last`
+  (`tests/pages/test_library_page.py:1154`, §213's own test) timed
+  out once on CI. The lead is in HISTORY §214 → "CI": its fake
+  answers exactly two loads. Make it fail deterministically on HEAD,
+  then fix the test (or the page, if a third load is a real bug)
+  before S16b.
+- S16b's wording waits on Kris.
 
 ## 7. Files in progress
 
