@@ -96,6 +96,9 @@ class LibraryPage(QWidget):
         # The playlist the track list was last loaded for; a change of
         # track selection alone reloads nothing.
         self._loaded_playlist_id: str | None = None
+        # How many of a playlist's tracks its last load found in the
+        # library, by playlist id: the header counts what the list shows.
+        self._in_library_count: tuple[str, int] | None = None
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -222,12 +225,15 @@ class LibraryPage(QWidget):
         if playlist_id != self._loaded_playlist_id:
             return
 
-        self._render_tracks(
-            [status for status in statuses if status.state == IN_LIBRARY]
-        )
+        in_library = [
+            status for status in statuses if status.state == IN_LIBRARY
+        ]
+        self._render_tracks(in_library)
         self.track_empty_state.set_text(
             help_text.LIBRARY_TRACKS_NONE_IN_LIBRARY_TEXT
         )
+        self._in_library_count = (playlist_id, len(in_library))
+        self._render_context_header()
 
     def _render_tracks(self, statuses: list[TrackStatus]) -> None:
         palette = theme.active_palette()
@@ -355,11 +361,12 @@ class LibraryPage(QWidget):
             self._change_playlist_button.hide()
             self._set_playlist_picker_visible(True)
         else:
-            unit = "track" if playlist.track_count == 1 else "tracks"
-            self._context_label.setText(
-                f"Acting on '{playlist.name}' — "
-                f"{playlist.track_count} {unit} in this playlist."
-            )
+            loaded = self._in_library_count
+            self._context_label.setText(help_text.library_acting_on(
+                playlist.name,
+                playlist.track_count,
+                loaded[1] if loaded and loaded[0] == playlist.id else None,
+            ))
             theme.set_dynamic_property(self._context_label, "badge", "muted")
             self._change_playlist_button.show()
             self._change_playlist_button.setChecked(False)

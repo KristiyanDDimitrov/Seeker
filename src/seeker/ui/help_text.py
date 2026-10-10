@@ -1166,6 +1166,22 @@ def _count(number: int, singular: str, plural: str | None = None) -> str:
     return f"{number:,} {word}"
 
 
+def library_acting_on(
+        name: str, track_count: int, in_library: int | None,
+) -> str:
+    """Library's header: the playlist it acts on and, once its tracks
+    have loaded, how many of them are in the library, the rows it
+    lists."""
+    tracks = _count(track_count, "track")
+    if in_library is None:
+        return f"Acting on '{name}' — {tracks} in this playlist."
+    verb = "is" if in_library == 1 else "are"
+    return (
+        f"Acting on '{name}' — {in_library:,} of its {tracks} {verb} in "
+        "your library."
+    )
+
+
 def share_counts(directories: int, files: int) -> str:
     """A share's size as Sharing words it: "412 directories, 3,180
     files"."""

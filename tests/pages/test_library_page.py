@@ -897,6 +897,28 @@ def test_context_header_shows_empty_state_and_offers_picker(qtbot):
     )
 
 
+def test_context_header_counts_the_tracks_the_list_shows(qtbot):
+    # "8 tracks in this playlist" above a list of two read as a
+    # contradiction: the list shows only the tracks in the library.
+    playlists = [Playlist(id="p1", name="Peak Time", track_count=8)]
+    statuses = [
+        make_track_status(track_id="a", state=IN_LIBRARY),
+        make_track_status(track_id="b", state=IN_LIBRARY),
+        make_track_status(track_id="c", state=NOT_FOUND),
+    ]
+    application = FakeApplication(playlists=playlists, statuses=statuses)
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+    page = window._library_page
+
+    qtbot.waitUntil(lambda: page.track_table.rowCount() == 2, timeout=2000)
+
+    assert page._context_label.text() == (
+        "Acting on 'Peak Time' — 2 of its 8 tracks are in your library."
+    )
+
+
 def test_context_header_names_selected_playlist_and_track_count(qtbot):
     playlists = [Playlist(id="p1", name="240KM/H", track_count=7)]
     application = FakeApplication(playlists=playlists)
