@@ -95,10 +95,13 @@ else:
 # exact same relative path this repo's own dev-mode tree already has.
 # The display face (Barlow Semi Condensed, OFL 1.1, with its licence)
 # resolves the same way, through ui/theme.py's bundled_dir("fonts").
+# licenses/ carries every runtime distribution's licence texts, and
+# fails the build for one that has none (bundle_info.license_datas).
 datas = [
     (str(PROJECT_ROOT / "docker-compose.yml"), "."),
     (str(ICONS_DIR), "icons"),
     (str(SPEC_DIR / "fonts"), "fonts"),
+    *bundle_info.license_datas(PROJECT_ROOT),
 ]
 
 a = Analysis(

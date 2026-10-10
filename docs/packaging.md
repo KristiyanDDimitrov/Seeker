@@ -31,6 +31,14 @@ platform, plus `dist/Seeker.app` on macOS.
   A frozen build finds them through `sys._MEIPASS`; `sys.frozen` gates
   every such lookup, and nothing else about a frozen run differs from
   `uv run seeker-ui`.
+- **Licence texts:** `licenses/<distribution>/` in the bundle holds
+  each runtime distribution's own texts from its `.dist-info`, plus
+  Seeker's `LICENSE` and Python's. PySide6, shiboken6 and pyobjc-core
+  ship none, so `packaging/licenses/` vendors theirs (GNU's LGPL-3.0
+  and GPL-3.0 unedited, PyObjC's MIT text); a test pins their digests.
+  `bundle_info.license_datas()` fails the build, and a test, for a
+  dependency with no text and for a vendored entry whose wheel now
+  carries its own. [HISTORY §215](history/211-240.md#215)
 - **One folder, not one file, on purpose.** librosa's numba JIT cache
   persists across runs only in a one-folder build: about 1 s warm
   against 18–21 s on every launch of a one-file build, which

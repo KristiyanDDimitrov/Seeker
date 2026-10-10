@@ -480,6 +480,11 @@ Code documents loading it when a session reads files in `ui/`
   `sys._MEIPASS`. One-folder mode, deliberately: numba's JIT cache
   persists only there (~1 s against ~18–21 s a run).
   [§30](docs/history/025-031.md#30)
+- **The bundle carries every runtime distribution's licence texts**
+  (`licenses/<name>/`); a wheel with none gets a vendored text in
+  `packaging/licenses/` (`bundle_info.VENDORED_LICENSES`), never
+  edited, and `license_datas()` fails the build otherwise.
+  [§215](docs/history/211-240.md#215)
 - PyInstaller ad-hoc-signs with no `codesign_identity`: say "ad-hoc
   signed, not notarized", never "unsigned".
   [§36](docs/history/032-046.md#36)
