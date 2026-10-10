@@ -45,9 +45,10 @@ shows `flags=0x2(adhoc)` / `Signature=adhoc`, and `codesign --verify
 --deep --strict dist/Seeker.app` exits 0 — no extra build step is needed
 for it (HISTORY §36). It does NOT satisfy Gatekeeper (`spctl --assess`
 still reports "rejected", as expected — ad-hoc signing isn't
-notarization), so first-launch-on-another-Mac still needs the
-right-click → Open workaround, which is why `packaging/Read Me
-First.txt` (bundled into the `.dmg` — see dmg_settings.py) exists.
+notarization), so a first launch on another Mac needs System Settings
+→ Privacy & Security → Open Anyway (Control-click → Open stopped
+working in macOS 15), which is why `packaging/Read Me First.txt`
+(bundled into the `.dmg` — see dmg_settings.py) exists.
 """
 
 import sys

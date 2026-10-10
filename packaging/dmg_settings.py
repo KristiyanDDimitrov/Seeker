@@ -22,9 +22,8 @@ import os.path
 application = defines.get("app", "dist/Seeker.app")  # noqa: F821 — injected by dmgbuild
 appname = os.path.basename(application)
 
-# Item 4 (packaging polish): a plain-text first-launch note, alongside
-# the app inside the volume — the "right-click -> Open" Gatekeeper
-# workaround, spelled out for someone who's never hit it before. Not a
+# A plain-text first-launch note, alongside the app inside the volume —
+# Gatekeeper's "Open Anyway" path, spelled out for someone who's never hit it before. Not a
 # substitute for real notarization (still out of scope — see
 # seeker.spec's own docstring), just documentation for the friction
 # that comes with skipping it.

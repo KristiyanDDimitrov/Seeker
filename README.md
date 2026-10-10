@@ -75,8 +75,12 @@ You need:
 **The app.** Download `Seeker.dmg` from
 [Releases](https://github.com/KristiyanDDimitrov/Seeker/releases),
 check it against the release's SHA-256, and drag Seeker to
-Applications. The build is ad-hoc signed, not notarized: open it the
-first time with Control-click → Open.
+Applications. Seeker needs macOS 15 or later on Apple silicon. The
+build is ad-hoc signed, not notarized, so macOS blocks the first
+launch: click Done, then System Settings → Privacy & Security → Open
+Anyway (Control-click → Open no longer works on macOS 15 and later).
+`Read Me First.txt` on the disk image has the steps, and the Terminal
+alternative.
 
 **From source.** With [`uv`](https://docs.astral.sh/uv/) installed:
 

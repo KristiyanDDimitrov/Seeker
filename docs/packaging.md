@@ -99,10 +99,14 @@ The build is **ad-hoc signed, not notarized**, which is not the same
 as unsigned. PyInstaller ad-hoc-signs the executable and the bundle by
 default: `codesign -dvvv` shows `Signature=adhoc`, and
 `codesign --verify --deep --strict` passes. Gatekeeper still rejects
-it (`spctl --assess`), as it does every non-notarized build, so the
-first launch on any other Mac needs Control-click → Open, then Open
-again. `Read Me First.txt` on the volume says so.
-[HISTORY §36](history/032-046.md#36)
+it (`spctl --assess`), as it does every non-notarized build. On macOS
+15 and later Control-click → Open no longer overrides it: the first
+launch on any other Mac is blocked, then allowed from System Settings
+→ Privacy & Security → Open Anyway, or the quarantine attribute is
+removed (`xattr -dr com.apple.quarantine`). `Read Me First.txt` on the
+volume gives both. UNVERIFIED on a quarantined download until S17's
+acceptance tries it on macOS 26.
+[HISTORY §36](history/032-046.md#36), [§214](history/211-240.md#214)
 
 Notarization needs a paid Apple Developer account. The hooks for it
 are marked in `packaging/seeker.spec`: `codesign_identity=` and

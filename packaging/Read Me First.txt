@@ -1,16 +1,31 @@
 Seeker — first launch on this Mac
 ==================================
 
-This build isn't notarized by Apple (that needs a paid Apple Developer
-account), so macOS Gatekeeper will warn that it's "from an unidentified
-developer" the first time you open it on a machine other than the one
-that built it. This is expected, not a sign anything's wrong.
+Seeker needs macOS 15 or later on an Apple silicon Mac.
+
+This build is not notarized by Apple (that needs a paid Apple
+Developer account). The first time you open it, macOS says it
+"could not verify Seeker is free of malware" and offers only "Done"
+and "Move to Bin". This is expected, not a sign anything is wrong.
+On macOS 15 and later, Control-click → Open no longer gets past it.
 
 To open it the first time:
 
-  1. Drag Seeker.app into Applications (if you haven't already).
-  2. Right-click (or Control-click) Seeker.app and choose "Open".
-  3. Click "Open" again in the dialog that appears.
+  1. Drag Seeker.app into Applications.
+  2. Double-click Seeker.app, then click "Done" in the warning.
+  3. Open System Settings → Privacy & Security, scroll down to
+     Security, and click "Open Anyway" beside the line about Seeker.
+  4. Enter your password (or use Touch ID), then click "Open Anyway"
+     once more.
 
 After that first launch, Seeker opens normally with a plain
 double-click, like any other app.
+
+If you are comfortable with Terminal, you can instead remove the
+quarantine flag that macOS put on the download, which skips the
+warning entirely:
+
+  xattr -dr com.apple.quarantine /Applications/Seeker.app
+
+Only do this for a copy whose SHA-256 checksum matches the one on the
+release page.
