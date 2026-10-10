@@ -11,51 +11,52 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S16b's close-out (HISTORY §215). Tree clean apart from the
-  untracked `Claude outputs/`. `dist/Seeker.app` and `dist/Seeker.dmg`
-  are a build of `a227ed0` plus S16b's uncommitted licence work
-  (identical to `e45eed4`; gitignored).
-- **Local (Cocoa):** pytest `2256 passed, 1 skipped`, 0 failed (+8
+- **HEAD:** S16c part one's close-out (HISTORY §216). Tree clean apart
+  from the untracked `Claude outputs/`. `dist/` is still S16b's build.
+- **Local (Cocoa):** pytest `2275 passed, 1 skipped`, 0 failed (+19
   tests); only the stress test skipped (CI skips 29). `mypy --strict
   src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
   cc -n D -s src/seeker` nothing.
-- **CI: green.** `9f322ee`'s run `38067259128`: `check` and `audit`
-  both passed on the first attempt, the fixed Library test included.
+- **CI:** pending for this push (recorded in the next commit).
 
 ## 2. Where we are
 
-**S16b is done** (SESSION-PLAN): the CI flake fixed first, every
-licence text in the bundle, and the GPL-3.0 statement Kris approved.
-**Next: S16c** (added 2026-10-10 at Kris's request): bring slskd back
-when its container is gone. BRIEF §16c holds the read-only diagnosis.
+**S16c is half done:** stopped at its split point (after §16c.2) on
+budget. **Next: S16c part two**, BRIEF §16c item 3, the UI way back.
 Then S17, release-candidate acceptance (Kris and Code).
 
-## 3. Session report (S16b)
+## 3. Session report (S16c, part one)
 
-Evidence for each is in HISTORY §215.
-- `a227ed0`: the Library load-recency flake. Two loads' workers took
-  the fake's answers in reverse (CI's log: no Library
-  `StopIteration`). Reproduced with a 0.3 s delay; the test now
-  answers by load and stops `poll_timer`. No page change.
-- `e45eed4` S-04: `bundle_info.license_datas()` bundles all 41
-  runtime distributions' texts, Seeker's and Python's, at
-  `Contents/Resources/licenses/<name>/`; `packaging/licenses/`
-  vendors LGPL-3.0, GPL-3.0 (PySide6, shiboken6) and PyObjC's MIT
-  text (pyobjc-core). It raises (build and test) for a dependency
-  with no text. Checked on a real build: 71 files, byte-identical.
-- `1a1f867` S-04 wording: README, About and RELEASING.md say the app
-  ships under the GNU GPL, version 3 (not the audit's 2-or-later: Qt
-  is LGPL-3.0-only). Kris approved it in session.
+Evidence for each is in HISTORY §216.
+- `97b942a` §16c.1: `SeekerConfig.slskd_share_path`/`slskd_data_dir`,
+  absolute, written after every successful bring-up: `start_slskd`
+  (persist or not) and Sharing's recreate (`record_bring_up`).
+- `aaf2a72` §16c.2: `SharingService.container_presence()` (exact name
+  over `docker ps -a --format {{.Names}}`; Docker failing → UNKNOWN).
+  `restart_slskd`: present → the live share as before; absent → the
+  recorded share and data folder plus the saved login, naming every
+  missing fact in one `SlskdStartRefusedError` and refusing a folder
+  not on disk; unknown → refuse. `start_slskd(..., data_dir=)` must
+  be absolute.
 
-## 4. Key context for S17
+## 4. Key context for S16c part two, then S17
 
 - **BRIEF §17** is the acceptance list; R11's real-desktop checks
   (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
   is the runbook: tag locally, then build.
-- **Kris's slskd container no longer exists, and the app can't bring
-  it back** ("Start slskd" refuses without a live container; the
-  saved SoulSeek login is `null`; the old data folder is the repo's
-  `slskd-data/`). S16c fixes that, and Kris then does the bring-up.
+- **Part two's job (BRIEF §16c item 3):** when Start slskd is refused
+  for missing facts, the notice offers Settings → Connections, where a
+  "Start slskd" form (or the existing "Update SoulSeek credentials"
+  section, renamed) takes the login (saved values prefilled), the
+  folder to share (recorded first) and the data folder (recorded, else
+  `slskd_data_dir()`, with "Choose…"; Kris's old one is the repo's
+  `slskd-data/`), then calls `start_slskd(..., persist=True,
+  data_dir=)`. Say what happens to slskd's state. Read
+  `src/seeker/ui/CLAUDE.md` first; screenshots per BRIEF §0.13. The
+  refusal comes from `Application.restart_slskd`, shown by
+  `ui/slskd_status.py` and the Dashboard/Downloads Start buttons.
+- **Kris's install today:** nothing recorded, login `null`, so Start
+  slskd refuses naming all three until part two's form exists.
 - **Gatekeeper's Open Anyway flow is UNVERIFIED** until S17 tries it
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second
@@ -67,13 +68,13 @@ Evidence for each is in HISTORY §215.
 
 ## 5. Decisions made
 
-- **GPL-3.0 for the combined app** (Kris, 2026-10-10), over the
-  audit's GPL-2.0-or-later: Qt's LGPL-3.0-only rules out version 2.
-- **Every runtime distribution's licence ships, not only copyleft
-  ones** (MIT/BSD ask for their notice in binaries too).
-- **A flaky worker test answers by the order loads were started,
-  never by the order workers arrive,** and stops the shell's poll
-  when the Dashboard shares its fake.
+- **Folders are recorded at every successful bring-up, even the
+  wizard's unconfirmed one:** they describe the container that now
+  exists, whatever its login turns out to be.
+- **A recorded folder not on disk is refused, not created:** Compose
+  would make an empty bind source (an unplugged drive's path).
+- **Container presence compares exact names** over `docker ps -a`,
+  not `--filter name=` (a substring match).
 
 ## 6. Blockers
 
@@ -81,7 +82,8 @@ None.
 
 ## 7. Files in progress
 
-None uncommitted.
+None uncommitted. S16c stopped after §16c.2 (its split point); item 3
+not started.
 
 ## 8. Waiting on Kris
 
@@ -108,6 +110,8 @@ None uncommitted.
 
 ## 9. Open questions
 
+- Should a CLI command start slskd (`restart_slskd` has none)? Not in
+  the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose
   folder isn't there?
 - Should Search list files a playlist download would take (scored)
