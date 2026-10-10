@@ -50,7 +50,7 @@ after Kris's explicit yes.
 | ☑ S13 | X1: Clean up leftover slskd downloads — §208 | §13 | ~110 K | After the listing (no delete) |
 | ☑ S14 | Automatic app-update check (R11 §40) — §209 | §14 | ~90 K | None |
 | **Phase D — Fresh-eyes QA** | | | | |
-| ☐ S15 | QA sweep over all 78 screens; small fixes, the rest listed — part one §210 (four planning-time findings); part two §211 (the last two; the sweep half read) | §15 | ~120 K | After the planning-time findings |
+| ☑ S15 | QA sweep over all 78 screens; small fixes, the rest listed — part one §210 (four planning-time findings); part two §211 (the last two; the sweep half read); part three §212 (the rest read; three fixes) | §15 | ~120 K | After the planning-time findings |
 | **Phase E — Release (carried)** | | | | |
 | ☐ S16 | Release engineering (R11 §39; bundle ID decided) | §16 | ~110 K | After R11 §39.2 |
 | ☐ S17 | Release-candidate acceptance (**Kris and Code**) | §17 | ~70 K | — |

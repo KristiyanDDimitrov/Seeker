@@ -11,94 +11,83 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S15 part-two close-out (HISTORY §211). Tree clean
+- **HEAD:** the S15 part-three close-out (HISTORY §212). Tree clean
   apart from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2206 passed, 29 skipped`, 0 failed (+4
-  tests). The skips are CI's 29: the X9 Pro was not mounted this
-  session, so its 28 tests skipped as well. `mypy --strict src/`
-  clean, 145 files; `ruff check src tests tools` 0; `uvx radon cc -n
-  D -s src/seeker` nothing.
-- **CI: green on retry.** `f0854ab`'s run `38041423269`: attempt 1
-  failed on the Library flake alone (`check` `1 failed, 2205 passed,
-  29 skipped`, coverage 95 %, floor 92 %); attempt 2 passed. Earlier,
-  `37994812022` passed on its third attempt. The flake has now failed
-  3 of the last 6 attempts (§6).
+- **Local (Cocoa):** pytest `2238 passed, 1 skipped`, 0 failed (+4
+  tests). The X9 Pro was mounted, so only the stress test skipped
+  (CI skips 29). `mypy --strict src/` clean, 145 files; `ruff check
+  src tests tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
+- **CI:** see §6 for this push's run.
 
 ## 2. Where we are
 
-**Round 12 S15 is still open** (☐). Part two fixed the last two
-planning-time findings (the row's split point) and read about half
-of the remaining screens. **Next: S15 part three**, the rest of the
-sweep (§4), then the small fixes it turns up.
+**Round 12 S15 is done** (☑). Part three read the rest of the sweep
+and fixed three small findings. **Next: S16, release engineering**
+(BRIEF §16, R11 §39; the bundle ID is decided). The Library flake
+(§6) may deserve a row of its own first; that is Kris's call.
 
-## 3. Session report (S15, part two)
+## 3. Session report (S15, part three)
 
-Evidence for each is in HISTORY §211, the first entry in the new
-`docs/history/211-240.md`.
-- `64da7a2` §15.5: Settings → Library's Reachable column is now
-  Status: a `PLAY` lamp with "Available", or a `STANDBY` lamp with
-  "Not found" and a tooltip. `SettingsPage.refresh_lamps()` repaints
-  it on a theme switch. The harness's Archive drive is unplugged, so
-  the screen shows both states.
-- `12214e4` §15.6: `ColumnLayout.whole`. Duplicates' Quality reads in
-  full at 960 px, and Path elides instead.
+Evidence for each is in HISTORY §212.
+- `e7d8c66` §15.7: `ElidedTextDelegate`'s size hint counted a lamp
+  and label 6 px narrower than its paint, so a column sized to its
+  hint elided its secondary text (Library's "Get from Spo…" at 1280).
+  `_primary_width` now serves both.
+- `18af077` §15.8: Sharing's counts read "3,180 files", "1
+  directory" (`help_text.share_counts`).
+- `1e2c459` §15.9: Library's header reads "2 of its 8 tracks are in
+  your library" once the list loads (`help_text.library_acting_on`).
+- Not a bug: Downloads' "Calculating…" is whole (78 px of 78).
 
-## 4. Key context for S15 part three
+## 4. Key context for S16
 
-- **Not yet read:** `help`, `sharing-explained`, the four wizard
-  steps, and the 1280 px and other-theme twins of `library`,
-  `search`, `sharing`, `history`, `settings-connections`,
-  `settings-matching` and `support`. Crop through
-  `QImage.copy` in the scratchpad, past the 165 px sidebar: about 1 K
-  tokens a screen. `settings-library-light-1280x1300.png` in
-  `tools/.screens/` is stale (the harness writes 76 images now).
-- **Seen, not fixed (HISTORY §211 has detail):** Sharing offers "Add
-  to my SoulSeek share" for a folder that isn't there (it touches the
-  slskd recreate path, so it is its own row); History's stored "MP3
-  320kbps" (needs a display formatter or a migration); Search's "—"
-  scores and their unranked order; Library's "8 tracks" above two rows
-  (perhaps the harness); the harness's unconfigured Connections tab;
-  "3180 files" with no separator; Support's tight bullets.
-- **From part one:** Downloads' Progress cell elides "Calculating…"
-  at 1280.
+- **Every harness screen has now been read** in both themes and at
+  both sizes. `settings-library-light-1280x1300.png` in
+  `tools/.screens/` is stale (the harness writes 76 images).
+- **Seen, not fixed (HISTORY §211 and §212 have detail):** Sharing
+  offers "Add to my SoulSeek share" for a missing folder (touches the
+  recreate path); History's stored "MP3 320kbps"; Search's "—" means
+  the filename doesn't name the artist, yet `rank_candidates` sorts by
+  quality alone, so such a file can top the list; Settings →
+  Connections' cards each align their own label column; Support's
+  tight bullets; the harness's unconfigured Connections tab.
 - **Carried:** Sharing's 20 s per-row rebuild; R11's carried list
-  (`git show 1b415a4:docs/HANDOFF.md` §9: the Dashboard selection lost
-  on Refresh, the locations table's empty space, a taller first
-  Duplicates row); `uv build --wheel` picks up
+  (`git show 1b415a4:docs/HANDOFF.md` §9); `uv build --wheel` picks up
   `_build_info_generated.py` (S16). Run the full suite in the
   background (~5 min). Never touch slskd or real data.
 
 ## 5. Decisions made
 
-- **An unreachable location stands by; it is not a fault** (§15.5).
-  An unplugged drive is normal for a DJ's external library.
-- **A value a person chooses a row by never elides** (§15.6). The
-  path gives way, and its full text is on hover.
-- **Skills:** `frontend-design` was not loaded again; §210 found only
-  its self-critique applies to Qt.
+- **A size hint is what the paint needs** (§15.7). One measure for
+  both, never two that agree by luck.
+- **A header counts what its list shows** (§15.9).
+- **Skills:** `frontend-design` was not loaded; §210 found only its
+  self-critique applies to Qt.
 
 ## 6. Blockers
 
-**The Library flake is getting more frequent:**
-`test_library_track_list_refreshes_after_a_tag_run` failed 3 of the
-last 6 CI attempts, and never locally. It does not block S15, but it
-is worth a row of its own soon. Its lead is
-`LibraryPage.refresh_tracks()`, which has no recency guard, so an
-earlier load landing last repaints stale statuses (UNVERIFIED). A fix
-is test-first and its own commit.
+**The Library flake** (`test_library_track_list_refreshes_after_a_tag_run`)
+failed 3 of the 6 CI attempts before this session, and never locally.
+Its lead: `LibraryPage.refresh_tracks()` drops a load for another
+playlist but not an older load for the same one, so an earlier load
+landing last repaints stale statuses (UNVERIFIED). A fix is
+test-first and its own commit. §15.9 touched `_on_tracks_loaded` but
+not that ordering.
 
-Nothing else blocks S15. **Kris's slskd container** is still bound to deleted
-pytest temp directories (HISTORY §208 → "Observed"). Sessions must
-not restart or recreate it; Kris does. A later row should find which
-test reached the real `bring_up_slskd` and add a guard.
+**Kris's slskd container** is still bound to deleted pytest temp
+directories (HISTORY §208 → "Observed"). Sessions must not restart or
+recreate it; Kris does. A later row should find which test reached
+the real `bring_up_slskd` and add a guard.
 
 ## 7. Files in progress
 
-None uncommitted. S15 stopped between screens, not mid-change.
+None uncommitted. S15 is closed.
 
 ## 8. Waiting on Kris
 
-- **New (S15 part two):** veto, if wanted, "Available"/"Not found"
+- **New (S15 part three):** veto, if wanted, "2 of its 8 tracks are
+  in your library" in Library's header.
+- **From S15 part two:** veto, if wanted, "Available"/"Not found"
   and the faint ring for an unplugged drive.
 - **From S15 part one:** the tooltip and the Runner-up wording ("scored
   64.0, from peer").
@@ -118,6 +107,8 @@ None uncommitted. S15 stopped between screens, not mid-change.
 
 - Should Sharing hide or disable "Add to share" for a location whose
   folder isn't there?
+- Should Search list files a playlist download would take (scored)
+  above unscored ones, or say what "—" means?
 - Should "Queued as backup" rows count in the Downloads header's
   "queued (no estimate)"?
 - Should a superseded row's transfer be cancelled in slskd, so its

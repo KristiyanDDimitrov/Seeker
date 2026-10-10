@@ -163,11 +163,14 @@ investigation.
   value a row is chosen by, Duplicates' Quality) never elides, and
   the stretch column gives way; a viewport filter refits on resize.
   Cells are one line: `ElidedTextDelegate` shows the full text on hover only when elided,
-  and `ColumnLayout.paths` columns elide in the middle. A list of
+  and `ColumnLayout.paths` columns elide in the middle. Its size hint
+  is what its paint needs (`_primary_width` serves both), or a column
+  sized to it elides its secondary text. A list of
   names uses `elide_list_items`. `tests/shell/test_table_columns.py`
   walks every harness screen at 960×640.
   [HISTORY §176](../../../docs/history/151-180.md#176),
-  [HISTORY §211](../../../docs/history/211-240.md#211)
+  [HISTORY §211](../../../docs/history/211-240.md#211),
+  [HISTORY §212](../../../docs/history/211-240.md#212)
 - **An empty table shows `ui/empty_state.EmptyState`** (a glyph, one
   sentence, an optional action) inside its viewport, shown by the row
   count itself; never a spanned placeholder row or a status-label
