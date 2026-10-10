@@ -18,9 +18,11 @@ nine fields below follow the contract in
   session, so its 28 tests skipped as well. `mypy --strict src/`
   clean, 145 files; `ruff check src tests tools` 0; `uvx radon cc -n
   D -s src/seeker` nothing.
-- **CI:** recorded in the follow-up handoff commit (§2). Before this
-  session: `37994812022`'s third attempt passed (the Library flake,
-  intermittent), and `cabdaee`'s run `37996502114` was green.
+- **CI: green on retry.** `f0854ab`'s run `38041423269`: attempt 1
+  failed on the Library flake alone (`check` `1 failed, 2205 passed,
+  29 skipped`, coverage 95 %, floor 92 %); attempt 2 passed. Earlier,
+  `37994812022` passed on its third attempt. The flake has now failed
+  3 of the last 6 attempts (§6).
 
 ## 2. Where we are
 
@@ -77,7 +79,15 @@ Evidence for each is in HISTORY §211, the first entry in the new
 
 ## 6. Blockers
 
-None for S15. **Kris's slskd container** is still bound to deleted
+**The Library flake is getting more frequent:**
+`test_library_track_list_refreshes_after_a_tag_run` failed 3 of the
+last 6 CI attempts, and never locally. It does not block S15, but it
+is worth a row of its own soon. Its lead is
+`LibraryPage.refresh_tracks()`, which has no recency guard, so an
+earlier load landing last repaints stale statuses (UNVERIFIED). A fix
+is test-first and its own commit.
+
+Nothing else blocks S15. **Kris's slskd container** is still bound to deleted
 pytest temp directories (HISTORY §208 → "Observed"). Sessions must
 not restart or recreate it; Kris does. A later row should find which
 test reached the real `bring_up_slskd` and add a guard.
