@@ -16,7 +16,7 @@ Dashboard state stay in test_tagging_panel.py.
 
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtCore import QCoreApplication, QItemSelectionModel, Qt
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
 from fakes import FakeApplication, make_track_status
@@ -1133,6 +1133,10 @@ def test_library_track_list_refreshes_after_a_tag_run(qtbot):
     window = _window_on_library(qtbot, application)
     table = window._library_page.track_table
     qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    # Every load the selection and the page switch started has landed,
+    # so only a load the tag run starts can show the change below.
+    assert window.thread_pool.waitForDone(2000)
+    QCoreApplication.processEvents()
     application.dashboard_service._statuses[3] = make_track_status(
         track_id="unread", tagged_at="2026-10-07", has_art=True,
     )

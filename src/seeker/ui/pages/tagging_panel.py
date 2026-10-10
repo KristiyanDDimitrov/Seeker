@@ -264,6 +264,8 @@ class TaggingPanel(QWidget):
         # widget, never wired into status_label's plumbing at all)
         # (HISTORY §56).
         self._show_tag_result_notice(result, feedback)
+        # A run that tagged or embedded art changed the rows' lamps.
+        self._host.refresh_track_table()
 
     def _show_tag_result_notice(
             self,
