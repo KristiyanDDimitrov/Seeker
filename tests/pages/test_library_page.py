@@ -1161,27 +1161,30 @@ def test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last(
     assert window.thread_pool.waitForDone(2000)
     QCoreApplication.processEvents()
 
+    # The Dashboard's 2 s poll reads the same service method; stopped,
+    # only the two loads below can reach the fakes.
+    window.poll_timer.stop()
+
     stale = list(application.dashboard_service._statuses)
     fresh = list(stale)
     fresh[3] = make_track_status(
         track_id="unread", tagged_at="2026-10-07", has_art=True,
     )
+    stale_entered = threading.Event()
     release_stale = threading.Event()
-    answers = iter([stale, fresh])
-    lock = threading.Lock()
 
-    def get_playlist_track_status(playlist_name):
-        with lock:
-            statuses = next(answers)
-        if statuses is stale:
-            assert release_stale.wait(5)
-        return statuses
+    def stale_answer(playlist_name):
+        stale_entered.set()
+        assert release_stale.wait(5)
+        return stale
 
-    application.dashboard_service.get_playlist_track_status = (
-        get_playlist_track_status
-    )
-
+    # Each load gets its answer by when it was started, not by when its
+    # worker reaches the service: two workers start in either order.
+    service = application.dashboard_service
+    service.get_playlist_track_status = stale_answer
     page.refresh_tracks()
+    assert stale_entered.wait(2)
+    service.get_playlist_track_status = lambda playlist_name: fresh
     page.refresh_tracks()
     qtbot.waitUntil(
         lambda: _library_rows(window).get("unread")
