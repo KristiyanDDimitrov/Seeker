@@ -107,6 +107,49 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
     )
 
 
+def test_sharing_counts_read_as_counts(qtbot):
+    # "412 directories, 3180 files" read as a code next to every other
+    # page's "3,180"; one directory is not "1 directories".
+    from seeker.soulseek.sharing_service import (
+        LocationShareState,
+        ShareEntry,
+        ShareStatus,
+    )
+
+    location = make_location(1, "Music", "/Volumes/Drive/Music")
+    sharing_service = FakeSharingService(
+        status=ShareStatus(
+            ready=True, scanning=False, scan_pending=False, faulted=False,
+            directories=1, files=3180, shares=[],
+        ),
+        self_managed=True,
+        reconciliation=[
+            LocationShareState(
+                location=location, shared=True,
+                share=ShareEntry(
+                    id="1", alias="music", local_path="/shared/music",
+                    is_excluded=False, directories=1, files=3180,
+                ),
+            ),
+        ],
+        uploads=[],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._show_page("sharing")
+
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    assert window._sharing_page.sharing_summary_label.text().startswith(
+        "1 directory, 3,180 files shared.",
+    )
+    assert locations_table.item(0, 3).text() == "3,180"
+
+
 def test_sharing_uploads_empty_state_gives_way_to_a_real_upload(qtbot):
     from seeker.soulseek.sharing_service import UploadStatus
 
@@ -250,8 +293,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
     )
     text = window._sharing_page.sharing_notice.text()
     assert "'Other' shared" in text
-    assert "1 directories" in text
-    assert "1 files" in text
+    assert "1 directory, 1 file " in text
 
     # The immediate _refresh_sharing() call this same handler triggers
     # must not wipe it — wait for that refresh to actually settle

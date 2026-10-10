@@ -1166,6 +1166,15 @@ def _count(number: int, singular: str, plural: str | None = None) -> str:
     return f"{number:,} {word}"
 
 
+def share_counts(directories: int, files: int) -> str:
+    """A share's size as Sharing words it: "412 directories, 3,180
+    files"."""
+    return (
+        f"{_count(directories, 'directory', 'directories')}, "
+        f"{_count(files, 'file')}"
+    )
+
+
 def _forgotten_phrase(summary: LocationRemovalSummary) -> str:
     phrase = (
         f"{_count(summary.files_forgotten, 'indexed file')} and "

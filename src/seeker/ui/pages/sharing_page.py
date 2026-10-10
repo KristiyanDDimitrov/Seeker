@@ -361,7 +361,7 @@ class SharingPage(QWidget):
             else "Not managed by Seeker — sharing changes need manual steps."
         )
         self.sharing_summary_label.setText(
-            f"{status.directories} directories, {status.files} files "
+            f"{help_text.share_counts(status.directories, status.files)} "
             f"shared. {managed_note}"
         )
 
@@ -407,7 +407,7 @@ class SharingPage(QWidget):
                 table.setItem(
                     row, 3,
                     SortKeyItem(
-                        str(files) if files is not None else "",
+                        f"{files:,}" if files is not None else "",
                         files if files is not None else -1,
                     ),
                 )
@@ -546,11 +546,12 @@ class SharingPage(QWidget):
         ready_note = (
                 "" if result.became_ready else " Still finishing the scan."
         )
+        counts = help_text.share_counts(
+            result.directories_after, result.files_after,
+        )
         self.sharing_notice.show_message(
-            f"'{result.location.name}' shared — "
-            f"{result.directories_after} directories, "
-            f"{result.files_after} files "
-            f"(was {result.directories_before}/{result.files_before})."
+            f"'{result.location.name}' shared — {counts} "
+            f"(was {result.directories_before:,}/{result.files_before:,})."
             + ready_note,
             kind="success",
         )
