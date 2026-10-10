@@ -59,6 +59,11 @@ SRC_DIR = PROJECT_ROOT / "src"
 
 APP_NAME = "Seeker"
 
+# The spec runs with PyInstaller's globals, not as an import, so its own
+# folder is put on the path for the bundle's identity module.
+sys.path.insert(0, str(SPEC_DIR))
+import bundle_info  # noqa: E402
+
 ICONS_DIR = SPEC_DIR / "icons"
 ICON_ICNS = ICONS_DIR / "seeker_icon.icns"
 ICON_ICO = ICONS_DIR / "seeker_icon.ico"
@@ -157,11 +162,6 @@ if sys.platform == "darwin":
         coll,
         name=f"{APP_NAME}.app",
         icon=str(ICON_ICNS),
-        bundle_identifier="com.seeker.app",
-        info_plist={
-            "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.1.0",
-            "CFBundleVersion": "0.1.0",
-            "NSHumanReadableCopyright": "",
-        },
+        bundle_identifier=bundle_info.BUNDLE_IDENTIFIER,
+        info_plist=bundle_info.info_plist(PROJECT_ROOT),
     )

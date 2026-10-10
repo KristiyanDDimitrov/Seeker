@@ -45,6 +45,11 @@ platform, plus `dist/Seeker.app` on macOS.
   it only when frozen, falling back to `"dev"`; never write the
   tracked file. The wheel excludes it too.
   [HISTORY §83](history/072-107.md#83)
+- **Info.plist** comes from `packaging/bundle_info.py`: the version is
+  `pyproject.toml`'s, the copyright `LICENSE`'s line, the category
+  Music, and the minimum macOS 15.0, the highest `minos` among the
+  bundled binaries (PySide6's own; re-measure after an upgrade).
+  [HISTORY §214](history/211-240.md#214)
 
 ## The macOS `.dmg`
 
