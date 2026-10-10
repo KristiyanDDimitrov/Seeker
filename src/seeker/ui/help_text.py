@@ -1619,11 +1619,11 @@ ABOUT_DIALOG_LICENSE_LINE = (
 )
 
 # Real license identifiers, confirmed directly against each installed
-# package's own metadata (not assumed) — not an exhaustive legal NOTICE
-# file, just an honest, correctly-sourced summary for a portfolio
-# project. libchromaprint is dynamically loaded via ctypes at runtime
-# (see audio/fingerprint.py), never statically linked or bundled — the
-# correct, low-risk way to use an LGPL library from a closed-source app.
+# package's own metadata (not assumed): a summary, not the texts, which
+# the bundle carries in full (packaging/bundle_info.py). libchromaprint
+# is loaded via ctypes at runtime (audio/fingerprint.py), never
+# bundled. mutagen's GPL-2.0-or-later and Qt's LGPL-3.0-only combine
+# only under the GPL's version 3, hence the app's terms (HISTORY §215).
 ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
     "<p><b>Third-party notices</b><br>"
     "Built with PySide6/Qt (LGPL-3.0), librosa (ISC), mutagen "
@@ -1631,7 +1631,10 @@ ABOUT_DIALOG_THIRD_PARTY_NOTICES = (
     "dynamically at runtime), NumPy/SciPy/httpx/soundfile/"
     "python-dotenv (BSD-3-Clause), and platformdirs/rapidfuzz/"
     "pyloudnorm/packaging (MIT/Apache-2.0). Each project's own license "
-    "governs its use.</p>"
+    "governs its use. The app as a whole is distributed under the GNU "
+    "GPL, version 3; its source is at this release's tag on GitHub, "
+    "and every licence text is in the app's Contents/Resources/licenses "
+    "folder.</p>"
 )
 
 # --- Update check ------------------------------------------------------

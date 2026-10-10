@@ -75,8 +75,9 @@ and start again from step 1.
 
 Release notes: the version's `CHANGELOG.md` section, then the SHA-256
 from `dist/Seeker.dmg.sha256`, the first-launch steps from
-`packaging/Read Me First.txt`, and the licence statement for the
-macOS binary. Save them to a file outside the repository.
+`packaging/Read Me First.txt`, and README → License's second
+paragraph, with "the release's tag" naming this one (`vX.Y.Z`). Save
+them to a file outside the repository.
 
 ```
 git push origin vX.Y.Z

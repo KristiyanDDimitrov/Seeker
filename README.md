@@ -178,5 +178,13 @@ pipeline.
 
 ## License
 
-MIT; see [`LICENSE`](LICENSE). Third-party licences are listed in the
-app's About Seeker window.
+Seeker's source code is MIT; see [`LICENSE`](LICENSE).
+
+The macOS app bundles third-party libraries under their own licences,
+among them mutagen (GPL-2.0-or-later), Qt and PySide6 (LGPL-3.0) and
+soxr (LGPL-2.1-or-later). Because it includes mutagen, the app as a
+whole is distributed under the GNU General Public License, version 3.
+Its source is this repository at the release's tag; the bundled
+libraries' sources are their PyPI releases at the versions in
+[`uv.lock`](uv.lock). Every licence text is inside the app, in
+`Seeker.app/Contents/Resources/licenses/`.

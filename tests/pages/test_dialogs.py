@@ -133,6 +133,20 @@ def test_about_dialog_shows_author_license_and_notices(qtbot):
     assert "PySide6" in combined
 
 
+def test_about_dialog_states_the_apps_licence_and_where_its_texts_are(qtbot):
+    """The bundle combines MIT code with mutagen's GPL and Qt's
+    LGPL-3.0, so the app as a whole ships under the GPL, version 3."""
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    combined = "\n".join(
+        widget.text() for widget in dialog.findChildren(QLabel)
+    )
+
+    assert "distributed under the GNU GPL, version 3" in combined
+    assert "Contents/Resources/licenses" in combined
+
+
 def test_about_dialog_renders_a_button_for_every_real_support_link(
         qtbot, monkeypatch,
 ):
