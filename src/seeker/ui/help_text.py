@@ -1155,6 +1155,10 @@ TOOLTIP_REMOVE_LOCATION = (
     "their matches; asks first, and nothing on disk is touched."
 )
 REMOVE_LOCATION_CONFIRM_TITLE = "Remove Location"
+TOOLTIP_LOCATION_NOT_FOUND = (
+    "Seeker can't find this folder: its drive isn't connected, or it "
+    "was moved or deleted. Its files stay indexed until you remove it."
+)
 
 
 def _count(number: int, singular: str, plural: str | None = None) -> str:

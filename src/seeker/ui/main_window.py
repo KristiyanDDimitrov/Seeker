@@ -884,6 +884,7 @@ class MainWindow(QMainWindow):
         self._downloads_page.poll_active_downloads()
         self._review_page.poll_review_items()
         self._sharing_page.refresh_lamps()
+        self.settings_page.refresh_lamps()
         self._render_activity_strip()
 
     def _update_nav_badge(self, key: str, count: int) -> None:

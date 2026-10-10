@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from PySide6.QtCore import QLocale, QThreadPool
+from PySide6.QtCore import QLocale, QSize, QThreadPool
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -40,7 +40,7 @@ from seeker.soulseek.docker_setup import (
     check_slskd_web_login,
     is_non_loopback_http_url,
 )
-from seeker.ui import help_text, plain_text, theme
+from seeker.ui import help_text, plain_text, status_lamp, theme
 from seeker.ui.elided_text import elide_list_items
 from seeker.ui.library_location_picker import pick_and_add_library_location
 from seeker.ui.notice import FeedbackTarget, InlineNotice
@@ -93,10 +93,24 @@ def _location_combo() -> QComboBox:
     return combo
 
 
-# Name/Path/Reachable/Actions, see theme.ColumnLayout.
+# Name/Path/Status/Actions, see theme.ColumnLayout.
 _LOCATIONS_COLUMNS = theme.ColumnLayout(
     stretch=(1,), fit_content=(0, 2), actions=3, paths=(1,),
 )
+
+
+def _folder_state_item(reachable: bool) -> QTableWidgetItem:
+    """A location's folder as a lamp beside its state. An unplugged
+    drive is out of play, not a fault, so it stands by."""
+    if reachable:
+        item = QTableWidgetItem("Available")
+        lamp = status_lamp.PLAY
+    else:
+        item = QTableWidgetItem("Not found")
+        item.setToolTip(help_text.TOOLTIP_LOCATION_NOT_FOUND)
+        lamp = status_lamp.STANDBY
+    item.setIcon(status_lamp.lamp_icon(lamp, theme.active_palette()))
+    return item
 
 
 class SettingsPage(QWidget):
@@ -118,6 +132,7 @@ class SettingsPage(QWidget):
         self.application = application
         self.thread_pool = QThreadPool()
         self._locations_by_name: dict[str, LibraryLocation] = {}
+        self._rendered_locations: list[tuple[LibraryLocation, bool]] = []
         self._playlists_by_name: dict[str, Playlist] = {}
         self._api_key_visible = False
         self._web_password_visible = False
@@ -191,7 +206,7 @@ class SettingsPage(QWidget):
 
         self.locations_table = QTableWidget(0, 4)
         self.locations_table.setHorizontalHeaderLabels(
-            ["Name", "Path", "Reachable", "Actions"]
+            ["Name", "Path", "Status", "Actions"]
         )
         # The shared table chrome every QTableWidget gets (HISTORY §87):
         # without it, a visible row-number header, a square top-left
@@ -199,6 +214,9 @@ class SettingsPage(QWidget):
         # heights, and an underived Actions column width.
         theme.apply_table_defaults(self.locations_table)
         theme.configure_columns(self.locations_table, _LOCATIONS_COLUMNS)
+        self.locations_table.setIconSize(
+            QSize(status_lamp.LAMP_SIZE, status_lamp.LAMP_SIZE),
+        )
 
         # No name field — the location is registered immediately under
         # the picked folder's own basename (auto-suffixed on a name
@@ -228,6 +246,11 @@ class SettingsPage(QWidget):
             self.application.library_service.find_nested_locations,
             on_finished=self._render_nesting,
         )
+
+    def refresh_lamps(self) -> None:
+        """Repaint the locations' lamps in the active palette, from the
+        last listing: a theme switch needs no new look at the disk."""
+        self._render_locations(self._rendered_locations)
 
     def _render_nesting(self, nested: list[NestedLocation]) -> None:
         if not nested:
@@ -322,6 +345,7 @@ class SettingsPage(QWidget):
             self,
             locations: list[tuple[LibraryLocation, bool]],
     ) -> None:
+        self._rendered_locations = locations
         self._locations_by_name = {
             location.name: location for location, _ in locations
         }
@@ -337,7 +361,7 @@ class SettingsPage(QWidget):
                 row, 1, QTableWidgetItem(location.path),
             )
             self.locations_table.setItem(
-                row, 2, QTableWidgetItem("Yes" if reachable else "No"),
+                row, 2, _folder_state_item(reachable),
             )
 
             # Loaded from the DB via list_locations() above, so .id is

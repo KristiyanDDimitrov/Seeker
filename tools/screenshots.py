@@ -502,7 +502,11 @@ def build_demo_application() -> FakeApplication:
         soulseek_configured=True,
         review_candidates=list(REVIEW_CANDIDATES),
         pending_upgrades=list(PENDING_UPGRADES),
-        locations=[(location, True) for location in LOCATIONS],
+        # The Archive drive is unplugged: its locations stand by.
+        locations=[
+            (location, not location.path.startswith("/Volumes/"))
+            for location in LOCATIONS
+        ],
         duplicate_groups=list(DUPLICATE_GROUPS),
         resolved_destination=(LOCATIONS[0], "Peak Time Techno"),
         history_events=list(HISTORY_EVENTS),

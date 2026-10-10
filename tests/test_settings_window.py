@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
-from fakes import wait_for_workers
+from fakes import FakeApplication, wait_for_workers
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
@@ -26,7 +26,8 @@ from seeker.soulseek.docker_setup import (
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
 from seeker.spotify.token_store import TokenStore
-from seeker.ui import plain_text, settings_window
+from seeker.ui import help_text, plain_text, settings_window, status_lamp, theme
+from seeker.ui.main_window import MainWindow
 from seeker.ui.notice import InlineNotice
 from seeker.ui.settings_window import SettingsPage, locations_nested_with
 
@@ -198,7 +199,57 @@ def test_locations_tab_lists_existing_locations(qtbot, tmp_path, monkeypatch):
         lambda: window.locations_table.rowCount() == 1, timeout=2000,
     )
     assert window.locations_table.item(0, 0).text() == "Main"
-    assert window.locations_table.item(0, 2).text() == "Yes"
+    assert window.locations_table.item(0, 2).text() == "Available"
+
+
+def _lamp_image(icon):
+    return icon.pixmap(status_lamp.LAMP_SIZE).toImage()
+
+
+def test_a_locations_folder_shows_as_a_lamp_beside_its_state(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    add_location(application, "Drive", tmp_path / "drive")
+    (tmp_path / "drive").rmdir()
+
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    table = window.locations_table
+    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=2000)
+    states = {
+        table.item(row, 0).text(): table.item(row, 2)
+        for row in range(table.rowCount())
+    }
+    palette = theme.active_palette()
+    assert states["Main"].text() == "Available"
+    assert _lamp_image(states["Main"].icon()) == _lamp_image(
+        status_lamp.lamp_icon(status_lamp.PLAY, palette)
+    )
+    assert states["Drive"].text() == "Not found"
+    assert _lamp_image(states["Drive"].icon()) == _lamp_image(
+        status_lamp.lamp_icon(status_lamp.STANDBY, palette)
+    )
+    assert states["Drive"].toolTip() == help_text.TOOLTIP_LOCATION_NOT_FOUND
+
+
+def test_a_theme_change_repaints_the_locations_lamps(qtbot, monkeypatch):
+    location = LibraryLocation(
+        name="Main", path="/music", added_at="2026-10-10T00:00:00", id=1,
+    )
+    window = MainWindow(FakeApplication(locations=[(location, True)]))
+    qtbot.addWidget(window)
+    table = window.settings_page.locations_table
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    repainted = replace(theme.DARK, SUCCESS="#123456")
+    monkeypatch.setattr(theme, "active_palette", lambda: repainted)
+
+    window.on_theme_changed()
+
+    expected = status_lamp.lamp_icon(status_lamp.PLAY, repainted)
+    assert _lamp_image(table.item(0, 2).icon()) == _lamp_image(expected)
 
 
 def test_add_location_uses_the_chosen_folders_own_basename_as_the_name(
