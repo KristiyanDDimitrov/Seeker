@@ -11,97 +11,87 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S15 part-one close-out (HISTORY §210). Tree clean
+- **HEAD:** the S15 part-two close-out (HISTORY §211). Tree clean
   apart from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2230 passed, 1 skipped`, 0 failed (+6
-  tests). `mypy --strict src/` clean, 145 files; `ruff check src tests
-  tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI: red.** `8a784fd`'s run `37994812022` failed both attempts
-  on one test, `test_library_track_list_refreshes_after_a_tag_run`
-  (`waitUntil` timed out, 2000 ms), the known open issue: `check`
-  `1 failed, 2201 passed, 29 skipped`, coverage 94.72 % (floor 92 %).
-  It passes 3/3 offscreen locally, and no S15 commit touches Library,
-  tagging or `refresh_tracks()`. Before this its CI failures were one
-  attempt at a time; two in a row is new.
+- **Local (Cocoa):** pytest `2206 passed, 29 skipped`, 0 failed (+4
+  tests). The skips are CI's 29: the X9 Pro was not mounted this
+  session, so its 28 tests skipped as well. `mypy --strict src/`
+  clean, 145 files; `ruff check src tests tools` 0; `uvx radon cc -n
+  D -s src/seeker` nothing.
+- **CI:** recorded in the follow-up handoff commit (§2). Before this
+  session: `37994812022`'s third attempt passed (the Library flake,
+  intermittent), and `cabdaee`'s run `37996502114` was green.
 
 ## 2. Where we are
 
-**Round 12 S15 is half done** (☐, not ticked). Four of BRIEF §15's
-planning-time findings are fixed. The session stopped at the 150 K
-budget ceiling, short of its split point ("after the planning-time
-findings"). **Next: S15 part two**, which starts with §4's first two
-bullets.
+**Round 12 S15 is still open** (☐). Part two fixed the last two
+planning-time findings (the row's split point) and read about half
+of the remaining screens. **Next: S15 part three**, the rest of the
+sweep (§4), then the small fixes it turns up.
 
-## 3. Session report (S15, part one)
+## 3. Session report (S15, part two)
 
-Evidence for each is in HISTORY §210.
-- `1485c81` §15.1: Dashboard's "Candidate fo…" moves to the row's
-  tooltip (`TOOLTIP_NEEDS_REVIEW_WITH_CANDIDATE`).
-- `e4402d4` §15.2: a selected radio gets an ON_ACCENT dot
-  (`radio_dot_path`, `packaging/icons/radio_dot_*.svg`).
-- `e8402c1` §15.3: Review's Runner-up shows a file name with "scored
-  N, from peer", and stretches with Track and Candidate.
-- `bf26c75` §15.4: the Downloads header counts a row that already
-  holds bytes as transferring; "Estimating time remaining" until a
-  speed exists. This was a real bug, not only the harness's state.
+Evidence for each is in HISTORY §211, the first entry in the new
+`docs/history/211-240.md`.
+- `64da7a2` §15.5: Settings → Library's Reachable column is now
+  Status: a `PLAY` lamp with "Available", or a `STANDBY` lamp with
+  "Not found" and a tooltip. `SettingsPage.refresh_lamps()` repaints
+  it on a theme switch. The harness's Archive drive is unplugged, so
+  the screen shows both states.
+- `12214e4` §15.6: `ColumnLayout.whole`. Duplicates' Quality reads in
+  full at 960 px, and Path elides instead.
 
-## 4. Key context for S15 part two
+## 4. Key context for S15 part three
 
-- **Still from the planning list:** Settings → Library's Reachable
-  column, a bare Yes/No that should be a lamp (`PLAY`, `STANDBY` for
-  an unmounted drive; it needs a theme-repaint hook like Sharing's
-  `refresh_lamps`); Duplicates at 960 elides Quality to "MP3, …".
-- **Then the sweep proper:** all 78 screens, both themes, both sizes.
-  Read images through a crop (Qt's `QImage.copy`, in the scratchpad):
-  a full 1280×820 PNG costs ~1.4 K tokens, and 78 of them would
-  exceed the budget. Only Dashboard, Settings → General, Review and
-  Downloads have been looked at so far.
-- **Seen, not fixed:** Downloads' Progress cell elides "Calculating…"
+- **Not yet read:** `help`, `sharing-explained`, the four wizard
+  steps, and the 1280 px and other-theme twins of `library`,
+  `search`, `sharing`, `history`, `settings-connections`,
+  `settings-matching` and `support`. Crop through
+  `QImage.copy` in the scratchpad, past the 165 px sidebar: about 1 K
+  tokens a screen. `settings-library-light-1280x1300.png` in
+  `tools/.screens/` is stale (the harness writes 76 images now).
+- **Seen, not fixed (HISTORY §211 has detail):** Sharing offers "Add
+  to my SoulSeek share" for a folder that isn't there (it touches the
+  slskd recreate path, so it is its own row); History's stored "MP3
+  320kbps" (needs a display formatter or a migration); Search's "—"
+  scores and their unranked order; Library's "8 tracks" above two rows
+  (perhaps the harness); the harness's unconfigured Connections tab;
+  "3180 files" with no separator; Support's tight bullets.
+- **From part one:** Downloads' Progress cell elides "Calculating…"
   at 1280.
 - **Carried:** Sharing's 20 s per-row rebuild; R11's carried list
   (`git show 1b415a4:docs/HANDOFF.md` §9: the Dashboard selection lost
-  on Refresh, the locations table's empty space, "MP3 320kbps" against
-  "MP3, 320 kbps", a taller first Duplicates row);
-  `test_library_track_list_refreshes_after_a_tag_run`'s CI timeouts;
-  `uv build --wheel` picks up `_build_info_generated.py` (S16). Run the
-  full suite in the foreground (~5 min). Never touch slskd or real data.
+  on Refresh, the locations table's empty space, a taller first
+  Duplicates row); `uv build --wheel` picks up
+  `_build_info_generated.py` (S16). Run the full suite in the
+  background (~5 min). Never touch slskd or real data.
 
 ## 5. Decisions made
 
-- **Detail that elides goes to the tooltip**, not the cell (§15.1):
-  the Status cell holds the state.
-- **A file-name column stretches** (§15.3); fit-content is for short
-  values.
-- **The header's estimate still uses measured speeds only** (§15.4).
-  A row with bytes but no speed is counted, never estimated.
-- **Skills:** `frontend-design` was loaded; it is web-oriented, so
-  only its self-critique applied.
+- **An unreachable location stands by; it is not a fault** (§15.5).
+  An unplugged drive is normal for a DJ's external library.
+- **A value a person chooses a row by never elides** (§15.6). The
+  path gives way, and its full text is on hover.
+- **Skills:** `frontend-design` was not loaded again; §210 found only
+  its self-critique applies to Qt.
 
 ## 6. Blockers
 
-**CI is red on the known Library flake** (§1). Next session, first:
-re-run `37994812022`. If it fails again, the flake has become the
-row's blocker: its lead is `LibraryPage.refresh_tracks()`, which has
-no recency guard, so an earlier load landing last repaints stale
-statuses (UNVERIFIED). A fix is test-first and its own commit.
-
-**Kris's slskd container was recreated by a test run** (HISTORY §208
-→ "Observed"). It is bound to deleted pytest temp directories and
-answers Seeker's saved API key `401`. Sessions must not restart or
-recreate it; Kris does (Settings → SoulSeek, or `docker compose up`
-from the per-user copy). A row should then find which test reached
-the real `bring_up_slskd` and add a guard so no test can run `docker
-compose`.
+None for S15. **Kris's slskd container** is still bound to deleted
+pytest temp directories (HISTORY §208 → "Observed"). Sessions must
+not restart or recreate it; Kris does. A later row should find which
+test reached the real `bring_up_slskd` and add a guard.
 
 ## 7. Files in progress
 
-None uncommitted. S15 stopped between findings, not mid-change: the
-Reachable lamp has not been started.
+None uncommitted. S15 stopped between screens, not mid-change.
 
 ## 8. Waiting on Kris
 
-- **New (S15):** veto, if wanted, §5's first two decisions (the
-  tooltip, the Runner-up wording "scored 64.0, from peer").
+- **New (S15 part two):** veto, if wanted, "Available"/"Not found"
+  and the faint ring for an unplugged drive.
+- **From S15 part one:** the tooltip and the Runner-up wording ("scored
+  64.0, from peer").
 - **From S14:** turn on Settings → General → Updates and relaunch.
 - **From S13:** recreate slskd (§6), then the first real cleanup,
   yours to click: Downloads → "Clean up leftover files…".
@@ -116,8 +106,10 @@ Reachable lamp has not been started.
 
 ## 9. Open questions
 
+- Should Sharing hide or disable "Add to share" for a location whose
+  folder isn't there?
 - Should "Queued as backup" rows count in the Downloads header's
-  "queued (no estimate)"? They wait on another file, not on a peer.
+  "queued (no estimate)"?
 - Should a superseded row's transfer be cancelled in slskd, so its
   file never becomes a leftover?
 - Should the cleanup also offer slskd's own "remove finished

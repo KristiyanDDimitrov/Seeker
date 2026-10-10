@@ -50,7 +50,7 @@ after Kris's explicit yes.
 | ☑ S13 | X1: Clean up leftover slskd downloads — §208 | §13 | ~110 K | After the listing (no delete) |
 | ☑ S14 | Automatic app-update check (R11 §40) — §209 | §14 | ~90 K | None |
 | **Phase D — Fresh-eyes QA** | | | | |
-| ☐ S15 | QA sweep over all 78 screens; small fixes, the rest listed — part one §210 (four planning-time findings) | §15 | ~120 K | After the planning-time findings |
+| ☐ S15 | QA sweep over all 78 screens; small fixes, the rest listed — part one §210 (four planning-time findings); part two §211 (the last two; the sweep half read) | §15 | ~120 K | After the planning-time findings |
 | **Phase E — Release (carried)** | | | | |
 | ☐ S16 | Release engineering (R11 §39; bundle ID decided) | §16 | ~110 K | After R11 §39.2 |
 | ☐ S17 | Release-candidate acceptance (**Kris and Code**) | §17 | ~70 K | — |
@@ -120,8 +120,8 @@ Unchanged from round 11 (`docs/rounds/round-11/SESSION-PLAN.md` →
 **Working.** One commit per numbered item, a failing test first,
 files read by range, real data read-only.
 
-**Ending.** Append a HISTORY entry (`docs/history/181-210.md`, from
-§193) and its index line. Commit and quote the three numbers. Tick
+**Ending.** Append a HISTORY entry (`docs/history/211-240.md` from
+§211; `181-210.md` held §193–§210) and its index line. Commit and quote the three numbers. Tick
 your box here. Rewrite `docs/HANDOFF.md` to the nine-field contract.
 Push, and record the CI run id and result.
 

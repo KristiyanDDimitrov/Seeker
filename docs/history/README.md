@@ -13,7 +13,7 @@ heading, so `file#N` lands on it. Link to an entry as
 heading-derived GitHub anchor, which breaks whenever a title changes.
 
 **Adding an entry (every session, per the round brief's §0.6).**
-Append it to the end of the last file, `181-210.md`: a
+Append it to the end of the last file, `211-240.md`: a
 `<a name="N"></a>` line directly above `### N — <title>`, numbering
 continuing from the last entry. Then add its line to that file's list
 below, in the same format. When the next number passes the last
@@ -38,7 +38,8 @@ file under about 150 KB.
 | [`108-120.md`](108-120.md) | §109–§120: rounds 6–8 (toolchain, security, Phase 6) |
 | [`121-150.md`](121-150.md) | §121–§150: rounds 9–11 |
 | [`151-180.md`](151-180.md) | §151–§180: round 11 |
-| [`181-210.md`](181-210.md) | §181 onward: round 11. **New entries go here.** |
+| [`181-210.md`](181-210.md) | §181–§210: round 11's close and round 12 |
+| [`211-240.md`](211-240.md) | §211 onward: round 12. **New entries go here.** |
 
 No entry was ever written for §37, §57–§61, §97 or §108; those numbers
 are unused, not missing files. §62 exists only as a follow-up heading
@@ -297,3 +298,7 @@ under their entry and live in the same file, after it.
 - §208 — Round 12 S13: X1, leftover slskd downloads. `LeftoverService` lists files in slskd's `downloads/` and `incomplete/` that no unresolved request and no live slskd transfer names (letters-and-digits names, `_<ticks>` stripped), holds back anything written in the last 10 minutes, refuses a folder that is not `downloads/` beside `slskd.yml` and refuses without slskd's transfer list; a cleanup re-lists and deletes only unchanged confirmed files; `seeker downloads cleanup [--delete]`; Downloads → "Clean up leftover files…". Dry run on the dev tree: 27 files, 728 MB. Observed: the live slskd container is bound to deleted pytest directories since 2026-10-07 → [181-210.md#208](181-210.md#208)
 - §209 — Round 12 S14: the automatic update check. `is_due(now, last, interval)` (`seeker/due.py`) shared with the daily sweep; Settings → General → "Updates", off by default; at startup, when on and 24 hours have passed, `UpdateScheduler` stamps `last_update_check_at` before asking GitHub off the UI thread; an available update gets one tray notice and a Help entry "Update available: X…", every other answer is logged at INFO → [181-210.md#209](181-210.md#209)
 - §210 — Round 12 S15, part one: four planning-time QA findings. Dashboard's "Candidate found" moves to the row tooltip; a selected radio gets an ON_ACCENT dot (`radio_dot_path`); Review's Runner-up shows a file name like Candidate and stretches with it; the Downloads header counts a row already holding bytes as transferring ("Estimating time remaining"), before its first ETA sample too. Stopped at the budget ceiling: the Reachable lamp, Duplicates at 960 and the full sweep carry → [181-210.md#210](181-210.md#210)
+
+### `211-240.md`
+
+- §211 — Round 12 S15, part two: Settings → Library's Reachable column becomes a Status lamp (`PLAY` "Available", `STANDBY` "Not found", repainted on a theme switch through `SettingsPage.refresh_lamps()`); `ColumnLayout.whole` keeps Duplicates' Quality in full at 960 px; the sweep read eleven more screens and stopped at about half; Sharing offering to share a missing folder, History's stored "MP3 320kbps" and Search's "—" scores listed, not fixed → [211-240.md#211](211-240.md#211)

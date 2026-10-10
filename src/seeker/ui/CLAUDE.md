@@ -159,13 +159,15 @@ investigation.
   cap) and shrinks the widest other text columns first, never below
   a header, nor, in a view whose labels read in full
   (`set_secondary_min_share(view, 0.0)`), below a noted column's
-  widest label (`label_floor`, HISTORY §204); a viewport filter
-  refits on resize. Cells are one line:
-  `ElidedTextDelegate` shows the full text on hover only when elided,
+  widest label (`label_floor`, HISTORY §204); a `whole` column (a
+  value a row is chosen by, Duplicates' Quality) never elides, and
+  the stretch column gives way; a viewport filter refits on resize.
+  Cells are one line: `ElidedTextDelegate` shows the full text on hover only when elided,
   and `ColumnLayout.paths` columns elide in the middle. A list of
   names uses `elide_list_items`. `tests/shell/test_table_columns.py`
   walks every harness screen at 960×640.
-  [HISTORY §176](../../../docs/history/151-180.md#176)
+  [HISTORY §176](../../../docs/history/151-180.md#176),
+  [HISTORY §211](../../../docs/history/211-240.md#211)
 - **An empty table shows `ui/empty_state.EmptyState`** (a glyph, one
   sentence, an optional action) inside its viewport, shown by the row
   count itself; never a spanned placeholder row or a status-label
