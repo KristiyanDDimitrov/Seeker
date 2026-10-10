@@ -1,5 +1,8 @@
 import functools
 import importlib.util
+import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -120,6 +123,56 @@ def _force_dev_build_identity(monkeypatch):
     monkeypatch.setattr("seeker._build_info.GIT_SHA", "dev")
     monkeypatch.setattr("seeker._build_info.GIT_DESCRIBE", "dev")
     monkeypatch.setattr("seeker._build_info.BUILT_AT", "dev")
+
+
+class _RealDockerRefused(FileNotFoundError):
+    """Raised in place of running `docker`: callers already handle a
+    missing executable, so the run stays deterministic while the
+    fixture below fails the test."""
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _docker_attempts():
+    """Every `docker` command any test tries to run, refused.
+
+    A test once reached the real `bring_up_slskd` and recreated the
+    user's slskd container against pytest's temporary directories
+    (HISTORY §213). Refusing at `Popen` covers `subprocess.run` and
+    every other spawn, whatever the import path or thread, and stays in
+    place for the whole session, so a worker outliving its test is
+    refused too. A test that fakes `subprocess.run` never reaches it.
+    """
+    attempts: list[str] = []
+    real_popen = subprocess.Popen
+
+    class RefusingPopen(real_popen):
+        def __init__(self, args, *pargs, **kwargs):
+            argv = shlex.split(args) if isinstance(args, str) else list(args)
+            if argv and Path(os.fsdecode(argv[0])).name == "docker":
+                command = " ".join(os.fsdecode(part) for part in argv)
+                attempts.append(command)
+                raise _RealDockerRefused(
+                    f"tests never run docker: {command!r}"
+                )
+            super().__init__(args, *pargs, **kwargs)
+
+    subprocess.Popen = RefusingPopen
+    yield attempts
+    subprocess.Popen = real_popen
+
+
+@pytest.fixture(autouse=True)
+def _no_real_docker(_docker_attempts):
+    """Fails the test that tried to run `docker` (or, for a worker
+    that outlived its own test, the one running when it tried)."""
+    _docker_attempts.clear()
+    yield
+    tried = list(_docker_attempts)
+    _docker_attempts.clear()
+    assert tried == [], (
+        "a test tried to run the real docker; fake detect_docker_state, "
+        f"bring_up_slskd or subprocess.run instead: {tried}"
+    )
 
 
 _SCREENSHOTS_TOOL = (

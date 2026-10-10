@@ -720,3 +720,27 @@ def test_bring_up_slskd_raises_with_compose_stderr_on_failure(monkeypatch):
             web_password="webpass",
             library_location_path="/music",
         )
+
+
+def test_the_suite_refuses_to_run_the_real_docker(tmp_path, _docker_attempts):
+    # conftest's guard: a test that reaches the real docker once
+    # recreated the user's slskd container (HISTORY §213).
+    assert detect_docker_state() == DockerState.NOT_INSTALLED
+    with pytest.raises(FileNotFoundError):
+        bring_up_slskd(
+            compose_file=str(tmp_path / "docker-compose.yml"),
+            soulseek_username="user",
+            soulseek_password="pass",
+            api_key="key",
+            slskd_data_dir=str(tmp_path),
+            web_username="web",
+            web_password="web",
+            library_location_path=str(tmp_path),
+        )
+
+    assert _docker_attempts == [
+        "docker --version",
+        f"docker compose -f {tmp_path / 'docker-compose.yml'} up -d",
+    ]
+    # Recorded and refused; cleared so this test alone passes.
+    _docker_attempts.clear()
