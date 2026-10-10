@@ -53,7 +53,8 @@ after Kris's explicit yes.
 | ☑ S15 | QA sweep over all 78 screens; small fixes, the rest listed — part one §210 (four planning-time findings); part two §211 (the last two; the sweep half read); part three §212 (the rest read; three fixes) | §15 | ~120 K | After the planning-time findings |
 | ☑ S15b | Before release (added 2026-10-10, nothing left hanging): the Library flake's real cause and a load-recency guard; tests refuse the real docker — §213 | HANDOFF §6 | ~80 K | — |
 | **Phase E — Release (carried)** | | | | |
-| ☐ S16 | Release engineering (R11 §39; bundle ID decided) | §16 | ~110 K | After R11 §39.2 |
+| ☑ S16 | Release engineering (R11 §39; bundle ID decided) — §214; S-04 split to S16b | §16 | ~110 K | After R11 §39.2 |
+| ☐ S16b | **[ASK]** S-04: licence texts in the bundle (measured in §214); Kris approves the GPL wording for the README and release notes | AUDIT S-04 | ~70 K | After the bundled texts (before the wording) |
 | ☐ S17 | Release-candidate acceptance (**Kris and Code**) | §17 | ~70 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 

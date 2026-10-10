@@ -11,61 +11,68 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the pre-S16 clean-up's close-out (HISTORY §213). Tree
-  clean apart from the untracked `Claude outputs/`.
-- **Local (Cocoa):** pytest `2240 passed, 1 skipped`, 0 failed (+2
-  tests). The X9 Pro was mounted, so only the stress test skipped
-  (CI skips 29). `mypy --strict src/` clean, 145 files; `ruff check
-  src tests tools` 0; `uvx radon cc -n D -s src/seeker` nothing.
-- **CI: green on the first attempt.** `21f941a`'s run `38061644943`:
-  `check` and `audit` both passed.
+- **HEAD:** S16's close-out (HISTORY §214). Tree clean apart from the
+  untracked `Claude outputs/`. `dist/Seeker.app` and `dist/Seeker.dmg`
+  are a fresh build of `28d5ecd` (gitignored).
+- **Local (Cocoa):** pytest `2248 passed, 1 skipped`, 0 failed (+8
+  tests); only the stress test skipped (CI skips 29). `mypy --strict
+  src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
+  cc -n D -s src/seeker` nothing.
+- **CI:** CIRESULT
 
 ## 2. Where we are
 
-**S15 and the pre-release clean-up (S15b, §213) are done.** Nothing
-from S15's handoff blocks release: both §6 blockers are closed.
-**Next: S16, release engineering** (BRIEF §16, R11 §39; the bundle ID
-is decided).
+**S16 is done except S-04, now its own row, S16b** (SESSION-PLAN).
+**Next: S16b, an [ASK] row.** Kris approves the GPL wording first;
+the bundled licence texts may be built before the yes. Then S17.
 
-## 3. Session report (S15b)
+## 3. Session report (S16)
 
-Evidence for each is in HISTORY §213.
-- `8d51517`: the Library flake's real cause. A tag run never reloaded
-  Library's track list (`_render_tag_result` never called
-  `refresh_track_table`); the test passed only when a second initial
-  load landed after its mutation. It now drains those loads first and
-  failed 3/3 on HEAD.
-- `caaf9ca`: the old lead, real but not the cause. Only the latest
-  track-list load renders (`_tracks_load`).
-- `314a14f`: `conftest.py` refuses any `docker` spawn for the whole
-  session and fails the test that tried. The current suite reaches
-  docker nowhere.
+Evidence for each is in HISTORY §214.
+- `760038e` §39.1: the build identity is "dev" from source (the
+  generated module is imported only when frozen), `build_dmg.py`
+  deletes it in a `finally`, the wheel excludes it.
+- `4a28212` §39.2: `packaging/bundle_info.py` builds the Info.plist:
+  `pyproject.toml`'s version, `LICENSE`'s copyright, Music,
+  minimum macOS 15.0 (PySide6's binaries declare `minos` 15.0).
+- `604f07a`: §39.1's import made type-clean without the generated
+  module (it failed mypy once the build deleted the file).
+- `28d5ecd` §39.3: bundle ID `io.github.kristiyanddimitrov.seeker`.
+  A real build checked §39.1–§39.3 (plist, codesign, the PYZ).
+- `2647f41` §39.4: Open Anyway replaces Control-click → Open.
+- `5442582` §39.5: `CHANGELOG.md`, `RELEASING.md`.
 
-## 4. Key context for S16
+## 4. Key context for S16b
 
-- **Kris's slskd container no longer exists** (`docker ps -a` is empty
-  in both contexts; removed outside Seeker). S17's acceptance needs a
-  bring-up first: Settings → Connections, by Kris.
-- **Seen, not fixed (HISTORY §211 and §212):** Sharing offers "Add to
-  my SoulSeek share" for a missing folder; History's stored "MP3
-  320kbps"; Search's "—" scores; Settings → Connections' label
-  columns; Support's tight bullets; the harness's unconfigured
-  Connections tab. Each is a question in §9, none a release blocker.
+- **What to bundle (measured, §214):** mutagen's `COPYING`; soxr's
+  four licence files; scipy's `METADATA` (libgfortran's GPL-3.0 with
+  the GCC exception); PySide6, its addons and essentials, and
+  shiboken6 ship **no** text, so vendor LGPL-3.0 and GPL-3.0 from
+  gnu.org into `packaging/licenses/`. A sweep test over the runtime
+  closure keeps a new GPL dependency from shipping without its text.
+- **The wording to approve:** AUDIT S-04's fix. The macOS binary is
+  distributed under GPL-2.0-or-later as a combined work (mutagen),
+  and its source is at the tagged commit. It goes in the README, the
+  release notes (RELEASING.md step 4 already names it) and About.
+- **Kris's slskd container no longer exists;** S17 needs a bring-up
+  first (Settings → Connections, by Kris).
 - **Carried:** Sharing's 20 s per-row rebuild; R11's carried list
-  (`git show 1b415a4:docs/HANDOFF.md` §9); `uv build --wheel` picks up
-  `_build_info_generated.py` (S16). Run the full suite in the
-  background (~5 min). Never touch slskd or real data.
+  (`git show 1b415a4:docs/HANDOFF.md` §9). Run the full suite in the
+  background (~5 min). Never touch slskd or real data, and never
+  launch the built app (it migrates the real data).
 
 ## 5. Decisions made
 
-- **A flake's test fails on HEAD deterministically first:** it drains
-  what it does not test rather than relying on timing (§213).
-- **Refuse docker at `Popen`, not at `bring_up_slskd`:** read-only
-  probes too, so no outcome depends on the machine running Docker.
+- **Tag locally, then build** (RELEASING.md): the bundle's `git
+  describe` then reads the version. Push only after verification.
+- **The minimum macOS is the highest `minos` in the bundle,** not a
+  wheel tag; re-measure after a PySide6, scipy or Python upgrade.
+- **S-04 split out:** larger than estimated (four licences, two texts
+  absent), and its wording waits on Kris.
 
 ## 6. Blockers
 
-None.
+None. S16b's wording waits on Kris.
 
 ## 7. Files in progress
 
@@ -73,7 +80,10 @@ None uncommitted.
 
 ## 8. Waiting on Kris
 
-- **New (S15 part three):** veto, if wanted, "2 of its 8 tracks are
+- **New (S16):** approve or edit S-04's wording (§4 above), so S16b
+  can finish; after S17's build, turn "Start Seeker at login" on
+  again once (the bundle ID changed).
+- **From S15 part three:** veto, if wanted, "2 of its 8 tracks are
   in your library" in Library's header.
 - **From S15 part two:** veto, if wanted, "Available"/"Not found"
   and the faint ring for an unplugged drive.
@@ -86,7 +96,7 @@ None uncommitted.
 - **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
   §12b's "Code's calls"; the first live Cancel, at the keyboard; the
   real `tracks.last_searched_at` migration runs on the next launch.
-- **Still open:** S-04's GPL wording (S16); the live checks of
+- **Still open:** the live checks of
   §193–§196; the S5 wording veto; the wordmark's brows (`9ff777b`);
   BRIEF §17; S8's visible peer-filename change; `git show
   1b415a4:docs/HANDOFF.md` §8; the three nested locations in the real
