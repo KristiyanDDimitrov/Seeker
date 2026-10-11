@@ -20,3 +20,6 @@ dist/
 src/seeker/_build_info_generated.py
 # tools/screenshots.py's review images; --readme writes docs/screenshots/.
 tools/.screens/
+# Kris's own folder of documents exported from Claude sessions; never
+# part of the repository, and RELEASING.md wants a clean tree.
+Claude outputs/
