@@ -19,7 +19,8 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2306 passed, 1 skipped`, 0 failed
   (unchanged; only the stress test skipped, CI skips 29). `mypy
   --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** see the S17 handoff commit's message for the run id.
+- **CI:** run `38162346352` green (`a29ed7f`, check and audit); it
+  covers all of S17's commits.
 
 ## 2. Where we are
 
