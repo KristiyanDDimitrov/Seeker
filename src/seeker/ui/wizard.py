@@ -377,11 +377,7 @@ class OnboardingWizard(QMainWindow):
         )
 
     def _advance_from_library(self, location: LibraryLocation) -> None:
-        self._library_location_path = location.path
-        self.share_library_checkbox.setText(
-            f"Share {location.name} with other SoulSeek users"
-        )
-        self.share_library_checkbox.show()
+        self.offer_library_share(location)
         self.library_status_label.setText("Library registered.")
 
         if not self.download_into_library_checkbox.isChecked():
@@ -401,6 +397,15 @@ class OnboardingWizard(QMainWindow):
             ),
             on_finished=lambda _: self._continue_past_library_step(),
         )
+
+    def offer_library_share(self, location: LibraryLocation) -> None:
+        """Offers the SoulSeek step's checkbox for `location`, the folder
+        chosen in this run. It starts unticked: sharing is opt-in."""
+        self._library_location_path = location.path
+        self.share_library_checkbox.setText(
+            f"Share {location.name} with other SoulSeek users"
+        )
+        self.share_library_checkbox.show()
 
     def _continue_past_library_step(self) -> None:
         self.stack.setCurrentIndex(2)
