@@ -24,6 +24,7 @@ from seeker.soulseek.docker_setup import (
     SlskdBringUpError,
     SlskdSetupNeededError,
     SlskdStartRefusedError,
+    slskd_empty_share_dir,
 )
 from seeker.soulseek.sharing_service import ContainerPresence
 from seeker.spotify.auth_manager import SpotifyAuthManager
@@ -738,6 +739,26 @@ def test_start_slskd_records_nothing_when_compose_fails(
     assert reloaded.slskd_data_dir is None
 
 
+def test_start_slskd_without_a_share_mounts_an_empty_folder(
+        tmp_path, monkeypatch,
+):
+    # Bringing the container back needs no library location: the
+    # template requires a share mount, so slskd gets an empty folder
+    # Seeker owns, and shares nothing until Sharing adds a location.
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    calls = _fake_slskd_bring_up(tmp_path, monkeypatch)
+    empty_share = slskd_empty_share_dir()
+    assert empty_share.is_relative_to(tmp_path)
+
+    app.start_slskd("netuser", "netpass", None, persist=True)
+
+    assert calls[0]["library_location_path"] == str(empty_share)
+    assert empty_share.is_dir()
+    assert list(empty_share.iterdir()) == []
+    assert empty_share != tmp_path / "slskd-data"
+    assert app.settings.slskd_share_path == str(empty_share)
+
+
 def test_sharing_recreate_records_the_share_and_data_folder(
         tmp_path, monkeypatch,
 ):
@@ -1265,6 +1286,37 @@ def test_restart_slskd_recreates_a_deleted_container_from_the_record(
     reloaded = load_config(resolve_config_path())
     assert reloaded.slskd_api_key == "generated-key"
     assert reloaded.slskd_download_dir == str(data_dir / "downloads")
+
+
+def test_restart_slskd_recreates_an_unshared_container_without_its_folder(
+        tmp_path, monkeypatch,
+):
+    # The empty share is Seeker's own, so a recreate makes it again
+    # rather than refusing as it would for a library folder.
+    app, calls = _deleted_container(tmp_path, monkeypatch)
+    data_dir = tmp_path / "repo" / "slskd-data"
+    data_dir.mkdir(parents=True)
+    app.update_settings(
+        slskd_share_path=str(slskd_empty_share_dir()),
+        slskd_data_dir=str(data_dir),
+    )
+
+    app.restart_slskd()
+
+    assert calls[0]["library_location_path"] == str(slskd_empty_share_dir())
+    assert slskd_empty_share_dir().is_dir()
+
+
+def test_start_defaults_offer_no_share_for_the_empty_folder(
+        tmp_path, monkeypatch,
+):
+    app, _ = _restartable_slskd(tmp_path, monkeypatch)
+    _fake_live_slskd_mounts(monkeypatch, {
+        "/app": str(tmp_path / "slskd-data"),
+        "/shared/music": str(slskd_empty_share_dir()),
+    })
+
+    assert app.slskd_start_defaults().share_path is None
 
 
 @pytest.mark.parametrize(

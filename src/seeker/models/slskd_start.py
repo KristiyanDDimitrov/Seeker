@@ -28,7 +28,7 @@ class SlskdStartDefaults:
     """What Settings' Start slskd form opens with: the saved login
     ("" when none), and each folder from the live container first,
     then the last bring-up's record. The data folder falls back to the
-    per-user default; the share has none, so a person chooses it.
+    per-user default; the share to None, sharing nothing.
     """
     username: str
     password: str

@@ -1416,8 +1416,9 @@ TOOLTIP_SLSKD_PASSWORD_FIELD = (
 )
 TOOLTIP_SLSKD_SHARE_FIELD = (
     "The library location slskd shares with other SoulSeek users, "
-    "read-only."
+    "read-only. Optional: Sharing can add locations once slskd runs."
 )
+SLSKD_SHARE_NOTHING_TEXT = "Nothing for now"
 TOOLTIP_CHOOSE_SLSKD_DATA_DIR = (
     "Choose the folder slskd keeps its settings, transfer history and "
     "finished downloads in, such as an earlier container's slskd-data."

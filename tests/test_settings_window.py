@@ -22,6 +22,7 @@ from seeker.soulseek.docker_setup import (
     SlskdHealthCheckResult,
     SlskdHealthStatus,
     SlskdWebLoginStatus,
+    slskd_empty_share_dir,
 )
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.spotify.token import SpotifyToken
@@ -1192,16 +1193,20 @@ def test_start_slskd_starts_with_what_the_form_shows(
     assert saved.slskd_share_path == str(tmp_path / "Music")
 
 
-def test_without_a_known_share_the_form_waits_for_a_choice(
+def test_without_a_known_share_the_form_starts_slskd_sharing_nothing(
         qtbot, tmp_path, monkeypatch,
 ):
+    # Bringing the container back must not wait on a share: sharing is
+    # optional, and Sharing can add a location later.
     _, window, bring_up_calls = _start_form_page(
         qtbot, tmp_path, monkeypatch, {},
     )
     window.slskd_username_field.setText("realuser")
     window.slskd_password_field.setText("realpass")
 
-    assert window.slskd_share_combo.currentIndex() == -1
+    assert window.slskd_share_combo.currentText() == (
+        help_text.SLSKD_SHARE_NOTHING_TEXT
+    )
     assert window.slskd_data_dir_field.text() == str(tmp_path / "slskd-data")
     assert window.slskd_data_dir_state_label.text() == (
         help_text.SLSKD_DATA_DIR_FRESH_TEXT
@@ -1209,15 +1214,28 @@ def test_without_a_known_share_the_form_waits_for_a_choice(
 
     window.start_slskd_button.click()
 
-    assert bring_up_calls == []
-    assert "choose" in window.connections_notice.text().lower()
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert bring_up_calls[0]["library_location_path"] == str(
+        slskd_empty_share_dir()
+    )
+    assert bring_up_calls[0]["slskd_data_dir"] == str(tmp_path / "slskd-data")
+    assert window.slskd_share_combo.currentText() == (
+        help_text.SLSKD_SHARE_NOTHING_TEXT
+    )
+
+
+def test_a_chosen_location_is_shared(qtbot, tmp_path, monkeypatch):
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch, {},
+    )
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
 
     _select_share(window, "Music")
     window.start_slskd_button.click()
 
     _wait_for_slskd_start(qtbot, window, bring_up_calls)
     assert bring_up_calls[0]["library_location_path"] == str(tmp_path / "Music")
-    assert bring_up_calls[0]["slskd_data_dir"] == str(tmp_path / "slskd-data")
 
 
 def test_the_form_prefers_the_recorded_folders_when_no_container_is_left(
@@ -1378,25 +1396,29 @@ def test_start_slskd_without_username_or_password_makes_no_call(
     assert "username" in window.connections_notice.text().lower()
 
 
-def test_start_slskd_without_a_library_location_shows_message(
+def test_start_slskd_needs_no_library_location(
         qtbot, tmp_path, monkeypatch,
 ):
     application = make_application(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(
-        "seeker.application.bring_up_slskd",
-        lambda **kwargs: calls.append(1),
-    )
-
+    _fake_live_mounts(monkeypatch, {})
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
     window = SettingsPage(application)
     qtbot.addWidget(window)
-
+    window._load_start_slskd_form()
+    qtbot.waitUntil(
+        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+    )
     window.slskd_username_field.setText("realuser")
     window.slskd_password_field.setText("realpass")
+
+    assert window.slskd_share_combo.count() == 1
+
     window.start_slskd_button.click()
 
-    assert calls == []
-    assert "location" in window.connections_notice.text().lower()
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert bring_up_calls[0]["library_location_path"] == str(
+        slskd_empty_share_dir()
+    )
 
 
 # --- Thresholds (§4) -----------------------------------------------------

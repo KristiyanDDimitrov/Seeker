@@ -111,6 +111,15 @@ def slskd_data_dir() -> Path:
     ) / "slskd-data"
 
 
+def slskd_empty_share_dir() -> Path:
+    # What a container shares when a person chooses no folder: the
+    # template requires a share mount, so slskd gets this empty one,
+    # beside the default data folder rather than inside any /app.
+    return Path(
+        platformdirs.user_data_dir("Seeker", appauthor=False)
+    ) / "slskd-empty-share"
+
+
 class DockerState(Enum):
     NOT_INSTALLED = "not_installed"
     INSTALLED_NOT_RUNNING = "installed_not_running"

@@ -904,7 +904,6 @@ class SettingsPage(QWidget):
         start_form.addRow("Password:", self.slskd_password_field)
 
         self.slskd_share_combo = QComboBox()
-        self.slskd_share_combo.setPlaceholderText("Choose a library location")
         self.slskd_share_combo.setToolTip(help_text.TOOLTIP_SLSKD_SHARE_FIELD)
         start_form.addRow("Folder to share:", self.slskd_share_combo)
 
@@ -1175,14 +1174,16 @@ class SettingsPage(QWidget):
         return data if isinstance(data, str) else None
 
     def _render_share_choices(self, selected: str | None) -> None:
-        """Every library location, an unconnected one listed but not
-        choosable: Compose would create its folder, empty. A share
-        that is no location (an older container's) is offered by its
-        path, so the form never changes what is shared unasked."""
+        """Sharing nothing (`selected` None), then every library
+        location, an unconnected one listed but not choosable: Compose
+        would create its folder, empty. A share that is no location (an
+        older container's) is offered by its path, so the form never
+        changes what is shared unasked."""
         combo = self.slskd_share_combo
         combo.clear()
         model = combo.model()
         assert isinstance(model, QStandardItemModel)
+        combo.addItem(help_text.SLSKD_SHARE_NOTHING_TEXT, None)
 
         for location, reachable in self._rendered_locations:
             if reachable:
@@ -1192,10 +1193,10 @@ class SettingsPage(QWidget):
                 model.item(combo.count() - 1).setEnabled(False)
 
         if selected is not None and combo.findData(selected) < 0:
-            combo.insertItem(0, selected, selected)
+            combo.insertItem(1, selected, selected)
 
         combo.setCurrentIndex(
-            combo.findData(selected) if selected is not None else -1,
+            combo.findData(selected) if selected is not None else 0,
         )
 
     def _render_slskd_data_dir(
@@ -1229,18 +1230,11 @@ class SettingsPage(QWidget):
         ):
             return "Enter both a username and password."
 
-        if not self._rendered_locations:
-            return "Register a library location before setting up SoulSeek."
-
         index = self.slskd_share_combo.currentIndex()
-
-        if index < 0:
-            return "Choose a library location to share."
-
         model = self.slskd_share_combo.model()
         assert isinstance(model, QStandardItemModel)
 
-        if not model.item(index).isEnabled():
+        if index >= 0 and not model.item(index).isEnabled():
             return (
                 f"{self.slskd_share_combo.currentText()} isn't connected. "
                 "Connect its drive, or choose another location to share."
@@ -1265,7 +1259,7 @@ class SettingsPage(QWidget):
         password = self.slskd_password_field.text()
         share_path = self._selected_share_path()
         data_dir = self._slskd_data_dir
-        assert share_path is not None and data_dir is not None
+        assert data_dir is not None
         self.connections_notice.dismiss()
 
         def start() -> None:

@@ -64,6 +64,7 @@ from seeker.soulseek.docker_setup import (
     generate_api_key,
     slskd_data_dir,
     slskd_data_folder_state,
+    slskd_empty_share_dir,
 )
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.leftovers import LeftoverService
@@ -104,6 +105,15 @@ def _resolve_spotify_token_path() -> Path:
     make_private_dir(data_dir)
 
     return data_dir / "spotify_token.json"
+
+
+def _shared_folder(share_path: str | None) -> str | None:
+    """The folder a container's share mount shares: None for Seeker's
+    empty one, which stands in for sharing nothing."""
+    if share_path is None or Path(share_path) == slskd_empty_share_dir():
+        return None
+
+    return share_path
 
 
 def _join_with_and(items: list[str]) -> str:
@@ -314,15 +324,15 @@ class Application:
             self,
             soulseek_username: str,
             soulseek_password: str,
-            share_path: str,
+            share_path: str | None,
             *,
             persist: bool,
             data_dir: str | None = None,
     ) -> SlskdStartResult:
         """(Re)create the slskd container with a freshly generated API
-        key, sharing `share_path` read-only. Blocks on `docker compose
-        up`, so callers run it on a worker; raises `SlskdBringUpError`
-        when Compose fails.
+        key, sharing `share_path` read-only, or nothing when it is None.
+        Blocks on `docker compose up`, so callers run it on a worker;
+        raises `SlskdBringUpError` when Compose fails.
 
         `persist` is explicit because the two callers save at different
         moments: Settings passes True and saves as soon as the
@@ -361,6 +371,13 @@ class Application:
             or slskd_data_dir()
         )
         app_dir.mkdir(parents=True, exist_ok=True)
+        # The template requires a share mount, so sharing nothing
+        # mounts an empty folder of Seeker's own.
+        shared_dir = share_path or str(slskd_empty_share_dir())
+
+        if share_path is None:
+            slskd_empty_share_dir().mkdir(parents=True, exist_ok=True)
+
         web_username, web_password = self.ensure_slskd_web_credentials()
 
         bring_up_slskd(
@@ -371,9 +388,9 @@ class Application:
             slskd_data_dir=str(app_dir),
             web_username=web_username,
             web_password=web_password,
-            library_location_path=share_path,
+            library_location_path=shared_dir,
         )
-        self._record_slskd_bring_up(share_path, str(app_dir))
+        self._record_slskd_bring_up(shared_dir, str(app_dir))
 
         result = SlskdStartResult(
             api_key=api_key, download_dir=str(app_dir / "downloads"),
@@ -436,7 +453,8 @@ class Application:
             )
 
         return self.start_slskd(
-            username, password, share_path, persist=True, data_dir=data_dir,
+            username, password, _shared_folder(share_path),
+            persist=True, data_dir=data_dir,
         )
 
     def _live_slskd_share(self) -> str:
@@ -483,7 +501,13 @@ class Application:
 
         assert settings.slskd_share_path and settings.slskd_data_dir
         folders = (settings.slskd_share_path, settings.slskd_data_dir)
-        gone = [folder for folder in folders if not Path(folder).is_dir()]
+        # The empty share is Seeker's own: start_slskd makes it again.
+        gone = [
+            folder
+            for folder in folders
+            if not Path(folder).is_dir()
+            and Path(folder) != slskd_empty_share_dir()
+        ]
 
         if gone:
             raise SlskdSetupNeededError(
@@ -509,7 +533,7 @@ class Application:
         return SlskdStartDefaults(
             username=settings.slskd_username or "",
             password=settings.slskd_password or "",
-            share_path=(
+            share_path=_shared_folder(
                 self.sharing_service.current_share_path()
                 or settings.slskd_share_path
             ),
