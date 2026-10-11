@@ -39,6 +39,30 @@ def test_renders_every_wizard_step(qapp, screenshots, tmp_path):
     ]
 
 
+@pytest.mark.usefixtures("_restore_theme")
+def test_the_soulseek_step_shows_the_share_offer_a_new_user_sees(
+        qapp, screenshots, tmp_path, monkeypatch,
+):
+    # A new user reaches the SoulSeek step having chosen a folder, so
+    # the step offers to share it; a resumed wizard's step does not.
+    shown_at_grab: list[bool] = []
+
+    class RecordingWizard(screenshots.OnboardingWizard):
+        def grab(self, *args):
+            shown_at_grab.append(not self.share_library_checkbox.isHidden())
+            return super().grab(*args)
+
+    monkeypatch.setattr(screenshots, "OnboardingWizard", RecordingWizard)
+
+    screenshots.capture_wizard(
+        qapp, "dark", [(960, 640)],
+        lambda name, size: tmp_path / f"{name}.png",
+        steps=["soulseek"],
+    )
+
+    assert shown_at_grab == [True]
+
+
 def test_every_readme_image_names_a_real_screen(screenshots):
     names = {screen.name for screen in screenshots.SCREENS}
 

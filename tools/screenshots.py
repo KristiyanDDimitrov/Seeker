@@ -752,12 +752,15 @@ def capture_wizard(
 ) -> list[Path]:
     """Each of `steps`, shown by its index in the wizard. The SoulSeek
     step renders before its Docker check runs: that check probes the
-    real machine, which a screenshot must not depend on."""
+    real machine, which a screenshot must not depend on. It offers to
+    share the demo's first location, as it does once a new user has
+    chosen a folder in the library step."""
     application = build_demo_application()
     application.spotify_configured = False
     application.set_theme_mode(theme_name)
     theme.apply_theme(app, theme_name)
     wizard = OnboardingWizard(application, on_complete=lambda: None)
+    wizard.offer_library_share(LOCATIONS[0])
     written: list[Path] = []
     try:
         wizard.show()
