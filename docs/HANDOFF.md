@@ -11,34 +11,34 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S16c part two's close-out (HISTORY §217). Tree clean apart
-  from the untracked `Claude outputs/`. `dist/` is still S16b's build.
-- **Local (Cocoa):** pytest `2287 passed, 1 skipped`, 0 failed (+12
-  tests); only the stress test skipped (CI skips 29). `mypy --strict
-  src/` clean, 144 files; `ruff check src tests tools` 0; `uvx radon
-  cc -n D -s src/seeker` nothing.
-- **CI: green.** `86c9d3e`'s run `38073243710`: `check` and `audit`
-  both passed on the first attempt.
+- **HEAD:** the S16c follow-ups' close-out (HISTORY §218, §219). Tree
+  clean apart from the untracked `Claude outputs/`. `dist/` is still
+  S16b's build.
+- **Local (Cocoa):** pytest `2293 passed, 1 skipped`, 0 failed (+6
+  since §217); only the stress test skipped (CI skips 29). `mypy
+  --strict src/` clean, 144 files; `ruff check src tests tools` 0.
+- **CI:** last green run `38073243710` (`86c9d3e`). The follow-ups
+  (`53c7a62` onwards) are not yet pushed, so CI has not seen them.
 
 ## 2. Where we are
 
-**S16c is done** (§216, §217). **Next: S17**, release-candidate
-acceptance (Kris and Code), which starts with Kris's bring-up.
+**S16c is done** (§216, §217), with two follow-ups from Kris's
+reports: sharing a folder is optional in Settings' Start slskd form
+(§218) and in the setup wizard (§219). **Next: S17**,
+release-candidate acceptance (Kris and Code), which starts with
+Kris's bring-up. Push first and confirm CI.
 
-## 3. Session report (S16c, part two)
+## 3. Session report (S16c follow-ups)
 
-Evidence for each is in HISTORY §217.
-- `5cb71c3` §16c.3a: `SlskdSetupNeededError` (a
-  `SlskdStartRefusedError`) for the four refusals Settings resolves;
-  `Application.slskd_start_defaults()` (live folders, else recorded;
-  saved login) and `slskd_data_folder_state()`; `start_slskd` never
-  creates a named data folder but the per-user default.
-- `4a047bd` §16c.3b: Settings → Connections' last section is **Start
-  slskd** (login prefilled, share combo with unconnected locations
-  disabled, data folder with Choose… and a sentence on what slskd
-  keeps); it reads Docker only when the tab is shown. A
-  `SlskdSetupNeededError` from Start slskd shows its text with **Open
-  Settings** (`PageContext.open_settings`).
+Evidence for each is in HISTORY §218 and §219.
+- `53c7a62`: `start_slskd(share_path=None)` shares nothing by
+  mounting `slskd_empty_share_dir()` (the template requires a share
+  mount); recorded like any share, recreated by `restart_slskd`, read
+  back as None. Settings' combo opens on "Nothing for now" when no
+  live or recorded share exists and needs no library location.
+- `988604b`: the wizard's SoulSeek step offers "Share <location> with
+  other SoulSeek users", unticked, only for a folder chosen in this
+  run; a resumed wizard shares nothing instead of refusing.
 
 ## 4. Key context for S17
 
@@ -46,19 +46,23 @@ Evidence for each is in HISTORY §217.
   (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
   is the runbook: tag locally, then build.
 - **Kris's bring-up first:** Start slskd refuses (nothing recorded,
-  login `null`) → Open Settings → fill the login, pick the share,
+  login `null`) → Open Settings → fill the login; the folder to share
+  is optional ("Nothing for now" unless a share is live or recorded);
   Choose… the repository's `slskd-data/` (the sentence should read
   "carries on with the settings…") or keep the app-data default
   (fresh) → Start slskd. Code never clicks it.
+- **The wizard's share checkbox** is worth a look on a fresh profile
+  in S17 (unticked by default; Kris may prefer it ticked).
 - **Gatekeeper's Open Anyway flow is UNVERIFIED** until S17 tries it
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second
   paragraph with the tag named (RELEASING.md step 4).
 - **Carried:** Sharing's 20 s per-row rebuild; the Start slskd card's
-  ~13 px of extra top spacing (§217). Run the full suite in the
-  background (~5 min). Never touch slskd or real data, and never
-  launch the built app (it migrates the real data); in S17 Kris
-  launches it.
+  ~13 px of extra top spacing (§217); `tools/screenshots.py` draws the
+  wizard's SoulSeek step resumed, so without the share checkbox
+  (§219). Run the full suite in the background (~5 min). Never touch
+  slskd or real data, and never launch the built app (it migrates the
+  real data); in S17 Kris launches it.
 
 ## 5. Decisions made
 
@@ -69,6 +73,9 @@ Evidence for each is in HISTORY §217.
 - **An unconnected location is listed but disabled:** Compose would
   create its folder, empty, where the drive mounts.
 - **The form reads Docker on show, never at construction.**
+- **Sharing is opt-in everywhere:** Settings opens on "Nothing for now"
+  when nothing is shared yet, and the wizard's checkbox starts
+  unticked (§218, §219).
 
 ## 6. Blockers
 
@@ -90,8 +97,8 @@ None uncommitted.
   64.0, from peer").
 - **From S14:** turn on Settings → General → Updates and relaunch.
 - **From S16c and §213:** bring slskd up again through Settings →
-  Connections → Start slskd (choose the repository's `slskd-data/` or
-  a fresh one), then the first real cleanup, yours to click:
+  Connections → Start slskd (a share is optional; choose the
+  repository's `slskd-data/` or a fresh one), then the first real cleanup, yours to click:
   Downloads → "Clean up leftover files…".
 - **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
   §12b's "Code's calls"; the first live Cancel, at the keyboard; the
@@ -108,7 +115,10 @@ None uncommitted.
   the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose
   folder isn't there? Should `start_slskd` itself refuse a share not
-  on disk (only the form guards it; the wizard passes a location)?
+  on disk (only the form guards it; the wizard passes a location it
+  has just registered)?
+- Should the wizard's share checkbox start ticked? (Unticked, to
+  match Settings; Kris's call.)
 - Should Search list files a playlist download would take (scored)
   above unscored ones, or say what "—" means?
 - Should "Queued as backup" rows count in the Downloads header's
