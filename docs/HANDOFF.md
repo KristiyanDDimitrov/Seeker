@@ -11,47 +11,49 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S16d's close-out (HISTORY §220). Tree clean apart from
-  the untracked `Claude outputs/`. `dist/` is still S16b's build.
-- **Local (Cocoa):** pytest `2298 passed, 1 skipped`, 0 failed (+5
-  since §219); only the stress test skipped (CI skips 29). `mypy
-  --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** run `38153654828` green (`ab3772a`, check and audit); it
-  covers S16c's follow-ups and S16d, pushed together.
+- **HEAD:** S16e's close-out (HISTORY §221). Tree clean (`Claude
+  outputs/` is now ignored). `dist/` is still S16b's build, older
+  than S16c–S16e: S17 rebuilds it.
+- **Local (Cocoa):** pytest `2306 passed, 1 skipped`, 0 failed (+8
+  since §220); only the stress test skipped (CI
+  skips 29). `mypy --strict src/` clean, 144 files; `ruff check src
+  tests tools` 0.
+- **CI:** pending for the close-out push; the next commit records it.
 
 ## 2. Where we are
 
-**S16c is done** (§216, §217), with two follow-ups from Kris's
-reports: sharing a folder is optional in Settings' Start slskd form
-(§218) and in the setup wizard (§219). **S16d** (§220, Kris's report)
-pins each Settings tab's notices above its scroll area. **Next: S17**,
-release-candidate acceptance (Kris and Code), which starts with
-Kris's bring-up. Push first and confirm CI.
+**S16e is done** (§221): every carried nit Code could fix before
+acceptance. **Next: S17**, release-candidate acceptance (Kris and
+Code), which starts with Kris's bring-up. Nothing in Code's hands
+blocks it.
 
-## 3. Session report (S16d)
+## 3. Session report (S16e)
 
-Evidence in HISTORY §220.
-- `edf9db2`: Start slskd's outcome showed scrolled out of view at the
-  default size. Each Settings tab's notices now sit in a `NoticeStrip`
-  above its scroll area (`notice.pinned_notices`), shown only while a
-  notice is; Library's Save destination had the same gap. A shell
-  sweep fails the build on a page notice inside a scroll area.
-
-Before it, the S16c follow-ups (§218, §219):
-- `53c7a62`: `start_slskd(share_path=None)` shares nothing by
-  mounting `slskd_empty_share_dir()` (the template requires a share
-  mount); recorded like any share, recreated by `restart_slskd`, read
-  back as None. Settings' combo opens on "Nothing for now" when no
-  live or recorded share exists and needs no library location.
-- `988604b`: the wizard's SoulSeek step offers "Share <location> with
-  other SoulSeek users", unticked, only for a folder chosen in this
-  run; a resumed wizard shares nothing instead of refusing.
+Evidence in HISTORY §221.
+- `624c394`: a pinned notice no longer overhangs the scroll bar
+  (Library's reached 8 px past the cards); the strip's row takes the
+  bar's column as a right margin, on every viewport resize.
+- `b1af323`: the Start slskd data folder sentence was a line too tall
+  (a `QFormLayout` row floors at a wrapped label's size hint); an
+  `Ignored` vertical policy leaves it to `heightForWidth`.
+- `e6198b9` (refactor) and `cf1f458`: `wizard.offer_library_share()`;
+  `tools/screenshots.py` draws the SoulSeek step with its checkbox.
+- `b7ec1aa`: Sharing's 20 s poll keeps an unchanged location's button
+  (rows plus palette as the key).
+- `d24d628`: the changelog says sharing is opt-in and slskd starts
+  again from Settings. `a809410`: `Claude outputs/` ignored.
 
 ## 4. Key context for S17
 
 - **BRIEF §17** is the acceptance list; R11's real-desktop checks
   (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
   is the runbook: tag locally, then build.
+- **First, Code builds the release candidate from the tip**, with its
+  SHA-256 (R11 §41 "Code prepares"); the current `dist/` predates
+  S16c–S16e. **Open (Kris's call):** RELEASING.md tags `v0.1.0` before
+  the build so `git describe` reads the tag; for a candidate that may
+  still need a fix row, Code recommends building untagged (a bare SHA)
+  and tagging in S18.
 - **Kris's bring-up first:** Start slskd refuses (nothing recorded,
   login `null`) → Open Settings → fill the login; the folder to share
   is optional ("Nothing for now" unless a share is live or recorded);
@@ -64,26 +66,21 @@ Before it, the S16c follow-ups (§218, §219):
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second
   paragraph with the tag named (RELEASING.md step 4).
-- **Carried:** Library's pinned notice reaches ~8 px past the cards
-  over the scroll bar's column (§220); Sharing's 20 s per-row rebuild; the Start slskd card's
-  ~13 px of extra top spacing (§217); `tools/screenshots.py` draws the
-  wizard's SoulSeek step resumed, so without the share checkbox
-  (§219). Run the full suite in the background (~5 min). Never touch
-  slskd or real data, and never launch the built app (it migrates the
-  real data); in S17 Kris launches it.
+- Run the full suite in the background (~5 min). Never touch slskd or
+  real data, and never launch the built app (it migrates the real
+  data); in S17 Kris launches it.
 
 ## 5. Decisions made
 
-- **The old "SoulSeek credentials" section became the Start slskd
-  form,** not a second form beside it; it changes the login too.
-- **The form names no found data folder:** a `.app` can't know where
-  an old repository sits; the state sentence describes the one shown.
-- **An unconnected location is listed but disabled:** Compose would
-  create its folder, empty, where the drive mounts.
-- **The form reads Docker on show, never at construction.**
-- **Sharing is opt-in everywhere:** Settings opens on "Nothing for now"
-  when nothing is shared yet, and the wizard's checkbox starts
-  unticked (§218, §219).
+- **The data folder sentence stays in the form,** aligned with the
+  fields; an `Ignored` vertical policy fixes its height rather than
+  moving it out to the card's width.
+- **The inset follows the viewport's width,** not the bar's
+  Show/Hide, which also fires while the page is destroyed.
+- **The screenshots show a new user's wizard:** the SoulSeek step
+  offers to share the demo's first location.
+- **`Claude outputs/` goes in the tracked `.gitignore`,** so a release
+  checkout's clean-tree check holds on any clone of Kris's.
 
 ## 6. Blockers
 
@@ -119,6 +116,8 @@ None uncommitted.
 
 ## 9. Open questions
 
+- Tag `v0.1.0` before the release-candidate build (RELEASING.md), or
+  build untagged and tag in S18? (Code recommends untagged.)
 - Should a CLI command start slskd (`restart_slskd` has none)? Not in
   the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose
