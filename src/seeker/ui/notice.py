@@ -15,8 +15,14 @@ needs to still see a few seconds later belongs there anymore.
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from seeker.ui import theme
 from seeker.ui.plain_text import PlainLabel
@@ -28,9 +34,10 @@ _VALID_KINDS = {"info", "success", "warning", "error"}
 class InlineNotice(QWidget):
     """A single persistent banner. Starts hidden; call `show_message()`
     to display, `dismiss()` (or the built-in close button) to hide.
-    Add once per page/dialog near the top of its layout — it manages
-    its own visibility, so the caller never needs to show/hide the
-    widget itself, only call `show_message`/`dismiss`.
+    Add once per page/dialog near the top of its layout, outside any
+    scroll area (`pinned_notices`) — it manages its own visibility, so
+    the caller never needs to show/hide the widget itself, only call
+    `show_message`/`dismiss`.
     """
 
     # Emitted from dismiss() (both the X button and any programmatic
@@ -123,6 +130,66 @@ class InlineNotice(QWidget):
         # Public so an action started from the notice can hand its own
         # button to the busy-action registry.
         return self._action_button
+
+
+class NoticeStrip(QWidget):
+    """Notices stacked above a page's scrolling body, shown only while
+    one of them is: an idle page keeps no gap above its body."""
+
+    def __init__(self, *notices: InlineNotice) -> None:
+        super().__init__()
+        self._notices = notices
+        layout = QVBoxLayout(self)
+        # The body's own top margin spaces the last notice from it.
+        margins = layout.contentsMargins()
+        layout.setContentsMargins(
+            margins.left(), margins.top(), margins.right(), 0,
+        )
+
+        for notice in notices:
+            layout.addWidget(notice)
+            # ShowToParent/HideToParent, not Show/Hide: a notice's
+            # Show never fires while this strip is hidden (observed
+            # offscreen), and showing the strip is what this is for.
+            notice.installEventFilter(self)
+
+        self._follow_notices()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() in (
+                QEvent.Type.ShowToParent, QEvent.Type.HideToParent,
+        ):
+            self._follow_notices()
+        return False
+
+    def _follow_notices(self) -> None:
+        self.setVisible(
+            any(not notice.isHidden() for notice in self._notices),
+        )
+
+
+def pinned_notices(
+        body: QWidget, *notices: InlineNotice, reading_measure: bool,
+) -> QWidget:
+    """`body` scrolling under `notices`, which stay in view however
+    far it scrolls: an action at the bottom of a tall page reports to a
+    notice the user can see. `reading_measure` caps both at
+    `theme.reading_column`'s width, so the notices line up with the
+    body."""
+    strip: QWidget = NoticeStrip(*notices)
+    if reading_measure:
+        strip = theme.reading_column(strip)
+        body = theme.reading_column(body)
+
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 0, 0, 0)
+    # A hidden strip leaves its reading row zero tall; spacing would
+    # still open a gap above the body.
+    layout.setSpacing(0)
+    layout.addWidget(strip)
+    layout.addWidget(theme.scrollable(body), 1)
+    return page
 
 
 @dataclass(frozen=True)

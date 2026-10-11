@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
 )
 
 from fakes import FakeApplication, wait_for_workers
@@ -1962,6 +1963,167 @@ def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(
     assert notice.property("variant") == "error"
     qtbot.waitUntil(
         window.reauthorize_spotify_button.isEnabled, timeout=2000,
+    )
+
+
+# About the page's share of the window at its 960x640 minimum: every
+# tab but General is taller and scrolls.
+_SHORT_PAGE_SIZE = (740, 480)
+
+
+def _show_short_page(
+        qtbot, window: SettingsPage, tab_name: str,
+        size: tuple[int, int] = _SHORT_PAGE_SIZE,
+) -> None:
+    window.resize(*size)
+    window.show()
+    qtbot.waitExposed(window)
+    window.select_tab(tab_name)
+
+
+def _scroll_to_the_bottom(window: SettingsPage) -> None:
+    scrolled = False
+
+    for area in window.findChildren(QScrollArea):
+        if area.isVisible():
+            bar = area.verticalScrollBar()
+            bar.setValue(bar.maximum())
+            scrolled = scrolled or bar.maximum() > 0
+
+    # A tab that fits shows every notice whatever the layout: it could
+    # not catch a notice scrolled out of view.
+    assert scrolled
+
+
+def _in_view(widget) -> bool:
+    # Clipped by every ancestor, the scroll area's viewport included.
+    return widget.isVisible() and not widget.visibleRegion().isEmpty()
+
+
+def test_a_started_slskd_is_confirmed_in_view_at_the_bottom_of_the_tab(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    application.persist_soulseek_config(
+        "http://127.0.0.1:5030", "key", "/dl", "netuser", "netpass",
+    )
+    _fake_live_mounts(monkeypatch, {})
+    bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _show_short_page(qtbot, window, settings_window.SETTINGS_TAB_CONNECTIONS)
+    qtbot.waitUntil(
+        lambda: window.slskd_username_field.text() == "netuser"
+        and window.slskd_data_dir_field.text() != "",
+        timeout=2000,
+    )
+    _scroll_to_the_bottom(window)
+    assert _in_view(window.start_slskd_button)
+
+    window.start_slskd_button.click()
+
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    assert _in_view(window.connections_notice)
+
+
+def test_a_saved_destination_is_confirmed_in_view_at_the_bottom_of_the_tab(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    add_location(application, "Main", tmp_path / "music")
+    add_playlist(
+        application, Playlist(id="p1", name="240KM/H", track_count=3),
+    )
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _show_short_page(qtbot, window, settings_window.SETTINGS_TAB_LIBRARY)
+    qtbot.waitUntil(
+        lambda: window.destinations_playlist_list.count() == 1,
+        timeout=2000,
+    )
+    window.destinations_playlist_list.setCurrentRow(0)
+    window.destination_location_combo.setCurrentIndex(
+        window.destination_location_combo.findData("Main"),
+    )
+    _scroll_to_the_bottom(window)
+    assert _in_view(window.save_destination_button)
+
+    window.save_destination_button.click()
+
+    qtbot.waitUntil(
+        lambda: not window.library_notice.isHidden(), timeout=2000,
+    )
+    assert _in_view(window.library_notice)
+
+
+def _tab_outcome_notices(window: SettingsPage) -> list[tuple[str, InlineNotice]]:
+    """Every notice reporting on a whole tab, with its tab's name. A
+    notice inside a card is left out: it reports on that card alone and
+    scrolls with it (Library's nesting warning, shown beside the table
+    it is about). A tab-level notice cannot hide in a card, so leaving
+    those out cannot hide the bug this sweep exists for."""
+    notices = []
+
+    for notice in window.findChildren(InlineNotice):
+        if _inside_a_card(notice):
+            continue
+
+        for index in range(window.tabs.count()):
+            if window.tabs.widget(index).isAncestorOf(notice):
+                notices.append((window.tabs.tabText(index), notice))
+
+    return notices
+
+
+def _inside_a_card(widget) -> bool:
+    parent = widget.parentWidget()
+
+    while parent is not None:
+        if parent.objectName() == "card":
+            return True
+        parent = parent.parentWidget()
+
+    return False
+
+
+def test_every_tab_notice_stays_in_view_however_far_its_tab_scrolls(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _fake_live_mounts(monkeypatch, {})
+    notices = _tab_outcome_notices(window)
+    # Connections' two, Library's and Matching's: General has none.
+    assert len(notices) == 4
+
+    for tab_name, notice in notices:
+        # Short enough that Matching, the shortest tab, scrolls too.
+        _show_short_page(qtbot, window, tab_name, size=(740, 240))
+        notice.show_message("An outcome to read.")
+        _scroll_to_the_bottom(window)
+
+        assert _in_view(notice), tab_name
+        notice.dismiss()
+
+
+def test_a_tab_with_no_notice_showing_keeps_no_gap_above_its_body(
+        qtbot, tmp_path, monkeypatch,
+):
+    application = make_application(tmp_path, monkeypatch)
+    _fake_live_mounts(monkeypatch, {})
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _show_short_page(qtbot, window, settings_window.SETTINGS_TAB_CONNECTIONS)
+    first_card = window.findChild(QFrame, "card")
+    top_before = first_card.mapTo(window, first_card.rect().topLeft()).y()
+
+    window.connections_notice.show_message("An outcome to read.")
+    window.connections_notice.dismiss()
+    qtbot.waitUntil(
+        lambda: first_card.mapTo(window, first_card.rect().topLeft()).y()
+        == top_before,
+        timeout=2000,
     )
 
 

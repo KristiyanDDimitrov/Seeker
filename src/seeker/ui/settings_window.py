@@ -46,7 +46,7 @@ from seeker.soulseek.docker_setup import (
 from seeker.ui import help_text, plain_text, status_lamp, theme
 from seeker.ui.elided_text import elide_list_items
 from seeker.ui.library_location_picker import pick_and_add_library_location
-from seeker.ui.notice import FeedbackTarget, InlineNotice
+from seeker.ui.notice import FeedbackTarget, InlineNotice, pinned_notices
 from seeker.ui.plain_text import PlainLabel
 from seeker.ui.spotify_authorization import SpotifyAuthorizationWait
 from seeker.ui.workers import run_worker
@@ -185,7 +185,7 @@ class SettingsPage(QWidget):
                 (self._build_connection_tab, SETTINGS_TAB_CONNECTIONS),
                 (self._build_matching_tab, SETTINGS_TAB_MATCHING),
         ):
-            self.tabs.addTab(theme.scrollable(build_tab()), tab_name)
+            self.tabs.addTab(build_tab(), tab_name)
         layout.addWidget(self.tabs)
 
         if initial_tab is not None:
@@ -219,13 +219,12 @@ class SettingsPage(QWidget):
         # already registered or nested, a removal's counts, a
         # destination saved or refused.
         self.library_notice = InlineNotice()
-        layout.addWidget(self.library_notice)
 
         layout.addWidget(self._build_locations_group())
         layout.addWidget(self._build_default_destination_group())
         layout.addWidget(self._build_playlist_destinations_group())
         layout.addStretch()
-        return tab
+        return pinned_notices(tab, self.library_notice, reading_measure=False)
 
     def _build_locations_group(self) -> QFrame:
         # Shown while a location sits inside another: the add guard
@@ -770,13 +769,11 @@ class SettingsPage(QWidget):
         # when the configured slskd base URL is actually plain
         # http://pointed off this machine.
         self.slskd_remote_warning_notice = InlineNotice()
-        layout.addWidget(self.slskd_remote_warning_notice)
 
         # The tab's outcomes: a test's result, a re-authorization or a
         # credentials update that failed or finished. Each action's
         # status label carries its progress only.
         self.connections_notice = InlineNotice()
-        layout.addWidget(self.connections_notice)
 
         spotify_form = QFormLayout()
 
@@ -942,7 +939,10 @@ class SettingsPage(QWidget):
             "Start slskd", help_text.SETTINGS_START_SLSKD_TEXT, start_form,
         ))
         layout.addStretch()
-        return theme.reading_column(tab)
+        return pinned_notices(
+            tab, self.slskd_remote_warning_notice, self.connections_notice,
+            reading_measure=True,
+        )
 
     def _refresh_connection_display(self) -> None:
         config = self.application.settings
@@ -1364,14 +1364,13 @@ class SettingsPage(QWidget):
         layout.addWidget(self._build_notifications_group())
         layout.addWidget(self._build_updates_group())
         layout.addStretch()
-        return theme.reading_column(tab)
+        return theme.scrollable(theme.reading_column(tab))
 
     def _build_matching_tab(self) -> QWidget:
         tab = QWidget()
         outer = QVBoxLayout(tab)
 
         self.thresholds_notice = InlineNotice()
-        outer.addWidget(self.thresholds_notice)
 
         form = QFormLayout()
         # Fusion's form grows every field to the full width; a 0-100
@@ -1418,7 +1417,9 @@ class SettingsPage(QWidget):
 
         self._load_threshold_fields()
 
-        return theme.reading_column(tab)
+        return pinned_notices(
+            tab, self.thresholds_notice, reading_measure=True,
+        )
 
     def _build_notifications_group(self) -> QFrame:
         # Per-category menu-bar notification toggles, all defaulting on
