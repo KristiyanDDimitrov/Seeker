@@ -1,9 +1,9 @@
 import pytest
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
 from seeker.ui import theme
-from seeker.ui.notice import InlineNotice
+from seeker.ui.notice import InlineNotice, pinned_notices
 from seeker.ui.widgets import CloseButton
 
 
@@ -162,3 +162,33 @@ def test_a_notice_lights_only_its_left_edge(qtbot, palette, kind):
 
     assert left_edge == QColor(getattr(palette, _EDGE_TOKENS[kind]))
     assert top_edge == QColor(palette.BORDER)
+
+
+@pytest.mark.parametrize("body_height", [2000, 40], ids=["scrolls", "fits"])
+def test_a_pinned_notice_ends_where_the_body_does(qtbot, body_height):
+    # The strip spans the page; the body only the viewport, which the
+    # scroll bar narrows while it shows. The notice must line up with
+    # the body either way, not overhang the scroll bar's column.
+    body = QWidget()
+    content = QWidget()
+    content.setMinimumHeight(body_height)
+    QVBoxLayout(body).addWidget(content)
+    notice = InlineNotice()
+    page = pinned_notices(body, notice, reading_measure=False)
+    qtbot.addWidget(page)
+    page.resize(600, 300)
+    page.show()
+    qtbot.waitExposed(page)
+    notice.show_message("An outcome to read.")
+    bar = page.findChild(QScrollArea).verticalScrollBar()
+    assert bar.isVisible() == (body_height > 300)
+
+    def insets() -> tuple[int, int]:
+        notice_left = notice.mapTo(page, notice.rect().topLeft()).x()
+        notice_right = notice.mapTo(page, notice.rect().topRight()).x()
+        body_left = content.mapTo(page, content.rect().topLeft()).x()
+        body_right = content.mapTo(page, content.rect().topRight()).x()
+        return notice_left - body_left, body_right - notice_right
+
+    # The notice's own margins inset it equally on both sides.
+    qtbot.waitUntil(lambda: insets()[0] == insets()[1])

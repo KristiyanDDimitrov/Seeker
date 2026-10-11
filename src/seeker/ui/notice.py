@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -168,6 +169,28 @@ class NoticeStrip(QWidget):
         )
 
 
+class _ScrollBarInset(QObject):
+    """Keeps `row`'s right margin at the width `scroll_area`'s scroll
+    bar takes while it shows. The bar narrows the scrolling body beneath
+    `row`, not `row`, so a full-width row would otherwise overhang the
+    bar's column."""
+
+    def __init__(self, row: QWidget, scroll_area: QScrollArea) -> None:
+        super().__init__(scroll_area)
+        self._row = row
+        self._scroll_area = scroll_area
+        # The viewport resizes whenever the bar shows or hides. A Resize,
+        # unlike the bar's own Show and Hide, never arrives while the
+        # page is being destroyed.
+        scroll_area.viewport().installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            inset = self._scroll_area.width() - self._scroll_area.viewport().width()
+            self._row.setContentsMargins(0, 0, inset, 0)
+        return False
+
+
 def pinned_notices(
         body: QWidget, *notices: InlineNotice, reading_measure: bool,
 ) -> QWidget:
@@ -187,8 +210,10 @@ def pinned_notices(
     # A hidden strip leaves its reading row zero tall; spacing would
     # still open a gap above the body.
     layout.setSpacing(0)
+    scroll_area = theme.scrollable(body)
+    _ScrollBarInset(strip, scroll_area)
     layout.addWidget(strip)
-    layout.addWidget(theme.scrollable(body), 1)
+    layout.addWidget(scroll_area, 1)
     return page
 
 
