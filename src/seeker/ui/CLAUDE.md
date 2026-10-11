@@ -90,6 +90,13 @@ investigation.
   before `on_finished`, over any render that already ran; disable it
   on click and let the render set it (Downloads' Clear finished,
   reproduced deterministically). [HISTORY §145](../../../docs/history/121-150.md#145)
+- **A page's notice never scrolls with its page.** A scrolling page or
+  tab pins its notices above the scroll area through
+  `notice.pinned_notices` (a `NoticeStrip`, shown only while one of its
+  notices is), or an action at the bottom reports to a notice scrolled
+  out of view (Settings' tabs did). Only a card's own notice scrolls
+  with its card. `tests/shell/test_notice_placement.py` fails the
+  build. [HISTORY §220](../../../docs/history/211-240.md#220)
 - A page inside `MainWindow`'s `QStackedWidget` has no real geometry
   until first navigated to — restore saved splitter/size state from
   its first real `showEvent`, never its constructor

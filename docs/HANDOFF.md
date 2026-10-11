@@ -11,26 +11,33 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** the S16c follow-ups' close-out (HISTORY §218, §219). Tree
-  clean apart from the untracked `Claude outputs/`. `dist/` is still
-  S16b's build.
-- **Local (Cocoa):** pytest `2293 passed, 1 skipped`, 0 failed (+6
-  since §217); only the stress test skipped (CI skips 29). `mypy
+- **HEAD:** S16d's close-out (HISTORY §220). Tree clean apart from
+  the untracked `Claude outputs/`. `dist/` is still S16b's build.
+- **Local (Cocoa):** pytest `2298 passed, 1 skipped`, 0 failed (+5
+  since §219); only the stress test skipped (CI skips 29). `mypy
   --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** last green run `38073243710` (`86c9d3e`). The follow-ups
-  (`53c7a62` onwards) are not yet pushed, so CI has not seen them.
+- **CI:** see the push of this close-out (S16c's follow-ups and S16d
+  go up together); last green before it `38073243710` (`86c9d3e`).
 
 ## 2. Where we are
 
 **S16c is done** (§216, §217), with two follow-ups from Kris's
 reports: sharing a folder is optional in Settings' Start slskd form
-(§218) and in the setup wizard (§219). **Next: S17**,
+(§218) and in the setup wizard (§219). **S16d** (§220, Kris's report)
+pins each Settings tab's notices above its scroll area. **Next: S17**,
 release-candidate acceptance (Kris and Code), which starts with
 Kris's bring-up. Push first and confirm CI.
 
-## 3. Session report (S16c follow-ups)
+## 3. Session report (S16d)
 
-Evidence for each is in HISTORY §218 and §219.
+Evidence in HISTORY §220.
+- `edf9db2`: Start slskd's outcome showed scrolled out of view at the
+  default size. Each Settings tab's notices now sit in a `NoticeStrip`
+  above its scroll area (`notice.pinned_notices`), shown only while a
+  notice is; Library's Save destination had the same gap. A shell
+  sweep fails the build on a page notice inside a scroll area.
+
+Before it, the S16c follow-ups (§218, §219):
 - `53c7a62`: `start_slskd(share_path=None)` shares nothing by
   mounting `slskd_empty_share_dir()` (the template requires a share
   mount); recorded like any share, recreated by `restart_slskd`, read
@@ -57,7 +64,8 @@ Evidence for each is in HISTORY §218 and §219.
   on a quarantined download (`docs/packaging.md`).
 - **Release notes' licence paragraph** is README → License's second
   paragraph with the tag named (RELEASING.md step 4).
-- **Carried:** Sharing's 20 s per-row rebuild; the Start slskd card's
+- **Carried:** Library's pinned notice reaches ~8 px past the cards
+  over the scroll bar's column (§220); Sharing's 20 s per-row rebuild; the Start slskd card's
   ~13 px of extra top spacing (§217); `tools/screenshots.py` draws the
   wizard's SoulSeek step resumed, so without the share checkbox
   (§219). Run the full suite in the background (~5 min). Never touch
