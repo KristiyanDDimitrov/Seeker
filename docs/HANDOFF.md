@@ -16,8 +16,8 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2298 passed, 1 skipped`, 0 failed (+5
   since §219); only the stress test skipped (CI skips 29). `mypy
   --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** see the push of this close-out (S16c's follow-ups and S16d
-  go up together); last green before it `38073243710` (`86c9d3e`).
+- **CI:** run `38153654828` green (`ab3772a`, check and audit); it
+  covers S16c's follow-ups and S16d, pushed together.
 
 ## 2. Where we are
 
