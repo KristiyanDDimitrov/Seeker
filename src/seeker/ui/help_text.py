@@ -1600,6 +1600,10 @@ TOOLTIP_BRING_UP_SOULSEEK = (
     "Start slskd via Docker and connect it to the SoulSeek network with "
     "these credentials."
 )
+TOOLTIP_SHARE_LIBRARY_CHECKBOX = (
+    "Optional. slskd shares this folder with other SoulSeek users, "
+    "read-only. Sharing can add or change locations once slskd runs."
+)
 TOOLTIP_SKIP_SOULSEEK = (
     "Finish setup without SoulSeek — you can come back to this anytime "
     "from Settings."

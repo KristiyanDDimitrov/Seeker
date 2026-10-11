@@ -1,5 +1,7 @@
 import threading
 
+import pytest
+
 from fakes import wait_for_workers
 from seeker.application import Application
 from seeker.models.slskd_start import SlskdStartResult
@@ -8,6 +10,7 @@ from seeker.soulseek.docker_setup import (
     SlskdBringUpError,
     SlskdHealthCheckResult,
     SlskdHealthStatus,
+    slskd_empty_share_dir,
 )
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.ui import status_lamp
@@ -849,7 +852,7 @@ def test_soulseek_account_mode_radios_default_to_existing_account(
     assert not wizard.new_account_radio.isChecked()
 
 
-def test_bring_up_soulseek_blocked_when_no_library_location(
+def test_resumed_soulseek_step_starts_slskd_sharing_nothing(
         qtbot, tmp_path, monkeypatch,
 ):
     monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
@@ -857,6 +860,9 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
     monkeypatch.setattr(
         "seeker.ui.wizard.detect_docker_state",
         lambda: DockerState.RUNNING,
+    )
+    monkeypatch.setattr(
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
     )
     calls = []
     monkeypatch.setattr(
@@ -869,8 +875,9 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
     qtbot.addWidget(wizard)
-    # _library_location_path deliberately left None — the resumed-at-
-    # step-3 scenario this represents.
+    # Resumed at step 3: no folder was chosen in this run, so there is
+    # none to offer, and sharing is optional.
+    assert wizard.share_library_checkbox.isHidden()
 
     qtbot.waitUntil(
         lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
@@ -880,8 +887,72 @@ def test_bring_up_soulseek_blocked_when_no_library_location(
     wizard.soulseek_password_field.setText("realpass")
     wizard.bring_up_button.click()
 
-    assert calls == []
-    assert "library location" in wizard.soulseek_notice.text().lower()
+    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    assert calls[0]["library_location_path"] == str(slskd_empty_share_dir())
+
+    qtbot.waitUntil(
+        lambda: wizard.soulseek_status_label.text()
+        == "Waiting for SoulSeek to connect…",
+        timeout=2000,
+    )
+    wizard._stop_health_poll()
+
+
+@pytest.mark.parametrize("ticked", [False, True])
+def test_bring_up_shares_the_chosen_library_only_when_ticked(
+        qtbot, tmp_path, monkeypatch, ticked,
+):
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "already-set")
+    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+    monkeypatch.setattr(
+        "seeker.ui.wizard.detect_docker_state",
+        lambda: DockerState.RUNNING,
+    )
+    monkeypatch.setattr(
+        "seeker.application.slskd_data_dir", lambda: tmp_path / "slskd-data",
+    )
+    calls = []
+    monkeypatch.setattr(
+        "seeker.application.bring_up_slskd",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    chosen_path = tmp_path / "music"
+    chosen_path.mkdir()
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *a, **k: str(chosen_path),
+    )
+
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    wizard._on_choose_library_folder_clicked()
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    qtbot.waitUntil(
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+    )
+
+    # Offered once a folder is chosen, never ticked for the person.
+    assert not wizard.share_library_checkbox.isHidden()
+    assert not wizard.share_library_checkbox.isChecked()
+    wizard.share_library_checkbox.setChecked(ticked)
+
+    wizard.soulseek_username_field.setText("realuser")
+    wizard.soulseek_password_field.setText("realpass")
+    wizard.bring_up_button.click()
+
+    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    expected = chosen_path if ticked else slskd_empty_share_dir()
+    assert calls[0]["library_location_path"] == str(expected)
+
+    qtbot.waitUntil(
+        lambda: wizard.soulseek_status_label.text()
+        == "Waiting for SoulSeek to connect…",
+        timeout=2000,
+    )
+    wizard._stop_health_poll()
 
 
 def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(

@@ -378,6 +378,10 @@ class OnboardingWizard(QMainWindow):
 
     def _advance_from_library(self, location: LibraryLocation) -> None:
         self._library_location_path = location.path
+        self.share_library_checkbox.setText(
+            f"Share {location.name} with other SoulSeek users"
+        )
+        self.share_library_checkbox.show()
         self.library_status_label.setText("Library registered.")
 
         if not self.download_into_library_checkbox.isChecked():
@@ -473,8 +477,8 @@ class OnboardingWizard(QMainWindow):
             help_text.TOOLTIP_SOULSEEK_USERNAME_FIELD
         )
         # No extra guard needed here: _on_bring_up_clicked already
-        # validates non-empty, whitespace, Docker state, and library
-        # location, writing a real status message for each — Enter from
+        # validates non-empty, whitespace and Docker state, writing a
+        # real status message for each — Enter from
         # an empty field gets that same message, not silence.
         self.soulseek_username_field.returnPressed.connect(
             self._on_bring_up_clicked
@@ -495,6 +499,15 @@ class OnboardingWizard(QMainWindow):
             self._on_bring_up_clicked
         )
         layout.addWidget(self.soulseek_password_field)
+
+        # Offered only for a folder chosen in this run; a resumed
+        # wizard shares nothing, and Sharing can add a location later.
+        self.share_library_checkbox = QCheckBox()
+        self.share_library_checkbox.setToolTip(
+            help_text.TOOLTIP_SHARE_LIBRARY_CHECKBOX
+        )
+        self.share_library_checkbox.hide()
+        layout.addWidget(self.share_library_checkbox)
 
         self.bring_up_button = QPushButton("Set up SoulSeek")
         self.bring_up_button.setProperty("variant", "primary")
@@ -647,19 +660,16 @@ class OnboardingWizard(QMainWindow):
             )
             return
 
-        if self._library_location_path is None:
-            self._show_soulseek_outcome(
-                "No library location — go back and choose one first.",
-                kind="warning",
-            )
-            return
-
-        library_path = self._library_location_path
+        share_path = (
+            self._library_location_path
+            if self.share_library_checkbox.isChecked()
+            else None
+        )
 
         def do_bring_up() -> SlskdStartResult:
             # Saved only once the health poll confirms the login.
             return self.application.start_slskd(
-                username, password, library_path, persist=False,
+                username, password, share_path, persist=False,
             )
 
         run_worker(
