@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -922,6 +923,12 @@ class SettingsPage(QWidget):
         self.slskd_data_dir_state_label = PlainLabel("")
         self.slskd_data_dir_state_label.setProperty("badge", "muted")
         self.slskd_data_dir_state_label.setWordWrap(True)
+        # A form row never shrinks below its field's size hint, which a
+        # wrapped label takes at a narrower width than the row's: an
+        # Ignored height leaves the row to the label's heightForWidth.
+        policy = self.slskd_data_dir_state_label.sizePolicy()
+        policy.setVerticalPolicy(QSizePolicy.Policy.Ignored)
+        self.slskd_data_dir_state_label.setSizePolicy(policy)
         start_form.addRow("", self.slskd_data_dir_state_label)
 
         self.start_slskd_button = QPushButton("Start slskd")

@@ -2127,6 +2127,34 @@ def test_a_tab_with_no_notice_showing_keeps_no_gap_above_its_body(
     )
 
 
+@pytest.mark.parametrize(
+    "state_text",
+    list(settings_window._DATA_DIR_STATE_TEXT.values()),
+    ids=[state.name for state in settings_window._DATA_DIR_STATE_TEXT],
+)
+def test_the_data_folder_sentence_is_as_tall_as_its_lines(
+        qtbot, tmp_path, monkeypatch, state_text,
+):
+    # A form row floors at its field's size hint, which a wrapped label
+    # measures at a narrower width than the row gives it: the sentence
+    # sat in a line's worth of space too many, above the Start button.
+    application = make_application(tmp_path, monkeypatch)
+    _fake_live_mounts(monkeypatch, {})
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+    _show_short_page(
+        qtbot, window, settings_window.SETTINGS_TAB_CONNECTIONS,
+        size=(1180, 760),
+    )
+    label = window.slskd_data_dir_state_label
+    label.setText(state_text)
+
+    qtbot.waitUntil(
+        lambda: label.height() == label.heightForWidth(label.width()),
+        timeout=2000,
+    )
+
+
 def test_daily_sweep_checkbox_starts_off_and_round_trips(
         qtbot, tmp_path, monkeypatch,
 ):
