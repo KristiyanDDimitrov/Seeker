@@ -39,6 +39,9 @@ Every document in the repository, then where to start.
   one invented dataset: `uv run python tools/screenshots.py` (into the
   gitignored `tools/.screens/`; `--page NAME` and `--theme` narrow it).
   Review a UI change against these before committing it.
+- [`../tools/window_checks.py`](../tools/window_checks.py) — measures
+  the three window-reopen paths on a real Mac against a running
+  packaged app, for release acceptance.
 
 ## Shipped with the app
 

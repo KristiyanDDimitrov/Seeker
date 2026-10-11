@@ -145,6 +145,9 @@ ignore = [
 "src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]
 "tests/test_workers_deadlock_regression.py" = ["S603"]
+# macOS's own /usr/bin tools, with literal arguments and the bundle path
+# the person running the acceptance check names.
+"tools/window_checks.py" = ["S603"]
 # S311 (non-cryptographic random): both real uses generate synthetic
 # test data (a fake mp3's garbage bytes; a shuffled locked/queued
 # download-request status split) — never a security-sensitive value.
