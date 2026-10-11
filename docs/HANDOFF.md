@@ -18,7 +18,8 @@ nine fields below follow the contract in
   since §220); only the stress test skipped (CI
   skips 29). `mypy --strict src/` clean, 144 files; `ruff check src
   tests tools` 0.
-- **CI:** pending for the close-out push; the next commit records it.
+- **CI:** run `38160289548` green (`5fcc59d`, check and audit); it
+  covers all of S16e.
 
 ## 2. Where we are
 
