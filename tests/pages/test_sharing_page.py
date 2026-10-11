@@ -511,3 +511,75 @@ def test_shared_sorts_above_not_shared(qtbot):
     assert [table.item(row, 1).text() for row in range(2)] == [
         "Shared", "Not shared",
     ]
+
+
+def _unshared_location_window(qtbot):
+    from seeker.soulseek.sharing_service import LocationShareState
+
+    def reconciliation():
+        # Equal rows in fresh objects, as each real fetch returns.
+        return [
+            LocationShareState(
+                location=make_location(1, "Music", "/Volumes/Drive/Music"),
+                shared=False, share=None,
+            ),
+        ]
+
+    sharing_service = FakeSharingService(reconciliation=reconciliation())
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("sharing")
+    table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    sharing_service._reconciliation = reconciliation()
+    return window, sharing_service
+
+
+def test_a_poll_with_unchanged_locations_keeps_their_buttons(qtbot):
+    # A rebuild destroys the button under the pointer and its tooltip
+    # with it, so a 20 s tick that changes nothing must keep the rows.
+    from seeker.soulseek.sharing_service import UploadStatus
+
+    window, sharing_service = _unshared_location_window(qtbot)
+    page = window._sharing_page
+    button = page.sharing_locations_table.cellWidget(0, 4)
+
+    # The uploads table changes, so the render's real end is visible.
+    sharing_service._uploads = [
+        UploadStatus(
+            username="listener", filename="Music\\a.flac",
+            state="InProgress", bytes_transferred=10, size=100,
+        ),
+    ]
+    page.poll_sharing()
+    qtbot.waitUntil(
+        lambda: page.sharing_uploads_table.rowCount() == 1, timeout=2000,
+    )
+
+    assert page.sharing_locations_table.cellWidget(0, 4) is button
+
+
+def test_a_theme_switch_repaints_the_locations_lamps(qtbot, qapp):
+    from seeker.ui import theme
+
+    window, _sharing_service = _unshared_location_window(qtbot)
+    page = window._sharing_page
+
+    def lamp_image():
+        icon = page.sharing_locations_table.item(0, 1).icon()
+        return icon.pixmap(16, 16).toImage()
+
+    def expected_image(palette):
+        icon = status_lamp.lamp_icon(status_lamp.STANDBY, palette)
+        return icon.pixmap(16, 16).toImage()
+
+    assert lamp_image() == expected_image(theme.DARK)
+    try:
+        theme.apply_theme(qapp, "light")
+        page.refresh_lamps()
+        assert lamp_image() == expected_image(theme.LIGHT)
+    finally:
+        theme.apply_theme(qapp)

@@ -78,7 +78,8 @@ investigation.
   replaced (both observed on Cocoa). Review keeps each table's last
   rows (`_rendered_candidates`, …) and skips an equal tick; Downloads
   keys its rows apart from their bytes and updates progress in place;
-  Sharing's 20 s rebuild still replaces its per-row button. A busy
+  Sharing keys its locations with the palette, which its lamps bake in
+  (HISTORY §221). A busy
   action whose buttons a rebuild can delete passes `button=None` and
   puts its busy state in the rendered key (Downloads' Retry and
   Cancel, through `_ROW_ACTION_KEYS`).

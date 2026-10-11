@@ -52,6 +52,12 @@ _UPLOAD_ENDINGS = {
 }
 
 
+# What the locations table was last built from. A tick that brings the
+# same rows keeps them: a rebuild destroys the "Add to my SoulSeek
+# share" button under the pointer, and its tooltip with it. The lamps
+# bake in the palette, so a theme switch must rebuild.
+_RenderedLocations = tuple[theme.Palette, tuple[LocationShareState, ...]]
+
 # A state Seeker has no word for sorts below every one it knows.
 _UNKNOWN_UPLOAD_RANK = 4
 
@@ -240,6 +246,7 @@ class SharingPage(QWidget):
 
         self._current_sharing_self_managed = False
         self._last_snapshot: _SharingSnapshot | None = None
+        self._rendered_locations: _RenderedLocations | None = None
 
         # Lazy-loaded like Duplicates (first real page SHOW, never at
         # construction — see HISTORY §39's deadlock), but also joins the
@@ -343,6 +350,7 @@ class SharingPage(QWidget):
                 help_text.SHARING_UNCONFIGURED_NOTICE
             )
             self.sharing_locations_table.setRowCount(0)
+            self._rendered_locations = None
             self.sharing_locations_empty.set_text(
                 help_text.SHARING_LOCATIONS_UNCONFIGURED
             )
@@ -371,6 +379,11 @@ class SharingPage(QWidget):
     def _render_sharing_locations_table(
             self, reconciliation: list[LocationShareState],
     ) -> None:
+        rendered = (theme.active_palette(), tuple(reconciliation))
+        if rendered == self._rendered_locations:
+            return
+        self._rendered_locations = rendered
+
         table = self.sharing_locations_table
         action_widgets: list[QWidget] = []
 
