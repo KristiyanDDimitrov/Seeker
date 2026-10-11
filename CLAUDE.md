@@ -300,8 +300,10 @@ investigation; `docs/history/README.md` resolves any `§N`.
   tracked template; a recreate keeps the live `/app` data dir. A
   refusal Settings → Connections' Start slskd form resolves is a
   `SlskdSetupNeededError`, and its notice offers Open Settings; a
-  named data folder is never created (but the per-user default).
-  [§140](docs/history/121-150.md#140), [§217](docs/history/211-240.md#217)
+  named data folder is never created (but the per-user default). The
+  share is optional: none mounts Seeker's empty `slskd_empty_share_dir()`.
+  [§140](docs/history/121-150.md#140), [§217](docs/history/211-240.md#217),
+  [§218](docs/history/211-240.md#218)
 - **slskd down is an outage, never a per-request failure.**
   `poll_downloads` turns any `httpx.TransportError` into
   `SlskdUnreachableError` and aborts: no row changed or counted
