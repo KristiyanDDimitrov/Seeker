@@ -11,81 +11,65 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S16e's close-out (HISTORY §221). Tree clean (`Claude
-  outputs/` is now ignored). `dist/` is still S16b's build, older
-  than S16c–S16e: S17 rebuilds it.
-- **Local (Cocoa):** pytest `2306 passed, 1 skipped`, 0 failed (+8
-  since §220); only the stress test skipped (CI
-  skips 29). `mypy --strict src/` clean, 144 files; `ruff check src
-  tests tools` 0.
-- **CI:** run `38160289548` green (`5fcc59d`, check and audit); it
-  covers all of S16e.
+- **HEAD:** S17's close-out (HISTORY §222). Tree clean.
+- **Release candidate:** `dist/Seeker.dmg`, built untagged at
+  `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
+  (`dist/Seeker.dmg.sha256`). Commits after it touch only `tools/`
+  and `docs/`.
+- **Local (Cocoa):** pytest `2306 passed, 1 skipped`, 0 failed
+  (unchanged; only the stress test skipped, CI skips 29). `mypy
+  --strict src/` clean, 144 files; `ruff check src tests tools` 0.
+- **CI:** see the S17 handoff commit's message for the run id.
 
 ## 2. Where we are
 
-**S16e is done** (§221): every carried nit Code could fix before
-acceptance. **Next: S17**, release-candidate acceptance (Kris and
-Code), which starts with Kris's bring-up. Nothing in Code's hands
-blocks it.
+**S17, Code's half is done** (§222): the candidate is built and
+verified, and the one checklist is
+`docs/rounds/round-12/ACCEPTANCE.md`. **Next: Kris runs it.** Any
+failure becomes a fix row before S18; with none, S18 tags the release
+commit and rebuilds from it.
 
-## 3. Session report (S16e)
+## 3. Session report (S17, Code's half)
 
-Evidence in HISTORY §221.
-- `624c394`: a pinned notice no longer overhangs the scroll bar
-  (Library's reached 8 px past the cards); the strip's row takes the
-  bar's column as a right margin, on every viewport resize.
-- `b1af323`: the Start slskd data folder sentence was a line too tall
-  (a `QFormLayout` row floors at a wrapped label's size hint); an
-  `Ignored` vertical policy leaves it to `heightForWidth`.
-- `e6198b9` (refactor) and `cf1f458`: `wizard.offer_library_share()`;
-  `tools/screenshots.py` draws the SoulSeek step with its checkbox.
-- `b7ec1aa`: Sharing's 20 s poll keeps an unchanged location's button
-  (rows plus palette as the key).
-- `d24d628`: the changelog says sharing is opt-in and slskd starts
-  again from Settings. `a809410`: `Claude outputs/` ignored.
+Evidence in HISTORY §222.
+- The candidate: RELEASING.md step 3 as written, all as expected
+  (ad-hoc, `spctl` rejects, `0.1.0`, clean tree, `shasum -c` OK).
+- slskd read-only: Kris's bring-up is done (the app-data default, the
+  empty share); the web UI on loopback only; the per-user Compose copy
+  is valid but predates the digest pin, while the running image is the
+  pinned digest.
+- `57dc527`: `tools/window_checks.py`, the three reopen paths measured
+  against a running app (Kris clicks what AX hides).
+- `7dd745e`: `ACCEPTANCE.md`, the single checklist.
 
-## 4. Key context for S17
+## 4. Key context for whoever runs S17's second half or S18
 
-- **BRIEF §17** is the acceptance list; R11's real-desktop checks
-  (`git show 1b415a4:docs/HANDOFF.md` §8) fold into it. RELEASING.md
-  is the runbook: tag locally, then build.
-- **First, Code builds the release candidate from the tip**, with its
-  SHA-256 (R11 §41 "Code prepares"); the current `dist/` predates
-  S16c–S16e. **Open (Kris's call):** RELEASING.md tags `v0.1.0` before
-  the build so `git describe` reads the tag; for a candidate that may
-  still need a fix row, Code recommends building untagged (a bare SHA)
-  and tagging in S18.
-- **Kris's bring-up first:** Start slskd refuses (nothing recorded,
-  login `null`) → Open Settings → fill the login; the folder to share
-  is optional ("Nothing for now" unless a share is live or recorded);
-  Choose… the repository's `slskd-data/` (the sentence should read
-  "carries on with the settings…") or keep the app-data default
-  (fresh) → Start slskd. Code never clicks it.
-- **The wizard's share checkbox** is worth a look on a fresh profile
-  in S17 (unticked by default; Kris may prefer it ticked).
-- **Gatekeeper's Open Anyway flow is UNVERIFIED** until S17 tries it
-  on a quarantined download (`docs/packaging.md`).
-- **Release notes' licence paragraph** is README → License's second
-  paragraph with the tag named (RELEASING.md step 4).
-- Run the full suite in the background (~5 min). Never touch slskd or
-  real data, and never launch the built app (it migrates the real
-  data); in S17 Kris launches it.
+- **The checklist is `ACCEPTANCE.md`;** results go in its Results
+  section. Install the candidate into `/Applications` first (no other
+  copy exists); its first launch runs the `last_searched_at`
+  migration.
+- **`tools/window_checks.py` has never run against Seeker** (only its
+  queries, against Finder). A bug in it is a tool fix, not an app
+  failure.
+- **The sweep check has no scratch-config route:** enable it and wait
+  a day (§222 explains why not `HOME`).
+- **S18:** RELEASING.md from step 1 on the release commit: date the
+  changelog's `[0.1.0]`, tag locally, rebuild (the checksum changes),
+  then show Kris the push and `gh release create` commands.
+- Never touch slskd or real data, and never launch the built app.
 
 ## 5. Decisions made
 
-- **The data folder sentence stays in the form,** aligned with the
-  fields; an `Ignored` vertical policy fixes its height rather than
-  moving it out to the card's width.
-- **The inset follows the viewport's width,** not the bar's
-  Show/Hide, which also fires while the page is destroyed.
-- **The screenshots show a new user's wizard:** the SoulSeek step
-  offers to share the demo's first location.
-- **`Claude outputs/` goes in the tracked `.gitignore`,** so a release
-  checkout's clean-tree check holds on any clone of Kris's.
+- **The candidate is untagged** (Kris, 2026-10-11): Help → Build shows
+  `e10aa87`; S18 tags.
+- **The checklist lives in its own file,** linked from here, not in
+  the handoff (R11 §41 said "in the handoff"): one place to tick.
+- **The window script uses `/usr/bin` paths** and a per-file `S603`
+  ignore with its reason.
 
 ## 6. Blockers
 
-None.
+None for Code. S18 waits on Kris's acceptance run.
 
 ## 7. Files in progress
 
@@ -93,32 +77,14 @@ None uncommitted.
 
 ## 8. Waiting on Kris
 
-- **From S16:** after S17's build, turn "Start Seeker at login" on
-  again once (the bundle ID changed).
-- **From S15 part three:** veto, if wanted, "2 of its 8 tracks are
-  in your library" in Library's header.
-- **From S15 part two:** veto, if wanted, "Available"/"Not found"
-  and the faint ring for an unplugged drive.
-- **From S15 part one:** the tooltip and the Runner-up wording ("scored
-  64.0, from peer").
-- **From S14:** turn on Settings → General → Updates and relaunch.
-- **From S16c and §213:** bring slskd up again through Settings →
-  Connections → Start slskd (a share is optional; choose the
-  repository's `slskd-data/` or a fresh one), then the first real cleanup, yours to click:
-  Downloads → "Clean up leftover files…".
-- **From S10–S12b:** the decisions in HISTORY §202–§207 and BRIEF
-  §12b's "Code's calls"; the first live Cancel, at the keyboard; the
-  real `tracks.last_searched_at` migration runs on the next launch.
-- **Still open:** the live checks of
-  §193–§196; the S5 wording veto; the wordmark's brows (`9ff777b`);
-  BRIEF §17; S8's visible peer-filename change; `git show
-  1b415a4:docs/HANDOFF.md` §8; the three nested locations in the real
-  DB.
+Everything is in `docs/rounds/round-12/ACCEPTANCE.md`: the fresh
+account, the live Retry/Cancel/Clean up, start at login again, the
+sweep, the window paths, the Fix…, the stress test, and the vetoes
+(S5, the wordmark, S15's wordings, S8's peer filenames, the wizard's
+share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
 
-- Tag `v0.1.0` before the release-candidate build (RELEASING.md), or
-  build untagged and tag in S18? (Code recommends untagged.)
 - Should a CLI command start slskd (`restart_slskd` has none)? Not in
   the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose
@@ -145,6 +111,10 @@ None uncommitted.
 - Does slskd 0.26.0 share anything by default on a fresh container?
   (AUDIT §8, UNVERIFIED.) Does Dependabot bump a `tag@digest` pair?
 - Should the callback handler get a socket timeout?
+
+- Should a template bump (a new slskd digest) reach an existing
+  install's per-user Compose copy? It is never re-seeded, so Kris's
+  copy still names the unpinned tag (§222).
 
 ---
 

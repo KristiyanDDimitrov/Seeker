@@ -58,7 +58,7 @@ after Kris's explicit yes.
 | ☑ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) — part one §216 (§16c.1–2, stopped at the split point); part two §217 (the Start slskd form); follow-ups §218 (Settings' share optional) and §219 (the wizard's too) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☑ S16d | Settings: a tab's notice stays in view however far it scrolls (added 2026-10-11, Kris) — §220 | — | ~60 K | — |
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
-| ☐ S17 | Release-candidate acceptance (**Kris and Code**) | §17 | ~70 K | — |
+| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open | §17 | ~70 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
 ### Why this order
