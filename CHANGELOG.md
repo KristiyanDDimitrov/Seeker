@@ -22,7 +22,8 @@ command-line tool (`seeker`) over one shared core.
   missing. A match you confirm stays confirmed; a file you reject is
   never suggested again.
 - **SoulSeek downloads through slskd**, a self-hosted daemon that
-  Seeker sets up in Docker. Candidates are ranked by format, bitrate
+  Seeker sets up in Docker, and starts again from Settings →
+  Connections if its container is removed. Candidates are ranked by format, bitrate
   and the peer's queue; up to three backups stand behind the chosen
   file and take over if it fails. A better file that isn't available
   yet is kept as an upgrade to accept later.
@@ -39,8 +40,9 @@ command-line tool (`seeker`) over one shared core.
   optional BPM and Camelot key analysis and `Artist - Title` renames.
 - **Duplicates by sound:** audio fingerprints find the same recording
   under different names, and you choose which copy to keep.
-- **Sharing back:** what your slskd shares, who is downloading from
-  you, and adding a library folder to the share.
+- **Sharing back, opt-in:** nothing is shared until you choose a
+  folder, at setup or later. Then what your slskd shares, who is
+  downloading from you, and adding a library folder to the share.
 - **Light, dark and follow-system themes**, a menu-bar icon, and an
   optional start at login.
 - **An optional update check** against GitHub releases, at most once a
