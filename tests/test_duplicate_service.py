@@ -1,4 +1,5 @@
 import os
+import threading
 from datetime import UTC, datetime
 
 import numpy as np
@@ -21,6 +22,7 @@ from seeker.database.repositories.track_repository import TrackRepository
 from seeker.errors import LibraryLocationNotFoundError
 from seeker.library.duplicate_service import (
     DuplicateFolderScope,
+    DuplicateSearchStoppedError,
     DuplicateService,
     _cluster_by_similarity,
     _path_within_folder,
@@ -189,6 +191,60 @@ def test_compute_fingerprints_force_recomputes(tmp_path):
     result = service.compute_fingerprints("Main", force=True)
     assert result.computed == 1
     assert result.skipped_already_computed == 0
+
+
+def _stop_after_first_file(stop: threading.Event):
+    def progress(_stage: str, current: int, _total: int) -> None:
+        if current == 1:
+            stop.set()
+
+    return progress
+
+
+def test_compute_fingerprints_stops_between_files_and_keeps_the_done_ones(
+        tmp_path,
+):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    for name, frequency in (("a.wav", 440.0), ("b.wav", 660.0), ("c.wav", 880.0)):
+        _write_tone(music_dir / name, frequency=frequency)
+        add_local_file(database, location, name, "wav", 3000)
+
+    service = make_service(database)
+    stop = threading.Event()
+
+    result = service.compute_fingerprints(
+        "Main", progress=_stop_after_first_file(stop), stop=stop,
+    )
+
+    assert result.stopped
+    assert (result.computed, result.failed) == (1, 0)
+
+    # The one fingerprint stored before the stop stays stored.
+    rerun = service.compute_fingerprints("Main")
+    assert (rerun.skipped_already_computed, rerun.computed) == (1, 2)
+    assert not rerun.stopped
+
+
+def test_find_duplicate_groups_stops_between_files(tmp_path):
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    for name in ("a.wav", "b.wav", "c.wav"):
+        _write_tone(music_dir / name, frequency=440.0)
+        add_local_file(database, location, name, "wav", 3000)
+
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+    stop = threading.Event()
+
+    with pytest.raises(DuplicateSearchStoppedError):
+        service.find_duplicate_groups(
+            "Main", progress=_stop_after_first_file(stop), stop=stop,
+        )
 
 
 def test_compute_fingerprints_classifies_a_missing_file(tmp_path):

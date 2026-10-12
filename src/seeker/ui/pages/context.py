@@ -9,6 +9,7 @@ somewhere both main_window.py and every ui/pages/*.py module can import
 without a circular dependency.
 """
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -41,6 +42,8 @@ class PageContext:
     attributes through a Host callable (HISTORY §133). `slskd_status`
     carries the backend poll's outage state to every page that shows it.
     `open_settings` opens Settings on a named tab (`SETTINGS_TAB_*`).
+    `quitting` is set on quit; a page passes it as the `stop` of any
+    long service call, which ends at its next file.
     """
     application: Application
     thread_pool: QThreadPool
@@ -53,6 +56,7 @@ class PageContext:
     playlist_selection: PlaylistSelection
     slskd_status: SlskdStatus
     open_settings: Callable[[str], None]
+    quitting: threading.Event
 
 
 # A subtitle wraps at about this many characters, a readable measure

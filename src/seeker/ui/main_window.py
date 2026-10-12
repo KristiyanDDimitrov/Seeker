@@ -1,6 +1,7 @@
 import functools
 import html
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -221,6 +222,9 @@ class MainWindow(QMainWindow):
 
     def _init_shared_state(self) -> None:
         self.thread_pool = QThreadPool()
+        # Set once, on quit: long work checks it between files and ends,
+        # or the pool's destructor waits for it (HISTORY §226).
+        self._quitting = threading.Event()
         # The single source of truth for "is this named action currently
         # running," consulted by every poll-driven render method so it
         # can skip a button whose own action is still in flight instead
@@ -441,6 +445,7 @@ class MainWindow(QMainWindow):
             playlist_selection=self.playlist_selection,
             slskd_status=self.slskd_status,
             open_settings=self._on_settings_clicked,
+            quitting=self._quitting,
         )
 
         self._page_indices: dict[str, int] = {}
@@ -1257,6 +1262,7 @@ class MainWindow(QMainWindow):
         self.backend_poll_timer.stop()
         self.sweep_timer.stop()
         self._sweep_scheduler.stop()
+        self._quitting.set()
 
         # Unlike window geometry, there is no hide-to-tray visibility
         # race to guard against: the Review page's splitter keeps

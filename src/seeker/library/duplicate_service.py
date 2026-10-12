@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,7 +36,7 @@ from seeker.database.repositories.local_file_repository import (
 from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
-from seeker.errors import LibraryLocationNotFoundError
+from seeker.errors import LibraryLocationNotFoundError, SeekerError
 from seeker.files.deletion import delete_file, same_file
 from seeker.models.duplicate_cleanup import DuplicateCleanup
 from seeker.models.fingerprint_result import FingerprintResult
@@ -56,6 +57,11 @@ _REASON_FILE_MISSING = "file_missing"
 _REASON_EMPTY_FILE = "empty_file"
 _REASON_DECODE_UNSUPPORTED = "decode_unsupported"
 _REASON_ERROR = "error"
+
+
+class DuplicateSearchStoppedError(SeekerError):
+    """A set `stop` ended a duplicate search before it finished; a
+    partial set of groups would read as the whole answer."""
 
 
 class _FileMissingError(RuntimeError):
@@ -248,6 +254,7 @@ class DuplicateService:
             force: bool = False,
             folders: list[str] | None = None,
             progress: Callable[[str, int, int], None] | None = None,
+            stop: threading.Event | None = None,
     ) -> FingerprintResult:
         """Compute and persist a fingerprint for every file at this
         location that doesn't already have one (or every file,
@@ -259,7 +266,9 @@ class DuplicateService:
         folder paths — fingerprinting one folder instead of a whole
         multi-thousand-file location. `progress`, when given, is called
         as `progress(stage, current, total)` — a single stage here
-        ("Fingerprinting"), `total` = files actually in scope.
+        ("Fingerprinting"), `total` = files actually in scope. A set
+        `stop` ends the run before its next file, `stopped` set; every
+        fingerprint stored so far stays stored.
         """
         if not fingerprinting_is_available():
             # One clear failure, not N per-file ones, for a single root
@@ -296,6 +305,14 @@ class DuplicateService:
         total = len(local_files)
 
         for index, local_file in enumerate(local_files, start=1):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Fingerprinting stopped after %d of %d files.",
+                    index - 1, total,
+                )
+                break
+
             try:
                 self._compute_one(
                     location, local_file, force, result,
@@ -435,6 +452,7 @@ class DuplicateService:
             location_name: str,
             folders: list[str] | None = None,
             progress: Callable[[str, int, int], None] | None = None,
+            stop: threading.Event | None = None,
     ) -> list[DuplicateGroup]:
         """Cluster this location's already-fingerprinted files by
         Hamming distance — computed fresh from cached fingerprints on
@@ -446,7 +464,8 @@ class DuplicateService:
         coverage is a completely normal, expected state.
 
         `folders`, when given (location-relative paths), scopes this to
-        only files under one of them; omitted, the whole location.
+        only files under one of them; omitted, the whole location. A set
+        `stop` raises `DuplicateSearchStoppedError` before the next file.
         """
         with self.database.transaction() as connection:
             location = self._get_location_or_raise(location_name, connection)
@@ -469,7 +488,9 @@ class DuplicateService:
 
         files_with_locations = [(f, location) for f in local_files]
 
-        return _cluster_duplicate_groups(files_with_locations, progress)
+        return _cluster_duplicate_groups(
+            files_with_locations, progress, stop,
+        )
 
     def _files_for_scopes(
             self, scopes: list[DuplicateFolderScope],
@@ -500,6 +521,7 @@ class DuplicateService:
             self,
             scopes: list[DuplicateFolderScope],
             progress: Callable[[str, int, int], None] | None = None,
+            stop: threading.Event | None = None,
     ) -> list[DuplicateGroup]:
         """Pools every given folder (each already resolved via
         resolve_folder_scopes) into ONE set, compared together —
@@ -510,7 +532,7 @@ class DuplicateService:
         locations couldn't hold the same real recording.
         """
         return _cluster_duplicate_groups(
-            self._files_for_scopes(scopes), progress,
+            self._files_for_scopes(scopes), progress, stop,
         )
 
     def count_files_for_scopes(
@@ -893,6 +915,7 @@ class DuplicateService:
 def _cluster_duplicate_groups(
         files_with_locations: list[tuple[LocalFile, LibraryLocation]],
         progress: Callable[[str, int, int], None] | None = None,
+        stop: threading.Event | None = None,
 ) -> list[DuplicateGroup]:
     """The clustering core shared by find_duplicate_groups (single
     location) and find_duplicate_groups_across_scopes (pooled, possibly
@@ -916,6 +939,7 @@ def _cluster_duplicate_groups(
     decoded_by_id: dict[int, np.ndarray] = {}
     total = len(fingerprinted)
     for index, local_file in enumerate(fingerprinted, start=1):
+        _raise_if_stopped(stop)
         assert local_file.id is not None and local_file.fingerprint is not None
         decoded_by_id[local_file.id] = decode_fingerprint(
             local_file.fingerprint
@@ -951,6 +975,7 @@ def _cluster_duplicate_groups(
         files = []
 
         for local_file in cluster:
+            _raise_if_stopped(stop)
             measured += 1
             if progress is not None:
                 progress("Measuring quality", measured, measure_total)
@@ -1002,6 +1027,12 @@ def _cluster_duplicate_groups(
         )
 
     return groups
+
+
+def _raise_if_stopped(stop: threading.Event | None) -> None:
+    if stop is not None and stop.is_set():
+        logger.info("Duplicate search stopped.")
+        raise DuplicateSearchStoppedError("The duplicate search was stopped.")
 
 
 def _quality_sort_key(quality: LocalFileQuality) -> tuple[int, int]:

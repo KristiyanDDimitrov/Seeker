@@ -471,6 +471,7 @@ class DuplicatesPage(QWidget):
             lambda progress: (
                 self._context.application.duplicate_service.compute_fingerprints(
                     location_name, progress=progress,
+                    stop=self._context.quitting,
                 )
             ),
             status_label=self.duplicates_status_label,
@@ -520,8 +521,13 @@ class DuplicatesPage(QWidget):
 
             result = service.compute_fingerprints(
                 location_name, folders=relative_folders, progress=report,
+                stop=self._context.quitting,
             )
             combined += result
+
+            if result.stopped:
+                break
+
             completed_before += (
                 result.computed
                 + result.skipped_already_computed
@@ -553,6 +559,7 @@ class DuplicatesPage(QWidget):
                             preferred_location_id=preferred_location_id,
                         ),
                         progress=progress,
+                        stop=self._context.quitting,
                     )
                 ),
                 status_label=self.duplicates_status_label,
@@ -578,6 +585,7 @@ class DuplicatesPage(QWidget):
             lambda progress: (
                 self._context.application.duplicate_service.find_duplicate_groups(
                     location_name, progress=progress,
+                    stop=self._context.quitting,
                 )
             ),
             status_label=self.duplicates_status_label,

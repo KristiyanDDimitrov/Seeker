@@ -262,6 +262,7 @@ class FakeDuplicateService:
             force: bool = False,
             folders: list[str] | None = None,
             progress=None,
+            stop=None,
     ) -> dict:
         self.compute_fingerprints_calls.append((location_name, folders))
         if progress is not None:
@@ -273,6 +274,7 @@ class FakeDuplicateService:
             location_name: str,
             folders: list[str] | None = None,
             progress=None,
+            stop=None,
     ) -> list:
         self.find_duplicate_groups_calls.append((location_name, folders))
         if self._find_error is not None:
@@ -306,7 +308,7 @@ class FakeDuplicateService:
         )
 
     def find_duplicate_groups_across_scopes(
-            self, scopes: list, progress=None,
+            self, scopes: list, progress=None, stop=None,
     ) -> list:
         self.find_duplicate_groups_across_scopes_calls.append(list(scopes))
         if progress is not None:

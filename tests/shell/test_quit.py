@@ -2,6 +2,7 @@
 download is still running.
 """
 import logging
+import threading
 
 from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import (
@@ -10,10 +11,13 @@ from PySide6.QtWidgets import (
 
 from fakes import (
     FakeApplication,
+    FakeDuplicateService,
     force_tray_available,
 )
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.fingerprint_result import FingerprintResult
+from seeker.models.library_location import LibraryLocation
 from seeker.models.track import Track
 from seeker.ui.main_window import (
     MainWindow,
@@ -225,3 +229,53 @@ def test_event_filter_lets_quit_event_through_when_nothing_downloading(
     event = QEvent(QEvent.Type.Quit)
     # False = not consumed = the real quit proceeds to aboutToQuit.
     assert window.eventFilter(QApplication.instance(), event) is False
+
+
+class _UntilStoppedDuplicateService(FakeDuplicateService):
+    """A fingerprint run that lasts until it is stopped, bounded at 5 s
+    so a missing stop fails the test instead of hanging the suite."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.stopped = False
+
+    def compute_fingerprints(
+            self, location_name, force=False, folders=None, progress=None,
+            stop=None,
+    ) -> FingerprintResult:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return FingerprintResult(stopped=self.stopped)
+
+
+def test_quit_stops_a_running_fingerprint_run(qtbot, monkeypatch):
+    # The quit hang's sample: the main thread in QThreadPool's
+    # destructor, waiting on a pool thread still fingerprinting
+    # (HISTORY §226).
+    force_tray_available(monkeypatch, True)
+    location = LibraryLocation(
+        id=1, name="Main", path="/music",
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(locations=[(location, True)])
+    service = _UntilStoppedDuplicateService()
+    application.duplicate_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    window._show_page("duplicates")
+    qtbot.waitUntil(
+        lambda: page.duplicates_location_combo.count() == 1, timeout=2000,
+    )
+
+    page.compute_fingerprints_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("compute_fingerprints"),
+        timeout=2000,
+    )
