@@ -62,7 +62,7 @@ after Kris's explicit yes.
 | **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
 | ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
-| ☐ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait. Starts from the test account's log | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
+| ☑ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait — §226 (the sample: `~QThreadPool` waiting on a fingerprint; fingerprints and duplicate search stop on quit, a 5 s bounded wait; scan and tagging still take no stop) | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
 | ☑ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after — §225 (fit per storm 1.9 s → 0.4 ms; §17d.2 not needed) | §17d | ~110 K | After §17d.1 with the storm's numbers |
 | ☐ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
 | ☐ S17f | Review: "Confirm all" per section, with a confirmation | §17f | ~100 K | After the local matches section |
@@ -178,7 +178,7 @@ BRIEF §0.11.
       the release notes.
 
 **Acceptance failures (2026-10-12), Kris's part:**
-- [ ] **S17c, before it starts:** in the test account, copy
+- [x] **S17c, before it starts:** in the test account, copy
       `~/Library/Logs/Seeker/seeker.log*` to `/Users/Shared/` (Code
       cannot read `/Users/test`). If a quit hangs again, in Terminal
       as that user: `sample Seeker 5 -file /Users/Shared/seeker-quit.txt`.

@@ -11,70 +11,61 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17d's close-out (HISTORY §225). Tree clean.
+- **HEAD:** S17c's close-out (HISTORY §226). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2315 passed, 1 skipped`, 0 failed (was
-  2314; S17d added one; only the stress test skipped, CI skips 29).
-  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0;
-  `radon cc -n D` nothing.
-- **CI:** run `38255360109` green (`c9b06f5`, check and audit); it
-  covers S17d's fix and close-out.
+- **Local (Cocoa):** pytest `2320 passed, 1 skipped`, 0 failed (was
+  2315; S17c added five; only the stress test skipped, CI skips 29).
+  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0.
+- **CI:** pending for the close-out push (recorded in the next commit).
 
 ## 2. Where we are
 
-**S17d is done** (§225): a resize re-fits a table's columns over the
-measures its render took and measures no row; the fit per 30-step
-resize storm fell from 1.9 s to 0.4 ms (Dashboard, 3,600 rows).
-**Next: S17c** once the test account's log is in `/Users/Shared/`
-(it was not there on 2026-10-12, when this session started), else
-**S17f** (no blocker) or S17e (waits on Kris's run with logging).
-Then S17g's new candidate and Kris's re-run.
+**S17c is done** (§226): a quit stops a running fingerprint run or
+duplicate search before its next file and waits at most 5 s, then
+logs any task still running. **Next: S17f** (no blocker) or S17e
+(waits on Kris's run with logging). Then S17g's new candidate and
+Kris's re-run.
 
-## 3. Session report (S17d)
+## 3. Session report (S17c)
 
-Evidence in HISTORY §225.
-- Measured first: a resize storm (30 widths, 1280 → 2560, ~3,600
-  rows) at `eacdfc1` and at `HEAD`. The fit per storm went from
-  0.77 s at the base to 1.9 s (Dashboard) and 0.75 s to 1.36 s
-  (Library), so round 12's measuring roughly doubled it; Duplicates
-  stayed at ~1.2 s.
-- `a02d502`: `_ColumnMeasures` taken once per render and held by the
-  fitter; a resize only runs `fit_widths`. The test failed on `HEAD`
-  with 50 rows measured per column on one resize. After: fit 0.4 ms
-  per storm; the 77 harness images are pixel-identical.
-- §17d.2 (coalescing) not done: conditional on (1) not being enough.
-- Duplicates still takes ~67 ms per resize step, the same as at the
-  base: Qt repositions its 5,400 cell widgets. Recorded, not fixed
-  (§9 below).
-- "Tables one over another" not reproduced (no frame mid-transition
-  is captured); Kris's live check decides it.
-- CI: run `38255360109` green.
+Evidence in HISTORY §226.
+- The test account's log and a `sample` of a reproduced hang (Kris,
+  `/Users/Shared/`): the main thread in `~QThreadPool` →
+  `waitForDone`, one pool thread decoding a FLAC for a fingerprint.
+  After a 13:15 quit the duplicate search logged for six more minutes.
+- Measured: one fingerprint ≤ 2.7 s over 50 real files on the X9 Pro
+  (median 0.38 s), read-only.
+- `58eda16` (§17c.1): fingerprinting and both duplicate searches take
+  a `stop` event; `PageContext.quitting`, set on quit, reaches every
+  Duplicates call. Failed on `HEAD`: the pool still busy after
+  `cleanup_before_quit`.
+- `af11f89` (§17c.2): `cleanup_before_quit` waits
+  `waitForDone(QUIT_WAIT_MS)` (5 s) and logs the outcome; no hard
+  exit (unmeasured, and a tag write rewrites a file in place).
+- Skills: `tdd` (failing test first) and `focused-fix`. Divergence:
+  `tdd` asks to confirm the seams with the user first; BRIEF §17c
+  already names them (a service stop event, the quit seam, a bounded
+  wait), so they were taken as agreed.
 
-## 4. Key context for whoever runs S17c–S17g or S18
+## 4. Key context for whoever runs S17e–S17g or S18
 
 - **Each S17x row's BRIEF section separates what is established from
-  what is a hypothesis.** Measure before fixing, as §224 and §225 did.
-- **A resize storm** over production-scale fakes: scale the
-  screenshot harness's `STATUSES`/`DUPLICATE_GROUPS` before
-  `build_demo_application()`, and patch a delegate method **before**
-  the window is built (PySide binds an override at construction,
-  observed in §225).
-- **The test account's data and log are unreadable from here**
-  (`/Users/test`: permission denied). S17c starts from the log Kris
-  copies to `/Users/Shared/`. Before §224 a duplicate search spent
-  ~10 minutes in a silent stage; a quit during it is a likely §17c
-  hang, now gone at that scale, but the stop signal still applies to
-  scans and fingerprinting.
+  what is a hypothesis.** Measure before fixing, as §224–§226 did.
+- **Long work that should stop on quit takes `stop:
+  threading.Event | None`** and a page passes `self._context.quitting`.
+  The scan, match, tagging and merge take none yet (§226 → "Not
+  done").
+- **The test account's files are unreadable from here**
+  (`/Users/test`); Kris copies them to `/Users/Shared/`.
 - **Timing at scale without touching real data:** copy the DB with
   `sqlite3 -readonly … ".backup '<scratchpad>/seeker.db'"` and run
   the service against the copy with the X9 Pro mounted (§224).
 - **`dist/Seeker.dmg` was rebuilt 2026-10-12 12:10** and no longer
   matches `dist/Seeker.dmg.sha256` (`b373f7ae…`, the candidate's).
   S17g rebuilds it from the fixed tree anyway.
-
 - **The checklist is `ACCEPTANCE.md`;** results go in its Results
   section. Install the candidate into `/Applications` first (no other
   copy exists); its first launch runs the `last_searched_at`
@@ -93,16 +84,16 @@ Evidence in HISTORY §225.
 
 - **The candidate is untagged** (Kris, 2026-10-11): Help → Build shows
   `e10aa87`; S18 tags.
-- **The checklist lives in its own file,** linked from here, not in
-  the handoff (R11 §41 said "in the handoff"): one place to tick.
-- **The window script uses `/usr/bin` paths** and a per-file `S603`
-  ignore with its reason.
+- **A quit stops running work at once, and what finished stays**
+  (BRIEF §17c's default; not vetoed). No new quit confirmation for it.
+- **No hard exit after the quit's bound** (§226: no measured reason;
+  a tag write in place could be cut).
+- **The checklist lives in its own file,** linked from here.
 
 ## 6. Blockers
 
-None for S17f. S17c waits on the test account's log, and S17e on
-Kris reproducing the problem with logging on.
-S18 waits on S17g's re-run.
+None for S17f. S17e waits on Kris reproducing the problem with
+logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
@@ -111,17 +102,24 @@ None uncommitted.
 ## 8. Waiting on Kris
 
 For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
-failures"): the test account's `seeker.log*` in `/Users/Shared/`
-(S17c); vetoes on quit-stops-work (S17c) and Confirm all per section
-(S17f); live fullscreen checks (S17d on the S17g build: Dashboard,
-Library, Duplicates, fullscreen and back; S17e). After S17g, the rest of
-`docs/rounds/round-12/ACCEPTANCE.md`: the fresh
-account, the live Retry/Cancel/Clean up, start at login again, the
-sweep, the window paths, the Fix…, the stress test, and the vetoes
+failures"): the veto on Confirm all per section (S17f); live
+fullscreen checks (S17d on the S17g build: Dashboard, Library,
+Duplicates, fullscreen and back; S17e); on the S17g build, quit while
+Compute fingerprints runs and confirm the app exits within seconds.
+After S17g, the rest of `docs/rounds/round-12/ACCEPTANCE.md`: the
+fresh account, the live Retry/Cancel/Clean up, start at login again,
+the sweep, the window paths, the Fix…, the stress test, and the vetoes
 (S5, the wordmark, S15's wordings, S8's peer filenames, the wizard's
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- **A new finding (§226):** four `RuntimeError: … QPushButton already
+  deleted` in the test account's log, from
+  `workers.py:_handle_task_finished` (a finish handler re-enabling a
+  deleted per-row button). A fix row before S17g? Call site unknown.
+- Should the scan and tagging (with audio analysis) take the quit's
+  stop too? A quit during one still waits for it to end.
 
 - Duplicates' table repositions 5,400 cell widgets on every resize
   (~67 ms a step at 1,800 groups, unchanged since round 11; §225).

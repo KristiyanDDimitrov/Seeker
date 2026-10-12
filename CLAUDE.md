@@ -375,11 +375,13 @@ Code documents loading it when a session reads files in `ui/`
   through `WindowLifecycleController`. [§124](docs/history/121-150.md#124)
 - **`MainWindow.thread_pool` is passed to every `run_worker`, never
   `globalInstance()`.** Its destructor waits for in-flight runnables
-  (observed in isolation): `quit()` returns at once but the process
-  lives as long as the slowest task. `cleanup_before_quit` logs the
-  pool's active/max threads and its elapsed time
-  (`seeker.ui.window_lifecycle`) for item 125.
-  [§125](docs/history/121-150.md#125)
+  (observed in isolation, then in a quit-hang `sample`): the process
+  lives as long as the slowest task. So long work takes a `stop`
+  event checked between files (`PageContext.quitting`, set on quit,
+  for fingerprinting and both duplicate searches; the sweep its own),
+  and `cleanup_before_quit` waits `QUIT_WAIT_MS` (5 s), then logs any
+  task still running; no hard exit after it.
+  [§125](docs/history/121-150.md#125), [§226](docs/history/211-240.md#226)
 - `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService`
   is a callable, not a snapshot: a Settings change applies at once
   ([§28](docs/history/025-031.md#28)). Match thresholds resolve
@@ -550,10 +552,12 @@ Genuinely open only, checked against every CI run on record (187, to
   every row each tick; S41's stress run tests it.
   [§70](docs/history/047-071.md#70), [§165](docs/history/151-180.md#165),
   [§166](docs/history/151-180.md#166)
-- **Item 125, a "not responding" quit hang**, once (close to tray,
-  quit from the tray), unreproduced. Candidate: the thread pool's
-  destructor (above). Next try: quit while a scan, fingerprint or
-  search worker is running. [§125](docs/history/121-150.md#125)
+- **Item 125, a quit hang: fixed for fingerprinting and duplicate
+  search, open for work with no stop.** A quit during a scan, match,
+  tagging or merge still lasts until it ends (the pool's destructor,
+  above), logged at WARNING by `cleanup_before_quit`. Tagging with
+  audio analysis is the long one left.
+  [§125](docs/history/121-150.md#125), [§226](docs/history/211-240.md#226)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
