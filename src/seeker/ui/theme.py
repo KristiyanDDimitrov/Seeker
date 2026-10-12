@@ -790,13 +790,23 @@ def fit_widths(
     }
 
 
-def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
-    """Sets every fit-content column's width from this render's
-    content and the viewport's current width (`fit_widths`). The
-    stretch columns take what is left, which `Stretch` mode does."""
+@dataclass(frozen=True)
+class _ColumnMeasures:
+    """What a render's rows need, measured once per render: each
+    fit-content column's content width and floor, and each stretch
+    column's content width. None of it depends on the table's width,
+    so a resize re-divides the width over these numbers and measures
+    no row."""
+    wants: dict[int, int]
+    floors: dict[int, int]
+    stretch_wants: dict[int, int]
+
+
+def _measure_columns(
+        table: QTableWidget, layout: ColumnLayout,
+) -> _ColumnMeasures:
     if not layout.fit_content:
-        return
-    header = table.horizontalHeader()
+        return _ColumnMeasures({}, {}, {})
     floors = {
         column: max(
             header_label_floor(table, column), label_floor(table, column),
@@ -815,6 +825,21 @@ def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
             for row in range(table.rowCount())
         ):
             floors[column] = wants[column]
+    stretch_wants = {
+        column: table.sizeHintForColumn(column) for column in layout.stretch
+    }
+    return _ColumnMeasures(wants, floors, stretch_wants)
+
+
+def _fit_measured_columns(
+        table: QTableWidget, layout: ColumnLayout, measures: _ColumnMeasures,
+) -> None:
+    """Sets every fit-content column's width from `measures` and the
+    viewport's current width (`fit_widths`). The stretch columns take
+    what is left, which `Stretch` mode does."""
+    if not measures.wants:
+        return
+    header = table.horizontalHeader()
     actions_width = (
         header.sectionSize(layout.actions)
         if layout.actions is not None else 0
@@ -825,42 +850,53 @@ def _fit_content_columns(table: QTableWidget, layout: ColumnLayout) -> None:
     # reason) never takes the width the row's primary text needs.
     share = int(viewport_width * _STRETCH_SHARE) // max(len(layout.stretch), 1)
     reserved = sum(
-        max(layout.stretch_floor, min(table.sizeHintForColumn(column), share))
-        for column in layout.stretch
+        max(layout.stretch_floor, min(want, share))
+        for want in measures.stretch_wants.values()
     )
     budget = viewport_width - actions_width - reserved
-    for column, width in fit_widths(wants, floors, budget).items():
+    fitted = fit_widths(measures.wants, measures.floors, budget)
+    for column, width in fitted.items():
         header.resizeSection(column, width)
 
 
 class _ColumnFitter(QObject):
-    """Re-fits a table's columns whenever its viewport changes width,
-    so the policy holds while the window is resized, not only at the
-    render that last called `size_columns`. A child of the table, so
-    it lives exactly as long as the table does."""
+    """Holds a table's last render's measures and re-fits its columns
+    over them whenever its viewport changes width, so the policy holds
+    while the window is resized, not only at the render that last
+    called `size_columns`. A child of the table, so it lives exactly
+    as long as the table does."""
 
     def __init__(self, table: QTableWidget, layout: ColumnLayout):
         super().__init__(table)
         self.table = table
         self.column_layout = layout
+        self._measures = _ColumnMeasures({}, {}, {})
         self._width = -1
         table.viewport().installEventFilter(self)
+
+    def measure_and_fit(self) -> None:
+        """Measures this render's rows, then fits."""
+        self._measures = _measure_columns(self.table, self.column_layout)
+        self.refit()
+
+    def refit(self) -> None:
+        _fit_measured_columns(self.table, self.column_layout, self._measures)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.Resize:
             width = self.table.viewport().width()
             if width != self._width:
                 self._width = width
-                _fit_content_columns(self.table, self.column_layout)
+                self.refit()
         return False
 
 
-def _column_fitter(table: QTableWidget, layout: ColumnLayout) -> None:
+def _column_fitter(table: QTableWidget, layout: ColumnLayout) -> _ColumnFitter:
     fitter = table.findChild(_ColumnFitter)
     if fitter is None:
-        _ColumnFitter(table, layout)
-    else:
-        fitter.column_layout = layout
+        return _ColumnFitter(table, layout)
+    fitter.column_layout = layout
+    return fitter
 
 
 _ACTIONS_SORT_VETO_WIRED = "_seeker_actions_sort_veto_wired"
@@ -924,8 +960,7 @@ def configure_columns(table: QTableWidget, layout: ColumnLayout) -> None:
     if layout.actions is not None:
         size_action_column(table, layout.actions, [])
         _veto_actions_column_sort(table, layout.actions)
-    _fit_content_columns(table, layout)
-    _column_fitter(table, layout)
+    _column_fitter(table, layout).measure_and_fit()
     set_path_columns(table, layout.paths)
     apply_column_floors(table)
 
@@ -942,7 +977,9 @@ def size_columns(
     configure_columns(table, layout)
     if layout.actions is not None:
         size_action_column(table, layout.actions, action_widgets)
-    _fit_content_columns(table, layout)
+    # configure_columns measured this render's rows; only the Actions
+    # column's width has changed since.
+    _column_fitter(table, layout).refit()
     apply_column_floors(table)
     # After the columns, whose widths decide how tall a cell's content
     # is. apply_table_defaults()'s vertical-header floor already keeps

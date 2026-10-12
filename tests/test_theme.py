@@ -39,7 +39,12 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.ui import theme
-from seeker.ui.elided_text import SECONDARY_ROLE, set_secondary_min_share
+from seeker.ui.elided_text import (
+    SECONDARY_ROLE,
+    ElidedTextDelegate,
+    elide_table_cells,
+    set_secondary_min_share,
+)
 from seeker.ui.plain_text import RichLabel
 from seeker.ui.widgets import ThemeToggleButton
 
@@ -239,6 +244,48 @@ def test_a_table_refits_its_columns_when_it_narrows(qtbot):
 
     assert header.sectionSize(0) >= theme.STRETCH_COLUMN_FLOOR
     assert not table.horizontalScrollBar().isVisible()
+
+
+def test_a_resize_refits_without_measuring_a_row(qtbot, monkeypatch):
+    # A fullscreen transition resizes the window through many widths;
+    # the rows were measured at render, so a resize only re-divides
+    # the width. Every measure (label floors, content and stretch
+    # wants) goes through the delegate's sizeHint, patched before the
+    # delegate exists: PySide binds an override when the object is
+    # built (observed: patched later, no call was counted).
+    measured = Counter[int]()
+    original = ElidedTextDelegate.sizeHint
+
+    def counting(self, option, index):
+        measured[index.column()] += 1
+        return original(self, option, index)
+
+    monkeypatch.setattr(ElidedTextDelegate, "sizeHint", counting)
+    table = QTableWidget(50, 3)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["Track", "Status", "Detail"])
+    elide_table_cells(table)
+    set_secondary_min_share(table, 0.0)
+    for row in range(table.rowCount()):
+        table.setItem(row, 0, QTableWidgetItem(f"Nova Reyes - Track {row}"))
+        status = QTableWidgetItem("Needs review")
+        status.setData(SECONDARY_ROLE, "Two candidates scored alike " * 2)
+        table.setItem(row, 1, status)
+        table.setItem(row, 2, QTableWidgetItem("Locked by the peer " * 3))
+    theme.apply_table_defaults(table)
+    layout = theme.ColumnLayout(stretch=(0,), fit_content=(1, 2))
+    table.resize(1200, 300)
+    table.show()
+    theme.size_columns(table, layout, [])
+    header = table.horizontalHeader()
+    wide_detail = header.sectionSize(2)
+    assert measured, "the render measures its rows"
+    measured.clear()
+
+    table.resize(500, 300)
+    qtbot.waitUntil(lambda: header.sectionSize(2) < wide_detail)
+
+    assert measured == Counter()
 
 
 def test_a_label_that_reads_in_full_is_never_cut_for_width(qtbot):
