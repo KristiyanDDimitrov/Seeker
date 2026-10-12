@@ -440,6 +440,15 @@ def _handle_task_progress(
         logger.exception("Error handling worker progress")
 
 
+def _reenable(button: QAbstractButton | None) -> None:
+    """Re-enables a task's button unless a rebuild deleted it while the
+    task ran (a table row's button, say); either way the handler goes
+    on to the task's own callback and frees its worker.
+    """
+    if button is not None and shiboken6.Shiboken.isValid(button):
+        button.setEnabled(True)
+
+
 def _handle_task_finished(task_id: int, result: Any) -> None:
     entry = _callbacks.pop(task_id, None)
     _progress_callbacks.pop(task_id, None)
@@ -450,8 +459,7 @@ def _handle_task_finished(task_id: int, result: Any) -> None:
 
     worker, button, status_label, on_finished, _on_error = entry
 
-    if button is not None:
-        button.setEnabled(True)
+    _reenable(button)
 
     if on_finished is not None:
         # A bug in the caller's own render/completion logic (a
@@ -480,8 +488,7 @@ def _handle_task_error(task_id: int, message: str) -> None:
 
     worker, button, status_label, _on_finished, on_error = entry
 
-    if button is not None:
-        button.setEnabled(True)
+    _reenable(button)
 
     if status_label is not None:
         status_label.setText(message)

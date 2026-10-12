@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtWidgets import QAbstractButton
 
 
@@ -61,7 +62,9 @@ class BusyActionRegistry:
 
         button, original_text = entry
 
-        if button is None:
+        if button is None or not shiboken6.Shiboken.isValid(button):
+            # No button, or a rebuild deleted it (a table row's) while
+            # the action ran: the action has ended all the same.
             return
 
         button.setText(original_text)

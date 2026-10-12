@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtWidgets import QPushButton
 
 from seeker.ui.busy_actions import BusyActionRegistry
@@ -98,3 +99,15 @@ def test_two_different_keys_on_the_same_button_do_not_interfere(qtbot):
     # begin() ("Shared") -- "b" is still tracked as running independently.
     assert button.text() == "Shared"
     assert registry.is_running("b") is True
+
+
+def test_end_after_the_button_is_deleted_still_ends_the_action(qtbot):
+    # A rebuild can delete a table row's button while its action runs.
+    button = QPushButton("Go")
+    registry = BusyActionRegistry()
+    registry.begin("download", button, "Downloading…")
+
+    shiboken6.Shiboken.delete(button)
+    registry.end("download")
+
+    assert registry.is_running("download") is False

@@ -2,6 +2,7 @@
 status-label, error and progress handling.
 """
 
+import shiboken6
 from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
@@ -110,6 +111,56 @@ def test_run_worker_error_sets_status_label_and_reenables_button(qtbot):
 
     assert label.text() == "real failure text"
     assert button.isEnabled() is True
+
+
+class _PoolDeletingButtonFirst:
+    """Deletes the task's button before running it: a table rebuild
+    that replaced the row the button lived in while the task ran.
+    """
+
+    def __init__(self, button):
+        self._button = button
+
+    def start(self, worker):
+        shiboken6.Shiboken.delete(self._button)
+        worker.run()
+
+
+def test_run_worker_finishes_after_its_button_is_deleted(qtbot):
+    button = QPushButton("Go")
+    results = []
+
+    worker = run_worker(
+        _PoolDeletingButtonFirst(button),
+        lambda: "done",
+        button=button,
+        on_finished=results.append,
+    )
+
+    assert results == ["done"]
+    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker))
+
+
+def test_run_worker_reports_an_error_after_its_button_is_deleted(qtbot):
+    button = QPushButton("Go")
+    label = QLabel("")
+    qtbot.addWidget(label)
+    errors = []
+
+    def boom():
+        raise RuntimeError("real failure text")
+
+    worker = run_worker(
+        _PoolDeletingButtonFirst(button),
+        boom,
+        button=button,
+        status_label=label,
+        on_error=errors.append,
+    )
+
+    assert errors == ["real failure text"]
+    assert label.text() == "real failure text"
+    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker))
 
 
 def test_run_worker_error_shows_readable_text_for_a_connection_error(qtbot):
