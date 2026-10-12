@@ -111,3 +111,36 @@ def test_measure_signal_returns_none_loudness_for_silence(
     result = measure_signal(path)
 
     assert result.integrated_loudness_lufs is None
+
+
+def test_measure_signal_decodes_the_file_once(tmp_path, monkeypatch):
+    # A decode costs as much as the loudness measure itself: ~0.18 s a
+    # file on the X9 Pro, against ~0.36 s for pyloudnorm (HISTORY §224).
+    path = tmp_path / "tone.wav"
+    t = np.linspace(0, 5, 44_100 * 5)
+    _write_wav(path, (np.sin(2 * np.pi * 440 * t) * 0.5).astype(np.float32))
+    decoded = []
+    real_read = sf.read
+
+    def recording_read(file, *args, **kwargs):
+        decoded.append(file)
+        return real_read(file, *args, **kwargs)
+
+    monkeypatch.setattr(sf, "read", recording_read)
+
+    result = measure_signal(path)
+
+    assert decoded == [str(path)]
+    assert result.integrated_loudness_lufs is not None
+
+
+def test_measure_signal_counts_a_16_bit_sample_at_the_same_threshold(
+        tmp_path,
+):
+    # The threshold is 0.999 of int16 full scale: 32,735 counts, 32,734
+    # does not, whatever sample type the file is decoded to.
+    path = tmp_path / "edge.wav"
+    samples = np.array([32_735] * 100 + [32_734] * 100, dtype=np.int16)
+    _write_wav(path, samples)
+
+    assert measure_signal(path).clipping_ratio == pytest.approx(0.5)

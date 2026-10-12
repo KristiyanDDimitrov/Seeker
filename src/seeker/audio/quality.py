@@ -81,21 +81,29 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
 
 
 def measure_signal(path: str | Path) -> SignalMeasures:
+    # Deferred (PLC0415, suppressed): soundfile is a heavy scientific
+    # dependency this module only needs for the rare caller that
+    # measures the signal at all — importing it at module level would
+    # put it on every startup path that merely imports this module.
+    import soundfile as sf  # noqa: PLC0415
+
+    # One decode serves both measures: it costs as much as pyloudnorm
+    # does (HISTORY §224). int16, because the clipping threshold is a
+    # fraction of int16 full scale and libsndfile scales a float source
+    # (an MP3) to int16 by 32767, not 32768: a float threshold moved
+    # real MP3s' ratios by up to 1.3 % (measured). pyloudnorm takes the
+    # samples scaled back to [-1, 1): within 0.02 LU of a float decode.
+    data, rate = sf.read(str(path), dtype="int16", always_2d=True)
+
     return SignalMeasures(
-        clipping_ratio=_measure_clipping_ratio(path),
-        integrated_loudness_lufs=_measure_integrated_loudness(path),
+        clipping_ratio=_clipping_ratio(data),
+        integrated_loudness_lufs=_integrated_loudness(
+            data / (np.iinfo(np.int16).max + 1), rate,
+        ),
     )
 
 
-def _measure_clipping_ratio(path: str | Path) -> float:
-    # Deferred (PLC0415, suppressed): soundfile is a heavy scientific
-    # dependency this module only needs for the rare candidate that
-    # reaches quality measurement at all — importing it at module level
-    # would put it on every startup path that merely imports this module.
-    import soundfile as sf  # noqa: PLC0415
-
-    data, _ = sf.read(str(path), dtype="int16", always_2d=True)
-
+def _clipping_ratio(data: np.ndarray) -> float:
     if data.size == 0:
         return 0.0
 
@@ -106,15 +114,10 @@ def _measure_clipping_ratio(path: str | Path) -> float:
     return float(clipped_samples.sum()) / float(data.size)
 
 
-def _measure_integrated_loudness(path: str | Path) -> float | None:
-    # Deferred (PLC0415, suppressed) for the same reason as
-    # _measure_clipping_ratio above: pyloudnorm/soundfile are heavy
-    # scientific dependencies this module only needs this deep in the
-    # rare quality-measurement path, not on every import of this module.
+def _integrated_loudness(data: np.ndarray, rate: int) -> float | None:
+    # Deferred (PLC0415, suppressed) for the same reason as soundfile in
+    # measure_signal above.
     import pyloudnorm  # noqa: PLC0415
-    import soundfile as sf  # noqa: PLC0415
-
-    data, rate = sf.read(str(path))
 
     try:
         meter = pyloudnorm.Meter(rate)
