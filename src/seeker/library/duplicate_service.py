@@ -941,10 +941,20 @@ def _cluster_duplicate_groups(
     skipped_missing = 0
     skipped_other = 0
 
+    # The one stage that opens audio files, so the slowest by far: it
+    # reports per file, or the run looks frozen after "Comparing"
+    # (HISTORY §224).
+    measured = 0
+    measure_total = sum(len(cluster) for cluster in clusters)
+
     for cluster in clusters:
         files = []
 
         for local_file in cluster:
+            measured += 1
+            if progress is not None:
+                progress("Measuring quality", measured, measure_total)
+
             location = location_by_id[local_file.id]
             file_path = Path(location.path) / local_file.relative_path
 

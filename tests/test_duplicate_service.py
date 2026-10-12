@@ -276,12 +276,20 @@ def test_find_duplicate_groups_skips_a_stale_row_instead_of_crashing(
     # fingerprint stays cached.
     (music_dir / "dupe_b.wav").unlink()
 
-    groups = service.find_duplicate_groups("Main")  # must not raise
+    reported = []
+    groups = service.find_duplicate_groups(  # must not raise
+        "Main",
+        progress=lambda stage, current, total: reported.append(
+            (stage, current, total),
+        ),
+    )
 
     # Only one real file remains present -- not a "duplicate" of
     # anything any more, matches the same "silently excluded" precedent
     # this function already applies to files with no fingerprint at all.
     assert groups == []
+    # A skipped file still counts as measured: the stage reaches its end.
+    assert reported[-1] == ("Measuring quality", 2, 2)
 
 
 def test_find_duplicate_groups_drops_only_the_stale_file_from_a_larger_group(
@@ -1226,7 +1234,7 @@ def test_compute_fingerprints_reports_real_progress(tmp_path):
     assert all(stage == "Fingerprinting" for stage, _, _ in reported)
 
 
-def test_find_duplicate_groups_reports_both_real_stages(tmp_path):
+def test_find_duplicate_groups_reports_every_real_stage(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
     music_dir.mkdir()
@@ -1234,8 +1242,12 @@ def test_find_duplicate_groups_reports_both_real_stages(tmp_path):
 
     _write_tone(music_dir / "a.wav", frequency=440.0)
     _write_tone(music_dir / "b.wav", frequency=440.0)
+    # Clusters with nothing: its recorded duration is far outside the
+    # comparison window, so the quality stage never opens it.
+    _write_tone(music_dir / "c.wav", frequency=440.0)
     add_local_file(database, location, "a.wav", "wav", 3000)
     add_local_file(database, location, "b.wav", "wav", 3000)
+    add_local_file(database, location, "c.wav", "wav", 60_000)
 
     service = make_service(database)
     service.compute_fingerprints("Main")
@@ -1249,9 +1261,16 @@ def test_find_duplicate_groups_reports_both_real_stages(tmp_path):
     )
 
     stages = {stage for stage, _, _ in reported}
-    assert stages == {"Decoding fingerprints", "Comparing"}
+    assert stages == {"Decoding fingerprints", "Comparing", "Measuring quality"}
     decode_events = [e for e in reported if e[0] == "Decoding fingerprints"]
-    assert decode_events[-1] == ("Decoding fingerprints", 2, 2)
+    assert decode_events[-1] == ("Decoding fingerprints", 3, 3)
+    # Counted over the files in clusters, not every fingerprinted file:
+    # the one stage that opens audio files reports its own length.
+    quality_events = [e for e in reported if e[0] == "Measuring quality"]
+    assert quality_events == [
+        ("Measuring quality", 1, 2), ("Measuring quality", 2, 2),
+    ]
+    assert reported[-1] == ("Measuring quality", 2, 2)
 
 
 def test_count_files_for_scopes_real_count_before_a_real_run(tmp_path):
