@@ -1,7 +1,10 @@
 """Quality of a file already on disk, for the duplicate finder to rank
 copies by. A SoulseekFile's peer-reported bitrate doesn't exist for a
-local file, so the file itself is opened: bitrate and bit depth via
-mutagen, plus a clipping heuristic and integrated loudness."""
+local file, so the file's header is read: bitrate and bit depth via
+mutagen. `measure_signal` decodes the audio for a clipping heuristic
+and integrated loudness; it is kept off the duplicate finder's path,
+since nothing ranks or shows by it and it costs ~0.7 s a file against
+the header's ~4 ms (measured, HISTORY §224)."""
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +28,10 @@ class LocalFileQuality:
     bitrate_kbps: int | None
     bit_depth: int | None
     sample_rate: int | None
+
+
+@dataclass
+class SignalMeasures:
     # Fraction of samples at/near full-scale amplitude — a heuristic
     # signal that a lossy source was over-compressed/limited before
     # encoding, not a certainty (some masters are legitimately loud).
@@ -70,6 +77,11 @@ def analyze_local_file_quality(path: str | Path) -> LocalFileQuality:
         bitrate_kbps=bitrate_kbps,
         bit_depth=bit_depth,
         sample_rate=sample_rate,
+    )
+
+
+def measure_signal(path: str | Path) -> SignalMeasures:
+    return SignalMeasures(
         clipping_ratio=_measure_clipping_ratio(path),
         integrated_loudness_lufs=_measure_integrated_loudness(path),
     )

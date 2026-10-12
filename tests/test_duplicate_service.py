@@ -126,6 +126,38 @@ def test_compute_and_find_duplicates_real_audio_end_to_end(tmp_path):
     assert groups[0].similarity > 0.95
 
 
+def test_find_duplicate_groups_reads_headers_and_decodes_no_audio(
+        tmp_path, monkeypatch,
+):
+    # Ranking needs the format tier and bitrate only. Decoding every
+    # grouped file cost ~0.8 s a file on the X9 Pro (HISTORY §224).
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    _write_tone(music_dir / "dupe_a.wav", frequency=440.0)
+    _write_tone(music_dir / "dupe_b.wav", frequency=440.0)
+    add_local_file(database, location, "dupe_a.wav", "wav", 3000)
+    add_local_file(database, location, "dupe_b.wav", "wav", 3000)
+    service = make_service(database)
+    service.compute_fingerprints("Main")
+
+    decoded = []
+    real_read = sf.read
+
+    def recording_read(path, *args, **kwargs):
+        decoded.append(path)
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(sf, "read", recording_read)
+
+    groups = service.find_duplicate_groups("Main")
+
+    assert decoded == []
+    assert len(groups) == 1
+    assert {f.quality.bitrate_kbps for f in groups[0].files} == {705}
+
+
 def test_compute_fingerprints_skips_already_computed_files(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -402,15 +434,12 @@ def test_cluster_by_similarity_respects_duration_tolerance_pre_filter():
 def test_quality_sort_key_prefers_lossless_then_higher_bitrate():
     lossless = LocalFileQuality(
         tier=2, bitrate_kbps=1000, bit_depth=16, sample_rate=44_100,
-        clipping_ratio=0.0, integrated_loudness_lufs=None,
     )
     lossy_high = LocalFileQuality(
         tier=1, bitrate_kbps=320, bit_depth=None, sample_rate=44_100,
-        clipping_ratio=0.0, integrated_loudness_lufs=None,
     )
     lossy_low = LocalFileQuality(
         tier=1, bitrate_kbps=128, bit_depth=None, sample_rate=44_100,
-        clipping_ratio=0.0, integrated_loudness_lufs=None,
     )
 
     ranked = sorted(

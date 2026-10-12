@@ -398,7 +398,6 @@ def _quality(tier: int, bitrate_kbps: int | None) -> LocalFileQuality:
     return LocalFileQuality(
         tier=tier, bitrate_kbps=bitrate_kbps,
         bit_depth=16 if bitrate_kbps is None else None, sample_rate=44_100,
-        clipping_ratio=0.0, integrated_loudness_lufs=-9.0,
     )
 
 
@@ -411,8 +410,7 @@ DUPLICATE_GROUPS = [
                 ),
                 quality=LocalFileQuality(
                     tier=0, bitrate_kbps=None, bit_depth=16,
-                    sample_rate=44_100, clipping_ratio=0.0,
-                    integrated_loudness_lufs=-9.4,
+                    sample_rate=44_100,
                 ),
             ),
             DuplicateFile(
@@ -421,8 +419,7 @@ DUPLICATE_GROUPS = [
                 ),
                 quality=LocalFileQuality(
                     tier=2, bitrate_kbps=192, bit_depth=None,
-                    sample_rate=44_100, clipping_ratio=0.02,
-                    integrated_loudness_lufs=-8.1,
+                    sample_rate=44_100,
                 ),
             ),
         ],

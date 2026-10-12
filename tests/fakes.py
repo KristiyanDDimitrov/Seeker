@@ -1028,8 +1028,7 @@ def make_duplicate_group():
                 ),
                 quality=LocalFileQuality(
                     tier=2, bitrate_kbps=1000, bit_depth=16,
-                    sample_rate=44_100, clipping_ratio=0.0,
-                    integrated_loudness_lufs=None,
+                    sample_rate=44_100,
                 ),
             ),
             DuplicateFile(
@@ -1041,8 +1040,7 @@ def make_duplicate_group():
                 ),
                 quality=LocalFileQuality(
                     tier=1, bitrate_kbps=320, bit_depth=None,
-                    sample_rate=44_100, clipping_ratio=0.0,
-                    integrated_loudness_lufs=None,
+                    sample_rate=44_100,
                 ),
             ),
         ],

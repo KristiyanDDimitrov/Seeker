@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from seeker.audio.quality import analyze_local_file_quality
+from seeker.audio.quality import analyze_local_file_quality, measure_signal
 
 
 def _write_wav(
@@ -54,7 +54,7 @@ def test_analyze_local_file_quality_reports_lossless_tier_for_real_aiff(
     assert result.bitrate_kbps == 705
 
 
-def test_analyze_local_file_quality_detects_real_clipping(tmp_path):
+def test_measure_signal_detects_real_clipping(tmp_path):
     path = tmp_path / "clipped.wav"
     full_scale = np.iinfo(np.int16).max
     # Half the samples pinned to full-scale (genuinely clipped), half a
@@ -66,24 +66,24 @@ def test_analyze_local_file_quality_detects_real_clipping(tmp_path):
     samples = np.concatenate([clipped_half, quiet_half])
     _write_wav(path, samples)
 
-    result = analyze_local_file_quality(path)
+    result = measure_signal(path)
 
     assert result.clipping_ratio == pytest.approx(0.5, abs=0.01)
 
 
-def test_analyze_local_file_quality_reports_near_zero_clipping_when_clean(
+def test_measure_signal_reports_near_zero_clipping_when_clean(
         tmp_path,
 ):
     path = tmp_path / "clean.wav"
     samples = (np.sin(np.linspace(0, 100, 44_100)) * 0.1).astype(np.float32)
     _write_wav(path, samples)
 
-    result = analyze_local_file_quality(path)
+    result = measure_signal(path)
 
     assert result.clipping_ratio < 0.01
 
 
-def test_analyze_local_file_quality_measures_real_integrated_loudness(
+def test_measure_signal_measures_real_integrated_loudness(
         tmp_path,
 ):
     path = tmp_path / "loud_enough.wav"
@@ -95,19 +95,19 @@ def test_analyze_local_file_quality_measures_real_integrated_loudness(
     samples = (np.sin(2 * np.pi * 440 * t) * 0.5).astype(np.float32)
     _write_wav(path, samples)
 
-    result = analyze_local_file_quality(path)
+    result = measure_signal(path)
 
     assert result.integrated_loudness_lufs is not None
     assert isinstance(result.integrated_loudness_lufs, float)
 
 
-def test_analyze_local_file_quality_returns_none_loudness_for_silence(
+def test_measure_signal_returns_none_loudness_for_silence(
         tmp_path,
 ):
     path = tmp_path / "silence.wav"
     samples = np.zeros(44_100, dtype=np.float32)
     _write_wav(path, samples)
 
-    result = analyze_local_file_quality(path)
+    result = measure_signal(path)
 
     assert result.integrated_loudness_lufs is None

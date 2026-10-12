@@ -76,8 +76,7 @@ def _make_duplicate_group_with_n_files(count: int):
             ),
             quality=LocalFileQuality(
                 tier=1, bitrate_kbps=320 - i, bit_depth=None,
-                sample_rate=44_100, clipping_ratio=0.0,
-                integrated_loudness_lufs=None,
+                sample_rate=44_100,
             ),
         )
         for i in range(count)
