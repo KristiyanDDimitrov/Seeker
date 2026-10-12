@@ -170,6 +170,10 @@ class _NextStepFacts:
     # SlskdStatus.unreachable_message: set while the backend poll can't
     # reach slskd.
     slskd_unreachable_message: str | None = None
+    # A scan or match is running. A scan's first batch makes
+    # has_scanned_library true while nothing is matched until the
+    # whole scan is done, so a count taken then is every track.
+    library_check_running: bool = False
 
 
 @dataclass
@@ -257,6 +261,13 @@ def _playlist_step(
         return _NextStep(
             f"Load '{playlist_name}''s tracks to see what's missing.",
             "info", "Load tracks", "sync_tracks",
+        )
+
+    if facts.library_check_running:
+        return _NextStep(
+            f"Checking your library against '{playlist_name}'. What "
+            f"still needs downloading shows when it's done.",
+            "info", None, None,
         )
 
     if not facts.has_scanned_library:
@@ -1128,7 +1139,9 @@ class DashboardPage(QWidget):
 
         self._host.navigate_to_review(status.track.id)
 
-    def _fetch_next_step_facts(self) -> _NextStepFacts:
+    def _fetch_next_step_facts(
+            self, library_check_running: bool,
+    ) -> _NextStepFacts:
         # Bundled into one background-thread call rather than one
         # run_worker round trip per fact — each field still traces to
         # exactly one real service/Application call, this just avoids
@@ -1165,6 +1178,7 @@ class DashboardPage(QWidget):
             slskd_unreachable_message=(
                 self._context.slskd_status.unreachable_message
             ),
+            library_check_running=library_check_running,
         )
 
     def poll_next_step(self) -> None:
@@ -1173,9 +1187,15 @@ class DashboardPage(QWidget):
         if self._context.is_hidden_to_tray():
             return
 
+        # Read here, on the main thread that owns busy_actions, before
+        # the statuses: a count read while either was running is held.
+        library_check_running = any(
+            self._context.busy_actions.is_running(key)
+            for key in ("scan", "match")
+        )
         run_worker(
             self._context.thread_pool,
-            self._fetch_next_step_facts,
+            lambda: self._fetch_next_step_facts(library_check_running),
             on_finished=self._render_next_step,
         )
 
@@ -1302,6 +1322,7 @@ class DashboardPage(QWidget):
         self.feedback.show_progress(
             "Scanning library, then matching tracks…"
         )
+        self.poll_next_step()
 
     def _on_scan_and_match_finished(self, result: ScanAndMatchResult) -> None:
         scan, match = result.scan, result.match
@@ -1314,6 +1335,7 @@ class DashboardPage(QWidget):
             kind="success",
         )
         self.poll_selected_playlist()
+        self.poll_next_step()
         self._refresh_playlist_counts()
 
     def _on_match_clicked(self) -> None:
@@ -1323,6 +1345,7 @@ class DashboardPage(QWidget):
             on_finished=self._on_match_finished,
             on_error=self.feedback.show_error,
         )
+        self.poll_next_step()
 
     def _on_match_finished(self, result: MatchResult) -> None:
         self.feedback.show_outcome(
@@ -1332,6 +1355,7 @@ class DashboardPage(QWidget):
             kind="success",
         )
         self.poll_selected_playlist()
+        self.poll_next_step()
         self._refresh_playlist_counts()
 
     def _set_download_button_busy(self) -> None:

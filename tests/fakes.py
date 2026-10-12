@@ -161,12 +161,19 @@ class FakeLibraryService:
         self.confirm_match_calls: list[str] = []
         self.reject_match_calls: list[str] = []
         self.list_locations_calls = 0
+        # When set, scan_and_match() holds the worker until the test
+        # sets it: a scan whose first batch is committed (so the
+        # library counts as scanned) and whose match has not run.
+        self.scan_gate: threading.Event | None = None
 
     def scan_all(self) -> None:
         self.scan_all_calls += 1
 
     def scan_and_match(self) -> ScanAndMatchResult:
         self.scan_and_match_calls += 1
+        self._has_scanned_library = True
+        if self.scan_gate is not None:
+            self.scan_gate.wait(timeout=5)
         return ScanAndMatchResult(scan=ScanResult(), match=MatchResult())
 
     def get_needs_review_matches(

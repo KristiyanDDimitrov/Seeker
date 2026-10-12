@@ -85,6 +85,48 @@ def test_tracks_present_library_never_scanned():
     assert step.action == "scan"
 
 
+def test_a_running_scan_or_match_shows_no_count_and_no_action():
+    # Mid-scan, the library already counts as scanned but nothing is
+    # matched yet, so every track reads as missing.
+    step = _decide_next_step(
+        _facts(
+            track_statuses=[_status(NOT_FOUND), _status(IN_LIBRARY)],
+            library_check_running=True,
+        )
+    )
+
+    assert step is not None
+    assert step.action is None
+    assert "missing" not in step.message.lower()
+    assert "1" not in step.message
+
+
+def test_a_running_scan_replaces_the_offer_to_scan():
+    step = _decide_next_step(
+        _facts(
+            track_statuses=[_status(NOT_FOUND)],
+            has_scanned_library=False,
+            library_check_running=True,
+        )
+    )
+
+    assert step is not None
+    assert step.action is None
+
+
+def test_a_running_scan_does_not_hide_an_outage():
+    step = _decide_next_step(
+        _facts(
+            track_statuses=[_status(NOT_FOUND)],
+            library_check_running=True,
+            slskd_unreachable_message="slskd is not running.",
+        )
+    )
+
+    assert step is not None
+    assert step.action == "start_slskd"
+
+
 def test_missing_tracks_soulseek_not_configured():
     step = _decide_next_step(
         _facts(

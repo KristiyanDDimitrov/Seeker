@@ -6,6 +6,7 @@ through to Review. Tests that drive TaggingPanel live in
 test_library_page.py.
 """
 
+import threading
 from dataclasses import replace
 
 import pytest
@@ -696,6 +697,58 @@ def test_a_scan_refreshes_the_counts_and_keeps_the_selection(qtbot):
         lambda: _counts(window, 0) == "1 · complete", timeout=2000,
     )
     assert window._dashboard_page.selected_playlist.id == "p1"
+
+
+def test_next_step_shows_no_missing_count_while_a_scan_runs(qtbot):
+    # The first batch a scan commits makes the library count as
+    # scanned, while nothing is matched until the whole scan is done:
+    # a count taken then is every track in the playlist.
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Peak Time", track_count=2)],
+        statuses=[
+            make_track_status(track_id="t1", state=NOT_FOUND),
+            make_track_status(track_id="t2", state=NOT_FOUND),
+        ],
+        locations=_one_location(),
+        has_scanned_library=False,
+        soulseek_configured=True,
+    )
+    library_service = application.library_service
+    library_service.scan_gate = threading.Event()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    _select_first_playlist(window, qtbot)
+    qtbot.waitUntil(
+        lambda: page.next_step_notice.text().startswith("Scan your library"),
+        timeout=2000,
+    )
+
+    try:
+        page._on_scan_clicked()
+        qtbot.waitUntil(library_service.has_scanned_library, timeout=2000)
+        page.poll_next_step()
+
+        qtbot.waitUntil(
+            lambda: not page.next_step_notice.text().startswith(
+                "Scan your library",
+            ),
+            timeout=2000,
+        )
+        assert "missing" not in page.next_step_notice.text()
+    finally:
+        library_service.scan_gate.set()
+
+    # The flow's real end: the scan's finish handler frees its button.
+    qtbot.waitUntil(
+        lambda: page.scan_button.text() == "Scan library", timeout=2000,
+    )
+    page.poll_next_step()
+    qtbot.waitUntil(
+        lambda: page.next_step_notice.text()
+        == "2 tracks missing from 'Peak Time'.",
+        timeout=2000,
+    )
 
 
 def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
