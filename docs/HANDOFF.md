@@ -20,7 +20,8 @@ nine fields below follow the contract in
   2314; S17d added one; only the stress test skipped, CI skips 29).
   `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0;
   `radon cc -n D` nothing.
-- **CI:** see §3 (the run for S17d's push).
+- **CI:** run `38255360109` green (`c9b06f5`, check and audit); it
+  covers S17d's fix and close-out.
 
 ## 2. Where we are
 
@@ -50,8 +51,7 @@ Evidence in HISTORY §225.
   (§9 below).
 - "Tables one over another" not reproduced (no frame mid-transition
   is captured); Kris's live check decides it.
-- CI: run id and result are recorded in the handoff commit that
-  follows this one.
+- CI: run `38255360109` green.
 
 ## 4. Key context for whoever runs S17c–S17g or S18
 
