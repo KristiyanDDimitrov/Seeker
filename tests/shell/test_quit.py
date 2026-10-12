@@ -4,7 +4,7 @@ download is still running.
 import logging
 import threading
 
-from PySide6.QtCore import QEvent
+from PySide6.QtCore import QEvent, QRunnable
 from PySide6.QtWidgets import (
     QMessageBox,
 )
@@ -19,6 +19,7 @@ from seeker.models.download_request import DownloadRequest
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.track import Track
+from seeker.ui import window_lifecycle
 from seeker.ui.main_window import (
     MainWindow,
 )
@@ -279,3 +280,56 @@ def test_quit_stops_a_running_fingerprint_run(qtbot, monkeypatch):
         lambda: not window.busy_actions.is_running("compute_fingerprints"),
         timeout=2000,
     )
+
+
+class _UnstoppableTask(QRunnable):
+    """Work that ignores the quit's stop, like a running tag write."""
+
+    def __init__(self, release: threading.Event) -> None:
+        super().__init__()
+        self._release = release
+
+    def run(self) -> None:
+        self._release.wait(5)
+
+
+def test_quit_waits_a_bounded_time_and_logs_work_still_running(
+        qtbot, monkeypatch, caplog,
+):
+    force_tray_available(monkeypatch, True)
+    monkeypatch.setattr(window_lifecycle, "QUIT_WAIT_MS", 200)
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.thread_pool.waitForDone(2000)
+    release = threading.Event()
+    window.thread_pool.start(_UnstoppableTask(release))
+
+    try:
+        with caplog.at_level(
+                logging.INFO, logger="seeker.ui.window_lifecycle",
+        ):
+            window.cleanup_before_quit()
+    finally:
+        release.set()
+        window.thread_pool.waitForDone(5000)
+
+    assert (
+        "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text
+    )
+
+
+def test_quit_waits_for_stopped_work_to_end(qtbot, monkeypatch, caplog):
+    force_tray_available(monkeypatch, True)
+    window = MainWindow(FakeApplication())
+    qtbot.addWidget(window)
+    window.thread_pool.waitForDone(2000)
+    release = threading.Event()
+    window.thread_pool.start(_UnstoppableTask(release))
+    # Ends within the bound, as a stopped fingerprint run does.
+    threading.Timer(0.1, release.set).start()
+
+    with caplog.at_level(logging.INFO, logger="seeker.ui.window_lifecycle"):
+        window.cleanup_before_quit()
+
+    assert window.thread_pool.activeThreadCount() == 0
+    assert "cleanup_before_quit: every task ended in " in caplog.text

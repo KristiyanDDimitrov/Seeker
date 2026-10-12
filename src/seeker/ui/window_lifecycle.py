@@ -29,6 +29,11 @@ from seeker.ui.tray import TrayController, _set_dock_icon_visible
 
 logger = logging.getLogger(__name__)
 
+# How long a quit waits for running work once it is told to stop. A
+# stopped task ends after its current file: one fingerprint took at
+# most 2.7 s over 50 real files, the largest included (HISTORY §226).
+QUIT_WAIT_MS = 5000
+
 
 @dataclass(frozen=True)
 class WindowLifecycleHost:
@@ -220,14 +225,11 @@ class WindowLifecycleController:
         # stops timers and hides the tray icon so a real quit doesn't
         # leave anything running past the window closing.
         #
-        # Instrumentation for the reported "not responding" quit hang
-        # (unreproduced live; mechanically confirmed via a standalone
-        # QThreadPool probe that a slow in-flight runnable blocks the
-        # pool's own destructor for exactly its remaining runtime — see
-        # HISTORY §125). This method's own body finishes quickly
-        # regardless (nothing here waits on `self._host.thread_pool`),
-        # so a future real recurrence logging "starting" but never
-        # "finished" points at something IN this method; both logged
+        # The pool's destructor waits for every running task (HISTORY
+        # §125; the quit hang's sample, HISTORY §226). `release_shell`
+        # sets the stop that long work checks between files, then this
+        # waits at most QUIT_WAIT_MS and logs any task still running,
+        # which the destructor then still waits for. Both lines logged
         # quickly but the process still hangs afterward points at
         # teardown of `self._host.thread_pool` itself once this method
         # returns and `window` goes out of scope. Logs
@@ -269,6 +271,20 @@ class WindowLifecycleController:
         _set_dock_icon_visible(True)
 
         self._host.tray.hide_icon()
+
+        wait_started_at = time.monotonic()
+
+        if self._host.thread_pool.waitForDone(QUIT_WAIT_MS):
+            logger.info(
+                "cleanup_before_quit: every task ended in %.1fs",
+                time.monotonic() - wait_started_at,
+            )
+        else:
+            logger.warning(
+                "cleanup_before_quit: %d task(s) still running after %.1fs",
+                self._host.thread_pool.activeThreadCount(),
+                QUIT_WAIT_MS / 1000,
+            )
 
         logger.info(
             "cleanup_before_quit: finished in %.3fs",
