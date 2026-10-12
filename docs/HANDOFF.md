@@ -20,7 +20,8 @@ nine fields below follow the contract in
   2310; S17b added four; only the stress test skipped, CI skips 29).
   `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0;
   `radon cc -n D` nothing.
-- **CI:** pending for S17b's push (the close-out names it below).
+- **CI:** run `38249493461` green (`cde9bec`, check and audit); it
+  covers all four of S17b's commits.
 
 ## 2. Where we are
 
