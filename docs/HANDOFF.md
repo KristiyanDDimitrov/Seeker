@@ -11,39 +11,40 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17's close-out (HISTORY §222). Tree clean.
+- **HEAD:** S17a's close-out (HISTORY §223). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
-  (`dist/Seeker.dmg.sha256`). Commits after it touch only `tools/`
-  and `docs/`.
-- **Local (Cocoa):** pytest `2306 passed, 1 skipped`, 0 failed
-  (unchanged; only the stress test skipped, CI skips 29). `mypy
-  --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** run `38162346352` green (`a29ed7f`, check and audit); it
-  covers all of S17's commits.
+  (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
+  rebuilds it.
+- **Local (Cocoa):** pytest `2310 passed, 1 skipped`, 0 failed (was
+  2306; S17a added four; only the stress test skipped, CI skips 29).
+  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0.
+- **CI:** pending for S17a's push (recorded in the follow-up commit).
 
 ## 2. Where we are
 
-**S17, Code's half is done** (§222). Kris's run on the test account
-(2026-10-12) failed six checks (ACCEPTANCE.md → Results), which are
-now fix rows **S17a–S17f** (BRIEF §17a–§17f, read-only diagnosis
-included). Then S17g builds a new candidate and Kris re-runs the
-checklist. **Next: S17a**, the Dashboard's next step during a scan.
+**S17a is done** (§223): the Dashboard's next step shows no count
+while a scan or match runs. **Next: S17b**, Find duplicates' silent
+quality stage (BRIEF §17b). S17c–S17f follow, then S17g's new
+candidate and Kris's re-run.
 
-## 3. Session report (S17, Code's half)
+## 3. Session report (S17a)
 
-Evidence in HISTORY §222.
-- The candidate: RELEASING.md step 3 as written, all as expected
-  (ad-hoc, `spctl` rejects, `0.1.0`, clean tree, `shasum -c` OK).
-- slskd read-only: Kris's bring-up is done (the app-data default, the
-  empty share); the web UI on loopback only; the per-user Compose copy
-  is valid but predates the digest pin, while the running image is the
-  pinned digest.
-- `57dc527`: `tools/window_checks.py`, the three reopen paths measured
-  against a running app (Kris clicks what AX hides).
-- `7dd745e`: `ACCEPTANCE.md`, the single checklist.
+Evidence in HISTORY §223.
+- `7e234a4`: `_NextStepFacts.library_check_running` (scan or match
+  busy, read on the main thread before the statuses); the step says
+  "Checking your library against '…'. What still needs downloading
+  shows when it's done.", no action. The failing test failed on
+  `HEAD` with "2 tracks missing from 'Peak Time'."
+- §17a.2's audit: the playlist rows' counts and the track statuses
+  derive from `track_matches` only and never flash that way; no
+  commit. A file that left its path reads missing for the match pass
+  on a rescan (true of the DB; left as is, §223).
+- Screenshots: a scratchpad grab in both themes (no harness screen
+  has a scan running).
+- Skills: `tdd` (failing test first). No divergence from the brief.
 
-## 4. Key context for whoever runs S17a–S17g or S18
+## 4. Key context for whoever runs S17b–S17g or S18
 
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** §17b's 3589 is arithmetic over the progress
@@ -82,7 +83,7 @@ Evidence in HISTORY §222.
 
 ## 6. Blockers
 
-None for S17a, S17b, S17d or S17f. S17c waits on the test account's
+None for S17b, S17d or S17f. S17c waits on the test account's
 log, and S17e on Kris reproducing the problem with logging on.
 S18 waits on S17g's re-run.
 
@@ -104,6 +105,8 @@ share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
 
+- "Match tracks" stays enabled while a scan runs, so a match can start
+  beside `scan_and_match`'s own (§223). Disable it during a scan?
 - Should a CLI command start slskd (`restart_slskd` has none)? Not in
   the BRIEF; left out.
 - Should Sharing hide or disable "Add to share" for a location whose

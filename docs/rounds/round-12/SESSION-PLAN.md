@@ -60,7 +60,7 @@ after Kris's explicit yes.
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
 | ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, then a new candidate | §17 | ~70 K | — |
 | **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
-| ☐ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish | §17a | ~60 K | — |
+| ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☐ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap | §17b | ~100 K | After §17b.2 (the stage reports progress) |
 | ☐ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait. Starts from the test account's log | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
 | ☐ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after | §17d | ~110 K | After §17d.1 with the storm's numbers |
