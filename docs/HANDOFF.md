@@ -11,51 +11,57 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17b's close-out (HISTORY §224). Tree clean.
+- **HEAD:** S17d's close-out (HISTORY §225). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2314 passed, 1 skipped`, 0 failed (was
-  2310; S17b added four; only the stress test skipped, CI skips 29).
+- **Local (Cocoa):** pytest `2315 passed, 1 skipped`, 0 failed (was
+  2314; S17d added one; only the stress test skipped, CI skips 29).
   `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0;
   `radon cc -n D` nothing.
-- **CI:** run `38249493461` green (`cde9bec`, check and audit); it
-  covers all four of S17b's commits.
+- **CI:** see §3 (the run for S17d's push).
 
 ## 2. Where we are
 
-**S17b is done** (§224): Find duplicates' "freeze" was the throttle's
-last report before a silent quality stage; the search now reports it
-and reads file headers only (582 s → 4.7 s on the X9 Pro). **Next:
-S17c** (quit never hangs; waits on the test account's log), or S17d
-or S17f, which have no blocker. Then S17g's new candidate and Kris's
-re-run.
+**S17d is done** (§225): a resize re-fits a table's columns over the
+measures its render took and measures no row; the fit per 30-step
+resize storm fell from 1.9 s to 0.4 ms (Dashboard, 3,600 rows).
+**Next: S17c** once the test account's log is in `/Users/Shared/`
+(it was not there on 2026-10-12, when this session started), else
+**S17f** (no blocker) or S17e (waits on Kris's run with logging).
+Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17b)
+## 3. Session report (S17d)
 
-Evidence in HISTORY §224.
-- `0c4a83c`: a stage's last progress report always emits (the test
-  reproduced 3589 on `HEAD`).
-- `95d742f`: the quality stage reports "Measuring quality i of m".
-- `2c318b0`: the duplicate finder reads headers only; clipping and
-  loudness (shown and ranked by nowhere) move to `measure_signal()`.
-  Timed on a scratch copy of the real DB: 582.4 s → 4.7 s, the same
-  322 groups. The UI thread was never starved (≤ 6.3 ms late).
-- `c1bdbb4`: `measure_signal` decodes once (int16; clipping identical
-  on real files, loudness within 0.017 LU).
-- Item 4 (stop between files) not done: conditional on (3) failing,
-  and (3) made the stage short.
-- The first full run caught `tools/screenshots.py` still passing the
-  removed fields; folded into `2c318b0` before pushing.
-- Skills: `tdd` and `performance-profiler` were not loaded; their
-  practice was followed by hand. That's the one divergence.
+Evidence in HISTORY §225.
+- Measured first: a resize storm (30 widths, 1280 → 2560, ~3,600
+  rows) at `eacdfc1` and at `HEAD`. The fit per storm went from
+  0.77 s at the base to 1.9 s (Dashboard) and 0.75 s to 1.36 s
+  (Library), so round 12's measuring roughly doubled it; Duplicates
+  stayed at ~1.2 s.
+- `a02d502`: `_ColumnMeasures` taken once per render and held by the
+  fitter; a resize only runs `fit_widths`. The test failed on `HEAD`
+  with 50 rows measured per column on one resize. After: fit 0.4 ms
+  per storm; the 77 harness images are pixel-identical.
+- §17d.2 (coalescing) not done: conditional on (1) not being enough.
+- Duplicates still takes ~67 ms per resize step, the same as at the
+  base: Qt repositions its 5,400 cell widgets. Recorded, not fixed
+  (§9 below).
+- "Tables one over another" not reproduced (no frame mid-transition
+  is captured); Kris's live check decides it.
+- CI: run id and result are recorded in the handoff commit that
+  follows this one.
 
 ## 4. Key context for whoever runs S17c–S17g or S18
 
 - **Each S17x row's BRIEF section separates what is established from
-  what is a hypothesis.** §17d's lead (per-row re-measuring on every resize) is a hypothesis
-  until the resize storm is timed at `HEAD` and at `eacdfc1`.
+  what is a hypothesis.** Measure before fixing, as §224 and §225 did.
+- **A resize storm** over production-scale fakes: scale the
+  screenshot harness's `STATUSES`/`DUPLICATE_GROUPS` before
+  `build_demo_application()`, and patch a delegate method **before**
+  the window is built (PySide binds an override at construction,
+  observed in §225).
 - **The test account's data and log are unreadable from here**
   (`/Users/test`: permission denied). S17c starts from the log Kris
   copies to `/Users/Shared/`. Before §224 a duplicate search spent
@@ -94,8 +100,8 @@ Evidence in HISTORY §224.
 
 ## 6. Blockers
 
-None for S17d or S17f. S17c waits on the test account's
-log, and S17e on Kris reproducing the problem with logging on.
+None for S17f. S17c waits on the test account's log, and S17e on
+Kris reproducing the problem with logging on.
 S18 waits on S17g's re-run.
 
 ## 7. Files in progress
@@ -107,7 +113,8 @@ None uncommitted.
 For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
 failures"): the test account's `seeker.log*` in `/Users/Shared/`
 (S17c); vetoes on quit-stops-work (S17c) and Confirm all per section
-(S17f); live fullscreen checks (S17d, S17e). After S17g, the rest of
+(S17f); live fullscreen checks (S17d on the S17g build: Dashboard,
+Library, Duplicates, fullscreen and back; S17e). After S17g, the rest of
 `docs/rounds/round-12/ACCEPTANCE.md`: the fresh
 account, the live Retry/Cancel/Clean up, start at login again, the
 sweep, the window paths, the Fix…, the stress test, and the vetoes
@@ -115,6 +122,11 @@ sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- Duplicates' table repositions 5,400 cell widgets on every resize
+  (~67 ms a step at 1,800 groups, unchanged since round 11; §225).
+  Worth a cheaper delegate `updateEditorGeometry`, or fewer cell
+  widgets, if Kris's fullscreen check still stutters there?
 
 - "Match tracks" stays enabled while a scan runs, so a match can start
   beside `scan_and_match`'s own (§223). Disable it during a scan?

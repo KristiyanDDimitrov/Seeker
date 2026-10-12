@@ -63,7 +63,7 @@ after Kris's explicit yes.
 | ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
 | ☐ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait. Starts from the test account's log | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
-| ☐ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after | §17d | ~110 K | After §17d.1 with the storm's numbers |
+| ☑ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after — §225 (fit per storm 1.9 s → 0.4 ms; §17d.2 not needed) | §17d | ~110 K | After §17d.1 with the storm's numbers |
 | ☐ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
 | ☐ S17f | Review: "Confirm all" per section, with a confirmation | §17f | ~100 K | After the local matches section |
 | ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md | §17 | ~50 K | — |
