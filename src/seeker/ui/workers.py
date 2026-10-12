@@ -178,13 +178,17 @@ class Worker(QRunnable):
         # Throttled at the source — runs on THIS worker thread, before
         # _emit_or_drop is ever reached, so an unthrottled caller
         # looping over thousands of items can never produce thousands of
-        # cross-thread emits regardless of how often it calls this.
+        # cross-thread emits regardless of how often it calls this. A
+        # stage's last report (current == total) always emits: the count
+        # spans every stage, so otherwise a stage can end showing an
+        # earlier count while the next, silent work runs (HISTORY §224).
         self._progress_count += 1
         now = time.monotonic()
         elapsed = now - self._progress_last_emit
 
         if (
-                elapsed < PROGRESS_EMIT_MIN_INTERVAL_S
+                current != total
+                and elapsed < PROGRESS_EMIT_MIN_INTERVAL_S
                 and self._progress_count % PROGRESS_EMIT_EVERY_N != 0
         ):
             return

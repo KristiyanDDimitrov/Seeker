@@ -357,6 +357,37 @@ def test_progress_reports_are_throttled_by_time(qtbot, monkeypatch):
     assert reported == ["a", "c"]
 
 
+def test_a_stages_last_report_is_never_throttled(qtbot, monkeypatch):
+    # Find duplicates at 3,611 files: "Decoding fingerprints" 1..3611,
+    # then "Comparing" 1..3611, all inside one throttle window. The
+    # count spans both stages, so the last multiple of 25 is call 7,200,
+    # "Comparing" 3,589: the run looked frozen there (HISTORY §224).
+    from seeker.ui import workers as workers_mod
+
+    class SynchronousPool:
+        def start(self, worker):
+            worker.run()
+
+    monkeypatch.setattr(workers_mod.time, "monotonic", lambda: 0.0)
+    reported = []
+
+    def do_work(report):
+        for stage in ("Decoding fingerprints", "Comparing"):
+            for i in range(1, 3612):
+                report(stage, i, 3611)
+        return "ok"
+
+    run_worker(
+        SynchronousPool(), do_work,
+        on_progress=lambda stage, current, total: reported.append(
+            (stage, current),
+        ),
+    )
+
+    assert reported[-1] == ("Comparing", 3611)
+    assert ("Decoding fingerprints", 3611) in reported
+
+
 def test_progress_callback_is_cleared_on_finish(qtbot):
     from seeker.ui import workers as workers_mod
 
