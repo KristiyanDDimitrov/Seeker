@@ -11,50 +11,52 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17c's close-out (HISTORY §226). Tree clean.
+- **HEAD:** S17h part one's close-out (HISTORY §227). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2320 passed, 1 skipped`, 0 failed (was
-  2315; S17c added five; only the stress test skipped, CI skips 29).
-  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** run `38262167435` green (`e6ce62e`); it covers S17c's two
-  fixes and close-out.
+- **Local (Cocoa):** pytest `2323 passed, 1 skipped`, 0 failed (was 2320; S17h.1 added
+  three; only the stress test skipped, CI skips 29). `mypy --strict
+  src/` clean, 144 files; `ruff check src tests tools` 0.
+- **CI:** see the close-out commit's run (recorded in the final report).
 
 ## 2. Where we are
 
-**S17c is done** (§226): a quit stops a running fingerprint run or
-duplicate search before its next file and waits at most 5 s, then
-logs any task still running. **Kris (after S17c): "Anything that can
-make the app freeze needs to be fixed."** S17c's findings became rows
-S17h–S17k (BRIEF §17h–§17k). **Next: S17h**, then S17i, S17j, S17k,
-then S17f; S17e waits on Kris's run with logging. Then S17g's new
-candidate and Kris's re-run.
+**S17h stopped at its split point** (§227): §17h.1 is done, so a
+deleted button no longer skips a task's finish. **Next: §17h.2**, the
+call sites, then S17i, S17j, S17k, then S17f; S17e waits on Kris's
+run with logging. Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17c)
+## 3. Session report (S17h, part one)
 
-Evidence in HISTORY §226.
-- The test account's log and a `sample` of a reproduced hang (Kris,
-  `/Users/Shared/`): the main thread in `~QThreadPool` →
-  `waitForDone`, one pool thread decoding a FLAC for a fingerprint.
-  After a 13:15 quit the duplicate search logged for six more minutes.
-- Measured: one fingerprint ≤ 2.7 s over 50 real files on the X9 Pro
-  (median 0.38 s), read-only.
-- `58eda16` (§17c.1): fingerprinting and both duplicate searches take
-  a `stop` event; `PageContext.quitting`, set on quit, reaches every
-  Duplicates call. Failed on `HEAD`: the pool still busy after
-  `cleanup_before_quit`.
-- `af11f89` (§17c.2): `cleanup_before_quit` waits
-  `waitForDone(QUIT_WAIT_MS)` (5 s) and logs the outcome; no hard
-  exit (unmeasured, and a tag write rewrites a file in place).
-- Skills: `tdd` (failing test first) and `focused-fix`. Divergence:
-  `tdd` asks to confirm the seams with the user first; BRIEF §17c
-  already names them (a service stop event, the quit seam, a bounded
-  wait), so they were taken as agreed.
+Evidence in HISTORY §227.
+- The log ties the crashes to Review: task 3663, a Review Confirm,
+  failed on slskd's `429` 0.5 s before the 18:58:41 CRITICAL; Review's
+  tables rebuild on every row change, which a running download makes
+  every ~20 s.
+- `abdeba6` (§17h.1): `run_worker`'s finish and error handlers and
+  `BusyActionRegistry.end` skip a button `shiboken6` reports deleted,
+  then run the callback and free the worker. Failed on `HEAD`: the
+  callback never ran (`assert [] == ['done']`), the registry raised.
+- Stopped at the split point: §17h.2 touches Review's three tables,
+  Tag, Search and Duplicates plus a sweep test, more than the row's
+  remaining budget.
+- Skills: `tdd`. Divergence, as in S17c: `tdd` asks to confirm the
+  seams with the user; BRIEF §17h names them (`run_worker`'s
+  handlers), so they were taken as agreed.
 
-## 4. Key context for whoever runs S17e–S17g or S18
+## 4. Key context for whoever runs S17h.2–S17k, S17e–S17g or S18
 
+- **§17h.2's call sites are listed in HISTORY §227 → "Not done"**
+  (an AST scan; the script is a dozen lines over `ast.Call` named
+  `run_worker`/`run_busy_worker`, `button=` keyword or positional).
+  Review's five are the confirmed site, the Dashboard's per-row Tag
+  (`tagging_panel.tag_track`) the BRIEF's hypothesis. Downloads'
+  `_ROW_ACTION_KEYS` is the precedent; Review's rows are per track,
+  so its key is likely the set of track ids in flight. A sweep test
+  could fail any `button=` that is not a `self.` attribute, its
+  exceptions named (working agreement 5).
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
 - **Long work that should stop on quit takes `stop:
@@ -100,7 +102,7 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted.
+None uncommitted. §17h.2 not started.
 
 ## 8. Waiting on Kris
 

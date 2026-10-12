@@ -82,7 +82,10 @@ investigation.
   (HISTORY §221). A busy
   action whose buttons a rebuild can delete passes `button=None` and
   puts its busy state in the rendered key (Downloads' Retry and
-  Cancel, through `_ROW_ACTION_KEYS`).
+  Cancel, through `_ROW_ACTION_KEYS`). A deleted button no longer
+  crashes a finish (`run_worker`'s handlers and `BusyActionRegistry.end`
+  skip it), but the rebuilt row's new button never learns its task
+  is running. [HISTORY §227](../../../docs/history/211-240.md#227),
   [HISTORY §195](../../../docs/history/181-210.md#195),
   [HISTORY §204](../../../docs/history/181-210.md#204),
   [HISTORY §205](../../../docs/history/181-210.md#205)
