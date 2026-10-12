@@ -11,50 +11,59 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17a's close-out (HISTORY §223). Tree clean.
+- **HEAD:** S17b's close-out (HISTORY §224). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2310 passed, 1 skipped`, 0 failed (was
-  2306; S17a added four; only the stress test skipped, CI skips 29).
-  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** run `38243119577` green (`acc8bb2`, check and audit); it
-  covers both of S17a's commits.
+- **Local (Cocoa):** pytest `2314 passed, 1 skipped`, 0 failed (was
+  2310; S17b added four; only the stress test skipped, CI skips 29).
+  `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0;
+  `radon cc -n D` nothing.
+- **CI:** pending for S17b's push (the close-out names it below).
 
 ## 2. Where we are
 
-**S17a is done** (§223): the Dashboard's next step shows no count
-while a scan or match runs. **Next: S17b**, Find duplicates' silent
-quality stage (BRIEF §17b). S17c–S17f follow, then S17g's new
-candidate and Kris's re-run.
+**S17b is done** (§224): Find duplicates' "freeze" was the throttle's
+last report before a silent quality stage; the search now reports it
+and reads file headers only (582 s → 4.7 s on the X9 Pro). **Next:
+S17c** (quit never hangs; waits on the test account's log), or S17d
+or S17f, which have no blocker. Then S17g's new candidate and Kris's
+re-run.
 
-## 3. Session report (S17a)
+## 3. Session report (S17b)
 
-Evidence in HISTORY §223.
-- `7e234a4`: `_NextStepFacts.library_check_running` (scan or match
-  busy, read on the main thread before the statuses); the step says
-  "Checking your library against '…'. What still needs downloading
-  shows when it's done.", no action. The failing test failed on
-  `HEAD` with "2 tracks missing from 'Peak Time'."
-- §17a.2's audit: the playlist rows' counts and the track statuses
-  derive from `track_matches` only and never flash that way; no
-  commit. A file that left its path reads missing for the match pass
-  on a rescan (true of the DB; left as is, §223).
-- Screenshots: a scratchpad grab in both themes (no harness screen
-  has a scan running).
-- Skills: `tdd` (failing test first). No divergence from the brief.
+Evidence in HISTORY §224.
+- `0c4a83c`: a stage's last progress report always emits (the test
+  reproduced 3589 on `HEAD`).
+- `95d742f`: the quality stage reports "Measuring quality i of m".
+- `2c318b0`: the duplicate finder reads headers only; clipping and
+  loudness (shown and ranked by nowhere) move to `measure_signal()`.
+  Timed on a scratch copy of the real DB: 582.4 s → 4.7 s, the same
+  322 groups. The UI thread was never starved (≤ 6.3 ms late).
+- `c1bdbb4`: `measure_signal` decodes once (int16; clipping identical
+  on real files, loudness within 0.017 LU).
+- Item 4 (stop between files) not done: conditional on (3) failing,
+  and (3) made the stage short.
+- The first full run caught `tools/screenshots.py` still passing the
+  removed fields; folded into `2c318b0` before pushing.
+- Skills: `tdd` and `performance-profiler` were not loaded; their
+  practice was followed by hand. That's the one divergence.
 
-## 4. Key context for whoever runs S17b–S17g or S18
+## 4. Key context for whoever runs S17c–S17g or S18
 
 - **Each S17x row's BRIEF section separates what is established from
-  what is a hypothesis.** §17b's 3589 is arithmetic over the progress
-  throttle (25 × 288 = 7200 = 3611 + 3589), not where the work stops.
-  §17d's lead (per-row re-measuring on every resize) is a hypothesis
+  what is a hypothesis.** §17d's lead (per-row re-measuring on every resize) is a hypothesis
   until the resize storm is timed at `HEAD` and at `eacdfc1`.
 - **The test account's data and log are unreadable from here**
   (`/Users/test`: permission denied). S17c starts from the log Kris
-  copies to `/Users/Shared/`.
+  copies to `/Users/Shared/`. Before §224 a duplicate search spent
+  ~10 minutes in a silent stage; a quit during it is a likely §17c
+  hang, now gone at that scale, but the stop signal still applies to
+  scans and fingerprinting.
+- **Timing at scale without touching real data:** copy the DB with
+  `sqlite3 -readonly … ".backup '<scratchpad>/seeker.db'"` and run
+  the service against the copy with the X9 Pro mounted (§224).
 - **`dist/Seeker.dmg` was rebuilt 2026-10-12 12:10** and no longer
   matches `dist/Seeker.dmg.sha256` (`b373f7ae…`, the candidate's).
   S17g rebuilds it from the fixed tree anyway.
@@ -84,7 +93,7 @@ Evidence in HISTORY §223.
 
 ## 6. Blockers
 
-None for S17b, S17d or S17f. S17c waits on the test account's
+None for S17d or S17f. S17c waits on the test account's
 log, and S17e on Kris reproducing the problem with logging on.
 S18 waits on S17g's re-run.
 
@@ -135,6 +144,8 @@ share checkbox). Then S18's outward commands.
   (AUDIT §8, UNVERIFIED.) Does Dependabot bump a `tag@digest` pair?
 - Should the callback handler get a socket timeout?
 
+- `measure_signal()` (clipping, loudness) has no caller now. Show it
+  on the Duplicates page, on demand, or delete it with pyloudnorm?
 - Should a template bump (a new slskd digest) reach an existing
   install's per-user Compose copy? It is never re-seeded, so Kris's
   copy still names the unpinned tag (§222).
