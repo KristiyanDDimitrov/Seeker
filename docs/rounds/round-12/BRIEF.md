@@ -705,6 +705,273 @@ R11 §41 unchanged, plus these checks from this round:
 
 Any failure becomes a fix row before S18.
 
+## Acceptance failures, 2026-10-12 (S17a–S17f)
+
+**Kris, 2026-10-12, from a manual run on the test macOS account**
+(the build in `dist/`, rebuilt 2026-10-12 12:10; its SHA-256 no
+longer matches the candidate's `dist/Seeker.dmg.sha256`). Six
+failures, each a fix row before S18 (§17: "never shipped around").
+Planning read code and Kris's own database read-only. **The test
+account's database and log are not readable from Kris's account**
+(`/Users/test/Library/…`: permission denied), so anything that needs
+them waits on Kris (SESSION-PLAN → "Waiting on Kris").
+
+HISTORY numbering continues at §223 in `docs/history/211-240.md`.
+
+## §17a — The Dashboard's next step waits for the scan (S17a)
+
+**Kris:** "upon pressing 'Scan Library', the text then changes to
+showing 'X files missing', but then after the actual scan is done, it
+updated to the real number. … wait until scanning is done to show how
+many tracks are missing."
+
+**Established (read in code).**
+- The next step for a playlist is `_playlist_step`
+  (`ui/pages/dashboard_page.py:247`). It offers "Scan library" while
+  `has_scanned_library` is false, and otherwise counts `MISSING_STATES`
+  and shows "N tracks missing from '…'".
+- `LibraryService.has_scanned_library()` (`library/service.py:271`) is
+  true once **any** `local_files` row exists.
+- The scanner commits in batches of `UPSERT_BATCH_SIZE = 200`
+  (`library/scanner.py:25`). The first batch makes
+  `has_scanned_library` true seconds into the scan.
+- `scan_and_match()` matches only after the whole scan
+  (`library/service.py:622`). Until then no track is matched, so the
+  2 s `poll_next_step` counts **every** track as missing. That is
+  Kris's "X", the playlist's total.
+
+**Do, one commit each, a failing test first.**
+1. While a scan or a match runs (`busy_actions.is_running("scan")`
+   or `"match"`), the next step shows no count. Say what is happening
+   ("Scanning your library…", no action), or keep the step from before
+   the click; Code's call. The fact belongs in `_NextStepFacts`, so
+   `_decide_next_step` stays pure. The test: a fake scan that blocks
+   after the first batch, a poll tick, and no "missing" text.
+2. Audit the other places that count during a scan: the playlist
+   list's "N · M missing" (`_playlist_counts`) and the track table's
+   statuses. Fix what flashes the same way (one commit), or list it in
+   the handoff with the reason it stays.
+
+**Not in scope:** `has_scanned_library`'s proxy (its docstring
+accepts it). Screenshots per §0.13 if the step's wording changes.
+
+## §17b — Find duplicates: the "freeze" at 3589 of 3611 (S17b)
+
+**Kris:** "I did a full fingerprinting that got 3611 fingerprints,
+when running Find Duplicates … once it got to 3589 of 3611, it
+froze. Quit the app, did it again — same thing."
+
+**Established, by arithmetic over the code: 3589 is the last
+progress the throttle lets through, not where the work stops.**
+- `Worker._report_progress` (`ui/workers.py:177`) emits only every
+  `PROGRESS_EMIT_EVERY_N = 25`th call, or after
+  `PROGRESS_EMIT_MIN_INTERVAL_S = 0.25` s. Its counter spans every
+  stage of the task.
+- `_cluster_duplicate_groups` (`library/duplicate_service.py:893`)
+  reports "Decoding fingerprints" 3611 times, then
+  `_cluster_by_similarity` reports "Comparing" k of 3611 (when every
+  file has a duration). The k-th comparison is call 3611 + k. The last
+  multiple of 25 in range is 7200, so **k = 3589**. The remaining 22
+  comparisons finish well inside 0.25 s, and nothing is emitted for
+  them. The same point every run follows from that arithmetic.
+- **After "Comparing" comes a stage with no progress at all:** for
+  every file in every cluster, `analyze_local_file_quality`
+  (`audio/quality.py:39`) reads the **whole audio file twice**
+  (`_measure_clipping_ratio` as int16, `_measure_integrated_loudness`
+  as float64) and runs pyloudnorm. On large lossless files on an
+  external drive, that is seconds per file.
+
+**Hypothesis (confirm or rule out first).** The run is not frozen. It
+is in that silent quality stage, and its length scales with how many
+files sit in duplicate groups. Kris quitting during it is a likely
+cause of a §17c beach ball. Confirm by timing the stage at scale (a
+synthetic run, or Kris's own library read-only with the X9 Pro
+mounted; analysis only reads files). Also confirm that the UI thread
+stays responsive while it runs. If the UI itself hangs, this is a
+different bug: stop and record it.
+
+**Do, one commit each, a failing test first.**
+1. **A stage's last report is never dropped:** the throttle always
+   emits `current == total`. The test is the 3611/25 arithmetic above,
+   with a fake clock.
+2. **The quality stage reports progress** ("Measuring quality i of
+   m"). m is the number of files in clusters.
+3. **The quality stage costs what it must:** decode each file once
+   for both measures, and keep it off the path if the measures can be
+   deferred (Code's call; measure before and after, and quote both).
+4. If (3) can't make it short, the run stops on request (Cancel, and
+   §17c's quit) between files. That is a `threading.Event`, like the
+   sweep's `stop`.
+
+**Split point:** after (2). The user then sees the run is alive.
+
+## §17c — Quit never hangs on a running task (S17c)
+
+**Kris:** "When quitting the app, more than once, rather than
+successfully closing the app, I got the beach ball and it froze. …
+at least 3 times."
+
+**Established.** This is open item 125 (CLAUDE.md → Open issues):
+`MainWindow.thread_pool`'s destructor waits for every in-flight
+runnable (HISTORY §125, measured in isolation), so a quit lasts as
+long as the slowest running task. `cleanup_before_quit` logs the
+pool's active thread count at quit (`seeker.ui.window_lifecycle`).
+Kris's own log shows `active=0` on every quit since 2026-10-01, so
+the hangs happened on the test account, whose log Code cannot read.
+The sweep already stops on quit; nothing else long-running does
+(fingerprinting, Find duplicates, scan, match, tagging).
+
+**Hypothesis.** Each hang was a quit while a long worker ran (§17b's
+silent stage is the prime suspect for at least one of them). Item
+125's next step was to quit during a scan, a fingerprint or a search.
+
+**Evidence first (Waiting on Kris):** the test account's
+`~/Library/Logs/Seeker/seeker.log*` copied to `/Users/Shared/`. Look
+at the `cleanup_before_quit: starting, thread_pool active=N` lines
+and what ran before each hang. Then reproduce one in a test: a
+runnable that blocks, a real quit, and a measured exit.
+
+**Do, one commit each, a failing test first.**
+1. **One stop signal for long work:** the long services take a stop
+   event (the sweep's shape) and check it between items. The shell
+   sets it on the quit seam, before `aboutToQuit`. Work done so far
+   is kept: a fingerprint stored is stored.
+2. **The quit waits a bounded time**, then exits. Bounded means
+   `waitForDone(ms)`. Whether to exit hard after the bound needs a
+   measured reason; never `os._exit` before the database's last
+   transaction closes. If a quit cancels visible work, the quit
+   confirmation says so.
+3. Update CLAUDE.md's item 125 and the thread pool fact with what was
+   measured.
+
+**Decision for Kris (default unless vetoed): quitting stops a running
+scan, fingerprint run or duplicate search at once. What finished
+stays.**
+
+**Split point:** after (1) for the duplicate search and fingerprints.
+
+## §17d — Fullscreen and back: tables refit without per-row work (S17d)
+
+**Kris:** "when going fullscreen in the app, it is extremely buggy.
+Not only slower, but also not as 'fluid' — you see tables resizing
+and going one over another … Going back from fullscreen to windowed
+mode leads to the same behaviour. This is new."
+
+**Established (read in code).** Every table's viewport has a
+`_ColumnFitter` (`ui/theme.py:836`). On every resize event that
+changes the viewport's width, it calls `_fit_content_columns`
+(`theme.py:793`), which reads **each row** in Python-level work:
+- `header_label_floor` and `label_floor` for each fit-content column.
+  `label_floor` (`ui/elided_text.py:416`) calls the Python delegate's
+  `sizeHint` once per row.
+- `sizeHintForColumn` for each fit-content column, and again for
+  each stretch column. Each calls the Python `ElidedTextDelegate.
+  sizeHint`, which since `e7d8c66` (round 12 S15 §15.7, 2026-10-10)
+  also measures secondary text.
+- a scan of every row for a cell widget.
+
+A macOS fullscreen transition animates the window through many
+sizes. Each step re-measures every visible table's rows. None of
+that work depends on the width: only `fit_widths`' budget does.
+
+**Hypothesis.** The per-row re-measuring is the regression. Its
+round-12 growth (`e7e9d07` `label_floor`, 2026-10-09; `e7d8c66`) is
+"new since the last build". Confirm by **measuring before fixing**: a
+resize storm (say 30 widths from 1280 to 2560) over the Dashboard,
+Library and Duplicates with production-scale fakes (~3,600 rows),
+timed at `HEAD` and at round 12's base `eacdfc1`. "Tables going one
+over another" may be a second symptom (a stale layout during the
+animation). Check it separately in screenshots or a recording.
+
+**Do, one commit each, a failing test first** (the test counts
+`sizeHint` calls per resize: 0 rows' worth after this fix).
+1. **Measure once per render, fit per resize:** `size_columns` caches
+   the wants and floors with the fitter. A resize only re-runs
+   `fit_widths` over the cached numbers (O(columns)).
+2. If (1) is not enough, coalesce the refits into one per event-loop
+   turn (`QTimer.singleShot(0)`), and measure again.
+3. Quote the storm's timings before and after in the HISTORY entry.
+
+**Kris, live, after the fix:** fullscreen and back on the packaged
+app, on the Dashboard, Library and Duplicates.
+
+## §17e — The tray menu in fullscreen (S17e)
+
+**Kris:** "When in fullscreen mode, when clicking on the top right
+tray icon, the menu disappears immediately. Don't know if it's
+expected behaviour, but it's annoying. Fix if possible."
+
+**Established.** `TrayController._on_tray_icon_activated`
+(`ui/tray.py:209`) does nothing on macOS: AppKit opens the menu by
+itself (HISTORY §112). The menu's actions are re-rendered by
+`render_tray_menu` (`tray.py:296`). `on_application_state_changed`
+(`tray.py:249`) reopens the window when the app turns active with the
+window hidden. Nothing in the code is specific to fullscreen.
+
+**Hypotheses, none confirmed:** (a) a click on the status item while
+the app is in a fullscreen Space activates the app, and something
+reacting to that (`applicationStateChanged`, a fullscreen Space
+switch, a render) closes the menu; (b) AppKit's own behaviour for a
+status item over a fullscreen Space's auto-hiding menu bar; (c)
+`render_tray_menu` edits an open menu, and Cocoa rebuilds it.
+
+**Do.**
+1. Add `logger.debug` (enabled per logger, like
+   `SEEKER_DEBUG_POLL`) on the menu's `aboutToShow`/`aboutToHide`,
+   `applicationStateChanged`, and `render_tray_menu`'s entry. Kris
+   reproduces it once in a dev run. The log shows what ran between
+   show and hide.
+2. Fix it if the cause is ours, with a test of that mechanism. If it
+   is AppKit's, say so with the observation (Working agreement 4),
+   and record it as a known limitation in the HISTORY entry and
+   Help's troubleshooting.
+
+**Code's call:** whether (1) ships or stays a dev-only switch. After
+§17d, because both rows touch fullscreen.
+
+## §17f — Review: "Confirm all" for a section (S17f)
+
+**Kris:** "At the Reviews page, add the option for a person to
+'confirm all' entries in a column. Do, of course, prompt the user to
+make sure he'd like to do that just in case."
+
+**Read as:** one "Confirm all" per Review section, in the header row
+the way Upgrades' "Replace all" is (`review_page.py:203`). Review's
+three sections are stacked tables (SoulSeek candidates, Upgrades,
+Local matches); Upgrades already has its bulk action. Code's
+interpretation; Kris may veto.
+
+**Established.**
+- **Local matches:** `LibraryService.confirm_match` (`library/
+  service.py:730`) is a database write only. Review's comment says no
+  double-confirm is needed for it (HISTORY §27).
+- **SoulSeek candidates:** `ReviewService.confirm_review_candidate`
+  (`soulseek/review_service.py:141`) calls `request_download` per
+  track (network). A batch can partly fail.
+- **The precedent:** "Replace all": `BulkReplaceUpgradesDialog`, then
+  `apply_upgrade_decisions_batch` (`review_service.py:476`) returning
+  `BulkUpgradeReplaceResult`, with failed rows offered again by the
+  next poll (`review_page.py:715–755`).
+
+**Do, one commit each, a failing test first.**
+1. **Service:** one batch method per section. Each returns a result
+   dataclass in `models/` (`confirmed`, `failures`; `failed` derives
+   from it). It goes on past a failed item, and failures stay
+   reviewable. The track ids come from what is on screen
+   (Replace all's "built fresh from what's on screen", HISTORY §76,
+   §88), never a re-query.
+2. **UI:** a "Confirm all (N)" button per section, disabled at 0,
+   with a confirmation through `plain_text.question` that names the
+   count and what happens ("N downloads will start" for SoulSeek; "N
+   matches will be kept" for local). The result goes to the page's
+   notice through `describe_error` for failures. The button follows
+   ui/CLAUDE.md's render rules: a render decides its enabled state,
+   so it is never `run_worker`'s `button=`.
+3. Screenshots per §0.13 (Review in both themes) and the button
+   sizing and keyboard sweeps.
+
+**Split point:** after the local matches section (no network).
+
 ## §18 — Publish v0.1.0, close the round (S18)
 
 R11 §42 unchanged. Kris approves the exact `git tag`/`gh release

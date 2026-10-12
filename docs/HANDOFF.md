@@ -24,11 +24,11 @@ nine fields below follow the contract in
 
 ## 2. Where we are
 
-**S17, Code's half is done** (§222): the candidate is built and
-verified, and the one checklist is
-`docs/rounds/round-12/ACCEPTANCE.md`. **Next: Kris runs it.** Any
-failure becomes a fix row before S18; with none, S18 tags the release
-commit and rebuilds from it.
+**S17, Code's half is done** (§222). Kris's run on the test account
+(2026-10-12) failed six checks (ACCEPTANCE.md → Results), which are
+now fix rows **S17a–S17f** (BRIEF §17a–§17f, read-only diagnosis
+included). Then S17g builds a new candidate and Kris re-runs the
+checklist. **Next: S17a**, the Dashboard's next step during a scan.
 
 ## 3. Session report (S17, Code's half)
 
@@ -43,7 +43,19 @@ Evidence in HISTORY §222.
   against a running app (Kris clicks what AX hides).
 - `7dd745e`: `ACCEPTANCE.md`, the single checklist.
 
-## 4. Key context for whoever runs S17's second half or S18
+## 4. Key context for whoever runs S17a–S17g or S18
+
+- **Each S17x row's BRIEF section separates what is established from
+  what is a hypothesis.** §17b's 3589 is arithmetic over the progress
+  throttle (25 × 288 = 7200 = 3611 + 3589), not where the work stops.
+  §17d's lead (per-row re-measuring on every resize) is a hypothesis
+  until the resize storm is timed at `HEAD` and at `eacdfc1`.
+- **The test account's data and log are unreadable from here**
+  (`/Users/test`: permission denied). S17c starts from the log Kris
+  copies to `/Users/Shared/`.
+- **`dist/Seeker.dmg` was rebuilt 2026-10-12 12:10** and no longer
+  matches `dist/Seeker.dmg.sha256` (`b373f7ae…`, the candidate's).
+  S17g rebuilds it from the fixed tree anyway.
 
 - **The checklist is `ACCEPTANCE.md`;** results go in its Results
   section. Install the candidate into `/Applications` first (no other
@@ -70,7 +82,9 @@ Evidence in HISTORY §222.
 
 ## 6. Blockers
 
-None for Code. S18 waits on Kris's acceptance run.
+None for S17a, S17b, S17d or S17f. S17c waits on the test account's
+log, and S17e on Kris reproducing the problem with logging on.
+S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
@@ -78,7 +92,11 @@ None uncommitted.
 
 ## 8. Waiting on Kris
 
-Everything is in `docs/rounds/round-12/ACCEPTANCE.md`: the fresh
+For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
+failures"): the test account's `seeker.log*` in `/Users/Shared/`
+(S17c); vetoes on quit-stops-work (S17c) and Confirm all per section
+(S17f); live fullscreen checks (S17d, S17e). After S17g, the rest of
+`docs/rounds/round-12/ACCEPTANCE.md`: the fresh
 account, the live Retry/Cancel/Clean up, start at login again, the
 sweep, the window paths, the Fix…, the stress test, and the vetoes
 (S5, the wordmark, S15's wordings, S8's peer filenames, the wizard's

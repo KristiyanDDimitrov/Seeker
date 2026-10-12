@@ -98,3 +98,22 @@ migration.
 ## Results
 
 Record failures here with what you saw; each becomes a fix row.
+
+**2026-10-12, Kris, the test account** (the `dist/` build of
+2026-10-12 12:10, whose SHA-256 `3ef4365e…` is not the candidate's
+`b373f7ae…` above, so the tested build is a rebuild). Six failures,
+fix rows S17a–S17f (BRIEF §17a–§17f):
+
+1. **S17a:** after "Scan library", the next step showed every track
+   as missing until the scan finished, then the real count.
+2. **S17f** (a request, not a failure): Review needs "Confirm all"
+   for a section, with a confirmation.
+3. **S17d:** fullscreen and back is slow and jerky; tables resize and
+   overlap during the transition. New since the previous build.
+4. **S17b:** Find duplicates over 3611 fingerprints stopped at 3589
+   of 3611, twice, at the same point.
+5. **S17c:** quitting beach-balled at least three times.
+6. **S17e:** in fullscreen, the tray menu closes as soon as it opens.
+
+The wizard, sync, scan and the rest of this section's boxes stay
+unticked until S17g's candidate.

@@ -58,7 +58,15 @@ after Kris's explicit yes.
 | ☑ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) — part one §216 (§16c.1–2, stopped at the split point); part two §217 (the Start slskd form); follow-ups §218 (Settings' share optional) and §219 (the wizard's too) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☑ S16d | Settings: a tab's notice stays in view however far it scrolls (added 2026-10-11, Kris) — §220 | — | ~60 K | — |
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
-| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open | §17 | ~70 K | — |
+| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, then a new candidate | §17 | ~70 K | — |
+| **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
+| ☐ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish | §17a | ~60 K | — |
+| ☐ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap | §17b | ~100 K | After §17b.2 (the stage reports progress) |
+| ☐ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait. Starts from the test account's log | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
+| ☐ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after | §17d | ~110 K | After §17d.1 with the storm's numbers |
+| ☐ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
+| ☐ S17f | Review: "Confirm all" per section, with a confirmation | §17f | ~100 K | After the local matches section |
+| ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md | §17 | ~50 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
 ### Why this order
@@ -91,6 +99,14 @@ after Kris's explicit yes.
 - **S16c, added 2026-10-10, before S17:** Kris deleted the slskd
   container and the app could not bring it back; S17's acceptance
   starts with a bring-up.
+- **S17a–S17g, added 2026-10-12:** §17 turns each acceptance failure
+  into a fix row before S18. S17a is small and certain, so it goes
+  first. S17b goes before S17c: its silent stage is the likeliest
+  long task behind a quit hang, and S17c's stop signal reaches it.
+  S17d goes before S17e because both are about fullscreen, and S17e's
+  observation should run on the refit-fixed build. S17f is a feature,
+  not a fix, so it goes last. S17g rebuilds the candidate, since the
+  tested DMG predates every fix.
 
 ---
 
@@ -107,6 +123,7 @@ List your available skills and resolve their real names first.
 | S9 | `tech-debt-tracker` (show the radon counts drop) |
 | S10, S11 | `observability-designer` (what the sweep logs and reports) |
 | S16–S18 | `changelog-generator`, `runbook-generator`, `ship-gate` |
+| S17a–S17f | `tdd` (failing test first); `performance-profiler` for S17b and S17d (measure before and after); `focused-fix` for S17c and S17e |
 | Any row, optional | `self-eval` before close-out |
 
 If a skill contradicts the brief, follow the skill for **how** and
@@ -160,6 +177,20 @@ BRIEF §0.11.
 - [ ] **S18:** the exact `git tag` and `gh release create` commands and
       the release notes.
 
+**Acceptance failures (2026-10-12), Kris's part:**
+- [ ] **S17c, before it starts:** in the test account, copy
+      `~/Library/Logs/Seeker/seeker.log*` to `/Users/Shared/` (Code
+      cannot read `/Users/test`). If a quit hangs again, in Terminal
+      as that user: `sample Seeker 5 -file /Users/Shared/seeker-quit.txt`.
+- [ ] **S17c:** veto, or let stand, "quitting stops a running scan,
+      fingerprint run or duplicate search; what finished stays".
+- [ ] **S17d:** fullscreen and back on the packaged build, once the
+      fix is in.
+- [ ] **S17e:** reproduce the vanishing tray menu once in a dev run
+      with the debug logging on.
+- [ ] **S17f:** veto, or let stand, "Confirm all" as one button per
+      Review section.
+
 **Real-desktop checks:** R11's list (its session plan → "Waiting on
 Kris"), all still open, plus BRIEF §17's additions. S17 consolidates
 them into one checklist.
@@ -171,7 +202,9 @@ them into one checklist.
 Measured in S18's close-out. Each one is a number or a yes/no.
 
 - Each of Kris's nine walkthrough items is fixed with a test, or for
-  the sweep, built.
+  the sweep, built. Each of the six acceptance failures (S17a–S17f)
+  is fixed with a test, or, for S17e alone, documented as AppKit's
+  with the observation.
 - Every `AUDIT.md` finding is fixed or accepted with a written
   reason. `pip-audit` runs in CI and reports 0.
 - CI is green on the release commit, and branch coverage is at or
