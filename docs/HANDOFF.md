@@ -19,7 +19,7 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2323 passed, 1 skipped`, 0 failed (was 2320; S17h.1 added
   three; only the stress test skipped, CI skips 29). `mypy --strict
   src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** see the close-out commit's run (recorded in the final report).
+- **CI:** run `38267307987` green (`3cba14d`); it covers §17h.1 and the close-out.
 
 ## 2. Where we are
 
