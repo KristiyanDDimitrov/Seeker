@@ -26,9 +26,11 @@ nine fields below follow the contract in
 
 **S17c is done** (§226): a quit stops a running fingerprint run or
 duplicate search before its next file and waits at most 5 s, then
-logs any task still running. **Next: S17f** (no blocker) or S17e
-(waits on Kris's run with logging). Then S17g's new candidate and
-Kris's re-run.
+logs any task still running. **Kris (after S17c): "Anything that can
+make the app freeze needs to be fixed."** S17c's findings became rows
+S17h–S17k (BRIEF §17h–§17k). **Next: S17h**, then S17i, S17j, S17k,
+then S17f; S17e waits on Kris's run with logging. Then S17g's new
+candidate and Kris's re-run.
 
 ## 3. Session report (S17c)
 
@@ -93,8 +95,8 @@ Evidence in HISTORY §226.
 
 ## 6. Blockers
 
-None for S17f. S17e waits on Kris reproducing the problem with
-logging on. S18 waits on S17g's re-run.
+None for S17h–S17k or S17f. S17e waits on Kris reproducing the
+problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
@@ -115,12 +117,11 @@ share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
 
-- **A new finding (§226):** four `RuntimeError: … QPushButton already
-  deleted` in the test account's log, from
-  `workers.py:_handle_task_finished` (a finish handler re-enabling a
-  deleted per-row button). A fix row before S17g? Call site unknown.
-- Should the scan and tagging (with audio analysis) take the quit's
-  stop too? A quit during one still waits for it to end.
+- The test account's log has slskd answering `429 Too Many Requests`
+  on `POST /api/v0/transfers/downloads/batches` during a playlist
+  download (2026-10-08 18:58). Item 63's lead is a `500` on the same
+  endpoint: is a 429 handled as a recognized rejection, or does it
+  feed the locked-retry loop?
 
 - Duplicates' table repositions 5,400 cell widgets on every resize
   (~67 ms a step at 1,800 groups, unchanged since round 11; §225).

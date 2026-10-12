@@ -58,7 +58,7 @@ after Kris's explicit yes.
 | ☑ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) — part one §216 (§16c.1–2, stopped at the split point); part two §217 (the Start slskd form); follow-ups §218 (Settings' share optional) and §219 (the wizard's too) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☑ S16d | Settings: a tab's notice stays in view however far it scrolls (added 2026-10-11, Kris) — §220 | — | ~60 K | — |
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
-| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, then a new candidate | §17 | ~70 K | — |
+| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, the freezes S17c found → S17h–S17k, then a new candidate | §17 | ~70 K | — |
 | **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
 | ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
@@ -66,6 +66,10 @@ after Kris's explicit yes.
 | ☑ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after — §225 (fit per storm 1.9 s → 0.4 ms; §17d.2 not needed) | §17d | ~110 K | After §17d.1 with the storm's numbers |
 | ☐ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
 | ☐ S17f | Review: "Confirm all" per section, with a confirmation | §17f | ~100 K | After the local matches section |
+| ☐ S17h | A finish handler survives a deleted button: the four `QPushButton already deleted` crashes skip `on_finished`; then the `button=` call site (added 2026-10-12, Kris: "anything that can make the app freeze") | §17h | ~80 K | After §17h.1 (the handler) |
+| ☐ S17i | Quit stops the network waits: the playlist download between tracks, a search's 45 s wait, Spotify's rate-limit and login waits and sync, Sharing's share-ready poll; slskd's bring-up measured | §17i | ~120 K | After §17i.2 (playlist download and search wait) |
+| ☐ S17j | Quit stops library work (scan, tagging, renames; merge and remove if measured long); a sweep test that every long call passes the stop; close item 125 | §17j | ~110 K | After §17j.1 (scan, tagging, renames) |
+| ☐ S17k | Duplicates' resize stall: ~67 ms a step from 5,400 cell widgets (§225); measured before and after | §17k | ~100 K | After the measurement and one approach |
 | ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md | §17 | ~50 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
@@ -107,6 +111,15 @@ after Kris's explicit yes.
   observation should run on the refit-fixed build. S17f is a feature,
   not a fix, so it goes last. S17g rebuilds the candidate, since the
   tested DMG predates every fix.
+- **S17h–S17k, added 2026-10-12 after S17c (Kris: "anything that
+  can make the app freeze needs to be fixed"):** S17c found more
+  work that outlasts a quit, a crash that skips a task's finish, and
+  a main-thread stall. S17h goes first: small, certain, and its stuck
+  state would confuse S17i's quit tests. S17i before S17j: the
+  playlist download (hours, no stop) is the longest freeze left.
+  S17j's sweep test runs once every long call takes the stop. S17k
+  stands alone. Run order: S17h, S17i, S17j, S17k, then S17f, then
+  S17g.
 
 ---
 
@@ -123,7 +136,7 @@ List your available skills and resolve their real names first.
 | S9 | `tech-debt-tracker` (show the radon counts drop) |
 | S10, S11 | `observability-designer` (what the sweep logs and reports) |
 | S16–S18 | `changelog-generator`, `runbook-generator`, `ship-gate` |
-| S17a–S17f | `tdd` (failing test first); `performance-profiler` for S17b and S17d (measure before and after); `focused-fix` for S17c and S17e |
+| S17a–S17k | `tdd` (failing test first); `performance-profiler` for S17b, S17d and S17k (measure before and after); `focused-fix` for S17c, S17e, S17h–S17j |
 | Any row, optional | `self-eval` before close-out |
 
 If a skill contradicts the brief, follow the skill for **how** and
@@ -205,6 +218,11 @@ Measured in S18's close-out. Each one is a number or a yes/no.
   the sweep, built. Each of the six acceptance failures (S17a–S17f)
   is fixed with a test, or, for S17e alone, documented as AppKit's
   with the observation.
+- Nothing freezes the app (S17h–S17k): every long task stops on quit
+  within the 5 s bound, measured, or the HISTORY entry records why
+  it cannot; item 125 is closed; a deleted button never skips a
+  task's finish (a test); Duplicates' resize step is measured
+  before and after.
 - Every `AUDIT.md` finding is fixed or accepted with a written
   reason. `pip-audit` runs in CI and reports 0.
 - CI is green on the release commit, and branch coverage is at or

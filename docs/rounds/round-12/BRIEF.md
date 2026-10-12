@@ -972,6 +972,135 @@ interpretation; Kris may veto.
 
 **Split point:** after the local matches section (no network).
 
+## §17h–§17k — Nothing freezes the app (added 2026-10-12)
+
+**Kris (2026-10-12, after S17c):** "Anything that can make the app
+freeze needs to be fixed." S17c (HISTORY §226) made fingerprinting and
+both duplicate searches stop on quit and bounded the quit's wait at
+5 s; every other long task still keeps the process alive until it
+ends, because `~QThreadPool` waits for it (the sample in §226). These
+rows close every case S17c's session found, plus one main-thread
+stall. **The pattern is §226's:** a service takes `stop:
+threading.Event | None`, checks it before each item, keeps what is
+done, and a page passes `self._context.quitting`; a wait becomes
+`stop.wait(interval)` instead of `time.sleep(interval)`.
+
+## §17h — A finish handler survives a deleted button (S17h)
+
+**Established (the test account's log, `/Users/Shared/seeker.log`).**
+Four `CRITICAL seeker.ui.error_hooks: Uncaught exception` with
+`RuntimeError: … QPushButton already deleted` at
+`ui/workers.py:_handle_task_finished`'s `button.setEnabled(True)`
+(2026-10-08 18:47, 18:58, 18:59; 2026-10-12 12:22). Read in code: the
+raise skips the rest of the handler, so `on_finished` never runs and
+`_schedule_native_delete(worker)` is never called; `_handle_task_error`
+has the same line. Every one fell during a playlist download (its
+searches logging around it, the download itself still running), so a
+short worker finished after a re-render deleted its button, which
+`ui/CLAUDE.md`'s "`button=None` for a button a rebuild can delete"
+rule forbids. The call site is not identified.
+
+**Hypothesis.** A per-row or poll-rendered button on the Dashboard
+(the page a playlist download runs from) is passed as `button=`.
+
+**Do, one commit each, a failing test first.**
+1. **The handler survives:** a `run_worker` whose button is deleted
+   before it finishes still runs `on_finished` (or `on_error`) and
+   frees its worker. Guard with `shiboken6.isValid(button)`; never a
+   bare `except RuntimeError` around the rest.
+2. **The call site:** find the `button=` that a rebuild can delete
+   (an AST or harness sweep over `run_worker`/`run_busy_worker` calls,
+   or reproduce over the fakes with a poll re-render mid-task), and
+   move it to `button=None` with its busy state in the rendered key.
+   Then check what the user saw: whether a busy action stayed
+   "running" in the activity strip.
+
+**Split point:** after (1).
+
+## §17i — Quit stops the network waits (S17i)
+
+**Established (read in code; times from the log or the constants).**
+- `DownloadService.download_playlist` loops over every unmatched track
+  with no stop (`soulseek/download_service.py:327`); each
+  `search_and_request` took 16–22 s in the log, so a large playlist
+  runs for hours, and a quit waits for all of it.
+- `SoulseekClient.search` polls until `isComplete` or its 45 s
+  timeout with `time.sleep(poll_interval)` (`soulseek/client.py:194`):
+  the sweep stops only between searches, so a quit mid-search waits up
+  to 45 s, past S17c's 5 s bound.
+- Spotify: a rate limit sleeps up to 60 s (`spotify/client.py:198`);
+  `connect_spotify` waits up to `CALLBACK_TIMEOUT_SECONDS` = 300 s for
+  the browser (`spotify/callback_server.py:20`); `refresh_playlists`
+  re-syncs playlist after playlist.
+- Sharing's share-ready poll sleeps up to `SHARE_READY_TIMEOUT_SECONDS`
+  = 120 s (`soulseek/sharing_service.py:595`).
+- slskd's bring-up runs `docker compose up` with a 120 s timeout
+  (`soulseek/docker_setup.py:413`) and a health poll.
+
+**Do, one commit each, a failing test first.**
+1. **The playlist download** stops between tracks; the result says it
+   stopped; requests already made stay made.
+2. **A search's wait** takes the stop (`stop.wait`), so the sweep and
+   the playlist download end mid-search; a stopped search requests
+   nothing.
+3. **Spotify:** the rate-limit wait and the callback wait end on the
+   stop (the callback server shuts down); the sync stops between
+   playlists, each finished playlist kept.
+4. **Sharing's share-ready poll** ends on the stop.
+5. **The slskd bring-up:** measure it first. Never kill `docker
+   compose` mid-recreate without a measured reason; if it cannot
+   stop safely, the quit confirmation says a bring-up is running, and
+   the HISTORY entry records why.
+
+Tests fake the HTTP layer and `subprocess`, never a real API or the
+real `docker` (CLAUDE.md → Testing).
+
+**Split point:** after (2), the playlist download and the search wait.
+
+## §17j — Quit stops library work; a sweep keeps it so (S17j)
+
+**Established (read in code).** `LibraryService.scan_and_match`
+(a 3,615-file first scan took 12 s in the log), `MetadataService.
+tag_tracks`/`tag_playlist` (with Analyze audio, BPM/key per file),
+`apply_renames`, `merge_location` and `remove_location` take no stop.
+
+**Do, one commit each, a failing test first.**
+1. **Scan, tagging, renames:** stop before the next file, never
+   inside one: a tag write goes through `save_tags()` whole, a rename
+   is disk then DB row whole (CLAUDE.md → Database). What is done
+   stays.
+2. **Merge and remove:** measure at production scale on a scratchpad
+   copy of the DB first (§224's recipe); add a stop only if one takes
+   longer than the 5 s bound, between its short batches.
+3. **A sweep test fails the build** when a `run_worker` or
+   `run_busy_worker` call in `ui/` starts a service call that takes a
+   `stop` without passing `quitting`, and lists every call that takes
+   none, each with its measured reason (working agreement 5).
+4. **The window during the bounded wait:** with every long task
+   stoppable, measure a quit mid-task again. If the wait can still
+   show a frozen window, hide the window before `waitForDone`
+   (whether a hide shows without an event-loop turn on Cocoa is
+   UNVERIFIED: observe it).
+5. Update CLAUDE.md's item 125 and the thread pool fact; close item
+   125 if nothing is left.
+
+**Split point:** after (1).
+
+## §17k — Duplicates' resize stall (S17k)
+
+**Established (§225, measured).** Each resize step on Duplicates takes
+~67 ms at 1,800 groups: Qt repositions its 5,400 cell widgets, the
+same as at the round's base. A 30-step fullscreen transition holds
+the main thread about 2 s.
+
+**Do.** Measure the storm first (§225's recipe). Replace the per-row
+cell widgets with a delegate-painted control, or create them only for
+visible rows, whichever measures cheaper, keeping the keyboard access
+and button sweeps green. Measure after; screenshots per §0.13
+(Duplicates, both themes).
+
+**Split point:** after the measurement and one approach.
+
 ## §18 — Publish v0.1.0, close the round (S18)
 
 R11 §42 unchanged. Kris approves the exact `git tag`/`gh release

@@ -555,8 +555,9 @@ Genuinely open only, checked against every CI run on record (187, to
 - **Item 125, a quit hang: fixed for fingerprinting and duplicate
   search, open for work with no stop.** A quit during a scan, match,
   tagging or merge still lasts until it ends (the pool's destructor,
-  above), logged at WARNING by `cleanup_before_quit`. Tagging with
-  audio analysis is the long one left.
+  above), logged at WARNING by `cleanup_before_quit`; so does one
+  during a playlist download (hours), a search (45 s) or a Spotify
+  or Sharing wait. Rows S17i and S17j close them.
   [§125](docs/history/121-150.md#125), [§226](docs/history/211-240.md#226)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
