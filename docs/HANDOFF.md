@@ -19,7 +19,8 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2310 passed, 1 skipped`, 0 failed (was
   2306; S17a added four; only the stress test skipped, CI skips 29).
   `mypy --strict src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** pending for S17a's push (recorded in the follow-up commit).
+- **CI:** run `38243119577` green (`acc8bb2`, check and audit); it
+  covers both of S17a's commits.
 
 ## 2. Where we are
 
