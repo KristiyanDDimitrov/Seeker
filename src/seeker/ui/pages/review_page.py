@@ -739,7 +739,9 @@ class ReviewPage(QWidget):
         run_worker(
             self._context.thread_pool,
             lambda: self._context.application.review_service
-            .apply_upgrade_decisions_batch(request_ids, delete_old),
+            .apply_upgrade_decisions_batch(
+                request_ids, delete_old, stop=self._context.quitting,
+            ),
             button=self.replace_all_upgrades_button,
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",

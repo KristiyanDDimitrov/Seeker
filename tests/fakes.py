@@ -529,7 +529,7 @@ class FakeReviewService:
         return self.apply_upgrade_decision_result if replace else None
 
     def apply_upgrade_decisions_batch(
-            self, request_ids: list[int], delete_old: bool,
+            self, request_ids: list[int], delete_old: bool, stop=None,
     ):
         self.apply_upgrade_decisions_batch_calls.append(
                 (request_ids, delete_old)

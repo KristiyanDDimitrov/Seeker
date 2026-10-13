@@ -6,6 +6,7 @@ by the Review page and the CLI's `check` and `downloads review`."""
 import logging
 import shutil
 import sqlite3
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -62,10 +63,13 @@ class ReviewCandidateMissingSizeError(SeekerError):
 class BulkUpgradeReplaceResult:
     """The real per-row outcome of a "Replace all" batch: a count for
     the UI's headline, plus one detail line per row so a partial
-    failure is never just a bare number (HISTORY §88)."""
+    failure is never just a bare number (HISTORY §88). `stopped`: the
+    batch ended before its last row (Seeker quitting); the rows after
+    the stop stay pending and are in no count."""
     replaced: int
     failed: int
     details: list[str]
+    stopped: bool = False
 
 
 @dataclass(frozen=True)
@@ -477,6 +481,7 @@ class ReviewService:
             self,
             request_ids: list[int],
             delete_old: bool,
+            stop: threading.Event | None = None,
     ) -> BulkUpgradeReplaceResult:
         """"Replace all" pending upgrades — see HISTORY §88 for the
         full design. Applies `apply_upgrade_decision(request_id, True,
@@ -484,13 +489,23 @@ class ReviewService:
         method the CLI and single-row UI action already use. Per-row
         try/except so one bad row can't abort the rest; success is
         checked by re-reading the request's own status afterward, not
-        by parsing the returned message string.
+        by parsing the returned message string. A set `stop` ends the
+        batch before its next row, never inside one.
         """
         replaced = 0
         failed = 0
         details: list[str] = []
+        stopped = False
 
-        for request_id in request_ids:
+        for index, request_id in enumerate(request_ids):
+            if stop is not None and stop.is_set():
+                stopped = True
+                logger.info(
+                    "Replace all stopped after %d of %d upgrades.",
+                    index, len(request_ids),
+                )
+                break
+
             review_details = self.get_upgrade_review_details(request_id)
             label = (
                 f"{review_details.track.artist} - {review_details.track.title}"
@@ -526,4 +541,5 @@ class ReviewService:
 
         return BulkUpgradeReplaceResult(
             replaced=replaced, failed=failed, details=details,
+            stopped=stopped,
         )

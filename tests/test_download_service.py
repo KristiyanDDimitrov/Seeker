@@ -3580,6 +3580,32 @@ def test_apply_upgrade_decisions_batch_replaces_all_successfully(tmp_path):
     assert _ready_for_review_count(service) == 0
 
 
+def test_apply_upgrade_decisions_batch_stops_before_its_next_row(tmp_path):
+    # A stop (Seeker quitting) ends Replace all between rows, never
+    # inside one: a replace moves a file, often across volumes.
+    service, _lib_root = _seed_two_upgrade_scenario(tmp_path)
+    review = review_service_for(service)
+    request_ids = [
+        details.request_id for details in review.get_pending_upgrade_reviews()
+    ]
+    stop = threading.Event()
+    real_apply = review.apply_upgrade_decision
+
+    def apply_then_stop(*args, **kwargs):
+        message = real_apply(*args, **kwargs)
+        stop.set()
+        return message
+
+    review.apply_upgrade_decision = apply_then_stop
+
+    result = review.apply_upgrade_decisions_batch(
+        request_ids, delete_old=False, stop=stop,
+    )
+
+    assert (result.replaced, result.failed, result.stopped) == (1, 0, True)
+    assert _ready_for_review_count(service) == 1
+
+
 def test_apply_upgrade_decisions_batch_reports_partial_failure_and_leaves_it_pending(
         tmp_path,
 ):
