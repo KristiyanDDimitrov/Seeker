@@ -11,51 +11,54 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17f part one's close-out (HISTORY §235). Tree clean.
+- **HEAD:** S17f part two's close-out (HISTORY §236). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2386 passed, 1 skipped`, 0 failed (was
-  2378; eight new tests; the X9 Pro mounted, so its 28 ran; CI skips
-  29). `radon cc -n D` nothing. `mypy --strict src/`
-  clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** run `38444783284` green (`0d52d28`); it covers `559eafc`, `3ba694a` and the close-out.
+- **Local (Cocoa):** pytest `2396 passed, 1 skipped`, 0 failed (was 2386; ten
+  new tests; the X9 Pro mounted, so its 28 ran; CI skips 29). `radon
+  cc -n D` nothing. `mypy --strict src/` clean, 146 files; `ruff
+  check src tests tools` 0.
+- **CI:** pending; the close-out commit records the run.
 
 ## 2. Where we are
 
-**S17f part one is done** (§235): Review's local matches section has
-"Confirm all (N)", asked first. Stopped at the row's split point on
-budget. **Next: S17f part two**, the SoulSeek candidates section's
-Confirm all (network: one `request_download` a row). S17e waits on
-Kris. Then S17g's new candidate and Kris's re-run.
+**S17f is done** (§235, §236): each of Review's three sections has
+its bulk action; the SoulSeek candidates' "Confirm all (N)" asks
+first, requests each row only as shown, and an slskd outage ends the
+batch. S17e waits on Kris. **Next: S17g**, a new candidate from the
+fixed tree, then Kris's re-run of the six failed checks (§9 lists
+small rows Kris may want first).
 
-## 3. Session report (S17f, part one)
+## 3. Session report (S17f, part two)
 
-Evidence in HISTORY §235.
-- `559eafc` `LibraryService.confirm_matches(matches, stop=)` over the
-  shown `NeedsReviewMatch` rows; confirms each only while still
-  `needs_review` with the same file; `ConfirmAllResult` in
-  `models/review_result.py`. 1,000 rows ~0.3 s (scratch DB).
-- `3ba694a` the button, question, notice; a busy action with no
-  button, so the render owns the enabled state.
-- Every new test failed first (3 service, 5 page); the running guard
-  mutation-checked.
-- Screenshots: Review, both themes, both sizes; button beside the
-  title like "Replace all".
+Evidence in HISTORY §236.
+- `cdb2a1a` refactor: `ReviewService._request_candidate`, one
+  confirm's enqueue, shared by the single row and the batch.
+- `e619b51` `ReviewService.confirm_review_candidates(candidates,
+  stop=)` over the shown `(track, candidate)` pairs; a changed
+  candidate or a refused enqueue is a failure left for review; an
+  `httpx.TransportError` ends the batch as `ConfirmAllResult.outage`.
+- `2274290` the button, question ("N downloads will start"), notice
+  (success, warning, or error on an outage).
+- Every new test failed first (4 service, 6 page); the running guard
+  mutation-checked for both sections.
+- Screenshots: Review, both themes, both sizes; the three header
+  buttons align.
 - Skills: `tdd`. Divergence: the batch takes the shown rows, not bare
-  track ids (refuses a changed match).
+  track ids.
 
-## 4. Key context for whoever runs S17f, S17e, S17g or S18
+## 4. Key context for whoever runs S17g, S17e or S18
 
-- **S17f part two mirrors part one** (`review_page.py`:
-  `_render_confirm_all_button`, `CONFIRM_ALL_MATCHES_KEY`;
-  `help_text`'s confirm-all helpers; `ConfirmAllResult`). The
-  service batch should take the shown `(track, candidate)` pairs and
-  refuse one whose stored candidate changed (a sweep can replace it);
-  decide whether a `TransportError` ends the batch (CLAUDE.md: slskd
-  down is an outage). Question text per BRIEF: "N downloads will
-  start". Add the key to `main_window._BUSY_ACTION_LABELS`.
+- **S17g:** RELEASING.md's build steps on the current HEAD, untagged
+  (as `e10aa87` was); record the new SHA-256 in
+  `dist/Seeker.dmg.sha256` and ACCEPTANCE.md, then hand Kris the six
+  failed checks first. Never launch the built app.
+- **Review's bulk actions** all take the rows on screen and refuse a
+  row that changed since (§76, §88, §235, §236). A new one follows
+  `_render_confirm_all_button` and a busy key in
+  `main_window._BUSY_ACTION_LABELS`.
 - **A per-row action takes a `RunningRows`, never `button=`**
   (`ui/CLAUDE.md`; the sweep fails the build). Duplicates shows the
   variant for a button whose enabled state also has a rule of its
@@ -113,17 +116,18 @@ Evidence in HISTORY §235.
 
 ## 6. Blockers
 
-None for S17f part two. S17e waits on Kris reproducing the
-problem with logging on. S18 waits on S17g's re-run.
+None for S17g. S17e waits on Kris reproducing the problem with
+logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17f part one done; part two (SoulSeek candidates) not started.
+None uncommitted. S17f done.
 
 ## 8. Waiting on Kris
 
 For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
-failures"): the veto on Confirm all per section (S17f); live
+failures"): the veto on Confirm all per section (S17f; both buttons
+and their questions are in Review's screenshots); live
 fullscreen checks (S17d on the S17g build: Dashboard, Library,
 Duplicates, fullscreen and back; S17e); on the S17g build, quit while
 Compute fingerprints runs and confirm the app exits within seconds.
