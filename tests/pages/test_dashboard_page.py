@@ -18,6 +18,7 @@ from fakes import (
     make_needs_review_match,
     make_track,
     make_track_status,
+    wait_for_workers,
 )
 from seeker.models.download_result import PlaylistDownloadResult, TrackFailure
 from seeker.models.library_location import LibraryLocation
@@ -2032,3 +2033,51 @@ def test_a_progress_only_poll_keeps_a_table_sorted_by_status(qtbot):
         page.track_table.item(row, 1).text() for row in range(2)
     ] == ["Downloading", "Not found"]
     assert page.track_table.item(0, 1).data(SECONDARY_ROLE) == "50%"
+
+
+def _tag_button(table, track_id):
+    for row in range(table.rowCount()):
+        if table.item(row, 0).data(Qt.ItemDataRole.UserRole) == track_id:
+            return table.cellWidget(row, 3).findChild(QPushButton)
+    raise AssertionError(f"no row for {track_id!r}")
+
+
+def test_a_row_rebuilt_while_its_tag_runs_keeps_tag_disabled(qtbot):
+    # A running download changes a status every few seconds, so the
+    # track table can rebuild while a row's Tag runs. The rebuilt row
+    # must not offer Tag again: a second click writes the same file's
+    # tags from a second thread (HISTORY §227).
+    playlist = Playlist(id="p1", name="Test", track_count=2)
+    application = FakeApplication(
+        playlists=[playlist],
+        statuses=[make_track_status(track_id="t1", state=IN_LIBRARY)],
+    )
+    gate = threading.Event()
+    application.metadata_service.tag_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    table = page.track_table
+    window.playlist_selection.set_playlist(playlist)
+    qtbot.waitUntil(lambda: table.rowCount() == 1)
+
+    try:
+        _tag_button(table, "t1").click()
+        application.dashboard_service._statuses = [
+            make_track_status(track_id="t1", state=IN_LIBRARY),
+            make_track_status(track_id="t2", state=IN_LIBRARY),
+        ]
+        page.poll_selected_playlist()
+        qtbot.waitUntil(lambda: table.rowCount() == 2)
+
+        assert not _tag_button(table, "t1").isEnabled()
+        assert _tag_button(table, "t2").isEnabled()
+    finally:
+        gate.set()
+
+    # Looked up on every poll, never bound once: a rebuild replaces it.
+    def settled() -> bool:
+        return _tag_button(table, "t1").isEnabled()
+
+    qtbot.waitUntil(settled)
+    wait_for_workers(window)

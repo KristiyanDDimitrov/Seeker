@@ -152,10 +152,12 @@ class LibraryPage(QWidget):
     def tag_track(
             self,
             track_id: str,
-            button: QPushButton,
             feedback: FeedbackTarget,
+            on_settled: Callable[[], None],
     ) -> None:
-        self._tagging_panel.tag_track(track_id, button, feedback=feedback)
+        self._tagging_panel.tag_track(
+            track_id, feedback=feedback, on_settled=on_settled,
+        )
 
     def retag_track(self, track_id: str, feedback: FeedbackTarget) -> None:
         self._tagging_panel.retag_track(track_id, feedback=feedback)

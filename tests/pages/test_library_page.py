@@ -208,6 +208,8 @@ def test_bpm_range_partial_input_blocks_the_call_with_an_error(qtbot):
     actions.findChildren(QPushButton)[0].click()
 
     assert application.metadata_service.tag_tracks_calls == []
+    # Nothing ran, so the row's Tag is offered again at once.
+    assert actions.findChildren(QPushButton)[0].isEnabled()
     # Clicked on a Dashboard row, so the error is reported there.
     dashboard_notice = window._dashboard_page.dashboard_notice
     assert "both" in dashboard_notice.text().lower()

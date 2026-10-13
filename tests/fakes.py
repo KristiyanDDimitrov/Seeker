@@ -699,6 +699,9 @@ class FakeMetadataService:
         self.fix_missing_art_for_playlist_calls: list[str] = []
         self.plan_renames_calls: list[str] = []
         self.apply_renames_calls: list[list] = []
+        # When set, tag_tracks() holds the worker until the test sets
+        # it, after recording the call.
+        self.tag_gate: threading.Event | None = None
 
     def tag_tracks(
             self,
@@ -710,6 +713,8 @@ class FakeMetadataService:
         self.tag_tracks_calls.append(
             (track_ids, analyze_audio, expected_bpm_range, force)
         )
+        if self.tag_gate is not None:
+            self.tag_gate.wait(timeout=5)
         return self._tag_result
 
     def tag_playlist(

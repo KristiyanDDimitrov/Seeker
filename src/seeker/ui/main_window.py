@@ -458,8 +458,8 @@ class MainWindow(QMainWindow):
                 ),
                 # Lambdas, not bound methods: the Library page is built
                 # after this one, so the lookup has to wait for a click.
-                tag_track=lambda track_id, button, feedback: (  # noqa: PLW0108
-                    self._library_page.tag_track(track_id, button, feedback)
+                tag_track=lambda track_id, feedback, on_settled: (  # noqa: PLW0108
+                    self._library_page.tag_track(track_id, feedback, on_settled)
                 ),
                 retag_track=lambda track_id, feedback: (  # noqa: PLW0108
                     self._library_page.retag_track(track_id, feedback)

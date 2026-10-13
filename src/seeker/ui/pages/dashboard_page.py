@@ -62,6 +62,7 @@ from seeker.ui.elided_text import (
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
+from seeker.ui.row_actions import RunningRows
 from seeker.ui.settings_window import SETTINGS_TAB_CONNECTIONS, SETTINGS_TAB_LIBRARY
 from seeker.ui.slskd_status import START_SLSKD_TEXT, start_slskd
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
@@ -336,11 +337,12 @@ class DashboardHost:
     argument (an initial tab, a track id to focus) that
     `PageContext.navigate` cannot. The three tag callables reach the
     Library page's TaggingPanel, and take this page's `FeedbackTarget`
-    so the outcome of an action started here is shown here.
+    so the outcome of an action started here is shown here. `tag_track`
+    calls its last argument once the tag ends, whatever the outcome.
     """
     open_settings: Callable[[str], None]
     navigate_to_review: Callable[[str], None]
-    tag_track: Callable[[str, QPushButton, FeedbackTarget], None]
+    tag_track: Callable[[str, FeedbackTarget, Callable[[], None]], None]
     retag_track: Callable[[str, FeedbackTarget], None]
     tag_playlist: Callable[[FeedbackTarget], None]
 
@@ -368,6 +370,9 @@ class DashboardPage(QWidget):
         # What the table's rows were last built from, so a poll tick
         # that changes nothing (or only progress) skips the rebuild.
         self._rendered_track_rows: _RenderedRows | None = None
+        # The rows whose Tag is running, by track id, so a row rebuilt
+        # meanwhile keeps its Tag disabled.
+        self._running_tags: RunningRows[str] = RunningRows()
         # Which segment of _build_track_filter_row is active; "all"
         # shows every status, matching the table's original unfiltered
         # behavior.
@@ -648,10 +653,9 @@ class DashboardPage(QWidget):
         if status.tagged_at is None:
             tag_button = QPushButton("Tag")
             tag_button.setToolTip(help_text.TOOLTIP_TAG_TRACK_ROW)
+            self._running_tags.bind(track_id, tag_button)
             tag_button.clicked.connect(
-                lambda: self._host.tag_track(
-                    track_id, tag_button, self.feedback,
-                )
+                lambda: self._on_tag_track_clicked(track_id, tag_button)
             )
             return theme.cell_widget(
                 tag_button,
@@ -664,6 +668,15 @@ class DashboardPage(QWidget):
             plain_tooltip(f"Tagged {format_timestamp(status.tagged_at)}"),
         )
         return theme.cell_widget(tagged_label)
+
+    def _on_tag_track_clicked(
+            self, track_id: str, button: QPushButton,
+    ) -> None:
+        self._running_tags.start(track_id, button)
+        self._host.tag_track(
+            track_id, self.feedback,
+            lambda: self._running_tags.settle(track_id),
+        )
 
     def _on_track_table_context_menu(self, position: Any) -> None:
         row = self.track_table.rowAt(position.y())

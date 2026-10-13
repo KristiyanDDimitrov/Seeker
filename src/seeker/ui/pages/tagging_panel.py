@@ -296,25 +296,32 @@ class TaggingPanel(QWidget):
         else:
             feedback.notice.show_message(message, kind=kind)
 
-    # Called directly by the Dashboard's own track_table row
-    # Actions-column button (`_build_track_actions`, still in
-    # main_window.py — the track_table itself hasn't moved) — same
-    # "reach the private method on the page/panel object directly"
-    # pattern History/Sharing already established for a cross-widget
-    # call, not a public rename.
+    # The Dashboard's per-row Tag, through LibraryPage.tag_track. No
+    # button=: the Dashboard's table can rebuild while the tag runs, so
+    # the caller keeps the row's running state, and `on_settled`
+    # (called once on every outcome, a refused option too) ends it.
     def tag_track(
             self,
             track_id: str,
-            button: QPushButton,
             feedback: FeedbackTarget | None = None,
+            on_settled: Callable[[], None] = lambda: None,
     ) -> None:
         target = feedback or self._host.feedback
 
         try:
             analyze_audio, bpm_range, force = self._resolve_tag_options()
         except ValueError as error:
+            on_settled()
             target.show_error(str(error))
             return
+
+        def finished(result: TagResult) -> None:
+            on_settled()
+            self._render_tag_result(result, target)
+
+        def failed(message: str) -> None:
+            on_settled()
+            target.show_error(message)
 
         run_worker(
             self._context.thread_pool,
@@ -324,9 +331,8 @@ class TaggingPanel(QWidget):
                 expected_bpm_range=bpm_range,
                 force=force,
             ),
-            button=button,
-            on_finished=lambda result: self._render_tag_result(result, target),
-            on_error=target.show_error,
+            on_finished=finished,
+            on_error=failed,
         )
 
     # Called directly by the Dashboard's own track_table context menu
