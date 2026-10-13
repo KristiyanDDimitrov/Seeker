@@ -28,8 +28,8 @@ from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
+from seeker.ui.row_actions import RunningRows
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
-from seeker.ui.workers import run_worker
 
 
 # Same "resolve by real header text, not a shared literal" precedent
@@ -143,6 +143,10 @@ class SearchPage(QWidget):
         self._search_artist = ""
         self._search_title = ""
         self._search_files: list[SoulseekFile] = []
+        # The picked files still being requested, by (peer, remote
+        # path): a new search rebuilds the rows, and one that brings the
+        # same file back keeps its Download disabled.
+        self._running_picks: RunningRows[tuple[str, str]] = RunningRows()
 
         page = build_page("Search", help_text.SEARCH_TAB_SUBTITLE, content)
         outer_layout = QVBoxLayout(self)
@@ -269,6 +273,7 @@ class SearchPage(QWidget):
     def _build_search_result_actions(self, file: SoulseekFile) -> QWidget:
         download_button = QPushButton("Download")
         download_button.setToolTip(help_text.TOOLTIP_DOWNLOAD_THIS_ONE)
+        self._running_picks.bind((file.username, file.filename), download_button)
         download_button.clicked.connect(
             lambda: self._on_download_this_one_clicked(file, download_button)
         )
@@ -302,18 +307,16 @@ class SearchPage(QWidget):
     def _on_download_this_one_clicked(
             self, file: SoulseekFile, button: QPushButton,
     ) -> None:
-        # A per-row action on an ephemeral, per-render button — managed
-        # directly via run_worker's own button= disable/re-enable, the
-        # same pattern _on_confirm_review_candidate uses, rather than
-        # the shared "download_manual" busy_actions key (which
-        # "Download best" above already owns, and which only tracks
-        # ONE persistent button per key).
+        # A per-row action on a per-render button, so its running state
+        # is kept by file, not by the button, rather than the shared
+        # "download_manual" busy_actions key (which "Download best"
+        # above already owns, and which tracks ONE persistent button).
         artist, title = self._search_artist, self._search_title
-        run_worker(
-            self._context.thread_pool,
+        self._running_picks.run(
+            self._context.thread_pool, (file.username, file.filename),
+            (button,),
             lambda: self._context.application.download_service
             .download_manual(artist, title, chosen=file),
-            button=button,
             status_label=self.search_status_label,
             on_finished=self._on_manual_download_finished,
             on_error=self._on_manual_download_error,

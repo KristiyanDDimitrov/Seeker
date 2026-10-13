@@ -371,3 +371,64 @@ def test_a_failed_search_reports_on_the_notice(qtbot):
     qtbot.waitUntil(
         lambda: "SoulSeek search failed" in page.notice.text(), timeout=2000,
     )
+
+
+def test_a_new_search_while_a_pick_downloads_keeps_its_row_disabled(qtbot):
+    # A new search rebuilds the results while a row's Download may
+    # still run. A file that comes back again must not be offered
+    # again until it ends: a second click requests it twice
+    # (HISTORY §227).
+    from seeker.models.soulseek_file import SoulseekFile
+
+    def peer_file(username: str) -> SoulseekFile:
+        return SoulseekFile(
+            username=username, filename="Dom Dolla - Rhyme Dust.flac",
+            extension="flac", size=25_000_000, queue_length=0,
+            upload_speed=1_000_000, has_free_upload_slot=True,
+        )
+
+    application = FakeApplication()
+    application.download_service._search_manual_results = [peer_file("peer1")]
+    application.download_service._download_manual_result = (
+        ManualDownloadResult(
+            track_id="manual:fake", requested=True, settled=True,
+            username="peer1", filename="Dom Dolla - Rhyme Dust.flac",
+        )
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window._show_page("search")
+    page = window._search_page
+    table = page.search_results_table
+    page.search_artist_edit.setText("Dom Dolla")
+    page.search_title_edit.setText("Rhyme Dust")
+    page._on_search_clicked()
+    qtbot.waitUntil(lambda: table.rowCount() == 1)
+
+    def download_button(username: str) -> QPushButton:
+        peer_column = _search_column(window, "Peer")
+        actions_column = _search_column(window, "Actions")
+        for row in range(table.rowCount()):
+            if table.item(row, peer_column).text() == username:
+                return table.cellWidget(row, actions_column).findChild(
+                    QPushButton,
+                )
+        raise AssertionError(f"no row from {username!r}")
+
+    gate = threading.Event()
+    application.download_service._download_manual_gate = gate
+    try:
+        download_button("peer1").click()
+        application.download_service._search_manual_results = [
+            peer_file("peer1"), peer_file("peer2"),
+        ]
+        page._on_search_clicked()
+        qtbot.waitUntil(lambda: table.rowCount() == 2)
+
+        assert not download_button("peer1").isEnabled()
+        assert download_button("peer2").isEnabled()
+    finally:
+        gate.set()
+
+    qtbot.waitUntil(lambda: "Requested from peer1" in page.notice.text())
+    assert download_button("peer1").isEnabled()
