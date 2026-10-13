@@ -149,6 +149,9 @@ class FakeWizard:
     def show(self):
         self.shown = True
 
+    def stop_for_quit(self):
+        pass
+
 
 @dataclass
 class FakeSettings:
@@ -259,13 +262,17 @@ def test_first_launch_shows_the_wizard_then_opens_the_dashboard(
     assert FakeMainWindow.instances == []
     # Closing the wizard before finishing must still quit the app.
     assert run.qt_app.quit_on_last_window_closed is True
+    # A quit ends the wizard's wait for Spotify's browser approval.
+    assert run.qt_app.aboutToQuit.slots == [wizard.stop_for_quit]
 
     wizard.on_complete()
 
     (dashboard,) = FakeMainWindow.instances
     assert dashboard.calls == ["show"]
     assert run.qt_app.quit_on_last_window_closed is False
-    assert run.qt_app.aboutToQuit.slots == [dashboard.cleanup_before_quit]
+    assert run.qt_app.aboutToQuit.slots == [
+        wizard.stop_for_quit, dashboard.cleanup_before_quit,
+    ]
 
 
 def test_seeker_debug_poll_turns_on_the_gui_poll_trace(

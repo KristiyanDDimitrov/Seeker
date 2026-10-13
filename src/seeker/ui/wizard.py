@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -397,6 +398,20 @@ class OnboardingWizard(QMainWindow):
             ),
             on_finished=lambda _: self._continue_past_library_step(),
         )
+
+    def stop_for_quit(self) -> None:
+        """End the wait for Spotify's browser approval: it runs on this
+        wizard's own pool, whose destructor holds the process at exit
+        until the wait ends (up to 300 s, HISTORY §231). main_ui
+        connects it to aboutToQuit."""
+        self.spotify_authorization_wait.cancel()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        # Closing the wizard quits the app, and aboutToQuit no longer
+        # reaches a closed WA_DeleteOnClose window's slot (observed,
+        # HISTORY §231), so the close ends the wait itself.
+        self.stop_for_quit()
+        super().closeEvent(event)
 
     def offer_library_share(self, location: LibraryLocation) -> None:
         """Offers the SoulSeek step's checkbox for `location`, the folder

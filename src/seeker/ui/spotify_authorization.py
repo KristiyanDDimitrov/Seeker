@@ -113,9 +113,16 @@ class SpotifyAuthorizationWait(QWidget):
         if on_error is not None and not cancel.is_set():
             on_error(message)
 
-    def _on_cancel_clicked(self) -> None:
+    def cancel(self) -> None:
+        """End a running attempt's wait for the browser, as its Cancel
+        button does. Touches no widget, so a host whose window is
+        already closed can call it on quit."""
         if self._cancel is not None:
             self._cancel.set()
+
+    def _on_cancel_clicked(self) -> None:
+        if self._cancel is not None:
+            self.cancel()
             self.cancel_button.setEnabled(False)
 
     def _end(self) -> None:

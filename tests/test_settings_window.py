@@ -1830,6 +1830,34 @@ def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
     assert calls == ["mistyped-client-id"]
 
 
+def test_quit_ends_a_reauthorize_wait(qtbot, monkeypatch):
+    # The browser wait lasts up to 300 s on Settings' own pool, whose
+    # destructor holds the process at exit until it ends.
+    application = FakeApplication()
+    started = threading.Event()
+    cancelled: list[bool] = []
+
+    def fake_connect_spotify(client_id, force_reauthorize=False, cancel=None):
+        started.set()
+        cancelled.append(cancel.wait(timeout=5.0))
+        raise AuthorizationCancelledError
+
+    monkeypatch.setattr(
+        application, "connect_spotify", fake_connect_spotify, raising=False,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    settings = window.settings_page
+    settings.spotify_client_id_field.setText("client-id")
+    settings.reauthorize_spotify_button.click()
+    qtbot.waitUntil(started.is_set, timeout=2000)
+
+    window.cleanup_before_quit()
+
+    assert settings.thread_pool.waitForDone(2000)
+    assert cancelled == [True]
+
+
 def _shown_notice(window) -> InlineNotice | None:
     for notice in window.findChildren(InlineNotice):
         if not notice.isHidden():

@@ -1263,6 +1263,7 @@ class MainWindow(QMainWindow):
         self.sweep_timer.stop()
         self._sweep_scheduler.stop()
         self._quitting.set()
+        self.settings_page.stop_for_quit()
 
         # Unlike window geometry, there is no hide-to-tray visibility
         # race to guard against: the Review page's splitter keeps

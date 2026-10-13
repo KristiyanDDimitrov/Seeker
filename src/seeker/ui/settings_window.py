@@ -196,6 +196,12 @@ class SettingsPage(QWidget):
         self._refresh_destinations()
         self._refresh_connection_display()
 
+    def stop_for_quit(self) -> None:
+        """End a Re-authorize's wait for the browser: it runs on this
+        page's own pool, whose destructor holds the process at exit
+        until the wait ends (up to 300 s, HISTORY §231)."""
+        self.spotify_authorization_wait.cancel()
+
     def select_tab(self, tab_name: str) -> None:
         """Switches to the named tab — used both at construction time
         (initial_tab above) and after construction, since this page is

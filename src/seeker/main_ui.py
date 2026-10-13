@@ -122,6 +122,7 @@ def main() -> None:
             open_windows.dashboard = dashboard
 
         window = OnboardingWizard(application, on_complete=show_dashboard)
+        qt_app.aboutToQuit.connect(window.stop_for_quit)
 
     if not started_hidden:
         # A relaunch honors the same "came back filled or windowed,

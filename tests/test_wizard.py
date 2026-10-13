@@ -1,6 +1,7 @@
 import threading
 
 import pytest
+from PySide6.QtCore import Qt
 
 from fakes import wait_for_workers
 from seeker.application import Application
@@ -1160,6 +1161,41 @@ def _blocking_connect_spotify(started: threading.Event, calls: list[str]):
         raise AuthorizationCancelledError
 
     return fake
+
+
+@pytest.mark.parametrize("quit_by", ["close", "stop_for_quit"])
+def test_quit_ends_the_wait_for_spotify(
+        qtbot, tmp_path, monkeypatch, quit_by,
+):
+    # The browser wait lasts up to 300 s on the wizard's own pool,
+    # whose destructor holds the process at exit until it ends. Closing
+    # the wizard quits the app; a quit reaches stop_for_quit through
+    # aboutToQuit.
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    application = make_application(tmp_path, monkeypatch)
+    started = threading.Event()
+    calls: list[str] = []
+    monkeypatch.setattr(
+        application,
+        "connect_spotify",
+        _blocking_connect_spotify(started, calls),
+    )
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+    # Kept alive past close(), so the attempt's finish handler, which
+    # the real quit never reaches, has a live widget to end on.
+    wizard.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    wizard.client_id_field.setText("client-id")
+    wizard.connect_button.click()
+    qtbot.waitUntil(started.is_set, timeout=2000)
+
+    getattr(wizard, quit_by)()
+
+    assert wizard.thread_pool.waitForDone(2000)
+    qtbot.waitUntil(
+        wizard.spotify_authorization_wait.isHidden, timeout=2000,
+    )
 
 
 def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
