@@ -21,7 +21,7 @@ nine fields below follow the contract in
   are `@requires_x9_pro`, the drive unmounted this session, as on
   CI). `mypy --strict src/` clean, 145 files; `ruff check src tests
   tools` 0.
-- **CI:** see section 3 (S17h.2's push).
+- **CI:** run `38401536964` green (`a909c4c`).
 
 ## 2. Where we are
 
@@ -52,7 +52,7 @@ Evidence in HISTORY §228.
   BRIEF says "busy state in the rendered key"; `RunningRows` binds a
   rebuilt row's buttons instead, so a click or a task's end needs no
   rebuild (which would kill a hovered tooltip, §195). Same outcome.
-- CI: run `CI_RUN_ID` CI_RESULT (`CI_SHA`).
+- CI: run `38401536964` green (`a909c4c`); it covers every S17h.2 commit and the close-out.
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
