@@ -20,7 +20,7 @@ nine fields below follow the contract in
   2378; eight new tests; the X9 Pro mounted, so its 28 ran; CI skips
   29). `radon cc -n D` nothing. `mypy --strict src/`
   clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** see the close-out commit's run (recorded after push).
+- **CI:** run `38444783284` green (`0d52d28`); it covers `559eafc`, `3ba694a` and the close-out.
 
 ## 2. Where we are
 
