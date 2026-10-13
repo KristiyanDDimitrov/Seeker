@@ -962,3 +962,149 @@ def test_confirm_all_matches_stays_disabled_while_it_runs(qtbot, monkeypatch):
 
     qtbot.waitUntil(lambda: page.notice.text() != "")
     qtbot.waitUntil(page.confirm_all_matches_button.isEnabled)
+
+
+# --- "Confirm all" SoulSeek candidates ---------------------------------------
+
+def test_confirm_all_candidates_counts_the_rows_and_is_disabled_at_none(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    wait_for_workers(window)
+
+    assert not page.confirm_all_candidates_button.isEnabled()
+    assert page.confirm_all_candidates_button.text() == "Confirm all"
+
+    _seed_candidates(application, ["t1", "t2"])
+    page.poll_review_items()
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+
+    assert page.confirm_all_candidates_button.isEnabled()
+    assert page.confirm_all_candidates_button.text() == "Confirm all (2)"
+
+
+def test_confirm_all_candidates_asks_then_requests_the_rows_shown(
+        qtbot, monkeypatch,
+):
+    asked = _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_candidates(application, ["t1", "t2"])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+
+    page.confirm_all_candidates_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    assert application.review_service.confirm_review_candidates_calls == [
+        ["t1", "t2"],
+    ]
+    [(_title, text)] = asked
+    assert "2 downloads will start" in text
+    assert page.notice.text() == (
+        "Confirmed 2 SoulSeek candidates. Their downloads are on the "
+        "Downloads page."
+    )
+    assert page.notice.property("variant") == "success"
+
+
+def test_confirm_all_candidates_declined_requests_nothing(qtbot, monkeypatch):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.No)
+    application = FakeApplication()
+    _seed_candidates(application, ["t1"])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+
+    page.confirm_all_candidates_button.click()
+    wait_for_workers(window)
+
+    assert application.review_service.confirm_review_candidates_calls == []
+
+
+def test_confirm_all_candidates_names_each_failure_on_the_notice(
+        qtbot, monkeypatch,
+):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_candidates(application, ["t1", "t2"])
+    application.review_service.confirm_review_candidates_result = (
+        ConfirmAllResult(
+            confirmed=1,
+            failures=[TrackFailure("Artist - Title", "Peer is offline.")],
+        )
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+
+    page.confirm_all_candidates_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    text = page.notice.text()
+    assert text.startswith(
+        "Confirmed 1 SoulSeek candidate. Its download is on the Downloads "
+        "page. 1 failed",
+    )
+    assert "Artist - Title: Peer is offline." in text
+    assert page.notice.property("variant") == "warning"
+
+
+def test_confirm_all_candidates_reports_an_outage_as_an_error(
+        qtbot, monkeypatch,
+):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_candidates(application, ["t1", "t2"])
+    application.review_service.confirm_review_candidates_result = (
+        ConfirmAllResult(confirmed=0, outage="SoulSeek isn't reachable.")
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+
+    page.confirm_all_candidates_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    assert page.notice.text() == (
+        "Confirmed 0 SoulSeek candidates. SoulSeek isn't reachable. The "
+        "rest stayed for review."
+    )
+    assert page.notice.property("variant") == "error"
+
+
+def test_confirm_all_candidates_stays_disabled_while_it_runs(
+        qtbot, monkeypatch,
+):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_candidates(application, ["t1"])
+    gate = threading.Event()
+    application.review_service.decision_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+
+    try:
+        page.confirm_all_candidates_button.click()
+        qtbot.waitUntil(
+            lambda: application.review_service
+            .confirm_review_candidates_calls != [],
+        )
+        _seed_candidates(application, ["t1", "t2"])
+        page.poll_review_items()
+        qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+
+        assert not page.confirm_all_candidates_button.isEnabled()
+        assert page.confirm_all_candidates_button.text() == "Confirm all (2)"
+    finally:
+        gate.set()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(page.confirm_all_candidates_button.isEnabled)

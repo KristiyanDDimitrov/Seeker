@@ -487,6 +487,10 @@ class FakeReviewService:
         self._confirm_review_candidate_error = confirm_review_candidate_error
         self.confirm_review_candidate_calls: list[str] = []
         self.reject_review_candidate_calls: list[str] = []
+        # Each confirm_review_candidates() batch, as its track ids.
+        self.confirm_review_candidates_calls: list[list[str]] = []
+        # What confirm_review_candidates() returns; all confirmed if None.
+        self.confirm_review_candidates_result: ConfirmAllResult | None = None
         # When set, a per-row decision (confirm, reject, an upgrade's
         # replace or decline) holds the worker until the test sets it,
         # after recording the call.
@@ -521,6 +525,17 @@ class FakeReviewService:
 
         self.confirm_review_candidate_calls.append(track_id)
         self._hold_decision()
+
+    def confirm_review_candidates(
+            self, candidates: list, stop=None,
+    ) -> ConfirmAllResult:
+        self.confirm_review_candidates_calls.append(
+            [track.id for track, _candidate in candidates],
+        )
+        self._hold_decision()
+        if self.confirm_review_candidates_result is not None:
+            return self.confirm_review_candidates_result
+        return ConfirmAllResult(confirmed=len(candidates))
 
     def reject_review_candidate(self, track_id: str) -> None:
         self.reject_review_candidate_calls.append(track_id)

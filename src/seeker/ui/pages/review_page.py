@@ -93,9 +93,10 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
 
-# The busy action a section's "Confirm all" runs under: the activity
-# strip shows it, and the section's render keeps the button disabled
-# while it runs.
+# The busy actions the sections' "Confirm all" buttons run under: the
+# activity strip shows each, and its section's render keeps the button
+# disabled while it runs.
+CONFIRM_ALL_CANDIDATES_KEY = "confirm_all_candidates"
 CONFIRM_ALL_MATCHES_KEY = "confirm_all_matches"
 
 _NEEDS_TITLE = "SoulSeek candidates to confirm"
@@ -179,9 +180,21 @@ class ReviewPage(QWidget):
         needs_section = QWidget()
         needs_layout = QVBoxLayout(needs_section)
         needs_layout.setContentsMargins(0, 0, 0, 0)
+        needs_header_row = QHBoxLayout()
         self.review_needs_title = PlainLabel(_NEEDS_TITLE)
         self.review_needs_title.setObjectName("sectionHeaderLabel")
-        needs_layout.addWidget(self.review_needs_title)
+        needs_header_row.addWidget(self.review_needs_title)
+        needs_header_row.addStretch()
+        self.confirm_all_candidates_button = QPushButton("Confirm all")
+        self.confirm_all_candidates_button.setToolTip(
+            help_text.TOOLTIP_CONFIRM_ALL_CANDIDATES,
+        )
+        self.confirm_all_candidates_button.setEnabled(False)
+        self.confirm_all_candidates_button.clicked.connect(
+            self._on_confirm_all_candidates_clicked,
+        )
+        needs_header_row.addWidget(self.confirm_all_candidates_button)
+        needs_layout.addLayout(needs_header_row)
 
         self.review_needs_table = QTableWidget(0, 5)
         self.review_needs_table.setHorizontalHeaderLabels(
@@ -286,6 +299,7 @@ class ReviewPage(QWidget):
         # only rows still present on every render (HISTORY §86).
         self._upgrade_delete_checked: set[int] = set()
         self._current_pending_upgrades: PendingUpgrades = []
+        self._current_candidates: NeedsReviewCandidates = []
         self._current_local_matches: list[NeedsReviewMatch] = []
         self._rendered_candidates: _RenderedCandidates | None = None
         self._rendered_upgrades: _RenderedUpgrades | None = None
@@ -430,11 +444,19 @@ class ReviewPage(QWidget):
             self,
             candidates: NeedsReviewCandidates,
     ) -> None:
+        # What "Confirm all" acts on, kept while hidden too.
+        self._current_candidates = candidates
+
         # Counts/notifications are already computed by the caller
         # (_render_review_items) before this runs; the table rebuild
         # itself is pure waste while hidden (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
+
+        self._render_confirm_all_button(
+            self.confirm_all_candidates_button, CONFIRM_ALL_CANDIDATES_KEY,
+            len(candidates),
+        )
 
         rendered = tuple(candidates)
         if rendered == self._rendered_candidates:
@@ -957,6 +979,42 @@ class ReviewPage(QWidget):
             kind=help_text.confirm_all_result_kind(result),
         )
         self._on_local_review_decision_finished(None)
+
+    def _on_confirm_all_candidates_clicked(self) -> None:
+        # The rows on screen now (HISTORY §76, §88); the service
+        # requests each only while its candidate is still the one shown.
+        candidates = list(self._current_candidates)
+
+        if not candidates:
+            return
+
+        answer = plain_text.question(
+            self, help_text.CONFIRM_ALL_CANDIDATES_TITLE,
+            help_text.format_confirm_all_candidates_question(len(candidates)),
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self.confirm_all_candidates_button.setEnabled(False)
+        self._context.run_busy_worker(
+            CONFIRM_ALL_CANDIDATES_KEY, None,
+            lambda: self._context.application.review_service
+            .confirm_review_candidates(
+                candidates, stop=self._context.quitting,
+            ),
+            on_finished=self._on_confirm_all_candidates_finished,
+            on_error=self._on_confirm_all_failed,
+        )
+
+    def _on_confirm_all_candidates_finished(
+            self, result: ConfirmAllResult,
+    ) -> None:
+        self.notice.show_message(
+            help_text.format_confirm_all_candidates_result(result),
+            kind=help_text.confirm_all_result_kind(result),
+        )
+        self.poll_review_items()
 
     def _on_confirm_all_failed(self, message: str) -> None:
         self.notice.show_message(message, kind="error")

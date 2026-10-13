@@ -806,7 +806,44 @@ def format_confirm_all_matches_result(result: ConfirmAllResult) -> str:
     )
 
 
+TOOLTIP_CONFIRM_ALL_CANDIDATES = (
+    "Download every SoulSeek candidate shown, all at once. Asks first."
+)
+CONFIRM_ALL_CANDIDATES_TITLE = "Confirm All SoulSeek Candidates"
+
+
+def _candidate_noun(count: int) -> str:
+    return "candidate" if count == 1 else "candidates"
+
+
+def format_confirm_all_candidates_question(count: int) -> str:
+    downloads = "download" if count == 1 else "downloads"
+    return (
+        f"Confirm all {count} SoulSeek {_candidate_noun(count)}?\n\n"
+        f"{count} {downloads} will start: each file shown is requested "
+        f"from its peer and moves into your library when it finishes. "
+        f"Any that can't be requested stay here for review."
+    )
+
+
+def format_confirm_all_candidates_result(result: ConfirmAllResult) -> str:
+    text = (
+        f"Confirmed {result.confirmed} SoulSeek "
+        f"{_candidate_noun(result.confirmed)}."
+    )
+    if result.confirmed == 1:
+        text += " Its download is on the Downloads page."
+    elif result.confirmed > 1:
+        text += " Their downloads are on the Downloads page."
+    text += _confirm_all_failures(result)
+    if result.outage is not None:
+        text += f" {result.outage} The rest stayed for review."
+    return text
+
+
 def confirm_all_result_kind(result: ConfirmAllResult) -> str:
+    if result.outage is not None:
+        return "error"
     return "warning" if result.failures else "success"
 
 
