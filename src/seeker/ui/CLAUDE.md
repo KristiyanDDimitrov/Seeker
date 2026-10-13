@@ -91,6 +91,7 @@ investigation.
   never crashes a finish (`run_worker`'s handlers and
   `BusyActionRegistry.end` skip it).
   [HISTORY §227](../../../docs/history/211-240.md#227),
+  [HISTORY §228](../../../docs/history/211-240.md#228),
   [HISTORY §195](../../../docs/history/181-210.md#195),
   [HISTORY §204](../../../docs/history/181-210.md#204),
   [HISTORY §205](../../../docs/history/181-210.md#205)

@@ -11,52 +11,55 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17h part one's close-out (HISTORY §227). Tree clean.
+- **HEAD:** S17h part two's close-out (HISTORY §228). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2323 passed, 1 skipped`, 0 failed (was 2320; S17h.1 added
-  three; only the stress test skipped, CI skips 29). `mypy --strict
-  src/` clean, 144 files; `ruff check src tests tools` 0.
-- **CI:** run `38267307987` green (`3cba14d`); it covers §17h.1 and the close-out.
+- **Local (Cocoa):** pytest `2305 passed, 29 skipped`, 0 failed (was
+  2323 passed, 1 skipped; S17h.2 added ten tests; the 28 extra skips
+  are `@requires_x9_pro`, the drive unmounted this session, as on
+  CI). `mypy --strict src/` clean, 145 files; `ruff check src tests
+  tools` 0.
+- **CI:** see section 3 (S17h.2's push).
 
 ## 2. Where we are
 
-**S17h stopped at its split point** (§227): §17h.1 is done, so a
-deleted button no longer skips a task's finish. **Next: §17h.2**, the
-call sites, then S17i, S17j, S17k, then S17f; S17e waits on Kris's
-run with logging. Then S17g's new candidate and Kris's re-run.
+**S17h is done** (§227, §228): a deleted button no longer skips a
+task's finish, and no per-row action is offered twice while it runs.
+**Next: S17i** (quit stops the network waits), then S17j, S17k, then
+S17f; S17e waits on Kris's run with logging. Then S17g's new
+candidate and Kris's re-run.
 
-## 3. Session report (S17h, part one)
+## 3. Session report (S17h, part two)
 
-Evidence in HISTORY §227.
-- The log ties the crashes to Review: task 3663, a Review Confirm,
-  failed on slskd's `429` 0.5 s before the 18:58:41 CRITICAL; Review's
-  tables rebuild on every row change, which a running download makes
-  every ~20 s.
-- `abdeba6` (§17h.1): `run_worker`'s finish and error handlers and
-  `BusyActionRegistry.end` skip a button `shiboken6` reports deleted,
-  then run the callback and free the worker. Failed on `HEAD`: the
-  callback never ran (`assert [] == ['done']`), the registry raised.
-- Stopped at the split point: §17h.2 touches Review's three tables,
-  Tag, Search and Duplicates plus a sweep test, more than the row's
-  remaining budget.
-- Skills: `tdd`. Divergence, as in S17c: `tdd` asks to confirm the
-  seams with the user; BRIEF §17h names them (`run_worker`'s
-  handlers), so they were taken as agreed.
+Evidence in HISTORY §228.
+- The eight per-row task buttons (Review's five, the Dashboard's
+  Tag, Search's Download, Duplicates' Delete) came back enabled when
+  their row was rebuilt mid-task, so a second click ran the action
+  twice (a second download request, file move, tag write, delete).
+  Reproduced over the fakes with a gate; nothing stayed "running" in
+  the activity strip (all plain `run_worker`s).
+- `208e861` Review, `ce9a218` Dashboard Tag, `8c685b5` Search,
+  `30afcb7` Duplicates: `ui/row_actions.RunningRows` keeps the
+  running state by row key. Each test failed on its parent with
+  `assert not True` (the rebuilt button enabled).
+- `f52c7a4`: a sweep fails any task button that is not a `self.`
+  attribute or `None`; against `caea82c` it lists exactly the eight.
+- Skills: `tdd`, `focused-fix`. Divergence, as in part one: `tdd`
+  asks to confirm the seams with the user; BRIEF §17h.2 names the
+  call sites and the fix's shape, so they were taken as agreed. The
+  BRIEF says "busy state in the rendered key"; `RunningRows` binds a
+  rebuilt row's buttons instead, so a click or a task's end needs no
+  rebuild (which would kill a hovered tooltip, §195). Same outcome.
+- CI: run `CI_RUN_ID` CI_RESULT (`CI_SHA`).
 
-## 4. Key context for whoever runs S17h.2–S17k, S17e–S17g or S18
+## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
-- **§17h.2's call sites are listed in HISTORY §227 → "Not done"**
-  (an AST scan; the script is a dozen lines over `ast.Call` named
-  `run_worker`/`run_busy_worker`, `button=` keyword or positional).
-  Review's five are the confirmed site, the Dashboard's per-row Tag
-  (`tagging_panel.tag_track`) the BRIEF's hypothesis. Downloads'
-  `_ROW_ACTION_KEYS` is the precedent; Review's rows are per track,
-  so its key is likely the set of track ids in flight. A sweep test
-  could fail any `button=` that is not a `self.` attribute, its
-  exceptions named (working agreement 5).
+- **A per-row action takes a `RunningRows`, never `button=`**
+  (`ui/CLAUDE.md`; the sweep fails the build). Duplicates shows the
+  variant for a button whose enabled state also has a rule of its
+  own: keep the rule per row and reapply it at start and end.
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
 - **Long work that should stop on quit takes `stop:
@@ -102,7 +105,7 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. §17h.2 not started.
+None uncommitted. S17i not started.
 
 ## 8. Waiting on Kris
 
@@ -118,6 +121,11 @@ the sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- Review's "Replace all" and Duplicates' "Resolve all groups" pass
+  `button=` with a render-decided enabled state (the §145 rule), and
+  an upgrade's Replace has no `on_error` (§228 → "Not done"). Fix in
+  a small row before S17g?
 
 - The test account's log has slskd answering `429 Too Many Requests`
   on `POST /api/v0/transfers/downloads/batches` during a playlist
