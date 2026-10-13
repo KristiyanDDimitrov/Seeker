@@ -20,7 +20,7 @@ nine fields below follow the contract in
   2305; S17i added five tests; the 29 skips are the stress test plus
   28 `@requires_x9_pro`, the drive unmounted, as on CI). `mypy
   --strict src/` clean, 145 files; `ruff check src tests tools` 0.
-- **CI:** see §3.
+- **CI:** run `38405494229` green (`c0c150d`).
 
 ## 2. Where we are
 
@@ -50,7 +50,7 @@ Evidence in HISTORY §229.
   (`AttributeError`): §17i.2's class was added while the run was in
   flight, and the sweep re-parses the source. On HEAD it passes.
 - Skills: `tdd`, `focused-fix`. No divergence.
-- CI: pushed after this close-out; run id in the commit after it.
+- CI: run `38405494229` green (`c0c150d`); it covers both S17i commits and the close-out.
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
