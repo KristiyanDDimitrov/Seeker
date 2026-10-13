@@ -1331,7 +1331,9 @@ class DashboardPage(QWidget):
         # result once the whole call finishes.
         self._context.run_busy_worker(
             "scan", self.scan_button,
-            self._context.application.library_service.scan_and_match,
+            lambda: self._context.application.library_service.scan_and_match(
+                stop=self._context.quitting,
+            ),
             busy_text="Scanning…",
             on_finished=self._on_scan_and_match_finished,
             on_error=self.feedback.show_error,

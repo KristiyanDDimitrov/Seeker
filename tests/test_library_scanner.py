@@ -1,3 +1,4 @@
+import threading
 import wave
 
 import pytest
@@ -11,12 +12,14 @@ from seeker.database.repositories.library_location_repository import (
 from seeker.database.repositories.local_file_repository import (
     LocalFileRepository,
 )
+from seeker.library import scanner as scanner_module
 from seeker.library.scanner import (
     LibraryScanner,
     LibraryUnavailableError,
     index_single_file,
 )
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import ScanResult
 
 
 def test_scan_raises_when_location_path_does_not_exist(tmp_path):
@@ -260,3 +263,68 @@ def test_index_single_file_records_embedded_art(tmp_path):
         )
 
     assert indexed.has_art is True
+
+
+def _indexed_paths(database, local_files):
+    with database.transaction() as connection:
+        return sorted(
+            local_file.relative_path
+            for local_file in local_files.get_all(connection)
+        )
+
+
+def test_a_stopped_scan_keeps_what_it_read_and_removes_nothing(
+        tmp_path, monkeypatch,
+):
+    # A stop ends the walk before its next file. The files read so far
+    # are written; the "no longer on disk" removal never runs, since a
+    # file the walk had not reached is not missing.
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    for name in ("a.wav", "b.wav", "c.wav"):
+        _write_wav(library_root / name, with_art=False)
+
+    database, local_files, scanner, location = _scan_location(
+        tmp_path, library_root,
+    )
+    scanner.scan(location)
+    _write_wav(library_root / "d.wav", with_art=False)
+    _write_wav(library_root / "e.wav", with_art=False)
+    for name in ("a.wav", "b.wav", "c.wav"):
+        (library_root / name).unlink()
+
+    stop = threading.Event()
+    real_read = scanner_module._read_local_file
+
+    def read_then_stop(*args, **kwargs):
+        stop.set()
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(scanner_module, "_read_local_file", read_then_stop)
+
+    summary = scanner.scan(location, stop=stop)
+
+    assert summary.stopped is True
+    assert (summary.added, summary.removed) == (1, 0)
+    indexed = _indexed_paths(database, local_files)
+    assert indexed[:3] == ["a.wav", "b.wav", "c.wav"]
+    assert len(indexed) == 4
+
+
+def test_a_scan_stopped_before_it_starts_changes_nothing(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    _write_wav(library_root / "a.wav", with_art=False)
+
+    database, local_files, scanner, location = _scan_location(
+        tmp_path, library_root,
+    )
+    scanner.scan(location)
+    (library_root / "a.wav").unlink()
+    stop = threading.Event()
+    stop.set()
+
+    summary = scanner.scan(location, stop=stop)
+
+    assert summary == ScanResult(stopped=True)
+    assert _indexed_paths(database, local_files) == ["a.wav"]

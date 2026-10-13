@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import pytest
@@ -390,6 +391,53 @@ def test_scan_and_match_chains_scan_then_match_in_one_call(tmp_path):
 
     assert stored is not None
     assert stored.match_method == "auto"
+
+
+def test_a_stopped_scan_all_scans_no_further_location(tmp_path):
+    root_a = tmp_path / "music-a"
+    root_b = tmp_path / "music-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    (root_a / "one.mp3").write_bytes(b"not real audio")
+    (root_b / "two.mp3").write_bytes(b"not real audio")
+
+    service = make_service(tmp_path)
+    service.add_location("a", str(root_a))
+    service.add_location("b", str(root_b))
+    stop = threading.Event()
+    real_scan = service.scanner.scan
+
+    def scan_then_stop(location, stop=None):
+        result = real_scan(location, stop=stop)
+        stop.set()
+        return result
+
+    service.scanner.scan = scan_then_stop
+
+    totals = service.scan_all(stop=stop)
+
+    assert totals == ScanResult(added=1, stopped=True)
+    with service.database.transaction() as connection:
+        assert len(service.local_files.get_all(connection)) == 1
+
+
+def test_scan_and_match_skips_the_match_after_a_stopped_scan(tmp_path):
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    (library_root / "3AMDISCO - Get Back.wav").write_bytes(b"not real audio")
+
+    service = make_service_with_matcher(tmp_path)
+    service.add_location("main", str(library_root))
+    stop = threading.Event()
+    stop.set()
+    matched = []
+    service.track_matcher.match_all = lambda: matched.append(True)
+
+    result = service.scan_and_match(stop=stop)
+
+    assert result.scan == ScanResult(stopped=True)
+    assert result.match == MatchResult()
+    assert matched == []
 
 
 # --- Roadmap item 56 Phase 2: local-file needs-review flow --------------

@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,7 +46,16 @@ class LibraryScanner:
         self.local_files = local_files
         self.database = database
 
-    def scan(self, location: LibraryLocation) -> ScanResult:
+    def scan(
+            self,
+            location: LibraryLocation,
+            stop: threading.Event | None = None,
+    ) -> ScanResult:
+        """Index every audio file under `location`, and drop the rows of
+        files no longer there. A set `stop` ends the walk before its
+        next file: what was read is written, and nothing is removed,
+        since a file the walk never reached is not missing.
+        """
         # location always comes from LibraryLocationRepository here (the
         # only real caller is LibraryService.scan_all, iterating rows
         # already fetched from the DB), so .id is always populated —
@@ -56,6 +66,9 @@ class LibraryScanner:
 
         if not root.is_dir():
             raise LibraryUnavailableError(root)
+
+        if stop is not None and stop.is_set():
+            return ScanResult(stopped=True)
 
         logger.info("Scanning library location '%s': %s", location.name, root)
 
@@ -70,7 +83,7 @@ class LibraryScanner:
         added = 0
         updated = 0
         unchanged = 0
-        seen_relative_paths = set()
+        seen_relative_paths: set[str] = set()
         pending: list[LocalFile] = []
 
         # Tags are read outside any transaction and written in short
@@ -79,6 +92,17 @@ class LibraryScanner:
         # otherwise wait out SQLite's 5-second busy timeout and fail
         # with "database is locked" (measured: HISTORY §142).
         for relative_path in _walk_audio_files(root):
+            if stop is not None and stop.is_set():
+                self._write(pending)
+                logger.info(
+                    "Scan of '%s' stopped after %d file(s).",
+                    location.name, len(seen_relative_paths),
+                )
+                return ScanResult(
+                    added=added, updated=updated, unchanged=unchanged,
+                    stopped=True,
+                )
+
             seen_relative_paths.add(relative_path)
 
             file_path = root / relative_path

@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,7 +41,11 @@ from seeker.library.nesting import (
 )
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
 from seeker.models.library_location import LibraryLocation
-from seeker.models.library_result import ScanAndMatchResult, ScanResult
+from seeker.models.library_result import (
+    MatchResult,
+    ScanAndMatchResult,
+    ScanResult,
+)
 from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
@@ -596,7 +601,10 @@ class LibraryService:
 
         return self.playlists
 
-    def scan_all(self) -> ScanResult:
+    def scan_all(self, stop: threading.Event | None = None) -> ScanResult:
+        """Scan every reachable location in turn; a set `stop` ends the
+        scan before its next file (`LibraryScanner.scan`) and scans no
+        further location."""
         totals = ScanResult()
 
         with self.database.transaction() as connection:
@@ -615,14 +623,20 @@ class LibraryService:
                 )
                 continue
 
-            totals += self.scanner.scan(location)
+            totals += self.scanner.scan(location, stop=stop)
+
+            if totals.stopped:
+                break
 
         return totals
 
-    def scan_and_match(self) -> ScanAndMatchResult:
+    def scan_and_match(
+            self, stop: threading.Event | None = None,
+    ) -> ScanAndMatchResult:
         """Chains a full scan into a match pass in one call, so newly
         scanned files never sit without a track_matches row until a
-        separate "Match tracks" click.
+        separate "Match tracks" click. A scan that `stop` ended is not
+        matched.
         """
         if self.track_matcher is None:
             raise RuntimeError(
@@ -630,7 +644,11 @@ class LibraryService:
                 "LibraryService was constructed without one."
             )
 
-        scan = self.scan_all()
+        scan = self.scan_all(stop=stop)
+
+        if scan.stopped:
+            return ScanAndMatchResult(scan=scan, match=MatchResult())
+
         match = self.track_matcher.match_all()
 
         return ScanAndMatchResult(scan=scan, match=match)

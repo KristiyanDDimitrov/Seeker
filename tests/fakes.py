@@ -175,7 +175,7 @@ class FakeLibraryService:
     def scan_all(self) -> None:
         self.scan_all_calls += 1
 
-    def scan_and_match(self) -> ScanAndMatchResult:
+    def scan_and_match(self, stop=None) -> ScanAndMatchResult:
         self.scan_and_match_calls += 1
         self._has_scanned_library = True
         if self.scan_gate is not None:

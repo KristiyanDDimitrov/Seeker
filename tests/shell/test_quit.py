@@ -13,6 +13,7 @@ from fakes import (
     FakeApplication,
     FakeDownloadService,
     FakeDuplicateService,
+    FakeLibraryService,
     force_tray_available,
 )
 from seeker.models.active_download import ActiveDownload
@@ -20,6 +21,11 @@ from seeker.models.download_request import DownloadRequest
 from seeker.models.download_result import PlaylistDownloadResult
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
+from seeker.models.library_result import (
+    MatchResult,
+    ScanAndMatchResult,
+    ScanResult,
+)
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.ui import window_lifecycle
@@ -386,6 +392,50 @@ def test_quit_stops_a_running_playlist_download(qtbot, monkeypatch):
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("download"),
         timeout=2000,
+    )
+
+
+class _UntilStoppedLibraryService(FakeLibraryService):
+    """A scan that lasts until it is stopped, bounded at 5 s so a
+    missing stop fails the test instead of hanging the suite."""
+
+    def __init__(self, location: LibraryLocation) -> None:
+        super().__init__(locations=[location])
+        self.started = threading.Event()
+        self.stopped = False
+
+    def scan_and_match(self, stop=None) -> ScanAndMatchResult:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return ScanAndMatchResult(
+            scan=ScanResult(stopped=self.stopped), match=MatchResult(),
+        )
+
+
+def test_quit_stops_a_running_library_scan(qtbot, monkeypatch):
+    # A first scan reads every file's tags (3,615 files took 12 s in
+    # the test account's log; a slow drive takes longer).
+    force_tray_available(monkeypatch, True)
+    location = LibraryLocation(
+        id=1, name="Main", path="/music",
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(locations=[(location, True)])
+    service = _UntilStoppedLibraryService(location)
+    application.library_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    qtbot.waitUntil(page.scan_button.isEnabled, timeout=2000)
+
+    page.scan_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("scan"), timeout=2000,
     )
 
 

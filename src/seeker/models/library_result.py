@@ -5,11 +5,13 @@ from dataclasses import dataclass
 class ScanResult:
     """What one scan did to the `local_files` index: every file walked
     lands in exactly one of added, updated or unchanged; `removed` counts
-    rows whose file was no longer found."""
+    rows whose file was no longer found. `stopped`: the scan ended
+    before its walk did (Seeker quitting), so nothing was removed."""
     added: int = 0
     updated: int = 0
     removed: int = 0
     unchanged: int = 0
+    stopped: bool = False
 
     def __add__(self, other: "ScanResult") -> "ScanResult":
         return ScanResult(
@@ -17,6 +19,7 @@ class ScanResult:
             updated=self.updated + other.updated,
             removed=self.removed + other.removed,
             unchanged=self.unchanged + other.unchanged,
+            stopped=self.stopped or other.stopped,
         )
 
 
