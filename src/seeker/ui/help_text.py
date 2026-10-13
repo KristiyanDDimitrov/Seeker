@@ -28,6 +28,7 @@ from seeker.models.leftover_result import LeftoverCleanup, LeftoverListing
 from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.nested_location import NestedLocation
+from seeker.models.review_result import ConfirmAllResult
 from seeker.models.spotify_sync import PlaylistRefreshResult
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.soulseek.leftovers import RECENTLY_WRITTEN_SECONDS
@@ -767,6 +768,46 @@ def format_bulk_replace_upgrades_result(result: Any) -> str:
     lines = [f"Replaced: {result.replaced}, Failed: {result.failed}."]
     lines.extend(f"  {detail}" for detail in result.details)
     return "\n".join(lines)
+
+
+TOOLTIP_CONFIRM_ALL_MATCHES = (
+    "Confirm every local match shown, all at once. Asks first."
+)
+CONFIRM_ALL_MATCHES_TITLE = "Confirm All Local Matches"
+
+
+def _match_noun(count: int) -> str:
+    return "match" if count == 1 else "matches"
+
+
+def format_confirm_all_matches_question(count: int) -> str:
+    return (
+        f"Confirm all {count} local {_match_noun(count)}?\n\n"
+        f"{count} {_match_noun(count)} will be kept: each track stays "
+        f"paired with the file shown, and later match runs leave it "
+        f"alone. No file on disk is changed."
+    )
+
+
+def _confirm_all_failures(result: ConfirmAllResult) -> str:
+    if not result.failures:
+        return ""
+    return (
+        f" {result.failed} failed and stayed for review: "
+        f"{_list_failures(result.failures)}."
+    )
+
+
+def format_confirm_all_matches_result(result: ConfirmAllResult) -> str:
+    return (
+        f"Confirmed {result.confirmed} local "
+        f"{_match_noun(result.confirmed)}."
+        + _confirm_all_failures(result)
+    )
+
+
+def confirm_all_result_kind(result: ConfirmAllResult) -> str:
+    return "warning" if result.failures else "success"
 
 
 TOOLTIP_RESOLVE_ALL_DUPLICATES = (

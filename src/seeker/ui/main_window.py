@@ -61,6 +61,7 @@ from seeker.ui.pages.duplicates_page import DuplicatesPage
 from seeker.ui.pages.history_page import HistoryPage
 from seeker.ui.pages.library_page import LibraryHost, LibraryPage
 from seeker.ui.pages.review_page import (
+    CONFIRM_ALL_MATCHES_KEY,
     ReviewHost,
     ReviewPage,
 )
@@ -146,6 +147,7 @@ _BUSY_ACTION_LABELS: dict[str, str] = {
     RETRY_DOWNLOAD_KEY: "Searching again…",
     CANCEL_DOWNLOAD_KEY: "Cancelling download…",
     CLEAN_UP_LEFTOVERS_KEY: "Cleaning up leftover files…",
+    CONFIRM_ALL_MATCHES_KEY: "Confirming local matches…",
 }
 
 

@@ -41,6 +41,7 @@ from seeker.models.library_result import (
 from seeker.models.local_file import LocalFile
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist, PlaylistSummary
+from seeker.models.review_result import ConfirmAllResult
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.sweep_result import SweepResult
@@ -163,6 +164,10 @@ class FakeLibraryService:
         self._needs_review_matches = needs_review_matches or []
         self.confirm_match_calls: list[str] = []
         self.reject_match_calls: list[str] = []
+        # Each confirm_matches() batch, as the track ids it was given.
+        self.confirm_matches_calls: list[list[str]] = []
+        # What confirm_matches() returns; every row confirmed when None.
+        self.confirm_matches_result: ConfirmAllResult | None = None
         # When set, confirm_match() and reject_match() hold the worker
         # until the test sets it, after recording the call.
         self.decision_gate: threading.Event | None = None
@@ -190,6 +195,15 @@ class FakeLibraryService:
     def confirm_match(self, track_id: str) -> None:
         self.confirm_match_calls.append(track_id)
         self._hold_decision()
+
+    def confirm_matches(self, matches: list, stop=None) -> ConfirmAllResult:
+        self.confirm_matches_calls.append(
+            [match.track_id for match in matches],
+        )
+        self._hold_decision()
+        if self.confirm_matches_result is not None:
+            return self.confirm_matches_result
+        return ConfirmAllResult(confirmed=len(matches))
 
     def reject_match(self, track_id: str) -> None:
         self.reject_match_calls.append(track_id)

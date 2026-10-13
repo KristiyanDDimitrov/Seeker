@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QHBoxLayout,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
 
 from seeker.formatting import remote_basename
 from seeker.models.needs_review_match import NeedsReviewMatch
+from seeker.models.review_result import ConfirmAllResult
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.upgrade_review import UpgradeReviewDetails
@@ -90,6 +92,11 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # layout's bare minimum otherwise, which is a header row with no visible
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
+
+# The busy action a section's "Confirm all" runs under: the activity
+# strip shows it, and the section's render keeps the button disabled
+# while it runs.
+CONFIRM_ALL_MATCHES_KEY = "confirm_all_matches"
 
 _NEEDS_TITLE = "SoulSeek candidates to confirm"
 _UPGRADES_TITLE = "Downloaded upgrades to review"
@@ -232,9 +239,21 @@ class ReviewPage(QWidget):
         local_section = QWidget()
         local_layout = QVBoxLayout(local_section)
         local_layout.setContentsMargins(0, 0, 0, 0)
+        local_header_row = QHBoxLayout()
         self.review_local_title = PlainLabel(_LOCAL_TITLE)
         self.review_local_title.setObjectName("sectionHeaderLabel")
-        local_layout.addWidget(self.review_local_title)
+        local_header_row.addWidget(self.review_local_title)
+        local_header_row.addStretch()
+        self.confirm_all_matches_button = QPushButton("Confirm all")
+        self.confirm_all_matches_button.setToolTip(
+            help_text.TOOLTIP_CONFIRM_ALL_MATCHES,
+        )
+        self.confirm_all_matches_button.setEnabled(False)
+        self.confirm_all_matches_button.clicked.connect(
+            self._on_confirm_all_matches_clicked,
+        )
+        local_header_row.addWidget(self.confirm_all_matches_button)
+        local_layout.addLayout(local_header_row)
 
         self.review_local_table = QTableWidget(0, 5)
         self.review_local_table.setHorizontalHeaderLabels(
@@ -267,6 +286,7 @@ class ReviewPage(QWidget):
         # only rows still present on every render (HISTORY §86).
         self._upgrade_delete_checked: set[int] = set()
         self._current_pending_upgrades: PendingUpgrades = []
+        self._current_local_matches: list[NeedsReviewMatch] = []
         self._rendered_candidates: _RenderedCandidates | None = None
         self._rendered_upgrades: _RenderedUpgrades | None = None
         self._rendered_matches: _RenderedMatches | None = None
@@ -767,10 +787,19 @@ class ReviewPage(QWidget):
             self,
             matches: list[NeedsReviewMatch],
     ) -> None:
+        # What "Confirm all" acts on, kept while hidden too, like
+        # _render_pending_upgrades' list.
+        self._current_local_matches = matches
+
         # The table rebuild itself is pure waste while hidden
         # (HISTORY §90).
         if self._context.is_hidden_to_tray():
             return
+
+        self._render_confirm_all_button(
+            self.confirm_all_matches_button, CONFIRM_ALL_MATCHES_KEY,
+            len(matches),
+        )
 
         rendered = tuple(matches)
         if rendered == self._rendered_matches:
@@ -882,6 +911,56 @@ class ReviewPage(QWidget):
     def _on_local_review_decision_finished(self, _result: None) -> None:
         self.poll_review_items()
         self._host.refresh_track_table()
+
+    def _render_confirm_all_button(
+            self, button: QPushButton, key: str, count: int,
+    ) -> None:
+        # The render alone owns this button's enabled state, so a batch
+        # runs with no button of its own (HISTORY §145): one the
+        # registry re-enabled at the end would offer a list the next
+        # render may already have emptied.
+        button.setText(f"Confirm all ({count})" if count else "Confirm all")
+        button.setEnabled(
+            count > 0 and not self._context.busy_actions.is_running(key),
+        )
+
+    def _on_confirm_all_matches_clicked(self) -> None:
+        # The rows on screen now, never a plan from an earlier click
+        # (HISTORY §76, §88); the service confirms each only as shown.
+        matches = list(self._current_local_matches)
+
+        if not matches:
+            return
+
+        answer = plain_text.question(
+            self, help_text.CONFIRM_ALL_MATCHES_TITLE,
+            help_text.format_confirm_all_matches_question(len(matches)),
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self.confirm_all_matches_button.setEnabled(False)
+        self._context.run_busy_worker(
+            CONFIRM_ALL_MATCHES_KEY, None,
+            lambda: self._context.application.library_service
+            .confirm_matches(matches, stop=self._context.quitting),
+            on_finished=self._on_confirm_all_matches_finished,
+            on_error=self._on_confirm_all_failed,
+        )
+
+    def _on_confirm_all_matches_finished(
+            self, result: ConfirmAllResult,
+    ) -> None:
+        self.notice.show_message(
+            help_text.format_confirm_all_matches_result(result),
+            kind=help_text.confirm_all_result_kind(result),
+        )
+        self._on_local_review_decision_finished(None)
+
+    def _on_confirm_all_failed(self, message: str) -> None:
+        self.notice.show_message(message, kind="error")
+        self.poll_review_items()
 
     def _focus_pending_review_row(self) -> None:
         # Double-clicking a

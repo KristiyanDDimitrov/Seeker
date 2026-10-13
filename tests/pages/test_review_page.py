@@ -19,7 +19,7 @@ from dataclasses import replace
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
+from PySide6.QtWidgets import QCheckBox, QDialog, QMessageBox, QPushButton
 
 from fakes import (
     FakeApplication,
@@ -29,6 +29,8 @@ from fakes import (
     make_upgrade_details,
     wait_for_workers,
 )
+from seeker.models.download_result import TrackFailure
+from seeker.models.review_result import ConfirmAllResult
 from seeker.ui import help_text, plain_text
 from seeker.ui.dialogs import BulkReplaceUpgradesDialog
 from seeker.ui.elided_text import SECONDARY_ROLE
@@ -837,3 +839,126 @@ def test_a_row_rebuilt_while_its_decision_runs_stays_disabled(
 
     qtbot.waitUntil(settled)
     wait_for_workers(window)
+
+
+# --- "Confirm all" local matches ---------------------------------------------
+
+def _answer_question(monkeypatch, answer):
+    """Answers Confirm all's question with `answer`; returns the
+    (title, text) of every question asked."""
+    asked = []
+
+    def fake_question(parent, title, text):
+        asked.append((title, text))
+        return answer
+
+    monkeypatch.setattr(plain_text, "question", fake_question)
+    return asked
+
+
+def test_confirm_all_matches_counts_the_rows_and_is_disabled_at_none(qtbot):
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    wait_for_workers(window)
+
+    assert not page.confirm_all_matches_button.isEnabled()
+    assert page.confirm_all_matches_button.text() == "Confirm all"
+
+    _seed_matches(application, ["t1", "t2"])
+    page.poll_review_items()
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+
+    assert page.confirm_all_matches_button.isEnabled()
+    assert page.confirm_all_matches_button.text() == "Confirm all (2)"
+
+
+def test_confirm_all_matches_asks_then_confirms_the_rows_shown(
+        qtbot, monkeypatch,
+):
+    asked = _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_matches(application, ["t1", "t2"])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+
+    page.confirm_all_matches_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    assert application.library_service.confirm_matches_calls == [["t1", "t2"]]
+    [(_title, text)] = asked
+    assert "2 matches will be kept" in text
+    assert page.notice.text() == "Confirmed 2 local matches."
+
+
+def test_confirm_all_matches_declined_confirms_nothing(qtbot, monkeypatch):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.No)
+    application = FakeApplication()
+    _seed_matches(application, ["t1"])
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+
+    page.confirm_all_matches_button.click()
+    wait_for_workers(window)
+
+    assert application.library_service.confirm_matches_calls == []
+
+
+def test_confirm_all_matches_names_each_failure_on_the_notice(
+        qtbot, monkeypatch,
+):
+    _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_matches(application, ["t1", "t2"])
+    application.library_service.confirm_matches_result = ConfirmAllResult(
+        confirmed=1,
+        failures=[TrackFailure("Artist - Title", "It changed.")],
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+
+    page.confirm_all_matches_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    text = page.notice.text()
+    assert text.startswith("Confirmed 1 local match. 1 failed")
+    assert "Artist - Title: It changed." in text
+    assert page.notice.property("variant") == "warning"
+
+
+def test_confirm_all_matches_stays_disabled_while_it_runs(qtbot, monkeypatch):
+    # The 2 s poll renders the section while the batch runs; the
+    # button must not offer the batch again meanwhile.
+    _answer_question(monkeypatch, QMessageBox.StandardButton.Yes)
+    application = FakeApplication()
+    _seed_matches(application, ["t1"])
+    gate = threading.Event()
+    application.library_service.decision_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+
+    try:
+        page.confirm_all_matches_button.click()
+        qtbot.waitUntil(
+            lambda: application.library_service.confirm_matches_calls != [],
+        )
+        _seed_matches(application, ["t1", "t2"])
+        page.poll_review_items()
+        qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+
+        assert not page.confirm_all_matches_button.isEnabled()
+        assert page.confirm_all_matches_button.text() == "Confirm all (2)"
+    finally:
+        gate.set()
+
+    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(page.confirm_all_matches_button.isEnabled)
