@@ -1178,7 +1178,7 @@ class DuplicatesPage(QWidget):
         run_worker(
             self._context.thread_pool,
             lambda: self._context.application.duplicate_service.resolve_groups(
-                plans,
+                plans, stop=self._context.quitting,
             ),
             button=self.resolve_all_duplicates_button,
             status_label=self.duplicates_status_label,

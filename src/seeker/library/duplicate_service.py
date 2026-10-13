@@ -176,7 +176,9 @@ class BulkDuplicateResolutionResult:
     lets a caller that also tracks per-group UI state (e.g. dropping a
     fully-resolved group from an in-memory list without a full re-fetch)
     know exactly which plans actually succeeded, rather than inferring
-    it from the aggregate counts alone."""
+    it from the aggregate counts alone. `stopped`: the batch ended
+    before its last group (Seeker quitting); each group not attempted
+    is False in `plan_outcomes` and in no count."""
     groups_resolved: int
     groups_failed: int
     files_deleted: int
@@ -190,6 +192,7 @@ class BulkDuplicateResolutionResult:
     bytes_freed: int
     details: list[str]
     plan_outcomes: list[bool]
+    stopped: bool = False
 
 
 def _path_within_folder(
@@ -681,7 +684,9 @@ class DuplicateService:
         return {**counts, "details": details, "bytes_freed": bytes_freed}
 
     def resolve_groups(
-            self, plans: list[GroupResolutionPlan],
+            self,
+            plans: list[GroupResolutionPlan],
+            stop: threading.Event | None = None,
     ) -> BulkDuplicateResolutionResult:
         """"Resolve all groups". Applies `delete_local_files()` per plan
         (one per group the caller decided to resolve — a "Keep all"
@@ -690,7 +695,8 @@ class DuplicateService:
         try/except, so one group's total failure can't abort the rest —
         `delete_local_files` already has its own per-FILE try/except
         underneath this, so a failure here means the whole group call
-        raised, not just one file within it.
+        raised, not just one file within it. A set `stop` ends the batch
+        before its next group, never inside one.
         """
         groups_resolved = 0
         groups_failed = 0
@@ -700,8 +706,18 @@ class DuplicateService:
         bytes_freed = 0
         details: list[str] = []
         plan_outcomes: list[bool] = []
+        stopped = False
 
-        for plan in plans:
+        for index, plan in enumerate(plans):
+            if stop is not None and stop.is_set():
+                stopped = True
+                plan_outcomes += [False] * (len(plans) - index)
+                logger.info(
+                    "Resolving duplicate groups stopped after %d of %d.",
+                    index, len(plans),
+                )
+                break
+
             try:
                 result = self.delete_local_files(
                     plan.delete_local_file_ids,
@@ -753,6 +769,7 @@ class DuplicateService:
             bytes_freed=bytes_freed,
             details=details,
             plan_outcomes=plan_outcomes,
+            stopped=stopped,
         )
 
     def record_cleanup(

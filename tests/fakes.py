@@ -356,7 +356,7 @@ class FakeDuplicateService:
     def get_cleanup_totals(self) -> tuple[int, int]:
         return self._cleanup_totals
 
-    def resolve_groups(self, plans: list):
+    def resolve_groups(self, plans: list, stop=None):
         self.resolve_groups_calls.append(list(plans))
         return self.resolve_groups_result
 

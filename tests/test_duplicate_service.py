@@ -1380,3 +1380,47 @@ def test_count_files_for_scopes_real_count_before_a_real_run(tmp_path):
 
     assert count_a == 2
     assert count_whole == 3
+
+
+def test_resolve_groups_stops_before_its_next_group(tmp_path):
+    # A stop (Seeker quitting) ends the batch between groups, never
+    # inside one. A group not attempted reads as not resolved, so the
+    # page keeps showing it.
+    from seeker.library.duplicate_service import GroupResolutionPlan
+
+    database = make_database(tmp_path)
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    location = register_location(database, music_dir)
+    files = {}
+    for name in ("a1", "a2", "b1", "b2"):
+        (music_dir / f"{name}.wav").write_bytes(b"12345")
+        files[name] = add_local_file(
+            database, location, f"{name}.wav", "wav", 3000,
+        )
+    service = make_service(database)
+    stop = threading.Event()
+    real_delete = service.delete_local_files
+
+    def delete_then_stop(*args, **kwargs):
+        result = real_delete(*args, **kwargs)
+        stop.set()
+        return result
+
+    service.delete_local_files = delete_then_stop
+    plans = [
+        GroupResolutionPlan(
+            delete_local_file_ids=[files[f"{group}2"].id],
+            keep_local_file_id=files[f"{group}1"].id,
+            location_id=location.id,
+        )
+        for group in ("a", "b")
+    ]
+
+    result = service.resolve_groups(plans, stop=stop)
+
+    assert result.stopped is True
+    assert result.plan_outcomes == [True, False]
+    assert (result.groups_resolved, result.groups_failed) == (1, 0)
+    assert not (music_dir / "a2.wav").exists()
+    assert (music_dir / "b2.wav").exists()
