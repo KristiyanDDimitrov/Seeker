@@ -11,46 +11,40 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17i part one's close-out (HISTORY §229). Tree clean.
+- **HEAD:** S17i part two (first slice)'s close-out (HISTORY §230).
+  Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2310 passed, 29 skipped`, 0 failed (was
-  2305; S17i added five tests; the 29 skips are the stress test plus
-  28 `@requires_x9_pro`, the drive unmounted, as on CI). `mypy
-  --strict src/` clean, 145 files; `ruff check src tests tools` 0.
-- **CI:** run `38405494229` green (`c0c150d`).
+- **Local (Cocoa):** pytest `2314 passed, 29 skipped`, 0 failed (was
+  2310; four new tests; the 29 skips are the stress test plus 28
+  `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
+  files; `ruff check src tests tools` 0.
+- **CI:** see §3.
 
 ## 2. Where we are
 
-**S17i part one is done** (§229): a playlist download stops between
-tracks on quit, and a search's 45 s wait ends on the stop, so the
-playlist download and the sweep end mid-search. Stopped at the row's
-split point (after §17i.2) on budget. **Next: S17i part two**
-(§17i.3 Spotify, §17i.4 Sharing, §17i.5 the bring-up, measured
-first; plus manual search and Retry, below), then S17j, S17k, S17f;
-S17e waits on Kris. Then S17g's new candidate and Kris's re-run.
+**S17i part two's first slice is done** (§230): the Search page's
+manual search and Downloads' Retry end their 45 s wait on quit.
+Stopped on budget (~125 K of 150 K) at a clean commit. **Next: S17i
+part two continued:** §17i.3 Spotify (start with the pools finding
+in §4), §17i.4 Sharing, §17i.5 the bring-up, measured first. Then
+S17j, S17k, S17f; S17e waits on Kris. Then S17g's new candidate and
+Kris's re-run.
 
-## 3. Session report (S17i, part one)
+## 3. Session report (S17i, part two, first slice)
 
-Evidence in HISTORY §229.
-- `7c8b5de` (§17i.1): `download_playlist(..., stop=)`, checked before
-  each track; `PlaylistDownloadResult.stopped`; requests made stay.
-  The Dashboard passes `PageContext.quitting`. A shell test in
-  `tests/shell/test_quit.py` failed on its parent (`service.stopped`
-  False after `cleanup_before_quit`).
-- `222a217` (§17i.2): `SoulseekClient.search(..., stop=)` waits
-  `stop.wait(poll_interval)` and raises `SearchStoppedError` before
-  the responses fetch; `search_and_request` passes it; the playlist
-  download and the sweep count it as `stopped`. Client, service and
-  sweep tests failed on the parent (the stop never reached the
-  search).
-- The baseline run showed one failure, `test_errors::test_every_public_error_class_is_a_seeker_error`
-  (`AttributeError`): §17i.2's class was added while the run was in
-  flight, and the sweep re-parses the source. On HEAD it passes.
-- Skills: `tdd`, `focused-fix`. No divergence.
-- CI: run `38405494229` green (`c0c150d`); it covers both S17i commits and the close-out.
+Evidence in HISTORY §230.
+- `332f488`: `search_manual(..., stop=)`, `retry_download(...,
+  stop=)`; the pages pass `PageContext.quitting`. Two service tests
+  failed on the parent with `TypeError` on `stop`; two page tests
+  (`test_search_page.py`, `test_downloads_page.py`:
+  `test_quit_stops_a_running_search`/`_retry`) with `assert False` on
+  `service.stopped`.
+- Skills: `tdd`. Divergence: the seams were taken from BRIEF §17i
+  rather than confirmed with Kris (the skill asks for that).
+- CI: pending at the time of writing; the next session checks it.
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
@@ -60,13 +54,18 @@ Evidence in HISTORY §229.
   own: keep the rule per row and reapply it at start and end.
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
-- **Part two's two extra paths:** the Search page's `search_manual`
-  and Downloads' Retry (`retry_download` → `search_and_request`) wait
-  up to 45 s in `SoulseekClient.search` with no stop. Thread `stop`
-  through both and pass `self._context.quitting`; a stopped search
-  raises `SearchStoppedError`, whose message the page's `on_error`
-  would show (moot on quit). `download_manual` with `files=None` is
-  CLI-only (the page passes its results).
+- **§17i.3 starts with a finding (§230):** `SettingsPage` and
+  `OnboardingWizard` each own a `QThreadPool()`
+  (`settings_window.py:157`, `wizard.py:100`), outside
+  `cleanup_before_quit`'s bounded wait. Spotify's login wait already
+  ends on `connect_spotify(cancel=)`; nothing sets it on quit. Measure
+  whether those pools' destructors hold the exit (UNVERIFIED), then
+  choose: a public quit hook on the page/wizard that cancels the
+  wait, and/or `MainWindow.thread_pool` for Settings (CLAUDE.md:
+  every `run_worker` gets it). The rate-limit `time.sleep` in
+  `spotify/client.py::_get` follows §17i.2's shape (a `stop` through
+  `_get`/`_get_all_pages`, a stopped error beside the client;
+  `refresh_playlists` keeps each finished playlist).
 - **Long work that should stop on quit takes `stop:
   threading.Event | None`** and a page passes `self._context.quitting`.
   The scan, match, tagging and merge take none yet (§226 → "Not
@@ -110,8 +109,8 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17i stopped at its split point: §17i.1–2 done,
-§17i.3–5 not started.
+None uncommitted. S17i: §17i.1–2 and the manual search/Retry slice
+done; §17i.3–5 not started.
 
 ## 8. Waiting on Kris
 
