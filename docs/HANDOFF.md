@@ -20,7 +20,7 @@ nine fields below follow the contract in
   2377; one new test; the X9 Pro was mounted, so its 28 tests ran; CI
   skips 29 as before). `mypy --strict src/` clean, 145 files; `ruff
   check src tests tools` 0; `radon cc -n D` nothing.
-- **CI:** see §3 (the push of `0bb83a2` … close-out).
+- **CI:** run `38440973195` green (`8d0a9b7`); it covers `0bb83a2`, `7682fc7` and the close-out.
 
 ## 2. Where we are
 
@@ -46,7 +46,7 @@ Evidence in HISTORY §234.
   wheel steps slightly faster.
 - Skills: `tdd`, `performance-profiler`. Divergence: seams from BRIEF
   §17k, not confirmed with Kris (as in §230–§233).
-- CI: run `<pending>`.
+- CI: run `38440973195` green.
 
 ## 4. Key context for whoever runs S17f, S17e, S17g or S18
 
