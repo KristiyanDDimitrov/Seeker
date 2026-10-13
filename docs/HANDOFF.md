@@ -21,7 +21,7 @@ nine fields below follow the contract in
   2310; four new tests; the 29 skips are the stress test plus 28
   `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** see §3.
+- **CI:** run `38410777550` green (`772e76a`).
 
 ## 2. Where we are
 
@@ -44,7 +44,8 @@ Evidence in HISTORY §230.
   `service.stopped`.
 - Skills: `tdd`. Divergence: the seams were taken from BRIEF §17i
   rather than confirmed with Kris (the skill asks for that).
-- CI: pending at the time of writing; the next session checks it.
+- CI: run `38410777550` green (`772e76a`); it covers `332f488` and
+  the close-out.
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
