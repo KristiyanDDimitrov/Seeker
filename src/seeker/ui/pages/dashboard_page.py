@@ -1519,7 +1519,7 @@ class DashboardPage(QWidget):
         run_worker(
             self._context.thread_pool,
             lambda: self._context.application.download_service.download_playlist(
-                playlist_name
+                playlist_name, stop=self._context.quitting,
             ),
             on_finished=self._on_download_finished,
             on_error=self._on_download_error,

@@ -1,3 +1,4 @@
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -437,6 +438,46 @@ def test_download_playlist_mid_batch_exception_does_not_abort_remaining_tracks(
     # All three tracks were actually searched — the loop kept going past
     # the failure, it didn't just silently stop.
     assert service.soulseek.search_calls == [query_t1, query_t2, query_t3]
+
+
+def test_download_playlist_stops_between_tracks_and_keeps_its_requests(
+        tmp_path,
+):
+    # Seeker quitting mid-download: the thread pool's destructor waits
+    # for the worker, and a large playlist searches for hours.
+    query_t1 = "Dom Dolla Title t1"
+    service = make_service(
+        tmp_path,
+        states={},
+        search_results={
+            query_t1: [make_soulseek_file(filename="Dom Dolla - Title t1.flac")],
+        },
+    )
+    _seed_playlist_with_unmatched_tracks(
+        service, tmp_path, ["t1", "t2", "t3"],
+    )
+    stop = threading.Event()
+    search = service.soulseek.search
+
+    def search_then_stop(query: str) -> list[SoulseekFile]:
+        stop.set()
+        return search(query)
+
+    service.soulseek.search = search_then_stop
+
+    result = service.download_playlist("Test", stop=stop)
+
+    assert result.stopped is True
+    assert result.total == 3
+    assert result.requested == 1
+    assert service.soulseek.search_calls == [query_t1]
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM download_requests"
+        ).fetchall()
+
+    assert [row["track_id"] for row in rows] == ["t1"]
 
 
 def test_download_playlist_failure_carries_its_track_and_readable_reason(

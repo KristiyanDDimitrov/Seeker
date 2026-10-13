@@ -11,13 +11,16 @@ from PySide6.QtWidgets import (
 
 from fakes import (
     FakeApplication,
+    FakeDownloadService,
     FakeDuplicateService,
     force_tray_available,
 )
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
+from seeker.models.download_result import PlaylistDownloadResult
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
+from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.ui import window_lifecycle
 from seeker.ui.main_window import (
@@ -278,6 +281,61 @@ def test_quit_stops_a_running_fingerprint_run(qtbot, monkeypatch):
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("compute_fingerprints"),
+        timeout=2000,
+    )
+
+
+class _UntilStoppedDownloadService(FakeDownloadService):
+    """A playlist download that lasts until it is stopped, bounded at
+    5 s so a missing stop fails the test instead of hanging the suite."""
+
+    def __init__(self, location: LibraryLocation) -> None:
+        super().__init__(resolved_destination=(location, "Test"))
+        self.started = threading.Event()
+        self.stopped = False
+
+    def download_playlist(
+            self, playlist_name: str, stop=None,
+    ) -> PlaylistDownloadResult:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return PlaylistDownloadResult(stopped=self.stopped)
+
+
+def test_quit_stops_a_running_playlist_download(qtbot, monkeypatch):
+    # A playlist download searches track after track (16-22 s each in
+    # the test account's log): hours for a large playlist, all of it
+    # outlasting a quit.
+    force_tray_available(monkeypatch, True)
+    location = LibraryLocation(
+        id=1, name="Main", path="/music",
+        added_at="2026-01-01T00:00:00+00:00",
+    )
+    application = FakeApplication(
+        playlists=[
+            Playlist(
+                id="p1", name="Test", track_count=1,
+                download_location_id=1,
+            ),
+        ],
+    )
+    service = _UntilStoppedDownloadService(location)
+    application.download_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._dashboard_page
+    qtbot.waitUntil(lambda: page.playlist_list.count() == 1, timeout=2000)
+    page.playlist_list.setCurrentRow(0)
+    qtbot.waitUntil(page.download_button.isEnabled, timeout=2000)
+
+    page.download_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("download"),
         timeout=2000,
     )
 

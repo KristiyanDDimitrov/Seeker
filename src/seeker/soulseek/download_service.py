@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -284,8 +285,17 @@ class DownloadService:
         return self.placement.resolve_destination(playlist)
 
     def download_playlist(
-            self, playlist_name: str,
+            self,
+            playlist_name: str,
+            stop: threading.Event | None = None,
     ) -> PlaylistDownloadResult:
+        """Searches for each of the playlist's unmatched tracks and
+        requests or records the best candidate.
+
+        A set `stop` ends the run before its next track, with `stopped`
+        set and every request already made kept: the app sets it on
+        quit.
+        """
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
 
@@ -325,6 +335,14 @@ class DownloadService:
         result = PlaylistDownloadResult(total=len(unmatched_tracks))
 
         for track in unmatched_tracks:
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Download of '%s' stopped: Seeker is quitting.",
+                    playlist_name,
+                )
+                break
+
             label = f"{track.artist} - {track.title}"
 
             # One bad track (search timeout, malformed response, a

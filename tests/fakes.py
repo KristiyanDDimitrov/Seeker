@@ -618,7 +618,9 @@ class FakeDownloadService:
             subfolder,
         )
 
-    def download_playlist(self, playlist_name: str) -> PlaylistDownloadResult:
+    def download_playlist(
+            self, playlist_name: str, stop=None,
+    ) -> PlaylistDownloadResult:
         self.download_playlist_calls.append(playlist_name)
         return self._download_playlist_result
 

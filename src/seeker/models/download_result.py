@@ -32,7 +32,8 @@ class TrackFailure:
 class PlaylistDownloadResult:
     """What one `download_playlist` run did with a playlist's unmatched
     tracks. Every track lands in exactly one of requested, skipped or
-    failures.
+    failures, unless `stopped`: the run ended early (Seeker quitting)
+    and the tracks after the last one counted were never searched.
 
     `skipped` is the combined total of three different outcomes: the
     two named lists, plus tracks with no candidate at all
@@ -45,6 +46,7 @@ class PlaylistDownloadResult:
     already_in_progress: list[str] = field(default_factory=list)
     needs_review: list[str] = field(default_factory=list)
     failures: list[TrackFailure] = field(default_factory=list)
+    stopped: bool = False
 
     @property
     def failed(self) -> int:
