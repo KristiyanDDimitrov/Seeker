@@ -11,48 +11,46 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17h part two's close-out (HISTORY §228). Tree clean.
+- **HEAD:** S17i part one's close-out (HISTORY §229). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2305 passed, 29 skipped`, 0 failed (was
-  2323 passed, 1 skipped; S17h.2 added ten tests; the 28 extra skips
-  are `@requires_x9_pro`, the drive unmounted this session, as on
-  CI). `mypy --strict src/` clean, 145 files; `ruff check src tests
-  tools` 0.
-- **CI:** run `38401536964` green (`a909c4c`).
+- **Local (Cocoa):** pytest `2310 passed, 29 skipped`, 0 failed (was
+  2305; S17i added five tests; the 29 skips are the stress test plus
+  28 `@requires_x9_pro`, the drive unmounted, as on CI). `mypy
+  --strict src/` clean, 145 files; `ruff check src tests tools` 0.
+- **CI:** see §3.
 
 ## 2. Where we are
 
-**S17h is done** (§227, §228): a deleted button no longer skips a
-task's finish, and no per-row action is offered twice while it runs.
-**Next: S17i** (quit stops the network waits), then S17j, S17k, then
-S17f; S17e waits on Kris's run with logging. Then S17g's new
-candidate and Kris's re-run.
+**S17i part one is done** (§229): a playlist download stops between
+tracks on quit, and a search's 45 s wait ends on the stop, so the
+playlist download and the sweep end mid-search. Stopped at the row's
+split point (after §17i.2) on budget. **Next: S17i part two**
+(§17i.3 Spotify, §17i.4 Sharing, §17i.5 the bring-up, measured
+first; plus manual search and Retry, below), then S17j, S17k, S17f;
+S17e waits on Kris. Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17h, part two)
+## 3. Session report (S17i, part one)
 
-Evidence in HISTORY §228.
-- The eight per-row task buttons (Review's five, the Dashboard's
-  Tag, Search's Download, Duplicates' Delete) came back enabled when
-  their row was rebuilt mid-task, so a second click ran the action
-  twice (a second download request, file move, tag write, delete).
-  Reproduced over the fakes with a gate; nothing stayed "running" in
-  the activity strip (all plain `run_worker`s).
-- `208e861` Review, `ce9a218` Dashboard Tag, `8c685b5` Search,
-  `30afcb7` Duplicates: `ui/row_actions.RunningRows` keeps the
-  running state by row key. Each test failed on its parent with
-  `assert not True` (the rebuilt button enabled).
-- `f52c7a4`: a sweep fails any task button that is not a `self.`
-  attribute or `None`; against `caea82c` it lists exactly the eight.
-- Skills: `tdd`, `focused-fix`. Divergence, as in part one: `tdd`
-  asks to confirm the seams with the user; BRIEF §17h.2 names the
-  call sites and the fix's shape, so they were taken as agreed. The
-  BRIEF says "busy state in the rendered key"; `RunningRows` binds a
-  rebuilt row's buttons instead, so a click or a task's end needs no
-  rebuild (which would kill a hovered tooltip, §195). Same outcome.
-- CI: run `38401536964` green (`a909c4c`); it covers every S17h.2 commit and the close-out.
+Evidence in HISTORY §229.
+- `7c8b5de` (§17i.1): `download_playlist(..., stop=)`, checked before
+  each track; `PlaylistDownloadResult.stopped`; requests made stay.
+  The Dashboard passes `PageContext.quitting`. A shell test in
+  `tests/shell/test_quit.py` failed on its parent (`service.stopped`
+  False after `cleanup_before_quit`).
+- `222a217` (§17i.2): `SoulseekClient.search(..., stop=)` waits
+  `stop.wait(poll_interval)` and raises `SearchStoppedError` before
+  the responses fetch; `search_and_request` passes it; the playlist
+  download and the sweep count it as `stopped`. Client, service and
+  sweep tests failed on the parent (the stop never reached the
+  search).
+- The baseline run showed one failure, `test_errors::test_every_public_error_class_is_a_seeker_error`
+  (`AttributeError`): §17i.2's class was added while the run was in
+  flight, and the sweep re-parses the source. On HEAD it passes.
+- Skills: `tdd`, `focused-fix`. No divergence.
+- CI: pushed after this close-out; run id in the commit after it.
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
@@ -62,6 +60,13 @@ Evidence in HISTORY §228.
   own: keep the rule per row and reapply it at start and end.
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
+- **Part two's two extra paths:** the Search page's `search_manual`
+  and Downloads' Retry (`retry_download` → `search_and_request`) wait
+  up to 45 s in `SoulseekClient.search` with no stop. Thread `stop`
+  through both and pass `self._context.quitting`; a stopped search
+  raises `SearchStoppedError`, whose message the page's `on_error`
+  would show (moot on quit). `download_manual` with `files=None` is
+  CLI-only (the page passes its results).
 - **Long work that should stop on quit takes `stop:
   threading.Event | None`** and a page passes `self._context.quitting`.
   The scan, match, tagging and merge take none yet (§226 → "Not
@@ -105,7 +110,8 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17i not started.
+None uncommitted. S17i stopped at its split point: §17i.1–2 done,
+§17i.3–5 not started.
 
 ## 8. Waiting on Kris
 
