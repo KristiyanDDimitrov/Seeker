@@ -1,5 +1,6 @@
 import os
 import stat
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -623,6 +624,38 @@ def test_start_slskd_brings_up_with_generated_key_and_web_login(
     assert (tmp_path / "slskd-data").is_dir()
     assert result.api_key == "generated-key"
     assert result.download_dir == str(tmp_path / "slskd-data" / "downloads")
+
+
+def test_application_sees_any_callers_bring_up_while_compose_runs(
+        tmp_path, monkeypatch,
+):
+    # Sharing's recreate calls bring_up_slskd directly, not through
+    # start_slskd; the quit confirmation must still see it.
+    from seeker.soulseek.docker_setup import bring_up_slskd
+
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    seen_during_run = []
+
+    def fake_run(*args, **kwargs):
+        seen_during_run.append(app.is_starting_slskd())
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert app.is_starting_slskd() is False
+    bring_up_slskd(
+        compose_file="docker-compose.yml",
+        soulseek_username="user",
+        soulseek_password="pass",
+        api_key="key",
+        slskd_data_dir=str(tmp_path),
+        web_username="web",
+        web_password="web",
+        library_location_path=str(tmp_path),
+    )
+
+    assert seen_during_run == [True]
+    assert app.is_starting_slskd() is False
 
 
 def test_start_slskd_keeps_the_live_containers_data_dir(

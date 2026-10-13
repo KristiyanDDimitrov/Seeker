@@ -834,6 +834,7 @@ class FakeApplication:
         self.mark_tray_hide_notice_shown_calls = 0
         self.set_notification_preference_calls: list[tuple[str, bool]] = []
         self.restart_slskd_calls = 0
+        self.starting_slskd = False
         self.restart_slskd_error: Exception | None = None
         self.set_theme_mode_calls: list[str] = []
         self.update_settings_calls: list[dict] = []
@@ -882,6 +883,9 @@ class FakeApplication:
         self.restart_slskd_calls += 1
         if self.restart_slskd_error is not None:
             raise self.restart_slskd_error
+
+    def is_starting_slskd(self) -> bool:
+        return self.starting_slskd
 
     def slskd_start_defaults(self):
         from seeker.models.slskd_start import (

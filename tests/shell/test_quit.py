@@ -148,6 +148,55 @@ def test_quit_confirmation_shown_with_real_count_and_no_word_lose(
     assert box.defaultButton().text() == "Keep Seeker Open"
 
 
+def _shown_confirmations(monkeypatch) -> list[QMessageBox]:
+    shown: list[QMessageBox] = []
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    return shown
+
+
+def test_quit_confirmation_says_slskd_is_starting(qtbot, monkeypatch):
+    # Compose is never killed mid-recreate, so a quit waits for it
+    # (HISTORY §232); the person is told before they choose.
+    shown = _shown_confirmations(monkeypatch)
+    application = FakeApplication(active_downloads=[])
+    application.starting_slskd = True
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._lifecycle.confirm_quit_if_work_active()
+
+    assert len(shown) == 1
+    box = shown[0]
+    assert box.text() == "slskd is still starting."
+    assert "two minutes" in box.informativeText()
+    assert box.defaultButton().text() == "Keep Seeker Open"
+
+
+def test_quit_confirmation_names_downloads_and_a_bring_up_together(
+        qtbot, monkeypatch,
+):
+    shown = _shown_confirmations(monkeypatch)
+    application = FakeApplication(
+        active_downloads=[_active_download("downloading")],
+    )
+    application.starting_slskd = True
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._lifecycle.confirm_quit_if_work_active()
+
+    assert len(shown) == 1
+    assert shown[0].text() == (
+        "1 download still in progress, and slskd is still starting."
+    )
+    assert "SoulSeek" in shown[0].informativeText()
+    assert "two minutes" in shown[0].informativeText()
+
+
 def test_quit_confirmation_quit_anyway_allows_the_quit(qtbot, monkeypatch):
     def fake_exec(self):
         return None

@@ -818,3 +818,41 @@ def test_bring_up_slskd_logs_how_long_compose_took_when_it_times_out(
     assert "slskd bring-up: docker compose up ended after 120.0 s" in (
         caplog.text
     )
+
+
+def test_a_bring_up_is_running_only_while_compose_runs(monkeypatch):
+    # A quit asks first while this is True (HISTORY §232).
+    from seeker.soulseek.docker_setup import is_bring_up_running
+
+    seen_during_run = []
+
+    def fake_run(*args, **kwargs):
+        seen_during_run.append(is_bring_up_running())
+
+        class FakeResult:
+            returncode = 0
+            stderr = ""
+
+        return FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert is_bring_up_running() is False
+    _bring_up_with_fakes()
+
+    assert seen_during_run == [True]
+    assert is_bring_up_running() is False
+
+
+def test_a_failed_bring_up_is_no_longer_running(monkeypatch):
+    from seeker.soulseek.docker_setup import is_bring_up_running
+
+    def fake_run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 120)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        _bring_up_with_fakes()
+
+    assert is_bring_up_running() is False

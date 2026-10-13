@@ -62,6 +62,7 @@ from seeker.soulseek.docker_setup import (
     detect_docker_state,
     ensure_full_path_environment,
     generate_api_key,
+    is_bring_up_running,
     slskd_data_dir,
     slskd_data_folder_state,
     slskd_empty_share_dir,
@@ -406,6 +407,12 @@ class Application:
             )
 
         return result
+
+    def is_starting_slskd(self) -> bool:
+        """Whether any slskd bring-up is waiting on `docker compose up`,
+        whoever started it. A quit waits for it rather than kill
+        Compose mid-recreate, so the quit confirmation asks first."""
+        return is_bring_up_running()
 
     def restart_slskd(self) -> SlskdStartResult:
         """Start slskd again after an outage through `start_slskd`,

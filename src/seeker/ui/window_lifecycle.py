@@ -188,26 +188,49 @@ class WindowLifecycleController:
             1 for download in active
             if download.request.status == DownloadStatus.DOWNLOADING
         )
-        if count == 0:
+        starting_slskd = self._host.application.is_starting_slskd()
+        if count == 0 and not starting_slskd:
             return True
-        return self._show_quit_confirmation(count)
+        return self._show_quit_confirmation(count, starting_slskd)
 
-    def _show_quit_confirmation(self, count: int) -> bool:
+    def _show_quit_confirmation(
+            self, count: int, starting_slskd: bool,
+    ) -> bool:
         # Quitting stops Seeker's own reconciliation, not the transfer
         # itself (HISTORY §123) — slskd keeps the download running in
         # its own container regardless. Nothing is ever lost, so the
         # word "lose" does not belong here.
+        #
+        # A bring-up is never stopped: killing Compose mid-recreate
+        # risks a half-made container, so the quit waits for it, up to
+        # its 120 s timeout (HISTORY §232).
         noun = "download" if count == 1 else "downloads"
+        downloads = f"{count} {noun} still in progress"
+        if count and starting_slskd:
+            text = f"{downloads}, and slskd is still starting."
+        elif count:
+            text = f"{downloads}."
+        else:
+            text = "slskd is still starting."
+        details = []
+        if count:
+            details.append(
+                "Seeker hands transfers to SoulSeek, which keeps running "
+                "after you quit — but Seeker won't file the finished "
+                "tracks into your library until you open it again."
+            )
+        if starting_slskd:
+            details.append(
+                "Seeker lets Docker finish starting slskd before it "
+                "closes, which can take up to two minutes: stopping "
+                "part-way could leave slskd's container half made."
+            )
         box = QMessageBox(self._host.window)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Quit Seeker?")
         box.setTextFormat(Qt.TextFormat.PlainText)
-        box.setText(f"{count} {noun} still in progress.")
-        box.setInformativeText(
-            "Seeker hands transfers to SoulSeek, which keeps running "
-            "after you quit — but Seeker won't file the finished "
-            "tracks into your library until you open it again."
-        )
+        box.setText(text)
+        box.setInformativeText("\n\n".join(details))
         quit_button = box.addButton(
             "Quit Anyway", QMessageBox.ButtonRole.DestructiveRole,
         )

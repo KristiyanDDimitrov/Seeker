@@ -5,6 +5,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -377,6 +378,37 @@ def slskd_data_folder_state(data_dir: str) -> SlskdDataFolderState:
     return SlskdDataFolderState.FRESH
 
 
+class _RunningCount:
+    """How many threads are inside a `with` block of this object."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._count = 0
+
+    def __enter__(self) -> None:
+        with self._lock:
+            self._count += 1
+
+    def __exit__(self, *exc_info: object) -> None:
+        with self._lock:
+            self._count -= 1
+
+    def __bool__(self) -> bool:
+        with self._lock:
+            return self._count > 0
+
+
+# Every bring-up passes through `bring_up_slskd` (Settings, the wizard,
+# an outage notice's restart, Sharing's recreate), so this one count
+# sees them all.
+_BRING_UPS_RUNNING = _RunningCount()
+
+
+def is_bring_up_running() -> bool:
+    """Whether a `bring_up_slskd` call is waiting on Compose."""
+    return bool(_BRING_UPS_RUNNING)
+
+
 def bring_up_slskd(
         compose_file: str,
         soulseek_username: str,
@@ -412,14 +444,15 @@ def bring_up_slskd(
     logger.info("slskd bring-up: starting docker compose up")
     started_at = time.monotonic()
     try:
-        result = subprocess.run(
-            ["docker", "compose", "-f", compose_file, "up", "-d"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,  # raises its own error below, carrying stderr
-        )
+        with _BRING_UPS_RUNNING:
+            result = subprocess.run(
+                ["docker", "compose", "-f", compose_file, "up", "-d"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,  # raises its own error below, carrying stderr
+            )
     finally:
         logger.info(
             "slskd bring-up: docker compose up ended after %.1f s",
