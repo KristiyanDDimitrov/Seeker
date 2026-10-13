@@ -1,3 +1,6 @@
+import threading
+from collections.abc import Callable
+
 import pytest
 
 from seeker.database.connection import Database
@@ -7,6 +10,7 @@ from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistItems, PlaylistRefreshResult
 from seeker.models.track import Track
+from seeker.spotify.client import SpotifyStoppedError
 from seeker.spotify.sync_service import (
     SpotifySyncService,
     find_close_playlist_matches,
@@ -24,11 +28,22 @@ class StubSpotifyClient:
         self._playlists = playlists or []
         self._tracks_by_playlist = tracks_by_playlist or {}
         self.local_files_skipped = 0
+        self.stops: list[threading.Event | None] = []
+        self.on_fetch: dict[str, Callable[[], None]] = {}
 
-    def get_current_user_playlists(self) -> list[Playlist]:
+    def get_current_user_playlists(
+            self, stop: threading.Event | None = None,
+    ) -> list[Playlist]:
+        self.stops.append(stop)
         return self._playlists
 
-    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
+    def get_playlist_tracks(
+            self, playlist_id: str, stop: threading.Event | None = None,
+    ) -> PlaylistItems:
+        self.stops.append(stop)
+        if playlist_id in self.on_fetch:
+            self.on_fetch[playlist_id]()
+
         if self._tracks_by_playlist:
             return PlaylistItems(self._tracks_by_playlist.get(playlist_id, []))
 
@@ -432,3 +447,73 @@ def test_refresh_playlists_totals_skipped_local_files(tmp_path):
     result = sync_service.refresh_playlists()
 
     assert result.local_files_skipped == 2
+
+
+def _two_stale_playlists(
+        tmp_path,
+) -> tuple[Database, StubSpotifyClient, SpotifySyncService]:
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    spotify = StubSpotifyClient(
+        tracks_by_playlist={"a": [make_track("a1")], "b": [make_track("b1")]},
+    )
+    sync_service = make_sync_service(spotify, database)
+    for playlist_id in ("a", "b"):
+        sync_service.sync_playlist_tracks(Playlist(
+            id=playlist_id, name=playlist_id.upper(), track_count=1,
+            snapshot_id=f"{playlist_id}-1",
+        ))
+    spotify._playlists = [
+        Playlist(id="a", name="A", track_count=1, snapshot_id="a-2"),
+        Playlist(id="b", name="B", track_count=1, snapshot_id="b-2"),
+    ]
+    spotify.stops.clear()
+    return database, spotify, sync_service
+
+
+def test_refresh_playlists_stops_between_playlists_keeping_finished_ones(
+        tmp_path,
+):
+    database, spotify, sync_service = _two_stale_playlists(tmp_path)
+    stop = threading.Event()
+    spotify.on_fetch["a"] = stop.set
+
+    result = sync_service.refresh_playlists(stop=stop)
+
+    assert result.stopped
+    assert result.updated_playlist_names == ["A"]
+    assert _tracks_snapshot_id(database, "a") == "a-2"
+    assert _tracks_snapshot_id(database, "b") == "b-1"
+    # The list fetch and A's tracks; B was never asked for.
+    assert spotify.stops == [stop, stop]
+
+
+def test_refresh_playlists_keeps_a_playlist_stopped_mid_fetch_stale(tmp_path):
+    database, spotify, sync_service = _two_stale_playlists(tmp_path)
+    stop = threading.Event()
+
+    def stopped() -> None:
+        stop.set()
+        raise SpotifyStoppedError
+
+    spotify.on_fetch["b"] = stopped
+
+    result = sync_service.refresh_playlists(stop=stop)
+
+    assert result.stopped
+    assert result.updated_playlist_names == ["A"]
+    assert _tracks_snapshot_id(database, "b") == "b-1"
+
+
+def test_sync_playlist_tracks_passes_the_stop_to_the_fetch(tmp_path):
+    database = Database(tmp_path / "seeker.db")
+    database.initialize()
+    spotify = StubSpotifyClient(tracks=[make_track("track1")])
+    stop = threading.Event()
+
+    make_sync_service(spotify, database).sync_playlist_tracks(
+        Playlist(id="p1", name="One", track_count=1, snapshot_id="s1"),
+        stop=stop,
+    )
+
+    assert spotify.stops == [stop]

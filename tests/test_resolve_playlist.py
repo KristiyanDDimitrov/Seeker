@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 
 from seeker import cli
@@ -18,10 +20,14 @@ class StubSpotifyClient:
     def __init__(self, playlists: list[Playlist]):
         self._playlists = playlists
 
-    def get_current_user_playlists(self) -> list[Playlist]:
+    def get_current_user_playlists(
+            self, stop: threading.Event | None = None,
+    ) -> list[Playlist]:
         return self._playlists
 
-    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
+    def get_playlist_tracks(
+            self, playlist_id: str, stop: threading.Event | None = None,
+    ) -> PlaylistItems:
         return PlaylistItems([])
 
 

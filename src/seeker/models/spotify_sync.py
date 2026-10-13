@@ -31,3 +31,6 @@ class PlaylistRefreshResult:
     # on Spotify. Never-loaded playlists are never loaded by a refresh.
     updated_playlist_names: list[str]
     local_files_skipped: int = 0
+    # The refresh ended early (Seeker quitting): the playlists in
+    # `updated_playlist_names` were re-synced, the rest stay stale.
+    stopped: bool = False

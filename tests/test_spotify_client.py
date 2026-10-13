@@ -1,3 +1,6 @@
+import threading
+import time
+
 import httpx
 import pytest
 
@@ -6,6 +9,7 @@ from seeker.spotify.client import (
     SpotifyAuthenticationError,
     SpotifyClient,
     SpotifyRateLimitedError,
+    SpotifyStoppedError,
 )
 
 
@@ -282,6 +286,29 @@ def test_short_429_succeeds_after_retrying_within_the_limit(monkeypatch):
 
     assert playlists == []
     assert call_count["n"] == 3
+
+
+def test_a_set_stop_ends_a_rate_limit_wait_and_requests_nothing_more(
+        monkeypatch,
+):
+    # A rate limit waits up to 60 s before retrying; a quit must not
+    # wait it out (the 5 s quit bound, HISTORY §226).
+    stop = threading.Event()
+    call_count = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        call_count["n"] += 1
+        stop.set()
+        return FakeRateLimitedResponse(retry_after="30", reason=None)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    started = time.monotonic()
+
+    with pytest.raises(SpotifyStoppedError):
+        SpotifyClient("token").get_playlist_tracks("playlist1", stop=stop)
+
+    assert time.monotonic() - started < 2.0
+    assert call_count["n"] == 1
 
 
 # --- B8: token provider + 401 handling ---------------------------------

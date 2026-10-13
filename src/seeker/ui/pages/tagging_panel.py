@@ -491,7 +491,7 @@ class TaggingPanel(QWidget):
         self._context.run_busy_worker(
             "fill_missing_art_urls", self.fill_missing_art_urls_button,
             lambda: self._context.application.sync_service
-            .sync_playlist_tracks(playlist),
+            .sync_playlist_tracks(playlist, stop=self._context.quitting),
             status_label=self._host.status_label,
             on_finished=self._on_fill_missing_art_urls_finished,
         )

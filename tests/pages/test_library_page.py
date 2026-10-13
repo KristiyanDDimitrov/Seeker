@@ -20,7 +20,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QItemSelectionModel, Qt
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
-from fakes import FakeApplication, make_track_status
+from fakes import FakeApplication, FakeSyncService, make_track_status
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
 from seeker.models.tag_result import FixArtResult, TagResult
@@ -1219,5 +1219,51 @@ def test_library_track_list_says_why_it_is_empty(qtbot):
     qtbot.waitUntil(
         lambda: page.track_empty_state.text()
         == help_text.LIBRARY_TRACKS_NONE_IN_LIBRARY_TEXT,
+        timeout=2000,
+    )
+
+
+class _UntilStoppedSync(FakeSyncService):
+    """A Spotify refresh or track sync that lasts until it is stopped,
+    bounded at 5 s so a missing stop fails the test instead of hanging
+    the suite."""
+
+    def __init__(self, playlists: list[Playlist]) -> None:
+        super().__init__(playlists)
+        self.started = threading.Event()
+        self.stopped = False
+
+    def _wait(self, stop: threading.Event | None) -> None:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+
+    def refresh_playlists(self, progress=None, stop=None):
+        self._wait(stop)
+        return super().refresh_playlists(progress, stop)
+
+    def sync_playlist_tracks(self, playlist, stop=None):
+        self._wait(stop)
+        return super().sync_playlist_tracks(playlist, stop)
+
+
+def test_quit_stops_a_running_cover_art_refresh(qtbot):
+    # The refresh is a Spotify track sync: a rate limit waits up to
+    # 60 s, past the quit's 5 s bound.
+    playlists = [Playlist(id="p1", name="Test", track_count=1)]
+    application = FakeApplication(playlists=playlists)
+    service = _UntilStoppedSync(playlists)
+    application.sync_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    _select_first_playlist(window, qtbot)
+
+    window._library_page._tagging_panel.fill_missing_art_urls_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("fill_missing_art_urls"),
         timeout=2000,
     )

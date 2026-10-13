@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton
 
 from fakes import (
     FakeApplication,
+    FakeSyncService,
     make_needs_review_match,
     make_track,
     make_track_status,
@@ -2081,3 +2082,77 @@ def test_a_row_rebuilt_while_its_tag_runs_keeps_tag_disabled(qtbot):
 
     qtbot.waitUntil(settled)
     wait_for_workers(window)
+
+
+class _UntilStoppedSync(FakeSyncService):
+    """A Spotify refresh or track sync that lasts until it is stopped,
+    bounded at 5 s so a missing stop fails the test instead of hanging
+    the suite."""
+
+    def __init__(self, playlists: list[Playlist]) -> None:
+        super().__init__(playlists)
+        self.started = threading.Event()
+        self.stopped = False
+
+    def _wait(self, stop: threading.Event | None) -> None:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+
+    def refresh_playlists(self, progress=None, stop=None):
+        self._wait(stop)
+        return super().refresh_playlists(progress, stop)
+
+    def sync_playlist_tracks(self, playlist, stop=None):
+        self._wait(stop)
+        return super().sync_playlist_tracks(playlist, stop)
+
+
+def test_quit_stops_a_running_playlist_refresh(qtbot):
+    # A rate limit waits up to 60 s, and a refresh re-syncs playlist
+    # after playlist, past the quit's 5 s bound.
+    playlists = [Playlist(id="p1", name="Warmup", track_count=1)]
+    application = FakeApplication(
+        playlists=playlists, locations=_one_location(),
+    )
+    service = _UntilStoppedSync(playlists)
+    application.sync_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    window._dashboard_page.sync_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("sync"), timeout=2000,
+    )
+
+
+def test_quit_stops_a_running_track_load(qtbot):
+    playlists = [Playlist(id="p1", name="Clean", track_count=3)]
+    application = FakeApplication(playlists=playlists, statuses=[])
+    service = _UntilStoppedSync(playlists)
+    application.sync_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+    qtbot.waitUntil(
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+    )
+
+    window._dashboard_page.sync_tracks_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("sync_tracks"),
+        timeout=2000,
+    )

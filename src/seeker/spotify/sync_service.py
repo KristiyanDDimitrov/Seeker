@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections.abc import Callable
 
 from rapidfuzz.distance import Levenshtein
@@ -10,7 +11,7 @@ from seeker.errors import PlaylistNotFoundError
 from seeker.models.playlist import Playlist
 from seeker.models.spotify_sync import PlaylistRefreshResult, TrackSyncResult
 from seeker.models.track import Track
-from seeker.spotify.client import SpotifyClient
+from seeker.spotify.client import SpotifyClient, SpotifyStoppedError
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,13 @@ class SpotifySyncService:
         self.playlists = playlist_repository
         self.tracks = track_repository
 
-    def sync_playlists(self) -> list[Playlist]:
+    def sync_playlists(
+            self, stop: threading.Event | None = None,
+    ) -> list[Playlist]:
         logger.info("Synchronizing Spotify playlists...")
 
         spotify_playlists = (
-            self.spotify.get_current_user_playlists()
+            self.spotify.get_current_user_playlists(stop)
         )
 
         with self.database.transaction() as connection:
@@ -108,6 +111,7 @@ class SpotifySyncService:
     def refresh_playlists(
             self,
             progress: Callable[[str, int, int], None] | None = None,
+            stop: threading.Event | None = None,
     ) -> PlaylistRefreshResult:
         """Refresh the playlist list, then re-sync the tracks of every
         loaded playlist that changed on Spotify.
@@ -117,28 +121,48 @@ class SpotifySyncService:
         an earlier failed track sync is retried too. Never-loaded
         playlists stay unloaded. A failed track sync propagates; the
         playlists not yet re-synced stay stale for the next refresh.
+        A set `stop` ends the refresh before the next playlist, or a
+        rate limit's wait mid-playlist, and the result says it stopped.
         """
-        self.sync_playlists()
-
-        playlists = self.list_playlists()
-        stale = [playlist for playlist in playlists
-                 if playlist.tracks_are_stale]
+        stale: list[Playlist] = []
+        updated: list[Playlist] = []
         local_files_skipped = 0
+        stopped = False
 
-        for index, playlist in enumerate(stale):
-            if progress is not None:
-                progress("Updating tracks", index, len(stale))
+        try:
+            self.sync_playlists(stop)
 
-            result = self.sync_playlist_tracks(playlist)
-            local_files_skipped += result.local_files_skipped
+            playlists = self.list_playlists()
+            stale = [playlist for playlist in playlists
+                     if playlist.tracks_are_stale]
 
-        if progress is not None and stale:
+            for index, playlist in enumerate(stale):
+                if stop is not None and stop.is_set():
+                    stopped = True
+                    break
+
+                if progress is not None:
+                    progress("Updating tracks", index, len(stale))
+
+                result = self.sync_playlist_tracks(playlist, stop)
+                local_files_skipped += result.local_files_skipped
+                updated.append(playlist)
+        except SpotifyStoppedError:
+            stopped = True
+
+        if stopped:
+            logger.info(
+                "Playlist refresh stopped after %d playlist(s).", len(updated),
+            )
+            playlists = self.list_playlists()
+        elif progress is not None and stale:
             progress("Updating tracks", len(stale), len(stale))
 
         return PlaylistRefreshResult(
             playlist_count=len(playlists),
-            updated_playlist_names=[playlist.name for playlist in stale],
+            updated_playlist_names=[playlist.name for playlist in updated],
             local_files_skipped=local_files_skipped,
+            stopped=stopped,
         )
 
     def list_playlists(self) -> list[Playlist]:
@@ -170,11 +194,14 @@ class SpotifySyncService:
     def sync_playlist_tracks(
             self,
             playlist: Playlist,
+            stop: threading.Event | None = None,
     ) -> TrackSyncResult:
+        """A set `stop` ends a rate limit's wait with
+        SpotifyStoppedError, before anything is saved."""
         logger.info("Synchronizing tracks: %s", playlist.name)
 
         items = self.spotify.get_playlist_tracks(
-            playlist.id
+            playlist.id, stop,
         )
         tracks = _first_occurrences(items.tracks)
         duplicates_collapsed = len(items.tracks) - len(tracks)

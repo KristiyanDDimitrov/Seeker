@@ -84,6 +84,7 @@ class FakeSyncService:
     def refresh_playlists(
             self,
             progress: Callable[[str, int, int], None] | None = None,
+            stop: threading.Event | None = None,
     ) -> PlaylistRefreshResult:
         self.refresh_playlists_calls += 1
         self.refresh_progress = progress
@@ -93,7 +94,9 @@ class FakeSyncService:
 
         return self.refresh_result
 
-    def sync_playlist_tracks(self, playlist: Playlist) -> TrackSyncResult:
+    def sync_playlist_tracks(
+            self, playlist: Playlist, stop: threading.Event | None = None,
+    ) -> TrackSyncResult:
         self.sync_playlist_tracks_calls.append(playlist)
         return self.track_sync_result
 

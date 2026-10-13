@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -133,6 +134,16 @@ class SpotifyAuthenticationError(SeekerError):
         )
 
 
+class SpotifyStoppedError(SeekerError):
+    """A set `stop` ended a wait for Spotify: the caller is stopping
+    (Seeker quitting), so the request is not retried."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The Spotify request stopped because Seeker is quitting."
+        )
+
+
 class SpotifyClient:
     def __init__(
             self,
@@ -156,7 +167,10 @@ class SpotifyClient:
             self,
             url: str,
             params: dict[str, Any] | None = None,
+            stop: threading.Event | None = None,
     ) -> dict[str, Any]:
+        """A set `stop` ends a rate limit's wait and raises
+        SpotifyStoppedError instead of retrying."""
         attempts = 0
         retried_after_401 = False
         token = self._current_token()
@@ -195,7 +209,10 @@ class SpotifyClient:
                     retry_after_seconds,
                 )
 
-                time.sleep(retry_after_seconds)
+                if stop is None:
+                    time.sleep(retry_after_seconds)
+                elif stop.wait(retry_after_seconds):
+                    raise SpotifyStoppedError
                 continue
 
             if response.status_code == 401:
@@ -216,12 +233,13 @@ class SpotifyClient:
             self,
             url: str,
             params: dict[str, Any] | None = None,
+            stop: threading.Event | None = None,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         next_url: str | None = url
 
         while next_url:
-            data = self._get(next_url, params)
+            data = self._get(next_url, params, stop)
 
             items.extend(data.get("items", []))
 
@@ -230,10 +248,13 @@ class SpotifyClient:
 
         return items
 
-    def get_current_user_playlists(self) -> list[Playlist]:
+    def get_current_user_playlists(
+            self, stop: threading.Event | None = None,
+    ) -> list[Playlist]:
         items = self._get_all_pages(
             f"{BASE_URL}/me/playlists",
             {"limit": 50},
+            stop,
         )
 
         return [
@@ -246,10 +267,13 @@ class SpotifyClient:
             for playlist in items
         ]
 
-    def get_playlist_tracks(self, playlist_id: str) -> PlaylistItems:
+    def get_playlist_tracks(
+            self, playlist_id: str, stop: threading.Event | None = None,
+    ) -> PlaylistItems:
         entries = self._get_all_pages(
             f"{BASE_URL}/playlists/{playlist_id}/items",
             {"limit": 50},
+            stop,
         )
 
         tracks = []

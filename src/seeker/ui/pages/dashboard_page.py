@@ -1302,7 +1302,11 @@ class DashboardPage(QWidget):
     def refresh_playlists(self) -> None:
         self._context.run_busy_worker(
             "sync", self.sync_button,
-            self._context.application.sync_service.refresh_playlists,
+            lambda progress: (
+                self._context.application.sync_service.refresh_playlists(
+                    progress, stop=self._context.quitting,
+                )
+            ),
             on_finished=self._on_sync_finished,
             on_error=self.feedback.show_error,
             reports_progress=True,
@@ -1550,7 +1554,7 @@ class DashboardPage(QWidget):
 
         def do_sync() -> TrackSyncResult:
             return self._context.application.sync_service.sync_playlist_tracks(
-                playlist,
+                playlist, stop=self._context.quitting,
             )
 
         def on_finished(result: TrackSyncResult) -> None:
