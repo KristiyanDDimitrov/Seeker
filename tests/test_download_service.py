@@ -4253,6 +4253,16 @@ def test_search_manual_uses_the_shared_query_construction(tmp_path):
         assert service.download_requests.get_all(connection) == []
 
 
+def test_search_manual_passes_the_stop_to_the_search(tmp_path):
+    # A manual search waits up to 45 s on slskd; a quit sets the stop.
+    service = make_service(tmp_path, states={})
+    stop = threading.Event()
+
+    service.search_manual("Dom Dolla", "Rhyme Dust", stop=stop)
+
+    assert service.soulseek.search_stops == [stop]
+
+
 def test_resolve_destination_manual_uses_default_with_fixed_manual_subfolder(
         tmp_path,
 ):
@@ -4539,6 +4549,29 @@ def test_a_retry_that_finds_nothing_keeps_the_failure_visible(tmp_path):
     outcome = service.retry_download(request_id)
 
     assert outcome == TrackSearchOutcome.NO_CANDIDATE
+    assert _request(service, request_id).dismissed_at is None
+
+
+def test_a_stopped_retry_requests_nothing_and_keeps_the_failure(tmp_path):
+    service = make_service(tmp_path, states={})
+    request_id = _seed_finished_request(
+        service, tmp_path, DownloadStatus.FAILED,
+    )
+    stop = threading.Event()
+
+    def search_stopped(
+            query: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
+        service.soulseek.search_stops.append(stop)
+        raise SearchStoppedError
+
+    service.soulseek.search = search_stopped
+
+    with pytest.raises(SearchStoppedError):
+        service.retry_download(request_id, stop=stop)
+
+    assert service.soulseek.search_stops == [stop]
+    assert service.soulseek.request_download_calls == []
     assert _request(service, request_id).dismissed_at is None
 
 

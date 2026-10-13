@@ -558,13 +558,18 @@ class DownloadService:
 
         return TrackSearchOutcome.REQUESTED
 
-    def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
+    def retry_download(
+            self,
+            download_request_id: int,
+            stop: threading.Event | None = None,
+    ) -> TrackSearchOutcome:
         """Searches again for a failed or unavailable request's track,
         rather than re-asking the peer that failed it: a failed or
         unavailable candidate stays skipped for FAILED_CANDIDATE_COOLDOWN.
         Once a new request is made, the retried row is dismissed: the
         new row stands for the track now. Otherwise it stays, still the
-        user's to act on."""
+        user's to act on, as it does when a set `stop` ends the search
+        with SearchStoppedError."""
         with self.database.transaction() as connection:
             request = self.download_requests.get_by_id(
                 download_request_id, connection,
@@ -582,7 +587,9 @@ class DownloadService:
         ):
             raise DownloadNotRetryableError
 
-        outcome = self.search_and_request(track, self.current_thresholds())
+        outcome = self.search_and_request(
+            track, self.current_thresholds(), stop=stop,
+        )
 
         if outcome == TrackSearchOutcome.REQUESTED:
             with self.database.transaction() as connection:
@@ -640,16 +647,24 @@ class DownloadService:
 
         return CancelOutcome.CANCELLED
 
-    def search_manual(self, artist: str, title: str) -> list[SoulseekFile]:
+    def search_manual(
+            self,
+            artist: str,
+            title: str,
+            stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
         """A real SoulSeek search for a track that isn't in any Spotify
         playlist, using the exact same query construction
         download_playlist uses (_build_search_query) — never a second,
         drifting copy. Read-only: no track row, no download_requests
         row, nothing persisted. A real search takes 20-45s (client.py's
         own documented real-world timing) — the caller (UI/CLI) is
-        responsible for showing that it's busy.
+        responsible for showing that it's busy. A set `stop` ends the
+        wait with SearchStoppedError.
         """
-        return self.soulseek.search(_build_search_query(artist, title))
+        return self.soulseek.search(
+            _build_search_query(artist, title), stop=stop,
+        )
 
     def download_manual(
             self,

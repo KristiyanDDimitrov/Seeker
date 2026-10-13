@@ -7,7 +7,7 @@ import threading
 
 from PySide6.QtWidgets import QPushButton
 
-from fakes import FakeApplication
+from fakes import FakeApplication, FakeDownloadService
 from seeker.models.download_result import ManualDownloadResult
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
@@ -432,3 +432,41 @@ def test_a_new_search_while_a_pick_downloads_keeps_its_row_disabled(qtbot):
 
     qtbot.waitUntil(lambda: "Requested from peer1" in page.notice.text())
     assert download_button("peer1").isEnabled()
+
+
+class _UntilStoppedSearch(FakeDownloadService):
+    """A manual search that lasts until it is stopped, bounded at 5 s
+    so a missing stop fails the test instead of hanging the suite."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.stopped = False
+
+    def search_manual(self, artist: str, title: str, stop=None) -> list:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return []
+
+
+def test_quit_stops_a_running_search(qtbot):
+    # A search waits up to 45 s on slskd, past the quit's 5 s bound.
+    application = FakeApplication()
+    service = _UntilStoppedSearch()
+    application.download_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._search_page
+    page.search_artist_edit.setText("Dom Dolla")
+    page.search_title_edit.setText("Rhyme Dust")
+
+    page.search_button.click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("search_manual"),
+        timeout=2000,
+    )

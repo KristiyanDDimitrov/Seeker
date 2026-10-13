@@ -583,7 +583,7 @@ class DownloadsPage(QWidget):
         self._context.run_busy_worker(
             RETRY_DOWNLOAD_KEY, None,
             lambda: self._context.application.download_service
-            .retry_download(request_id),
+            .retry_download(request_id, stop=self._context.quitting),
             on_finished=lambda outcome: self._on_retried(outcome, label),
             on_error=self._on_row_action_failed,
         )

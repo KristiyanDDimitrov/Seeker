@@ -174,7 +174,7 @@ class SearchPage(QWidget):
             "search_manual", self.search_button,
             lambda: (
                 self._context.application.download_service
-                .search_manual(artist, title)
+                .search_manual(artist, title, stop=self._context.quitting)
             ),
             status_label=self.search_status_label,
             on_finished=lambda files: self._render_search_results(

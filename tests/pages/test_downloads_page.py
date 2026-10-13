@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from fakes import (
     FakeApplication,
+    FakeDownloadService,
     force_tray_available,
     make_active_download,
     make_track,
@@ -1201,3 +1202,47 @@ def test_clean_up_shows_why_it_could_not_list(qtbot, monkeypatch):
     assert page.notice.text() == "Not slskd's folder."
     assert page.notice.property("variant") == "error"
     assert shown == []
+
+
+class _UntilStoppedRetry(FakeDownloadService):
+    """A retry whose search lasts until it is stopped, bounded at 5 s
+    so a missing stop fails the test instead of hanging the suite."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.stopped = False
+
+    def retry_download(
+            self, download_request_id: int, stop=None,
+    ) -> TrackSearchOutcome:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return TrackSearchOutcome.NO_CANDIDATE
+
+
+def test_quit_stops_a_running_retry(qtbot):
+    # A retry searches again: up to 45 s on slskd, past the quit's
+    # 5 s bound.
+    failed = make_active_download(
+        status="failed", request_id=7,
+        bytes_transferred=None, total_bytes=None,
+    )
+    application = FakeApplication(active_downloads=[failed])
+    service = _UntilStoppedRetry()
+    application.download_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._downloads_page
+    page._render_active_downloads([failed])
+
+    _row_button(page, 0, "Retry").click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("retry_download"),
+        timeout=2000,
+    )

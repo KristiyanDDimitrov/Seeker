@@ -580,7 +580,9 @@ class FakeDownloadService:
     def get_resolved_destination(self, playlist_name: str) -> tuple | None:
         return self._resolved_destination
 
-    def retry_download(self, download_request_id: int) -> TrackSearchOutcome:
+    def retry_download(
+            self, download_request_id: int, stop=None,
+    ) -> TrackSearchOutcome:
         self.retry_download_calls.append(download_request_id)
         if self.retry_gate is not None:
             self.retry_gate.wait(timeout=5)
@@ -627,7 +629,7 @@ class FakeDownloadService:
     def poll_downloads(self) -> PollResult:
         return PollResult()
 
-    def search_manual(self, artist: str, title: str) -> list:
+    def search_manual(self, artist: str, title: str, stop=None) -> list:
         self.search_manual_calls.append((artist, title))
         if self._search_manual_error is not None:
             raise self._search_manual_error
