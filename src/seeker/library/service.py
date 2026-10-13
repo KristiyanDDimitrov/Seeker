@@ -25,6 +25,7 @@ from seeker.destination_resolution import (
     InvalidDestinationSubfolderError,
     validate_destination_subfolder,
 )
+from seeker.error_text import describe_error
 from seeker.errors import (
     LibraryLocationNotFoundError,
     PlaylistNotFoundError,
@@ -40,6 +41,7 @@ from seeker.library.nesting import (
     same_directory,
 )
 from seeker.library.scanner import LibraryScanner, LibraryUnavailableError
+from seeker.models.download_result import TrackFailure
 from seeker.models.library_location import LibraryLocation
 from seeker.models.library_result import (
     MatchResult,
@@ -50,6 +52,7 @@ from seeker.models.location_merge import LocationMergeSummary
 from seeker.models.location_removal import LocationRemovalSummary
 from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.nested_location import NestedLocation
+from seeker.models.review_result import ConfirmAllResult
 
 logger = logging.getLogger(__name__)
 
@@ -765,6 +768,73 @@ class LibraryService:
                 datetime.now(UTC).isoformat(),
                 connection,
             )
+
+    def confirm_matches(
+            self,
+            matches: list[NeedsReviewMatch],
+            stop: threading.Event | None = None,
+    ) -> ConfirmAllResult:
+        """Review's "Confirm all" for local matches: confirms each match
+        as it was shown. A track whose match changed since (another file,
+        confirmed or rejected meanwhile) is a failure and keeps what it
+        has now, so nothing is confirmed that nobody saw. One failure
+        never stops the rest; a set `stop` ends the batch before its
+        next row.
+        """
+        if self.track_matcher is None:
+            raise RuntimeError(
+                "confirm_matches() requires a track_matcher — this "
+                "LibraryService was constructed without one."
+            )
+
+        track_matches = self.track_matcher.track_matches
+        result = ConfirmAllResult()
+
+        for index, match in enumerate(matches):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Confirm all stopped after %d of %d local matches.",
+                    index, len(matches),
+                )
+                break
+
+            label = f"{match.track_artist} - {match.track_title}"
+
+            try:
+                with self.database.transaction() as connection:
+                    current = track_matches.get_by_track_id(
+                        match.track_id, connection,
+                    )
+                    unchanged = (
+                        current is not None
+                        and current.match_method == "needs_review"
+                        and current.local_file_id == match.local_file_id
+                    )
+
+                    if unchanged:
+                        track_matches.confirm(
+                            match.track_id,
+                            datetime.now(UTC).isoformat(),
+                            connection,
+                        )
+            except Exception as error:
+                result.failures.append(TrackFailure(
+                    label, describe_error(error, details_hint=""),
+                ))
+                logger.warning("Confirm failed: %s: %s", label, error)
+                continue
+
+            if unchanged:
+                result.confirmed += 1
+            else:
+                result.failures.append(TrackFailure(
+                    label,
+                    "Its match changed after the list was shown, so it "
+                    "was left for review.",
+                ))
+
+        return result
 
     def reject_match(self, track_id: str) -> None:
         """The track returns to unmatched and becomes eligible for

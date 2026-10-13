@@ -27,6 +27,7 @@ from seeker.library.service import (
 )
 from seeker.models.library_result import MatchResult, ScanResult
 from seeker.models.local_file import LocalFile
+from seeker.models.needs_review_match import NeedsReviewMatch
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 
@@ -608,6 +609,69 @@ def test_a_rejected_match_falls_through_to_the_next_best_file(tmp_path):
     fallback = _stored_match(service, "track1")
     assert fallback.local_file_id != exact_id
     assert fallback.match_method == "needs_review"
+
+
+def _gone_match(local_file_id: int) -> NeedsReviewMatch:
+    """A row as Review showed it, for a track with no match any more."""
+    return NeedsReviewMatch(
+        track_id="gone", track_artist="Nobody", track_title="Gone",
+        local_file_id=local_file_id, local_file_path="/music/gone.mp3",
+        location_name="Main", score=80.0, tag_artist=None, tag_title=None,
+    )
+
+
+def test_confirm_matches_confirms_each_and_goes_on_past_a_failure(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+    [shown] = service.get_needs_review_matches()
+
+    result = service.confirm_matches([_gone_match(shown.local_file_id), shown])
+
+    assert result.confirmed == 1
+    assert [failure.track for failure in result.failures] == ["Nobody - Gone"]
+    assert result.failed == 1
+    assert not result.stopped
+    stored = _stored_match(service, "track1")
+    assert stored.match_method == "auto"
+    assert stored.confirmed_at is not None
+
+
+def test_confirm_matches_leaves_a_match_that_changed_since_shown(tmp_path):
+    # A match run after the list was drawn re-paired the track with a
+    # better file; Confirm all must not confirm a pairing nobody saw.
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+    [shown] = service.get_needs_review_matches()
+    exact_id = _add_exact_file(service)
+    service.track_matcher.match_all()
+
+    result = service.confirm_matches([shown])
+
+    assert result.confirmed == 0
+    assert [failure.track for failure in result.failures] == [
+        "The Weeknd - Blinding Lights",
+    ]
+    stored = _stored_match(service, "track1")
+    assert stored.local_file_id == exact_id
+    assert stored.confirmed_at is None
+
+
+def test_confirm_matches_stops_before_its_next_row(tmp_path):
+    service = make_service_with_matcher(tmp_path)
+    seed_needs_review_track_and_file(service)
+    service.track_matcher.match_all()
+    shown = service.get_needs_review_matches()
+    stop = threading.Event()
+    stop.set()
+
+    result = service.confirm_matches(shown, stop=stop)
+
+    assert result.stopped
+    assert result.confirmed == 0
+    assert result.failures == []
+    assert _stored_match(service, "track1").confirmed_at is None
 
 
 def test_a_rejection_goes_when_its_file_is_deleted(tmp_path):
