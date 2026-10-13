@@ -160,6 +160,9 @@ class FakeLibraryService:
         self._needs_review_matches = needs_review_matches or []
         self.confirm_match_calls: list[str] = []
         self.reject_match_calls: list[str] = []
+        # When set, confirm_match() and reject_match() hold the worker
+        # until the test sets it, after recording the call.
+        self.decision_gate: threading.Event | None = None
         self.list_locations_calls = 0
         # When set, scan_and_match() holds the worker until the test
         # sets it: a scan whose first batch is committed (so the
@@ -183,9 +186,15 @@ class FakeLibraryService:
 
     def confirm_match(self, track_id: str) -> None:
         self.confirm_match_calls.append(track_id)
+        self._hold_decision()
 
     def reject_match(self, track_id: str) -> None:
         self.reject_match_calls.append(track_id)
+        self._hold_decision()
+
+    def _hold_decision(self) -> None:
+        if self.decision_gate is not None:
+            self.decision_gate.wait(timeout=5)
 
     def list_locations(self) -> list:
         self.list_locations_calls += 1
@@ -453,6 +462,10 @@ class FakeReviewService:
         self._confirm_review_candidate_error = confirm_review_candidate_error
         self.confirm_review_candidate_calls: list[str] = []
         self.reject_review_candidate_calls: list[str] = []
+        # When set, a per-row decision (confirm, reject, an upgrade's
+        # replace or decline) holds the worker until the test sets it,
+        # after recording the call.
+        self.decision_gate: threading.Event | None = None
         # Proves a re-poll (poll_review_items, called from
         # on_finished) has actually run, rather than asserting on a
         # notice's text/visibility immediately after a click, which
@@ -482,9 +495,15 @@ class FakeReviewService:
             raise self._confirm_review_candidate_error
 
         self.confirm_review_candidate_calls.append(track_id)
+        self._hold_decision()
 
     def reject_review_candidate(self, track_id: str) -> None:
         self.reject_review_candidate_calls.append(track_id)
+        self._hold_decision()
+
+    def _hold_decision(self) -> None:
+        if self.decision_gate is not None:
+            self.decision_gate.wait(timeout=5)
 
     def apply_upgrade_decision(
             self,
@@ -495,6 +514,7 @@ class FakeReviewService:
         self.apply_upgrade_decision_calls.append(
                 (request_id, replace, delete_old)
         )
+        self._hold_decision()
         return self.apply_upgrade_decision_result if replace else None
 
     def apply_upgrade_decisions_batch(

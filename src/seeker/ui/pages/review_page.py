@@ -53,6 +53,7 @@ from seeker.ui.empty_state import EmptyGlyph, EmptyState
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel, plain_tooltip
+from seeker.ui.row_actions import RunningRows
 from seeker.ui.table_sort import SortKeyItem, preserving_sort_order
 from seeker.ui.workers import run_worker
 
@@ -269,6 +270,12 @@ class ReviewPage(QWidget):
         self._rendered_candidates: _RenderedCandidates | None = None
         self._rendered_upgrades: _RenderedUpgrades | None = None
         self._rendered_matches: _RenderedMatches | None = None
+        # Each table's rows whose decision is running, by track id (an
+        # upgrade by request id), so a row rebuilt meanwhile keeps its
+        # buttons disabled.
+        self._running_candidates: RunningRows[str] = RunningRows()
+        self._running_upgrades: RunningRows[int] = RunningRows()
+        self._running_matches: RunningRows[str] = RunningRows()
 
         page = build_page(
             "Review", help_text.REVIEW_TAB_SUBTITLE, content,
@@ -503,12 +510,14 @@ class ReviewPage(QWidget):
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_REVIEW_CANDIDATE)
         reject_button = QPushButton("Reject")
         reject_button.setToolTip(help_text.TOOLTIP_REJECT_REVIEW_CANDIDATE)
+        buttons = (confirm_button, reject_button)
+        self._running_candidates.bind(track_id, *buttons)
 
         confirm_button.clicked.connect(
-            lambda: self._on_confirm_review_candidate(track_id, confirm_button)
+            lambda: self._on_confirm_review_candidate(track_id, buttons)
         )
         reject_button.clicked.connect(
-            lambda: self._on_reject_review_candidate(track_id, reject_button)
+            lambda: self._on_reject_review_candidate(track_id, buttons)
         )
 
         return theme.cell_widget(
@@ -518,16 +527,15 @@ class ReviewPage(QWidget):
     def _on_confirm_review_candidate(
             self,
             track_id: str,
-            button: QPushButton,
+            buttons: tuple[QPushButton, ...],
     ) -> None:
         # confirm_review_candidate makes a real request_download() call
         # (network) — routed through the worker pool like every other
         # long-running action, never called directly on the main thread.
-        run_worker(
-            self._context.thread_pool,
+        self._running_candidates.run(
+            self._context.thread_pool, track_id, buttons,
             lambda: self._context.application.review_service
             .confirm_review_candidate(track_id),
-            button=button,
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),
@@ -537,13 +545,12 @@ class ReviewPage(QWidget):
     def _on_reject_review_candidate(
             self,
             track_id: str,
-            button: QPushButton,
+            buttons: tuple[QPushButton, ...],
     ) -> None:
-        run_worker(
-            self._context.thread_pool,
+        self._running_candidates.run(
+            self._context.thread_pool, track_id, buttons,
             lambda: self._context.application.review_service
             .reject_review_candidate(track_id),
-            button=button,
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),
@@ -638,6 +645,8 @@ class ReviewPage(QWidget):
         replace_button.setToolTip(help_text.TOOLTIP_REPLACE_UPGRADE)
         decline_button = QPushButton("Decline")
         decline_button.setToolTip(help_text.TOOLTIP_DECLINE_UPGRADE)
+        buttons = (replace_button, decline_button)
+        self._running_upgrades.bind(details.request_id, *buttons)
 
         # The "delete old file?" control only ever appears when there's
         # a real old file to delete — mirrors the CLI's own guard around
@@ -671,7 +680,7 @@ class ReviewPage(QWidget):
         def on_replace() -> None:
             delete_old = delete_checkbox is not None and delete_checkbox.isChecked()
             self._on_apply_upgrade_decision(
-                details.request_id, True, delete_old, replace_button,
+                details.request_id, True, delete_old, buttons,
             )
 
         def on_decline() -> None:
@@ -679,7 +688,7 @@ class ReviewPage(QWidget):
             # the row stays ready_for_review and is offered again next
             # poll, identical to declining the CLI's prompt.
             self._on_apply_upgrade_decision(
-                details.request_id, False, False, decline_button,
+                details.request_id, False, False, buttons,
             )
 
         replace_button.clicked.connect(on_replace)
@@ -693,13 +702,12 @@ class ReviewPage(QWidget):
             request_id: int,
             replace: bool,
             delete_old: bool,
-            button: QPushButton,
+            buttons: tuple[QPushButton, ...],
     ) -> None:
-        run_worker(
-            self._context.thread_pool,
+        self._running_upgrades.run(
+            self._context.thread_pool, request_id, buttons,
             lambda: self._context.application.review_service
             .apply_upgrade_decision(request_id, replace, delete_old),
-            button=button,
             on_finished=self._on_upgrade_decision_finished,
         )
 
@@ -821,12 +829,14 @@ class ReviewPage(QWidget):
         confirm_button.setToolTip(help_text.TOOLTIP_CONFIRM_LOCAL_MATCH)
         reject_button = QPushButton("Reject")
         reject_button.setToolTip(help_text.TOOLTIP_REJECT_LOCAL_MATCH)
+        buttons = (confirm_button, reject_button)
+        self._running_matches.bind(track_id, *buttons)
 
         confirm_button.clicked.connect(
-            lambda: self._on_confirm_local_match(track_id, confirm_button)
+            lambda: self._on_confirm_local_match(track_id, buttons)
         )
         reject_button.clicked.connect(
-            lambda: self._on_reject_local_match(track_id, reject_button)
+            lambda: self._on_reject_local_match(track_id, buttons)
         )
 
         return theme.cell_widget(
@@ -836,17 +846,16 @@ class ReviewPage(QWidget):
     def _on_confirm_local_match(
             self,
             track_id: str,
-            button: QPushButton,
+            buttons: tuple[QPushButton, ...],
     ) -> None:
         # No file on disk is touched by confirm_match() — no double-
         # confirm gate, matching this project's precedent that its
         # confirmation gate is for file replacement, not DB state
         # (HISTORY §27).
-        run_worker(
-            self._context.thread_pool,
+        self._running_matches.run(
+            self._context.thread_pool, track_id, buttons,
             lambda: self._context.application.library_service
             .confirm_match(track_id),
-            button=button,
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),
@@ -856,13 +865,12 @@ class ReviewPage(QWidget):
     def _on_reject_local_match(
             self,
             track_id: str,
-            button: QPushButton,
+            buttons: tuple[QPushButton, ...],
     ) -> None:
-        run_worker(
-            self._context.thread_pool,
+        self._running_matches.run(
+            self._context.thread_pool, track_id, buttons,
             lambda: self._context.application.library_service
             .reject_match(track_id),
-            button=button,
             on_error=lambda message: self.notice.show_message(
                 message, kind="error",
             ),

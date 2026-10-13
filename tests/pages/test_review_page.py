@@ -14,8 +14,10 @@ here, not re-exported from seeker.ui.main_window — that re-export only
 existed for this file's own prior residence in test_ui_smoke.py.
 """
 
+import threading
 from dataclasses import replace
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
 
@@ -746,3 +748,92 @@ def test_a_poll_with_a_changed_row_rebuilds_its_table(qtbot):
     qtbot.waitUntil(
         lambda: page.review_needs_table.item(0, 1).text() == "70.0",
     )
+
+
+def _row_buttons(table, row_key):
+    for row in range(table.rowCount()):
+        if table.item(row, 0).data(Qt.ItemDataRole.UserRole) == row_key:
+            actions = table.cellWidget(row, table.columnCount() - 1)
+            return {b.text(): b for b in actions.findChildren(QPushButton)}
+    raise AssertionError(f"no row for {row_key!r}")
+
+
+def _seed_candidates(application, track_ids):
+    application.review_service._review_candidates = [
+        (make_track(track_id), make_review_candidate(track_id))
+        for track_id in track_ids
+    ]
+
+
+def _seed_upgrades(application, track_ids):
+    application.review_service._pending_upgrades = [
+        replace(make_upgrade_details(request_id=index), track=make_track(track_id))
+        for index, track_id in enumerate(track_ids, start=1)
+    ]
+
+
+def _seed_matches(application, track_ids):
+    application.library_service._needs_review_matches = [
+        make_needs_review_match(track_id) for track_id in track_ids
+    ]
+
+
+@pytest.mark.parametrize(
+    ("table_name", "seed", "service_name", "click", "others"),
+    [
+        (
+            "review_needs_table", _seed_candidates, "review_service",
+            "Confirm", ("Reject",),
+        ),
+        (
+            "review_needs_table", _seed_candidates, "review_service",
+            "Reject", ("Confirm",),
+        ),
+        (
+            "review_upgrades_table", _seed_upgrades, "review_service",
+            "Replace", ("Decline",),
+        ),
+        (
+            "review_local_table", _seed_matches, "library_service",
+            "Confirm", ("Reject",),
+        ),
+    ],
+)
+def test_a_row_rebuilt_while_its_decision_runs_stays_disabled(
+        qtbot, table_name, seed, service_name, click, others,
+):
+    # A playlist download adds candidates every ~20 s, so a table can
+    # rebuild while a row's decision is still running. The rebuilt row
+    # must not offer the same decision again: a second Confirm is a
+    # second download request, a second Replace a second file move
+    # (HISTORY §227).
+    application = FakeApplication()
+    seed(application, ["t1"])
+    gate = threading.Event()
+    getattr(application, service_name).decision_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    table = getattr(page, table_name)
+    qtbot.waitUntil(lambda: table.rowCount() == 1)
+
+    try:
+        _row_buttons(table, "t1")[click].click()
+        seed(application, ["t1", "t2"])
+        page.poll_review_items()
+        qtbot.waitUntil(lambda: table.rowCount() == 2)
+
+        running = _row_buttons(table, "t1")
+        assert not running[click].isEnabled()
+        for text in others:
+            assert not running[text].isEnabled()
+        assert _row_buttons(table, "t2")[click].isEnabled()
+    finally:
+        gate.set()
+
+    # Looked up on every poll, never bound once: a rebuild replaces it.
+    def settled() -> bool:
+        return _row_buttons(table, "t1")[click].isEnabled()
+
+    qtbot.waitUntil(settled)
+    wait_for_workers(window)
