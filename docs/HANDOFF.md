@@ -11,45 +11,51 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17k's close-out (HISTORY §234). Tree clean.
+- **HEAD:** S17f part one's close-out (HISTORY §235). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2378 passed, 1 skipped`, 0 failed (was
-  2377; one new test; the X9 Pro was mounted, so its 28 tests ran; CI
-  skips 29 as before). `mypy --strict src/` clean, 145 files; `ruff
-  check src tests tools` 0; `radon cc -n D` nothing.
-- **CI:** run `38440973195` green (`8d0a9b7`); it covers `0bb83a2`, `7682fc7` and the close-out.
+- **Local (Cocoa):** pytest `2386 passed, 1 skipped`, 0 failed (was
+  2378; eight new tests; the X9 Pro mounted, so its 28 ran; CI skips
+  29). `radon cc -n D` nothing. `mypy --strict src/`
+  clean, 146 files; `ruff check src tests tools` 0.
+- **CI:** see the close-out commit's run (recorded after push).
 
 ## 2. Where we are
 
-**S17k is done** (§234). Duplicates builds a group's radios and
-Actions only while the group is near the view; a 30-step resize storm
-at 1,800 groups went from ~2,050 ms to ~340 ms (~11 ms a step), the
-render from 1.75 s to 0.34 s; screenshots pixel-identical.
-**Next: S17f** (Review's "Confirm all" per section); S17e waits on
+**S17f part one is done** (§235): Review's local matches section has
+"Confirm all (N)", asked first. Stopped at the row's split point on
+budget. **Next: S17f part two**, the SoulSeek candidates section's
+Confirm all (network: one `request_download` a row). S17e waits on
 Kris. Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17k)
+## 3. Session report (S17f, part one)
 
-Evidence in HISTORY §234.
-- Measured first: the storm rebuilt in the scratchpad (§225's
-  recipe); two approaches timed on a hacked copy: a cheap delegate
-  `updateEditorGeometry` (~960 ms a pass) against widgets only near
-  the view (~370 ms). The second was built.
-- `0bb83a2` refactor: Delete reads the keep id and the confirm tick
-  from page state (`_keep_id`, `_delete_confirmed`), not widgets.
-- `7682fc7` the change; `test_only_groups_near_the_view_hold_cell_widgets`
-  failed first (`assert 400 < 100`).
-- Trade-off: Page Down now builds widgets (median 18.6 ms, was 9.3);
-  wheel steps slightly faster.
-- Skills: `tdd`, `performance-profiler`. Divergence: seams from BRIEF
-  §17k, not confirmed with Kris (as in §230–§233).
-- CI: run `38440973195` green.
+Evidence in HISTORY §235.
+- `559eafc` `LibraryService.confirm_matches(matches, stop=)` over the
+  shown `NeedsReviewMatch` rows; confirms each only while still
+  `needs_review` with the same file; `ConfirmAllResult` in
+  `models/review_result.py`. 1,000 rows ~0.3 s (scratch DB).
+- `3ba694a` the button, question, notice; a busy action with no
+  button, so the render owns the enabled state.
+- Every new test failed first (3 service, 5 page); the running guard
+  mutation-checked.
+- Screenshots: Review, both themes, both sizes; button beside the
+  title like "Replace all".
+- Skills: `tdd`. Divergence: the batch takes the shown rows, not bare
+  track ids (refuses a changed match).
 
 ## 4. Key context for whoever runs S17f, S17e, S17g or S18
 
+- **S17f part two mirrors part one** (`review_page.py`:
+  `_render_confirm_all_button`, `CONFIRM_ALL_MATCHES_KEY`;
+  `help_text`'s confirm-all helpers; `ConfirmAllResult`). The
+  service batch should take the shown `(track, candidate)` pairs and
+  refuse one whose stored candidate changed (a sweep can replace it);
+  decide whether a `TransportError` ends the batch (CLAUDE.md: slskd
+  down is an outage). Question text per BRIEF: "N downloads will
+  start". Add the key to `main_window._BUSY_ACTION_LABELS`.
 - **A per-row action takes a `RunningRows`, never `button=`**
   (`ui/CLAUDE.md`; the sweep fails the build). Duplicates shows the
   variant for a button whose enabled state also has a rule of its
@@ -107,12 +113,12 @@ Evidence in HISTORY §234.
 
 ## 6. Blockers
 
-None for S17f. S17e waits on Kris reproducing the
+None for S17f part two. S17e waits on Kris reproducing the
 problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17k done; S17f not started.
+None uncommitted. S17f part one done; part two (SoulSeek candidates) not started.
 
 ## 8. Waiting on Kris
 
