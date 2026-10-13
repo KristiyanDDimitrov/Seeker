@@ -282,6 +282,12 @@ class DuplicatesPage(QWidget):
         # local_file.id or the KEEP_ALL_DUPLICATES_ID sentinel. Pruned
         # to only still-present groups on every render (HISTORY §86).
         self._duplicates_keep_selection: dict[frozenset[int], int] = {}
+        # The groups whose "Confirm delete" is ticked, by the same key.
+        # Delete reads this, not the checkbox, which a rebuilt row
+        # replaces. Cleared on every render, as the rebuilt checkboxes
+        # always were: a confirmation is never carried into a new
+        # render.
+        self._delete_confirmed: set[frozenset[int]] = set()
         # The groups whose delete is running, by the same member-id
         # key, and the rendered Delete buttons' enable rules by group:
         # a rebuild or a changed keep choice must not offer a running
@@ -619,6 +625,23 @@ class DuplicatesPage(QWidget):
         if checked:
             self._duplicates_keep_selection[group_key] = button_id
 
+    def _keep_id(self, group: DuplicateGroup) -> int | None:
+        """The file id the group keeps, or `KEEP_ALL_DUPLICATES_ID`:
+        the person's choice when they made one, else the best-quality
+        file, which the render preselects."""
+        default_keep_id = group.files[0].local_file.id if group.files else None
+        return self._duplicates_keep_selection.get(
+            _group_key(group), default_keep_id,
+        )
+
+    def _on_delete_confirm_toggled(
+            self, group_key: frozenset[int], checked: bool,
+    ) -> None:
+        if checked:
+            self._delete_confirmed.add(group_key)
+        else:
+            self._delete_confirmed.discard(group_key)
+
     def _on_duplicate_groups_found(self, groups: list[DuplicateGroup]) -> None:
         self._render_duplicate_groups(groups)
         self.feedback.show_outcome(
@@ -629,6 +652,7 @@ class DuplicatesPage(QWidget):
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
         self._duplicate_button_groups = []
         self._delete_enablers = {}
+        self._delete_confirmed = set()
         # Kept so a single-group resolution can drop just that group and
         # re-render locally afterward — see _on_delete_duplicates_finished's
         # own docstring for why re-fetching via find_duplicate_groups()
@@ -869,12 +893,14 @@ class DuplicatesPage(QWidget):
 
         delete_button = QPushButton("Delete")
         delete_button.setToolTip(help_text.TOOLTIP_DELETE_DUPLICATES_BUTTON)
-        delete_button.clicked.connect(
-            lambda: self._on_delete_duplicates_clicked(
-                group, button_group, confirm_checkbox,
-            )
-        )
         group_key = _group_key(group)
+        confirm_checkbox.setChecked(group_key in self._delete_confirmed)
+        confirm_checkbox.toggled.connect(
+            lambda checked: self._on_delete_confirm_toggled(group_key, checked)
+        )
+        delete_button.clicked.connect(
+            lambda: self._on_delete_duplicates_clicked(group)
+        )
 
         def _update_delete_enabled() -> None:
             # "Keep all" selected means there is nothing to delete.
@@ -907,13 +933,8 @@ class DuplicatesPage(QWidget):
         lines.addStretch()
         return container
 
-    def _on_delete_duplicates_clicked(
-            self,
-            group: DuplicateGroup,
-            button_group: QButtonGroup,
-            confirm_checkbox: QCheckBox,
-    ) -> None:
-        if not confirm_checkbox.isChecked():
+    def _on_delete_duplicates_clicked(self, group: DuplicateGroup) -> None:
+        if _group_key(group) not in self._delete_confirmed:
             # The standing rule against touching a file without
             # confirmation applies in full here: a click alone is only
             # the FIRST signal (which file to keep); the checkbox is
@@ -927,9 +948,9 @@ class DuplicatesPage(QWidget):
             )
             return
 
-        keep_id = button_group.checkedId()
+        keep_id = self._keep_id(group)
 
-        if keep_id == KEEP_ALL_DUPLICATES_ID:
+        if keep_id is None or keep_id == KEEP_ALL_DUPLICATES_ID:
             # Defense in depth — the Delete button is already disabled
             # in this state, but nothing structurally prevents this
             # method being reached some other way.
@@ -1138,16 +1159,7 @@ class DuplicatesPage(QWidget):
         resolved_groups: list[DuplicateGroup] = []
 
         for group in groups:
-            group_key = frozenset(
-                f.local_file.id for f in group.files
-                if f.local_file.id is not None
-            )
-            default_keep_id = (
-                group.files[0].local_file.id if group.files else None
-            )
-            keep_id = self._duplicates_keep_selection.get(
-                group_key, default_keep_id,
-            )
+            keep_id = self._keep_id(group)
 
             if keep_id is None or keep_id == KEEP_ALL_DUPLICATES_ID:
                 # "Keep all" (or no resolvable keep target at all) is

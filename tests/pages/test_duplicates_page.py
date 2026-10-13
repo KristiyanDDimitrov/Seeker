@@ -1357,8 +1357,6 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
     checkbox.setChecked(True)
     window._duplicates_page._on_delete_duplicates_clicked(
         window._duplicates_page._current_duplicate_groups[0],
-        window._duplicates_page._duplicate_button_groups[0],
-        checkbox,
     )
     wait_for_workers(window)
 
