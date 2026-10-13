@@ -79,13 +79,18 @@ investigation.
   rows (`_rendered_candidates`, …) and skips an equal tick; Downloads
   keys its rows apart from their bytes and updates progress in place;
   Sharing keys its locations with the palette, which its lamps bake in
-  (HISTORY §221). A busy
-  action whose buttons a rebuild can delete passes `button=None` and
-  puts its busy state in the rendered key (Downloads' Retry and
-  Cancel, through `_ROW_ACTION_KEYS`). A deleted button no longer
-  crashes a finish (`run_worker`'s handlers and `BusyActionRegistry.end`
-  skip it), but the rebuilt row's new button never learns its task
-  is running. [HISTORY §227](../../../docs/history/211-240.md#227),
+  (HISTORY §221). **A task's button (`run_worker`'s `button=`, a
+  busy worker's) is a `self.` attribute or `None`, never a per-row
+  button:** a rebuild deletes it, and the rebuilt row's new button
+  never learns its task is running, so it offers the action twice. A
+  per-row action keeps its row's running state in
+  `ui/row_actions.RunningRows` by row key (Review, the Dashboard's
+  Tag, Search, Duplicates), a busy action in the rendered key
+  (Downloads' Retry and Cancel, `_ROW_ACTION_KEYS`);
+  `tests/test_ui_source_sweeps.py` fails the build. A deleted button
+  never crashes a finish (`run_worker`'s handlers and
+  `BusyActionRegistry.end` skip it).
+  [HISTORY §227](../../../docs/history/211-240.md#227),
   [HISTORY §195](../../../docs/history/181-210.md#195),
   [HISTORY §204](../../../docs/history/181-210.md#204),
   [HISTORY §205](../../../docs/history/181-210.md#205)

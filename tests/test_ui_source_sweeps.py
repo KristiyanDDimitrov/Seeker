@@ -1,6 +1,7 @@
 """Source sweeps over `src/seeker/ui/`: conventions an `ast` or text
 scan can enforce for every widget at once.
 """
+import ast
 from pathlib import Path
 
 
@@ -121,3 +122,82 @@ def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
         if "&" in text and "&&" not in text and text != "&Help"
     ]
     assert stray == []
+
+
+# Every call that hands a task a button to disable and give back, by
+# the callee's name: the button's keyword and its positional index.
+# `start_slskd` is the slskd_status helper, called by bare name (the
+# Application method of that name takes no button).
+_BUTTON_TAKERS = {
+    "run_worker": ("button", 2),
+    "run_busy_worker": ("button", 1),
+    "_run_busy_worker": ("button", 1),
+    "pick_and_add_library_location": ("button", 4),
+    "start_slskd": ("button", 1),
+}
+# The two helpers above forward their own caller's `button` parameter;
+# this sweep checks each of their callers in turn, so a per-row button
+# cannot reach a task through them either.
+_FORWARDED_BUTTONS = {
+    ("library_location_picker.py", "button"),
+    ("slskd_status.py", "button"),
+}
+
+
+def _is_self_attribute(node):
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return isinstance(node, ast.Name) and node.id == "self"
+
+
+def test_a_task_button_is_a_page_attribute_or_none():
+    # A per-row button is deleted by the next rebuild while its task
+    # runs, and a rebuilt row's new button never learns the task is
+    # running, so it offers the action again (HISTORY §227). A row's
+    # running state goes in ui/row_actions.RunningRows; a task's button
+    # is a widget that outlives every render: a `self.` attribute.
+    import seeker.ui as ui_package
+
+    ui_dir = Path(ui_package.__file__).parent
+    checked = 0
+    violations = []
+    for path in sorted(ui_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name):
+                name = func.id
+            elif isinstance(func, ast.Attribute) and func.attr != "start_slskd":
+                name = func.attr
+            else:
+                continue
+            if name not in _BUTTON_TAKERS:
+                continue
+            keyword, index = _BUTTON_TAKERS[name]
+            given = [k.value for k in node.keywords if k.arg == keyword]
+            if len(node.args) > index:
+                given.append(node.args[index])
+            for button in given:
+                checked += 1
+                if (
+                    (isinstance(button, ast.Constant) and button.value is None)
+                    or _is_self_attribute(button)
+                    or (
+                        isinstance(button, ast.Name)
+                        and (path.name, button.id) in _FORWARDED_BUTTONS
+                    )
+                ):
+                    continue
+                violations.append(
+                    f"{path.name}:{node.lineno}: {name}(… {ast.unparse(button)})"
+                )
+
+    # The sweep found the calls it exists for (a renamed helper would
+    # otherwise pass it vacuously).
+    assert checked > 30
+    assert violations == [], (
+        "a task's button that a rebuild can delete; keep the row's "
+        "running state in RunningRows instead:\n" + "\n".join(violations)
+    )
